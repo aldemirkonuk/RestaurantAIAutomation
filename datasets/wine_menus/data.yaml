@@ -1,0 +1,40 @@
+# WineOps Menu Scanner - YOLOv8 Dataset Configuration
+# 13-class model for detecting wine entry regions and sub-fields on restaurant menus.
+#
+# Annotation guidelines:
+#   - wine_entry: draw box around the ENTIRE listing (name + producer + price + description).
+#   - section_header: the heading text above a group of wines (e.g., "RED WINES").
+#   - wine_name: the primary wine name text only.
+#   - producer: winery/estate name WHEN it is visually separate from wine_name.
+#   - vintage: the 4-digit year or "NV" text.
+#   - price: the price text including currency symbol.
+#   - grape_variety: varietal text WHEN on a dedicated line or in parentheses.
+#   - origin_info: country/region/appellation text WHEN on a separate line.
+#   - description: tasting notes or description text (usually smaller/italic font).
+#   - serving_type: glass/bottle/carafe indicator (icon or text).
+#   - rating: score badge (e.g., "92pts", "RP 95", stars).
+#   - classification: "Grand Cru", "Reserva", "Riserva", "DOC", "AOC" text.
+#   - bottle_info: volume ("750ml") and/or ABV ("13.5%") text.
+#
+# Training target: mAP50 >= 0.90, mAP50-95 >= 0.75
+
+path: wine_menus
+train: images/train
+val: images/val
+test: images/test
+
+nc: 13
+names:
+  0: wine_entry
+  1: section_header
+  2: wine_name
+  3: producer
+  4: vintage
+  5: price
+  6: grape_variety
+  7: origin_info
+  8: description
+  9: serving_type
+  10: rating
+  11: classification
+  12: bottle_info
