@@ -1,0 +1,9 @@
+path: wine_menus_2class
+train: images/train
+val: images/val
+test: images/test
+
+nc: 2
+names:
+  0: wine_entry
+  1: section_header
