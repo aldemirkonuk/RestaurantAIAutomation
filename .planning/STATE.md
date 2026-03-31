@@ -11,14 +11,36 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ## Current Position
 
-**Active phase:** 01-dataset-preparation
-**Current plan:** 01-02 (next)
-**Last completed:** 01-01 Dataset Preparation — Label Studio to YOLO Conversion (2026-03-30)
-**Next action:** Execute Phase 1 Plan 02 (auto-annotate sub-fields via Gemini Vision)
+**Active phase:** 02-model-training (Phase 1 complete)
+**Current plan:** 02-01 (next)
+**Last completed:** 01-03 Dataset Stats and Augmentation Config (2026-03-31)
+**Next action:** Execute Phase 2 — Model Training (`/gsd:plan-phase 2`)
 
 ---
 
 ## Session History
+
+### Session 3 — 2026-03-31
+
+**Completed this session:**
+- Executed Phase 1 Plan 03: Generate dataset_stats.json with class distribution and augmentation config
+- Verified all 13 class IDs (0-12) present across train/val/test label files
+- Computed class distribution from all .txt label files: wine_entry=2000 train, section_header=16 train
+- Documented Section Header imbalance (125:1 ratio vs wine_entry) as AT RISK for Phase 2 mAP
+- Recorded DATA-05 augmentation hyperparameters (fliplr=0.5, degrees=10, hsv_v=0.4, mosaic=1.0)
+- Gemini annotation coverage confirmed at 87.6% (2392/2731)
+- All 5 Phase 1 ROADMAP success criteria verified and passing
+- Phase 1 complete
+
+**Key findings:**
+- section_header has only 16 train / 0 val / 3 test instances — near-zero mAP expected in Phase 2
+- serving_type also very sparse: 11 train / 7 val / 3 test
+- Total train annotations: 8,373 boxes across 13 classes
+
+**Files changed:**
+- `datasets/wine_menus/dataset_stats.json` — new stats file
+
+---
 
 ### Session 2 — 2026-03-30
 
@@ -74,6 +96,8 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 | 2026-03-30 | Surya target: maximize + report actual | Hard 0.99 target unrealistic for complex menus |
 | 2026-03-30 | Stratified split yields 182/51/29, not 183/52/27 | Rounding with int() across two source groups (28+234); total still 262 |
 | 2026-03-30 | Empty .txt files for unannotated images | Ultralytics silently skips missing label files; empty file is correct behavior |
+| 2026-03-31 | section_header imbalance documented as AT RISK | 16 train instances (125:1 ratio vs wine_entry); mAP >= 0.90 target not achievable without more data |
+| 2026-03-31 | Augmentation is ultralytics built-in, no disk pre-augmentation | DATA-05 params recorded in dataset_stats.json for Phase 2 training call |
 
 ---
 
@@ -91,4 +115,4 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ---
 *State initialized: 2026-03-30*
-*Last updated: 2026-03-30 — completed 01-01*
+*Last updated: 2026-03-31 — Phase 1 complete, completed 01-03*

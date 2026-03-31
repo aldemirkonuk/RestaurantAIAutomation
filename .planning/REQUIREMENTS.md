@@ -7,11 +7,11 @@
 
 ### Dataset Preparation
 
-- [ ] **DATA-01**: Label Studio annotations converted to YOLO format (x_center, y_center, w, h normalized) for Wine Entry and Section Header classes
-- [ ] **DATA-02**: 262 labeled images split into train/val/test sets (70/20/10)
-- [ ] **DATA-03**: Gemini Vision auto-annotates 11 sub-field classes (wine_name, producer, vintage, price, grape_variety, origin_info, description, serving_type, rating, classification, bottle_info) within each Wine Entry bounding box
-- [ ] **DATA-04**: Auto-annotations reviewed and saved to YOLO label files
-- [ ] **DATA-05**: Data augmentation pipeline applied (flip, rotate, brightness, mosaic) to compensate for limited dataset size
+- [x] **DATA-01**: Label Studio annotations converted to YOLO format (x_center, y_center, w, h normalized) for Wine Entry and Section Header classes
+- [x] **DATA-02**: 262 labeled images split into train/val/test sets (70/20/10)
+- [x] **DATA-03**: Gemini Vision auto-annotates 11 sub-field classes (wine_name, producer, vintage, price, grape_variety, origin_info, description, serving_type, rating, classification, bottle_info) within each Wine Entry bounding box
+- [x] **DATA-04**: Auto-annotations reviewed and saved to YOLO label files
+- [x] **DATA-05**: Data augmentation pipeline applied (flip, rotate, brightness, mosaic) to compensate for limited dataset size
 
 ### YOLO Model Training
 
@@ -64,11 +64,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
-| DATA-03 | Phase 1 | Pending |
-| DATA-04 | Phase 1 | Pending |
-| DATA-05 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete (01-01) |
+| DATA-02 | Phase 1 | Complete (01-01) |
+| DATA-03 | Phase 1 | Complete (01-02) |
+| DATA-04 | Phase 1 | Complete (01-02) |
+| DATA-05 | Phase 1 | Complete (01-03) |
 | YOLO-01 | Phase 2 | Pending |
 | YOLO-02 | Phase 2 | Pending |
 | YOLO-03 | Phase 2 | Pending |
@@ -91,4 +91,4 @@
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after initial definition*
+*Last updated: 2026-03-31 — Phase 1 requirements DATA-01 through DATA-05 marked complete*

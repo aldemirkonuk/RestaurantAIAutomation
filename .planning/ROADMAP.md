@@ -6,7 +6,7 @@ Four phases to go from an empty YOLO training directory to a fully integrated, h
 
 ## Phases
 
-- [ ] **Phase 1: Dataset Preparation** - Convert Label Studio annotations to YOLO format and auto-generate 11 sub-field class labels
+- [x] **Phase 1: Dataset Preparation** - Convert Label Studio annotations to YOLO format and auto-generate 11 sub-field class labels
 - [ ] **Phase 2: YOLO Model Training** - Train 13-class YOLOv8s model to mAP50 ≥ 0.95 on wine menu detection
 - [ ] **Phase 3: Surya OCR Tuning** - Benchmark and maximize Surya OCR confidence across all annotation images
 - [ ] **Phase 4: Integration** - Wire trained model into menu_analyzer_agent and validate end-to-end pipeline
@@ -23,7 +23,7 @@ Four phases to go from an empty YOLO training directory to a fully integrated, h
   3. Each label file contains class IDs 0–12 with normalized xywh coordinates
   4. Sub-field annotations generated for ≥ 80% of Wine Entry bounding boxes
   5. `datasets/wine_menus/dataset_stats.json` exists with class distribution counts
-**Plans**: TBD
+**Plans**: 3/3 complete (01-01, 01-02, 01-03)
 
 ### Phase 2: YOLO Model Training
 **Goal**: Train a YOLOv8s model on the 13-class wine menu dataset and achieve mAP50 ≥ 0.95 for the Wine Entry class and ≥ 0.90 for Section Header, with CPU inference under 5 seconds per image.
@@ -64,11 +64,11 @@ Four phases to go from an empty YOLO training directory to a fully integrated, h
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Dataset Preparation | 0/TBD | Not started | - |
+| 1. Dataset Preparation | 3/3 | COMPLETE | 2026-03-31 |
 | 2. YOLO Model Training | 0/TBD | Not started | - |
 | 3. Surya OCR Tuning | 0/TBD | Not started | - |
 | 4. Integration | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-30*
-*Last updated: 2026-03-30*
+*Last updated: 2026-03-31 — Phase 1 complete*
