@@ -3,7 +3,7 @@ auto_annotate_subfields.py
 
 Reads existing YOLO label files from the wine_menus dataset, crops every class-0
 (Wine Entry) bounding box from the source image, sends each crop to Gemini Vision
-(gemini-1.5-flash), and appends valid sub-field annotations (classes 2-12) back to
+(gemini-2.5-flash-lite), and appends valid sub-field annotations (classes 2-12) back to
 the label files.
 
 Usage:
@@ -375,7 +375,7 @@ def main():
     # Fail fast if API key missing
     api_key = _require_api_key()
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
     prompt = build_subfield_prompt()
 
     progress = load_progress()

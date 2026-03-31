@@ -1,0 +1,196 @@
+  Loaded GOOGLE_API_KEY from /Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation/.env
+Starting annotation. Splits: ['train', 'val', 'test']
+Resume mode: True (0 images already done)
+Progress file: /Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation/datasets/wine_menus/annotation_progress.json
+
+[train] 182 images found
+  AVEC_West_Loop_Wine_Bev_List_02_18_2026_p1.png: 88 entries -> 292 sub-field boxes appended
+  Apolonia_Chicago_Menu_p2.png: 26 entries -> 81 sub-field boxes appended
+  Avli_Taverna_Lincoln_Park_Wine_Menu_p1.png: 29 entries -> 57 sub-field boxes appended
+  Avli_on_The_Park_Lakeshore_East_p1.png: 4 entries -> 2 sub-field boxes appended
+  Avli_on_The_Park_Lakeshore_East_p2.png: 22 entries -> 49 sub-field boxes appended
+  Bar_Tutto_Bottle_Wine_Menu_p6.png: 11 entries -> 57 sub-field boxes appended
+  Bar_Tutto_Wine_By_Glass_Menu_p1.png: 4 entries -> 2 sub-field boxes appended
+  Elina_s_Wine_Menu_p1.png: 5 entries -> 2 sub-field boxes appended
+  Elske_Wine_Menu_p2.png: 2 entries -> 1 sub-field boxes appended
+  Ema_River_North_Beverage_Menu_p1.png: 24 entries -> 98 sub-field boxes appended
+  Ema_River_North_Beverage_Menu_p2.png: 12 entries -> 3 sub-field boxes appended
+  Francesca_s_on_Chestnut_Wine_Menu_p12.png: 35 entries -> 62 sub-field boxes appended
+  Francesca_s_on_Chestnut_Wine_Menu_p3.png: 5 entries -> 12 sub-field boxes appended
+  Francesca_s_on_Chestnut_Wine_Menu_p4.png: 2 entries -> 1 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p11.png: 2 entries -> 1 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p12.png: 5 entries -> 5 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p13.png: 3 entries -> 1 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p2.png: 4 entries -> 2 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p3.png: 5 entries -> 3 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p4.png: 2 entries -> 2 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p5.png: 4 entries -> 4 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p9.png: 1 entries -> 1 sub-field boxes appended
+  LYRA_Wine_List_p3.png: 31 entries -> 131 sub-field boxes appended
+  LYRA_Wine_List_p4.png: 29 entries -> 143 sub-field boxes appended
+  La_Serre_French_Wine_Menu_p2.png: 75 entries -> 321 sub-field boxes appended
+  La_Serre_French_Wine_Menu_p4.png: 4 entries -> 2 sub-field boxes appended
+  Mia_Francesca_Wine_Menu_p12.png: 35 entries -> 56 sub-field boxes appended
+  Mia_Francesca_Wine_Menu_p4.png: 2 entries -> 2 sub-field boxes appended
+  Mia_Francesca_Wine_Menu_p8.png: 1 entries -> 1 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p11.png: 30 entries -> 120 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p12.png: 6 entries -> 6 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p2.png: 5 entries -> 5 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p3.png: 3 entries -> 5 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p4.png: 4 entries -> 4 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p5.png: 7 entries -> 7 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p9.png: 44 entries -> 154 sub-field boxes appended
+  Piccolo_Sogno_Wine_Menu_p2.png: 49 entries -> 273 sub-field boxes appended
+  Piccolo_Sogno_Wine_Menu_p3.png: 52 entries -> 235 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p1.png: 23 entries -> 71 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p12.png: 48 entries -> 129 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p2.png: 34 entries -> 70 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p3.png: 42 entries -> 98 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p5.png: 34 entries -> 142 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p6.png: 39 entries -> 116 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p7.png: 54 entries -> 164 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p8.png: 43 entries -> 170 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p14.png: 15 entries -> 57 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p15.png: 34 entries -> 140 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p16.png: 44 entries -> 193 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p17.png: 31 entries -> 134 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p18.png: 3 entries -> 0 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p19.png: 10 entries -> 32 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p8.png: 1 entries -> 5 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p10.png: 22 entries -> 104 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p12.png: 19 entries -> 81 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p13.png: 10 entries -> 56 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p3.png: 12 entries -> 46 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p4.png: 20 entries -> 89 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p5.png: 20 entries -> 92 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p7.png: 16 entries -> 78 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p8.png: 3 entries -> 2 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p9.png: 21 entries -> 113 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p10.png: 5 entries -> 3 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p11.png: 5 entries -> 4 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p12.png: 4 entries -> 3 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p13.png: 6 entries -> 4 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p14.png: 31 entries -> 124 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p15.png: 3 entries -> 0 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p16.png: 5 entries -> 5 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p17.png: 3 entries -> 2 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p18.png: 6 entries -> 5 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p19.png: 5 entries -> 3 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p20.png: 7 entries -> 5 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p21.png: 4 entries -> 2 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p24.png: 23 entries -> 75 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p25.png: 4 entries -> 3 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p26.png: 6 entries -> 5 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p28.png: 8 entries -> 6 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p30.png: 3 entries -> 2 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p31.png: 6 entries -> 6 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p32.png: 26 entries -> 84 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p34.png: 5 entries -> 2 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p5.png: 3 entries -> 0 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p6.png: 3 entries -> 0 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p7.png: 29 entries -> 111 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p8.png: 3 entries -> 0 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p9.png: 36 entries -> 155 sub-field boxes appended
+  Screenshot_2026-02-19_at_22.36.05.png: 69 entries -> 306 sub-field boxes appended
+  Screenshot_2026-02-19_at_22.36.14.png: 19 entries -> 81 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.14.54.png: 5 entries -> 5 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.17.27.png: 3 entries -> 4 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.24.19.png: 2 entries -> 1 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.28.01.png: 1 entries -> 0 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.38.13.png: 2 entries -> 2 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.38.35.png: 3 entries -> 5 sub-field boxes appended
+  Screenshot_2026-02-23_at_21.14.08.png: 28 entries -> 22 sub-field boxes appended
+  Screenshot_2026-02-23_at_21.14.21.png: 17 entries -> 66 sub-field boxes appended
+  Screenshot_2026-02-23_at_21.19.20.png: 3 entries -> 2 sub-field boxes appended
+  Screenshot_2026-02-23_at_21.30.31.png: 1 entries -> 0 sub-field boxes appended
+  Screenshot_2026-02-23_at_21.30.48.png: 1 entries -> 1 sub-field boxes appended
+  Screenshot_2026-02-23_at_22.00.42.png: 2 entries -> 0 sub-field boxes appended
+  Screenshot_2026-02-23_at_22.01.13.png: 22 entries -> 58 sub-field boxes appended
+  Screenshot_2026-02-23_at_22.10.25.png: 19 entries -> 85 sub-field boxes appended
+  Seville_Chicago_Wine_Menu_p1.png: 34 entries -> 129 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p19.png: 1 entries -> 0 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p35.png: 2 entries -> 4 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p37.png: 10 entries -> 16 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p42.png: 2 entries -> 2 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p43.png: 2 entries -> 2 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p47.png: 3 entries -> 3 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p5.png: 29 entries -> 27 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p50.png: 15 entries -> 61 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p52.png: 3 entries -> 2 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p55.png: 21 entries -> 80 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p64.png: 50 entries -> 98 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p65.png: 47 entries -> 94 sub-field boxes appended
+  aba_Wine_Menu_p11.png: 2 entries -> 1 sub-field boxes appended
+  aba_Wine_Menu_p18.png: 3 entries -> 3 sub-field boxes appended
+  aba_Wine_Menu_p25.png: 2 entries -> 1 sub-field boxes appended
+  aba_Wine_Menu_p31.png: 4 entries -> 2 sub-field boxes appended
+  aba_Wine_Menu_p4.png: 9 entries -> 22 sub-field boxes appended
+  aba_Wine_Menu_p5.png: 13 entries -> 33 sub-field boxes appended
+  il_Carciofo_Wine_Menu_p15.png: 25 entries -> 50 sub-field boxes appended
+  il_Carciofo_Wine_Menu_p7.png: 17 entries -> 95 sub-field boxes appended
+
+[val] 51 images found
+  Elina_s_Wine_Menu_p2.png: 52 entries -> 90 sub-field boxes appended
+  Elske_Wine_Menu_p1.png: 30 entries -> 127 sub-field boxes appended
+  Elske_Wine_Menu_p3.png: 29 entries -> 145 sub-field boxes appended
+  Fioretta_Wine_Menu_December2025_p3.png: 5 entries -> 4 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p10.png: 5 entries -> 2 sub-field boxes appended
+  LYRA_Wine_List_p2.png: 8 entries -> 9 sub-field boxes appended
+  La_Serre_French_Wine_Menu_p3.png: 62 entries -> 250 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p1.png: 3 entries -> 4 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p13.png: 6 entries -> 3 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p7.png: 3 entries -> 5 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p8.png: 15 entries -> 65 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p11.png: 6 entries -> 4 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p2.png: 15 entries -> 11 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p4.png: 22 entries -> 70 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p5.png: 2 entries -> 3 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p6.png: 8 entries -> 21 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p2.png: 13 entries -> 3 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p22.png: 7 entries -> 5 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p23.png: 4 entries -> 2 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p27.png: 4 entries -> 3 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p3.png: 2 entries -> 0 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p33.png: 7 entries -> 6 sub-field boxes appended
+  Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p4.png: 15 entries -> 63 sub-field boxes appended
+  Screenshot_2026-02-23_at_18.18.40.png: 3 entries -> 3 sub-field boxes appended
+  Screenshot_2026-02-23_at_21.52.39.png: 2 entries -> 1 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p40.png: 1 entries -> 1 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p46.png: 3 entries -> 2 sub-field boxes appended
+  aba_Wine_Menu_p14.png: 2 entries -> 0 sub-field boxes appended
+  aba_Wine_Menu_p8.png: 2 entries -> 0 sub-field boxes appended
+  il_Carciofo_Wine_Menu_p6.png: 22 entries -> 115 sub-field boxes appended
+  il_Carciofo_Wine_Menu_p8.png: 15 entries -> 84 sub-field boxes appended
+
+[test] 29 images found
+  Fioretta_Wine_Menu_December2025_p1.png: 15 entries -> 37 sub-field boxes appended
+  Fioretta_Wine_Menu_December2025_p2.png: 65 entries -> 300 sub-field boxes appended
+  Fioretta_Wine_Menu_December2025_p4.png: 57 entries -> 260 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p6.png: 27 entries -> 83 sub-field boxes appended
+  Kinzie_Chophouse_Wine_Menu_p7.png: 6 entries -> 5 sub-field boxes appended
+  Mia_Francesca_Wine_Menu_p3.png: 5 entries -> 15 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p10.png: 2 entries -> 2 sub-field boxes appended
+  Obelix_Chicago_Wine_Menu_p6.png: 4 entries -> 5 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p10.png: 2 entries -> 0 sub-field boxes appended
+  RL_Restaurant_Wine_Menu_p9.png: 63 entries -> 206 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p13.png: 24 entries -> 109 sub-field boxes appended
+  Roka_Chicago_Beverage_Menu_29August2025_p3.png: 13 entries -> 29 sub-field boxes appended
+  Rose_Mary_Wine_List_02_18_2026_p6.png: 2 entries -> 2 sub-field boxes appended
+  Screenshot_2026-02-19_at_22.35.40.png: 40 entries -> 157 sub-field boxes appended
+  Screenshot_2026-02-23_at_16.56.51.png: 16 entries -> 50 sub-field boxes appended
+  Screenshot_2026-02-23_at_22.00.32.png: 9 entries -> 20 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p3.png: 2 entries -> 3 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p56.png: 2 entries -> 2 sub-field boxes appended
+  Theodora_Wine_List_December2025_02_18_2026_p57.png: 1 entries -> 0 sub-field boxes appended
+  aba_Wine_Menu_p29.png: 2 entries -> 2 sub-field boxes appended
+  il_Carciofo_Wine_Menu_p5.png: 1 entries -> 1 sub-field boxes appended
+
+============================================================
+DONE.
+Images processed this run: 176
+Sub-field boxes added this run: 8746
+Pitfall-2 (full-image coord) skips: 0
+Coverage: 2392/2731 entries annotated (87.6%)
+Failed entries: 339
+Progress saved to /Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation/datasets/wine_menus/annotation_progress.json
+============================================================
