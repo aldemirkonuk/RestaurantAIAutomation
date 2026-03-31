@@ -1,0 +1,97 @@
+{
+  "generated": "2026-03-31",
+  "source": "datasets/annotation_tasks/{screenshots,pdfs}.json + Gemini Vision auto-annotation",
+  "split_counts": {
+    "train": 182,
+    "val": 51,
+    "test": 29,
+    "total": 262
+  },
+  "class_distribution": {
+    "wine_entry": {
+      "train": 2000,
+      "val": 373,
+      "test": 358
+    },
+    "section_header": {
+      "train": 16,
+      "val": 0,
+      "test": 3
+    },
+    "wine_name": {
+      "train": 1635,
+      "val": 294,
+      "test": 284
+    },
+    "producer": {
+      "train": 843,
+      "val": 156,
+      "test": 155
+    },
+    "vintage": {
+      "train": 1138,
+      "val": 178,
+      "test": 224
+    },
+    "price": {
+      "train": 1164,
+      "val": 156,
+      "test": 212
+    },
+    "grape_variety": {
+      "train": 310,
+      "val": 94,
+      "test": 151
+    },
+    "origin_info": {
+      "train": 866,
+      "val": 172,
+      "test": 178
+    },
+    "description": {
+      "train": 95,
+      "val": 6,
+      "test": 35
+    },
+    "serving_type": {
+      "train": 11,
+      "val": 7,
+      "test": 3
+    },
+    "rating": {
+      "train": 87,
+      "val": 15,
+      "test": 22
+    },
+    "classification": {
+      "train": 161,
+      "val": 15,
+      "test": 22
+    },
+    "bottle_info": {
+      "train": 47,
+      "val": 8,
+      "test": 2
+    }
+  },
+  "class_imbalance_warnings": [
+    "section_header: ~16 training instances (ratio ~125:1 vs wine_entry). mAP50 >= 0.90 target in Phase 2 is AT RISK. Expect near-zero mAP or high variance for this class."
+  ],
+  "gemini_annotation_coverage": {
+    "annotated_entries": 2392,
+    "total_entries": 2731,
+    "coverage_pct": 87.6
+  },
+  "data_augmentation": {
+    "strategy": "ultralytics built-in \u2014 applied at training time, no disk pre-augmentation",
+    "hyperparameters": {
+      "fliplr": 0.5,
+      "degrees": 10,
+      "hsv_v": 0.4,
+      "mosaic": 1.0
+    },
+    "covers_requirements": [
+      "DATA-05: flip, rotate, brightness, mosaic"
+    ]
+  }
+}
