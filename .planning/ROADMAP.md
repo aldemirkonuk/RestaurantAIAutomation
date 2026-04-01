@@ -32,7 +32,7 @@ Five phases to replace the retired YOLO+Surya+parser extraction stack with a pro
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — ClaudeVisionExtractor service: async parallel extraction engine + unit tests + requirements.txt fix
+- [x] 01-01-PLAN.md — ClaudeVisionExtractor service: async parallel extraction engine + unit tests + requirements.txt fix (2026-04-01)
 - [ ] 01-02-PLAN.md — FastAPI endpoint + Supabase persistence: POST /api/v1/onboarding/extract wired to extractor and submissions table
 
 ### Phase 2: Gemini Flash Crawler
@@ -87,7 +87,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Claude Vision Extraction | 0/2 | Planned | - |
+| 1. Claude Vision Extraction | 1/2 | In Progress | - |
 | 2. Gemini Flash Crawler | 0/TBD | Not started | - |
 | 3. YOLO 2-class Preview | 0/TBD | Not started | - |
 | 4. Claude Haiku Enrichment | 0/TBD | Not started | - |

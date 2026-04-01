@@ -11,14 +11,38 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ## Current Position
 
-**Active phase:** 02-model-training (Phase 1 complete)
-**Current plan:** 02-01 (next)
-**Last completed:** 01-03 Dataset Stats and Augmentation Config (2026-03-31)
-**Next action:** Execute Phase 2 — Model Training (`/gsd:plan-phase 2`)
+**Active phase:** 01-claude-vision-extraction-service
+**Current plan:** 01-02 (next)
+**Last completed:** 01-01 Claude Vision Extractor — Core Engine (2026-04-01)
+**Next action:** Execute Phase 1 Plan 02 — API endpoint + Supabase persistence
 
 ---
 
 ## Session History
+
+### Session 4 — 2026-04-01
+
+**Completed this session:**
+- Executed Phase 01-claude-vision-extraction-service Plan 01: Build ClaudeVisionExtractor core engine
+- Updated anthropic pin from ==0.14.0 to >=0.50.0 (AsyncAnthropic requires post-0.20)
+- Implemented ClaudeVisionExtractor with async parallel page dispatch (asyncio.gather + Semaphore(5))
+- Implemented ClaudePageResult + ClaudeExtractionResult Pydantic models
+- Implemented parse_json_response (multi-strategy: fenced, brace, raw, fallback)
+- Implemented compute_completeness over 6 fields with strict < 0.5 threshold for needs_review
+- Per-page cost: (input * 3.0 + output * 15.0) / 1_000_000 USD
+- 10/10 unit tests pass without live CLAUDE_API_KEY (all Anthropic calls mocked)
+
+**Key findings:**
+- Worktree had no services/ directory tracked — created directory structure and files fresh
+- MAX_TOKENS=8192 constant used instead of literal (better practice, same effect)
+- vlm_extraction_service.py (Gemini) untouched — architecture separation maintained
+
+**Files changed:**
+- `services/agent-orchestrator/requirements.txt` — anthropic pin updated
+- `services/agent-orchestrator/services/claude_vision_extractor.py` — new extraction service
+- `services/agent-orchestrator/tests/test_claude_vision_extractor.py` — 10 unit tests
+
+---
 
 ### Session 3 — 2026-03-31
 
@@ -98,6 +122,9 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 | 2026-03-30 | Empty .txt files for unannotated images | Ultralytics silently skips missing label files; empty file is correct behavior |
 | 2026-03-31 | section_header imbalance documented as AT RISK | 16 train instances (125:1 ratio vs wine_entry); mAP >= 0.90 target not achievable without more data |
 | 2026-03-31 | Augmentation is ultralytics built-in, no disk pre-augmentation | DATA-05 params recorded in dataset_stats.json for Phase 2 training call |
+| 2026-04-01 | response.content[0].text not response.text | Anthropic SDK pattern — response.text is Gemini-only; causes AttributeError silently |
+| 2026-04-01 | MAX_TOKENS=8192 constant | Named constant preferred over literal; 8192 prevents truncation on dense pages |
+| 2026-04-01 | COMPLETENESS_THRESHOLD strict < 0.5 | 3/6 fields (0.5) is acceptable; only below 0.5 triggers review |
 
 ---
 
@@ -115,4 +142,4 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ---
 *State initialized: 2026-03-30*
-*Last updated: 2026-03-31 — Phase 1 complete, completed 01-03*
+*Last updated: 2026-04-01 — Completed 01-claude-vision-extraction-service/01-01-PLAN.md*
