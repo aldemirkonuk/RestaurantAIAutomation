@@ -1,88 +1,82 @@
-# WineOps AI — Menu Scanning Pipeline
+# WineOps AI — Hybrid Extraction Pipeline
 
 ## What This Is
 
-WineOps AI is an autonomous restaurant wine inventory and procurement system. This milestone focuses on perfecting the menu scanning pipeline: training a custom 13-class YOLOv8 model for wine entry detection and maximizing Surya OCR confidence on screenshots and scanned menus — eliminating the paid Gemini TEXT fallback by producing high-quality local extraction results.
+WineOps AI is an autonomous restaurant wine inventory and procurement system. This milestone implements the **hybrid extraction pipeline**: Claude Vision handles user-facing onboarding extraction with maximum accuracy, Gemini Flash pre-seeds the library via background web crawling, YOLO 2-class provides real-time camera preview boxes, and Claude Haiku enriches genuinely new wine records.
 
 ## Core Value
 
-A restaurant manager scans a menu and every wine is correctly identified and onboarded — without manual correction and without calling a paid API.
+A restaurant manager scans a menu — photo, PDF, or web — and every wine is correctly identified, enriched, and onboarded at < $0.50 total cost per restaurant.
 
 ## Requirements
 
 ### Validated
 
-- ✓ PDF scanning pipeline (PyPDF2 + Surya OCR) — working, high confidence — existing
-- ✓ EasyOCR → Surya OCR swap in menu_analyzer_agent — implemented this session
-- ✓ Image preprocessing for OCR (RGB normalize, upscale, contrast boost) — implemented this session
-- ✓ 13-class YOLO dataset schema (data.yaml, annotation guidelines) — existing
-- ✓ 262 labeled images with Wine Entry + Section Header annotations — existing
-- ✓ 334 annotation images ready for sub-field labeling — existing
+- ✓ PDF scanning pipeline (PyPDF2 + Surya OCR) — working, high confidence — Phase 1
+- ✓ EasyOCR → Surya OCR swap in menu_analyzer_agent — Phase 1
+- ✓ Image preprocessing for OCR (RGB normalize, upscale, contrast boost) — Phase 1
+- ✓ 262 labeled images with Wine Entry + Section Header annotations — Phase 1
+- ✓ YOLO 2-class best.pt trained (mAP50 0.34–0.44, sufficient for box preview) — Phase 1
+- ✓ OCR baseline benchmark complete (0.8954 overall, 334 images) — Phase 1
+- ✓ Architecture decision: Claude Vision as extraction brain — 2026-03-31
 
 ### Active
 
-- [ ] Dataset conversion: Label Studio → YOLO format for Wine Entry + Section Header
-- [ ] Auto-annotation of 11 sub-fields (vintage, price, wine_name, etc.) within Wine Entry boxes using Gemini Vision
-- [ ] Full 13-class YOLO model trained to mAP50 > 0.95
-- [ ] Surya OCR confidence maximized on annotation dataset (target: as high as achievable, reported accurately)
-- [ ] Trained YOLO model wired into menu_analyzer_agent (replacing yolov8n.pt)
-- [ ] End-to-end scan pipeline validated on screenshots and PDF pages
+- [ ] Claude Vision extraction service: photo/scan → structured JSON (onboarding path)
+- [ ] Gemini Flash web crawler: HTML/PDF → structured JSON (background pre-seeding)
+- [ ] YOLO 2-class real-time camera preview: box drawing only, no extraction
+- [ ] Claude Haiku enrichment: region/variety/bio for new wine records
+- [ ] Onboarding flow E2E: manager uploads photo → wines in inventory in <10s
+- [ ] Cost guardrails: per-extraction cost tracking + monthly spend cap enforcement
 
 ### Out of Scope
 
-- EasyOCR — replaced by Surya, not revisited
-- Gemini Vision path — untouched (photo upload, separate from menu scan)
-- Invoice OCR (visual_verification_agent) — separate pipeline, not in scope
+- 13-class YOLO training — retired (sub-field detection mAP50 0.04, not viable)
+- Surya OCR as extraction engine — retired (Claude Vision reads text directly)
+- EasyOCR — replaced, not revisited
+- YOLO as extraction engine — retired (YOLO is UX preview only)
+- Invoice OCR pipeline — separate pipeline, not this milestone
 - Procurement/RFQ agents — unaffected
-- Frontend/API changes — no UI work this milestone
 
 ## Context
 
-**Existing dataset:** 262 labeled images (28 screenshots + 234 PDF pages) with 8,462 bounding boxes for Wine Entry and Section Header only. Sub-field classes (11 remaining) have no labels yet — will be auto-generated via Gemini Vision applied to each Wine Entry crop.
+**Architecture pivot (2026-03-31):** After 3 weeks of YOLO training, 13-class detection proved fundamentally limited (sub-field boxes too small at imgsz=640, error compounding across YOLO→OCR→parser). Claude Vision categorically solves different failure modes (abbreviations, multi-line entries, creative layouts).
 
-**Deployment constraint:** Railway (CPU-only). No GPU available. All models must run efficiently on CPU. Surya OCR is CPU-capable; YOLOv8n/s is CPU-capable.
+**Hybrid pipeline roles:**
+- **Claude Vision** → onboarding extraction. User-facing. ~$0.009/page, ~$0.45/10-page menu. Accuracy-critical.
+- **Gemini Flash** → background crawling. Cost-critical. 93-95% accuracy OK for pre-seeding.
+- **YOLO 2-class** → real-time camera feed boxes. Fast visual feedback only. wine_entry + section_header.
+- **Claude Haiku** → enrichment of genuinely new wines. Background. ~$0.01/wine.
 
-**Current pipeline state:**
-- PDF path: PyPDF2 (digital) → Surya OCR (scanned) — working well
-- Screenshot path: EasyOCR (replaced with Surya this session) — needs YOLO region detection
-- Fallback trigger: `parser_confidence < 0.5 AND total_wines == 0` → Gemini TEXT (paid)
-- Root cause of fallback: base yolov8n.pt detects nothing useful → full-image OCR with poor text
+**Existing services to build on:**
+- `services/agent-orchestrator/services/vlm_extraction_service.py` — Gemini extraction (extend, not replace)
+- `services/agent-orchestrator/services/web_crawler.py` — Playwright crawler (already exists)
+- `services/agent-orchestrator/agents/menu_analyzer_agent.py` — YOLO + extraction orchestrator
+- `services/agent-orchestrator/api/scan_routes.py` — API surface
 
-**Mock mode default:** `menu_analyzer_agent` defaults to `mock_mode=True`. Production config must set this to False with the trained model path.
+**Cost validation:** Claude Vision benchmark run 2026-04-01 on 8 real Chicago restaurant menus. Results in `scripts/benchmark_results/`.
+
+**YOLO 2-class state:** best.pt trained (mAP50 0.34–0.44). Sufficient for visual box preview. Located at `datasets/wine_menus_2class/runs/train2/weights/best.pt`.
 
 ## Constraints
 
-- **Deployment**: CPU-only (Railway) — model inference must be <5s per image on CPU
-- **Architecture**: OCR changes only — YOLO detection layer is the new scope; parser, normalizer, Gemini structured parsing untouched
-- **Data**: 262 labeled images for 2 classes; 11 sub-field classes require auto-annotation (no human labels yet)
-- **Confidence target**: mAP50 > 0.95 for YOLO; Surya confidence maximized and reported (not blocked on a hard number)
+- **Cost**: Claude Vision must stay < $0.50/menu (10-page average). Haiku enrichment < $0.01/wine.
+- **Latency**: Onboarding extraction < 10s for a 10-page menu (parallel page processing).
+- **Deployment**: Railway CPU-only. No GPU. YOLO must be 2-class only for inference speed.
+- **API keys**: CLAUDE_API_KEY + GOOGLE_API_KEY both in .env — confirmed present.
+- **Compatibility**: Must not break existing procurement/inventory/RFQ agents. Extraction is additive.
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Replace EasyOCR with Surya OCR | EasyOCR CPU performance poor on Railway — low confidence → Gemini fallback. Surya already proven in PDF path | ✓ Good |
-| Add image preprocessing (upscale + contrast) | Low-res/dark screenshots fail OCR; preprocessing normalizes input | — Pending |
-| 2-class → 13-class via auto-annotation | Only Wine Entry + Section Header labeled; other 11 classes auto-generated via Gemini Vision on Wine Entry crops | — Pending |
-| YOLOv8 model size: start with YOLOv8s | CPU-deployable, sufficient capacity for 13-class detection, faster than YOLOv8m on CPU | — Pending |
-| Surya confidence: maximize, report actual | 0.99 hard target unrealistic for complex menus; maximize and be honest about achieved numbers | — Pending |
-
-## Evolution
-
-This document evolves at phase transitions and milestone boundaries.
-
-**After each phase transition** (via `/gsd:transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd:complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
+| EasyOCR → Surya OCR | CPU performance, proven in PDF path | ✓ Good |
+| 13-class YOLO: retired | mAP50 0.04 on sub-fields; error compounding | ✓ Good |
+| YOLO 2-class: UX preview only | wine_entry + section_header sufficient for box drawing | ✓ Good |
+| Claude Vision: extraction brain | Categorically solves abbreviation/layout failures | — Pending validation |
+| Gemini Flash: crawling brain | 10x cheaper than Claude Vision for bulk crawling | — Pending |
+| Surya OCR: retired from extraction | Claude Vision reads text directly from images | ✓ Good |
+| Claude Haiku: enrichment | $0.01/wine for background enrichment of new records | — Pending |
 
 ---
-*Last updated: 2026-03-30 after initialization*
+*Last updated: 2026-04-01 after architecture pivot from YOLO+Surya to hybrid Claude Vision pipeline*
