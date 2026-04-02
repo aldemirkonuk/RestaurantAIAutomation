@@ -166,6 +166,14 @@ Plan: 1 of 2
 
 ---
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260401-wps | run live Supabase integration test for POST /api/v1/onboarding/extract — insert real wines into master_wine_library_submissions, verify rows, check submitted_by column type | 2026-04-02 | ced67f4 | [260401-wps-run-live-supabase-integration-test-for-p](./quick/260401-wps-run-live-supabase-integration-test-for-p/) |
+
+---
+
 ## Todos
 
 - [ ] Phase 2 Wave 2: run `datasets/scripts/eval_model.py` once 2-class best.pt is ready → write `eval_report.md`
@@ -175,4 +183,4 @@ Plan: 1 of 2
 
 ---
 *State initialized: 2026-03-30*
-*Last updated: 2026-03-31 — Phase 2 Plan 01 in progress (13-class training running PID 39849)*
+*Last updated: 2026-04-02 - Completed quick task 260401-wps: run live Supabase integration test for POST /api/v1/onboarding/extract*
