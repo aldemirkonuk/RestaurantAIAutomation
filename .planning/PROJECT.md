@@ -23,7 +23,7 @@ A restaurant manager scans a menu — photo, PDF, or web — and every wine is c
 ### Active
 
 - ✓ Claude Vision extraction service: photo/scan → structured JSON (onboarding path) — Validated in Phase 01: claude-vision-extraction-service
-- [ ] Gemini Flash web crawler: HTML/PDF → structured JSON (background pre-seeding)
+- ✓ Gemini Flash web crawler: HTML/PDF → structured JSON (background pre-seeding) — Validated in Phase 02: gemini-flash-crawler
 - [ ] YOLO 2-class real-time camera preview: box drawing only, no extraction
 - [ ] Claude Haiku enrichment: region/variety/bio for new wine records
 - [ ] Onboarding flow E2E: manager uploads photo → wines in inventory in <10s
@@ -74,7 +74,7 @@ A restaurant manager scans a menu — photo, PDF, or web — and every wine is c
 | 13-class YOLO: retired | mAP50 0.04 on sub-fields; error compounding | ✓ Good |
 | YOLO 2-class: UX preview only | wine_entry + section_header sufficient for box drawing | ✓ Good |
 | Claude Vision: extraction brain | Categorically solves abbreviation/layout failures | ✓ Validated — Phase 01 complete, 16/16 tests pass |
-| Gemini Flash: crawling brain | 10x cheaper than Claude Vision for bulk crawling | — Pending |
+| Gemini Flash: crawling brain | 10x cheaper than Claude Vision for bulk crawling | ✓ Validated — Phase 02 complete, 11/11 must-haves, 27 tests pass |
 | Surya OCR: retired from extraction | Claude Vision reads text directly from images | ✓ Good |
 | Claude Haiku: enrichment | $0.01/wine for background enrichment of new records | — Pending |
 
