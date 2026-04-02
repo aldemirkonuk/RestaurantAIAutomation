@@ -45,7 +45,11 @@ Plans:
   3. Duplicate detection: wine_name + vintage + restaurant match → skip insert
   4. robots.txt respected; rate limiter enforced (default 100/day)
   5. Integration test: crawl one real restaurant URL and verify ≥ 1 wine extracted
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — GeminiFlashCrawlerExtractor: add AsyncClient + gemini-2.0-flash extractor class to vlm_extraction_service.py + GMFL-01 test scaffold
+- [ ] 02-02-PLAN.md — web_crawler.py wiring: robots.txt gate, Gemini extraction call, JSONL persistence, deduplication (GMFL-02..05)
 
 ### Phase 3: YOLO 2-class Real-time Preview
 **Goal**: Wire `datasets/wine_menus_2class/runs/train2/weights/best.pt` into `menu_analyzer_agent.py` for camera-feed box drawing only. YOLO inference must return bounding boxes in <200ms. No extraction triggered from YOLO output.
@@ -88,7 +92,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Claude Vision Extraction | 1/2 | In Progress | - |
-| 2. Gemini Flash Crawler | 0/TBD | Not started | - |
+| 2. Gemini Flash Crawler | 0/2 | Planned | - |
 | 3. YOLO 2-class Preview | 0/TBD | Not started | - |
 | 4. Claude Haiku Enrichment | 0/TBD | Not started | - |
 | 5. Cost & Quality Guardrails | 0/TBD | Not started | - |
@@ -105,3 +109,4 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Roadmap created: 2026-04-01*
 *Previous roadmap archived: YOLO+Surya pipeline (2026-03-30 to 2026-03-31)*
 *Phase 1 planned: 2026-04-01 — 2 plans, 2 waves*
+*Phase 2 planned: 2026-04-02 — 2 plans, 2 waves*
