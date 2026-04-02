@@ -173,6 +173,7 @@ Plan: 1 of 2
 |---|-------------|------|--------|-----------|
 | 260401-wps | run live Supabase integration test for POST /api/v1/onboarding/extract — insert real wines into master_wine_library_submissions, verify rows, check submitted_by column type | 2026-04-02 | ced67f4 | [260401-wps-run-live-supabase-integration-test-for-p](./quick/260401-wps-run-live-supabase-integration-test-for-p/) |
 | 260401-x24 | Benchmark claude-haiku-4-5-20251001 vs claude-sonnet-4-20250514 on 10 Phase 1 menu images — field completeness, latency, cost; produce model-selection recommendation | 2026-04-02 | 29158b3 | [260401-x24-investigate-whether-haiku-or-sonnet-haik](./quick/260401-x24-investigate-whether-haiku-or-sonnet-haik/) |
+| 260402-kj0 | Build Phase 2 E2E test harness: crawl real restaurant URLs via WebCrawlerService, score wine field completeness, validate JSONL schema, confirm dedup, write REPORT.md | 2026-04-02 | 740b748 | [260402-kj0-build-phase-2-e2e-test-harness-crawl-rea](./quick/260402-kj0-build-phase-2-e2e-test-harness-crawl-rea/) |
 
 ---
 
@@ -185,4 +186,4 @@ Plan: 1 of 2
 
 ---
 *State initialized: 2026-03-30*
-*Last updated: 2026-04-02 - Completed quick task 260401-x24: Haiku vs Sonnet benchmark — Haiku recommended (3.8x cheaper, equal quality), pending MAX_TOKENS=8192 re-run before switching MODEL_ID in claude_vision_extractor.py*
+*Last updated: 2026-04-02 - Completed quick task 260402-kj0: Phase 2 E2E crawl harness built (scripts/e2e_crawl_harness.py + scripts/e2e_restaurants.json). Set GOOGLE_API_KEY to run live against real restaurant URLs.*
