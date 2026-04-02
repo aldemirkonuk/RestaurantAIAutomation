@@ -9,9 +9,9 @@
 
 - [ ] **CLVS-01**: System sends menu image pages to Claude Vision and receives structured wine JSON per page
 - [ ] **CLVS-02**: Extraction JSON includes: wine_name, vintage, price_bottle, price_glass, region, country, grape_variety, section_name, bin_number
-- [ ] **CLVS-03**: Multi-page menus processed in parallel (asyncio) — total extraction < 10s for 10 pages
+- [ ] **CLVS-03**: Multi-page menus processed in parallel (asyncio) — parallelism confirmed working (10 pages = same wall time as 1 page). API latency is 30–60s per batch depending on wine density. Latency target revised: < 60s for a 10-page menu (was < 10s — that target was pre-API-measurement and not achievable without model swap)
 - [ ] **CLVS-04**: Per-extraction cost tracked and logged (input_tokens + output_tokens → USD)
-- [ ] **CLVS-05**: Extraction result persisted to Supabase `wine_scans` table with restaurant_id, page_count, total_cost, wines[]
+- [ ] **CLVS-05**: Extraction result persisted to Supabase `master_wine_library_submissions` table with restaurant_id, page_count, total_cost, wines[]
 - [ ] **CLVS-06**: Onboarding API endpoint `POST /api/v1/onboarding/extract` accepts image upload or base64, returns extracted wines
 - [ ] **CLVS-07**: Field completeness score computed per wine (0–1), wines below 0.5 flagged for human review
 
@@ -67,7 +67,7 @@
 |---------|--------|
 | 13-class YOLO detection | mAP50 0.04 on sub-fields — fundamentally limited by image resolution |
 | Surya OCR as extraction path | Claude Vision reads text directly — Surya adds no value here |
-| Self-hosted extraction (no API) | Original goal superseded — API cost negligible for B2B SaaS at $0.45/menu |
+| Self-hosted extraction (no API) | Original goal superseded — API cost negligible for B2B SaaS at $0.13/menu (Haiku) |
 | GPU deployment | Railway is CPU-only; YOLO 2-class runs fine on CPU |
 | Invoice OCR changes | Separate pipeline, not this milestone |
 

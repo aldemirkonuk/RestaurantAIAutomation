@@ -2,13 +2,15 @@
 Claude Vision Extraction Service
 =================================
 Standalone extraction engine for menu images → structured wine JSON.
-Uses Claude Vision (claude-sonnet-4-20250514) with async parallel page
+Uses Claude Vision (claude-haiku-4-5-20251001) with async parallel page
 dispatch via asyncio.gather + Semaphore(5).
 
 Architecture Decision:
 - This file is the ONLY place Claude Vision is called for onboarding.
 - vlm_extraction_service.py (Gemini path) is NOT modified.
 - Follows VLMExtractionResult Pydantic pattern from vlm_extraction_service.py.
+- Model switched from Sonnet → Haiku 2026-04-02: benchmark confirmed equal quality,
+  3.8x lower cost ($0.13 vs $0.49/restaurant), 2.1x lower p50 latency.
 """
 
 import asyncio
@@ -30,11 +32,11 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 
-MODEL_ID = "claude-sonnet-4-20250514"
+MODEL_ID = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 8192          # 4096 truncates dense pages — proven in benchmark
 CONCURRENCY_LIMIT = 5      # asyncio.Semaphore cap; prevents Anthropic rate limit
-PRICE_INPUT_PER_M = 3.0    # USD per 1M input tokens (Sonnet, 2026-04-01)
-PRICE_OUTPUT_PER_M = 15.0  # USD per 1M output tokens
+PRICE_INPUT_PER_M = 0.80   # USD per 1M input tokens (Haiku, 2026-04-02)
+PRICE_OUTPUT_PER_M = 4.00  # USD per 1M output tokens
 
 # Fields used for completeness scoring (per CONTEXT.md)
 COMPLETENESS_FIELDS = ["wine_name", "vintage", "price_bottle", "region", "country", "section_name"]
