@@ -16,7 +16,11 @@ class Settings:
     def __init__(self):
         self.claude_api_key: Optional[str] = os.getenv("CLAUDE_API_KEY")
         self.supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
-        self.supabase_key: Optional[str] = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+        self.supabase_key: Optional[str] = (
+            os.getenv("SUPABASE_SERVICE_KEY")
+            or os.getenv("SUPABASE_KEY")
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        )
         self._supabase_client = None
 
     @property
