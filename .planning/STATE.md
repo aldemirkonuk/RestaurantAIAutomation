@@ -155,6 +155,7 @@ Plan: 1 of 2
 | 2026-03-31 | Augmentation is ultralytics built-in, no disk pre-augmentation | DATA-05 params recorded in dataset_stats.json for Phase 2 training call |
 | 2026-03-31 | Delete ultralytics .cache files before any new dataset training | Stale train.cache/val.cache caused 2-class run to load 13-class labels; 115/182 train images rejected; mAP50 0.34 instead of expected ~0.8+ |
 | 2026-03-31 | 2-class training experiment discarded | Produced unreliable best.pt due to cache bug; proceeding directly with 13-class per plan 02-01 |
+| 2026-04-02 | Switch to Haiku (claude-haiku-4-5-20251001) conditional on MAX_TOKENS=8192 re-run | Live benchmark: Haiku is 3.8x cheaper ($0.13 vs $0.49/restaurant), 2.1x faster at p50, identical wine extraction quality. Parse errors in benchmark were MAX_TOKENS=4096 truncation artifacts — production uses 8192. |
 
 ---
 
@@ -171,6 +172,7 @@ Plan: 1 of 2
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260401-wps | run live Supabase integration test for POST /api/v1/onboarding/extract — insert real wines into master_wine_library_submissions, verify rows, check submitted_by column type | 2026-04-02 | ced67f4 | [260401-wps-run-live-supabase-integration-test-for-p](./quick/260401-wps-run-live-supabase-integration-test-for-p/) |
+| 260401-x24 | Benchmark claude-haiku-4-5-20251001 vs claude-sonnet-4-20250514 on 10 Phase 1 menu images — field completeness, latency, cost; produce model-selection recommendation | 2026-04-02 | 29158b3 | [260401-x24-investigate-whether-haiku-or-sonnet-haik](./quick/260401-x24-investigate-whether-haiku-or-sonnet-haik/) |
 
 ---
 
@@ -183,4 +185,4 @@ Plan: 1 of 2
 
 ---
 *State initialized: 2026-03-30*
-*Last updated: 2026-04-02 - Completed quick task 260401-wps: run live Supabase integration test for POST /api/v1/onboarding/extract*
+*Last updated: 2026-04-02 - Completed quick task 260401-x24: Haiku vs Sonnet benchmark — Haiku recommended (3.8x cheaper, equal quality), pending MAX_TOKENS=8192 re-run before switching MODEL_ID in claude_vision_extractor.py*
