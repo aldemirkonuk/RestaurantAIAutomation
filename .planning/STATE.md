@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 current_plan: Not started
 status: unknown
-last_updated: "2026-04-01T20:07:54.251Z"
+last_updated: "2026-04-02T18:37:20.475Z"
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 9
-  completed_plans: 4
+  completed_phases: 2
+  total_plans: 11
+  completed_plans: 6
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
-**Current focus:** Phase 01 — claude-vision-extraction-service
+**Current focus:** Phase 02 — gemini-flash-crawler
 
 ---
 
 ## Current Position
 
-Phase: 02
+Phase: 03
 Plan: 1 of 2
 **Active phase:** Phase 1 — Claude Vision Extraction Service
 **Current plan:** Not started
