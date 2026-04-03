@@ -168,8 +168,8 @@ TEXT:
 {text}
 
 For each wine found, extract:
-- wine_name, producer, vintage, wine_type, country, region, sub_region,
-  appellation, grape_variety, price, price_glass, price_currency,
+- wine_name, producer, vintage, primary_type, country, region, sub_region,
+  appellation, grape_variety, price_reference, price_glass,
   serving_type, classification, tasting_notes
 - confidence (0.0-1.0)
 - field_sources (which fields are "visible" vs "inferred")
@@ -466,14 +466,19 @@ The following text was crawled from {restaurant}'s website. Extract every wine e
 TEXT (first 50000 chars):
 {text}
 
-For each wine extract: wine_name, producer, vintage (int or null), wine_type, country, region,
-grape_variety, price (bottle price as float or null), price_glass (float or null),
-price_currency, section_path, confidence (0.0-1.0).
+For each wine extract: wine_name, producer, vintage (int or null), primary_type
+(red|white|rose|sparkling|dessert|fortified), country, region, sub_region (if visible),
+appellation (AOC/DOC/AVA if visible), grape_variety, price_reference (bottle price as
+float or null), price_glass (float or null), section_path, confidence (0.0-1.0).
 
 Return ONLY valid JSON (no markdown fences):
 {{
   "sections": [{{"name": "...", "level": 0, "parent": null}}],
-  "wines": [{{"wine_name": "...", "producer": "...", "vintage": 2018, "price": 150.0, "confidence": 0.9}}]
+  "wines": [{{"wine_name": "...", "producer": "...", "vintage": 2018,
+              "primary_type": "red", "country": "...", "region": "...",
+              "sub_region": null, "appellation": null,
+              "grape_variety": "...", "price_reference": 150.0,
+              "price_glass": null, "section_path": "...", "confidence": 0.9}}]
 }}"""
 
 
@@ -553,6 +558,8 @@ class GeminiFlashCrawlerExtractor:
             result.warnings.append(f"JSON parse error: {str(e)}")
             return result
         wines = data.get("wines", [])
+        # Field names in wine dicts match CRAWL_TEXT_PROMPT schema:
+        # primary_type (not wine_type), price_reference (not price)
         result.wines = wines
         result.total_wines = len(wines)
         result.sections = data.get("sections", [])
