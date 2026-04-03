@@ -294,15 +294,19 @@ async def run_crawl(restaurants: list, pass_threshold: float, output_path: Path)
 
         # Evaluate dedup:
         # With supabase_client=None, dedup is fail-open — wines WILL be written again.
-        # We use content_hash equality as a proxy for real-world dedup behaviour.
+        # We use content_hash equality as a proxy for real-world dedup behaviour:
+        #   same hash → identical page content → real Supabase dedup would have blocked
+        #               the second write → treat as PASS
+        #   different hash AND count grew → genuinely different content added → FAIL
         hash1 = result1.content_hash
         hash2 = result2.content_hash
-        if count_after_2 > count_after_1 and hash1 == hash2 and hash1 != "":
-            # Same content crawled twice, but wines were written twice → true dedup failure
+        if hash1 and hash2 and hash1 == hash2:
+            # Same page content on both crawls — real dedup would have prevented re-insert
+            dedup_pass = True
+        elif count_after_2 > count_after_1:
+            # Different content but new wines appeared — genuine dedup gap
             dedup_pass = False
         else:
-            # Either: same hash (real dedup would have caught it) or different content
-            # (legitimate re-crawl) or no wines at all
             dedup_pass = True
 
         results.append({

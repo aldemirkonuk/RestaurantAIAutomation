@@ -23,6 +23,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from google import genai as _genai
 from google.genai.client import AsyncClient
 from pydantic import BaseModel, Field
 
@@ -487,19 +488,19 @@ class GeminiFlashCrawlerExtractor:
     Do NOT use for onboarding (that is ClaudeVisionExtractor).
     """
 
-    MODEL_ID = "gemini-2.0-flash"
+    MODEL_ID = "gemini-2.5-flash"
 
     def __init__(self):
-        self._client: Optional[AsyncClient] = None
+        self._client = None
 
-    def _get_client(self) -> AsyncClient:
+    def _get_client(self):
         if self._client is None:
             api_key = os.getenv("GOOGLE_API_KEY")
             if not api_key:
                 raise RuntimeError(
                     "GOOGLE_API_KEY not set — cannot initialize GeminiFlashCrawlerExtractor"
                 )
-            self._client = AsyncClient(api_key=api_key)
+            self._client = _genai.Client(api_key=api_key)
         return self._client
 
     async def extract_from_text(
