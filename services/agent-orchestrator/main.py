@@ -9,6 +9,7 @@ import logging
 from fastapi import FastAPI
 
 from api.onboarding_routes import router as onboarding_router
+from api.scan_routes import router_preview as preview_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ app = FastAPI(
 
 # Register routers
 app.include_router(onboarding_router)
+app.include_router(preview_router)
 
 
 @app.get("/health")
