@@ -22,6 +22,13 @@ class Settings:
             or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         )
         self._supabase_client = None
+        # YOLO Preview Model (Phase 3) — per D-06
+        self.yolo_model_path: str = os.getenv(
+            "YOLO_MODEL_PATH",
+            "datasets/wine_menus_2class/runs/train2/weights/best.pt",
+        )
+        self.cv_menu_model_path: str = self.yolo_model_path   # alias used by scan_routes.py
+        self.cv_yolov8_mock_mode: bool = False                # D-07: no mock for YOLO path
 
     @property
     def supabase_client(self):
