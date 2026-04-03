@@ -34,7 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "services" / "agent-orchestrator"))
 # ---------------------------------------------------------------------------
 MENUS_DIR = PROJECT_ROOT / "datasets" / "restaurant_menus"
 
-SCORED_FIELDS = ["wine_name", "vintage", "region", "price_bottle", "country", "grape_variety"]
+SCORED_FIELDS = ["wine_name", "vintage", "region", "price_reference", "country", "grape_variety"]
 
 
 # ---------------------------------------------------------------------------
@@ -44,9 +44,6 @@ SCORED_FIELDS = ["wine_name", "vintage", "region", "price_bottle", "country", "g
 def score_completeness(wines: list) -> float:
     """
     Score the field completeness of a list of wine dicts.
-
-    For the "price_bottle" scored field, the actual key in crawled JSONL is
-    "price" — we normalise the lookup accordingly.
 
     Returns a float in [0.0, 1.0]. Returns 0.0 for an empty list.
     """
@@ -58,9 +55,7 @@ def score_completeness(wines: list) -> float:
 
     for wine in wines:
         for field in SCORED_FIELDS:
-            # price_bottle in SCORED_FIELDS maps to "price" key in actual JSONL
-            lookup_key = "price" if field == "price_bottle" else field
-            value = wine.get(lookup_key)
+            value = wine.get(field)
             if value is not None and value != "" and value != 0:
                 present_count += 1
 
@@ -69,17 +64,24 @@ def score_completeness(wines: list) -> float:
 
 def validate_schema(wine: dict) -> List[str]:
     """
-    Validate a wine dict against the master_wine_library_submissions payload schema.
+    Validate a wine dict against the master_wine_library schema.
 
     Returns a list of violation strings (empty list = valid).
-    Required keys: wine_name, source_type, source_url, restaurant_name, crawled_at
+    Required keys: wine_name, signature_hash, data_enrichment, primary_type, country
     """
-    required_keys = ["wine_name", "source_type", "source_url", "restaurant_name", "crawled_at"]
+    required_keys = ["wine_name", "signature_hash", "data_enrichment", "primary_type", "country"]
     violations = []
     for key in required_keys:
         value = wine.get(key)
         if value is None or value == "":
             violations.append(f"Missing or empty required field: '{key}'")
+    de = wine.get("data_enrichment")
+    if isinstance(de, dict):
+        for de_key in ["source_url", "source_type", "restaurant_name", "crawled_at"]:
+            if not de.get(de_key):
+                violations.append(f"Missing or empty data_enrichment.{de_key}")
+    else:
+        violations.append("data_enrichment must be a dict")
     return violations
 
 
@@ -189,14 +191,14 @@ def write_report(results: list, pass_threshold: float, output_path: Path) -> Non
             sample = r.get("sample_wines", [])
             if sample:
                 lines.append("**Sample wines:**\n")
-                lines.append("| wine_name | vintage | region | country | price | grape_variety |")
-                lines.append("|-----------|---------|--------|---------|-------|---------------|")
+                lines.append("| wine_name | vintage | region | country | price_reference | grape_variety |")
+                lines.append("|-----------|---------|--------|---------|-----------------|---------------|")
                 for w in sample:
                     wine_name = w.get("wine_name", "")
                     vintage = w.get("vintage", "")
                     region = w.get("region", "")
                     country = w.get("country", "")
-                    price = w.get("price", "")
+                    price = w.get("price_reference", "")
                     grape = w.get("grape_variety", "")
                     lines.append(
                         f"| {wine_name} | {vintage} | {region} | {country} | {price} | {grape} |"
