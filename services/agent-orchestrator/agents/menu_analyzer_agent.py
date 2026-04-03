@@ -74,7 +74,7 @@ class MenuAnalyzerAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # Model paths
-        self.menu_model_path = config.get("menu_model_path", config.get("yolo_model_path", "yolov8n.pt"))
+        self.menu_model_path = config.get("menu_model_path", config.get("yolo_model_path", "datasets/wine_menus_2class/runs/train2/weights/best.pt"))
         self.confidence_threshold = config.get("confidence_threshold", 0.3)
         self.mock_mode = config.get("mock_mode", True)
 
