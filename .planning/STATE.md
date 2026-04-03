@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 current_plan: Not started
 status: unknown
-last_updated: "2026-04-02T18:37:20.475Z"
+last_updated: "2026-04-03T14:30:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 2
@@ -186,5 +186,37 @@ Plan: 1 of 2
 - [ ] Phase 4: wire 2-class best.pt into `menu_analyzer_agent.py`, E2E validation
 
 ---
+---
+
+### Session 5 — 2026-04-03
+
+**Completed this session:**
+
+- Built Phase 2 E2E crawl harness (`scripts/e2e_crawl_harness.py`) with live PASS: 87.3% aggregate completeness, 0 dedup failures, 0 schema violations
+- Fixed GeminiFlashCrawlerExtractor: `AsyncClient → genai.Client`, upgraded model to `gemini-2.5-flash`
+- Fixed dedup proxy logic: same content_hash = real Supabase dedup would catch it → PASS
+- Added Phase 6 to ROADMAP: Image Menu Extraction via Claude Vision (deferred from Phase 2, IMGX-01→07)
+- Locked E2E test suite: The Tailors Son (57 wines, 96.8%), Chicago Winery, BLVD Steakhouse, The Albert Chicago
+- Completed 25-feature analysis across 3 tiers (Extracted / Derived / Haiku enrichment)
+- **260403-dgf COMPLETE**: Rewrote `_persist_crawled_wines` to full 23-field Supabase-aligned schema:
+  - Renames: `wine_type → primary_type`, `price → price_reference`
+  - New derived: `bottle_size`, `is_blend`, `vintage_age`, `price_tier`
+  - New dedup: `signature_hash` (md5), `normalized_name`, `normalized_producer`
+  - Metadata folded into `data_enrichment` JSONB: source_url, source_type, restaurant_name, crawled_at, confidence, extraction_model
+  - Phase 4 stubs: `color=None`, `sweetness_level=None`, `food_pairing=None`
+  - Updated `CRAWL_TEXT_PROMPT` and `TEXT_FALLBACK_PROMPT` in vlm_extraction_service.py
+  - E2E harness SCORED_FIELDS and validate_schema updated to new field names
+- Analyzed `library/restaurant_wine_dataset.jsonl` (200 records) vs crawler schema:
+  - Library = target enriched state; crawler JSONL = correct intake/staging format
+  - Our schema is architecturally superior: no fabricated data, has signature_hash/dedup fields, tracks provenance
+  - **6 JSONB stubs to add** in next session: `grape_family`, `wine_structure`, `practical_attributes`, `sensory_profile`, `ml_derived_features`, `region_hierarchy`
+
+**Next actions:**
+- Add 6 JSONB stubs to `_persist_crawled_wines` (quick task)
+- Wire Supabase insert: populate `restaurant_id` + `submitted_by` → flow into `master_wine_library_submissions`
+- PDF extraction path (Phase 6 prerequisite for ABA, BLVD, Mano)
+
+---
+
 *State initialized: 2026-03-30*
-*Last updated: 2026-04-02 - Completed quick task 260402-kj0: Phase 2 E2E crawl harness built (scripts/e2e_crawl_harness.py + scripts/e2e_restaurants.json). Set GOOGLE_API_KEY to run live against real restaurant URLs.*
+*Last updated: 2026-04-03 - Session 5 complete. Phase 2 E2E harness PASS. 23-field Supabase-aligned JSONL schema live. 6 stubs pending for next session.*
