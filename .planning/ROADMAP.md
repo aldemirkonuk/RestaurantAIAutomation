@@ -78,7 +78,11 @@ Plans:
   3. Enrichment task runs as Celery background task (does not block POST /onboarding/extract response)
   4. Wines already in master library with complete fields: enrichment skipped (no API call)
   5. Enriched fields stored in `master_wine_library` with `enrichment_source = "haiku"`
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — HaikuEnrichmentService: pure service with two-table dedup check, Anthropic client, EnrichmentResult model, DB migration for producer_bio, 5 unit tests (Wave 1)
+- [ ] 04-02-PLAN.md — haiku_tasks.py Celery task + celery_app.py import update + onboarding_routes.py enrichment trigger (Wave 2)
 
 ### Phase 5: Cost & Quality Guardrails
 **Goal**: Add spend tracking for all API calls (Claude + Gemini), monthly cap alerts, per-restaurant cost caps, and a human review queue for wines with completeness < 0.5.
@@ -116,7 +120,7 @@ Plans:
 | 1. Claude Vision Extraction | 1/2 | In Progress | - |
 | 2. Gemini Flash Crawler | 0/2 | Planned | - |
 | 3. YOLO 2-class Preview | 2/2 | Complete   | 2026-04-03 |
-| 4. Claude Haiku Enrichment | 0/TBD | Not started | - |
+| 4. Claude Haiku Enrichment | 0/2 | Planned | - |
 | 5. Cost & Quality Guardrails | 0/TBD | Not started | - |
 | 6. Image Menu Extraction via Claude Vision | 0/TBD | Not started | - |
 
@@ -134,4 +138,5 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Phase 1 planned: 2026-04-01 — 2 plans, 2 waves*
 *Phase 2 planned: 2026-04-02 — 2 plans, 2 waves*
 *Phase 3 planned: 2026-04-03 — 2 plans, 2 waves*
+*Phase 4 planned: 2026-04-03 — 2 plans, 2 waves*
 *Phase 6 added: 2026-04-03 — Image Menu Extraction via Claude Vision (deferred from Phase 2)*
