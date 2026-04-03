@@ -399,6 +399,10 @@ class WebCrawlerService:
     # JSONL PERSISTENCE (GMFL-03)
     # =========================================================================
 
+    def _normalize_wine_field(self, s: str) -> str:
+        """Normalize a wine field value for dedup hashing."""
+        return re.sub(r"[^a-z0-9 ]", "", (s or "").lower().strip())
+
     def _persist_crawled_wines(
         self, wines: list, restaurant_name: str, source_url: str
     ):
@@ -406,7 +410,8 @@ class WebCrawlerService:
         Write non-duplicate crawled wines to JSONL dataset file.
 
         Output: datasets/restaurant_menus/<YYYYMMDD>_<slug>.jsonl
-        Each record has source_type="crawled" for downstream filtering.
+        Each record is Supabase-aligned for master_wine_library insert
+        (wine_name maps to .name at insert time; all other fields are direct columns).
         """
         RESTAURANT_MENUS_DIR.mkdir(parents=True, exist_ok=True)
         slug = re.sub(r"[^\w]", "_", restaurant_name.lower())[:50]
@@ -415,19 +420,103 @@ class WebCrawlerService:
 
         count = 0
         crawled_at = datetime.now(timezone.utc).isoformat()
+        crawl_year = datetime.now(timezone.utc).year
+
+        BOTTLE_SIZE_PATTERNS = {
+            "magnum": r"\bmagnum\b|1\.5\s*l",
+            "half":   r"\bhalf\s*bottle\b|375\s*ml",
+            "split":  r"\bsplit\b|187\s*ml",
+        }
+
         with open(out_file, "a") as f:
             for wine in wines:
-                record = {
-                    **wine,
-                    "source_type": "crawled",
-                    "source_url": source_url,
+                # -- core fields --
+                wine_name     = wine.get("wine_name", "") or ""
+                producer      = wine.get("producer", "") or ""
+                vintage_raw   = wine.get("vintage")
+                vintage       = int(vintage_raw) if vintage_raw and str(vintage_raw).isdigit() else None
+                primary_type  = wine.get("primary_type") or wine.get("wine_type")
+                country       = wine.get("country")
+                region        = wine.get("region")
+                grape_variety = wine.get("grape_variety")
+                sub_region    = wine.get("sub_region")
+                appellation   = wine.get("appellation")
+                price_ref_raw = wine.get("price_reference") or wine.get("price")
+                price_reference = float(price_ref_raw) if price_ref_raw else None
+                price_glass   = wine.get("price_glass")
+
+                # -- derived fields --
+                bottle_size = "standard"
+                for size_name, pattern in BOTTLE_SIZE_PATTERNS.items():
+                    if re.search(pattern, wine_name, re.I):
+                        bottle_size = size_name
+                        break
+
+                is_blend    = bool(grape_variety and len(grape_variety.split(",")) > 1)
+                vintage_age = (crawl_year - vintage) if vintage else None
+
+                if price_reference is None:
+                    price_tier = None
+                elif price_reference < 50:
+                    price_tier = "entry"
+                elif price_reference < 150:
+                    price_tier = "mid"
+                elif price_reference < 500:
+                    price_tier = "premium"
+                else:
+                    price_tier = "luxury"
+
+                # -- dedup fields --
+                norm_name      = self._normalize_wine_field(wine_name)
+                norm_producer  = self._normalize_wine_field(producer)
+                sig_input      = norm_name + norm_producer + str(vintage or "") + self._normalize_wine_field(region or "")
+                signature_hash = hashlib.md5(sig_input.encode()).hexdigest()
+
+                # -- data_enrichment JSONB --
+                data_enrichment = {
+                    "source_url":      source_url,
+                    "source_type":     "crawled",
                     "restaurant_name": restaurant_name,
-                    "crawled_at": crawled_at,
+                    "crawled_at":      crawled_at,
+                    "confidence":      wine.get("confidence"),
+                    "extraction_model": wine.get("extraction_model", "gemini-2.5-flash"),
+                }
+
+                record = {
+                    # Direct columns
+                    "wine_name":           wine_name,
+                    "producer":            producer,
+                    "vintage":             vintage,
+                    "primary_type":        primary_type,
+                    "country":             country,
+                    "region":              region,
+                    "grape_variety":       grape_variety,
+                    "sub_region":          sub_region,
+                    "appellation":         appellation,
+                    "price_reference":     price_reference,
+                    # Derived
+                    "price_glass":         price_glass,
+                    "bottle_size":         bottle_size,
+                    "is_blend":            is_blend,
+                    "vintage_age":         vintage_age,
+                    "price_tier":          price_tier,
+                    # Dedup
+                    "signature_hash":      signature_hash,
+                    "normalized_name":     norm_name,
+                    "normalized_producer": norm_producer,
+                    # JSONB metadata
+                    "data_enrichment":     data_enrichment,
+                    # Future enrichment stubs (Haiku Phase 4 fills these)
+                    "color":               None,
+                    "sweetness_level":     None,
+                    "food_pairing":        None,
+                    # Submissions staging
+                    "restaurant_id":       None,
                 }
                 f.write(json.dumps(record) + "\n")
                 count += 1
 
-        logger.info(f"Persisted {count} crawled wines for {restaurant_name} → {out_file.name}")
+        logger.info(f"Persisted {count} crawled wines for {restaurant_name} to {out_file.name}")
 
     # =========================================================================
     # LINK DETECTION
