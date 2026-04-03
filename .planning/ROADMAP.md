@@ -62,7 +62,11 @@ Plans:
   3. Boxes include class label (`wine_entry` or `section_header`) and confidence
   4. No code path exists where YOLO box detection triggers text extraction
   5. If model file missing: agent starts normally, logs warning, returns empty boxes
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [x] 03-01-PLAN.md — Settings patch + MenuAnalyzerAgent: 2-class class map, initialize() fix, detect_boxes() method, test scaffold (Wave 1)
+- [ ] 03-02-PLAN.md — scan_routes.py endpoint + main.py router registration + _get_yolo_model() fix (Wave 2)
 
 ### Phase 4: Claude Haiku Enrichment
 **Goal**: After Claude Vision extracts wines in Phase 1, wines missing region/country/grape_variety are queued for async Haiku enrichment. Haiku infers these fields from wine_name + vintage. Skip if wine already exists in master library with full fields.
@@ -111,7 +115,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Claude Vision Extraction | 1/2 | In Progress | - |
 | 2. Gemini Flash Crawler | 0/2 | Planned | - |
-| 3. YOLO 2-class Preview | 0/TBD | Not started | - |
+| 3. YOLO 2-class Preview | 0/2 | Planned | - |
 | 4. Claude Haiku Enrichment | 0/TBD | Not started | - |
 | 5. Cost & Quality Guardrails | 0/TBD | Not started | - |
 | 6. Image Menu Extraction via Claude Vision | 0/TBD | Not started | - |
@@ -129,4 +133,5 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Previous roadmap archived: YOLO+Surya pipeline (2026-03-30 to 2026-03-31)*
 *Phase 1 planned: 2026-04-01 — 2 plans, 2 waves*
 *Phase 2 planned: 2026-04-02 — 2 plans, 2 waves*
+*Phase 3 planned: 2026-04-03 — 2 plans, 2 waves*
 *Phase 6 added: 2026-04-03 — Image Menu Extraction via Claude Vision (deferred from Phase 2)*

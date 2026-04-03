@@ -25,11 +25,11 @@
 
 ### YOLO 2-class Preview (Real-time Camera Feed)
 
-- [ ] **YOLO-01**: YOLO 2-class best.pt loaded in menu_analyzer_agent on startup
-- [ ] **YOLO-02**: Camera frame → YOLO inference → bounding boxes returned in <200ms on CPU
-- [ ] **YOLO-03**: Boxes drawn on frame with class label (wine_entry / section_header) — UI only
-- [ ] **YOLO-04**: YOLO output does NOT trigger extraction — extraction is only triggered on user capture action
-- [ ] **YOLO-05**: Graceful fallback if model file missing: camera preview still works, boxes disabled
+- [x] **YOLO-01**: YOLO 2-class best.pt loaded in menu_analyzer_agent on startup
+- [x] **YOLO-02**: Camera frame → YOLO inference → bounding boxes returned in <200ms on CPU
+- [x] **YOLO-03**: Boxes drawn on frame with class label (wine_entry / section_header) — UI only
+- [x] **YOLO-04**: YOLO output does NOT trigger extraction — extraction is only triggered on user capture action
+- [x] **YOLO-05**: Graceful fallback if model file missing: camera preview still works, boxes disabled
 
 ### Claude Haiku Enrichment (Background)
 
@@ -87,11 +87,11 @@
 | GMFL-03 | Phase 2 | Pending |
 | GMFL-04 | Phase 2 | Pending |
 | GMFL-05 | Phase 2 | Pending |
-| YOLO-01 | Phase 3 | Pending |
-| YOLO-02 | Phase 3 | Pending |
-| YOLO-03 | Phase 3 | Pending |
-| YOLO-04 | Phase 3 | Pending |
-| YOLO-05 | Phase 3 | Pending |
+| YOLO-01 | Phase 3 | Complete |
+| YOLO-02 | Phase 3 | Complete |
+| YOLO-03 | Phase 3 | Complete |
+| YOLO-04 | Phase 3 | Complete |
+| YOLO-05 | Phase 3 | Complete |
 | HAIKU-01 | Phase 4 | Pending |
 | HAIKU-02 | Phase 4 | Pending |
 | HAIKU-03 | Phase 4 | Pending |

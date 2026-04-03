@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_plan: Not started
+current_plan: 1
 status: unknown
-last_updated: "2026-04-03T14:30:00.000Z"
+last_updated: "2026-04-03T21:00:56.508Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
@@ -19,24 +19,51 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
-**Current focus:** Phase 02 — gemini-flash-crawler
+**Current focus:** Phase 03 — YOLO 2-class Real-time Preview
 
 ---
 
 ## Current Position
 
-Phase: 03
-Plan: 1 of 2
-**Active phase:** Phase 1 — Claude Vision Extraction Service
-**Current plan:** Not started
-**Last completed:** GSD re-initialized for hybrid pipeline (2026-04-01)
-**Next action:** Run `/gsd:plan-phase 1` → build claude_vision_extractor.py
-
-**Benchmark status:** Claude Vision benchmark running on 8 real Chicago restaurant menus (scripts/claude_vision_benchmark.py). Results will be in scripts/benchmark_results/.
+Phase: 03 (YOLO 2-class Real-time Preview) — EXECUTING
+Plan: 2 of 2
+**Active phase:** Phase 03 — YOLO 2-class Real-time Preview
+**Current plan:** 2 (Wave 2: POST /api/v1/preview/detect endpoint)
+**Last completed:** 03-01 — YOLO foundation (Settings patch, 2-class class map, detect_boxes, 5 tests) — 2026-04-03
+**Next action:** Execute 03-02 — Wave 2: add POST /api/v1/preview/detect endpoint to scan_routes.py
 
 ---
 
 ## Session History
+
+### Session 6 — 2026-04-03
+
+**Completed this session:**
+
+- Executed Phase 03 Plan 01: YOLO 2-class Preview Foundation
+- Patched Settings to add cv_menu_model_path, cv_yolov8_mock_mode=False, yolo_model_path (YOLO_MODEL_PATH env var)
+- Fixed AttributeError in scan_routes.py line 220 (settings.cv_menu_model_path missing)
+- Replaced 13-class MENU_CLASS_NAMES with 2-entry map {0: wine_entry, 1: section_header}
+- Removed mock_mode gate from YOLO loading in initialize() per D-07
+- Removed yolov8n.pt fallback — missing model now logs warning + sets yolo_model=None
+- Added detect_boxes() async method to MenuAnalyzerAgent (run_in_executor, firewalled from extraction)
+- Created tests/test_yolo_preview.py with 5 tests (YOLO-01 through YOLO-05)
+
+**Key decisions:**
+
+- D-07 enforced: YOLO loads unconditionally (mock_mode only gates Surya OCR + Gemini Pro)
+- detect_boxes() is a standalone method — zero connection to _get_field_parser or _get_wine_matcher
+- Graceful degradation: missing best.pt → yolo_model=None → detect_boxes returns []
+
+**Files changed:**
+
+- `services/agent-orchestrator/config/settings.py` — 3 new YOLO attributes
+- `services/agent-orchestrator/agents/menu_analyzer_agent.py` — class map, initialize(), detect_boxes()
+- `services/agent-orchestrator/tests/test_yolo_preview.py` — new test file
+- `env.example` — YOLO_MODEL_PATH entry
+- `.planning/phases/03-surya-ocr-tuning/03-01-SUMMARY.md` — plan summary
+
+---
 
 ### Session 4 — 2026-03-31
 
@@ -212,6 +239,7 @@ Plan: 1 of 2
   - **6 JSONB stubs to add** in next session: `grape_family`, `wine_structure`, `practical_attributes`, `sensory_profile`, `ml_derived_features`, `region_hierarchy`
 
 **Next actions:**
+
 - Add 6 JSONB stubs to `_persist_crawled_wines` (quick task)
 - Wire Supabase insert: populate `restaurant_id` + `submitted_by` → flow into `master_wine_library_submissions`
 - PDF extraction path (Phase 6 prerequisite for ABA, BLVD, Mano)
