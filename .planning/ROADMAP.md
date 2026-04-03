@@ -11,7 +11,7 @@ Five phases to replace the retired YOLO+Surya+parser extraction stack with a pro
 
 - [ ] **Phase 1: Claude Vision Extraction Service** — Core extraction brain: PDF/photo → Claude Vision → structured wine JSON, with parallel page processing and cost tracking
 - [ ] **Phase 2: Gemini Flash Crawler** — Background pre-seeding: web crawler sends HTML/PDF text to Gemini Flash, deduplicates against master library
-- [ ] **Phase 3: YOLO 2-class Real-time Preview** — Wire 2-class best.pt into camera feed for visual box drawing only (not extraction)
+- [x] **Phase 3: YOLO 2-class Real-time Preview** — Wire 2-class best.pt into camera feed for visual box drawing only (not extraction) (completed 2026-04-03)
 - [ ] **Phase 4: Claude Haiku Enrichment** — Background enrichment of new wine records: region, country, grape_variety, producer_bio via Haiku
 - [ ] **Phase 5: Cost & Quality Guardrails** — Monthly spend caps, per-extraction cost logging, human review queue for low-confidence wines
 - [ ] **Phase 6: Image Menu Extraction via Claude Vision** — Detect image-embedded menus (ContentType.IMAGE_ONLY, HTML_MENU with 0 wines), screenshot via Playwright, extract via Claude Vision, persist through same dedup + JSONL pipeline
@@ -66,7 +66,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Settings patch + MenuAnalyzerAgent: 2-class class map, initialize() fix, detect_boxes() method, test scaffold (Wave 1)
-- [ ] 03-02-PLAN.md — scan_routes.py endpoint + main.py router registration + _get_yolo_model() fix (Wave 2)
+- [x] 03-02-PLAN.md — scan_routes.py endpoint + main.py router registration + _get_yolo_model() fix (Wave 2)
 
 ### Phase 4: Claude Haiku Enrichment
 **Goal**: After Claude Vision extracts wines in Phase 1, wines missing region/country/grape_variety are queued for async Haiku enrichment. Haiku infers these fields from wine_name + vintage. Skip if wine already exists in master library with full fields.
@@ -115,7 +115,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Claude Vision Extraction | 1/2 | In Progress | - |
 | 2. Gemini Flash Crawler | 0/2 | Planned | - |
-| 3. YOLO 2-class Preview | 0/2 | Planned | - |
+| 3. YOLO 2-class Preview | 2/2 | Complete   | 2026-04-03 |
 | 4. Claude Haiku Enrichment | 0/TBD | Not started | - |
 | 5. Cost & Quality Guardrails | 0/TBD | Not started | - |
 | 6. Image Menu Extraction via Claude Vision | 0/TBD | Not started | - |

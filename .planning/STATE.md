@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_plan: 1
+current_plan: "2 (Wave 2: POST /api/v1/preview/detect endpoint)"
 status: unknown
-last_updated: "2026-04-03T21:00:56.508Z"
+last_updated: "2026-04-03T21:08:53.331Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
@@ -19,22 +19,47 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
-**Current focus:** Phase 03 — YOLO 2-class Real-time Preview
+**Current focus:** Phase 04 — Claude Haiku Enrichment (next)
 
 ---
 
 ## Current Position
 
-Phase: 03 (YOLO 2-class Real-time Preview) — EXECUTING
-Plan: 2 of 2
-**Active phase:** Phase 03 — YOLO 2-class Real-time Preview
-**Current plan:** 2 (Wave 2: POST /api/v1/preview/detect endpoint)
-**Last completed:** 03-01 — YOLO foundation (Settings patch, 2-class class map, detect_boxes, 5 tests) — 2026-04-03
-**Next action:** Execute 03-02 — Wave 2: add POST /api/v1/preview/detect endpoint to scan_routes.py
+Phase: 03 (YOLO 2-class Real-time Preview) — COMPLETE
+Plan: 2 of 2 (all plans complete)
+**Last completed:** 03-02 — YOLO endpoint (router_preview, POST /api/v1/preview/detect, main.py registration) — 2026-04-03
+**Next action:** Execute Phase 04 — Claude Haiku enrichment
 
 ---
 
 ## Session History
+
+### Session 7 — 2026-04-03
+
+**Completed this session:**
+
+- Executed Phase 03 Plan 02: YOLO 2-class Preview Endpoint (Wave 2)
+- Added `router_preview = APIRouter(prefix="/api/v1/preview")` to scan_routes.py — separate from /api/v1/scan
+- Added `PreviewDetectRequest`, `BoundingBox`, `PreviewDetectResponse` Pydantic models to scan_routes.py
+- Added `@router_preview.post("/detect")` endpoint calling `agent.detect_boxes()` only — firewalled from extraction
+- Fixed `_get_yolo_model()` — removed `yolov8n.pt` fallback, added `Path.exists()` check + warning
+- Registered `preview_router` in `main.py` — `/api/v1/preview/detect` now resolves (not 404)
+- Auto-fix: Removed `"yolov8n.pt"` default from `MenuAnalyzerAgent.__init__` config.get() — replaced with best.pt path (03-01 left this behind)
+
+**Key decisions:**
+
+- Separate APIRouter prefix pattern: `/api/v1/preview` vs `/api/v1/scan` — clean resource separation
+- Firewall enforcement: detect endpoint returns boxes only, zero connection to process_menu_image or extraction
+- auto-fix logged: 03-01 summary claimed yolov8n.pt removal but config.get() default was not updated
+
+**Files changed:**
+
+- `services/agent-orchestrator/api/scan_routes.py` — router_preview, models, POST /detect, _get_yolo_model fix
+- `services/agent-orchestrator/main.py` — preview_router import + include_router registration
+- `services/agent-orchestrator/agents/menu_analyzer_agent.py` — yolov8n.pt default replaced
+- `.planning/phases/03-surya-ocr-tuning/03-02-SUMMARY.md` — plan summary
+
+---
 
 ### Session 6 — 2026-04-03
 
