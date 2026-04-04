@@ -18,6 +18,7 @@ from services.claude_vision_extractor import (
     ClaudeExtractionResult,
     get_claude_vision_extractor,
 )
+from jobs.haiku_tasks import haiku_enrich_task
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,15 @@ router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+def _needs_enrichment(wine: dict) -> bool:
+    """Return True if wine is missing any of region, country, grape_variety."""
+    return not all([
+        wine.get("region"),
+        wine.get("country"),
+        wine.get("grape_variety"),
+    ])
+
 
 def get_supabase_client():
     """Return Supabase client from settings. Returns None if not configured."""
@@ -117,7 +127,7 @@ async def extract_menu_scan(request: MenuScanRequest):
                     "completeness_score": wine.get("completeness_score", 0.0),
                 }
 
-                supabase.table("master_wine_library_submissions").insert({
+                insert_resp = supabase.table("master_wine_library_submissions").insert({
                     "restaurant_id": request.restaurant_id,
                     "submitted_by": "claude_vision",
                     "payload": submission_payload,
@@ -125,6 +135,19 @@ async def extract_menu_scan(request: MenuScanRequest):
                     "status": "pending_review",
                     "created_at": datetime.utcnow().isoformat(),
                 }).execute()
+
+                # Queue Haiku enrichment for wines missing region/country/grape_variety (D-01, D-02)
+                if insert_resp.data and _needs_enrichment(wine):
+                    submission_id = insert_resp.data[0]["id"]
+                    haiku_enrich_task.delay(
+                        wine_id=submission_id,
+                        wine_name=wine.get("wine_name", ""),
+                        vintage=str(wine.get("vintage")) if wine.get("vintage") else None,
+                    )
+                    logger.info(
+                        f"Queued haiku enrichment for submission_id={submission_id} "
+                        f"wine='{wine.get('wine_name')}'"
+                    )
 
             except Exception as e:
                 logger.warning(
