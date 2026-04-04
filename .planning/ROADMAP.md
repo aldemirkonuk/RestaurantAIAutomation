@@ -82,7 +82,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md — HaikuEnrichmentService: pure service with two-table dedup check, Anthropic client, EnrichmentResult model, DB migration for producer_bio, 5 unit tests (Wave 1)
-- [ ] 04-02-PLAN.md — haiku_tasks.py Celery task + celery_app.py import update + onboarding_routes.py enrichment trigger (Wave 2)
+- [x] 04-02-PLAN.md — haiku_tasks.py Celery task + celery_app.py import update + onboarding_routes.py enrichment trigger (Wave 2)
 
 ### Phase 5: Cost & Quality Guardrails
 **Goal**: Add spend tracking for all API calls (Claude + Gemini), monthly cap alerts, per-restaurant cost caps, and a human review queue for wines with completeness < 0.5.
