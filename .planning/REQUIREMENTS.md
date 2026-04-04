@@ -33,11 +33,11 @@
 
 ### Claude Haiku Enrichment (Background)
 
-- [ ] **HAIKU-01**: After onboarding extraction, wines with missing region/country/grape_variety queued for enrichment
-- [ ] **HAIKU-02**: Haiku enrichment prompt: given wine_name + vintage, infer region, country, grape_variety, producer_bio
+- [x] **HAIKU-01**: After onboarding extraction, wines with missing region/country/grape_variety queued for enrichment
+- [x] **HAIKU-02**: Haiku enrichment prompt: given wine_name + vintage, infer region, country, grape_variety, producer_bio
 - [ ] **HAIKU-03**: Enrichment runs async in background (Celery task), does not block onboarding response
-- [ ] **HAIKU-04**: Enrichment cost capped: skip if wine already exists in master library with full fields
-- [ ] **HAIKU-05**: Enriched fields stored in Supabase `master_wine_library` with enrichment_source = "haiku"
+- [x] **HAIKU-04**: Enrichment cost capped: skip if wine already exists in master library with full fields
+- [x] **HAIKU-05**: Enriched fields stored in Supabase `master_wine_library` with enrichment_source = "haiku"
 
 ### Cost & Quality Guardrails
 
@@ -92,11 +92,11 @@
 | YOLO-03 | Phase 3 | Complete |
 | YOLO-04 | Phase 3 | Complete |
 | YOLO-05 | Phase 3 | Complete |
-| HAIKU-01 | Phase 4 | Pending |
-| HAIKU-02 | Phase 4 | Pending |
+| HAIKU-01 | Phase 4 | Complete |
+| HAIKU-02 | Phase 4 | Complete |
 | HAIKU-03 | Phase 4 | Pending |
-| HAIKU-04 | Phase 4 | Pending |
-| HAIKU-05 | Phase 4 | Pending |
+| HAIKU-04 | Phase 4 | Complete |
+| HAIKU-05 | Phase 4 | Complete |
 | COST-01 | Phase 5 | Pending |
 | COST-02 | Phase 5 | Pending |
 | COST-03 | Phase 5 | Pending |

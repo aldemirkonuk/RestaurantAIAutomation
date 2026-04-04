@@ -81,7 +81,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — HaikuEnrichmentService: pure service with two-table dedup check, Anthropic client, EnrichmentResult model, DB migration for producer_bio, 5 unit tests (Wave 1)
+- [x] 04-01-PLAN.md — HaikuEnrichmentService: pure service with two-table dedup check, Anthropic client, EnrichmentResult model, DB migration for producer_bio, 5 unit tests (Wave 1)
 - [ ] 04-02-PLAN.md — haiku_tasks.py Celery task + celery_app.py import update + onboarding_routes.py enrichment trigger (Wave 2)
 
 ### Phase 5: Cost & Quality Guardrails
@@ -120,7 +120,7 @@ Plans:
 | 1. Claude Vision Extraction | 1/2 | In Progress | - |
 | 2. Gemini Flash Crawler | 0/2 | Planned | - |
 | 3. YOLO 2-class Preview | 2/2 | Complete   | 2026-04-03 |
-| 4. Claude Haiku Enrichment | 0/2 | Planned | - |
+| 4. Claude Haiku Enrichment | 1/2 | In Progress|  |
 | 5. Cost & Quality Guardrails | 0/TBD | Not started | - |
 | 6. Image Menu Extraction via Claude Vision | 0/TBD | Not started | - |
 

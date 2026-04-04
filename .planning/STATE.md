@@ -2,13 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_plan: "2 (Wave 2: POST /api/v1/preview/detect endpoint)"
 status: unknown
-last_updated: "2026-04-03T21:08:53.331Z"
+last_updated: "2026-04-03T23:43:33.026Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 11
+  total_plans: 13
   completed_plans: 8
 ---
 
@@ -19,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
-**Current focus:** Phase 04 — Claude Haiku Enrichment (next)
+**Current focus:** Phase 04 — claude-haiku-enrichment
 
 ---
 
 ## Current Position
 
-Phase: 03 (YOLO 2-class Real-time Preview) — COMPLETE
-Plan: 2 of 2 (all plans complete)
+Phase: 04 (claude-haiku-enrichment) — EXECUTING
+Plan: 1 of 2
 **Last completed:** 03-02 — YOLO endpoint (router_preview, POST /api/v1/preview/detect, main.py registration) — 2026-04-03
 **Next action:** Execute Phase 04 — Claude Haiku enrichment
 
