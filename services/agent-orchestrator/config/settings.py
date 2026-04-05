@@ -33,6 +33,13 @@ class Settings:
         self.google_api_key: Optional[str] = os.getenv("GOOGLE_API_KEY")
         self.cv_ocr_languages: str = os.getenv("CV_OCR_LANGUAGES", "en")
         self.mock_llm: bool = os.getenv("MOCK_LLM", "false").lower() == "true"
+        # Email credentials for cost alerts (Phase 5 — COST-02, COST-03)
+        self.manager_email: Optional[str] = os.getenv("MANAGER_EMAIL")
+        self.gmail_user: Optional[str] = os.getenv("GMAIL_USER")
+        self.gmail_password: Optional[str] = os.getenv("GMAIL_PASSWORD")
+        # Celery broker/backend (Phase 4+ background tasks)
+        self.celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+        self.celery_backend_url: str = os.getenv("CELERY_BACKEND_URL", "redis://localhost:6379/1")
 
     @property
     def supabase_client(self):
