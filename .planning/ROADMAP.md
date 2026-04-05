@@ -9,12 +9,12 @@ Five phases to replace the retired YOLO+Surya+parser extraction stack with a pro
 
 ## Phases
 
-- [ ] **Phase 1: Claude Vision Extraction Service** — Core extraction brain: PDF/photo → Claude Vision → structured wine JSON, with parallel page processing and cost tracking
-- [ ] **Phase 2: Gemini Flash Crawler** — Background pre-seeding: web crawler sends HTML/PDF text to Gemini Flash, deduplicates against master library
+- [x] **Phase 1: Claude Vision Extraction Service** — Core extraction brain: PDF/photo → Claude Vision → structured wine JSON, with parallel page processing and cost tracking (completed 2026-04-01)
+- [x] **Phase 2: Gemini Flash Crawler** — Background pre-seeding: web crawler sends HTML/PDF text to Gemini Flash, deduplicates against master library (completed 2026-04-02)
 - [x] **Phase 3: YOLO 2-class Real-time Preview** — Wire 2-class best.pt into camera feed for visual box drawing only (not extraction) (completed 2026-04-03)
-- [ ] **Phase 4: Claude Haiku Enrichment** — Background enrichment of new wine records: region, country, grape_variety, producer_bio via Haiku
-- [ ] **Phase 5: Cost & Quality Guardrails** — Monthly spend caps, per-extraction cost logging, human review queue for low-confidence wines
-- [ ] **Phase 6: Image Menu Extraction via Claude Vision** — Detect image-embedded menus (ContentType.IMAGE_ONLY, HTML_MENU with 0 wines), screenshot via Playwright, extract via Claude Vision, persist through same dedup + JSONL pipeline
+- [x] **Phase 4: Claude Haiku Enrichment** — Background enrichment of new wine records: region, country, grape_variety, producer_bio via Haiku (completed 2026-04-04)
+- [x] **Phase 5: Cost & Quality Guardrails** — Monthly spend caps, per-extraction cost logging, human review queue for low-confidence wines (completed 2026-04-05)
+- [x] **Phase 6: Image Menu Extraction via Claude Vision** — Detect image-embedded menus (ContentType.IMAGE_ONLY, HTML_MENU with 0 wines), screenshot via Playwright, extract via Claude Vision, persist through same dedup + JSONL pipeline (completed 2026-04-05)
 
 ## Phase Details
 
@@ -34,7 +34,7 @@ Five phases to replace the retired YOLO+Surya+parser extraction stack with a pro
 
 Plans:
 - [x] 01-01-PLAN.md — ClaudeVisionExtractor service: async parallel extraction engine + unit tests + requirements.txt fix (2026-04-01)
-- [ ] 01-02-PLAN.md — FastAPI endpoint + Supabase persistence: POST /api/v1/onboarding/extract wired to extractor and submissions table
+- [x] 01-02-PLAN.md — FastAPI endpoint + Supabase persistence: POST /api/v1/onboarding/extract wired to extractor and submissions table (completed 2026-04-01)
 
 ### Phase 2: Gemini Flash Crawler
 **Goal**: Update `vlm_extraction_service.py` and `web_crawler.py` to use Gemini Flash (gemini-2.0-flash) for text/HTML extraction. Claude Vision is NOT used here — cost optimization. Add deduplication against master wine library.
@@ -49,8 +49,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — GeminiFlashCrawlerExtractor: add AsyncClient + gemini-2.0-flash extractor class to vlm_extraction_service.py + GMFL-01 test scaffold
-- [ ] 02-02-PLAN.md — web_crawler.py wiring: robots.txt gate, Gemini extraction call, JSONL persistence, deduplication (GMFL-02..05)
+- [x] 02-01-PLAN.md — GeminiFlashCrawlerExtractor: add AsyncClient + gemini-2.0-flash extractor class to vlm_extraction_service.py + GMFL-01 test scaffold (completed 2026-04-02)
+- [x] 02-02-PLAN.md — web_crawler.py wiring: robots.txt gate, Gemini extraction call, JSONL persistence, deduplication (GMFL-02..05) (completed 2026-04-02)
 
 ### Phase 3: YOLO 2-class Real-time Preview
 **Goal**: Wire `datasets/wine_menus_2class/runs/train2/weights/best.pt` into `menu_analyzer_agent.py` for camera-feed box drawing only. YOLO inference must return bounding boxes in <200ms. No extraction triggered from YOLO output.
@@ -97,10 +97,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — DB migrations (api_spend, auto_blocked column, field_corrections) + SpendLogger service + settings.py patch (Wave 1)
-- [ ] 05-02-PLAN.md — SpendLogger wired into 3 API-calling services + spend_tasks.py Celery beat hourly cap check (Wave 2)
-- [ ] 05-03-PLAN.md — onboarding_routes.py: pre-flight $2.00 cap check (HTTP 402) + auto_blocked quality gate (Wave 2)
-- [ ] 05-04-PLAN.md — quality_routes.py: GET review-queue + PATCH correction + field_corrections logging + auto-promotion (Wave 3)
+- [x] 05-01-PLAN.md — DB migrations (api_spend, auto_blocked column, field_corrections) + SpendLogger service + settings.py patch (Wave 1) (completed 2026-04-05)
+- [x] 05-02-PLAN.md — SpendLogger wired into 3 API-calling services + spend_tasks.py Celery beat hourly cap check (Wave 2) (completed 2026-04-05)
+- [x] 05-03-PLAN.md — onboarding_routes.py: pre-flight $2.00 cap check (HTTP 402) + auto_blocked quality gate (Wave 2) (completed 2026-04-05)
+- [x] 05-04-PLAN.md — quality_routes.py: GET review-queue + PATCH correction + field_corrections logging + auto-promotion (Wave 3) (completed 2026-04-05)
 
 ### Phase 6: Image Menu Extraction via Claude Vision
 **Goal**: Detect restaurants whose crawler result returned 0 wines due to image-embedded menus (`ContentType.IMAGE_ONLY` or `HTML_MENU` pages with `wine_count == 0`). Take a full-page Playwright screenshot of the rendered page, send it to the existing `claude_vision_extractor.py` service (the Phase 1 extraction brain), and wire the result back through the same dedup + JSONL persist pipeline already established in Phase 2. Extend the same vision path to cover PDF pages where text extraction yielded 0 wines, routing them through Claude Vision as a fallback. This closes the Tredita-class blind spot where menus are embedded as `<img>` tags and no DOM text is present.
@@ -117,18 +117,23 @@ Plans:
   5. JSONL records from this path include `source_type: "image_menu"` (or `"pdf_vision_fallback"` for PDFs)
   6. `ContentType` handling in `web_crawler.py` updated: image menu route is explicit, documented, and does not break existing HTML or PDF text paths
   7. E2E harness: at least one known image-menu restaurant (e.g., Tredita) added to test suite; harness confirms ≥ 1 wine extracted via Vision path
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [x] 06-01-PLAN.md — Wave 1: extract_pdf() on ClaudeVisionExtractor + image_menu_detected on CrawlResult + source_type param on _persist_crawled_wines (completed 2026-04-05)
+- [x] 06-02-PLAN.md — Wave 2: 4 private methods + 3 crawl_restaurant() integration hooks (completed 2026-04-05)
+- [x] 06-03-PLAN.md — Wave 3: unit tests (test_image_menu.py) + Tredita E2E harness extension (completed 2026-04-05)
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Claude Vision Extraction | 1/2 | In Progress | - |
-| 2. Gemini Flash Crawler | 0/2 | Planned | - |
-| 3. YOLO 2-class Preview | 2/2 | Complete   | 2026-04-03 |
-| 4. Claude Haiku Enrichment | 1/2 | In Progress|  |
-| 5. Cost & Quality Guardrails | 0/4 | Planned | - |
-| 6. Image Menu Extraction via Claude Vision | 0/TBD | Not started | - |
+| 1. Claude Vision Extraction | 2/2 | Complete | 2026-04-01 |
+| 2. Gemini Flash Crawler | 2/2 | Complete | 2026-04-02 |
+| 3. YOLO 2-class Preview | 2/2 | Complete | 2026-04-03 |
+| 4. Claude Haiku Enrichment | 2/2 | Complete | 2026-04-04 |
+| 5. Cost & Quality Guardrails | 4/4 | Complete | 2026-04-05 |
+| 6. Image Menu Extraction via Claude Vision | 3/3 | Complete | 2026-04-05 |
 
 ## Archived Phases (Previous Milestone — Retired)
 

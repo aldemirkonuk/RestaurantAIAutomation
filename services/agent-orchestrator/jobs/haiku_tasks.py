@@ -90,7 +90,10 @@ async def _enrich_async(
         logger.info(f"Enrichment skipped for wine_id={wine_id} (already complete)")
         return None
 
-    # Persist enriched fields to master_wine_library
+    # Persist enriched fields to master_wine_library_submissions (the staging table).
+    # The row lives here until a human reviewer promotes it via PATCH /quality/review-queue.
+    # Updating the submissions table ensures enrichment data survives and is included when
+    # quality_routes.py promotes the wine to master_wine_library.
     supabase = _get_supabase_client()
     update_payload = {
         "region": result.region,
@@ -106,7 +109,7 @@ async def _enrich_async(
     update_payload["enrichment_source"] = result.enrichment_source
     update_payload["ai_enriched"] = True
 
-    supabase.table("master_wine_library").update(update_payload).eq("id", wine_id).execute()
+    supabase.table("master_wine_library_submissions").update(update_payload).eq("id", wine_id).execute()
 
     logger.info(
         f"Enriched wine_id={wine_id} ({wine_name}): "

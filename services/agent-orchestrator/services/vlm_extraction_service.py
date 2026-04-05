@@ -27,6 +27,8 @@ from google import genai as _genai
 from google.genai.client import AsyncClient
 from pydantic import BaseModel, Field
 
+from services.spend_logger import get_spend_logger
+
 logger = logging.getLogger(__name__)
 
 
@@ -267,6 +269,21 @@ class VLMExtractionService:
 
             raw_text = response.text if response.text else ""
             result = self._parse_response(raw_text, "gemini_vision")
+
+            # Log spend — non-fatal
+            try:
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.5-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=0.001,
+                )
+            except Exception:
+                pass
 
             # Save to training data
             await self._save_training_data(
@@ -523,6 +540,19 @@ class GeminiFlashCrawlerExtractor:
             result = self._parse_crawl_response(raw_text)
             result.model_used = self.MODEL_ID
             result.cost_estimate = 0.0001 * max(1, len(text) // 1000)
+            try:
+                usage = getattr(response, "usage_metadata", None)
+                input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model=self.MODEL_ID,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=result.cost_estimate,
+                )
+            except Exception:
+                pass
             return result
         except Exception as e:
             logger.error(f"GeminiFlashCrawlerExtractor failed: {e}")
