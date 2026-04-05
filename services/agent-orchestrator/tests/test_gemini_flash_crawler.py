@@ -33,76 +33,81 @@ def _make_mock_client(response_text: str = MOCK_WINES_JSON) -> MagicMock:
 # GMFL-01 tests — real implementations (not stubs)
 # =============================================================================
 
-async def test_model_is_gemini_2_0_flash():
-    """GMFL-01: extractor must call generate_content with model='gemini-2.0-flash'."""
+async def test_model_is_gemini_2_5_flash():
+    """GMFL-01: extractor must call generate_content with model='gemini-2.5-flash'."""
+    from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
     mock_client = _make_mock_client()
-    with patch("services.vlm_extraction_service.AsyncClient", return_value=mock_client):
-        from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
-        extractor = GeminiFlashCrawlerExtractor()
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}):
-            result = await extractor.extract_from_text("Château Margaux 2018 $450", "Test Restaurant")
+    extractor = GeminiFlashCrawlerExtractor()
+    extractor._client = mock_client  # bypass _get_client — lazy init skips when _client set
+    result = await extractor.extract_from_text("Château Margaux 2018 $450", "Test Restaurant")
     mock_client.aio.models.generate_content.assert_called_once()
     call_kwargs = mock_client.aio.models.generate_content.call_args
-    assert call_kwargs.kwargs.get("model") == "gemini-2.0-flash" or call_kwargs[1].get("model") == "gemini-2.0-flash" or call_kwargs[0][0] == "gemini-2.0-flash"
+    model_used = (
+        call_kwargs.kwargs.get("model")
+        or (call_kwargs[1].get("model") if call_kwargs[1] else None)
+        or (call_kwargs[0][0] if call_kwargs[0] else None)
+    )
+    assert model_used == "gemini-2.5-flash", f"Expected gemini-2.5-flash, got {model_used}"
 
 
-async def test_uses_async_client():
-    """GMFL-01: GeminiFlashCrawlerExtractor must import and use AsyncClient, not genai.Client."""
-    import inspect
-    import importlib
-    import services.vlm_extraction_service as mod
-    importlib.reload(mod)
-    # Verify the module imports AsyncClient from google.genai.client
-    source = inspect.getsource(mod)
-    assert "from google.genai.client import AsyncClient" in source, (
-        "AsyncClient must be imported from google.genai.client"
-    )
-    # Verify GeminiFlashCrawlerExtractor uses AsyncClient (not genai.Client) in _get_client
-    assert "AsyncClient(api_key=" in source, (
-        "GeminiFlashCrawlerExtractor._get_client() must instantiate AsyncClient"
-    )
+async def test_client_lazy_init_and_model():
+    """GMFL-01: _get_client() raises without API key; extract_from_text uses gemini-2.5-flash."""
+    from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
+
+    # Verify lazy init raises without API key
+    extractor = GeminiFlashCrawlerExtractor()
+    with patch.dict("os.environ", {}, clear=True):
+        os.environ.pop("GOOGLE_API_KEY", None)
+        with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+            extractor._get_client()
+
+    # Verify correct model string
+    assert GeminiFlashCrawlerExtractor.MODEL_ID == "gemini-2.5-flash"
+
+    # Verify extract_from_text returns model_used = gemini-2.5-flash on success
+    mock_client = _make_mock_client()
+    extractor2 = GeminiFlashCrawlerExtractor()
+    extractor2._client = mock_client
+    result = await extractor2.extract_from_text("Some wine text", "Test Restaurant")
+    assert result.model_used == "gemini-2.5-flash"
 
 
 async def test_extract_from_text_returns_wines():
     """GMFL-01: extract_from_text with 2-wine mock response returns 2 wines and correct model."""
+    from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
     mock_client = _make_mock_client(MOCK_WINES_JSON)
-    with patch("services.vlm_extraction_service.AsyncClient", return_value=mock_client):
-        from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
-        extractor = GeminiFlashCrawlerExtractor()
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}):
-            result = await extractor.extract_from_text(
-                "Château Margaux 2018 $450\nOpus One 2019 $300",
-                "Test Restaurant",
-            )
+    extractor = GeminiFlashCrawlerExtractor()
+    extractor._client = mock_client
+    result = await extractor.extract_from_text(
+        "Château Margaux 2018 $450\nOpus One 2019 $300",
+        "Test Restaurant",
+    )
     assert len(result.wines) == 2, f"Expected 2 wines, got {len(result.wines)}"
-    assert result.model_used == "gemini-2.0-flash"
+    assert result.model_used == "gemini-2.5-flash"
 
 
 async def test_extract_empty_html_returns_empty_result():
     """GMFL-01: empty wine list in response → total_wines == 0, no warnings."""
+    from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
     empty_json = json.dumps({"wines": [], "sections": []})
     mock_client = _make_mock_client(empty_json)
-    with patch("services.vlm_extraction_service.AsyncClient", return_value=mock_client):
-        from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
-        extractor = GeminiFlashCrawlerExtractor()
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}):
-            result = await extractor.extract_from_text("", "Empty Restaurant")
+    extractor = GeminiFlashCrawlerExtractor()
+    extractor._client = mock_client
+    result = await extractor.extract_from_text("", "Empty Restaurant")
     assert result.total_wines == 0
     assert result.warnings == []
 
 
 async def test_extract_api_error_returns_warning():
     """GMFL-01: when generate_content raises Exception, result.warnings must be non-empty."""
+    from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
     mock_aio = MagicMock()
     mock_aio.models.generate_content = AsyncMock(side_effect=Exception("timeout"))
     mock_client = MagicMock()
     mock_client.aio = mock_aio
-
-    with patch("services.vlm_extraction_service.AsyncClient", return_value=mock_client):
-        from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
-        extractor = GeminiFlashCrawlerExtractor()
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}):
-            result = await extractor.extract_from_text("Some text", "Test Restaurant")
+    extractor = GeminiFlashCrawlerExtractor()
+    extractor._client = mock_client
+    result = await extractor.extract_from_text("Some text", "Test Restaurant")
     assert len(result.warnings) > 0, "Expected at least one warning on API error"
 
 
@@ -248,7 +253,7 @@ async def test_crawled_wines_written_to_dataset(tmp_path, monkeypatch):
 
     record = json.loads(lines[0])
     assert record["wine_name"] == "Opus One"
-    assert record["source_type"] == "crawled"
+    assert record["data_enrichment"]["source_type"] == "crawled"
 
 
 async def test_duplicate_wine_skipped(tmp_path, monkeypatch):
@@ -358,7 +363,7 @@ async def test_non_duplicate_wine_inserted(tmp_path, monkeypatch):
     assert len(lines) == 1
     record = json.loads(lines[0])
     assert record["wine_name"] == "Hidden Gem Winery"
-    assert record["source_type"] == "crawled"
+    assert record["data_enrichment"]["source_type"] == "crawled"
 
 
 @pytest.mark.integration
