@@ -94,7 +94,13 @@ Plans:
   3. Alert email sent to MANAGER_EMAIL when monthly spend crosses 80% of cap
   4. Single restaurant extraction > $2.00 → stops and sends alert
   5. Human review queue: `GET /api/v1/quality/review-queue` returns wines with `needs_review: true`
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — DB migrations (api_spend, auto_blocked column, field_corrections) + SpendLogger service + settings.py patch (Wave 1)
+- [ ] 05-02-PLAN.md — SpendLogger wired into 3 API-calling services + spend_tasks.py Celery beat hourly cap check (Wave 2)
+- [ ] 05-03-PLAN.md — onboarding_routes.py: pre-flight $2.00 cap check (HTTP 402) + auto_blocked quality gate (Wave 2)
+- [ ] 05-04-PLAN.md — quality_routes.py: GET review-queue + PATCH correction + field_corrections logging + auto-promotion (Wave 3)
 
 ### Phase 6: Image Menu Extraction via Claude Vision
 **Goal**: Detect restaurants whose crawler result returned 0 wines due to image-embedded menus (`ContentType.IMAGE_ONLY` or `HTML_MENU` pages with `wine_count == 0`). Take a full-page Playwright screenshot of the rendered page, send it to the existing `claude_vision_extractor.py` service (the Phase 1 extraction brain), and wire the result back through the same dedup + JSONL persist pipeline already established in Phase 2. Extend the same vision path to cover PDF pages where text extraction yielded 0 wines, routing them through Claude Vision as a fallback. This closes the Tredita-class blind spot where menus are embedded as `<img>` tags and no DOM text is present.
@@ -121,7 +127,7 @@ Plans:
 | 2. Gemini Flash Crawler | 0/2 | Planned | - |
 | 3. YOLO 2-class Preview | 2/2 | Complete   | 2026-04-03 |
 | 4. Claude Haiku Enrichment | 1/2 | In Progress|  |
-| 5. Cost & Quality Guardrails | 0/TBD | Not started | - |
+| 5. Cost & Quality Guardrails | 0/4 | Planned | - |
 | 6. Image Menu Extraction via Claude Vision | 0/TBD | Not started | - |
 
 ## Archived Phases (Previous Milestone — Retired)
@@ -139,4 +145,5 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Phase 2 planned: 2026-04-02 — 2 plans, 2 waves*
 *Phase 3 planned: 2026-04-03 — 2 plans, 2 waves*
 *Phase 4 planned: 2026-04-03 — 2 plans, 2 waves*
+*Phase 5 planned: 2026-04-04 — 4 plans, 3 waves*
 *Phase 6 added: 2026-04-03 — Image Menu Extraction via Claude Vision (deferred from Phase 2)*
