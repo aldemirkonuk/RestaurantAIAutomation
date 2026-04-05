@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-04-04T16:33:56.709Z"
+status: in_progress
+last_updated: "2026-04-04"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 12
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
@@ -18,16 +18,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
-**Current focus:** Phase 04 — claude-haiku-enrichment
+**Current focus:** Phase 05 — Cost & Quality Guardrails (next to plan)
 
 ---
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-**Last completed:** 03-02 — YOLO endpoint (router_preview, POST /api/v1/preview/detect, main.py registration) — 2026-04-03
-**Next action:** Execute Phase 04 — Claude Haiku enrichment
+Phase: 5 (Cost & Quality Guardrails) — not started
+Plan: N/A — discuss-phase pending
+**Last completed:** Phase 04 Plan 02 — Celery task `haiku_tasks.py` + `onboarding_routes.py` enrichment trigger — 2026-04-04
+**Phases complete:** 01 (Claude Vision Extraction), 02 (Gemini Flash Crawler), 03 (YOLO 2-class Preview), 04 (Claude Haiku Enrichment)
+**Next action:** `/gsd:discuss-phase 5` → plan → execute Phase 05 — Cost & Quality Guardrails
 
 ---
 
