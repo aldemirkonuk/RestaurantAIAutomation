@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-04-04"
+status: executing
+last_updated: "2026-04-05T18:00:00.000Z"
 progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 12
+  total_phases: 7
+  completed_phases: 6
+  total_plans: 18
+  completed_plans: 18
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
@@ -18,21 +18,115 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
-**Current focus:** Phase 05 — Cost & Quality Guardrails (next to plan)
+**Current focus:** Phase 06 — Image Menu Extraction — COMPLETE
 
 ---
 
 ## Current Position
 
-Phase: 5 (Cost & Quality Guardrails) — not started
-Plan: N/A — discuss-phase pending
-**Last completed:** Phase 04 Plan 02 — Celery task `haiku_tasks.py` + `onboarding_routes.py` enrichment trigger — 2026-04-04
-**Phases complete:** 01 (Claude Vision Extraction), 02 (Gemini Flash Crawler), 03 (YOLO 2-class Preview), 04 (Claude Haiku Enrichment)
-**Next action:** `/gsd:discuss-phase 5` → plan → execute Phase 05 — Cost & Quality Guardrails
+Phase: 06 (Image Menu Extraction) — COMPLETE
+Plan: 3 of 3 DONE
+**Last completed:** Phase 06 Plan 03 — unit tests + E2E harness Tredita extension — 2026-04-05
+**Phases complete:** 01, 02, 03, 04, 05, 06
+**Next action:** Phase 07 — Final integration / remaining roadmap
 
 ---
 
 ## Session History
+
+### Session 10 — 2026-04-05
+
+**Completed this session:**
+
+- Executed Phase 06 Plans 01, 02, 03 (Waves 1, 2, 3) — Phase 6 COMPLETE
+- Wave 1: Added extract_pdf() to ClaudeVisionExtractor (native Anthropic document content block); added image_menu_detected: bool = False to CrawlResult; added source_type: str = "crawled" param to _persist_crawled_wines()
+- Wave 2: Added 4 private methods to WebCrawlerService (_take_viewport_chunks, _is_image_menu, _handle_image_menu, _handle_pdf_vision); wired 3 integration hooks into crawl_restaurant(); added import base64 + get_claude_vision_extractor
+- Wave 3: Created test_image_menu.py (7 tests, all IMGX-01–06 covered + extract_pdf document block); added Tredita to e2e_restaurants.json with expect_image_menu=true; extended e2e_crawl_harness.py with image_menu_pass assertion + report column
+
+**Key decisions:**
+
+- extract_pdf() uses native Anthropic document content block (no new deps, single API call per PDF)
+- Viewport chunks: 1280×900px, max 10, JPEG 85 quality — cost ceiling ~$0.15/restaurant
+- _is_image_menu() differs from _check_image_menu(): uses naturalWidth > 400 + absence of wine patterns
+- All Vision-extracted wines flow through existing _wine_is_duplicate() + _persist_crawled_wines() pipeline
+- source_type tags: "image_menu" (screenshot path) | "pdf_vision_fallback" (PDF path) | "crawled" (Gemini path, unchanged)
+
+**Files changed:**
+
+- `services/agent-orchestrator/services/claude_vision_extractor.py` — extract_pdf() method added
+- `services/agent-orchestrator/services/web_crawler.py` — 4 new methods + 3 integration hooks + imports
+- `services/agent-orchestrator/tests/test_image_menu.py` — new file (7 tests)
+- `scripts/e2e_restaurants.json` — Tredita entry added
+- `scripts/e2e_crawl_harness.py` — image_menu_pass assertion + report column + dry-run note
+
+---
+
+### Session 9 — 2026-04-05
+
+**Completed this session:**
+
+- Executed Phase 05 Plans 02, 03, 04 (Wave 2 + Wave 3) — Phase 5 COMPLETE
+- Wired SpendLogger into claude_vision_extractor.py, haiku_enrichment_service.py, vlm_extraction_service.py
+- Created jobs/spend_tasks.py: monthly_cap_check_task Celery beat (hourly, idempotent per provider/month, Gmail SMTP alert)
+- Patched celery_app.py: added jobs.spend_tasks import + beat schedule entry
+- Added _preflight_cap_check() + _send_cap_alert_email() + PER_RESTAURANT_CAP_USD=2.00 to onboarding_routes.py
+- Added AUTO_BLOCK_THRESHOLD=0.3 gate on submission insert (auto_blocked=True when completeness < 0.3)
+- Created api/quality_routes.py: GET /review-queue + PATCH /review-queue/{id} with field_corrections logging + auto-promotion
+- Registered quality_router in main.py
+- All 4 plan SUMMARY files written
+
+**Key decisions:**
+
+- All SpendLogger calls wrapped in separate try/except — spend logging can never interrupt extraction
+- Gemini token counts via getattr(response, "usage_metadata") — graceful fallback to 0
+- Per-restaurant cap check fails open (returns 0.0 on query error) — infra failure never blocks extraction
+- master_wine_library promotion failure is fatal (503) — data integrity cannot be silently dropped
+
+**Files changed:**
+
+- `services/agent-orchestrator/services/claude_vision_extractor.py` — SpendLogger import + log call
+- `services/agent-orchestrator/services/haiku_enrichment_service.py` — SpendLogger import + log call + cost calc
+- `services/agent-orchestrator/services/vlm_extraction_service.py` — SpendLogger import + log call
+- `services/agent-orchestrator/jobs/spend_tasks.py` — new: monthly_cap_check_task
+- `services/agent-orchestrator/jobs/celery_app.py` — spend_tasks import + beat schedule
+- `services/agent-orchestrator/api/onboarding_routes.py` — preflight cap check + auto_blocked gate
+- `services/agent-orchestrator/api/quality_routes.py` — new: GET/PATCH review queue
+- `services/agent-orchestrator/main.py` — quality_router registration
+- `.planning/phases/05-cost-quality-guardrails/05-02-SUMMARY.md` — new
+- `.planning/phases/05-cost-quality-guardrails/05-03-SUMMARY.md` — new
+- `.planning/phases/05-cost-quality-guardrails/05-04-SUMMARY.md` — new
+
+---
+
+### Session 8 — 2026-04-05
+
+**Completed this session:**
+
+- Executed Phase 05 Plan 01: Cost & Quality Guardrails Foundation
+- Created `supabase/migrations/20260404000000_api_spend.sql`: api_spend table (7 cols: provider, model, input_tokens, output_tokens, cost_usd, restaurant_id, timestamp) + spend_alert_state table for idempotent monthly alert dedup
+- Created `supabase/migrations/20260404000001_auto_blocked_column.sql`: ALTER TABLE adds auto_blocked BOOLEAN NOT NULL DEFAULT FALSE to master_wine_library_submissions
+- Created `supabase/migrations/20260404000002_field_corrections.sql`: field_corrections table (submission_id, field_name, original_value, corrected_value, corrected_at, corrected_by)
+- Created `services/agent-orchestrator/services/spend_logger.py`: SpendLogger class with log() never-raise contract + get_spend_logger() singleton
+- Patched `services/agent-orchestrator/config/settings.py`: added manager_email, gmail_user, gmail_password attributes from MANAGER_EMAIL, GMAIL_USER, GMAIL_PASSWORD env vars
+- Created `services/agent-orchestrator/tests/test_spend_logger.py`: 5 unit tests (TDD)
+
+**Key decisions:**
+
+- SpendLogger is synchronous (not async) — supabase-py is sync, < 50ms acceptable per RESEARCH.md
+- log() wraps everything in try/except Exception — spend logging failure must NEVER crash extraction pipeline
+- Singleton via module-level global — consistent with existing settings pattern
+
+**Files changed:**
+
+- `supabase/migrations/20260404000000_api_spend.sql` — new
+- `supabase/migrations/20260404000001_auto_blocked_column.sql` — new
+- `supabase/migrations/20260404000002_field_corrections.sql` — new
+- `services/agent-orchestrator/services/spend_logger.py` — new
+- `services/agent-orchestrator/tests/test_spend_logger.py` — new
+- `services/agent-orchestrator/config/settings.py` — patched (+3 email attrs)
+- `.planning/phases/05-cost-quality-guardrails/05-01-SUMMARY.md` — new
+
+---
 
 ### Session 7 — 2026-04-03
 
@@ -208,6 +302,9 @@ Plan: N/A — discuss-phase pending
 | 2026-03-31 | Delete ultralytics .cache files before any new dataset training | Stale train.cache/val.cache caused 2-class run to load 13-class labels; 115/182 train images rejected; mAP50 0.34 instead of expected ~0.8+ |
 | 2026-03-31 | 2-class training experiment discarded | Produced unreliable best.pt due to cache bug; proceeding directly with 13-class per plan 02-01 |
 | 2026-04-02 | Switch to Haiku (claude-haiku-4-5-20251001) conditional on MAX_TOKENS=8192 re-run | Live benchmark: Haiku is 3.8x cheaper ($0.13 vs $0.49/restaurant), 2.1x faster at p50, identical wine extraction quality. Parse errors in benchmark were MAX_TOKENS=4096 truncation artifacts — production uses 8192. |
+| 2026-04-05 | SpendLogger is synchronous | supabase-py client is sync; blocking for < 50ms is acceptable for MVP; avoids asyncio complexity in Celery tasks |
+| 2026-04-05 | SpendLogger.log() never re-raises | Spend logging failure must NEVER interrupt extraction pipeline — all exceptions caught and logged as warnings |
+| 2026-04-05 | auto_blocked uses ADD COLUMN IF NOT EXISTS | Safe migration for existing master_wine_library_submissions table — idempotent |
 
 ---
 
