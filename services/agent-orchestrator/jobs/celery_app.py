@@ -105,4 +105,12 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute=0),   # hourly at minute 0
         "options": {"expires": 3500},
     },
+
+    # Phase 12.1 D-07: Weekly staleness re-verification of human_resolved fields > 180 days
+    # Re-fetches original citation URLs; downgrades to 0.85 if value no longer present
+    "research-staleness-reverify-weekly": {
+        "task": "research.staleness_reverify",
+        "schedule": crontab(day_of_week=0, hour=2, minute=0),  # Sunday 2 AM UTC
+        "options": {"expires": 3500},
+    },
 }
