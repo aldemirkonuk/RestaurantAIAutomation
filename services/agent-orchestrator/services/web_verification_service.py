@@ -64,6 +64,35 @@ REGION_ALIASES: dict[str, str] = {
     "mclaren vale": "mclaren vale",
 }
 
+# Color synonym mapping — prevents false contradictions from descriptive colors
+# (e.g., "deep garnet" vs "red", "ruby" vs "red", "pale yellow" vs "white")
+COLOR_SYNONYMS: dict[str, str] = {
+    # Red variants
+    "red": "red",
+    "ruby": "red",
+    "garnet": "red",
+    "deep garnet": "red",
+    "crimson": "red",
+    "burgundy": "red",
+    "cherry": "red",
+    "brick red": "red",
+    # White variants
+    "white": "white",
+    "pale yellow": "white",
+    "golden": "white",
+    "straw": "white",
+    "lemon": "white",
+    "greenish": "white",
+    # Rosé variants
+    "rosé": "rosé",
+    "rose": "rosé",
+    "pink": "rosé",
+    "salmon": "rosé",
+    # Amber/Orange
+    "amber": "amber",
+    "orange": "orange",
+}
+
 # Numeric fields that must be compared as floats, not strings (Pitfall 6)
 NUMERIC_FIELDS = {"alcohol_pct", "price_bottle", "price_glass"}
 
@@ -221,10 +250,12 @@ async def parse_search_results(
 # ---------------------------------------------------------------------------
 
 def _normalize_for_compare(value: str, field_name: str) -> str:
-    """Lowercase + strip for concordance comparison. Apply alias for region fields."""
+    """Lowercase + strip for concordance comparison. Apply alias for region/color fields."""
     normalized = str(value).lower().strip()
     if field_name in ("region", "sub_region", "appellation"):
         return REGION_ALIASES.get(normalized, normalized)
+    if field_name == "color":
+        return COLOR_SYNONYMS.get(normalized, normalized)
     return normalized
 
 
@@ -238,6 +269,7 @@ def check_concordance(
 
     Returns:
         "concordance"  — web value matches existing (confidence boost to 0.95+)
+        "web_data_more_complete" — web value is a superset of existing (e.g., blend breakdown)
         "contradiction" — web value differs from existing (flag for human review)
         "new_data"     — field not yet in field_confidence (add with web_search source)
 
@@ -263,6 +295,20 @@ def check_concordance(
         except (TypeError, ValueError):
             pass  # fall through to string comparison
 
+    # Grape variety substring matching: if existing value is a substring of web value
+    # (case-insensitive), treat as "web_data_more_complete" instead of contradiction.
+    # Example: existing="Cabernet Sauvignon", web="87% Cabernet Sauvignon, 8% Merlot..."
+    # → web data is more complete (blend breakdown), not a contradiction.
+    if field_name == "grape_variety":
+        norm_existing = str(existing_value).lower().strip()
+        norm_web = str(web_value).lower().strip()
+        if norm_existing in norm_web:
+            return "web_data_more_complete"
+        if norm_web in norm_existing:
+            # Edge case: web data is less specific (e.g., "Cabernet" vs "Cabernet Sauvignon")
+            # Still treat as concordance since it's not contradictory
+            return "concordance"
+
     # String fields: normalized comparison
     norm_existing = _normalize_for_compare(str(existing_value), field_name)
     norm_web = _normalize_for_compare(str(web_value), field_name)
@@ -285,6 +331,9 @@ def apply_concordance_result(
     - "concordance":  boost confidence to max(0.95, web_confidence),
                       set verification_status="web_verified",
                       keep existing value (already correct)
+    - "web_data_more_complete": replace with more complete web value,
+                      boost confidence to max(0.90, web_confidence),
+                      set verification_status="web_enriched"
     - "contradiction": do NOT change value or confidence,
                        set verification_status="contradicted",
                        add contradicted_value=web_value for human review
@@ -300,7 +349,7 @@ def apply_concordance_result(
         field_name:     Field being updated (e.g. "region", "grape_variety").
         web_value:      Value extracted from web search.
         web_confidence: Confidence from WineVerificationResult.source_confidence (0.0-1.0).
-        concordance:    Result from check_concordance(): "concordance"|"contradiction"|"new_data"
+        concordance:    Result from check_concordance(): "concordance"|"web_data_more_complete"|"contradiction"|"new_data"
 
     Returns:
         Updated field_confidence dict (merged, not mutated in place).
@@ -312,6 +361,16 @@ def apply_concordance_result(
             "confidence": max(0.95, web_confidence),           # WSRCH-03: boost to 0.95+
             "source": "web_verified",
             "verification_status": "web_verified",
+        }
+    elif concordance == "web_data_more_complete":
+        # Web data is more complete than existing (e.g., blend breakdown vs single grape).
+        # Replace existing value with more complete web value, boost confidence to 0.90+,
+        # set verification_status="web_enriched" to distinguish from exact concordance.
+        new_entry = {
+            "value": web_value,  # use more complete web value
+            "confidence": max(0.90, web_confidence),
+            "source": "web_enriched",
+            "verification_status": "web_enriched",
         }
     elif concordance == "contradiction":
         existing_entry = existing_fc.get(field_name, {})
