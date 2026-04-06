@@ -19,7 +19,7 @@ created: 2026-04-06
 |----------|-------|
 | **Framework** | pytest 7.x |
 | **Config file** | `services/agent-orchestrator/pytest.ini` or inline |
-| **Quick run command** | `cd services/agent-orchestrator && python -m pytest tests/test_score_lookup.py tests/test_dataset_enrich.py -x -q` |
+| **Quick run command** | `cd services/agent-orchestrator && python -m pytest tests/test_score_tasks.py tests/test_dataset_ingestion.py -x -q` |
 | **Full suite command** | `cd services/agent-orchestrator && python -m pytest tests/ -x -q` |
 | **Estimated runtime** | ~15 seconds |
 
@@ -27,7 +27,7 @@ created: 2026-04-06
 
 ## Sampling Rate
 
-- **After every task commit:** Run `python -m pytest tests/test_score_lookup.py tests/test_dataset_enrich.py -x -q`
+- **After every task commit:** Run `cd services/agent-orchestrator && python -m pytest tests/test_score_tasks.py tests/test_dataset_ingestion.py -x -q`
 - **After Wave 3 (full integration):** Run full suite
 
 ---

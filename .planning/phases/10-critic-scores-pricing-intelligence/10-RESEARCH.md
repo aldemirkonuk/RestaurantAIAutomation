@@ -756,7 +756,7 @@ Note: supabase-py `.or_()` does not natively support `NOW()-INTERVAL`. Safer to 
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `restaurant_inventory.markup_ratio` update when `retail_price_avg` changes on the library?**
    - What we know: D-04c says store for query performance; markup_ratio is `menu_price_current / retail_price_avg`.
