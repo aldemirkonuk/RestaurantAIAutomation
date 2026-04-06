@@ -273,7 +273,7 @@ def classify_source_tier(
     """
     map_ = tier_map if tier_map is not None else SOURCE_TIER_DOMAINS
     try:
-        domain = urlparse(url).netloc.lower().lstrip("www.")
+        domain = urlparse(url).netloc.lower().removeprefix("www.")
         # Exact match first
         if domain in map_:
             return map_[domain]
@@ -343,7 +343,7 @@ def detect_conflict(candidates: list[dict[str, Any]]) -> bool:
 
 def _get_domain(url: str) -> str:
     try:
-        return urlparse(url).netloc.lower().lstrip("www.")
+        return urlparse(url).netloc.lower().removeprefix("www.")
     except Exception:
         return url
 
