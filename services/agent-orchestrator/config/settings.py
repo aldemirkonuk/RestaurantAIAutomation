@@ -40,6 +40,13 @@ class Settings:
         # Celery broker/backend (Phase 4+ background tasks)
         self.celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
         self.celery_backend_url: str = os.getenv("CELERY_BACKEND_URL", "redis://localhost:6379/1")
+        # Web Search Verification (Phase 8 — WSRCH-01, WSRCH-08)
+        self.serper_api_key: Optional[str] = os.getenv("SERPER_API_KEY")
+        self.web_search_daily_budget_usd: float = float(
+            os.getenv("WEB_SEARCH_DAILY_BUDGET_USD", "5.0")
+        )
+        # Serper Starter plan: $0.001/query — NOT $0.005 (Pitfall 5, RESEARCH.md)
+        self.serper_cost_per_query: float = 0.001
 
     @property
     def supabase_client(self):
