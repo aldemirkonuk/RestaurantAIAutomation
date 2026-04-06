@@ -79,4 +79,4 @@ A restaurant manager scans a menu — photo, PDF, or web — and every wine is c
 | Claude Haiku: enrichment | $0.01/wine for background enrichment of new records | — Pending |
 
 ---
-*Last updated: 2026-04-01 — Phase 01 complete (Claude Vision extraction service shipped)*
+*Last updated: 2026-04-06 — Phase 12.1 complete (Research Agent SOTA Redesign — three-layer architecture: Layer 1 ontology inference + Layer 2 cascade LLM + Layer 3 Reflexion with plateau detection, all 10 bug fixes, auth, entity cache, conflict resolution)*
