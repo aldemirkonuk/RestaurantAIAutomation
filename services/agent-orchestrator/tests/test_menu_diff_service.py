@@ -173,3 +173,86 @@ def test_price_gate_null_new_price():
     assert MenuDiffService._price_gate(
         {"price_reference": None}, {"price_reference": 45.0}
     ) is False
+
+
+# ---------------------------------------------------------------------------
+# 8. First crawl — all wines added (empty roster)
+# ---------------------------------------------------------------------------
+
+def test_first_crawl_all_added():
+    """Empty roster + 5 new wines → 5 'added' events (first crawl behavior, intentional)."""
+    mock_sb = make_mock_supabase(roster_rows=[])
+    svc = MenuDiffService(mock_sb)
+
+    wines = [_wine(f"h{i}", f"Wine {i}") for i in range(5)]
+    result = svc.run_diff("rest-001", wines)
+
+    assert result["added"] == 5
+    assert result["removed"] == 0
+    assert result["price_changed"] == 0
+    assert result["skipped"] is False
+
+    insert_call_args = mock_sb.table.return_value.insert.call_args[0][0]
+    added_events = [e for e in insert_call_args if e["change_type"] == "added"]
+    assert len(added_events) == 5
+
+
+# ---------------------------------------------------------------------------
+# 9. JSONB snapshot shape (D-03 verification)
+# ---------------------------------------------------------------------------
+
+def test_change_event_jsonb_shape():
+    """'added' event: old_value=None, new_value has all 5 required snapshot fields."""
+    mock_sb = make_mock_supabase(roster_rows=[])
+    svc = MenuDiffService(mock_sb)
+
+    new_wine = {
+        "signature_hash": "abc123",
+        "wine_name": "Barolo Riserva",
+        "producer": "Marchesi di Barolo",
+        "vintage": 2019,
+        "price_reference": 95.0,
+        "region": "Piedmont",
+    }
+    result = svc.run_diff("rest-001", [new_wine])
+    assert result["added"] == 1
+    assert result["skipped"] is False
+
+    insert_call_args = mock_sb.table.return_value.insert.call_args[0][0]
+    assert len(insert_call_args) == 1
+    event = insert_call_args[0]
+
+    assert event["change_type"] == "added"
+    assert event["old_value"] is None
+
+    snapshot = event["new_value"]
+    assert snapshot is not None
+    # D-03: all 5 required snapshot fields must be present
+    for field in ("wine_name", "producer", "vintage", "price_reference", "signature_hash"):
+        assert field in snapshot, f"Missing snapshot field: {field}"
+    assert snapshot["wine_name"] == "Barolo Riserva"
+    assert snapshot["producer"] == "Marchesi di Barolo"
+    assert snapshot["vintage"] == 2019
+    assert snapshot["price_reference"] == 95.0
+    assert snapshot["signature_hash"] == "abc123"
+
+
+# ---------------------------------------------------------------------------
+# 10. No-change crawl — no events written when nothing changed
+# ---------------------------------------------------------------------------
+
+def test_no_events_when_no_changes():
+    """Roster matches new crawl exactly (same hash, same price) → 0 events, still upserts roster."""
+    mock_sb = make_mock_supabase(roster_rows=[_roster_row("h1", price=45.0)])
+    svc = MenuDiffService(mock_sb)
+
+    result = svc.run_diff("rest-001", [_wine("h1", price=45.0)])
+
+    assert result["added"] == 0
+    assert result["removed"] == 0
+    assert result["price_changed"] == 0
+    assert result["skipped"] is False
+    # No insert for menu_changes since no events
+    mock_sb.table.return_value.insert.assert_not_called()
+    # Upsert still happens to refresh last_seen_at
+    mock_sb.table.return_value.upsert.assert_called_once()
