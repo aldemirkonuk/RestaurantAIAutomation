@@ -432,13 +432,13 @@ Plans:
 **Goal:** Transform the Phase 12 research agent from a single-pass linear pipeline into a three-layer SOTA architecture: Layer 1 (deterministic inference from Phase 9 ontology at zero cost), Layer 2 (cascade LLM enrichment with entity caching and model routing), Layer 3 (deep research with adaptive Reflexion retry). Fix all 10 critical bugs, implement 4 unimplemented features, and add authority-weighted conflict auto-resolution. Target: 85-95% null field coverage at ~$0.008-0.012/record.
 **Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08
 **Depends on:** Phase 12
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
-- [ ] 12.1-01-PLAN.md — Wave 1: settings.py cascade/cache settings + research_agent_helpers.py Layer 1 inference, select_model, entity cache, resolve_conflict, BoundedLRUCache
-- [ ] 12.1-02-PLAN.md — Wave 1 (parallel): research_routes.py auth + aggregate queries + per-tier metrics + challenges endpoint; celery_app.py staleness beat
-- [ ] 12.1-03-PLAN.md — Wave 2: research_tasks.py three-layer _process_record rewrite + all D-06 bug fixes + staleness_reverify_task
-- [ ] 12.1-04-PLAN.md — Wave 3: test_research_agent_helpers.py ≥12 new tests + test_research_agent_e2e.py three-layer update
+- [x] 12.1-01-PLAN.md — Wave 1: settings.py cascade/cache settings + research_agent_helpers.py Layer 1 inference, select_model, entity cache, resolve_conflict, BoundedLRUCache
+- [x] 12.1-02-PLAN.md — Wave 1 (parallel): research_routes.py auth + aggregate queries + per-tier metrics + challenges endpoint; celery_app.py staleness beat
+- [x] 12.1-03-PLAN.md — Wave 2: research_tasks.py three-layer _process_record rewrite + all D-06 bug fixes + staleness_reverify_task
+- [x] 12.1-04-PLAN.md — Wave 3: test_research_agent_helpers.py ≥12 new tests + test_research_agent_e2e.py three-layer update
 
 ### Phase 13: Dev Onboarding UI with Manual Override Access
 **Goal**: Build a role-aware onboarding interface that lets developers and certified contributors run ingestion through all supported paths (PDF upload, image scan, crawler URL flow), review the extracted/enriched output, and manually override field values with full auditability. This phase enables controlled dataset authoring so trusted users can contribute records directly while preserving confidence metadata and governance.
