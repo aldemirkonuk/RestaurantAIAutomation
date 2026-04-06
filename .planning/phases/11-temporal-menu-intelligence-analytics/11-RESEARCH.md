@@ -599,22 +599,16 @@ def _mark_crawl_error(supabase, restaurant_id: str, consecutive_inc: bool = Fals
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How does `crawl_restaurant()` return its result?**
-   - What we know: `web_crawler.py` has `crawl_restaurant()` and `_persist_crawled_wines()` which writes JSONL. The diff engine needs the in-memory wine list, not re-read JSONL.
-   - What's unclear: Does `crawl_restaurant()` return a list of wine dicts, or does it only persist to JSONL and return a `CrawlResult` object?
-   - Recommendation: **Planner must read `web_crawler.py:crawl_restaurant()` return type before designing the `crawl_and_diff_task` integration.** If it only writes JSONL, the diff engine must read the JSONL output. If it returns wines in memory, pass them directly.
+   - RESOLVED: `CrawlResult` patched in Plan 03 with a `wines: List[Dict]` field. `_persist_crawled_wines()` now also appends each wine record to `result.wines` before writing JSONL, so the diff engine receives wines in memory without re-reading JSONL.
 
 2. **Does `master_wine_library` have a `signature_hash` column?**
-   - What we know: `web_crawler.py:491` computes and writes `signature_hash` to JSONL records. `master_wine_library_submissions` has it.
-   - What's unclear: Whether `master_wine_library` (the promoted table) also has `signature_hash` populated, vs only `master_wine_library_submissions`.
-   - Recommendation: Check `supabase/migrations/20260208024921_new-migration.sql` for `master_wine_library` schema. If `master_wine_library` lacks `signature_hash`, the join in Pattern 5 must go via `master_wine_library_submissions`.
+   - RESOLVED: `master_wine_library` does NOT have `signature_hash`. The popularity/trending join goes via `master_wine_library_submissions.signature_hash → master_wine_id` as documented in Plan 04.
 
 3. **What is the metro-to-city mapping?**
-   - What we know: `restaurant_directory.city` contains city names. `metro=chicago` is the query param example.
-   - What's unclear: Are all Chicago restaurants stored as `city = 'Chicago'` or is there variation (`'chicago'`, `'Chicago, IL'`, etc.)?
-   - Recommendation: Implement case-insensitive `ILIKE` filter: `.ilike("city", f"%{metro}%")`. Flag in endpoint docstring that metro is a substring match.
+   - RESOLVED: Case-insensitive ILIKE substring match implemented in Plan 05: `.ilike("city", f"%{metro_norm}%")`. Endpoint docstring notes that metro is a substring match against `restaurant_directory.city`.
 
 ---
 
