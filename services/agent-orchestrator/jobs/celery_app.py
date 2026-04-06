@@ -20,7 +20,7 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     # Include tasks from the tasks module
-    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks", "jobs.ontology_tasks", "jobs.score_tasks"),
+    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks", "jobs.ontology_tasks", "jobs.score_tasks", "jobs.recrawl_tasks"),
 )
 
 # =============================================================================
@@ -80,6 +80,14 @@ celery_app.conf.beat_schedule = {
     "score-stale-nightly": {
         "task": "score.rescore_stale_wines",
         "schedule": crontab(hour=3, minute=0),  # 3 AM UTC
+        "options": {"expires": 3500},
+    },
+
+    # Phase 11: Scheduled restaurant re-crawls — daily at 4:30 AM UTC
+    # (4:00 AM taken by calibration-daily, 3:00 AM by score-stale-nightly)
+    "recrawl-scheduled-daily": {
+        "task": "recrawl.scheduled",
+        "schedule": crontab(hour=4, minute=30),
         "options": {"expires": 3500},
     },
 }
