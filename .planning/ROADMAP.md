@@ -2,7 +2,7 @@
 
 ## Overview
 
-Eleven phases building the world's most sophisticated restaurant wine intelligence dataset. Phases 1–6 replaced the retired YOLO+Surya stack with a hybrid extraction pipeline. Phases 7–11 transform raw extraction into a verified, enriched, cross-referenced wine knowledge base with per-field confidence scoring, web-verified data, wine ontology validation, critic score aggregation, and temporal menu intelligence.
+Twelve phases building the world's most sophisticated restaurant wine intelligence dataset. Phases 1–6 replaced the retired YOLO+Surya stack with a hybrid extraction pipeline. Phases 7–11 transform raw extraction into a verified, enriched, cross-referenced wine knowledge base with per-field confidence scoring, web-verified data, wine ontology validation, critic score aggregation, and temporal menu intelligence. Phase 12 closes the remaining gaps with an autonomous multi-source research agent that produces independently corroborated, citable fills — not AI guesses.
 
 **Architecture pivot from:** YOLO 13-class → Surya OCR → local parser (mAP50 0.04 — retired 2026-03-31)
 **Architecture pivot to:** Claude Vision (extraction) + Gemini Flash (crawling) + YOLO 2-class (preview) + Haiku (enrichment) + Web Search (verification) + Ontology (validation) + Temporal (intelligence)
@@ -15,11 +15,12 @@ Eleven phases building the world's most sophisticated restaurant wine intelligen
 - [x] **Phase 4: Claude Haiku Enrichment** — Background enrichment of new wine records: region, country, grape_variety, producer_bio via Haiku (completed 2026-04-04)
 - [x] **Phase 5: Cost & Quality Guardrails** — Monthly spend caps, per-extraction cost logging, human review queue for low-confidence wines (completed 2026-04-05)
 - [x] **Phase 6: Image Menu Extraction via Claude Vision** — Detect image-embedded menus (ContentType.IMAGE_ONLY, HTML_MENU with 0 wines), screenshot via Playwright, extract via Claude Vision, persist through same dedup + JSONL pipeline (completed 2026-04-05)
-- [ ] **Phase 7: Full-Field Extraction & Per-Field Confidence Framework** — Expand Vision extraction to 18+ fields, Haiku enrichment to 20+ fields, add per-field confidence scores with 3-tier threshold (reject < 0.5, review 0.5–0.8, accept > 0.8), field-level review queue, and calibration loop for 0.95 dataset-wide accuracy
+- [x] **Phase 7: Full-Field Extraction & Per-Field Confidence Framework** — 18-field Vision extraction, 20+ field Haiku enrichment, per-field {value, confidence, source} JSONB, 3-tier threshold routing, field_review_queue, calibration loop (completed 2026-04-06) — Expand Vision extraction to 18+ fields, Haiku enrichment to 20+ fields, add per-field confidence scores with 3-tier threshold (reject < 0.5, review 0.5–0.8, accept > 0.8), field-level review queue, and calibration loop for 0.95 dataset-wide accuracy
 - [ ] **Phase 8: Web Search Verification & Deep Enrichment** — Per-wine background web search agent: verify extracted data against Wine-Searcher/Vivino/producer sites, resolve contradictions, fill gaps with verified external data, build producer knowledge graph
 - [ ] **Phase 9: Wine Ontology, Taxonomy & Cross-Validation** — Structured region hierarchy, grape family taxonomy, appellation classification rules, automated contradiction detection (e.g., "Barolo" + "France" = impossible), vintage plausibility checks
 - [ ] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context
 - [ ] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals
+- [ ] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety.
 
 ## Phase Details
 
@@ -357,6 +358,40 @@ Plans:
   7. `GET /api/v1/analytics/trends` returns regional trend data (category, grape, region breakdowns)
   8. `GET /api/v1/analytics/wine/{id}/timeline` returns full lifecycle: first_seen, restaurants_carrying, price_history, menu_changes
 
+### Phase 12: Extensive Gap-Filling Research Agent
+**Goal**: Build an autonomous, multi-step research agent that achieves near-perfect dataset coverage
+by targeting wine records with NULL or low-confidence fields after Phases 7–11. The agent uses
+deep multi-source evidence gathering with independent corroboration requirements, producing citable
+fills — not AI guesses. Every promoted value must have a URL, a verbatim snippet, and a retrieval
+timestamp. Conflicted fields (where ≥2 sources disagree) are surfaced for human review rather than
+silently resolved.
+
+**Depends on**: Phase 7 (field_confidence JSONB, merge_field_confidence(), 3-tier routing),
+Phase 8 (Serper/Tavily API integration, web search infrastructure)
+
+**Requirements**: RSCH-01, RSCH-02, RSCH-03, RSCH-04, RSCH-05, RSCH-06, RSCH-07, RSCH-08, RSCH-09, RSCH-10, RSCH-11
+
+**Success Criteria** (what must be TRUE):
+  1. `research_agent_task` Celery task processes eligible records; null rate decreases by ≥ 20% on first full run
+  2. Every auto-promoted fill has ≥ 1 citation in `evidence_citations` with url + snippet + retrieved_at
+  3. `independent_corroboration_rate` ≥ 60% for auto-promoted fields (≥2 sources or 1 tier-A)
+  4. `fetch_verify_pass_rate` ≥ 80% (citations re-confirmed on live pages)
+  5. `conflict_rate` tracked: conflicted fields stored in `conflict_candidates`, NOT auto-promoted
+  6. `human_override_rate` computed and surfaced via metrics endpoint
+  7. `cost_per_filled_field` surfaced and bounded (daily budget cap applied, per-record ceiling $0.25)
+  8. `attempts_per_filled_field` bounded by stop rule (configurable max, default 8)
+  9. `regression_rate` = 0% enforced: `merge_field_confidence()` always preserves higher-confidence data
+  10. `GET /api/v1/research/metrics` returns all 5 metric categories (gap, quality, evidence, throughput, safety)
+  11. E2E test: submit wine with 5 NULL fields → research agent fills ≥3 with citations → metrics endpoint reflects the run
+
+**Plans**: 4 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Wave 1: DB migrations (research_runs, research_run_stats, evidence_citations, conflict_candidates) + research_agent_helpers.py shared module
+- [ ] 12-02-PLAN.md — Wave 2: research_agent_task Celery task (eligibility, evidence loop, Serper, fetch-verify, conflict, corroboration, merge, stats write, budget cap)
+- [ ] 12-03-PLAN.md — Wave 2: API endpoints (GET /metrics, GET /runs, GET /conflicts, POST /trigger) + router registration
+- [ ] 12-04-PLAN.md — Wave 3: Unit tests (≥20, all helpers) + E2E test (RSCH-11: 5 NULL fields → fills → metrics)
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -372,6 +407,7 @@ Plans:
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/? | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 0/? | Planned | — |
 | 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
+| 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
 
 ## Archived Phases (Previous Milestone — Retired)
 
@@ -391,3 +427,4 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Phase 5 planned: 2026-04-04 — 4 plans, 3 waves*
 *Phase 6 added: 2026-04-03 — Image Menu Extraction via Claude Vision (deferred from Phase 2)*
 *Phases 7–11 added: 2026-04-05 — World-class wine dataset pipeline: full-field confidence, web verification, ontology, critic scores, temporal intelligence*
+*Phase 12 added: 2026-04-06 — Extensive Gap-Filling Research Agent: multi-source evidence, corroboration, conflict detection, 5-category metrics dashboard — 4 plans, 3 waves*

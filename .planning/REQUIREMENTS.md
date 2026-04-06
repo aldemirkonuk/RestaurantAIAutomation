@@ -116,6 +116,20 @@
 - [ ] **TEMP-07**: `GET /api/v1/analytics/trends?metro=chicago&period=90d` returns regional trend data: top added wines, top removed wines, category distribution shifts, grape variety trends, region popularity changes
 - [ ] **TEMP-08**: `GET /api/v1/analytics/wine/{id}/timeline` returns full wine lifecycle: first_seen_at, last_seen_at, restaurants_currently_carrying, price_history across restaurants, menu_changes history
 
+### Extensive Gap-Filling Research Agent (Phase 12)
+
+- [ ] **RSCH-01**: `research_agent_task` Celery background task processes eligible wine submissions: records where any priority field has confidence < 0.8 AND `last_research_run_at` is NULL or older than 7 days. On first full batch run, `null_rate_after` < `null_rate_before` by ≥ 20% (measured in `research_run_stats`).
+- [ ] **RSCH-02**: Every auto-promoted field fill has ≥ 1 row in `evidence_citations` with non-null `source_url`, `snippet`, and `retrieved_at`. Auto-promotion without a citation record is not permitted.
+- [ ] **RSCH-03**: `independent_corroboration_rate` ≥ 60%: fraction of auto-promoted fills where `evidence_citations.corroboration_count` ≥ 2 OR `evidence_citations.source_tier` = 'A'. Measurable via `GET /api/v1/research/metrics` under `evidence_hygiene`.
+- [ ] **RSCH-04**: `fetch_verify_pass_rate` ≥ 80%: fraction of evidence citations where `fetch_verified = true` (proposed value confirmed present on live page at retrieval time). Tiered fetch-verify: aiohttp first, Playwright fallback for empty/minimal responses.
+- [ ] **RSCH-05**: Conflict detection enforced: when ≥ 2 evidence-backed candidates propose non-synonym values for the same field, the field is written to `conflict_candidates` JSONB on `master_wine_library_submissions` and NOT written to `field_confidence`. Conflicted fields surface in `GET /api/v1/research/conflicts`.
+- [ ] **RSCH-06**: `human_override_rate` computed and surfaced: fraction of research-agent-promoted values later corrected in `field_corrections` by a human reviewer. Appears in `GET /api/v1/research/metrics` under `quality`. Leading indicator of silent wrong fills.
+- [ ] **RSCH-07**: `cost_per_filled_field` surfaced in `GET /api/v1/research/metrics` under `throughput_cost`. Daily research budget cap (`RESEARCH_DAILY_BUDGET_USD`, default $5.00) enforced before each task run. Per-record ceiling (`RESEARCH_MAX_COST_PER_RECORD_USD`, default $0.25) enforced mid-task; task aborts gracefully with `status = partial` if exceeded.
+- [ ] **RSCH-08**: `attempts_per_filled_field` bounded by stop rule: `call_counter` incremented before every Serper, Gemini, or fetch-verify call; task aborts current record when `call_counter >= RESEARCH_MAX_CALLS_PER_RECORD` (default 8). `attempts` column in `research_run_stats` records actual call count per record.
+- [ ] **RSCH-09**: `regression_rate` = 0% enforced mechanically: `merge_field_confidence()` (from Phase 7 `field_confidence.py`) called before every `field_confidence` write, refusing to overwrite an existing entry with lower confidence. `check_regression_guard()` called explicitly before each merge with result logged.
+- [ ] **RSCH-10**: `GET /api/v1/research/metrics` returns all 5 metric categories in a single JSON response: `gap_closure` (null_rate_before/after, fields_filled distribution, time_to_fill), `quality` (promotion_rate, human_override_rate, conflict_rate, source_tier_mix), `evidence_hygiene` (citation_completeness, independent_corroboration_rate, fetch_verify_pass_rate), `throughput_cost` (records_per_day, cost_per_filled_field, attempts_per_filled_field), `safety` (pii_policy_flags, regression_rate).
+- [ ] **RSCH-11**: E2E test: insert a wine submission with 5 NULL priority fields → call `research_agent_task(submission_id)` with mocked Serper + Gemini → assert ≥ 3 `evidence_citations` rows exist with url + snippet + retrieved_at → assert `field_confidence` updated on submission → assert `GET /api/v1/research/metrics` returns non-zero `evidence_hygiene.citation_completeness`.
+
 ## v2 Requirements (Future)
 
 ### Advanced Extraction
@@ -222,13 +236,26 @@
 | TEMP-06 | Phase 11 | Planned |
 | TEMP-07 | Phase 11 | Planned |
 | TEMP-08 | Phase 11 | Planned |
+|| RSCH-01 | Phase 12 | Planned |
+|| RSCH-02 | Phase 12 | Planned |
+|| RSCH-03 | Phase 12 | Planned |
+|| RSCH-04 | Phase 12 | Planned |
+|| RSCH-05 | Phase 12 | Planned |
+|| RSCH-06 | Phase 12 | Planned |
+|| RSCH-07 | Phase 12 | Planned |
+|| RSCH-08 | Phase 12 | Planned |
+|| RSCH-09 | Phase 12 | Planned |
+|| RSCH-10 | Phase 12 | Planned |
+|| RSCH-11 | Phase 12 | Planned |
 
 **Coverage:**
 - v1 requirements (Phases 1–6): 34 total — 34 complete ✓
 - v1.5 requirements (Phases 7–11): 45 total — 0 complete, 45 planned
-- Grand total: 79 requirements mapped to phases
+- v2.0 requirements (Phase 12): 11 total — 0 complete, 11 planned
+- Grand total: 90 requirements mapped to phases
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-05 — Phases 7–11 requirements added (FCONF-01..12, WSRCH-01..09, ONTO-01..08, CRIT-01..07, TEMP-01..08); 45 new requirements across 5 phases*
+*Last updated: 2026-04-06 — Phase 12 requirements added (RSCH-01..11); 11 new requirements*
+*Previously: 2026-04-05 — Phases 7–11 requirements added (FCONF-01..12, WSRCH-01..09, ONTO-01..08, CRIT-01..07, TEMP-01..08); 45 new requirements across 5 phases*
