@@ -427,6 +427,16 @@ Plans:
 - [x] 12-03-PLAN.md — Wave 2: API endpoints (GET /metrics, GET /runs, GET /conflicts, POST /trigger) + router registration
 - [x] 12-04-PLAN.md — Wave 3: Unit tests (≥20, all helpers) + E2E test (RSCH-11: 5 NULL fields → fills → metrics)
 
+### Phase 12.1: Research Agent SOTA Redesign — Three-Layer Architecture (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 12.1 to break down)
+
 ### Phase 13: Dev Onboarding UI with Manual Override Access
 **Goal**: Build a role-aware onboarding interface that lets developers and certified contributors run ingestion through all supported paths (PDF upload, image scan, crawler URL flow), review the extracted/enriched output, and manually override field values with full auditability. This phase enables controlled dataset authoring so trusted users can contribute records directly while preserving confidence metadata and governance.
 

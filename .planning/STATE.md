@@ -415,5 +415,10 @@ Plan: Not started
 
 ---
 
+### Roadmap Evolution
+- Phase 12.1 inserted after Phase 12: Research Agent SOTA Redesign — Three-Layer Architecture (INSERTED)
+  - Addresses 10 critical bugs in Phase 12 code, 4 unimplemented features, 9 SOTA architectural gaps
+  - Three-layer architecture: deterministic inference (Phase 9 ontology) → cascade LLM enrichment → deep research with Reflexion
+
 *State initialized: 2026-03-30*
-*Last updated: 2026-04-06 — Session 11 complete. Phase 6 IMGX-07 live E2E PASS (Siena Tavern, 46 wines). Milestone v1.0 audit passed 34/34. Haiku 11-field enrichment validated, ready to implement next session.*
+*Last updated: 2026-04-06 — Phase 12.1 inserted for SOTA research agent redesign. Phase 12 complete but has critical bugs and architectural gaps identified via deep analysis.*
