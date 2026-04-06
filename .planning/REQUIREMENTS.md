@@ -57,18 +57,77 @@
 - [x] **IMGX-06**: `ContentType` handling updated: image menu route is explicit, documented, does not break existing HTML or PDF text paths
 - [x] **IMGX-07**: E2E harness: Tredita added to test suite; harness confirms ≥ 1 wine extracted via Vision path
 
-## v2 Requirements
+### Full-Field Extraction & Per-Field Confidence (Phase 7)
+
+- [ ] **FCONF-01**: Claude Vision EXTRACTION_PROMPT expanded to request 18 fields (wine_name, producer, vintage, primary_type, color, country, region, sub_region, appellation, grape_variety, alcohol_pct, price_bottle, price_glass, tasting_notes, description, section_name, bin_number, sweetness_level) with per-field confidence (0.0–1.0) and source ("visible" | "inferred")
+- [ ] **FCONF-02**: Haiku EnrichmentResult expanded to 20+ fields including producer, region, sub_region, appellation, country, grape_variety, color, primary_type, sweetness_level, food_pairing, producer_bio, tasting_notes, alcohol_pct, description + 6 JSONB enrichments (grape_family, wine_structure, sensory_profile, practical_attributes, region_hierarchy, critic_scores stub), each with per-field confidence and source="knowledge"
+- [ ] **FCONF-03**: `field_confidence` JSONB column added to master_wine_library_submissions storing per-field `{value, confidence, source}` for every extracted/enriched field
+- [ ] **FCONF-04**: 3-tier confidence threshold enforced at persist time: confidence < 0.5 → field value set to NULL (rejected); 0.5–0.8 → field persisted AND row inserted into `field_review_queue` with status="pending"; > 0.8 → field auto-accepted, no review flag
+- [ ] **FCONF-05**: `field_review_queue` table created: id, submission_id, field_name, current_value, confidence, source, status (pending|approved|corrected|rejected), reviewer, reviewed_at
+- [ ] **FCONF-06**: `GET /api/v1/quality/review-queue` upgraded to return field-level review items grouped by wine — only fields needing review, not entire records
+- [ ] **FCONF-07**: `PATCH /api/v1/quality/review-queue/{id}` accepts per-field corrections: `{"corrections": {"sub_region": "...", "appellation": "..."}}`, logs each correction to field_corrections table
+- [ ] **FCONF-08**: DB migration adds 6 JSONB columns to master_wine_library: grape_family, wine_structure, sensory_profile, practical_attributes, region_hierarchy, critic_scores
+- [ ] **FCONF-09**: `field_calibration` table created: field_name, confidence_bin (e.g., "0.7-0.8"), total_reviewed, total_correct, actual_accuracy, measured_at — populated by calibration task
+- [ ] **FCONF-10**: `confidence_thresholds` table created: field_name, review_threshold (default 0.5), accept_threshold (default 0.8), last_calibrated_at — auto-adjusted by calibration loop
+- [ ] **FCONF-11**: Calibration Celery periodic task (daily): reads field_corrections for all reviewed wines, computes actual accuracy per field per confidence bin, adjusts thresholds in confidence_thresholds table to maintain ≥ 0.95 accuracy; `GET /api/v1/quality/calibration` returns current thresholds and accuracy stats
+- [ ] **FCONF-12**: E2E test: extract a known menu → verify field_confidence JSONB populated for 18+ fields → verify fields routed correctly through 3-tier threshold → verify review queue contains only sub-threshold fields
+
+### Web Search Verification & Deep Enrichment (Phase 8)
+
+- [ ] **WSRCH-01**: `web_verify_task` Celery background task: accepts wine_id, constructs search query from producer + wine_name + vintage, executes web search via Serper or Tavily API
+- [ ] **WSRCH-02**: Search results (top 5) parsed by Gemini Flash with structured extraction prompt matching master_wine_library schema fields
+- [ ] **WSRCH-03**: Concordance engine compares web-verified fields against existing field_confidence: concordance → boost confidence to 0.95+ with verification_source="web_verified"; contradiction → flag for review with verification_status="contradicted" and both values shown
+- [ ] **WSRCH-04**: `producers` knowledge graph table created: id, name, normalized_name, country, region, sub_region, appellation, founding_year, winemaker_name, production_volume_cases, certifications JSONB, website_url, portfolio JSONB, verified_at, verification_sources TEXT[]
+- [ ] **WSRCH-05**: Producer graph lookup runs BEFORE web search — if producer already verified in `producers` table, instant enrichment applied (skip web search API call)
+- [ ] **WSRCH-06**: `verification_status` added to field_confidence JSONB entries: "unverified" | "web_verified" | "contradicted" | "producer_graph" — tracks provenance of each field value
+- [ ] **WSRCH-07**: Tiered search strategy: only web-search wines where (a) any field confidence < 0.8, OR (b) producer not in knowledge graph, OR (c) wine never web-verified — skip already-verified wines
+- [ ] **WSRCH-08**: Daily web search budget cap: configurable in settings (default $5/day), enforced before executing search tasks; tasks queued but paused when cap reached
+- [ ] **WSRCH-09**: E2E test: submit wine with low-confidence region → web_verify_task searches → field_confidence updated with verification_source and boosted confidence
+
+### Wine Ontology, Taxonomy & Cross-Validation (Phase 9)
+
+- [ ] **ONTO-01**: `wine_regions` table created with tree structure (country → region → sub_region → appellation → commune), seeded with ≥ 2,000 entries covering all major global wine regions; fields: id, name, level, parent_id, country_code, classification_system
+- [ ] **ONTO-02**: `grape_varieties` table created with ≥ 400 varieties; fields: id, name, color, family, aliases TEXT[], typical_regions TEXT[], typical_blending_partners TEXT[]; alias normalization (Shiraz → Syrah) applied at enrichment time
+- [ ] **ONTO-03**: `appellation_rules` table created with grape requirements, min aging months, min vintage release delay, allowed colors, classification levels for ≥ 100 major appellations (Barolo, Chianti Classico, Champagne, Burgundy Grand Cru, etc.)
+- [ ] **ONTO-04**: `vintage_rules` table encodes per-appellation/region release-delay rules for vintage plausibility checks (e.g., Barolo 2024 cannot exist in 2026; Brunello Riserva requires 5 years)
+- [ ] **ONTO-05**: Cross-validation engine runs post-enrichment on every wine: checks region↔country consistency, grape↔appellation compatibility, vintage↔appellation plausibility, color↔grape consistency
+- [ ] **ONTO-06**: `ontology_validation` JSONB stored per wine record: checks_passed, checks_failed, checks_total, failures array with check name, expected value, found value, severity (critical|warning|info)
+- [ ] **ONTO-07**: Critical ontology failures (wrong country, impossible grape-appellation) auto-flag wine for review regardless of field confidence score
+- [ ] **ONTO-08**: Deterministic auto-fills from ontology (appellation → country, appellation → region, grape → color) applied with confidence=1.0 and source="ontology" — these are facts, not inferences
+
+### Critic Scores & Pricing Intelligence (Phase 10)
+
+- [ ] **CRIT-01**: `score_lookup_task` Celery background task: searches for critic scores per wine+vintage across Wine Advocate, Wine Spectator, Vivino, Decanter, JancisRobinson.com (≥ 3 sources attempted per wine)
+- [ ] **CRIT-02**: Scores normalized to 0–100 scale (Vivino 5-point → 100-point, JR 20-point → 100-point) and stored in `critic_scores` JSONB with source name, raw score, normalized score, reviewer name, review date
+- [ ] **CRIT-03**: Composite score computed as weighted average (WA 30%, WS 25%, Vivino 20%, Decanter 15%, JR 10%) when ≥ 2 sources available; stored as `composite` key in critic_scores JSONB
+- [ ] **CRIT-04**: `retail_price_avg` column populated from Wine-Searcher average market price for wines with valid vintage; stored on master_wine_library
+- [ ] **CRIT-05**: `markup_ratio` computed per restaurant_inventory entry: menu_price / retail_price_avg; classified as "value" (< 1.5x), "standard" (1.5–2.5x), "premium" (2.5–4x), "luxury_markup" (> 4x)
+- [ ] **CRIT-06**: Price anomaly detection: markup_ratio > 5x or < 0.8x auto-flagged for review (likely data error or exceptional pricing)
+- [ ] **CRIT-07**: `GET /api/v1/analytics/wine/{id}/scores` returns aggregated critic scores, composite score, retail price, and markup ratio for a wine
+
+### Temporal Menu Intelligence & Analytics (Phase 11)
+
+- [ ] **TEMP-01**: `crawl_schedule` table: restaurant_id, crawl_frequency (weekly|biweekly|monthly), last_crawled_at, next_crawl_at, status (active|paused|error) — configurable per restaurant
+- [ ] **TEMP-02**: `scheduled_recrawl_task` Celery beat task runs daily, selects restaurants where next_crawl_at ≤ now(), triggers WebCrawlerService.crawl_restaurant() for each, updates last_crawled_at and next_crawl_at
+- [ ] **TEMP-03**: Menu diff engine: after re-crawl, compares new wine list against previous crawl via signature_hash — detects additions (new hash), removals (missing hash), price changes (same hash, different price_reference)
+- [ ] **TEMP-04**: `menu_changes` table: restaurant_id, wine_signature_hash, change_type (added|removed|price_change), old_value, new_value, detected_at; tracks full menu evolution history
+- [ ] **TEMP-05**: `wine_popularity` materialized view or computed query: per wine, count of distinct restaurants currently carrying it, computed from latest crawl per restaurant
+- [ ] **TEMP-06**: `trending_wines` computation: wines with highest positive/negative delta in restaurant carrying count over configurable windows (30/60/90 days)
+- [ ] **TEMP-07**: `GET /api/v1/analytics/trends?metro=chicago&period=90d` returns regional trend data: top added wines, top removed wines, category distribution shifts, grape variety trends, region popularity changes
+- [ ] **TEMP-08**: `GET /api/v1/analytics/wine/{id}/timeline` returns full wine lifecycle: first_seen_at, last_seen_at, restaurants_currently_carrying, price_history across restaurants, menu_changes history
+
+## v2 Requirements (Future)
 
 ### Advanced Extraction
 
 - **ADV-01**: Fine-tuned Claude Haiku model on WineOps extraction data (when >10K labeled samples)
 - **ADV-02**: Multi-modal menu understanding: extract from handwritten specials boards
-- **ADV-03**: Vintage verification against wine database (Wine-Searcher API or similar)
+- **ADV-03**: Vintage verification against wine database (Wine-Searcher API or similar) — partially addressed by Phase 9 vintage_rules
 
 ### Crawler Enhancements
 
 - **CRAWL-01**: OpenTable discovery → auto-queue restaurant websites for crawling
-- **CRAWL-02**: Change detection: re-crawl only when restaurant website changes
+- **CRAWL-02**: Change detection: re-crawl only when restaurant website changes — partially addressed by Phase 11 menu diff engine
 - **CRAWL-03**: Yelp/Google Maps integration for restaurant discovery
 
 ## Out of Scope
@@ -119,12 +178,57 @@
 | IMGX-05 | Phase 6 | Complete |
 | IMGX-06 | Phase 6 | Complete |
 | IMGX-07 | Phase 6 | Complete |
+| FCONF-01 | Phase 7 | Planned |
+| FCONF-02 | Phase 7 | Planned |
+| FCONF-03 | Phase 7 | Planned |
+| FCONF-04 | Phase 7 | Planned |
+| FCONF-05 | Phase 7 | Planned |
+| FCONF-06 | Phase 7 | Planned |
+| FCONF-07 | Phase 7 | Planned |
+| FCONF-08 | Phase 7 | Planned |
+| FCONF-09 | Phase 7 | Planned |
+| FCONF-10 | Phase 7 | Planned |
+| FCONF-11 | Phase 7 | Planned |
+| FCONF-12 | Phase 7 | Planned |
+| WSRCH-01 | Phase 8 | Planned |
+| WSRCH-02 | Phase 8 | Planned |
+| WSRCH-03 | Phase 8 | Planned |
+| WSRCH-04 | Phase 8 | Planned |
+| WSRCH-05 | Phase 8 | Planned |
+| WSRCH-06 | Phase 8 | Planned |
+| WSRCH-07 | Phase 8 | Planned |
+| WSRCH-08 | Phase 8 | Planned |
+| WSRCH-09 | Phase 8 | Planned |
+| ONTO-01 | Phase 9 | Planned |
+| ONTO-02 | Phase 9 | Planned |
+| ONTO-03 | Phase 9 | Planned |
+| ONTO-04 | Phase 9 | Planned |
+| ONTO-05 | Phase 9 | Planned |
+| ONTO-06 | Phase 9 | Planned |
+| ONTO-07 | Phase 9 | Planned |
+| ONTO-08 | Phase 9 | Planned |
+| CRIT-01 | Phase 10 | Planned |
+| CRIT-02 | Phase 10 | Planned |
+| CRIT-03 | Phase 10 | Planned |
+| CRIT-04 | Phase 10 | Planned |
+| CRIT-05 | Phase 10 | Planned |
+| CRIT-06 | Phase 10 | Planned |
+| CRIT-07 | Phase 10 | Planned |
+| TEMP-01 | Phase 11 | Planned |
+| TEMP-02 | Phase 11 | Planned |
+| TEMP-03 | Phase 11 | Planned |
+| TEMP-04 | Phase 11 | Planned |
+| TEMP-05 | Phase 11 | Planned |
+| TEMP-06 | Phase 11 | Planned |
+| TEMP-07 | Phase 11 | Planned |
+| TEMP-08 | Phase 11 | Planned |
 
 **Coverage:**
-- v1 requirements: 34 total (27 original + 7 IMGX added 2026-04-05)
-- Mapped to phases: 34
+- v1 requirements (Phases 1–6): 34 total — 34 complete ✓
+- v1.5 requirements (Phases 7–11): 45 total — 0 complete, 45 planned
+- Grand total: 79 requirements mapped to phases
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-05 — all Phase 1–6 requirements marked Complete; IMGX-01..07 added for Phase 6*
+*Last updated: 2026-04-05 — Phases 7–11 requirements added (FCONF-01..12, WSRCH-01..09, ONTO-01..08, CRIT-01..07, TEMP-01..08); 45 new requirements across 5 phases*
