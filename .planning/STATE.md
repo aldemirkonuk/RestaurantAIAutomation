@@ -326,6 +326,7 @@ Plan: Not started
 | 260401-x24 | Benchmark claude-haiku-4-5-20251001 vs claude-sonnet-4-20250514 on 10 Phase 1 menu images — field completeness, latency, cost; produce model-selection recommendation | 2026-04-02 | 29158b3 | [260401-x24-investigate-whether-haiku-or-sonnet-haik](./quick/260401-x24-investigate-whether-haiku-or-sonnet-haik/) |
 | 260402-kj0 | Build Phase 2 E2E test harness: crawl real restaurant URLs via WebCrawlerService, score wine field completeness, validate JSONL schema, confirm dedup, write REPORT.md | 2026-04-02 | 740b748 | [260402-kj0-build-phase-2-e2e-test-harness-crawl-rea](./quick/260402-kj0-build-phase-2-e2e-test-harness-crawl-rea/) |
 | 260403-dgf | Update crawler JSONL output schema to Supabase-aligned 23-field format: rewrite _persist_crawled_wines, update CRAWL_TEXT_PROMPT (primary_type/price_reference), align e2e harness SCORED_FIELDS and validate_schema | 2026-04-03 | 891f5f8 | [260403-dgf-update-crawler-jsonl-output-schema-to-su](./quick/260403-dgf-update-crawler-jsonl-output-schema-to-su/) |
+| 260406-2hy | try phase 8 with live API call, no mock data | 2026-04-06 | ec83274 | [260406-2hy-try-phase-8-with-live-api-call-no-mock-d](./quick/260406-2hy-try-phase-8-with-live-api-call-no-mock-d/) |
 
 ---
 
