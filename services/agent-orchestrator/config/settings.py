@@ -69,6 +69,31 @@ class Settings:
         self.research_fetch_verify_enabled: bool = (
             os.getenv("RESEARCH_FETCH_VERIFY_ENABLED", "true").lower() == "true"
         )
+        # Phase 12.1: Cascade model routing (D-02)
+        self.research_cascade_haiku_model: str = os.getenv(
+            "RESEARCH_CASCADE_HAIKU_MODEL", "claude-haiku-4-5-20251001"
+        )
+        self.research_cascade_flash_model: str = os.getenv(
+            "RESEARCH_CASCADE_FLASH_MODEL", "gemini-2.0-flash"
+        )
+        self.research_cascade_sonnet_model: str = os.getenv(
+            "RESEARCH_CASCADE_SONNET_MODEL", "claude-sonnet-4-20250514"
+        )
+        # Phase 12.1: Entity cache (D-04)
+        self.redis_url: Optional[str] = os.getenv("REDIS_URL")
+        self.research_cache_wine_ttl_days: int = int(
+            os.getenv("RESEARCH_CACHE_WINE_TTL_DAYS", "30")
+        )
+        self.research_cache_producer_ttl_days: int = int(
+            os.getenv("RESEARCH_CACHE_PRODUCER_TTL_DAYS", "90")
+        )
+        self.research_cache_max_memory_entries: int = int(
+            os.getenv("RESEARCH_CACHE_MAX_MEMORY_ENTRIES", "5000")
+        )
+        # Phase 12.1: Reflexion retry (D-03)
+        self.research_max_reflexion_retries: int = int(
+            os.getenv("RESEARCH_MAX_REFLEXION_RETRIES", "3")
+        )
 
     @property
     def supabase_client(self):
