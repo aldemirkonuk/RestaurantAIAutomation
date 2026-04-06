@@ -114,6 +114,19 @@ def _validate_sync(wine_id: str) -> Optional[Dict[str, Any]]:
         result.autofills_applied,
     )
 
+    # CRIT-01 / D-03a: Trigger score + dataset enrichment after ontology validation (chain end)
+    try:
+        from jobs.score_tasks import score_lookup_task, dataset_enrich_task
+        score_lookup_task.delay(wine_id)
+        dataset_enrich_task.delay(wine_id)
+        logger.info(
+            "_validate_sync: queued score_lookup_task + dataset_enrich_task for wine_id=%s", wine_id
+        )
+    except Exception as exc:
+        logger.warning(
+            "_validate_sync: failed to queue score tasks for wine_id=%s: %s", wine_id, exc
+        )
+
     return {
         "wine_id": wine_id,
         "checks_passed": result.checks_passed,

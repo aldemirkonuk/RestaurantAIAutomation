@@ -20,7 +20,7 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     # Include tasks from the tasks module
-    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks", "jobs.ontology_tasks"),
+    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks", "jobs.ontology_tasks", "jobs.score_tasks"),
 )
 
 # =============================================================================
@@ -73,6 +73,13 @@ celery_app.conf.beat_schedule = {
     "calibration-daily": {
         "task": "calibration.calibrate_field_thresholds",
         "schedule": crontab(hour=4, minute=0),  # 4 AM UTC daily
+        "options": {"expires": 3500},
+    },
+
+    # Nightly critic score refresh — rescores stale wines (empty critic_scores or > 30 days old)
+    "score-stale-nightly": {
+        "task": "score.rescore_stale_wines",
+        "schedule": crontab(hour=3, minute=0),  # 3 AM UTC
         "options": {"expires": 3500},
     },
 }
