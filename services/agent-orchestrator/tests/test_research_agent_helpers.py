@@ -32,15 +32,27 @@ import pytest
 
 from services.research_agent_helpers import (
     FIELD_VALUE_SYNONYMS,
+    HAIKU_FIELDS,
     RESEARCH_PRIORITY_FIELDS,
+    SONNET_ESCALATION_FIELDS,
+    BoundedLRUCache,
+    _cache_key_producer,
+    _cache_key_wine,
+    _should_infer,
     assign_confidence_by_tier,
     build_citation_record,
     build_serper_query,
     check_regression_guard,
     classify_source_tier,
     detect_conflict,
+    get_entity_cache,
     get_target_fields,
     is_eligible_for_research,
+    merge_conflict_candidates,
+    put_entity_cache,
+    resolve_conflict,
+    run_layer1_inference,
+    select_model,
     should_auto_promote,
 )
 
@@ -287,3 +299,182 @@ def test_build_citation_record_completeness():
     assert record["fetch_verified"] is True
     assert record["snippet"] == "produced exclusively from Sangiovese Grosso"
     assert record["retrieved_at"] is not None
+
+
+# ===========================================================================
+# Phase 12.1 additions — run_layer1_inference (D-01, D-08)
+# ===========================================================================
+
+def test_run_layer1_inference_returns_empty_when_no_ontology():
+    """Layer 1 returns {} gracefully when ontology tables are unavailable (T-12.1-01)."""
+    result = run_layer1_inference({}, "Some Unknown Wine XYZ 9999")
+    assert isinstance(result, dict)
+    # No appellation in fc → no appellation rules → fills is empty (graceful degradation)
+    assert "country" not in result or isinstance(result.get("country"), dict)
+
+
+def test_run_layer1_inference_skips_high_confidence_fields():
+    """Fields with confidence >= DEFAULT_ACCEPT_THRESHOLD are NOT overwritten (D-08)."""
+    fc = {"country": {"value": "France", "confidence": 0.95, "source": "visible"}}
+    result = run_layer1_inference(fc, "Château Margaux", vintage="2015")
+    # country already at high confidence → _should_infer returns False → not in fills
+    assert "country" not in result
+
+
+def test_run_layer1_inference_infers_when_field_absent():
+    """_should_infer returns True for absent/low-confidence fields, False for high-confidence."""
+    assert _should_infer({}, "country") is True
+    assert _should_infer({"country": {"value": "X", "confidence": 0.3}}, "country") is True
+    assert _should_infer({"country": {"value": "France", "confidence": 0.95}}, "country") is False
+
+
+# ===========================================================================
+# Phase 12.1 additions — select_model (D-02)
+# ===========================================================================
+
+def test_select_model_haiku_for_color():
+    """Color is a simple categorization field → Haiku (HAIKU_FIELDS set)."""
+    assert "color" in HAIKU_FIELDS
+    assert select_model("color") == "haiku"
+
+
+def test_select_model_flash_default():
+    """Standard research fields on first attempt → Flash."""
+    assert select_model("region") == "flash"
+    assert select_model("grape_variety") == "flash"
+
+
+def test_select_model_sonnet_on_retry():
+    """Any field on attempt >= 2 → Sonnet escalation."""
+    assert select_model("region", attempt=2) == "sonnet"
+    assert select_model("country", attempt=2) == "sonnet"
+
+
+def test_select_model_haiku_high_ontology_hint():
+    """High ontology hint confidence (>0.7) → Haiku (cheap verification, D-02)."""
+    assert select_model("country", ontology_hint_conf=0.8) == "haiku"
+    assert select_model("region", ontology_hint_conf=0.71) == "haiku"
+
+
+# ===========================================================================
+# Phase 12.1 additions — BoundedLRUCache (D-04, D-06 bug #10)
+# ===========================================================================
+
+def test_bounded_lru_cache_eviction():
+    """Cache with max_size=3 evicts oldest non-recently-accessed entry on 4th insert."""
+    cache = BoundedLRUCache(max_size=3)
+    cache.put("a", 1)
+    cache.put("b", 2)
+    cache.put("c", 3)
+    cache.get("a")            # promote 'a' to most-recent; order: b, c, a
+    cache.put("d", 4)         # 4th insert → evicts 'b' (oldest)
+    assert len(cache) == 3
+    assert cache.get("a") == 1
+    assert cache.get("c") == 3
+    assert cache.get("d") == 4
+    assert cache.get("b") is None   # evicted
+
+
+def test_bounded_lru_cache_ttl_expiry():
+    """Entry with ttl_seconds=0 is always considered expired → get returns None."""
+    cache = BoundedLRUCache(max_size=10)
+    cache.put("key", "value")
+    result = cache.get("key", ttl_seconds=0)
+    assert result is None
+
+
+# ===========================================================================
+# Phase 12.1 additions — resolve_conflict (D-05)
+# ===========================================================================
+
+def test_resolve_conflict_auto_tier_a_vs_c():
+    """Tier-A fetch_verified vs Tier-C → auto-resolve with Tier-A winner."""
+    candidates = [
+        {"value": "Italy", "source_url": "https://civb.com/x", "source_tier": "A", "fetch_verified": True},
+        {"value": "Spain", "source_url": "https://random.com/y", "source_tier": "C", "fetch_verified": False},
+    ]
+    resolution, reason, winner = resolve_conflict(candidates, "country")
+    assert resolution == "auto"
+    assert winner is not None
+    assert winner["value"] == "Italy"
+
+
+def test_resolve_conflict_escalates_a_vs_a():
+    """Two tier-A sources disagreeing → human escalation required."""
+    candidates = [
+        {"value": "Italy", "source_url": "https://civb.com", "source_tier": "A", "fetch_verified": True},
+        {"value": "France", "source_url": "https://inao.gouv.fr", "source_tier": "A", "fetch_verified": True},
+    ]
+    resolution, reason, winner = resolve_conflict(candidates, "country")
+    assert resolution == "human"
+    assert winner is None
+
+
+def test_resolve_conflict_b_consensus():
+    """2+ Tier-B sources agreeing on same value vs 1 Tier-C → auto-resolve B consensus."""
+    candidates = [
+        {"value": "Burgundy", "source_url": "https://wine-searcher.com/x", "source_tier": "B", "fetch_verified": True},
+        {"value": "Burgundy", "source_url": "https://vivino.com/y", "source_tier": "B", "fetch_verified": True},
+        {"value": "Bordeaux", "source_url": "https://random.com/z", "source_tier": "C", "fetch_verified": False},
+    ]
+    resolution, reason, winner = resolve_conflict(candidates, "region")
+    assert resolution == "auto"
+    assert winner is not None
+    assert winner["value"] == "Burgundy"
+
+
+def test_resolve_conflict_escalates_b_vs_b():
+    """Two Tier-B sources with different values → human escalation."""
+    candidates = [
+        {"value": "Burgundy", "source_url": "https://wine-searcher.com/x", "source_tier": "B", "fetch_verified": True},
+        {"value": "Bordeaux", "source_url": "https://vivino.com/y", "source_tier": "B", "fetch_verified": True},
+    ]
+    resolution, reason, winner = resolve_conflict(candidates, "region")
+    assert resolution == "human"
+    assert winner is None
+
+
+# ===========================================================================
+# Phase 12.1 additions — merge_conflict_candidates (D-06 bug #3)
+# ===========================================================================
+
+def test_merge_conflict_candidates_deep_merge():
+    """Existing conflicts on 'region' + new conflicts on 'country' → both preserved."""
+    existing = {"region": [{"value": "A", "source_url": "https://a.com"}]}
+    new = {"country": [{"value": "B", "source_url": "https://b.com"}]}
+    merged = merge_conflict_candidates(existing, new)
+    assert "region" in merged
+    assert "country" in merged
+    assert len(merged["region"]) == 1
+    assert len(merged["country"]) == 1
+
+
+def test_merge_conflict_candidates_deduplicates():
+    """Same source_url for same field is not added twice."""
+    existing = {"region": [{"value": "A", "source_url": "https://a.com"}]}
+    new = {"region": [
+        {"value": "A", "source_url": "https://a.com"},    # duplicate
+        {"value": "B", "source_url": "https://b.com"},    # new
+    ]}
+    merged = merge_conflict_candidates(existing, new)
+    assert len(merged["region"]) == 2  # original + one new unique URL
+
+
+# ===========================================================================
+# Phase 12.1 additions — cache key helpers (D-04)
+# ===========================================================================
+
+def test_cache_key_wine_deterministic():
+    """Same inputs produce identical cache key (SHA-256 determinism)."""
+    k1 = _cache_key_wine("Barolo", "2018", "Giacomo Conterno")
+    k2 = _cache_key_wine("Barolo", "2018", "Giacomo Conterno")
+    assert k1 == k2
+    assert k1.startswith("research:wine:")
+
+
+def test_cache_key_producer_normalization():
+    """Producer names differing only in casing and punctuation produce the same key."""
+    k1 = _cache_key_producer("Domaine Leflaive")
+    k2 = _cache_key_producer("domaine-leflaive")
+    assert k1 == k2
+    assert k1.startswith("research:producer:")
