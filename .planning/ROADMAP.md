@@ -189,6 +189,15 @@ Plans:
 ### Phase 8: Web Search Verification & Deep Enrichment
 **Goal**: Build a per-wine background web search agent that verifies AI-extracted/inferred data against authoritative external sources (Wine-Searcher, Vivino, producer websites, wine databases) and fills remaining gaps with verified external data. Construct a `producers` knowledge graph table that accelerates future enrichment — once a producer is verified, every future wine from that producer gets instant enrichment without web search. This phase transforms "Claude thinks this is Burgundy" into "Wine-Searcher confirms this is Burgundy" — the difference between an AI-generated dataset and a verified knowledge base.
 
+**Plans**: 5 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Wave 1: DB migration (producers table + UNIQUE INDEX) + settings patch (SERPER_API_KEY, WEB_SEARCH_DAILY_BUDGET_USD) + requirements.txt + [BLOCKING] supabase db push
+- [ ] 08-02-PLAN.md — Wave 2a: serper_client.py (Serper API httpx wrapper) + producer_normalization.py (normalize_producer_name + build_search_query) — parallel with 08-03
+- [ ] 08-03-PLAN.md — Wave 2b: web_verification_service.py (WineVerificationResult Pydantic + parse_search_results Gemini Flash + concordance engine + producer graph operations) — parallel with 08-02
+- [ ] 08-04-PLAN.md — Wave 3: web_verify_tasks.py Celery task (Redis NX dedup + budget cap INCRBYFLOAT + _verify_async) + celery_app.py import + haiku_tasks.py trigger
+- [ ] 08-05-PLAN.md — Wave 4: test_web_verification.py (11 tests: 10 unit + 1 E2E WSRCH-09)
+
 **Rationale**: Phase 7 gives us full-field extraction with confidence scores, but even high-confidence AI inferences are still inferences. A 0.85-confidence "region: Burgundy" from Haiku is Claude's best guess from training data — it could be wrong for obscure producers or unusual wines. Web verification provides ground truth. Additionally, fields like retail_price_avg, critic_scores, producer founding year, winemaker name, and organic certification are NOT inferable from wine name alone — they require external lookup. The producer knowledge graph is a multiplier: verify "Domaine Leflaive" once, and every Leflaive wine ever scanned gets instant verified enrichment for producer, region (Burgundy), sub_region (Puligny-Montrachet), country (France), and certifications (biodynamic).
 
 **Web search pipeline (per wine, async Celery task)**:
@@ -403,7 +412,7 @@ Plans:
 | 5. Cost & Quality Guardrails | 4/4 | Complete | 2026-04-05 |
 | 6. Image Menu Extraction via Claude Vision | 3/3 | Complete | 2026-04-05 |
 | 7. Full-Field Extraction & Per-Field Confidence | 0/? | Planned | — |
-| 8. Web Search Verification & Deep Enrichment | 0/? | Planned | — |
+| 8. Web Search Verification & Deep Enrichment | 0/5 | Planned | — |
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/? | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 0/? | Planned | — |
 | 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
