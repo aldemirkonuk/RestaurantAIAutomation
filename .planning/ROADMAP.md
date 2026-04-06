@@ -19,7 +19,7 @@ Thirteen phases building the world's most sophisticated restaurant wine intellig
 - [x] **Phase 8: Web Search Verification & Deep Enrichment** — Per-wine background web search agent: verify extracted data against Wine-Searcher/Vivino/producer sites, resolve contradictions, fill gaps with verified external data, build producer knowledge graph (completed 2026-04-06)
 - [ ] **Phase 9: Wine Ontology, Taxonomy & Cross-Validation** — Structured region hierarchy, grape family taxonomy, appellation classification rules, automated contradiction detection (e.g., "Barolo" + "France" = impossible), vintage plausibility checks
 - [x] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context (completed 2026-04-06)
-- [ ] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals
+- [x] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals (completed 2026-04-06)
 - [ ] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety.
 - [ ] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables.
 
@@ -387,11 +387,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 11-01-PLAN.md — Wave 1: DB migration (5 tables + backfill) + settings.py patch + [BLOCKING] supabase db push
-- [ ] 11-02-PLAN.md — Wave 2a (parallel): MenuDiffService + test_menu_diff_service.py (TEMP-03, TEMP-04)
-- [ ] 11-03-PLAN.md — Wave 2b (parallel): CrawlResult.wines patch + recrawl_tasks.py + celery_app update + test_recrawl_tasks.py (TEMP-02)
-- [ ] 11-04-PLAN.md — Wave 3: trend_tasks.py (popularity + trending) + celery_app update + test_trend_tasks.py (TEMP-05, TEMP-06)
-- [ ] 11-05-PLAN.md — Wave 4: analytics_routes.py GET /trends + GET /wine/{id}/timeline + test_temporal_analytics.py (TEMP-07, TEMP-08)
+- [x] 11-01-PLAN.md — Wave 1: DB migration (5 tables + backfill) + settings.py patch + [BLOCKING] supabase db push
+- [x] 11-02-PLAN.md — Wave 2a (parallel): MenuDiffService + test_menu_diff_service.py (TEMP-03, TEMP-04)
+- [x] 11-03-PLAN.md — Wave 2b (parallel): CrawlResult.wines patch + recrawl_tasks.py + celery_app update + test_recrawl_tasks.py (TEMP-02)
+- [x] 11-04-PLAN.md — Wave 3: trend_tasks.py (popularity + trending) + celery_app update + test_trend_tasks.py (TEMP-05, TEMP-06)
+- [x] 11-05-PLAN.md — Wave 4: analytics_routes.py GET /trends + GET /wine/{id}/timeline + test_temporal_analytics.py (TEMP-07, TEMP-08)
 
 ### Phase 12: Extensive Gap-Filling Research Agent
 **Goal**: Build an autonomous, multi-step research agent that achieves near-perfect dataset coverage
@@ -482,7 +482,7 @@ Plans:
 | 8. Web Search Verification & Deep Enrichment | 5/5 | Complete    | 2026-04-06 |
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/5 | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 6/6 | Complete    | 2026-04-06 |
-| 11. Temporal Menu Intelligence & Analytics | 0/5 | Planned | — |
+| 11. Temporal Menu Intelligence & Analytics | 5/5 | Complete    | 2026-04-06 |
 | 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
 | 13. Dev Onboarding UI with Manual Override Access | 0/5 | Planned | — |
 
