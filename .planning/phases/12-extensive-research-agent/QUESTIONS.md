@@ -1,10 +1,14 @@
 # Phase 12: Extensive Gap-Filling Research Agent — Open Questions
 
-**Status:** Awaiting user answers before execution begins.
+**Status:** ✅ ALL ANSWERED — see `12-CONTEXT.md` for finalized decisions.
+**Answered:** 2026-04-06
 **Phase dir:** `.planning/phases/12-extensive-research-agent/`
 
-Answers will be captured in a `12-CONTEXT.md` before the executor runs.
-Each question includes the default assumption the planner will use if no answer is provided.
+All 5 questions were answered by the user. Decisions are locked in `12-CONTEXT.md`.
+The plan files (12-01 through 12-04) have been updated to reflect the locked decisions.
+Do NOT use the defaults below — they have been superseded by `12-CONTEXT.md`.
+
+---
 
 ---
 

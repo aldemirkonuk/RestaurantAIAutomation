@@ -53,6 +53,12 @@ research.
 A record passes the gate only if both conditions are true: not recently researched, and has at
 least one eligible field.
 
+**Scope (locked 2026-04-06):** The gate checks ALL 31 content fields in the DB schema, not just
+the original Core 10 default. Fields like `section_name` or `price_bottle` that rarely yield
+online evidence still count toward null rate tracking — they'll consume ≤ 1 tool call and be
+marked `unchanged` when no evidence is found. Fields with `source: "human_resolved"` in
+`field_confidence` are always excluded, regardless of their confidence value.
+
 ---
 
 ## Step 2 — Run Accounting
@@ -94,11 +100,13 @@ plus the known producer if available. For `producer`, the query is: `"who makes 
 too many irrelevant snippets.
 
 **Serper execution.** The query is sent to the Serper API (the same integration built in Phase 8).
-Top 5 results are returned as `{url, title, snippet}` objects. Each result is tentatively assigned
-a source tier based on its domain: the producer's own website or a known regulatory body (INAO,
-TTB, Consorzio) is tier-A; Wine-Searcher, Vivino, Decanter, Wine Spectator, Jancis Robinson are
-tier-B; anything else is tier-C. The tier assignment happens via a domain lookup against a
-configurable blocklist/allowlist.
+Top 5 results are returned as `{url, title, snippet}` objects. Each result is assigned a source
+tier from an expanded allowlist of 40+ authoritative domains across 15 wine-producing countries
+(INAO, CIVB, Consorzio per DOC/DOCG, TTB COLA, VDP, Wine Australia, ICEX, IVV, eAmbrosia EU GI
+register, and others). Dynamic producer detection: if the URL's registered domain contains the
+normalized producer name, it is classified tier-A regardless of whether it appears in the static
+list. Wine-Searcher, Vivino, Decanter, Wine Spectator, Jancis Robinson, Wine Enthusiast, and
+CellarTracker are tier-B. Everything else is tier-C.
 
 **Candidate extraction.** The snippets from Serper results are passed to Gemini Flash with a
 structured extraction prompt that asks: "From these search snippets, what is the most likely value
@@ -106,13 +114,20 @@ for `{field_name}` for this wine? Return a JSON array of candidates, each with {
 source_tier, confidence, snippet_used}." The LLM is not asked to guess — it is asked to extract
 from the provided text. If no candidate is extractable, the field is skipped for this run.
 
-**Fetch-verify.** For the top-ranked candidate, the agent re-fetches the source URL and checks
-whether the proposed value string is present in the live page content. This catches the common
-failure mode where a search snippet is stale (the page was updated since indexing) or where the
-snippet was truncated in a misleading way. If the fetch-verify passes, `fetch_verified = true` is
-recorded on the evidence row. If it fails (value not found on live page), the candidate is
-downgraded but not discarded — it still contributes to tier-C evidence with `fetch_verified = false`.
-The `fetch_verify_pass_rate` metric tracks the ratio globally.
+**Fetch-verify (tiered + semantic).** For the top-ranked candidate, the agent runs a three-step
+verification pipeline. First, `httpx` async GET retrieves the live page (~0.3–0.8s). If the
+response body is under 2 KB, contains no wine-related keywords, or the source is tier-A, Playwright
+renders the page fully (~3–5s) — regulatory and producer sites routinely use JavaScript-rendered
+content that a raw GET misses. After fetching, matching is semantic rather than substring: values
+are normalized (lowercased, diacritics stripped via Unicode NFC), then matched with word-boundary
+regex; if that fails, Levenshtein distance ≤ 15% of the proposed value's length is accepted (handles
+minor formatting differences like "Brunello Di Montalcino" vs "Brunello di Montalcino"). Numeric
+fields (alcohol_pct, vintage, price) require exact numeric match after stripping non-numeric chars.
+Verified page text is cached per URL for 7 days (in `evidence_url_cache` table) so multiple field
+lookups against the same producer page don't re-fetch. If verification passes, `fetch_verified = true`
+is recorded. If it fails, the candidate is downgraded but not discarded — it still contributes as
+tier-C evidence with `fetch_verified = false`. The `fetch_verify_pass_rate` metric is broken down
+by source tier so you can see whether official sites verify at higher rates than generic web.
 
 The call counter increments by 2 for this field: once for the Serper call and once for the
 fetch-verify HTTP request. If the counter is at 7 of 8 and the current field needs a Serper call
@@ -279,7 +294,17 @@ It does not hallucinate fills. If no evidence is found in 8 calls, the field sta
 gets a well-documented gap rather than a plausible lie.
 
 It does not overwrite human corrections. Fields with `source: "human_resolved"` in `field_confidence`
-are excluded from the eligibility check — the agent skips them at the eligibility gate.
+are excluded from the eligibility check. However, if the agent finds tier-A evidence that
+contradicts a human-resolved value, it writes a challenge record to `resolution_challenges` —
+it does NOT overwrite the field, but it surfaces the discrepancy for human re-review. Tier-B and
+tier-C contradictions to human resolutions are silently discarded (trade-press snippets are not
+grounds to override human judgment).
+
+After 180 days, human-resolved fields enter a staleness window: the original citation URL is
+re-fetched to confirm the value is still present on the live page. If the page now shows something
+different, the field's confidence drops from 1.0 to 0.85 and re-enters the review queue with
+source `"human_resolved_stale"` — flagging that the human review may need refreshing, not that
+the original review was wrong.
 
 It does not auto-promote conflicted fields. A genuine source disagreement goes into
 `conflict_candidates` for human resolution, never into the canonical `field_confidence` map.
