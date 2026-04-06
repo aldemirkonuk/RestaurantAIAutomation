@@ -239,6 +239,14 @@ Plans:
 
 ### Phase 9: Wine Ontology, Taxonomy & Cross-Validation
 **Goal**: Build a structured wine knowledge system — region hierarchies, grape family taxonomies, appellation classification rules, and vintage plausibility matrices — that enables automated cross-validation of every field on every wine record. When a record says "Barolo" from "France", the ontology catches it instantly. When a record says "2024 vintage Brunello di Montalcino", the vintage rules know that's impossible (DOCG requires 2+ years aging, 4+ for Riserva). This phase turns the dataset from "we trust Claude" into "we trust Claude AND verified it against the rules of winemaking."
+**Plans**: 5 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Wave 1: DB migration (4 ontology tables + ltree probe + ontology_validation column + source constraint extension)
+- [ ] 09-02-PLAN.md — Wave 1 (parallel): Seed data generation script + 4 SQL seed files (≥2,000 regions, ≥400 grapes, ≥100 appellation rules)
+- [ ] 09-03-PLAN.md — Wave 2: Ontology services (ontology_normalization.py + ontology_validation_service.py with 4 checkers + autofill)
+- [ ] 09-04-PLAN.md — Wave 3: Celery task (ontology_tasks.py) + chain wiring (web_verify_tasks.py primary + haiku_tasks.py fallback)
+- [ ] 09-05-PLAN.md — Wave 4: Tests (test_ontology_validation.py ≥8 tests + test_ontology_tasks.py ≥4 tests)
 
 **Rationale**: AI models hallucinate. Even at 0.95 confidence, 5% of fields could be wrong — and some errors are catastrophic for dataset credibility (wrong country, impossible vintage, mismatched grape-appellation). Rule-based validation catches errors that statistical confidence cannot. A region hierarchy means that if we know the appellation, we can auto-fill region, sub_region, and country with 1.0 confidence — these are facts, not inferences. A grape-appellation matrix means that if a wine is labeled "Châteauneuf-du-Pape" but the grape says "Riesling", we know something is wrong. This is the layer that pushes accuracy from 0.95 to 0.99.
 
@@ -413,7 +421,7 @@ Plans:
 | 6. Image Menu Extraction via Claude Vision | 3/3 | Complete | 2026-04-05 |
 | 7. Full-Field Extraction & Per-Field Confidence | 0/? | Planned | — |
 | 8. Web Search Verification & Deep Enrichment | 5/5 | Complete    | 2026-04-06 |
-| 9. Wine Ontology, Taxonomy & Cross-Validation | 0/? | Planned | — |
+| 9. Wine Ontology, Taxonomy & Cross-Validation | 0/5 | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 0/? | Planned | — |
 | 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
 | 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
