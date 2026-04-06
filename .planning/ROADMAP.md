@@ -16,7 +16,7 @@ Twelve phases building the world's most sophisticated restaurant wine intelligen
 - [x] **Phase 5: Cost & Quality Guardrails** — Monthly spend caps, per-extraction cost logging, human review queue for low-confidence wines (completed 2026-04-05)
 - [x] **Phase 6: Image Menu Extraction via Claude Vision** — Detect image-embedded menus (ContentType.IMAGE_ONLY, HTML_MENU with 0 wines), screenshot via Playwright, extract via Claude Vision, persist through same dedup + JSONL pipeline (completed 2026-04-05)
 - [x] **Phase 7: Full-Field Extraction & Per-Field Confidence Framework** — 18-field Vision extraction, 20+ field Haiku enrichment, per-field {value, confidence, source} JSONB, 3-tier threshold routing, field_review_queue, calibration loop (completed 2026-04-06) — Expand Vision extraction to 18+ fields, Haiku enrichment to 20+ fields, add per-field confidence scores with 3-tier threshold (reject < 0.5, review 0.5–0.8, accept > 0.8), field-level review queue, and calibration loop for 0.95 dataset-wide accuracy
-- [ ] **Phase 8: Web Search Verification & Deep Enrichment** — Per-wine background web search agent: verify extracted data against Wine-Searcher/Vivino/producer sites, resolve contradictions, fill gaps with verified external data, build producer knowledge graph
+- [x] **Phase 8: Web Search Verification & Deep Enrichment** — Per-wine background web search agent: verify extracted data against Wine-Searcher/Vivino/producer sites, resolve contradictions, fill gaps with verified external data, build producer knowledge graph (completed 2026-04-06)
 - [ ] **Phase 9: Wine Ontology, Taxonomy & Cross-Validation** — Structured region hierarchy, grape family taxonomy, appellation classification rules, automated contradiction detection (e.g., "Barolo" + "France" = impossible), vintage plausibility checks
 - [ ] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context
 - [ ] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals
@@ -192,11 +192,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Wave 1: DB migration (producers table + UNIQUE INDEX) + settings patch (SERPER_API_KEY, WEB_SEARCH_DAILY_BUDGET_USD) + requirements.txt + [BLOCKING] supabase db push
-- [ ] 08-02-PLAN.md — Wave 2a: serper_client.py (Serper API httpx wrapper) + producer_normalization.py (normalize_producer_name + build_search_query) — parallel with 08-03
-- [ ] 08-03-PLAN.md — Wave 2b: web_verification_service.py (WineVerificationResult Pydantic + parse_search_results Gemini Flash + concordance engine + producer graph operations) — parallel with 08-02
-- [ ] 08-04-PLAN.md — Wave 3: web_verify_tasks.py Celery task (Redis NX dedup + budget cap INCRBYFLOAT + _verify_async) + celery_app.py import + haiku_tasks.py trigger
-- [ ] 08-05-PLAN.md — Wave 4: test_web_verification.py (11 tests: 10 unit + 1 E2E WSRCH-09)
+- [x] 08-01-PLAN.md — Wave 1: DB migration (producers table + UNIQUE INDEX) + settings patch (SERPER_API_KEY, WEB_SEARCH_DAILY_BUDGET_USD) + requirements.txt + [BLOCKING] supabase db push
+- [x] 08-02-PLAN.md — Wave 2a: serper_client.py (Serper API httpx wrapper) + producer_normalization.py (normalize_producer_name + build_search_query) — parallel with 08-03
+- [x] 08-03-PLAN.md — Wave 2b: web_verification_service.py (WineVerificationResult Pydantic + parse_search_results Gemini Flash + concordance engine + producer graph operations) — parallel with 08-02
+- [x] 08-04-PLAN.md — Wave 3: web_verify_tasks.py Celery task (Redis NX dedup + budget cap INCRBYFLOAT + _verify_async) + celery_app.py import + haiku_tasks.py trigger
+- [x] 08-05-PLAN.md — Wave 4: test_web_verification.py (11 tests: 10 unit + 1 E2E WSRCH-09)
 
 **Rationale**: Phase 7 gives us full-field extraction with confidence scores, but even high-confidence AI inferences are still inferences. A 0.85-confidence "region: Burgundy" from Haiku is Claude's best guess from training data — it could be wrong for obscure producers or unusual wines. Web verification provides ground truth. Additionally, fields like retail_price_avg, critic_scores, producer founding year, winemaker name, and organic certification are NOT inferable from wine name alone — they require external lookup. The producer knowledge graph is a multiplier: verify "Domaine Leflaive" once, and every Leflaive wine ever scanned gets instant verified enrichment for producer, region (Burgundy), sub_region (Puligny-Montrachet), country (France), and certifications (biodynamic).
 
@@ -412,7 +412,7 @@ Plans:
 | 5. Cost & Quality Guardrails | 4/4 | Complete | 2026-04-05 |
 | 6. Image Menu Extraction via Claude Vision | 3/3 | Complete | 2026-04-05 |
 | 7. Full-Field Extraction & Per-Field Confidence | 0/? | Planned | — |
-| 8. Web Search Verification & Deep Enrichment | 0/5 | Planned | — |
+| 8. Web Search Verification & Deep Enrichment | 5/5 | Complete    | 2026-04-06 |
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/? | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 0/? | Planned | — |
 | 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
