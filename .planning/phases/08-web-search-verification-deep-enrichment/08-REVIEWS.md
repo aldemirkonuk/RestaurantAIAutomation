@@ -7,7 +7,8 @@ reviewers:
   - coderabbit: skipped_not_installed
   - opencode: skipped_not_installed
   - composer_peer: completed
-reviewed_at: "2026-04-06T12:00:00Z"
+reviewed_at: "2026-04-08T00:00:00Z"
+last_cli_attempt: "2026-04-08 — /gsd-review --phase 8 (default: all available CLIs)"
 plans_reviewed:
   - 08-01-PLAN.md
   - 08-02-PLAN.md
@@ -47,6 +48,8 @@ cli_detection_log: |
 ## Claude Review (CLI)
 
 *Not run — Claude Code CLI hit account usage limit during `--print` invocation. No output file produced.*
+
+**Retry (`/gsd-review --phase 8`, default flags):** Same outcome — `claude --print` exit code 1, stderr: *"You're out of extra usage · resets Apr 8, 11pm (America/Detroit)"*. No review body returned.
 
 ---
 
