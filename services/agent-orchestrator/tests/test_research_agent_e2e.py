@@ -104,12 +104,27 @@ _MOCK_CANDIDATES: dict[str, list[dict]] = {
 }
 
 
+def _mock_layer1_inference(fc, wine_name, producer=None, vintage=None):
+    """Mock Layer 1: fill country and region deterministically from 'ontology'."""
+    fills = {}
+    if not fc.get("country"):
+        fills["country"] = {
+            "value": "Italy", "confidence": 0.99, "source": "ontology_inference"
+        }
+    if not fc.get("region"):
+        fills["region"] = {
+            "value": "Tuscany", "confidence": 0.99, "source": "ontology_inference"
+        }
+    return fills
+
+
 async def _mock_extract_candidates(
     field_name: str,
     wine_name: str,
     vintage,
     snippets: list,
     spend_logger,
+    model_tier: str = "flash",
 ) -> list[dict]:
     """Return pre-defined candidates for known target fields; [] for all others."""
     return _MOCK_CANDIDATES.get(field_name, [])
@@ -205,14 +220,16 @@ def research_submission():
 @pytest.mark.e2e
 def test_research_agent_fills_null_fields(research_submission):
     """
-    RSCH-11: Wine record with 5 NULL fields → research agent fills ≥3 fields
-    with citations → research_run_stats records null_rate improvement →
-    GET /api/v1/research/metrics returns all 5 metric categories.
+    RSCH-11 (updated for Phase 12.1 three-layer architecture):
+    Wine record with 5 NULL fields → Layer 1 fills 2 deterministically →
+    Layer 2/3 fills remaining ≥1 via mocked Serper+Gemini → metrics endpoint
+    returns all 5 metric categories.
 
     Mocked I/O boundary:
-      - jobs.research_tasks.serper_search  → MOCK_SERPER_RESULTS (2 results/query)
+      - jobs.research_tasks.serper_search         → MOCK_SERPER_RESULTS (2 results/query)
       - jobs.research_tasks._extract_field_candidates → _MOCK_CANDIDATES per field
-      - jobs.research_tasks._fetch_verify_value → always True
+      - jobs.research_tasks._fetch_verify_value   → always True
+      - jobs.research_tasks.run_layer1_inference  → fills country + region (Layer 1)
 
     Real I/O:
       - Supabase reads: submission load, eligibility check, budget check
@@ -229,6 +246,7 @@ def test_research_agent_fills_null_fields(research_submission):
         patch("jobs.research_tasks.serper_search", new=AsyncMock(return_value=MOCK_SERPER_RESULTS)),
         patch("jobs.research_tasks._extract_field_candidates", new=_mock_extract_candidates),
         patch("jobs.research_tasks._fetch_verify_value", new=_mock_fetch_verify),
+        patch("jobs.research_tasks.run_layer1_inference", new=_mock_layer1_inference),
     ):
         asyncio.run(_research_async(submission_id, dry_run=False))
 
@@ -263,7 +281,8 @@ def test_research_agent_fills_null_fields(research_submission):
     fc = (sub_resp.data or {}).get("field_confidence") or {}
     research_filled = [
         f for f, entry in fc.items()
-        if entry.get("source") == "research_agent" and entry.get("confidence", 0) > 0.5
+        if entry.get("source") in ("research_agent", "ontology_inference")
+        and entry.get("confidence", 0) > 0.5
     ]
     assert len(research_filled) >= 3, (
         f"Expected ≥3 research-agent-filled fields (confidence > 0.5), got: {research_filled}"
