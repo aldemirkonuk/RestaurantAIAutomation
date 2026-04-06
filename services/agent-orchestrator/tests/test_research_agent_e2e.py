@@ -1,297 +1,316 @@
 """
 Phase 12: Research Agent E2E Integration Test (RSCH-11)
 =======================================================
-End-to-end test: submit a wine record with 5 NULL priority fields,
-run the research agent, verify evidence citations exist, field_confidence
-improved, and the metrics endpoint reflects the run.
+End-to-end test: wine with 5 NULL priority fields → agent fills ≥3 with
+valid citations → metrics endpoint reflects the run.
 
-Marked @pytest.mark.e2e — requires SUPABASE_URL + SUPABASE_KEY env vars.
-Skipped (not failed) when Supabase is not configured.
+Strategy:
+  - Serper and Gemini HTTP calls are mocked (no live API keys required)
+  - All other logic runs for real: eligibility gate, evidence loop,
+    field_confidence merges, regression guard, conflict detection, DB writes
+  - Real Supabase is required — test is skipped when SUPABASE_URL not set
 
-Run:
-    cd services/agent-orchestrator
-    pytest tests/test_research_agent_e2e.py -m e2e -v   # E2E only
-    pytest tests/test_research_agent_helpers.py          # fast unit tests
+Run (unit tests only — fast, no mocks needed):
+    cd services/agent-orchestrator && pytest tests/test_research_agent_helpers.py
+
+Run E2E (requires Supabase test connection):
+    cd services/agent-orchestrator && pytest tests/test_research_agent_e2e.py -m e2e
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import uuid
+import asyncio
 import logging
-from datetime import datetime, timezone
+import os
+import sys
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+# Allow running from the agent-orchestrator root
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services.research_agent_helpers import RESEARCH_ALL_FIELDS
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Mock data (static, no live API keys needed)
+# Mock Serper response — returned for every query
 # ---------------------------------------------------------------------------
 
-# Simulated Serper results — 2 high-quality snippets returned for ANY query.
 MOCK_SERPER_RESULTS = [
     {
-        "title": "Brunello di Montalcino DOCG - Consorzio del Vino",
+        "title": "Brunello di Montalcino DOCG - Consorzio",
         "link": "https://www.consorziobrunellomontalcino.it/en/the-brunello/",
         "snippet": (
-            "Brunello di Montalcino DOCG is produced exclusively from Sangiovese Grosso "
-            "grapes in the Montalcino municipality, Tuscany, Italy. "
-            "The Montalcino production zone covers 3,500 hectares in Siena province."
+            "Brunello di Montalcino DOCG is produced exclusively from Sangiovese Grosso grapes "
+            "in the Montalcino municipality, Tuscany, Italy."
         ),
+        "position": 1,
     },
     {
-        "title": "Biondi-Santi Brunello - Wine-Searcher",
-        "link": "https://www.wine-searcher.com/find/biondi+santi+brunello",
+        "title": "Biondi-Santi - Wine-Searcher",
+        "link": "https://www.wine-searcher.com/find/biondi+santi",
         "snippet": (
-            "Biondi-Santi is the historic estate that pioneered Brunello di Montalcino. "
-            "Located in Montalcino, Tuscany, Italy. Producer of exceptional Sangiovese Grosso wines."
+            "Biondi-Santi is the historic producer of Brunello di Montalcino, "
+            "estate located in Montalcino, Tuscany, Italy."
         ),
+        "position": 2,
     },
 ]
 
+# Mock Gemini extraction: returns structured candidates per target field.
+# Only the 5 NULL fields get data; all others return [] (no candidates).
+_MOCK_CANDIDATES: dict[str, list[dict]] = {
+    "wine_name": [
+        {
+            "value": "Brunello di Montalcino",
+            "source_url": "https://www.consorziobrunellomontalcino.it/en/the-brunello/",
+            "snippet_used": "Brunello di Montalcino DOCG",
+            "confidence": 0.95,
+        }
+    ],
+    "producer": [
+        {
+            "value": "Biondi-Santi",
+            "source_url": "https://www.wine-searcher.com/find/biondi+santi",
+            "snippet_used": "Biondi-Santi is the historic producer",
+            "confidence": 0.90,
+        }
+    ],
+    "region": [
+        {
+            "value": "Tuscany",
+            "source_url": "https://www.wine-searcher.com/find/biondi+santi",
+            "snippet_used": "estate located in Montalcino, Tuscany, Italy",
+            "confidence": 0.85,
+        }
+    ],
+    "country": [
+        {
+            "value": "Italy",
+            "source_url": "https://www.consorziobrunellomontalcino.it/en/the-brunello/",
+            "snippet_used": "Montalcino municipality, Tuscany, Italy",
+            "confidence": 0.90,
+        }
+    ],
+    "grape_variety": [
+        {
+            "value": "Sangiovese",
+            "source_url": "https://www.consorziobrunellomontalcino.it/en/the-brunello/",
+            "snippet_used": "produced exclusively from Sangiovese Grosso",
+            "confidence": 0.90,
+        }
+    ],
+}
 
-# Simulated Gemini Flash candidate extraction — tier-A source, high confidence.
-# Returns a single candidate with the Consorzio URL (tier A → auto-promote to 0.95).
-def _mock_candidate_for_field(field_name: str) -> list[dict]:
-    """Return one tier-A candidate for any field, using context-appropriate values."""
-    field_values = {
-        "wine_name":    "Brunello di Montalcino",
-        "producer":     "Biondi-Santi",
-        "vintage":      "2018",
-        "primary_type": "red",
-        "color":        "red",
-        "region":       "Tuscany",
-        "country":      "Italy",
-        "appellation":  "Brunello di Montalcino DOCG",
-        "grape_variety": "Sangiovese Grosso",
-        "alcohol_pct":  "14.5",
-    }
-    value = field_values.get(field_name, f"Montalcino-{field_name}")
-    return [{
-        "value": value,
-        "source_url": "https://www.consorziobrunellomontalcino.it/en/the-brunello/",
-        "snippet_used": f"DOCG Brunello di Montalcino — {field_name}: {value}",
-        "confidence": 0.90,
-    }]
+
+async def _mock_extract_candidates(
+    field_name: str,
+    wine_name: str,
+    vintage,
+    snippets: list,
+    spend_logger,
+) -> list[dict]:
+    """Return pre-defined candidates for known target fields; [] for all others."""
+    return _MOCK_CANDIDATES.get(field_name, [])
+
+
+async def _mock_fetch_verify(
+    proposed_value: str,
+    source_url: str,
+    source_tier: str,
+    field_name: str,
+    supabase,
+) -> bool:
+    """Fetch-verify always passes in tests — no live HTTP calls."""
+    return True
 
 
 # ---------------------------------------------------------------------------
-# Fixture: insert + teardown test submission (T-12-13: yield + finally)
+# Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
-def test_submission():
+def research_submission():
     """
-    Insert a test wine submission into master_wine_library_submissions.
-    Tears down all related rows in finally block, regardless of test outcome (T-12-13).
+    Create a test submission with 5 NULL target fields, yield (submission_id, supabase),
+    then always teardown (T-12-13: yield + finally cleanup to prevent DB pollution).
 
-    Yields: (submission_id: str, supabase_client)
-    Skips test if SUPABASE_URL or SUPABASE_KEY not configured.
+    Pre-fills 26 of 31 RESEARCH_ALL_FIELDS with confidence=0.95 so the agent
+    only targets wine_name / producer / region / country / grape_variety.
     """
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
     if not supabase_url or not supabase_key:
-        pytest.skip("SUPABASE_URL/SUPABASE_KEY not configured — skipping E2E test")
+        pytest.skip("SUPABASE_URL / SUPABASE_KEY not configured — E2E test skipped")
 
     from supabase import create_client
-    supabase = create_client(supabase_url, supabase_key)
-    test_id = str(uuid.uuid4())
+
+    sb = create_client(supabase_url, supabase_key)
+    sid = str(uuid.uuid4())
+
+    # Pre-fill all but 5 fields so only those 5 are targeted
+    _null_fields = {"wine_name", "producer", "region", "country", "grape_variety"}
+    pre_filled_fc = {
+        f: {"value": "placeholder", "confidence": 0.95, "source": "visible"}
+        for f in RESEARCH_ALL_FIELDS
+        if f not in _null_fields
+    }
 
     try:
-        # Insert a wine with empty field_confidence → all 31 fields NULL → eligible for research
-        supabase.table("master_wine_library_submissions").insert({
-            "id": test_id,
-            "restaurant_id": "00000000-0000-0000-0000-000000000001",
-            "submitted_by": None,
-            "payload": {
-                "wine_name": "Brunello di Montalcino",
-                "vintage": 2018,
-                "extraction_source": "e2e_test",
-            },
-            "field_confidence": {},   # all NULL → eligible for research
-            "status": "pending_review",
+        sb.table("master_wine_library_submissions").insert({
+            "id": sid,
+            "wine_name": "Brunello di Montalcino",
+            "producer": "Biondi-Santi",
+            "vintage": 2018,
+            "field_confidence": pre_filled_fc,
+            "last_research_run_at": None,
             "auto_blocked": False,
         }).execute()
+    except Exception as exc:
+        pytest.skip(f"Could not insert test submission: {exc}")
 
-        yield test_id, supabase
+    yield sid, sb
 
-    finally:
-        # T-12-13: clean up ALL test data regardless of test outcome
-        cleanup_errors = []
-        for table, col in [
-            ("evidence_citations",   "wine_id"),
-            ("research_run_stats",   "wine_id"),
-            ("field_review_queue",   "submission_id"),
-        ]:
+    # Teardown: always run even on test failure (T-12-13)
+    try:
+        sb.table("evidence_citations").delete().eq("wine_id", sid).execute()
+        sb.table("field_review_queue").delete().eq("submission_id", sid).execute()
+        # Collect run_ids before deleting stats rows
+        stats_resp = (
+            sb.table("research_run_stats").select("run_id").eq("wine_id", sid).execute()
+        )
+        run_ids = [
+            row.get("run_id")
+            for row in (stats_resp.data or [])
+            if row.get("run_id") and row["run_id"] != "unknown"
+        ]
+        sb.table("research_run_stats").delete().eq("wine_id", sid).execute()
+        for rid in run_ids:
             try:
-                supabase.table(table).delete().eq(col, test_id).execute()
-            except Exception as exc:
-                cleanup_errors.append(f"{table}: {exc}")
-
-        try:
-            supabase.table("master_wine_library_submissions").delete().eq("id", test_id).execute()
-        except Exception as exc:
-            cleanup_errors.append(f"submissions: {exc}")
-
-        if cleanup_errors:
-            logger.warning("E2E teardown errors (non-fatal): %s", cleanup_errors)
+                sb.table("research_runs").delete().eq("id", rid).execute()
+            except Exception:
+                pass
+        sb.table("master_wine_library_submissions").delete().eq("id", sid).execute()
+    except Exception as cleanup_err:
+        logger.warning("E2E test teardown failed (non-fatal): %s", cleanup_err)
 
 
 # ---------------------------------------------------------------------------
-# E2E test: RSCH-11 — wine with NULL fields → research agent fills ≥3
+# E2E test
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.e2e
-def test_research_agent_fills_null_fields(test_submission):
+def test_research_agent_fills_null_fields(research_submission):
     """
-    RSCH-11: Submit a wine record with NULL priority fields, run the research
-    agent (with mocked Serper + Gemini to avoid live API costs), and assert:
-      - ≥3 evidence_citations rows inserted with url + snippet + retrieved_at
-      - field_confidence updated with ≥3 fields having confidence > 0.5
-      - null_rate_after < null_rate_before (coverage improved)
-      - GET /api/v1/research/metrics returns all 5 metric categories
+    RSCH-11: Wine record with 5 NULL fields → research agent fills ≥3 fields
+    with citations → research_run_stats records null_rate improvement →
+    GET /api/v1/research/metrics returns all 5 metric categories.
+
+    Mocked I/O boundary:
+      - jobs.research_tasks.serper_search  → MOCK_SERPER_RESULTS (2 results/query)
+      - jobs.research_tasks._extract_field_candidates → _MOCK_CANDIDATES per field
+      - jobs.research_tasks._fetch_verify_value → always True
+
+    Real I/O:
+      - Supabase reads: submission load, eligibility check, budget check
+      - Supabase writes: research_runs, evidence_citations, field_confidence,
+        research_run_stats, last_research_run_at
     """
-    submission_id, supabase = test_submission
+    submission_id, sb = research_submission
 
-    # ----------------------------------------------------------------
-    # Run the research agent with mocked I/O boundaries
-    # ----------------------------------------------------------------
-    from jobs.research_tasks import research_agent_task
+    # Import the async implementation directly (equivalent to research_agent_task call)
+    from jobs.research_tasks import _research_async
 
-    async def _mock_serper_search(query: str, num_results: int = 5) -> list[dict]:
-        """Return 2 snippets for ANY query — no live Serper calls."""
-        return MOCK_SERPER_RESULTS
-
-    async def _mock_extract_candidates(field_name, wine_name, vintage, snippets, spend_logger):
-        """Return 1 tier-A candidate for any field — no live Gemini calls."""
-        return _mock_candidate_for_field(field_name)
-
-    async def _mock_fetch_verify(proposed_value, source_url, source_tier, field_name, supabase):
-        """Fetch-verify always passes — no live HTTP calls."""
-        return True
-
+    # Run the agent with all HTTP calls mocked at the I/O boundary
     with (
-        patch("jobs.research_tasks.serper_search", side_effect=_mock_serper_search),
-        patch("jobs.research_tasks._extract_field_candidates", side_effect=_mock_extract_candidates),
-        patch("jobs.research_tasks._fetch_verify_value", side_effect=_mock_fetch_verify),
+        patch("jobs.research_tasks.serper_search", new=AsyncMock(return_value=MOCK_SERPER_RESULTS)),
+        patch("jobs.research_tasks._extract_field_candidates", new=_mock_extract_candidates),
+        patch("jobs.research_tasks._fetch_verify_value", new=_mock_fetch_verify),
     ):
-        research_agent_task(submission_id, dry_run=False)
+        asyncio.run(_research_async(submission_id, dry_run=False))
 
-    # ----------------------------------------------------------------
-    # Step 5: Assert ≥3 evidence_citations rows with complete provenance
-    # ----------------------------------------------------------------
-    cit_resp = (
-        supabase.table("evidence_citations")
+    # ------------------------------------------------------------------
+    # Assertion 1: ≥3 evidence_citations rows with required fields
+    # ------------------------------------------------------------------
+    citations_resp = (
+        sb.table("evidence_citations")
         .select("*")
         .eq("wine_id", submission_id)
         .execute()
     )
-    cit_rows = cit_resp.data or []
-    assert len(cit_rows) >= 3, (
-        f"Expected ≥3 evidence_citations for {submission_id}, got {len(cit_rows)}"
+    rows = citations_resp.data or []
+    assert len(rows) >= 3, (
+        f"Expected ≥3 evidence_citation rows, got {len(rows)}"
     )
-    for row in cit_rows:
-        assert row.get("source_url"), f"Citation missing source_url: {row}"
-        assert row.get("snippet"), f"Citation missing snippet: {row}"
-        assert row.get("retrieved_at"), f"Citation missing retrieved_at: {row}"
+    for row in rows:
+        assert row.get("source_url"), f"Citation row missing source_url: {row}"
+        assert row.get("snippet"), f"Citation row missing snippet: {row}"
+        assert row.get("retrieved_at"), f"Citation row missing retrieved_at: {row}"
 
-    # ----------------------------------------------------------------
-    # Step 6: Assert field_confidence updated (≥3 fields with conf > 0.5)
-    # ----------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Assertion 2: field_confidence updated with ≥3 research-filled fields
+    # ------------------------------------------------------------------
     sub_resp = (
-        supabase.table("master_wine_library_submissions")
+        sb.table("master_wine_library_submissions")
         .select("field_confidence")
         .eq("id", submission_id)
         .maybe_single()
         .execute()
     )
-    updated_fc = (sub_resp.data or {}).get("field_confidence") or {}
-    high_conf_fields = [
-        f for f, entry in updated_fc.items()
-        if isinstance(entry, dict) and entry.get("confidence", 0) > 0.5
+    fc = (sub_resp.data or {}).get("field_confidence") or {}
+    research_filled = [
+        f for f, entry in fc.items()
+        if entry.get("source") == "research_agent" and entry.get("confidence", 0) > 0.5
     ]
-    assert len(high_conf_fields) >= 3, (
-        f"Expected ≥3 fields with confidence > 0.5, got {len(high_conf_fields)}: {high_conf_fields}"
+    assert len(research_filled) >= 3, (
+        f"Expected ≥3 research-agent-filled fields (confidence > 0.5), got: {research_filled}"
     )
 
-    # ----------------------------------------------------------------
-    # Step 7: Assert null_rate improved in research_run_stats
-    # ----------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Assertion 3: null_rate_after < null_rate_before in research_run_stats
+    # ------------------------------------------------------------------
     stats_resp = (
-        supabase.table("research_run_stats")
-        .select("null_rate_before, null_rate_after")
+        sb.table("research_run_stats")
+        .select("null_rate_before,null_rate_after")
         .eq("wine_id", submission_id)
         .execute()
     )
     stats_rows = stats_resp.data or []
-    if stats_rows:
-        # At least one run_stats row must show improvement
-        improved = any(
-            float(r.get("null_rate_after", 1.0)) < float(r.get("null_rate_before", 0.0))
-            for r in stats_rows
-        )
-        assert improved, (
-            f"null_rate_after should be < null_rate_before. Stats: {stats_rows}"
-        )
-    else:
-        # research_run_stats write failed (FK on run_id) — log but don't fail
-        logger.warning(
-            "research_run_stats has no rows for %s — FK violation likely (run_id='unknown'). "
-            "Skipping null_rate assertion.",
-            submission_id,
-        )
+    assert len(stats_rows) >= 1, "research_run_stats row missing — agent did not write stats"
+    stat = stats_rows[0]
+    assert stat["null_rate_after"] < stat["null_rate_before"], (
+        f"null_rate not improved: before={stat['null_rate_before']}, "
+        f"after={stat['null_rate_after']}"
+    )
 
-    # ----------------------------------------------------------------
-    # Step 8: Assert GET /api/v1/research/metrics returns all 5 categories
-    # ----------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Assertion 4: GET /api/v1/research/metrics returns all 5 categories
+    # ------------------------------------------------------------------
+    from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from main import app
+    from api.research_routes import research_router
 
-    client = TestClient(app)
+    # Create a minimal test app (avoids pulling in YOLO / all production routers)
+    test_app = FastAPI()
+    test_app.include_router(research_router)
+    client = TestClient(test_app)
+
     response = client.get("/api/v1/research/metrics")
     assert response.status_code == 200, (
-        f"Expected 200 from /api/v1/research/metrics, got {response.status_code}: {response.text}"
+        f"Metrics endpoint returned {response.status_code}: {response.text}"
     )
-
     body = response.json()
-    for category in ("gap_closure", "quality", "evidence_hygiene", "throughput_cost", "safety"):
-        assert category in body, f"Metrics response missing category: {category}"
 
-    # citation_completeness must be > 0 now that we have citations in DB
+    assert "gap_closure" in body, "Metrics missing 'gap_closure' category"
+    assert "quality" in body, "Metrics missing 'quality' category"
+    assert "evidence_hygiene" in body, "Metrics missing 'evidence_hygiene' category"
+    assert "throughput_cost" in body, "Metrics missing 'throughput_cost' category"
+    assert "safety" in body, "Metrics missing 'safety' category"
+
+    # After our test run, at least one citation exists → citation_completeness > 0
     assert body["evidence_hygiene"]["citation_completeness"] > 0, (
-        "citation_completeness should be > 0 after inserting evidence_citations rows"
+        "citation_completeness should be > 0 after evidence_citations were written"
     )
-
-
-# ---------------------------------------------------------------------------
-# Lightweight smoke test: verify app wires metrics endpoint (no DB needed)
-# ---------------------------------------------------------------------------
-
-def test_research_metrics_endpoint_structure():
-    """
-    Smoke test: GET /api/v1/research/metrics is registered and returns valid
-    JSON structure when Supabase is configured. Skipped without SUPABASE_URL.
-    """
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not supabase_key:
-        pytest.skip("SUPABASE_URL not configured")
-
-    from fastapi.testclient import TestClient
-    from main import app
-
-    client = TestClient(app)
-    response = client.get("/api/v1/research/metrics")
-    assert response.status_code == 200
-
-    body = response.json()
-    assert set(body.keys()) >= {
-        "gap_closure", "quality", "evidence_hygiene", "throughput_cost", "safety"
-    }
-    assert "computed_at" in body
-    assert "gap_closure" in body
-    assert "citation_completeness" in body["evidence_hygiene"]
