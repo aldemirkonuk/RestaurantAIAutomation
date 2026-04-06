@@ -31,9 +31,11 @@ research_router = APIRouter(prefix="/api/v1/research", tags=["research"])
 # AUTH
 # =============================================================================
 
-def verify_admin_token(x_admin_key: str = Header(...)) -> str:
+def verify_admin_token(x_admin_key: str | None = Header(None)) -> str:
     """Require X-Admin-Key header matching ADMIN_API_KEY env var (D-06 Bug #7)."""
     expected = os.getenv("ADMIN_API_KEY", "")
+    if not x_admin_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
     if not expected or x_admin_key != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
     return x_admin_key
