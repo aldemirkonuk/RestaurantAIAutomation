@@ -175,6 +175,15 @@ Plans:
   10. Calibration task runs daily: reads field_corrections for reviewed wines, computes actual accuracy per field per confidence bin, updates confidence_thresholds
   11. `GET /api/v1/quality/calibration` returns current per-field thresholds, accuracy stats, and sample sizes
   12. E2E test: extract a known menu → verify field_confidence JSONB populated for all 18+ fields → verify fields routed correctly by threshold tier
+**Plans**: 6 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Wave 1: DB migrations (field_confidence, field_review_queue, calibration tables, 6 JSONB columns) + shared field_confidence.py helper module
+- [ ] 07-02-PLAN.md — Wave 2: Expand EXTRACTION_PROMPT to 18 fields with nested confidence + wire field_confidence persist + 3-tier routing in onboarding_routes.py
+- [ ] 07-03-PLAN.md — Wave 2: Expand Haiku enrichment to 20+ fields with confidence + haiku_tasks.py field_confidence JSONB merge
+- [ ] 07-04-PLAN.md — Wave 2: Upgrade quality_routes.py GET/PATCH for field-level review queue
+- [ ] 07-05-PLAN.md — Wave 3: Calibration Celery task + GET /calibration endpoint
+- [ ] 07-06-PLAN.md — Wave 3: Unit tests + E2E integration test for field confidence framework
 
 ### Phase 8: Web Search Verification & Deep Enrichment
 **Goal**: Build a per-wine background web search agent that verifies AI-extracted/inferred data against authoritative external sources (Wine-Searcher, Vivino, producer websites, wine databases) and fills remaining gaps with verified external data. Construct a `producers` knowledge graph table that accelerates future enrichment — once a producer is verified, every future wine from that producer gets instant enrichment without web search. This phase transforms "Claude thinks this is Burgundy" into "Wine-Searcher confirms this is Burgundy" — the difference between an AI-generated dataset and a verified knowledge base.
