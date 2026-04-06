@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-04-05T22:00:00.000Z"
+status: unknown
+last_updated: "2026-04-06T02:26:04.101Z"
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 26
+  completed_plans: 17
+  percent: 65
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
