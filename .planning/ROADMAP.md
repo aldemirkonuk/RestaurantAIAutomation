@@ -18,7 +18,7 @@ Thirteen phases building the world's most sophisticated restaurant wine intellig
 - [x] **Phase 7: Full-Field Extraction & Per-Field Confidence Framework** — 18-field Vision extraction, 20+ field Haiku enrichment, per-field {value, confidence, source} JSONB, 3-tier threshold routing, field_review_queue, calibration loop (completed 2026-04-06) — Expand Vision extraction to 18+ fields, Haiku enrichment to 20+ fields, add per-field confidence scores with 3-tier threshold (reject < 0.5, review 0.5–0.8, accept > 0.8), field-level review queue, and calibration loop for 0.95 dataset-wide accuracy
 - [x] **Phase 8: Web Search Verification & Deep Enrichment** — Per-wine background web search agent: verify extracted data against Wine-Searcher/Vivino/producer sites, resolve contradictions, fill gaps with verified external data, build producer knowledge graph (completed 2026-04-06)
 - [ ] **Phase 9: Wine Ontology, Taxonomy & Cross-Validation** — Structured region hierarchy, grape family taxonomy, appellation classification rules, automated contradiction detection (e.g., "Barolo" + "France" = impossible), vintage plausibility checks
-- [ ] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context
+- [x] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context (completed 2026-04-06)
 - [ ] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals
 - [ ] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety.
 - [ ] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables.
@@ -336,12 +336,12 @@ Plans:
   7. `GET /api/v1/analytics/wine/{id}/scores` returns aggregated critic scores + pricing intelligence for a wine
 
 Plans:
-- [ ] 10-01-PLAN.md — DB migration: wine_menu_prices table + 6 new columns on master_wine_library/restaurant_inventory + [BLOCKING] supabase db push (Wave 1)
-- [ ] 10-02-PLAN.md — CriticScoreService: normalize_score, compute_composite_score, build_critic_score_queries, parse_serper_score_snippets, compute_markup_info (Wave 1, parallel)
-- [ ] 10-03-PLAN.md — DatasetIngestionService: file discovery, fuzzy wine matching, non-destructive JSONB enrichment from library/*.jsonl + External_Wine_Datasets/*.csv (Wave 2)
-- [ ] 10-04-PLAN.md — score_tasks.py: score_lookup_task + dataset_enrich_task + rescore_stale_wines_task + celery_app.py import + beat schedule + ontology_tasks.py chain trigger (Wave 3)
-- [ ] 10-05-PLAN.md — Tests: test_critic_score_service.py + test_score_tasks.py + test_dataset_ingestion.py covering CRIT-01..06 (Wave 4, parallel)
-- [ ] 10-06-PLAN.md — Analytics API: GET /api/v1/analytics/wine/{id}/scores + main.py wire + test_analytics_routes.py (Wave 4, parallel)
+- [x] 10-01-PLAN.md — DB migration: wine_menu_prices table + 6 new columns on master_wine_library/restaurant_inventory + [BLOCKING] supabase db push (Wave 1)
+- [x] 10-02-PLAN.md — CriticScoreService: normalize_score, compute_composite_score, build_critic_score_queries, parse_serper_score_snippets, compute_markup_info (Wave 1, parallel)
+- [x] 10-03-PLAN.md — DatasetIngestionService: file discovery, fuzzy wine matching, non-destructive JSONB enrichment from library/*.jsonl + External_Wine_Datasets/*.csv (Wave 2)
+- [x] 10-04-PLAN.md — score_tasks.py: score_lookup_task + dataset_enrich_task + rescore_stale_wines_task + celery_app.py import + beat schedule + ontology_tasks.py chain trigger (Wave 3)
+- [x] 10-05-PLAN.md — Tests: test_critic_score_service.py + test_score_tasks.py + test_dataset_ingestion.py covering CRIT-01..06 (Wave 4, parallel)
+- [x] 10-06-PLAN.md — Analytics API: GET /api/v1/analytics/wine/{id}/scores + main.py wire + test_analytics_routes.py (Wave 4, parallel)
 
 ### Phase 11: Temporal Menu Intelligence & Analytics
 **Goal**: Transform the extraction pipeline from a one-shot scanner into a living, breathing menu intelligence system. Schedule periodic re-crawls of known restaurant websites, detect menu changes (wines added, removed, prices changed), track wine lifecycle across restaurants over time, compute cross-restaurant popularity and regional trend analytics. This is the moat — no wine database in the world tracks restaurant menu changes over time. Wine-Searcher tracks retail pricing. Vivino tracks consumer ratings. WineOps tracks what sommeliers actually put on their lists, when they add it, when they remove it, and what replaces it.
@@ -473,7 +473,7 @@ Plans:
 | 7. Full-Field Extraction & Per-Field Confidence | 0/? | Planned | — |
 | 8. Web Search Verification & Deep Enrichment | 5/5 | Complete    | 2026-04-06 |
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/5 | Planned | — |
-| 10. Critic Scores & Pricing Intelligence | 0/? | Planned | — |
+| 10. Critic Scores & Pricing Intelligence | 6/6 | Complete    | 2026-04-06 |
 | 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
 | 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
 | 13. Dev Onboarding UI with Manual Override Access | 0/5 | Planned | — |
