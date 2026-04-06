@@ -40,6 +40,8 @@ class Settings:
         # Celery broker/backend (Phase 4+ background tasks)
         self.celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
         self.celery_backend_url: str = os.getenv("CELERY_BACKEND_URL", "redis://localhost:6379/1")
+        # Phase 11: max concurrent restaurant re-crawl tasks per beat run
+        self.recrawl_max_concurrent: int = int(os.getenv("RECRAWL_MAX_CONCURRENT", "10"))
         # Web Search Verification (Phase 8 — WSRCH-01, WSRCH-08)
         self.serper_api_key: Optional[str] = os.getenv("SERPER_API_KEY")
         self.web_search_daily_budget_usd: float = float(
