@@ -152,8 +152,8 @@ def write_report(results: list, pass_threshold: float, output_path: Path) -> Non
 
     # Summary table
     lines.append("## Summary\n")
-    lines.append("| Restaurant | Wines | Completeness | Dedup | Schema Violations | Result |")
-    lines.append("|------------|-------|-------------|-------|-------------------|--------|")
+    lines.append("| Restaurant | Wines | Completeness | Dedup | Image Menu | Schema Violations | Result |")
+    lines.append("|------------|-------|-------------|-------|------------|-------------------|--------|")
     for r in results:
         if r["wines_extracted"] == 0:
             result_str = "NO MENU"
@@ -163,9 +163,14 @@ def write_report(results: list, pass_threshold: float, output_path: Path) -> Non
             completeness_str = f"{r['completeness_pct'] * 100:.1f}%"
         dedup_str = "PASS" if r["dedup_pass"] else "FAIL"
         violation_count = len(r["schema_violations"])
+        image_menu_str = (
+            "PASS" if r.get("image_menu_pass") is True
+            else "FAIL" if r.get("image_menu_pass") is False
+            else "—"
+        )
         lines.append(
             f"| {r['name']} | {r['wines_extracted']} | {completeness_str} "
-            f"| {dedup_str} | {violation_count} | {result_str} |"
+            f"| {dedup_str} | {image_menu_str} | {violation_count} | {result_str} |"
         )
 
     # Overall section
@@ -219,7 +224,8 @@ def _run_dry_run(restaurants: list, pass_threshold: float, output_path: Path) ->
     Called automatically when GOOGLE_API_KEY is not set.
     """
     print("GOOGLE_API_KEY not set — running in dry-run mode (no network requests).")
-    print("Set GOOGLE_API_KEY to run the live crawl harness.\n")
+    print("Set GOOGLE_API_KEY to run the live crawl harness.")
+    print("Set CLAUDE_API_KEY for Vision path (required for Tredita image-menu test).\n")
 
     results = []
     for r in restaurants:
@@ -322,7 +328,26 @@ async def run_crawl(restaurants: list, pass_threshold: float, output_path: Path)
             "dedup_pass": dedup_pass,
             "schema_violations": violations[:10],
             "sample_wines": new_wines[:3],
+            "image_menu_detected": getattr(result1, "image_menu_detected", False),
+            "image_menu_pass": None,  # filled below for restaurants with expect_image_menu
         })
+
+        # IMGX-07: verify image-menu path for flagged restaurants
+        if restaurant.get("expect_image_menu"):
+            vision_source_types = {"image_menu", "pdf_vision_fallback"}
+            image_menu_wines = [
+                w for w in new_wines
+                if isinstance(w.get("data_enrichment"), dict)
+                and w["data_enrichment"].get("source_type") in vision_source_types
+            ]
+            image_menu_pass = len(image_menu_wines) >= 1
+            results[-1]["image_menu_pass"] = image_menu_pass
+            results[-1]["image_menu_detected"] = getattr(result1, "image_menu_detected", False)
+            source_used = image_menu_wines[0]["data_enrichment"]["source_type"] if image_menu_wines else "none"
+            print(
+                f"  Image menu path: {'PASS' if image_menu_pass else 'FAIL'} "
+                f"({len(image_menu_wines)} vision wines found, source_type={source_used})"
+            )
 
     # Write report
     write_report(results, pass_threshold, output_path)

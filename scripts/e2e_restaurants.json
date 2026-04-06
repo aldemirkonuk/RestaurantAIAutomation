@@ -2,5 +2,6 @@
   {"name": "The Tailors Son", "url": "https://www.thetailorssonsf.com/menus/#wine-beer"},
   {"name": "Chicago Winery", "url": "https://www.chiwinery.com/menu/wine/"},
   {"name": "BLVD Steakhouse", "url": "https://www.blvdchicago.com/menu/wine-by-the-glass/"},
-  {"name": "The Albert Chicago", "url": "https://thealbertchicago.com/beverage/"}
+  {"name": "The Albert Chicago", "url": "https://thealbertchicago.com/beverage/"},
+  {"name": "Siena Tavern", "url": "https://sienatavern.com/menus/", "expect_image_menu": true}
 ]

@@ -21,10 +21,12 @@ Legal: Only visits restaurant's own website, respects robots.txt.
 """
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
 import re
+import ssl
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -33,7 +35,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
+import aiohttp
+
 from services.vlm_extraction_service import get_gemini_crawler_extractor
+from services.claude_vision_extractor import get_claude_vision_extractor
 
 try:
     from playwright.async_api import async_playwright
@@ -83,6 +88,7 @@ class CrawlResult:
     error: Optional[str] = None
     restaurant_id: Optional[str] = None
     visited_urls: List[VisitedUrl] = field(default_factory=list)
+    image_menu_detected: bool = False  # True when Vision path was taken (Phase 6)
 
 
 @dataclass
@@ -234,6 +240,8 @@ class WebCrawlerService:
                         result.visited_urls.append(VisitedUrl(
                             url=purl, content_type="pdf_link",
                         ))
+                    if result.pdf_bytes:
+                        await self._handle_pdf_vision(result, restaurant_name, website_url)
                 else:
                     text = await self._extract_page_text(page)
                     if text and len(text.strip()) > 100:
@@ -241,10 +249,15 @@ class WebCrawlerService:
                         result.extracted_text = text
                     else:
                         has_images = await self._check_image_menu(page)
+                        if not has_images:
+                            has_images = await self._is_image_menu(page)
                         if has_images:
                             result.content_type = ContentType.IMAGE_ONLY
                             result.screenshot_bytes = await page.screenshot(
                                 full_page=True, type="jpeg", quality=85
+                            )
+                            await self._handle_image_menu(
+                                page, result, restaurant_name, website_url
                             )
                         else:
                             result.content_type = ContentType.NO_MENU
@@ -269,6 +282,10 @@ class WebCrawlerService:
                         logger.info(
                             f"Crawled {restaurant_name}: {len(extraction.wines)} wines found, "
                             f"{len(extraction.wines) - len(non_dupes)} duplicates skipped"
+                        )
+                    elif await self._is_image_menu(page):
+                        await self._handle_image_menu(
+                            page, result, restaurant_name, website_url
                         )
 
             except Exception as e:
@@ -404,7 +421,8 @@ class WebCrawlerService:
         return re.sub(r"[^a-z0-9 ]", "", (s or "").lower().strip())
 
     def _persist_crawled_wines(
-        self, wines: list, restaurant_name: str, source_url: str
+        self, wines: list, restaurant_name: str, source_url: str,
+        source_type: str = "crawled"
     ):
         """
         Write non-duplicate crawled wines to JSONL dataset file.
@@ -475,7 +493,7 @@ class WebCrawlerService:
                 # -- data_enrichment JSONB --
                 data_enrichment = {
                     "source_url":      source_url,
-                    "source_type":     "crawled",
+                    "source_type":     source_type,
                     "restaurant_name": restaurant_name,
                     "crawled_at":      crawled_at,
                     "confidence":      wine.get("confidence"),
@@ -615,10 +633,156 @@ class WebCrawlerService:
             pass
         return False
 
+    async def _take_viewport_chunks(self, page) -> List[bytes]:
+        """
+        Scroll the page in 900px increments and capture each viewport as JPEG bytes.
+        Max 10 chunks = cost ceiling ~$0.15/restaurant.
+        Used by _handle_image_menu() for IMAGE_ONLY and 0-wine HTML_MENU paths.
+        """
+        VIEWPORT_HEIGHT = 900
+        VIEWPORT_WIDTH = 1280
+        MAX_CHUNKS = 10
+
+        try:
+            await page.set_viewport_size({"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT})
+            total_height = await page.evaluate(
+                "Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, window.innerHeight)"
+            )
+        except Exception:
+            total_height = VIEWPORT_HEIGHT
+        if not total_height:
+            total_height = VIEWPORT_HEIGHT
+
+        chunks: List[bytes] = []
+        offset = 0
+        while offset < total_height and len(chunks) < MAX_CHUNKS:
+            try:
+                await page.evaluate(f"window.scrollTo(0, {offset})")
+                await asyncio.sleep(0.3)  # allow lazy-loaded images to render
+                chunk = await page.screenshot(
+                    clip={
+                        "x": 0,
+                        "y": 0,
+                        "width": VIEWPORT_WIDTH,
+                        "height": min(VIEWPORT_HEIGHT, total_height - offset),
+                    },
+                    type="jpeg",
+                    quality=85,
+                )
+                chunks.append(chunk)
+            except Exception as e:
+                logger.debug(f"Viewport chunk {len(chunks)} failed: {e}")
+                break
+            offset += VIEWPORT_HEIGHT
+
+        return chunks
+
+    async def _is_image_menu(self, page) -> bool:
+        """
+        Check for image-menu signals on a 0-wine HTML_MENU page (D-03).
+        Signal 1: any <img> with naturalWidth > 400px (large embedded image).
+        Signal 2: page text contains no wine patterns (\\d{4} years or $\\d+ prices).
+        Either signal alone triggers Vision path. Fails open (returns False on error).
+        Note: Different from _check_image_menu() which uses keyword alt/src matching.
+        """
+        try:
+            # Signal 1: large images
+            images = await page.query_selector_all("img")
+            for img in images:
+                natural_width = await page.evaluate("(el) => el.naturalWidth", img)
+                if natural_width and natural_width > 400:
+                    return True
+
+            # Signal 2: no wine patterns in page text
+            page_text = await page.evaluate("document.body.innerText")
+            if not re.search(r'\d{4}|\$\d+', page_text or ""):
+                return True
+
+        except Exception as e:
+            logger.debug(f"_is_image_menu check failed: {e}")
+
+        return False
+
+    async def _handle_image_menu(
+        self, page, result: CrawlResult, restaurant_name: str, website_url: str
+    ) -> None:
+        """
+        Orchestrate Vision extraction for an image-only or image-menu page.
+        Takes viewport chunks, encodes to base64, calls extract_menu(), deduplicates,
+        persists with source_type="image_menu", sets result.image_menu_detected=True.
+        """
+        chunks = await self._take_viewport_chunks(page)
+        if not chunks:
+            logger.warning(f"No viewport chunks captured for {restaurant_name}")
+            return
+
+        # extract_menu() requires List[str] (base64 strings), NOT bytes
+        b64_pages = [base64.b64encode(c).decode("utf-8") for c in chunks]
+
+        extractor = get_claude_vision_extractor()
+        try:
+            extraction = await extractor.extract_menu(b64_pages)
+        except RuntimeError as e:
+            logger.error(f"Image menu extraction failed for {restaurant_name}: {e}")
+            return
+
+        if extraction.wines:
+            non_dupes = [
+                w for w in extraction.wines
+                if not self._wine_is_duplicate(w, restaurant_name)
+            ]
+            if non_dupes:
+                self._persist_crawled_wines(
+                    non_dupes, restaurant_name, website_url,
+                    source_type="image_menu",
+                )
+            logger.info(
+                f"Image menu {restaurant_name}: {len(extraction.wines)} wines extracted, "
+                f"{len(extraction.wines) - len(non_dupes)} dupes skipped"
+            )
+
+        result.image_menu_detected = True
+
+    async def _handle_pdf_vision(
+        self, result: CrawlResult, restaurant_name: str, website_url: str
+    ) -> None:
+        """
+        Route a downloaded PDF through Claude Vision extract_pdf().
+        Does not need Playwright — reads from result.pdf_bytes already downloaded.
+        Persists with source_type="pdf_vision_fallback".
+        """
+        if not result.pdf_bytes:
+            return
+
+        extractor = get_claude_vision_extractor()
+        try:
+            extraction = await extractor.extract_pdf(result.pdf_bytes)
+        except Exception as e:
+            logger.error(f"PDF vision extraction failed for {restaurant_name}: {e}")
+            return
+
+        if extraction.wines:
+            non_dupes = [
+                w for w in extraction.wines
+                if not self._wine_is_duplicate(w, restaurant_name)
+            ]
+            if non_dupes:
+                self._persist_crawled_wines(
+                    non_dupes, restaurant_name, website_url,
+                    source_type="pdf_vision_fallback",
+                )
+            logger.info(
+                f"PDF vision {restaurant_name}: {len(extraction.wines)} wines extracted, "
+                f"{len(extraction.wines) - len(non_dupes)} dupes skipped"
+            )
+
+        result.image_menu_detected = True
+
     async def _download_pdf(
         self, context, pdf_url: str
     ) -> Optional[bytes]:
-        """Download a PDF file."""
+        """Download a PDF file. Tries Playwright first, falls back to aiohttp."""
+        # Try Playwright inline navigation
         try:
             page = await context.new_page()
             response = await page.goto(pdf_url, timeout=15000)
@@ -628,7 +792,25 @@ class WebCrawlerService:
                 return body
             await page.close()
         except Exception as e:
-            logger.debug(f"PDF download failed for {pdf_url}: {e}")
+            logger.debug(f"PDF Playwright download failed for {pdf_url}: {e}")
+
+        # Fallback: aiohttp direct download (handles Content-Disposition: attachment)
+        try:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(
+                    pdf_url, ssl=ssl_ctx, timeout=aiohttp.ClientTimeout(total=20)
+                ) as resp:
+                    if resp.status == 200:
+                        body = await resp.read()
+                        if body[:4] == b"%PDF":
+                            return body
+        except Exception as e:
+            logger.debug(f"PDF aiohttp download failed for {pdf_url}: {e}")
+
         return None
 
     # =========================================================================
