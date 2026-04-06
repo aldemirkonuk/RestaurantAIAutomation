@@ -467,7 +467,7 @@ class BoundedLRUCache:
         if key not in self._data:
             return None
         value, ts = self._data[key]
-        if time.time() - ts > ttl_seconds:
+        if time.time() - ts >= ttl_seconds:
             del self._data[key]
             return None
         self._data.move_to_end(key)
