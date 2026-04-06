@@ -111,6 +111,13 @@ Verified assertions:
 
 None — both modules are complete pure-utility functions with no data stubs. `serper_search` returns empty list when no API key is present (by design, not a stub).
 
+**2. [Rule 3 - Deviation] web_verification_service.py bundled into final metadata commit**
+- **Found during:** Final metadata commit
+- **Issue:** `services/agent-orchestrator/services/web_verification_service.py` (488 lines, Plan 03 file) was already in the git staging area (pre-staged from a previous session or Cursor IDE operation) when the final `git commit` ran. It was not listed as a tracked file in the initial git status snapshot (the entire `services/agent-orchestrator/` directory was shown as `??`), but it was staged by the time the final commit executed. It got bundled into commit `3398653` alongside `08-02-SUMMARY.md`.
+- **Impact:** The file is committed to `gsd/v1.0-milestone` branch. Plan 03 (`web_verification_service.py`) can read/extend the already-committed file rather than creating from scratch. The file content is a complete 488-line implementation; Plan 03 executor should verify it against the Plan 03 spec and overwrite/extend as needed.
+- **Files committed unexpectedly:** `services/agent-orchestrator/services/web_verification_service.py`
+- **Commit:** 3398653
+
 ## Self-Check: PASSED
 
 | Item | Status |
