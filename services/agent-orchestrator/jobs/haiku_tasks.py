@@ -139,6 +139,23 @@ async def _enrich_async(
                 "haiku_tasks: queued web_verify_task for wine_id=%s (producer_in_graph=%s)",
                 wine_id, producer_in_graph,
             )
+            # web_verify_tasks will trigger ontology_validate_task at its end (primary path)
+        else:
+            # Web verify skipped — trigger ontology directly (fallback path)
+            # Ensures every wine gets ontology validation even if web search was skipped
+            try:
+                from jobs.ontology_tasks import ontology_validate_task
+                ontology_validate_task.delay(wine_id)
+                logger.info(
+                    "haiku_tasks: queued ontology_validate_task directly for wine_id=%s "
+                    "(web verify skipped — fallback path)",
+                    wine_id,
+                )
+            except Exception as onto_exc:
+                logger.warning(
+                    "haiku_tasks: failed to queue ontology_validate_task for wine_id=%s: %s",
+                    wine_id, onto_exc,
+                )
     except Exception as exc:
         # Non-fatal: enrichment already complete; web verification can run later
         logger.warning(

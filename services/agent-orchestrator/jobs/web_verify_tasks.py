@@ -382,6 +382,21 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
         "_verify_async: wine_id=%s complete — %d fields verified, producer_in_graph=%s",
         wine_id, fields_verified, producer_in_graph,
     )
+
+    # ONTO-05: Trigger ontology cross-validation after web verification (primary path)
+    # Non-fatal: web verification is already complete; ontology failure cannot block it
+    try:
+        from jobs.ontology_tasks import ontology_validate_task
+        ontology_validate_task.delay(wine_id)
+        logger.info(
+            "_verify_async: queued ontology_validate_task for wine_id=%s", wine_id
+        )
+    except Exception as exc:
+        logger.warning(
+            "_verify_async: failed to queue ontology_validate_task for wine_id=%s: %s",
+            wine_id, exc,
+        )
+
     return {
         "wine_id": wine_id,
         "fields_verified": fields_verified,

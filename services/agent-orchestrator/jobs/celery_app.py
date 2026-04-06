@@ -20,7 +20,7 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     # Include tasks from the tasks module
-    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks"),
+    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks", "jobs.ontology_tasks"),
 )
 
 # =============================================================================
