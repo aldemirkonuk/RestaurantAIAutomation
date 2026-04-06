@@ -20,7 +20,7 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     # Include tasks from the tasks module
-    imports=("jobs.tasks", "jobs.haiku_tasks"),
+    imports=("jobs.tasks", "jobs.haiku_tasks", "jobs.spend_tasks", "jobs.calibration_tasks", "jobs.web_verify_tasks"),
 )
 
 # =============================================================================
@@ -60,5 +60,19 @@ celery_app.conf.beat_schedule = {
     "refresh-materialized-views": {
         "task": "reports.refresh_views",
         "schedule": crontab(minute=0),  # Every hour at minute 0
+    },
+
+    # Monthly spend cap check — runs hourly, idempotent alert per provider/month
+    "spend-monthly-cap-check": {
+        "task": "spend.monthly_cap_check",
+        "schedule": crontab(minute=0),  # Every hour at minute 0
+        "options": {"expires": 3500},
+    },
+
+    # Daily field confidence calibration — adjusts per-field thresholds based on human review accuracy
+    "calibration-daily": {
+        "task": "calibration.calibrate_field_thresholds",
+        "schedule": crontab(hour=4, minute=0),  # 4 AM UTC daily
+        "options": {"expires": 3500},
     },
 }

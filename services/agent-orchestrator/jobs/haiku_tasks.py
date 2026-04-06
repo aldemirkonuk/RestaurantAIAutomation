@@ -17,6 +17,7 @@ from supabase import create_client
 
 from config.settings import get_settings
 from jobs.celery_app import celery_app
+from services.field_confidence import merge_field_confidence, JSONB_ENRICHMENT_KEYS
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -90,30 +91,63 @@ async def _enrich_async(
         logger.info(f"Enrichment skipped for wine_id={wine_id} (already complete)")
         return None
 
-    # Persist enriched fields to master_wine_library_submissions (the staging table).
-    # The row lives here until a human reviewer promotes it via PATCH /quality/review-queue.
-    # Updating the submissions table ensures enrichment data survives and is included when
-    # quality_routes.py promotes the wine to master_wine_library.
     supabase = _get_supabase_client()
+
+    # Read existing field_confidence from submissions row (Vision data from Pass 1)
+    sub_resp = (
+        supabase.table("master_wine_library_submissions")
+        .select("field_confidence")
+        .eq("id", wine_id)
+        .maybe_single()
+        .execute()
+    )
+    existing_fc = (sub_resp.data or {}).get("field_confidence") or {}
+
+    # Merge Haiku field_confidence into Vision field_confidence
+    # Vision data preserved when its confidence >= Haiku confidence (D-08)
+    merged_fc = merge_field_confidence(existing_fc, result.field_confidence)
+
+    # Build update payload: merged field_confidence + 6 JSONB enrichment columns
     update_payload = {
-        "region": result.region,
-        "country": result.country,
-        "grape_variety": result.grape_variety,
-        "producer_bio": result.producer_bio,
-        "enrichment_source": result.enrichment_source,  # "haiku"
+        "field_confidence": merged_fc,
+        "enrichment_source": result.enrichment_source,
         "ai_enriched": True,
     }
-    # Remove None values to avoid overwriting existing non-null fields
-    update_payload = {k: v for k, v in update_payload.items() if v is not None}
-    # Keep enrichment_source and ai_enriched regardless
-    update_payload["enrichment_source"] = result.enrichment_source
-    update_payload["ai_enriched"] = True
+
+    # Add 6 JSONB enrichment fields if Haiku returned them
+    for jsonb_key in JSONB_ENRICHMENT_KEYS:
+        val = getattr(result, jsonb_key, None)
+        if val is not None:
+            update_payload[jsonb_key] = val
 
     supabase.table("master_wine_library_submissions").update(update_payload).eq("id", wine_id).execute()
 
+    # WSRCH-07: Trigger web verification if eligible
+    # Late import to avoid circular deps (web_verify_tasks imports celery_app which imports haiku_tasks)
+    try:
+        from jobs.web_verify_tasks import web_verify_task, _should_web_verify
+        from services.producer_normalization import normalize_producer_name
+        from services.web_verification_service import lookup_producer
+
+        producer_value = merged_fc.get("producer", {}).get("value") or ""
+        normalized_producer = normalize_producer_name(producer_value)
+        producer_in_graph = lookup_producer(normalized_producer) is not None if normalized_producer else False
+
+        if _should_web_verify(merged_fc, producer_in_graph):
+            web_verify_task.delay(wine_id)
+            logger.info(
+                "haiku_tasks: queued web_verify_task for wine_id=%s (producer_in_graph=%s)",
+                wine_id, producer_in_graph,
+            )
+    except Exception as exc:
+        # Non-fatal: enrichment already complete; web verification can run later
+        logger.warning(
+            "haiku_tasks: failed to queue web_verify_task for wine_id=%s: %s",
+            wine_id, exc,
+        )
+
     logger.info(
-        f"Enriched wine_id={wine_id} ({wine_name}): "
-        f"region={result.region}, country={result.country}, "
-        f"grape_variety={result.grape_variety}, enrichment_source=haiku"
+        "Enriched wine_id=%s (%s): %d FC fields merged, enrichment_source=haiku",
+        wine_id, wine_name, len(result.field_confidence),
     )
-    return update_payload
+    return {"fields_enriched": len(result.field_confidence), "wine_id": wine_id}
