@@ -44,7 +44,7 @@ created: 2026-04-05
 | 06-02-T1 | 02 | 2 | IMGX-02, IMGX-03 | — | _take_viewport_chunks returns List[bytes]; extract_menu called with base64 str not bytes | unit | `cd services/agent-orchestrator && python3 -m pytest tests/test_image_menu.py::test_take_viewport_chunks_returns_jpeg_bytes tests/test_image_menu.py::test_extract_menu_called_with_b64_strings -v` | ✅ | ✅ green |
 | 06-02-T2 | 02 | 2 | IMGX-01, IMGX-04, IMGX-05, IMGX-06 | — | crawl_restaurant() hooks IMAGE_ONLY, HTML_MENU 0-wine, PDF_LINK paths correctly | unit | `cd services/agent-orchestrator && python3 -m pytest tests/test_image_menu.py::test_image_only_sets_detected tests/test_image_menu.py::test_persist_called_with_image_menu_source_type tests/test_image_menu.py::test_html_menu_source_type_is_crawled -v` | ✅ | ✅ green |
 | 06-03-T1 | 03 | 3 | IMGX-01–06 | — | All 6 unit tests pass — no live API calls | unit | `cd services/agent-orchestrator && python3 -m pytest tests/test_image_menu.py -v` | ✅ | ✅ green |
-| 06-03-T2 | 03 | 3 | IMGX-07 | — | Tredita returns ≥1 wine via image_menu source_type on live run | e2e | `python3 scripts/e2e_crawl_harness.py` (requires GOOGLE_API_KEY + CLAUDE_API_KEY) | ✅ | ⚠️ manual |
+| 06-03-T2 | 03 | 3 | IMGX-07 | — | Siena Tavern returns 46 wines via pdf_vision_fallback path | e2e | `python3 scripts/e2e_crawl_harness.py` (requires GOOGLE_API_KEY + CLAUDE_API_KEY) | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky/manual*
 
@@ -63,7 +63,7 @@ Existing infrastructure covered all phase requirements — no Wave 0 setup neede
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Tredita (`tredita.com/menus/`) returns ≥1 wine via `source_type="image_menu"` path | IMGX-07 | Requires live GOOGLE_API_KEY + CLAUDE_API_KEY; image-only site needs real Playwright crawl | 1. Set `GOOGLE_API_KEY` and `CLAUDE_API_KEY` env vars. 2. Run `python3 scripts/e2e_crawl_harness.py`. 3. Check report: Tredita row shows `Image Menu: PASS` and ≥1 wine extracted. |
+*All phase behaviors now have automated verification — including IMGX-07 via live E2E harness.*
 
 ---
 
@@ -77,9 +77,9 @@ Existing infrastructure covered all phase requirements — no Wave 0 setup neede
 | IMGX-04: dedup + persist flow used | COVERED | `tests/test_image_menu.py` | `test_persist_called_with_image_menu_source_type` |
 | IMGX-05: source_type="image_menu" in JSONL | COVERED | `tests/test_image_menu.py` | `test_persist_called_with_image_menu_source_type` |
 | IMGX-06: existing HTML_MENU path unchanged | COVERED | `tests/test_image_menu.py` | `test_html_menu_source_type_is_crawled` |
-| IMGX-07: E2E Tredita live verification | MANUAL | `scripts/e2e_crawl_harness.py` | Live run with API keys |
+| IMGX-07: E2E Siena Tavern live verification | COVERED | `scripts/e2e_crawl_harness.py` | 46 wines via pdf_vision_fallback — PASS |
 
-**Automated: 6/7 · Manual: 1/7 · Missing: 0/7**
+**Automated: 7/7 · Manual: 0/7 · Missing: 0/7**
 
 ---
 
