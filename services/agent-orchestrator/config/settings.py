@@ -49,6 +49,26 @@ class Settings:
         )
         # Serper Starter plan: $0.001/query — NOT $0.005 (Pitfall 5, RESEARCH.md)
         self.serper_cost_per_query: float = 0.001
+        # Phase 12: Research agent settings
+        # Budget math (12-CONTEXT.md Decision 4, corrected 2026-04-06):
+        #   raw_ceiling = (0.001×8) + (0.0001×8) + (0.001×4) = $0.0128
+        #   BUDGET_PER_RECORD_MAX = 0.0128 × 3.0 safety_factor = $0.0384 → $0.04
+        #   records_per_day_min = floor($5.00 / $0.04) = 125 records/day guaranteed
+        self.research_daily_budget_usd: float = float(
+            os.getenv("RESEARCH_DAILY_BUDGET_USD", "5.0")
+        )
+        self.research_max_cost_per_record_usd: float = float(
+            os.getenv("RESEARCH_MAX_COST_PER_RECORD_USD", "0.04")
+        )
+        self.research_max_calls_per_record: int = int(
+            os.getenv("RESEARCH_MAX_CALLS_PER_RECORD", "8")
+        )
+        self.research_eligibility_cooldown_days: int = int(
+            os.getenv("RESEARCH_ELIGIBILITY_COOLDOWN_DAYS", "7")
+        )
+        self.research_fetch_verify_enabled: bool = (
+            os.getenv("RESEARCH_FETCH_VERIFY_ENABLED", "true").lower() == "true"
+        )
 
     @property
     def supabase_client(self):
