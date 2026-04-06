@@ -10,7 +10,11 @@ Used by: services/agent-orchestrator/jobs/research_tasks.py
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -446,3 +450,364 @@ def build_citation_record(
         "fetch_verified": fetch_verified,
         "corroboration_count": corroboration_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Section 6 (Bug #10): Bounded LRU Cache utility
+# ---------------------------------------------------------------------------
+
+class BoundedLRUCache:
+    """Thread-safe bounded LRU cache using OrderedDict. Max entries enforced on put."""
+
+    def __init__(self, max_size: int = 1000):
+        self._data: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+        self._max_size = max_size
+
+    def get(self, key: str, ttl_seconds: float = 604800) -> Any | None:
+        if key not in self._data:
+            return None
+        value, ts = self._data[key]
+        if time.time() - ts > ttl_seconds:
+            del self._data[key]
+            return None
+        self._data.move_to_end(key)
+        return value
+
+    def put(self, key: str, value: Any) -> None:
+        self._data[key] = (value, time.time())
+        self._data.move_to_end(key)
+        while len(self._data) > self._max_size:
+            self._data.popitem(last=False)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+
+# ---------------------------------------------------------------------------
+# Section 3: Entity Cache Helpers (D-04)
+# ---------------------------------------------------------------------------
+
+_memory_cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+_MEMORY_CACHE_MAX = 5000
+
+
+def _cache_key_wine(wine_name: str, vintage: str | None, producer: str | None) -> str:
+    raw = f"{(wine_name or '').lower().strip()}|{(vintage or '').strip()}|{(producer or '').lower().strip()}"
+    return f"research:wine:{hashlib.sha256(raw.encode()).hexdigest()}"
+
+
+def _cache_key_producer(producer: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]", "", producer.lower().strip())
+    return f"research:producer:{normalized}"
+
+
+def _cache_key_region(region_or_appellation: str) -> str:
+    """D-04 Tier 3: Region/appellation-level ontology cache key."""
+    normalized = re.sub(r"[^a-z0-9]", "", region_or_appellation.lower().strip())
+    return f"research:region:{normalized}"
+
+
+def get_entity_cache(key: str, redis_client=None) -> Any | None:
+    """
+    Check Redis first (if available), then in-memory OrderedDict.
+    Returns cached value or None.
+    """
+    if redis_client is not None:
+        try:
+            val = redis_client.get(key)
+            if val:
+                return json.loads(val)
+        except Exception:
+            pass
+    if key in _memory_cache:
+        value, cached_at = _memory_cache[key]
+        return value
+    return None
+
+
+def put_entity_cache(key: str, value: Any, ttl_days: int = 30, redis_client=None) -> None:
+    """
+    Write to Redis (if available) with TTL, and always to in-memory cache.
+    Evicts oldest entry if memory cache exceeds _MEMORY_CACHE_MAX.
+    """
+    if redis_client is not None:
+        try:
+            redis_client.setex(key, ttl_days * 86400, json.dumps(value))
+        except Exception:
+            pass
+    _memory_cache[key] = (value, time.time())
+    _memory_cache.move_to_end(key)
+    while len(_memory_cache) > _MEMORY_CACHE_MAX:
+        _memory_cache.popitem(last=False)
+
+
+# ---------------------------------------------------------------------------
+# Section 1: Layer 1 Deterministic Inference (D-01, D-08)
+# ---------------------------------------------------------------------------
+
+def _should_infer(fc: dict[str, Any], field_name: str) -> bool:
+    """Return True if a field should be filled by Layer 1 inference."""
+    entry = fc.get(field_name)
+    if entry is None:
+        return True
+    if not isinstance(entry, dict):
+        return True
+    return float(entry.get("confidence", 0.0)) < DEFAULT_ACCEPT_THRESHOLD
+
+
+def run_layer1_inference(
+    fc: dict[str, Any],
+    wine_name: str,
+    producer: str | None = None,
+    vintage: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """
+    Layer 1: Deterministic inference from Phase 9 ontology.
+    Zero cost, instant. Fills appellation-derived fields only (D-08).
+
+    Returns dict of {field_name: {value, confidence, source}} for deterministic fills.
+    Only returns fills where existing FC confidence < DEFAULT_ACCEPT_THRESHOLD or field absent.
+    All ontology calls wrapped in try/except — malformed DB data returns empty dict (T-12.1-01).
+    """
+    fills: dict[str, dict[str, Any]] = {}
+    appellation_rules = None
+
+    # Extract current values from fc
+    appellation = (fc.get("appellation") or {}).get("value") if isinstance(fc.get("appellation"), dict) else None
+    grape = (fc.get("grape_variety") or {}).get("value") if isinstance(fc.get("grape_variety"), dict) else None
+
+    if appellation:
+        # Check Tier 3 cache (D-04) before hitting DB
+        cache_key = _cache_key_region(appellation)
+        cached = _memory_cache.get(cache_key)
+        cached_rules = cached[0] if cached else None
+
+        if cached_rules is None:
+            # Step 1: lookup appellation rules
+            try:
+                from services.ontology_normalization import (  # noqa: F401
+                    get_country_for_appellation,
+                    get_grape_color,
+                    get_region_for_appellation,
+                    lookup_appellation_rules,
+                    normalize_grape_name,
+                )
+                cached_rules = lookup_appellation_rules(appellation) or {}
+            except Exception:
+                cached_rules = {}
+            # Store in Tier 3 cache
+            _memory_cache[cache_key] = (cached_rules, time.time())
+            _memory_cache.move_to_end(cache_key)
+            while len(_memory_cache) > _MEMORY_CACHE_MAX:
+                _memory_cache.popitem(last=False)
+
+        appellation_rules = cached_rules
+
+        # Step 1: grape variety from required_grapes
+        if _should_infer(fc, "grape_variety"):
+            required_grapes = appellation_rules.get("required_grapes") if appellation_rules else None
+            if required_grapes and len(required_grapes) == 1:
+                entry = required_grapes[0]
+                if entry.get("min_pct") == 100:
+                    fills["grape_variety"] = {
+                        "value": entry.get("grape"),
+                        "confidence": 0.99,
+                        "source": "ontology_inference",
+                    }
+                    grape = entry.get("grape")
+
+        # Steps 2 & 3: country + region + sub_region from appellation
+        try:
+            from services.ontology_normalization import (
+                get_country_for_appellation,
+                get_region_for_appellation,
+            )
+            if _should_infer(fc, "country"):
+                country = get_country_for_appellation(appellation)
+                if country:
+                    fills["country"] = {"value": country, "confidence": 0.99, "source": "ontology_inference"}
+
+            region_result = get_region_for_appellation(appellation)
+            if region_result:
+                if _should_infer(fc, "region"):
+                    region_name = region_result.get("name")
+                    if region_name:
+                        fills["region"] = {"value": region_name, "confidence": 0.99, "source": "ontology_inference"}
+                # Step 3b: sub_region from same result (D-08)
+                if _should_infer(fc, "sub_region"):
+                    sub_region = region_result.get("sub_region")
+                    if sub_region:
+                        fills["sub_region"] = {"value": sub_region, "confidence": 0.99, "source": "ontology_inference"}
+        except Exception:
+            pass
+
+    # Step 4: color from grape
+    if grape and _should_infer(fc, "color"):
+        try:
+            from services.ontology_normalization import get_grape_color, normalize_grape_name
+            canonical = normalize_grape_name(grape)
+            if canonical:
+                color = get_grape_color(canonical)
+                if color:
+                    fills["color"] = {"value": color, "confidence": 0.99, "source": "ontology_inference"}
+        except Exception:
+            pass
+
+    # Step 6: Vintage plausibility (D-08)
+    if vintage:
+        try:
+            year = int(str(vintage).strip())
+            current_year = datetime.now().year
+            implausible = year < 1800 or year > current_year + 1
+            # Check appellation first_vintage if we have rules
+            if not implausible and appellation_rules:
+                first_vintage = appellation_rules.get("first_vintage")
+                if first_vintage and year < int(first_vintage):
+                    implausible = True
+            if implausible:
+                fills["vintage_plausibility"] = {
+                    "value": "implausible",
+                    "confidence": 0.99,
+                    "source": "ontology_inference",
+                }
+        except (ValueError, TypeError):
+            fills["vintage_plausibility"] = {
+                "value": "implausible",
+                "confidence": 0.99,
+                "source": "ontology_inference",
+            }
+
+    return fills
+
+
+# ---------------------------------------------------------------------------
+# Section 2: Model Cascade Routing (D-02)
+# ---------------------------------------------------------------------------
+
+HAIKU_FIELDS = frozenset({"color", "primary_type", "sweetness_level", "is_blend"})
+SONNET_ESCALATION_FIELDS = frozenset({"tasting_notes", "description", "food_pairing", "producer_bio"})
+
+
+def select_model(
+    field_name: str,
+    ontology_hint_conf: float = 0.0,
+    attempt: int = 1,
+) -> str:
+    """
+    D-02: Smart cascade routing per field difficulty.
+    Returns model identifier string: "haiku", "flash", or "sonnet".
+
+    Rules:
+    - Haiku: fields in HAIKU_FIELDS OR ontology_hint_conf > 0.7
+    - Flash: default for all other fields on attempt 1
+    - Sonnet: fields that failed Flash on prior attempt (attempt >= 2),
+      OR complex fields in SONNET_ESCALATION_FIELDS on attempt >= 2
+    """
+    if field_name in HAIKU_FIELDS or ontology_hint_conf > 0.7:
+        return "haiku"
+    if attempt >= 2 and field_name in SONNET_ESCALATION_FIELDS:
+        return "sonnet"
+    if attempt >= 2:
+        return "sonnet"
+    return "flash"
+
+
+# ---------------------------------------------------------------------------
+# Section 4: Authority-Weighted Conflict Resolution (D-05)
+# ---------------------------------------------------------------------------
+
+def resolve_conflict(
+    candidates: list[dict[str, Any]],
+    field_name: str,
+) -> tuple[str, str, dict[str, Any] | None]:
+    """
+    D-05: Returns (resolution, reason, winning_candidate).
+    resolution: "auto" | "human"
+    reason: human-readable explanation
+    winning_candidate: the dict from candidates that wins (None if human)
+
+    AUTO-RESOLVE rules (100% safe):
+    1. Tier-A vs Tier-C: auto-accept Tier-A (if fetch_verified)
+    2. Tier-A vs Tier-B: auto-accept Tier-A (if fetch_verified)
+    3. 2+ Tier-B agree vs 1 Tier-C: auto-accept B consensus
+
+    ESCALATE TO HUMAN:
+    4. Tier-A vs Tier-A
+    5. Tier-B vs Tier-B (different values)
+    6. No clear winner
+    7. Auto-resolution confidence < 0.85
+    """
+    if not candidates:
+        return ("human", "no candidates", None)
+
+    tier_a = [c for c in candidates if c.get("source_tier") == "A"]
+    tier_b = [c for c in candidates if c.get("source_tier") == "B"]
+    tier_c = [c for c in candidates if c.get("source_tier") == "C"]
+
+    # Rule 1: Tier-A vs Tier-C (no tier-B)
+    if tier_a and tier_c and not tier_b:
+        winner = next((c for c in tier_a if c.get("fetch_verified")), None)
+        if winner:
+            return ("auto", "tier-A vs tier-C", winner)
+        return ("human", "tier-A not fetch-verified", None)
+
+    # Rule 2: Tier-A vs Tier-B
+    if tier_a and tier_b:
+        winner = next((c for c in tier_a if c.get("fetch_verified")), None)
+        if winner:
+            return ("auto", "tier-A vs tier-B", winner)
+        return ("human", "tier-A not fetch-verified", None)
+
+    # Rule 3: 2+ Tier-B agree vs Tier-C
+    if tier_b and len(tier_b) >= 2:
+        value_counts: dict[str, list[dict[str, Any]]] = {}
+        for c in tier_b:
+            norm_val = _normalize_value(c.get("value"))
+            value_counts.setdefault(norm_val, []).append(c)
+        # Find value with >= 2 tier-B agreements
+        consensus_group = next(
+            (group for group in value_counts.values() if len(group) >= 2),
+            None,
+        )
+        if consensus_group:
+            winner = consensus_group[0]
+            return ("auto", "2+ tier-B consensus", winner)
+
+    # Rule 4: Tier-A vs Tier-A
+    if len(tier_a) >= 2:
+        return ("human", "tier-A vs tier-A conflict", None)
+
+    # Rule 5: Tier-B vs Tier-B with different values
+    if len(tier_b) >= 2:
+        values = {_normalize_value(c.get("value")) for c in tier_b}
+        if len(values) > 1:
+            return ("human", "tier-B vs tier-B conflict", None)
+
+    # Rules 6-7: no clear winner
+    return ("human", "no clear authority winner", None)
+
+
+# ---------------------------------------------------------------------------
+# Section 5: Conflict Candidates Deep Merge (D-06 Bug #3)
+# ---------------------------------------------------------------------------
+
+def merge_conflict_candidates(
+    existing: dict[str, list] | None,
+    new: dict[str, list],
+) -> dict[str, list]:
+    """
+    D-06 Bug #3: Deep-merge conflict_candidates instead of replacing.
+    Preserves conflicts on other fields from prior runs.
+    """
+    if not existing:
+        return dict(new)
+    merged = dict(existing)
+    for field, candidates in new.items():
+        if field in merged:
+            existing_urls = {c.get("source_url") for c in merged[field]}
+            for c in candidates:
+                if c.get("source_url") not in existing_urls:
+                    merged[field].append(c)
+        else:
+            merged[field] = candidates
+    return merged
