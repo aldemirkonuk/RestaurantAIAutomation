@@ -20,7 +20,7 @@ Thirteen phases building the world's most sophisticated restaurant wine intellig
 - [ ] **Phase 9: Wine Ontology, Taxonomy & Cross-Validation** — Structured region hierarchy, grape family taxonomy, appellation classification rules, automated contradiction detection (e.g., "Barolo" + "France" = impossible), vintage plausibility checks
 - [x] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context (completed 2026-04-06)
 - [x] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals (completed 2026-04-06)
-- [ ] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety.
+- [x] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety. (completed 2026-04-06)
 - [ ] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables.
 
 ## Phase Details
@@ -422,10 +422,10 @@ Phase 8 (Serper/Tavily API integration, web search infrastructure)
 **Plans**: 4 plans
 
 Plans:
-- [ ] 12-01-PLAN.md — Wave 1: DB migrations (research_runs, research_run_stats, evidence_citations, conflict_candidates) + research_agent_helpers.py shared module
-- [ ] 12-02-PLAN.md — Wave 2: research_agent_task Celery task (eligibility, evidence loop, Serper, fetch-verify, conflict, corroboration, merge, stats write, budget cap)
-- [ ] 12-03-PLAN.md — Wave 2: API endpoints (GET /metrics, GET /runs, GET /conflicts, POST /trigger) + router registration
-- [ ] 12-04-PLAN.md — Wave 3: Unit tests (≥20, all helpers) + E2E test (RSCH-11: 5 NULL fields → fills → metrics)
+- [x] 12-01-PLAN.md — Wave 1: DB migrations (research_runs, research_run_stats, evidence_citations, conflict_candidates) + research_agent_helpers.py shared module
+- [x] 12-02-PLAN.md — Wave 2: research_agent_task Celery task (eligibility, evidence loop, Serper, fetch-verify, conflict, corroboration, merge, stats write, budget cap)
+- [x] 12-03-PLAN.md — Wave 2: API endpoints (GET /metrics, GET /runs, GET /conflicts, POST /trigger) + router registration
+- [x] 12-04-PLAN.md — Wave 3: Unit tests (≥20, all helpers) + E2E test (RSCH-11: 5 NULL fields → fills → metrics)
 
 ### Phase 13: Dev Onboarding UI with Manual Override Access
 **Goal**: Build a role-aware onboarding interface that lets developers and certified contributors run ingestion through all supported paths (PDF upload, image scan, crawler URL flow), review the extracted/enriched output, and manually override field values with full auditability. This phase enables controlled dataset authoring so trusted users can contribute records directly while preserving confidence metadata and governance.
@@ -483,7 +483,7 @@ Plans:
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/5 | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 6/6 | Complete    | 2026-04-06 |
 | 11. Temporal Menu Intelligence & Analytics | 5/5 | Complete    | 2026-04-06 |
-| 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
+| 12. Extensive Gap-Filling Research Agent | 4/4 | Complete    | 2026-04-06 |
 | 13. Dev Onboarding UI with Manual Override Access | 0/5 | Planned | — |
 
 ## Archived Phases (Previous Milestone — Retired)
