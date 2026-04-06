@@ -15,15 +15,28 @@ Threat mitigations:
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 research_router = APIRouter(prefix="/api/v1/research", tags=["research"])
+
+
+# =============================================================================
+# AUTH
+# =============================================================================
+
+def verify_admin_token(x_admin_key: str = Header(...)) -> str:
+    """Require X-Admin-Key header matching ADMIN_API_KEY env var (D-06 Bug #7)."""
+    expected = os.getenv("ADMIN_API_KEY", "")
+    if not expected or x_admin_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
+    return x_admin_key
 
 
 # =============================================================================
@@ -111,8 +124,11 @@ def get_research_metrics():
             supabase.table("research_run_stats")
             .select(
                 "fields_targeted, fields_filled, fields_conflicted, "
-                "null_rate_before, null_rate_after, time_to_fill_hours, attempts, cost_usd"
+                "null_rate_before, null_rate_after, time_to_fill_hours, attempts, cost_usd, "
+                "regression_blocked_count"
             )
+            .order("created_at", desc=True)
+            .limit(10000)
             .execute()
         )
         stats_rows = stats_resp.data or []
@@ -120,11 +136,12 @@ def get_research_metrics():
         logger.error("get_research_metrics: research_run_stats query failed: %s", exc)
         stats_rows = []
 
-    # --- 2. Query evidence_citations ---
+    # --- 2. Query evidence_citations (narrow select — only columns needed for aggregates) ---
     try:
         cit_resp = (
             supabase.table("evidence_citations")
-            .select("source_tier, fetch_verified, corroboration_count, source_url, snippet, retrieved_at")
+            .select("source_tier, fetch_verified, corroboration_count")
+            .limit(10000)
             .execute()
         )
         cit_rows = cit_resp.data or []
@@ -137,6 +154,7 @@ def get_research_metrics():
         runs_resp = (
             supabase.table("research_runs")
             .select("records_processed, cost_usd, pii_policy_flags, started_at")
+            .limit(10000)
             .execute()
         )
         runs_rows = runs_resp.data or []
@@ -150,6 +168,7 @@ def get_research_metrics():
             supabase.table("field_corrections")
             .select("submission_id, field_name")
             .not_.is_("corrected_by", "null")
+            .limit(10000)
             .execute()
         )
         corr_rows = corr_resp.data or []
@@ -220,12 +239,12 @@ def get_research_metrics():
         citation_completeness = 0.0
         independent_corroboration_rate = 0.0
         fetch_verify_pass_rate = 0.0
+        fetch_verify_pass_rate_by_tier: Dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
     else:
+        # citation_completeness: fraction with corroboration_count >= 1 (proxy for complete citations)
         complete_count = sum(
             1 for c in cit_rows
-            if (c.get("source_url") or "") != ""
-            and (c.get("snippet") or "") != ""
-            and c.get("retrieved_at") is not None
+            if int(c.get("corroboration_count") or 0) >= 1
         )
         citation_completeness = _safe_div(complete_count, total_c)
 
@@ -238,10 +257,26 @@ def get_research_metrics():
         verified_count = sum(1 for c in cit_rows if c.get("fetch_verified") is True)
         fetch_verify_pass_rate = _safe_div(verified_count, total_c)
 
+        # Per-tier fetch_verify_pass_rate (D-07)
+        tier_verified: Dict[str, int] = {"A": 0, "B": 0, "C": 0}
+        tier_total: Dict[str, int] = {"A": 0, "B": 0, "C": 0}
+        for c in cit_rows:
+            tier = c.get("source_tier", "C")
+            if tier not in tier_total:
+                tier = "C"
+            tier_total[tier] += 1
+            if c.get("fetch_verified") is True:
+                tier_verified[tier] += 1
+        fetch_verify_pass_rate_by_tier = {
+            t: round(_safe_div(tier_verified[t], tier_total[t]), 4)
+            for t in ("A", "B", "C")
+        }
+
     evidence_hygiene = {
         "citation_completeness": round(citation_completeness, 4),
         "independent_corroboration_rate": round(independent_corroboration_rate, 4),
         "fetch_verify_pass_rate": round(fetch_verify_pass_rate, 4),
+        "fetch_verify_pass_rate_by_tier": fetch_verify_pass_rate_by_tier,
     }
 
     # --- Compute: Throughput + Cost ---
@@ -270,9 +305,13 @@ def get_research_metrics():
 
     # --- Compute: Safety ---
     total_pii_flags = sum(int(r.get("pii_policy_flags") or 0) for r in runs_rows)
+    # regression_rate: actual regressions tracked from research_run_stats (D-06 Bug #6)
+    total_regressions = sum(int(r.get("regression_blocked_count") or 0) for r in stats_rows)
+    total_fields_attempted = sum(int(r.get("fields_targeted") or 0) for r in stats_rows)
+    regression_rate = _safe_div(total_regressions, total_fields_attempted)
     safety = {
         "pii_policy_flags": total_pii_flags,
-        "regression_rate": 0.0,  # enforced by merge_field_confidence — always 0.0
+        "regression_rate": round(regression_rate, 4),
     }
 
     return ResearchMetricsResponse(
@@ -409,8 +448,57 @@ def get_research_conflicts(limit: int = 20, offset: int = 0):
     }
 
 
+@research_router.get("/challenges")
+def get_research_challenges(
+    status: str = "open",
+    limit: int = 20,
+    offset: int = 0,
+):
+    """
+    GET /api/v1/research/challenges
+
+    Returns resolution_challenges — tier-A evidence that contradicts human_resolved fields.
+    Filterable by status: open | accepted | dismissed.
+
+    Response: { challenges: [...], total: int }
+    """
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    limit = min(limit, 100)
+
+    try:
+        count_resp = (
+            supabase.table("resolution_challenges")
+            .select("id", count="exact")
+            .eq("status", status)
+            .execute()
+        )
+        total = count_resp.count or 0
+
+        rows_resp = (
+            supabase.table("resolution_challenges")
+            .select(
+                "id, submission_id, field_name, existing_value, challenging_value, "
+                "challenging_source_url, challenging_source_tier, snippet, "
+                "challenged_at, status, resolved_by, resolved_at"
+            )
+            .eq("status", status)
+            .order("challenged_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        challenges = rows_resp.data or []
+    except Exception as exc:
+        logger.error("get_research_challenges DB error: %s", exc)
+        raise HTTPException(status_code=503, detail="Database query failed")
+
+    return {"challenges": challenges, "total": total}
+
+
 @research_router.post("/trigger")
-def trigger_research(body: TriggerRequest):
+def trigger_research(body: TriggerRequest, _token: str = Depends(verify_admin_token)):
     """
     POST /api/v1/research/trigger
 
