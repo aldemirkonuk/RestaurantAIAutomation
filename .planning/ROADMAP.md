@@ -384,6 +384,14 @@ Plans:
   6. `trending_wines` computation identifies wines with highest positive/negative restaurant-count delta over 30/60/90 day windows
   7. `GET /api/v1/analytics/trends` returns regional trend data (category, grape, region breakdowns)
   8. `GET /api/v1/analytics/wine/{id}/timeline` returns full lifecycle: first_seen, restaurants_carrying, price_history, menu_changes
+**Plans**: 5 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Wave 1: DB migration (5 tables + backfill) + settings.py patch + [BLOCKING] supabase db push
+- [ ] 11-02-PLAN.md — Wave 2a (parallel): MenuDiffService + test_menu_diff_service.py (TEMP-03, TEMP-04)
+- [ ] 11-03-PLAN.md — Wave 2b (parallel): CrawlResult.wines patch + recrawl_tasks.py + celery_app update + test_recrawl_tasks.py (TEMP-02)
+- [ ] 11-04-PLAN.md — Wave 3: trend_tasks.py (popularity + trending) + celery_app update + test_trend_tasks.py (TEMP-05, TEMP-06)
+- [ ] 11-05-PLAN.md — Wave 4: analytics_routes.py GET /trends + GET /wine/{id}/timeline + test_temporal_analytics.py (TEMP-07, TEMP-08)
 
 ### Phase 12: Extensive Gap-Filling Research Agent
 **Goal**: Build an autonomous, multi-step research agent that achieves near-perfect dataset coverage
@@ -474,7 +482,7 @@ Plans:
 | 8. Web Search Verification & Deep Enrichment | 5/5 | Complete    | 2026-04-06 |
 | 9. Wine Ontology, Taxonomy & Cross-Validation | 0/5 | Planned | — |
 | 10. Critic Scores & Pricing Intelligence | 6/6 | Complete    | 2026-04-06 |
-| 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
+| 11. Temporal Menu Intelligence & Analytics | 0/5 | Planned | — |
 | 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
 | 13. Dev Onboarding UI with Manual Override Access | 0/5 | Planned | — |
 
