@@ -2,7 +2,7 @@
 
 ## Overview
 
-Twelve phases building the world's most sophisticated restaurant wine intelligence dataset. Phases 1–6 replaced the retired YOLO+Surya stack with a hybrid extraction pipeline. Phases 7–11 transform raw extraction into a verified, enriched, cross-referenced wine knowledge base with per-field confidence scoring, web-verified data, wine ontology validation, critic score aggregation, and temporal menu intelligence. Phase 12 closes the remaining gaps with an autonomous multi-source research agent that produces independently corroborated, citable fills — not AI guesses.
+Thirteen phases building the world's most sophisticated restaurant wine intelligence dataset. Phases 1–6 replaced the retired YOLO+Surya stack with a hybrid extraction pipeline. Phases 7–11 transform raw extraction into a verified, enriched, cross-referenced wine knowledge base with per-field confidence scoring, web-verified data, wine ontology validation, critic score aggregation, and temporal menu intelligence. Phase 12 closes the remaining gaps with an autonomous multi-source research agent that produces independently corroborated, citable fills — not AI guesses. Phase 13 adds a developer and certified-user onboarding UI with manual field override controls to build high-quality datasets across PDF and crawler-driven ingestion flows.
 
 **Architecture pivot from:** YOLO 13-class → Surya OCR → local parser (mAP50 0.04 — retired 2026-03-31)
 **Architecture pivot to:** Claude Vision (extraction) + Gemini Flash (crawling) + YOLO 2-class (preview) + Haiku (enrichment) + Web Search (verification) + Ontology (validation) + Temporal (intelligence)
@@ -21,6 +21,7 @@ Twelve phases building the world's most sophisticated restaurant wine intelligen
 - [ ] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context
 - [ ] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals
 - [ ] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety.
+- [ ] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables.
 
 ## Phase Details
 
@@ -300,6 +301,7 @@ Plans:
 
 ### Phase 10: Critic Scores & Pricing Intelligence
 **Goal**: Aggregate professional critic ratings from multiple sources (Wine Advocate/Robert Parker, Wine Spectator, Vivino community, Decanter, JancisRobinson.com) per wine, benchmark restaurant menu prices against retail market averages (Wine-Searcher), and compute restaurant markup ratios. This phase transforms the dataset from "what wines are on menus" into "what wines are on menus, how good are they, and how much is the restaurant marking them up" — intelligence no other wine database provides in the restaurant context.
+**Plans**: 6 plans
 
 **Rationale**: A wine dataset without scores and pricing context is just a catalog. Restaurant operators, sommeliers, and wine distributors need to know: Is this wine well-reviewed? Is the restaurant pricing it fairly? How does this wine compare to others in the same price tier? Critic scores are the universal language of wine quality. Retail price benchmarking reveals which restaurants are price-competitive and which are over-marking. Combined with the menu-position data from extraction (section_name, order within section), this creates a uniquely powerful dataset: "This 92-point Wine Advocate wine is priced at 2.1x retail markup, listed first in the 'Red Burgundy' section at 14 Chicago restaurants."
 
@@ -332,6 +334,14 @@ Plans:
   5. `markup_ratio` computed per restaurant_inventory entry (menu_price / retail_price_avg)
   6. Price anomaly detection flags wines with markup_ratio > 5x or < 0.8x for review
   7. `GET /api/v1/analytics/wine/{id}/scores` returns aggregated critic scores + pricing intelligence for a wine
+
+Plans:
+- [ ] 10-01-PLAN.md — DB migration: wine_menu_prices table + 6 new columns on master_wine_library/restaurant_inventory + [BLOCKING] supabase db push (Wave 1)
+- [ ] 10-02-PLAN.md — CriticScoreService: normalize_score, compute_composite_score, build_critic_score_queries, parse_serper_score_snippets, compute_markup_info (Wave 1, parallel)
+- [ ] 10-03-PLAN.md — DatasetIngestionService: file discovery, fuzzy wine matching, non-destructive JSONB enrichment from library/*.jsonl + External_Wine_Datasets/*.csv (Wave 2)
+- [ ] 10-04-PLAN.md — score_tasks.py: score_lookup_task + dataset_enrich_task + rescore_stale_wines_task + celery_app.py import + beat schedule + ontology_tasks.py chain trigger (Wave 3)
+- [ ] 10-05-PLAN.md — Tests: test_critic_score_service.py + test_score_tasks.py + test_dataset_ingestion.py covering CRIT-01..06 (Wave 4, parallel)
+- [ ] 10-06-PLAN.md — Analytics API: GET /api/v1/analytics/wine/{id}/scores + main.py wire + test_analytics_routes.py (Wave 4, parallel)
 
 ### Phase 11: Temporal Menu Intelligence & Analytics
 **Goal**: Transform the extraction pipeline from a one-shot scanner into a living, breathing menu intelligence system. Schedule periodic re-crawls of known restaurant websites, detect menu changes (wines added, removed, prices changed), track wine lifecycle across restaurants over time, compute cross-restaurant popularity and regional trend analytics. This is the moat — no wine database in the world tracks restaurant menu changes over time. Wine-Searcher tracks retail pricing. Vivino tracks consumer ratings. WineOps tracks what sommeliers actually put on their lists, when they add it, when they remove it, and what replaces it.
@@ -409,6 +419,47 @@ Plans:
 - [ ] 12-03-PLAN.md — Wave 2: API endpoints (GET /metrics, GET /runs, GET /conflicts, POST /trigger) + router registration
 - [ ] 12-04-PLAN.md — Wave 3: Unit tests (≥20, all helpers) + E2E test (RSCH-11: 5 NULL fields → fills → metrics)
 
+### Phase 13: Dev Onboarding UI with Manual Override Access
+**Goal**: Build a role-aware onboarding interface that lets developers and certified contributors run ingestion through all supported paths (PDF upload, image scan, crawler URL flow), review the extracted/enriched output, and manually override field values with full auditability. This phase enables controlled dataset authoring so trusted users can contribute records directly while preserving confidence metadata and governance.
+
+**Rationale**: Automated extraction plus enrichment (Phases 1–12) dramatically increases scale, but high-quality dataset growth still requires a human-in-the-loop authoring surface for edge cases and domain-expert input. A dedicated onboarding UI closes that loop: operators can validate uncertain fields, certified users can contribute structured data from trusted sources, and every manual change is captured as provenance rather than hidden mutation. This is the operational bridge between model-generated intelligence and production-grade data stewardship.
+
+**User personas**:
+- Developer operators: full access to create/edit onboarding sessions and approve records
+- Certified contributors: scoped access (e.g., sommelier, producer, approved partner org) with controlled write permissions
+- Review admins: approve/reject manual overrides, manage certification status, and audit change history
+
+**Core flow**:
+1. User starts onboarding session via PDF upload or URL/manual source selection
+2. Existing extraction pipeline runs (Vision + enrichment + verification path as available)
+3. UI renders field-level output with confidence, source attribution, and review status
+4. Authorized user manually edits selected fields and submits override with reason/evidence note
+5. System validates, logs audit trail, and promotes accepted values into target dataset tables
+
+**Depends on**: Phase 7 (field_confidence + field-level review), Phase 8 (verification status metadata), Phase 12 (research metrics and evidence model)
+**Requirements**: DEVUI-01, DEVUI-02, DEVUI-03, DEVUI-04, DEVUI-05, DEVUI-06, DEVUI-07, DEVUI-08, DEVUI-09, DEVUI-10
+
+**Success Criteria** (what must be TRUE):
+  1. AuthZ roles enforced for onboarding UI: `developer`, `certified_contributor`, `review_admin` with least-privilege field write scope
+  2. UI supports onboarding start from (a) PDF upload, (b) URL/crawler trigger, and (c) manual entry seed
+  3. Field editor shows current value, confidence, source, verification_status, and allows per-field override
+  4. Manual override submission requires `reason` and records optional citation metadata (url/snippet)
+  5. All manual edits persisted to `field_corrections` (or equivalent audit table) with actor_id, old_value, new_value, reason, timestamp
+  6. Promotion rules preserve higher-confidence verified values unless explicitly approved by role policy
+  7. Certification management path exists: enable/disable certified accounts and assign dataset scopes
+  8. `GET /api/v1/onboarding/sessions/{id}` (or equivalent) returns full session timeline: ingestion events, model outputs, manual overrides, approvals
+  9. Metrics endpoint includes manual-authoring KPIs: override rate, approval latency, acceptance rate, and post-override correction rate
+  10. E2E test: certified user uploads PDF, pipeline extracts record, user overrides 3 fields, review_admin approves, final record promoted with full audit trail
+
+**Plans**: 5 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — Wave 1: AuthZ + schema updates (roles/scopes, onboarding_sessions, override_events, certification flags)
+- [ ] 13-02-PLAN.md — Wave 2: Backend APIs for session creation, field overrides, approval workflow, and audit timeline
+- [ ] 13-03-PLAN.md — Wave 2: Dev UI shell + onboarding wizard (PDF/URL/manual) + field-level editor with confidence/source badges
+- [ ] 13-04-PLAN.md — Wave 3: Certified account lifecycle UI/API + policy enforcement for scoped dataset contribution
+- [ ] 13-05-PLAN.md — Wave 3: Integration tests + E2E authoring flow + metrics dashboard cards for manual override KPIs
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -425,6 +476,7 @@ Plans:
 | 10. Critic Scores & Pricing Intelligence | 0/? | Planned | — |
 | 11. Temporal Menu Intelligence & Analytics | 0/? | Planned | — |
 | 12. Extensive Gap-Filling Research Agent | 0/4 | Planned | — |
+| 13. Dev Onboarding UI with Manual Override Access | 0/5 | Planned | — |
 
 ## Archived Phases (Previous Milestone — Retired)
 
@@ -445,3 +497,4 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Phase 6 added: 2026-04-03 — Image Menu Extraction via Claude Vision (deferred from Phase 2)*
 *Phases 7–11 added: 2026-04-05 — World-class wine dataset pipeline: full-field confidence, web verification, ontology, critic scores, temporal intelligence*
 *Phase 12 added: 2026-04-06 — Extensive Gap-Filling Research Agent: multi-source evidence, corroboration, conflict detection, 5-category metrics dashboard — 4 plans, 3 waves*
+*Phase 13 added: 2026-04-06 — Dev Onboarding UI with Manual Override Access: role-aware ingestion UI for developers/certified contributors with auditable field-level edits — 5 plans, 3 waves*
