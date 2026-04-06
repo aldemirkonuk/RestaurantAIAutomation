@@ -128,6 +128,70 @@ def test_concordance_numeric_tolerance():
     )
 
 
+def test_concordance_color_synonyms():
+    """Test: Color synonym matching — 'deep garnet' vs 'red' → concordance via COLOR_SYNONYMS."""
+    from services.web_verification_service import COLOR_SYNONYMS
+    
+    # Verify COLOR_SYNONYMS has expected mappings
+    assert "deep garnet" in COLOR_SYNONYMS, "COLOR_SYNONYMS must have 'deep garnet'"
+    assert COLOR_SYNONYMS["deep garnet"] == "red", "deep garnet must map to red"
+    assert "ruby" in COLOR_SYNONYMS, "COLOR_SYNONYMS must have 'ruby'"
+    assert COLOR_SYNONYMS["ruby"] == "red", "ruby must map to red"
+    assert "pale yellow" in COLOR_SYNONYMS, "COLOR_SYNONYMS must have 'pale yellow'"
+    assert COLOR_SYNONYMS["pale yellow"] == "white", "pale yellow must map to white"
+    
+    # Test concordance with color synonyms
+    result = check_concordance(
+        "color",
+        {"value": "red", "confidence": 0.85, "source": "knowledge"},
+        "deep garnet",
+    )
+    assert result == "concordance", (
+        f"Expected 'concordance' for red vs deep garnet (color synonym), got {result!r}"
+    )
+    
+    result2 = check_concordance(
+        "color",
+        {"value": "white", "confidence": 0.85, "source": "knowledge"},
+        "pale yellow",
+    )
+    assert result2 == "concordance", (
+        f"Expected 'concordance' for white vs pale yellow (color synonym), got {result2!r}"
+    )
+
+
+def test_concordance_grape_variety_substring():
+    """Test: Grape variety substring matching — 'Cabernet Sauvignon' vs '87% Cabernet Sauvignon...' → web_data_more_complete."""
+    result = check_concordance(
+        "grape_variety",
+        {"value": "Cabernet Sauvignon", "confidence": 0.85, "source": "visible"},
+        "87% Cabernet Sauvignon, 8% Merlot, 5% Cabernet Franc",
+    )
+    assert result == "web_data_more_complete", (
+        f"Expected 'web_data_more_complete' for substring match (blend breakdown), got {result!r}"
+    )
+    
+    # Test reverse case: web data less specific
+    result2 = check_concordance(
+        "grape_variety",
+        {"value": "Cabernet Sauvignon", "confidence": 0.85, "source": "visible"},
+        "Cabernet",
+    )
+    assert result2 == "concordance", (
+        f"Expected 'concordance' for web data less specific (Cabernet vs Cabernet Sauvignon), got {result2!r}"
+    )
+    
+    # Test no substring match → contradiction
+    result3 = check_concordance(
+        "grape_variety",
+        {"value": "Cabernet Sauvignon", "confidence": 0.85, "source": "visible"},
+        "Pinot Noir",
+    )
+    assert result3 == "contradiction", (
+        f"Expected 'contradiction' for completely different grape varieties, got {result3!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # WSRCH-03 + WSRCH-06: apply_concordance_result — Tests 6–7
 # ---------------------------------------------------------------------------
