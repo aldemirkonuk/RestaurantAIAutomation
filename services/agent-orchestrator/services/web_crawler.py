@@ -89,6 +89,7 @@ class CrawlResult:
     restaurant_id: Optional[str] = None
     visited_urls: List[VisitedUrl] = field(default_factory=list)
     image_menu_detected: bool = False  # True when Vision path was taken (Phase 6)
+    wines: List[Dict[str, Any]] = field(default_factory=list)  # Phase 11: accumulated by _persist_crawled_wines for diff engine
 
 
 @dataclass
@@ -278,7 +279,7 @@ class WebCrawlerService:
                             if not self._wine_is_duplicate(w, restaurant_name)
                         ]
                         if non_dupes:
-                            self._persist_crawled_wines(non_dupes, restaurant_name, website_url)
+                            self._persist_crawled_wines(non_dupes, restaurant_name, website_url, result=result)
                         logger.info(
                             f"Crawled {restaurant_name}: {len(extraction.wines)} wines found, "
                             f"{len(extraction.wines) - len(non_dupes)} duplicates skipped"
@@ -422,7 +423,8 @@ class WebCrawlerService:
 
     def _persist_crawled_wines(
         self, wines: list, restaurant_name: str, source_url: str,
-        source_type: str = "crawled"
+        source_type: str = "crawled",
+        result: Optional["CrawlResult"] = None,  # Phase 11: append to result.wines for diff engine
     ):
         """
         Write non-duplicate crawled wines to JSONL dataset file.
@@ -532,6 +534,8 @@ class WebCrawlerService:
                     "restaurant_id":       None,
                 }
                 f.write(json.dumps(record) + "\n")
+                if result is not None:
+                    result.wines.append(record)
                 count += 1
 
         logger.info(f"Persisted {count} crawled wines for {restaurant_name} to {out_file.name}")
@@ -735,6 +739,7 @@ class WebCrawlerService:
                 self._persist_crawled_wines(
                     non_dupes, restaurant_name, website_url,
                     source_type="image_menu",
+                    result=result,
                 )
             logger.info(
                 f"Image menu {restaurant_name}: {len(extraction.wines)} wines extracted, "
@@ -770,6 +775,7 @@ class WebCrawlerService:
                 self._persist_crawled_wines(
                     non_dupes, restaurant_name, website_url,
                     source_type="pdf_vision_fallback",
+                    result=result,
                 )
             logger.info(
                 f"PDF vision {restaurant_name}: {len(extraction.wines)} wines extracted, "
