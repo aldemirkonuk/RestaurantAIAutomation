@@ -61,6 +61,25 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
     newValue !== (entry?.value ?? '') &&
     (!requiresReason || reason.trim().length >= 5)
 
+  const parseErrorDetail = async (resp: Response): Promise<string> => {
+    const raw = await resp.text()
+    if (!raw) {
+      if (resp.status === 503) {
+        return 'Service unavailable (503). If you use Vite, ensure FastAPI is running on port 8000 and retry.'
+      }
+      return `HTTP ${resp.status}`
+    }
+    try {
+      const j = JSON.parse(raw) as { detail?: unknown }
+      const d = j.detail
+      if (typeof d === 'string') return d
+      if (Array.isArray(d)) return d.map((x) => (typeof x === 'object' && x && 'msg' in x ? String((x as { msg: string }).msg) : String(x))).join('; ')
+      return typeof d === 'object' && d != null ? JSON.stringify(d) : raw.slice(0, 300)
+    } catch {
+      return raw.slice(0, 300)
+    }
+  }
+
   const handleSave = async () => {
     if (!canSave) return
     setIsSaving(true)
@@ -82,8 +101,11 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
           citation_url: citationUrl.trim() || null,
         }),
       })
-      const data = await resp.json()
-      if (!resp.ok) throw new Error(data.detail ?? 'Save failed')
+      if (!resp.ok) {
+        const msg = await parseErrorDetail(resp)
+        throw new Error(msg)
+      }
+      const data = (await resp.json()) as { status?: string; detail?: unknown }
       setIsEditing(false)
       onOverrideSuccess(field, newValue.trim())
       if (data.status === 'pending') {
@@ -92,8 +114,9 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
         toast.success('Override saved', { description: `${field} updated` })
       }
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed. Check your connection.')
-      toast.error('Save failed')
+      const message = err instanceof Error ? err.message : 'Save failed. Check your connection.'
+      setSaveError(message)
+      toast.error('Save failed', { description: message.slice(0, 120) })
     } finally {
       setIsSaving(false)
     }
@@ -150,11 +173,14 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
             error={requiresReason && reason.length > 0 && reason.length < 5 ? 'Min 5 characters required' : undefined}
           />
 
+          {/* type=text: avoid browser-native URL validation (type=url) — optional citations must not show false "invalid" state */}
           <input
-            type="url"
+            type="text"
+            inputMode="url"
+            autoComplete="url"
             value={citationUrl}
             onChange={(e) => setCitationUrl(e.target.value)}
-            placeholder="https://... (optional citation URL)"
+            placeholder="https://... (optional citation)"
             className="mt-1 w-full text-xs font-mono border border-slate-200 rounded-sm px-2 py-1 focus:outline-none focus:ring-1 focus:ring-wine-400"
           />
 
