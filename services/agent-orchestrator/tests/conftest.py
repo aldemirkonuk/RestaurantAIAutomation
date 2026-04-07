@@ -4,10 +4,18 @@ Pytest Configuration and Fixtures
 This file contains shared fixtures and configuration for all tests.
 """
 
+import os
+import sys
 import pytest
 import asyncio
 from typing import Generator, AsyncGenerator
 from unittest.mock import MagicMock, AsyncMock
+
+
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    # Ensure `import jobs`, `import services`, etc. resolve during pytest runs
+    sys.path.insert(0, _PROJECT_ROOT)
 
 
 @pytest.fixture(scope="session")
@@ -117,6 +125,31 @@ def sample_notification_data() -> dict:
         "wine_id": "wine-001",
         "priority": "high",
     }
+
+
+@pytest.fixture
+def test_client():
+    """FastAPI TestClient wrapping the main app.
+
+    Applies a compatibility shim for starlette 0.35.1 + httpx 0.28: httpx 0.28
+    removed the `app` parameter from Client.__init__, but starlette still passes it.
+    The shim absorbs the keyword arg so the real transport kwarg is used instead.
+    """
+    import httpx
+    from fastapi.testclient import TestClient
+    from main import app
+
+    _orig_client_init = httpx.Client.__init__
+
+    def _shim(self, *args, app=None, **kwargs):  # absorb `app` kwarg
+        _orig_client_init(self, *args, **kwargs)
+
+    httpx.Client.__init__ = _shim  # type: ignore[method-assign]
+    try:
+        client = TestClient(app)
+        yield client
+    finally:
+        httpx.Client.__init__ = _orig_client_init  # type: ignore[method-assign]
 
 
 @pytest.fixture
