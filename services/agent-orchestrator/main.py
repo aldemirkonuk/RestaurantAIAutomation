@@ -19,6 +19,7 @@ from api.quality_routes import router as quality_router
 from api.research_routes import research_router
 from api.scan_routes import router_preview as preview_router
 from api.analytics_routes import router as analytics_router
+from api.studio_routes import studio_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ app.include_router(quality_router)
 app.include_router(research_router)
 app.include_router(preview_router)
 app.include_router(analytics_router)
+app.include_router(studio_router)
 
 
 @app.get("/health")

@@ -20,7 +20,7 @@ Security mitigations:
 import logging
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Header, HTTPException
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 def require_studio_role(*required_roles: str):
     """
-    FastAPI dependency factory — verifies Bearer JWT contains at least one required studio role.
+    FastAPI dependency factory — returns a callable suitable for Depends().
+    Verifies Bearer JWT contains at least one required studio role.
 
     Reads app_metadata.roles from the Supabase JWT payload (stateless — no DB round-trip).
     JWT signature verified against SUPABASE_JWT_SECRET from settings.py.
@@ -74,7 +75,7 @@ def require_studio_role(*required_roles: str):
             )
         return payload
 
-    return Depends(_check)
+    return _check
 
 
 # =============================================================================
