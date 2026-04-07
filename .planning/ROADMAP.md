@@ -475,11 +475,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 13-01-PLAN.md — Wave 1: AuthZ + schema updates (roles/scopes, onboarding_sessions, override_events, certification flags)
-- [ ] 13-02-PLAN.md — Wave 2: Backend APIs for session creation, field overrides, approval workflow, and audit timeline
-- [ ] 13-03-PLAN.md — Wave 2: Dev UI shell + onboarding wizard (PDF/URL/manual) + field-level editor with confidence/source badges
-- [ ] 13-04-PLAN.md — Wave 3: Certified account lifecycle UI/API + policy enforcement for scoped dataset contribution
-- [ ] 13-05-PLAN.md — Wave 3: Integration tests + E2E authoring flow + metrics dashboard cards for manual override KPIs
+- [ ] 13-01-PLAN.md — Wave 1: DB migrations (user_roles, onboarding_sessions, override_events, invite_tokens) + increment_trust_counter RPC + RLS policies + [BLOCKING] supabase db push
+- [ ] 13-02-PLAN.md — Wave 2a: override_service.py (require_studio_role, OverrideRequest, check_and_update_trust) + studio_routes.py 8 endpoints + main.py router registration + settings.py patch
+- [ ] 13-03-PLAN.md — Wave 2b: AuthContext studioRoles + ProtectedRoute studio gate + App.tsx routes + useStudioSessionStore + StudioLayout + Studio + CommandBar + SessionSummary + WineRecordsTable + FieldCell + ReasonInput
+- [ ] 13-04-PLAN.md — Wave 3a: StudioApprovalQueue (QueueTable + QueueRow + TrustProgress, 30s polling) + StudioCertify (ContributorTable + InviteDialog, invite path-param token)
+- [ ] 13-05-PLAN.md — Wave 3b: test_studio_routes.py (D-07 reason enforcement, invite role guard, approve decision) + test_override_service.py (require_studio_role, trust counter RPC) + MetricCard + MetricsDashboard (4 cards, 60s polling) + Studio.tsx metrics bar
 
 ## Progress
 
