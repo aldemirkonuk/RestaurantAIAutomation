@@ -199,3 +199,146 @@ class TestStudioE2EOverrideFlow:
             assert queue_resp.status_code == 200, queue_resp.text
             body = queue_resp.json()
             assert body["total"] == 0, f"Expected 0 pending, got {body['total']}"
+
+
+# ---------------------------------------------------------------------------
+# SC-10: certified_contributor → pending queue → review_admin approval path
+# ---------------------------------------------------------------------------
+
+CERTIFIED_PAYLOAD = {
+    "sub": "cc-e2e-001",
+    "email": "contributor@studio-test.com",
+    "app_metadata": {"roles": ["certified_contributor"]},
+}
+
+CC_SESSION_ID = "sess-cc-001"
+CC_SUBMISSION_ID = "sub-cc-001"
+CC_OVERRIDE_ID = "ov-cc-001"
+
+
+@pytest.fixture()
+def mock_supabase_cc():
+    """Per-table Supabase mock for the certified_contributor queue flow."""
+    sessions_mock = MagicMock()
+    sessions_mock.insert.return_value.execute.return_value.data = [
+        {"id": CC_SESSION_ID, "actor_id": CERTIFIED_PAYLOAD["sub"], "status": "active"}
+    ]
+    sessions_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+        "id": CC_SESSION_ID,
+        "actor_id": CERTIFIED_PAYLOAD["sub"],
+        "status": "active",
+    }
+
+    submissions_mock = MagicMock()
+    submissions_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+        "id": CC_SUBMISSION_ID,
+        "field_confidence": {
+            "wine_name": {"value": "Old Wine", "confidence": 0.4, "source": "inferred"}
+        },
+    }
+    submissions_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
+
+    events_mock = MagicMock()
+    # POST /overrides → certified_contributor override lands pending
+    events_mock.insert.return_value.execute.return_value.data = [
+        {"id": CC_OVERRIDE_ID, "promotion_status": "pending"}
+    ]
+    # PATCH /queue/{id}: decide_override fetches row via select(*).eq(id).single()
+    events_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+        "id": CC_OVERRIDE_ID,
+        "promotion_status": "pending",
+        "submission_id": CC_SUBMISSION_ID,
+        "field_name": "wine_name",
+        "new_value": "Verified Wine Name",
+        "actor_id": CERTIFIED_PAYLOAD["sub"],
+        "session_id": CC_SESSION_ID,
+    }
+    events_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
+    # GET /queue pending count (no .single())
+    events_mock.select.return_value.eq.return_value.execute.return_value.count = 1
+
+    user_roles_mock = MagicMock()
+    user_roles_mock.select.return_value.eq.return_value.is_.return_value.execute.return_value.data = [
+        {"role": "certified_contributor", "promotion_policy": "queue", "consecutive_approved_overrides": 0}
+    ]
+
+    def _table_side_effect(name: str):
+        mapping = {
+            "onboarding_sessions": sessions_mock,
+            "master_wine_library_submissions": submissions_mock,
+            "override_events": events_mock,
+            "user_roles": user_roles_mock,
+        }
+        return mapping.get(name, MagicMock())
+
+    sb = MagicMock()
+    sb.table.side_effect = _table_side_effect
+    return sb
+
+
+class TestCertifiedContributorFlow:
+    def test_full_certified_contributor_approval_flow(
+        self, test_client: TestClient, mock_supabase_cc
+    ):
+        """
+        Full E2E for DEVUI-10 certified_contributor path (SC-10):
+          1. certified_contributor creates session
+          2. POST /overrides → promotion_status='pending' (goes to queue)
+          3. review_admin PATCH /queue/{id} with decision=approved
+          4. assert response decision=='approved'
+        """
+        cc_auth = {"Authorization": f"Bearer {_make_jwt(CERTIFIED_PAYLOAD)}"}
+        admin_auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
+
+        cc_roles_row = [
+            {"role": "certified_contributor", "promotion_policy": "queue",
+             "consecutive_approved_overrides": 0}
+        ]
+
+        with patch("config.settings.get_settings", return_value=_make_settings()), \
+             patch("api.studio_routes._get_supabase", return_value=mock_supabase_cc), \
+             patch("api.studio_routes._get_user_studio_roles", side_effect=lambda _sb, uid: (
+                 cc_roles_row if uid == CERTIFIED_PAYLOAD["sub"] else []
+             )), \
+             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
+             patch("api.studio_routes.check_and_update_trust", return_value=None):
+
+            # Step 1: certified_contributor starts session
+            sess_resp = test_client.post(
+                "/api/v1/studio/sessions",
+                json={"source_type": "manual_seed"},
+                headers=cc_auth,
+            )
+            assert sess_resp.status_code == 200, sess_resp.text
+
+            # Step 2: submit override → must land in pending queue
+            ov_resp = test_client.post(
+                "/api/v1/studio/overrides",
+                json={
+                    "session_id": CC_SESSION_ID,
+                    "submission_id": CC_SUBMISSION_ID,
+                    "field_name": "wine_name",
+                    "new_value": "Verified Wine Name",
+                    # confidence=0.4 → no reason required
+                },
+                headers=cc_auth,
+            )
+            assert ov_resp.status_code == 200, ov_resp.text
+            ov_body = ov_resp.json()
+            assert ov_body["status"] == "pending", (
+                f"Expected certified_contributor override to be 'pending', got: {ov_body['status']}"
+            )
+            override_id = ov_body.get("override_id", CC_OVERRIDE_ID)
+
+            # Step 3: review_admin approves the pending override
+            approve_resp = test_client.patch(
+                f"/api/v1/studio/queue/{override_id}",
+                json={"decision": "approved", "note": "Verified correct"},
+                headers=admin_auth,
+            )
+            assert approve_resp.status_code == 200, approve_resp.text
+            approve_body = approve_resp.json()
+            assert approve_body["decision"] == "approved", (
+                f"Expected decision='approved', got: {approve_body}"
+            )
+            assert approve_body["override_id"] == override_id
