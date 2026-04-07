@@ -1,3 +1,10 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env so SUPABASE_URL, ADMIN_API_KEY, etc. are available in worker processes.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from celery import Celery
 from celery.schedules import crontab
 
