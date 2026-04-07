@@ -231,7 +231,7 @@ def submit_override(
 def get_approval_queue(
     limit: int = 50,
     offset: int = 0,
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_studio_role("developer", "review_admin")),
 ):
     """GET /api/v1/studio/queue — pending overrides for review_admin approval (D-14)."""
     supabase = _get_supabase()

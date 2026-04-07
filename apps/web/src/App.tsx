@@ -91,7 +91,7 @@ function App() {
                 <Route
                   path="/studio/queue"
                   element={
-                    <ProtectedRoute requiredStudioRole={['review_admin']}>
+                    <ProtectedRoute requiredStudioRole={['developer', 'review_admin']}>
                       <StudioApprovalQueue />
                     </ProtectedRoute>
                   }
