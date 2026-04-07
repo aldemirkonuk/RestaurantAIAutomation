@@ -99,7 +99,7 @@ function App() {
                 <Route
                   path="/studio/certify"
                   element={
-                    <ProtectedRoute requiredStudioRole={['review_admin']}>
+                    <ProtectedRoute requiredStudioRole={['developer', 'review_admin']}>
                       <StudioCertify />
                     </ProtectedRoute>
                   }

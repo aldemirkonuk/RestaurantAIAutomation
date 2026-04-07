@@ -538,7 +538,7 @@ def get_my_roles(
 # --- GET /contributors ---
 @studio_router.get("/contributors")
 def get_contributors(
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_studio_role("developer", "review_admin")),
 ):
     """
     GET /api/v1/studio/contributors — list active certified_contributors (review_admin only).

@@ -35,8 +35,12 @@ def require_studio_role(*required_roles: str):
     FastAPI dependency factory — returns a callable suitable for Depends().
     Verifies Bearer JWT contains at least one required studio role.
 
-    Reads app_metadata.roles from the Supabase JWT payload (stateless — no DB round-trip).
-    JWT signature verified against SUPABASE_JWT_SECRET from settings.py.
+    Strategy (two-tier):
+      1. Check app_metadata.roles in the JWT (populated by Supabase JWT hook when configured).
+      2. Fall back to a DB lookup on user_roles table (when JWT hook is not configured, which is
+         the common dev/staging setup where roles live only in the DB).
+
+    JWT signature is always verified against SUPABASE_JWT_SECRET.
 
     Usage:
         @router.post("/overrides")
@@ -66,14 +70,38 @@ def require_studio_role(*required_roles: str):
         except pyjwt.PyJWTError as exc:
             raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
 
+        # Tier 1: JWT app_metadata.roles (populated by Supabase JWT hook if configured)
         app_meta = payload.get("app_metadata", {})
-        user_roles_claim = app_meta.get("roles", [])
-        if not any(r in user_roles_claim for r in required_roles):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Requires one of: {list(required_roles)}. Your roles: {user_roles_claim}",
-            )
-        return payload
+        jwt_roles = app_meta.get("roles", [])
+        if any(r in jwt_roles for r in required_roles):
+            return payload
+
+        # Tier 2: DB fallback — query user_roles table when JWT hook is not configured
+        user_id = payload.get("sub")
+        if user_id:
+            supabase = _get_supabase()
+            if supabase:
+                try:
+                    resp = (
+                        supabase.table("user_roles")
+                        .select("role")
+                        .eq("user_id", user_id)
+                        .is_("revoked_at", "null")
+                        .execute()
+                    )
+                    db_roles = [r["role"] for r in (resp.data or [])]
+                    if any(r in db_roles for r in required_roles):
+                        # Attach DB roles so downstream helpers (_get_primary_studio_role etc.) can read them
+                        payload.setdefault("app_metadata", {})["roles"] = db_roles
+                        return payload
+                    jwt_roles = db_roles  # show accurate roles in error message
+                except Exception as exc:
+                    logger.warning("require_studio_role: DB role fallback failed for %s: %s", user_id, exc)
+
+        raise HTTPException(
+            status_code=403,
+            detail=f"Requires one of: {list(required_roles)}. Your roles: {jwt_roles}",
+        )
 
     return _check
 
