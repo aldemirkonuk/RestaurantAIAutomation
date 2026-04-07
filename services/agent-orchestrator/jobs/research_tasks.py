@@ -499,8 +499,9 @@ async def _extract_field_candidates(
     try:
         from google import genai
         client = genai.Client(api_key=settings.google_api_key)
+        flash_model = getattr(settings, "research_cascade_flash_model", "gemini-2.5-flash")
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=flash_model,
             contents=prompt,
             config={"response_mime_type": "application/json"},
         )
@@ -518,7 +519,7 @@ async def _extract_field_candidates(
             cost = (in_tok * 0.075 / 1_000_000) + (out_tok * 0.30 / 1_000_000)
             spend_logger.log(
                 provider="google",
-                model="gemini-2.0-flash",
+                model=flash_model,
                 input_tokens=in_tok,
                 output_tokens=out_tok,
                 cost_usd=cost,

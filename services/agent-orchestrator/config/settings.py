@@ -74,7 +74,7 @@ class Settings:
             "RESEARCH_CASCADE_HAIKU_MODEL", "claude-haiku-4-5-20251001"
         )
         self.research_cascade_flash_model: str = os.getenv(
-            "RESEARCH_CASCADE_FLASH_MODEL", "gemini-2.0-flash"
+            "RESEARCH_CASCADE_FLASH_MODEL", "gemini-2.5-flash"
         )
         self.research_cascade_sonnet_model: str = os.getenv(
             "RESEARCH_CASCADE_SONNET_MODEL", "claude-sonnet-4-20250514"
