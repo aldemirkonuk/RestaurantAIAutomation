@@ -21,7 +21,7 @@ Thirteen phases building the world's most sophisticated restaurant wine intellig
 - [x] **Phase 10: Critic Scores & Pricing Intelligence** — Aggregate critic ratings (Wine Advocate, Wine Spectator, Vivino, Decanter), retail price benchmarking via Wine-Searcher, restaurant markup calculation, price-tier classification with market context (completed 2026-04-06)
 - [x] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals (completed 2026-04-06)
 - [x] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety. (completed 2026-04-06)
-- [ ] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables.
+- [x] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables. (completed 2026-04-07)
 
 ## Phase Details
 
@@ -475,11 +475,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 13-01-PLAN.md — Wave 1: DB migrations (user_roles, onboarding_sessions, override_events, invite_tokens) + increment_trust_counter RPC + RLS policies + [BLOCKING] supabase db push
-- [ ] 13-02-PLAN.md — Wave 2a: override_service.py (require_studio_role, OverrideRequest, check_and_update_trust) + studio_routes.py 8 endpoints + main.py router registration + settings.py patch
-- [ ] 13-03-PLAN.md — Wave 2b: AuthContext studioRoles + ProtectedRoute studio gate + App.tsx routes + useStudioSessionStore + StudioLayout + Studio + CommandBar + SessionSummary + WineRecordsTable + FieldCell + ReasonInput
-- [ ] 13-04-PLAN.md — Wave 3a: StudioApprovalQueue (QueueTable + QueueRow + TrustProgress, 30s polling) + StudioCertify (ContributorTable + InviteDialog, invite path-param token)
-- [ ] 13-05-PLAN.md — Wave 3b: test_studio_routes.py (D-07 reason enforcement, invite role guard, approve decision) + test_override_service.py (require_studio_role, trust counter RPC) + MetricCard + MetricsDashboard (4 cards, 60s polling) + Studio.tsx metrics bar
+- [x] 13-01-PLAN.md — Wave 1: DB migrations (user_roles, onboarding_sessions, override_events, invite_tokens) + increment_trust_counter RPC + RLS policies + [BLOCKING] supabase db push
+- [x] 13-02-PLAN.md — Wave 2a: override_service.py (require_studio_role, OverrideRequest, check_and_update_trust) + studio_routes.py 8 endpoints + main.py router registration + settings.py patch
+- [x] 13-03-PLAN.md — Wave 2b: AuthContext studioRoles + ProtectedRoute studio gate + App.tsx routes + useStudioSessionStore + StudioLayout + Studio + CommandBar + SessionSummary + WineRecordsTable + FieldCell + ReasonInput
+- [x] 13-04-PLAN.md — Wave 3a: StudioApprovalQueue (QueueTable + QueueRow + TrustProgress, 30s polling) + StudioCertify (ContributorTable + InviteDialog, invite path-param token)
+- [x] 13-05-PLAN.md — Wave 3b: test_studio_routes.py (D-07 reason enforcement, invite role guard, approve decision) + test_override_service.py (require_studio_role, trust counter RPC) + MetricCard + MetricsDashboard (4 cards, 60s polling) + Studio.tsx metrics bar
 
 ## Progress
 
@@ -497,7 +497,7 @@ Plans:
 | 10. Critic Scores & Pricing Intelligence | 6/6 | Complete    | 2026-04-06 |
 | 11. Temporal Menu Intelligence & Analytics | 5/5 | Complete    | 2026-04-06 |
 | 12. Extensive Gap-Filling Research Agent | 4/4 | Complete    | 2026-04-06 |
-| 13. Dev Onboarding UI with Manual Override Access | 0/5 | Planned | — |
+| 13. Dev Onboarding UI with Manual Override Access | 6/6 | Complete    | 2026-04-07 |
 
 ## Archived Phases (Previous Milestone — Retired)
 
