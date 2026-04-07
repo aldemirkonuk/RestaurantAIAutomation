@@ -15,6 +15,8 @@ const COLUMN_ORDER: { key: keyof WineRecord; label: string; minWidth: number }[]
   { key: 'sweetness_level', label: 'Sweetness', minWidth: 120 },
   { key: 'price_bottle', label: 'Bottle', minWidth: 100 },
   { key: 'price_glass', label: 'Glass', minWidth: 100 },
+  { key: 'tasting_notes', label: 'Tasting Notes', minWidth: 200 },
+  { key: 'description', label: 'Description', minWidth: 200 },
 ]
 
 interface WineRecordsTableProps {
@@ -89,7 +91,12 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
                 style={{ minHeight: 56 }}
               >
                 {COLUMN_ORDER.map((col) => {
-                  const entry = fc[col.key as string] ?? { value: record[col.key] as string | null, confidence: null, source: null }
+                  const rawVal = record[col.key]
+                  // Guard: if rawVal is a nested {value,...} object (unflatten slip), extract the string
+                  const plainVal = (rawVal && typeof rawVal === 'object' && 'value' in rawVal)
+                    ? (rawVal as { value: unknown }).value as string | null
+                    : rawVal as string | null
+                  const entry = fc[col.key as string] ?? { value: plainVal, confidence: null, source: null }
                   return (
                     <FieldCell
                       key={col.key}

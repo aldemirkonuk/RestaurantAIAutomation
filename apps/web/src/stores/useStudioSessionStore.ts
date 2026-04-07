@@ -14,6 +14,8 @@ export interface WineRecord {
   sweetness_level: string | null
   price_bottle: string | null
   price_glass: string | null
+  description: string | null
+  tasting_notes: string | null
   field_confidence: Record<string, {
     value: string | null
     confidence: number | null

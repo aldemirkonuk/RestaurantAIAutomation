@@ -7,7 +7,10 @@ Includes POST /api/v1/onboarding/extract for Claude Vision menu scanning.
 
 import hashlib
 import logging
-from datetime import datetime
+import smtplib
+from datetime import datetime, timezone
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -18,11 +21,22 @@ from services.claude_vision_extractor import (
     ClaudeExtractionResult,
     get_claude_vision_extractor,
 )
+from services.field_confidence import (
+    route_fields_by_threshold,
+    should_auto_block,
+    compute_completeness_from_fc,
+)
 from jobs.haiku_tasks import haiku_enrich_task
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
+
+# Per-restaurant cost cap (USD) — HTTP 402 returned when exceeded
+PER_RESTAURANT_CAP_USD = 2.00
+
+# Auto-block threshold — wines below this completeness are held from promotion
+AUTO_BLOCK_THRESHOLD = 0.3
 
 
 # =============================================================================
@@ -36,6 +50,54 @@ def _needs_enrichment(wine: dict) -> bool:
         wine.get("country"),
         wine.get("grape_variety"),
     ])
+
+
+def _preflight_cap_check(supabase, restaurant_id: str) -> float:
+    """
+    Query total extraction spend for this restaurant from api_spend.
+    Returns cumulative cost_usd. Returns 0.0 if Supabase unavailable.
+    Non-fatal: query errors return 0.0 (fail open — never block on infra error).
+    """
+    try:
+        resp = (
+            supabase.table("api_spend")
+            .select("cost_usd")
+            .eq("restaurant_id", restaurant_id)
+            .execute()
+        )
+        if resp.data:
+            return sum(row.get("cost_usd", 0.0) or 0.0 for row in resp.data)
+        return 0.0
+    except Exception as exc:
+        logger.warning("preflight_cap_check failed for %s (fail open): %s", restaurant_id, exc)
+        return 0.0
+
+
+def _send_cap_alert_email(restaurant_id: str, spend: float) -> None:
+    """Send per-restaurant cap breach alert email. Non-fatal."""
+    try:
+        from config.settings import get_settings
+        settings = get_settings()
+        if not all([settings.manager_email, settings.gmail_user, settings.gmail_password]):
+            return
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[WineOps] Per-Restaurant Cap Reached — {restaurant_id[:8]}"
+        msg["From"] = settings.gmail_user
+        msg["To"] = settings.manager_email
+        body = (
+            f"Restaurant {restaurant_id} has reached the per-restaurant extraction cap.\n\n"
+            f"Cumulative spend: ${spend:.4f}\n"
+            f"Cap threshold:    ${PER_RESTAURANT_CAP_USD:.2f}\n\n"
+            f"Further extraction requests for this restaurant will return HTTP 402 "
+            f"until the cap is reset.\n"
+        )
+        msg.attach(MIMEText(body, "plain"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+            server.login(settings.gmail_user, settings.gmail_password)
+            server.sendmail(settings.gmail_user, settings.manager_email, msg.as_string())
+        logger.info("Cap alert email sent for restaurant %s (spend=%.4f)", restaurant_id, spend)
+    except Exception as exc:
+        logger.warning("Failed to send cap alert email: %s", exc)
 
 
 def get_supabase_client():
@@ -55,8 +117,8 @@ def get_supabase_client():
 class MenuScanRequest(BaseModel):
     """Request model for POST /api/v1/onboarding/extract"""
     restaurant_id: str
-    images: Optional[List[str]] = None   # list of base64 strings, one per page
-    pdf_base64: Optional[str] = None     # NOT supported in Phase 1 — returns 422
+    images: Optional[List[str]] = None   # list of base64 page images (PNG/JPEG)
+    pdf_base64: Optional[str] = None     # raw PDF base64 — routed to extract_pdf()
 
     class Config:
         populate_by_name = True
@@ -80,46 +142,73 @@ async def extract_menu_scan(request: MenuScanRequest):
         422: Validation error (missing fields, unsupported input type)
         503: All pages failed extraction
     """
-    # Phase 1: PDF path explicitly rejected
-    if request.pdf_base64 is not None:
+    # Require either pdf_base64 or at least one image
+    if not request.pdf_base64 and not request.images:
         raise HTTPException(
             status_code=422,
-            detail="pdf_base64 not yet supported — send pre-converted page images",
+            detail="Provide either 'pdf_base64' (raw PDF) or 'images' (list of page base64)",
         )
 
-    # Require at least one image
-    if not request.images:
-        raise HTTPException(
-            status_code=422,
-            detail="at least one image required in 'images' list",
-        )
+    # Pre-flight per-restaurant cap check (COST-03)
+    supabase = get_supabase_client()
+    if supabase:
+        prior_spend = _preflight_cap_check(supabase, request.restaurant_id)
+        if prior_spend > PER_RESTAURANT_CAP_USD:
+            _send_cap_alert_email(request.restaurant_id, prior_spend)
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Per-restaurant extraction cap exceeded "
+                    f"(spent ${prior_spend:.4f}, cap ${PER_RESTAURANT_CAP_USD:.2f}). "
+                    f"Contact support to reset."
+                ),
+            )
 
-    # Run extraction (parallel pages via asyncio.gather inside extractor)
+    # Run extraction — PDF native path or image pages path
     extractor = get_claude_vision_extractor()
     try:
-        result: ClaudeExtractionResult = await extractor.extract_menu(request.images)
+        if request.pdf_base64:
+            import base64 as _b64
+            pdf_bytes = _b64.b64decode(request.pdf_base64)
+            result: ClaudeExtractionResult = await extractor.extract_pdf(pdf_bytes)
+        else:
+            result: ClaudeExtractionResult = await extractor.extract_menu(request.images)
     except RuntimeError as e:
-        # All pages failed
         logger.error(f"All pages failed for restaurant {request.restaurant_id}: {e}")
         raise HTTPException(status_code=503, detail=str(e))
 
-    # Persist to Supabase
-    supabase = get_supabase_client()
+    # Persist to Supabase (reuse client already fetched for preflight)
+    if not supabase:
+        supabase = get_supabase_client()
     cost_per_wine = (result.total_cost_usd / result.total_wines) if result.total_wines > 0 else 0.0
 
     if supabase:
         for wine in result.wines:
             try:
+                # Build signature hash for deduplication
                 sig_str = (
                     f"{wine.get('wine_name', '')}-"
                     f"{wine.get('producer', '')}-"
                     f"{wine.get('vintage', '')}"
                 ).lower().strip()
                 signature_hash = hashlib.sha256(sig_str.encode()).hexdigest()
+                # Reset per-wine submission_id so it is always freshly set from the insert response
+                wine.pop("submission_id", None)
 
+                # Phase 7: 3-tier field_confidence routing (FCONF-04)
+                fc: Dict[str, Any] = wine.get("field_confidence") or {}
+                accepted_fields, review_items, _rejected_fields = route_fields_by_threshold(fc)
+
+                # auto_blocked: field-ratio logic (CONTEXT.md D-02) — replaces old completeness threshold
+                auto_blocked = should_auto_block(fc) if fc else (
+                    wine.get("completeness_score", 0.0) < AUTO_BLOCK_THRESHOLD
+                )
+
+                # Payload: start from flat accepted fields, augment with session metadata
+                # Rejected fields are omitted (left NULL in DB)
+                _excluded = {"completeness_score", "needs_review", "field_confidence"}
                 submission_payload: Dict[str, Any] = {
-                    **{k: v for k, v in wine.items()
-                       if k not in ("completeness_score", "needs_review")},
+                    **{k: v for k, v in accepted_fields.items()},
                     "scan_session_id": result.scan_session_id,
                     "extraction_source": "claude_vision",
                     "extraction_cost_usd": cost_per_wine,
@@ -131,30 +220,63 @@ async def extract_menu_scan(request: MenuScanRequest):
                     "restaurant_id": request.restaurant_id,
                     "submitted_by": "claude_vision",
                     "payload": submission_payload,
+                    "field_confidence": fc or None,
                     "signature_hash": signature_hash,
                     "status": "pending_review",
+                    "auto_blocked": auto_blocked,
                     "created_at": datetime.utcnow().isoformat(),
                 }).execute()
 
-                # Queue Haiku enrichment for wines missing region/country/grape_variety (D-01, D-02)
+                # Stamp the real Supabase UUID onto the wine so the frontend
+                # can use it as submission_id for override requests.
+                if insert_resp.data:
+                    wine["submission_id"] = insert_resp.data[0]["id"]
+
+                # Insert field_review_queue rows for mid-confidence fields (FCONF-05)
+                if insert_resp.data and review_items:
+                    submission_id = insert_resp.data[0]["id"]
+                    queue_rows = [
+                        {
+                            "submission_id": submission_id,
+                            "field_name": item["field_name"],
+                            "current_value": item["current_value"],
+                            "confidence": item["confidence"],
+                            "source": item["source"],
+                            "status": "pending",
+                        }
+                        for item in review_items
+                    ]
+                    try:
+                        supabase.table("field_review_queue").insert(queue_rows).execute()
+                        logger.debug(
+                            "Inserted %d field_review_queue rows for submission %s",
+                            len(queue_rows), submission_id,
+                        )
+                    except Exception as qe:
+                        logger.warning("field_review_queue insert failed (non-fatal): %s", qe)
+
+                # Queue Haiku enrichment for wines missing region/country/grape_variety
                 if insert_resp.data and _needs_enrichment(wine):
                     submission_id = insert_resp.data[0]["id"]
+                    # Extract flat wine_name / vintage from FC or top-level
+                    _wine_name = accepted_fields.get("wine_name") or wine.get("wine_name", "")
+                    _vintage_raw = accepted_fields.get("vintage") or wine.get("vintage")
                     haiku_enrich_task.delay(
                         wine_id=submission_id,
-                        wine_name=wine.get("wine_name", ""),
-                        vintage=str(wine.get("vintage")) if wine.get("vintage") else None,
+                        wine_name=_wine_name,
+                        vintage=str(_vintage_raw) if _vintage_raw else None,
                     )
                     logger.info(
-                        f"Queued haiku enrichment for submission_id={submission_id} "
-                        f"wine='{wine.get('wine_name')}'"
+                        "Queued haiku enrichment for submission_id=%s wine='%s'",
+                        submission_id, _wine_name,
                     )
 
             except Exception as e:
                 logger.warning(
-                    f"Failed to persist wine '{wine.get('wine_name')}' "
-                    f"(session={result.scan_session_id}): {e}"
+                    "Failed to persist wine '%s' (session=%s): %s",
+                    wine.get("wine_name"), result.scan_session_id, e,
                 )
-                # If submitted_by UUID column type error: retry with submitted_by=None
+                # Retry without submitted_by UUID if column type error
                 if "invalid input syntax for type uuid" in str(e).lower():
                     try:
                         sig_str = (
@@ -166,21 +288,14 @@ async def extract_menu_scan(request: MenuScanRequest):
                         supabase.table("master_wine_library_submissions").insert({
                             "restaurant_id": request.restaurant_id,
                             "submitted_by": None,
-                            "payload": {
-                                **{k: v for k, v in wine.items()
-                                   if k not in ("completeness_score", "needs_review")},
-                                "scan_session_id": result.scan_session_id,
-                                "extraction_source": "claude_vision",
-                                "extraction_cost_usd": cost_per_wine,
-                                "needs_review": wine.get("needs_review", False),
-                                "completeness_score": wine.get("completeness_score", 0.0),
-                            },
+                            "payload": submission_payload,
+                            "field_confidence": fc or None,
                             "signature_hash": signature_hash,
                             "status": "pending_review",
                             "created_at": datetime.utcnow().isoformat(),
                         }).execute()
                     except Exception as e2:
-                        logger.error(f"Retry insert also failed: {e2}")
+                        logger.error("Retry insert also failed: %s", e2)
 
     # Build response body
     response_body = {

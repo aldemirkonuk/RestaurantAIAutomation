@@ -25,73 +25,109 @@ export function CommandBar() {
   const detectedType = detectIngestionType(inputValue, pendingFile !== null)
   const canIngest = !isExtracting && detectedType !== null
 
-  const handleIngest = async () => {
-    if (!canIngest) return
+  // All studio/onboarding API calls go through Vite proxy → FastAPI (port 8000)
+  // Using relative URLs avoids the VITE_API_GATEWAY_URL=4000 (NestJS) misdirection
+  const studioFetch = async (path: string, body: object) => {
+    const token = localStorage.getItem('accessToken')
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+    const resp = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}))
+      throw new Error(errData.detail || `HTTP ${resp.status}`)
+    }
+    return resp.json()
+  }
+
+  const handleIngest = async (overrideType?: unknown) => {
+    // When called from button onClick, overrideType is a MouseEvent — ignore it
+    const type = (overrideType === 'manual' ? 'manual' : null) ?? detectedType
+    if (!type || isExtracting) return
     setIsExtracting(true)
     setExtractionError(null)
-    const token = localStorage.getItem('accessToken')
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
-    const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
     try {
-      if (detectedType === 'pdf' && pendingFile) {
-        const base64 = await new Promise<string>((res, rej) => {
+      if (type === 'pdf' && pendingFile) {
+        // Read PDF as raw base64 — send via pdf_base64 so FastAPI uses native PDF path
+        const pdfBase64 = await new Promise<string>((res, rej) => {
           const reader = new FileReader()
           reader.onload = (e) => res((e.target?.result as string).split(',')[1])
           reader.onerror = rej
           reader.readAsDataURL(pendingFile)
         })
-        const sessResp = await fetch(`${API_URL}/api/v1/studio/sessions`, {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_type: 'pdf_upload', source_ref: pendingFile.name }),
+        const sessData = await studioFetch('/api/v1/studio/sessions', {
+          source_type: 'pdf_upload', source_ref: pendingFile.name,
         })
-        const sessData = await sessResp.json()
         const sessionId = sessData.session?.id ?? null
 
-        const extractResp = await fetch(`${API_URL}/api/v1/onboarding/extract`, {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ restaurant_id: user?.restaurantId ?? 'studio', images: [base64] }),
+        const extractData = await studioFetch('/api/v1/onboarding/extract', {
+          restaurant_id: user?.restaurantId ?? 'studio',
+          pdf_base64: pdfBase64,
         })
-        const extractData = await extractResp.json()
+
+        // Claude returns each field as {value, confidence, source}.
+        // Flatten: plain string values on the record, confidence data in field_confidence.
+        // submission_id is the real Supabase UUID stamped by the backend on each wine.
+        const wines = (extractData.wines ?? []).map((w: Record<string, unknown>, i: number) => {
+          // Use the real Supabase UUID returned by the backend; fall back to a stable
+          // client-generated UUID only if the backend omitted it (e.g. Supabase unavailable).
+          const realSubmissionId = (typeof w.submission_id === 'string' && w.submission_id.length > 10)
+            ? w.submission_id
+            : crypto.randomUUID()
+          const flat: Record<string, unknown> = { id: String(i), submission_id: realSubmissionId }
+          const fc: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(w)) {
+            if (k === 'submission_id') continue  // already handled above
+            if (k === 'field_confidence') {
+              Object.assign(fc, v)
+            } else if (v && typeof v === 'object' && 'value' in v && 'confidence' in v) {
+              flat[k] = (v as { value: unknown }).value  // plain string
+              fc[k] = v                                  // {value, confidence, source}
+            } else {
+              flat[k] = v
+            }
+          }
+          flat.field_confidence = fc
+          return flat
+        })
         setSession(sessionId, extractData.scan_session_id ?? null)
-        setRecords((extractData.wines ?? []).map((w: Record<string, unknown>, i: number) => ({
-          id: String(i),
-          submission_id: String(i),
-          ...w,
-        })))
+        setRecords(wines)
+        try {
+          localStorage.setItem('wineops_last_extraction', JSON.stringify({
+            session_id: sessionId, source: pendingFile.name,
+            extracted_at: new Date().toISOString(), wines,
+          }))
+        } catch { /* quota exceeded — non-fatal */ }
         toast.success('Extraction complete', { description: `${extractData.total_wines ?? 0} wines extracted` })
-      } else if (detectedType === 'url') {
-        const sessResp = await fetch(`${API_URL}/api/v1/studio/sessions`, {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_type: 'url_crawl', source_ref: inputValue.trim() }),
+
+      } else if (type === 'url') {
+        const sessData = await studioFetch('/api/v1/studio/sessions', {
+          source_type: 'url_crawl', source_ref: inputValue.trim(),
         })
-        const sessData = await sessResp.json()
         setSession(sessData.session?.id ?? null, null)
         setRecords([])
         toast.info('Crawl queued', { description: 'URL crawler started — records will appear as they are extracted.' })
-      } else if (detectedType === 'manual') {
-        const sessResp = await fetch(`${API_URL}/api/v1/studio/sessions`, {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_type: 'manual_seed', source_ref: inputValue.trim() }),
-        })
-        const sessData = await sessResp.json()
-        setSession(sessData.session?.id ?? null, null)
+
+      } else if (type === 'manual') {
+        const wineName = (overrideType ? '' : inputValue.trim()) || null
+        const sessData = await studioFetch('/api/v1/studio/sessions', {
+          source_type: 'manual_seed', source_ref: wineName ?? 'empty',
+        }).catch(() => ({ session: { id: `local-${Date.now()}` } }))
+        setSession(sessData.session?.id ?? `local-${Date.now()}`, null)
         setRecords([{
-          id: 'new-1',
-          submission_id: 'new-1',
-          wine_name: inputValue.trim() || null,
-          vintage: null, producer: null, region: null, country: null,
+          id: 'new-1', submission_id: crypto.randomUUID(),
+          wine_name: wineName, vintage: null, producer: null, region: null, country: null,
           grape_variety: null, color: null, primary_type: null,
           sweetness_level: null, price_bottle: null, price_glass: null,
+          description: null, tasting_notes: null,
           field_confidence: null,
         }])
+        toast.success('Empty record ready', { description: 'Click any cell to start filling in wine details.' })
       }
     } catch (err) {
       setExtractionError(String(err))
-      toast.error('Ingestion failed', { description: 'Check your connection and try again.' })
+      toast.error('Ingestion failed', { description: String(err) })
     } finally {
       setIsExtracting(false)
     }
@@ -109,6 +145,13 @@ export function CommandBar() {
     }
   }
 
+  const handleBarClick = (e: React.MouseEvent) => {
+    // Open native file picker when clicking the bar background (not input/button)
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.closest('button')) return
+    fileInputRef.current?.click()
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -117,15 +160,17 @@ export function CommandBar() {
       className="w-full"
     >
       <div
-        className={`flex items-center gap-3 h-16 px-4 rounded-xl border transition-all duration-150 bg-white
+        className={`flex items-center gap-3 h-16 px-4 rounded-xl border transition-all duration-150 bg-white cursor-pointer
           ${dragActive ? 'border-wine-500 bg-wine-50 border-dashed scale-[1.002]' : 'border-slate-200'}
-          ${isExtracting ? 'opacity-80' : ''}
+          ${isExtracting ? 'opacity-80 cursor-wait' : ''}
           shadow-[0_1px_3px_rgb(0_0_0/0.04),0_4px_12px_rgb(0_0_0/0.06)]
           focus-within:shadow-[0_12px_40px_rgb(0_0_0/0.12)] focus-within:border-wine-500
         `}
         onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
+        onClick={handleBarClick}
+        title="Click to select a PDF from your computer"
       >
         {pendingFile ? (
           <FileText className="w-5 h-5 text-wine-600 flex-shrink-0" />
@@ -134,7 +179,7 @@ export function CommandBar() {
         )}
         <input
           className="flex-1 text-base bg-transparent outline-none placeholder:text-slate-400 text-slate-900 disabled:cursor-not-allowed"
-          placeholder="Paste a URL or drop a PDF — we'll auto-detect and start ingestion"
+          placeholder="Click to pick a PDF, drag & drop, or paste a URL — auto-detected"
           value={inputValue}
           disabled={isExtracting}
           onChange={(e) => { setInputValue(e.target.value); setPendingFile(null) }}
@@ -177,7 +222,7 @@ export function CommandBar() {
         )}
         {!dragActive && !detectedType && !isExtracting && (
           <button
-            onClick={() => setInputValue('manual')}
+            onClick={() => handleIngest('manual')}
             className="text-sm text-wine-600 hover:underline cursor-pointer bg-transparent border-0 p-0"
           >
             Or start with an empty record →
