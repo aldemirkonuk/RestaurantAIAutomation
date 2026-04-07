@@ -101,7 +101,7 @@ def get_session_timeline(
             supabase.table("onboarding_sessions")
             .select("*")
             .eq("id", session_id)
-            .single()
+            .maybe_single()
             .execute()
         )
         if not session_resp.data:
@@ -157,7 +157,7 @@ def submit_override(
             supabase.table("master_wine_library_submissions")
             .select("field_confidence")
             .eq("id", body.submission_id)
-            .single()
+            .maybe_single()
             .execute()
         )
         if not sub_resp.data:
@@ -271,7 +271,7 @@ def decide_override(
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not available")
 
-    ov_resp = supabase.table("override_events").select("*").eq("id", override_id).single().execute()
+    ov_resp = supabase.table("override_events").select("*").eq("id", override_id).maybe_single().execute()
     if not ov_resp.data:
         raise HTTPException(status_code=404, detail="Override not found")
     ov = ov_resp.data
@@ -350,7 +350,7 @@ def redeem_invite(
             supabase.table("invite_tokens")
             .select("*")
             .eq("token", body.token)
-            .single()
+            .maybe_single()
             .execute()
         )
         if not tok_resp.data:

@@ -52,8 +52,8 @@ def mock_supabase_e2e():
     sessions_mock.insert.return_value.execute.return_value.data = [
         {"id": SESSION_ID, "actor_id": DEVELOPER_PAYLOAD["sub"], "status": "active"}
     ]
-    # GET /sessions/{id}: select(*).eq().single().execute().data = session row
-    sessions_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    # GET /sessions/{id}: select(*).eq().maybe_single().execute().data = session row
+    sessions_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "id": SESSION_ID,
         "actor_id": DEVELOPER_PAYLOAD["sub"],
         "status": "active",
@@ -66,7 +66,7 @@ def mock_supabase_e2e():
         # region not present → old_confidence=None → no reason required
     }
     submissions_mock = MagicMock()
-    submissions_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    submissions_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "id": SUBMISSION_ID,
         "field_confidence": field_confidence_map,
     }
@@ -223,14 +223,14 @@ def mock_supabase_cc():
     sessions_mock.insert.return_value.execute.return_value.data = [
         {"id": CC_SESSION_ID, "actor_id": CERTIFIED_PAYLOAD["sub"], "status": "active"}
     ]
-    sessions_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    sessions_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "id": CC_SESSION_ID,
         "actor_id": CERTIFIED_PAYLOAD["sub"],
         "status": "active",
     }
 
     submissions_mock = MagicMock()
-    submissions_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    submissions_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "id": CC_SUBMISSION_ID,
         "field_confidence": {
             "wine_name": {"value": "Old Wine", "confidence": 0.4, "source": "inferred"}
@@ -243,8 +243,8 @@ def mock_supabase_cc():
     events_mock.insert.return_value.execute.return_value.data = [
         {"id": CC_OVERRIDE_ID, "promotion_status": "pending"}
     ]
-    # PATCH /queue/{id}: decide_override fetches row via select(*).eq(id).single()
-    events_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    # PATCH /queue/{id}: decide_override fetches row via select(*).eq(id).maybe_single()
+    events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "id": CC_OVERRIDE_ID,
         "promotion_status": "pending",
         "submission_id": CC_SUBMISSION_ID,

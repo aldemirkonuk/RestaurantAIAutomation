@@ -49,8 +49,8 @@ def _make_settings(secret: str = SECRET, trust_threshold: int = 5):
 def _make_submission_mock(field_confidence: dict):
     """Return a MagicMock supabase client pre-configured for the submit_override route."""
     mock_sb = MagicMock()
-    # select().eq().single().execute().data — used by submit_override and _apply_override_to_submission
-    mock_sb.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    # select().eq().maybe_single().execute().data — used by submit_override and _apply_override_to_submission
+    mock_sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "id": "sub-001",
         "field_confidence": field_confidence,
     }
@@ -168,7 +168,7 @@ class TestPatchQueueDecision:
         # Use per-table mocks to avoid collisions between the override_events select
         # and the master_wine_library_submissions select inside _apply_override_to_submission.
         override_table_mock = MagicMock()
-        override_table_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+        override_table_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
             "id": "ov-001",
             "promotion_status": "pending",
             "submission_id": "sub-001",
@@ -181,7 +181,7 @@ class TestPatchQueueDecision:
         ]
 
         submission_table_mock = MagicMock()
-        submission_table_mock.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+        submission_table_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
             "id": "sub-001",
             "field_confidence": {"vintage": {"value": "2018", "confidence": 0.5, "source": "visible"}},
         }

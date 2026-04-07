@@ -176,9 +176,11 @@ def _apply_override_to_submission(supabase, submission_id: str, field_name: str,
             supabase.table("master_wine_library_submissions")
             .select("field_confidence")
             .eq("id", submission_id)
-            .single()
+            .maybe_single()
             .execute()
         )
+        if not resp.data:
+            raise ValueError(f"Submission {submission_id} not found")
         existing_fc = (resp.data or {}).get("field_confidence") or {}
     except Exception as exc:
         logger.error("_apply_override_to_submission: fetch submission %s failed: %s", submission_id, exc)
@@ -210,10 +212,10 @@ def check_and_update_trust(supabase, user_id: str, approved: bool, threshold: in
                 .eq("user_id", user_id)
                 .eq("role", "certified_contributor")
                 .is_("revoked_at", "null")
-                .single()
+                .maybe_single()
                 .execute()
             )
-            count = (ur_resp.data or {}).get("consecutive_approved_overrides", 0)
+            count = (ur_resp.data or {}).get("consecutive_approved_overrides", 0) if ur_resp.data else 0
             if count >= threshold:
                 supabase.table("user_roles").update({
                     "promotion_policy": "auto_promote",
