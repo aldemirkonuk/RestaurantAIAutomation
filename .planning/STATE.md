@@ -330,6 +330,7 @@ Plan: Not started
 | 260406-329 | Improve concordance engine: add color synonym mapping and substring matching for grape varieties to reduce false contradictions | 2026-04-06 | c6b3683 | [260406-329-improve-concordance-engine-add-color-syn](./quick/260406-329-improve-concordance-engine-add-color-syn/) |
 | 260407-pd8 | improve producer extraction — strip vintage prefix and separate region/country from producer strings | 2026-04-07 | eadd449 | [260407-pd8-improve-producer-extraction-strip-vintag](./quick/260407-pd8-improve-producer-extraction-strip-vintag/) |
 | 260407-q0y | fix citation input always visible when editing + add production_method and lees_contact_months to Haiku winemaking_details enrichment | 2026-04-07 | 4532d5e | [260407-q0y-fix-citation-input-always-visible-when-e](./quick/260407-q0y-fix-citation-input-always-visible-when-e/) |
+| 260407-qpw | fix override submission_id — backend returns real Supabase UUID per wine in extract response, frontend uses it instead of String(i) | 2026-04-07 | d199ec6 | [260407-qpw-fix-override-submission-id-backend-retur](./quick/260407-qpw-fix-override-submission-id-backend-retur/) |
 
 ---
 
