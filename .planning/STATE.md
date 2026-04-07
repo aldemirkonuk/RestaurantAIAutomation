@@ -328,6 +328,7 @@ Plan: Not started
 | 260403-dgf | Update crawler JSONL output schema to Supabase-aligned 23-field format: rewrite _persist_crawled_wines, update CRAWL_TEXT_PROMPT (primary_type/price_reference), align e2e harness SCORED_FIELDS and validate_schema | 2026-04-03 | 891f5f8 | [260403-dgf-update-crawler-jsonl-output-schema-to-su](./quick/260403-dgf-update-crawler-jsonl-output-schema-to-su/) |
 | 260406-2hy | try phase 8 with live API call, no mock data | 2026-04-06 | ec83274 | [260406-2hy-try-phase-8-with-live-api-call-no-mock-d](./quick/260406-2hy-try-phase-8-with-live-api-call-no-mock-d/) |
 | 260406-329 | Improve concordance engine: add color synonym mapping and substring matching for grape varieties to reduce false contradictions | 2026-04-06 | c6b3683 | [260406-329-improve-concordance-engine-add-color-syn](./quick/260406-329-improve-concordance-engine-add-color-syn/) |
+| 260407-pd8 | improve producer extraction — strip vintage prefix and separate region/country from producer strings | 2026-04-07 | 5f82174 | [260407-pd8-improve-producer-extraction-strip-vintag](./quick/260407-pd8-improve-producer-extraction-strip-vintag/) |
 
 ---
 
