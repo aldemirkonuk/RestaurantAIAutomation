@@ -50,8 +50,10 @@ async def test_enrich_calls_haiku_and_returns_result():
     mock_response = MagicMock()
     mock_response.content = [MagicMock()]
     mock_response.content[0].text = (
-        '{"region": "Burgundy", "country": "France", '
-        '"grape_variety": "Pinot Noir", "producer_bio": "Historic domaine"}'
+        '{"region": {"value": "Burgundy", "confidence": 0.95, "source": "knowledge"}, '
+        '"country": {"value": "France", "confidence": 0.95, "source": "knowledge"}, '
+        '"grape_variety": {"value": "Pinot Noir", "confidence": 0.90, "source": "knowledge"}, '
+        '"producer_bio": {"value": "Historic domaine", "confidence": 0.80, "source": "knowledge"}}'
     )
 
     mock_anthropic_client = AsyncMock()
@@ -68,10 +70,10 @@ async def test_enrich_calls_haiku_and_returns_result():
     assert result is not None
     assert isinstance(result, EnrichmentResult)
     assert result.wine_id == "wine-003"
-    assert result.region == "Burgundy"
-    assert result.country == "France"
-    assert result.grape_variety == "Pinot Noir"
-    assert result.producer_bio == "Historic domaine"
+    assert result.field_confidence["region"]["value"] == "Burgundy"
+    assert result.field_confidence["country"]["value"] == "France"
+    assert result.field_confidence["grape_variety"]["value"] == "Pinot Noir"
+    assert result.field_confidence["producer_bio"]["value"] == "Historic domaine"
     assert result.enrichment_source == "haiku"
 
 
@@ -105,9 +107,9 @@ def test_enrichment_result_default_source():
     """HAIKU-05: EnrichmentResult.enrichment_source defaults to 'haiku'."""
     result = EnrichmentResult(
         wine_id="x",
-        region="R",
-        country="C",
-        grape_variety="G",
-        producer_bio=None,
+        field_confidence={
+            "region": {"value": "R", "confidence": 0.9, "source": "knowledge"},
+            "country": {"value": "C", "confidence": 0.9, "source": "knowledge"},
+        },
     )
     assert result.enrichment_source == "haiku"

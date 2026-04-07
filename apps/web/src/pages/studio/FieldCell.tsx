@@ -47,12 +47,13 @@ function VerificationBadge({ status }: { status?: 'pending' | 'verified' | 'reje
 
 export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuccess }: FieldCellProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [newValue, setNewValue] = useState(entry?.value ?? '')
+  // Coerce to string — Claude can return numbers (vintage, price) and null
+  const toStr = (v: unknown) => (v != null ? String(v) : '')
+  const [newValue, setNewValue] = useState(() => toStr(entry?.value))
   const [reason, setReason] = useState('')
   const [citationUrl, setCitationUrl] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [showCitation, setShowCitation] = useState(false)
 
   // D-07: reason required when confidence >= 0.8
   const requiresReason = (entry?.confidence ?? 0) >= 0.8
@@ -65,9 +66,8 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
     setIsSaving(true)
     setSaveError(null)
     const token = localStorage.getItem('accessToken')
-    const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
     try {
-      const resp = await fetch(`${API_URL}/api/v1/studio/overrides`, {
+      const resp = await fetch(`/api/v1/studio/overrides`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,12 +105,12 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
         className="px-3 py-2 cursor-pointer hover:bg-slate-50 rounded-sm group min-w-[120px]"
         title="Click to edit"
         tabIndex={0}
-        onClick={() => { setIsEditing(true); setNewValue(entry?.value ?? '') }}
+        onClick={() => { setIsEditing(true); setNewValue(toStr(entry?.value)) }}
         onKeyDown={(e) => e.key === 'Enter' && setIsEditing(true)}
       >
         <div className="flex items-center gap-1.5">
-          <span className={`text-sm ${entry?.value ? 'text-slate-900' : 'text-slate-400 italic'}`}>
-            {entry?.value ?? '—'}
+          <span className={`text-sm ${entry?.value != null ? 'text-slate-900' : 'text-slate-400 italic'}`}>
+            {entry?.value != null ? String(entry.value) : '—'}
           </span>
           <ConfidenceBadge confidence={entry?.confidence ?? null} />
           <VerificationBadge status={entry?.verification_status} />
@@ -150,22 +150,13 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
             error={requiresReason && reason.length > 0 && reason.length < 5 ? 'Min 5 characters required' : undefined}
           />
 
-          {(requiresReason || showCitation) ? (
-            <input
-              value={citationUrl}
-              onChange={(e) => setCitationUrl(e.target.value)}
-              placeholder="https://... (optional citation URL)"
-              className="mt-1 w-full text-xs font-mono border border-slate-200 rounded-sm px-2 py-1 focus:outline-none"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowCitation(true)}
-              className="mt-1 text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1"
-            >
-              + Add citation
-            </button>
-          )}
+          <input
+            type="url"
+            value={citationUrl}
+            onChange={(e) => setCitationUrl(e.target.value)}
+            placeholder="https://... (optional citation URL)"
+            className="mt-1 w-full text-xs font-mono border border-slate-200 rounded-sm px-2 py-1 focus:outline-none focus:ring-1 focus:ring-wine-400"
+          />
 
           {saveError && <p className="text-xs text-red-600 mt-1">{saveError}</p>}
 
