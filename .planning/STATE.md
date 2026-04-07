@@ -331,7 +331,7 @@ Plan: Not started
 | 260407-pd8 | improve producer extraction — strip vintage prefix and separate region/country from producer strings | 2026-04-07 | eadd449 | [260407-pd8-improve-producer-extraction-strip-vintag](./quick/260407-pd8-improve-producer-extraction-strip-vintag/) |
 | 260407-q0y | fix citation input always visible when editing + add production_method and lees_contact_months to Haiku winemaking_details enrichment | 2026-04-07 | 4532d5e | [260407-q0y-fix-citation-input-always-visible-when-e](./quick/260407-q0y-fix-citation-input-always-visible-when-e/) |
 | 260407-qpw | fix override submission_id — backend returns real Supabase UUID per wine in extract response, frontend uses it instead of String(i) | 2026-04-07 | d199ec6 | [260407-qpw-fix-override-submission-id-backend-retur](./quick/260407-qpw-fix-override-submission-id-backend-retur/) |
-| 260407-h3k | fix PGRST116 — replace `.single()` with `.maybe_single()` on studio routes + override_service so 0 rows return 404/null instead of PostgREST coerce error | 2026-04-07 | 0b1b15f | [260407-h3k-fix-pgrst116-studio-maybe-single](./quick/260407-h3k-fix-pgrst116-studio-maybe-single/) |
+| 260407-h3k | fix PGRST116 — replace `.single()` with `.maybe_single()` on studio routes + override_service so 0 rows return 404/null instead of PostgREST coerce error | 2026-04-07 | c35d52f | [260407-h3k-fix-pgrst116-studio-maybe-single](./quick/260407-h3k-fix-pgrst116-studio-maybe-single/) |
 
 ---
 
