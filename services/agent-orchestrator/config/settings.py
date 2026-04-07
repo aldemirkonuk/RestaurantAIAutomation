@@ -94,6 +94,12 @@ class Settings:
         self.research_max_reflexion_retries: int = int(
             os.getenv("RESEARCH_MAX_REFLEXION_RETRIES", "3")
         )
+        # Phase 13: Studio role enforcement
+        # SUPABASE_JWT_SECRET is the JWT secret from Supabase project settings (different from service key)
+        # Found at: Supabase Dashboard → Settings → API → JWT Secret
+        self.supabase_jwt_secret: str = os.getenv("SUPABASE_JWT_SECRET", "")
+        # Trust level threshold: certified_contributor auto-promotes after this many consecutive approvals (D-12)
+        self.trust_level_threshold: int = int(os.getenv("TRUST_LEVEL_THRESHOLD", "5"))
 
     @property
     def supabase_client(self):
