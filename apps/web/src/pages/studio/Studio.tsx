@@ -1,6 +1,7 @@
 import { StudioLayout } from './StudioLayout'
 import { CommandBar } from './CommandBar'
 import { SessionSummary } from './SessionSummary'
+import { MetricsDashboard } from './metrics/MetricsDashboard'
 import { WineRecordsTable } from './WineRecordsTable'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Database } from 'lucide-react'
@@ -14,6 +15,7 @@ export default function Studio() {
       <div className="px-6 py-8 flex flex-col gap-4 min-h-0">
         <CommandBar />
         {sessionId && <SessionSummary />}
+        <MetricsDashboard />
         {!sessionId && !isExtracting ? (
           <div className="flex-1 flex items-center justify-center py-24">
             <EmptyState
