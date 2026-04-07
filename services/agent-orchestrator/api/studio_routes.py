@@ -424,6 +424,16 @@ def get_studio_metrics(
         pending = sum(1 for o in overrides if o["promotion_status"] == "pending")
         acceptance_rate = (approved + auto_promoted) / total if total > 0 else 0.0
 
+        # SC-9: post-override correction rate — fraction of overridden fields later corrected
+        correction_keys = {
+            (c["submission_id"], c["field_name"]) for c in corrections
+        }
+        corrected_overrides = sum(
+            1 for o in overrides
+            if (o.get("submission_id"), o.get("field_name")) in correction_keys
+        )
+        post_override_correction_rate = corrected_overrides / total if total > 0 else 0.0
+
         # Approval latency p50 — only for manually decided overrides
         latencies = []
         for o in overrides:
@@ -459,6 +469,7 @@ def get_studio_metrics(
             "accepted_overrides": approved,
             "rejected_overrides": rejected,
             "acceptance_rate": round(acceptance_rate, 4),
+            "post_override_correction_rate": round(post_override_correction_rate, 4),
             "avg_approval_latency_hours": round(avg_approval_latency_hours, 4),
             "active_contributors": active_contributors_count,
             "computed_at": computed_at,
