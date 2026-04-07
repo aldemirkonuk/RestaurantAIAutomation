@@ -66,6 +66,10 @@ A restaurant manager scans a menu — photo, PDF, or web — and every wine is c
 - **API keys**: CLAUDE_API_KEY + GOOGLE_API_KEY both in .env — confirmed present.
 - **Compatibility**: Must not break existing procurement/inventory/RFQ agents. Extraction is additive.
 
+## Current State
+
+Phase 13 complete (2026-04-07) — Dev Onboarding UI with Manual Override Access. Gated `/studio` screen live: AuthContext → ProtectedRoute → CommandBar ingestion → WineRecordsTable with inline FieldCell editing + VerificationBadge + ReasonInput. Approval queue + certification management screens built. 13 backend endpoints + 33 tests passing (16 pytest + 17 Vitest). Milestone v1.0 is the last planned phase.
+
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
