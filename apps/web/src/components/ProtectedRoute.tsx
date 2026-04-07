@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, ShieldAlert, ArrowLeft } from 'lucide-react'
+import { ShieldAlert, ArrowLeft } from 'lucide-react'
 
 interface ProtectedRouteProps {
   children: React.ReactNode

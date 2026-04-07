@@ -34,7 +34,7 @@ function ConfidenceBadge({ confidence }: { confidence: number | null }) {
   return <Badge variant="destructive" size="sm" aria-label={`Confidence: ${pct}% — low`}>{pct}%</Badge>
 }
 
-export function FieldCell({ recordId, submissionId, sessionId, field, entry, onOverrideSuccess }: FieldCellProps) {
+export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuccess }: FieldCellProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [newValue, setNewValue] = useState(entry?.value ?? '')
   const [reason, setReason] = useState('')
