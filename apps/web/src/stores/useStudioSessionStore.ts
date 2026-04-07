@@ -14,7 +14,12 @@ export interface WineRecord {
   sweetness_level: string | null
   price_bottle: string | null
   price_glass: string | null
-  field_confidence: Record<string, { value: string | null; confidence: number | null; source: string | null }> | null
+  field_confidence: Record<string, {
+    value: string | null
+    confidence: number | null
+    source: string | null
+    verification_status?: 'pending' | 'verified' | 'rejected'
+  }> | null
 }
 
 interface EditingCell {

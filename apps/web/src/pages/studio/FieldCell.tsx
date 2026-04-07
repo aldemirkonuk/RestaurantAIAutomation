@@ -9,6 +9,7 @@ interface FieldEntry {
   value: string | null
   confidence: number | null
   source: string | null
+  verification_status?: 'pending' | 'verified' | 'rejected'
 }
 
 interface FieldCellProps {
@@ -32,6 +33,16 @@ function ConfidenceBadge({ confidence }: { confidence: number | null }) {
     return <Badge variant="warning" size="sm" aria-label={`Confidence: ${pct}% — review`}>{pct}%</Badge>
   }
   return <Badge variant="destructive" size="sm" aria-label={`Confidence: ${pct}% — low`}>{pct}%</Badge>
+}
+
+function VerificationBadge({ status }: { status?: 'pending' | 'verified' | 'rejected' }) {
+  if (!status || status === 'pending') {
+    return <Badge variant="outline" size="sm" aria-label="Verification: pending">○</Badge>
+  }
+  if (status === 'verified') {
+    return <Badge variant="success" size="sm" aria-label="Verification: verified">✓</Badge>
+  }
+  return <Badge variant="destructive" size="sm" aria-label="Verification: rejected">✕</Badge>
 }
 
 export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuccess }: FieldCellProps) {
@@ -102,6 +113,7 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
             {entry?.value ?? '—'}
           </span>
           <ConfidenceBadge confidence={entry?.confidence ?? null} />
+          <VerificationBadge status={entry?.verification_status} />
         </div>
         {entry?.source && (
           <div className="text-xs text-slate-400 mt-0.5">
