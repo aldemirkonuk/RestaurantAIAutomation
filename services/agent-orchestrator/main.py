@@ -5,6 +5,12 @@ Registers all routers for the WineOps agent orchestration service.
 """
 
 import logging
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load services/agent-orchestrator/.env so ADMIN_API_KEY and other vars match curl / IDE.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from fastapi import FastAPI
 
