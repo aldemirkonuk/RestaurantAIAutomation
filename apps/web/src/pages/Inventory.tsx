@@ -45,6 +45,10 @@ import { formatVolume } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
 import { useTypedInventorySubscription, InventoryUpdatePayload, useRealtimeDispatch, WineUpdatePayload } from '../contexts/RealtimeContext'
 import { useInventoryPage, InventoryItem } from './inventory/index'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '../contexts/AuthContext'
+import { computeAutoLocatePlan, AutoLocateResult, WineLocationScore } from '../lib/autoLocateEngine'
+import { AutoLocatePreviewModal } from '../components/inventory/AutoLocatePreviewModal'
 
 type ViewMode = 'all' | 'live' | 'shadow'
 type SortField = 'name' | 'liveStock' | 'shadowStock' | 'price' | 'menuPrice' | 'margin' | 'threshold' | 'bottleSizeMl'
@@ -62,7 +66,9 @@ function getDefaultMenuPrice(costPrice: number): number {
 export function Inventory() {
   const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const { dispatchInventoryUpdate, dispatchWineUpdate } = useRealtimeDispatch()
-  const { locations: storageLocations, setLocations: setStorageLocations, getWineLocation, getLocationsWithActualCounts, assignWineToLocation, removeWineFromLocation } = useStorageLocations()
+  const { activeRestaurantId } = useAuth()
+  const queryClient = useQueryClient()
+  const { locations: storageLocations, setLocations: setStorageLocations, getWineLocation, getLocationsWithActualCounts, assignWineToLocation, removeWineFromLocation, mappings } = useStorageLocations()
   
   // Page hook: filter, sort, selection, computed data — single source of truth
   const {
@@ -143,6 +149,9 @@ export function Inventory() {
   const [showRealtimeToast, setShowRealtimeToast] = useState(false)
   const [showResetStockModal, setShowResetStockModal] = useState(false)
   const [resetStockConfirmText, setResetStockConfirmText] = useState('')
+  const [showAutoLocateModal, setShowAutoLocateModal] = useState(false)
+  const [autoLocateResult, setAutoLocateResult] = useState<AutoLocateResult | null>(null)
+  const [includeAssigned, setIncludeAssigned] = useState(false)
 
   const winesById = useMemo(() => {
     const map = new Map<string, Wine>()
@@ -629,6 +638,27 @@ The wine is still in your Wine Library. You can re-add it to inventory anytime f
     setShowExportModal(false)
   }
 
+  const handleAutoLocate = useCallback(() => {
+    const result = computeAutoLocatePlan(
+      mergedInventory,
+      storageLocations,
+      mappings,
+      { skipAssigned: !includeAssigned }
+    )
+    setAutoLocateResult(result)
+    setShowAutoLocateModal(true)
+  }, [mergedInventory, storageLocations, mappings, includeAssigned])
+
+  const handleConfirmAutoLocate = useCallback((selected: WineLocationScore[]) => {
+    for (const assignment of selected) {
+      assignWineToLocation(assignment.wineId, assignment.locationId, assignment.quantity)
+    }
+    queryClient.invalidateQueries({ queryKey: ['winesAtLocation', activeRestaurantId ?? ''] })
+    queryClient.invalidateQueries({ queryKey: ['storageLocationMappings', activeRestaurantId ?? ''] })
+    setShowAutoLocateModal(false)
+    setAutoLocateResult(null)
+  }, [assignWineToLocation, queryClient, activeRestaurantId])
+
   return (
     <div className="min-h-screen">
       <Header title="Inventory" subtitle="Manage live and shadow stock levels" />
@@ -934,6 +964,16 @@ The wine is still in your Wine Library. You can re-add it to inventory anytime f
             >
               <Plus className="w-4 h-4" />
               <span className="text-sm font-medium">Add Wine</span>
+            </button>
+
+            {/* Auto-Locate Button */}
+            <button
+              onClick={handleAutoLocate}
+              disabled={storageLocations.length === 0}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              <Zap className="w-4 h-4" />
+              <span className="text-sm font-medium">Auto-Locate</span>
             </button>
 
             {/* Reset All Stock Button */}
@@ -1699,6 +1739,27 @@ The wine is still in your Wine Library. You can re-add it to inventory anytime f
           </motion.div>
         )}
       </AnimatePresence>
+
+      {autoLocateResult && (
+        <AutoLocatePreviewModal
+          isOpen={showAutoLocateModal}
+          onClose={() => { setShowAutoLocateModal(false); setAutoLocateResult(null) }}
+          result={autoLocateResult}
+          allLocations={storageLocations}
+          includeAssigned={includeAssigned}
+          onToggleIncludeAssigned={(val) => {
+            setIncludeAssigned(val)
+            const newResult = computeAutoLocatePlan(
+              mergedInventory,
+              storageLocations,
+              mappings,
+              { skipAssigned: !val }
+            )
+            setAutoLocateResult(newResult)
+          }}
+          onConfirm={handleConfirmAutoLocate}
+        />
+      )}
     </div>
   )
 }
