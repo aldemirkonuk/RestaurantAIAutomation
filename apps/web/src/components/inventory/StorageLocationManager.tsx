@@ -73,7 +73,7 @@ export function StorageLocationManager({
   selectedWineId,
   inventoryItems = [],
 }: StorageLocationManagerProps) {
-  const { locations, setLocations, getLocationsWithActualCounts } = useStorageLocations()
+  const { locations, setLocations, getLocationsWithActualCounts, mappings, assignWineToLocation, removeWineFromLocation } = useStorageLocations()
   const actualLocations = getLocationsWithActualCounts()
   const onLocationsChangeRef = useRef(onLocationsChange)
   onLocationsChangeRef.current = onLocationsChange
@@ -87,6 +87,7 @@ export function StorageLocationManager({
     currentCount: number
     overflow: number
   } | null>(null)
+  const [wineSearchQuery, setWineSearchQuery] = useState('')
   const [formData, setFormData] = useState<Partial<StorageLocation>>({
     name: '',
     description: '',
@@ -206,16 +207,29 @@ export function StorageLocationManager({
     resetForm()
   }
 
-  const getLocationItems = (location: StorageLocation) => {
-    return inventoryItems.filter(item => {
-      const assigned = item.storageLocation || item.location || ''
-      return assigned === location.id || assigned === location.name
-    })
-  }
+  // Wines available to assign to the editing location (from inventoryItems prop, excluding already-assigned)
+  const winesAvailableToAssign = inventoryItems.filter(item => {
+    if (!editingLocation) return false
+    const alreadyHere = mappings.find(m => m.wineId === item.id && m.locationId === editingLocation.id)
+    return !alreadyHere
+  })
+  const winesFilteredBySearch = wineSearchQuery.trim()
+    ? winesAvailableToAssign.filter(item =>
+        item.name.toLowerCase().includes(wineSearchQuery.toLowerCase()) ||
+        item.producer.toLowerCase().includes(wineSearchQuery.toLowerCase())
+      )
+    : winesAvailableToAssign
 
-  const locationItems = editingLocation ? getLocationItems(editingLocation) : []
-  const locationItemTotal = locationItems.reduce((sum, item) => sum + (item.liveStock || 0), 0)
-  const locationItemsSorted = [...locationItems].sort((a, b) => (b.liveStock || 0) - (a.liveStock || 0))
+  // Wines currently assigned to the editing location (from actual mappings)
+  const winesAtThisLocation = editingLocation
+    ? mappings
+        .filter(m => m.locationId === editingLocation.id)
+        .map(m => {
+          const invItem = inventoryItems.find(i => i.id === m.wineId)
+          return invItem ? { ...invItem, mappingQuantity: m.quantity } : null
+        })
+        .filter(Boolean) as Array<typeof inventoryItems[0] & { mappingQuantity: number }>
+    : []
 
   if (!isOpen) return null
 
@@ -598,7 +612,7 @@ export function StorageLocationManager({
                         <div>
                           <h4 className="text-sm font-semibold text-gray-900">Stored Wines</h4>
                           <p className="text-xs text-gray-500">
-                            {locationItemTotal} bottles assigned to this location
+                            {winesAtThisLocation.length} wine{winesAtThisLocation.length !== 1 ? 's' : ''} assigned here
                           </p>
                         </div>
                         <span className="text-xs font-medium text-gray-500">
@@ -606,23 +620,80 @@ export function StorageLocationManager({
                         </span>
                       </div>
 
-                      {locationItemsSorted.length > 0 ? (
-                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                          {locationItemsSorted.map((item) => (
+                      {/* Currently assigned wines */}
+                      {winesAtThisLocation.length > 0 && (
+                        <div className="space-y-1.5 max-h-32 overflow-y-auto mb-3">
+                          {winesAtThisLocation.map((item) => (
                             <div key={item.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-200">
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
                                 <p className="text-xs text-gray-500 truncate">{item.producer}</p>
                               </div>
-                              <span className="text-sm font-semibold text-gray-900">{item.liveStock || 0}</span>
+                              <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                                <span className="text-sm font-semibold text-gray-700">{item.mappingQuantity}</span>
+                                <button
+                                  onClick={() => removeWineFromLocation(item.id)}
+                                  className="p-1 hover:bg-rose-100 rounded text-gray-400 hover:text-rose-600 transition-colors"
+                                  title="Remove from location"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <div className="text-sm text-gray-500 bg-white rounded-lg px-3 py-2 border border-gray-200">
-                          No wines assigned to this location yet.
-                        </div>
                       )}
+
+                      {/* Wine picker / assign new wines */}
+                      <div>
+                        <div className="relative mb-2">
+                          <input
+                            type="text"
+                            value={wineSearchQuery}
+                            onChange={(e) => setWineSearchQuery(e.target.value)}
+                            placeholder={inventoryItems.length === 0 ? 'No inventory wines loaded' : 'Search wines to assign…'}
+                            disabled={inventoryItems.length === 0}
+                            className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
+                            style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
+                          />
+                          <Wine className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                        </div>
+
+                        {inventoryItems.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic text-center py-2">
+                            Open Inventory to load wines, then re-open this modal.
+                          </p>
+                        ) : winesFilteredBySearch.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic text-center py-2">
+                            {wineSearchQuery ? 'No wines match your search.' : 'All inventory wines are already assigned here.'}
+                          </p>
+                        ) : (
+                          <div className="space-y-1 max-h-36 overflow-y-auto">
+                            {winesFilteredBySearch.slice(0, 20).map((item) => (
+                              <div key={item.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-gray-200 hover:border-emerald-300 transition-colors">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-medium text-gray-900 truncate">{item.name}</p>
+                                  <p className="text-xs text-gray-400 truncate">{item.producer}</p>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    assignWineToLocation(item.id, editingLocation.id, item.liveStock || 1)
+                                    setWineSearchQuery('')
+                                  }}
+                                  className="ml-2 flex-shrink-0 px-2 py-1 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition-colors"
+                                >
+                                  Assign
+                                </button>
+                              </div>
+                            ))}
+                            {winesFilteredBySearch.length > 20 && (
+                              <p className="text-xs text-gray-400 text-center py-1">
+                                {winesFilteredBySearch.length - 20} more — refine your search
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
