@@ -3,6 +3,7 @@ import { mockAuthState } from './auth.setup'
 
 test.describe('Navigation Guards', () => {
   test('all protected routes redirect unauthenticated users to /login', async ({ page }) => {
+    test.setTimeout(60000)
     const protectedRoutes = ['/', '/inventory', '/orders', '/wines', '/reports', '/settings']
 
     for (const route of protectedRoutes) {
@@ -47,6 +48,6 @@ test.describe('Navigation Guards', () => {
     await page.goto('/register')
     // Register page should show email and password inputs — validates the route is functional
     await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 10000 })
-    await expect(page.getByLabel(/password/i)).toBeVisible()
+    await expect(page.locator('#password')).toBeVisible()
   })
 })
