@@ -336,6 +336,7 @@ Plan: Not started
 | 260407-q4r | fix /studio/queue access — add developer to allowed roles in App.tsx route guard and GET /queue backend dependency | 2026-04-07 | 73d3f8e | — |
 | 260407-rdb | fix studio 403 — require_studio_role DB fallback when JWT app_metadata.roles is empty; open /studio/certify and GET /contributors to developer | 2026-04-07 | b10d40e | — |
 | 260407-nav | Phase 13 gap closure: developer nav tabs (Queue + Certify), all 3 VERIFICATION gaps confirmed closed, UAT human-test instructions added | 2026-04-07 | 6b308de | — |
+| 260408-02o | fix lucide-react TS2786 JSX component errors across codebase — pinned @types/react@18.2.47 + typescript@5.3.3 workspace-wide via pnpm.overrides | 2026-04-08 | — | [260408-02o-fix-lucide-react-ts2786-jsx-component-er](./quick/260408-02o-fix-lucide-react-ts2786-jsx-component-er/) |
 
 ---
 
