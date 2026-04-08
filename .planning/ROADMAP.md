@@ -2,7 +2,7 @@
 
 ## Overview
 
-Thirteen phases building the world's most sophisticated restaurant wine intelligence dataset. Phases 1–6 replaced the retired YOLO+Surya stack with a hybrid extraction pipeline. Phases 7–11 transform raw extraction into a verified, enriched, cross-referenced wine knowledge base with per-field confidence scoring, web-verified data, wine ontology validation, critic score aggregation, and temporal menu intelligence. Phase 12 closes the remaining gaps with an autonomous multi-source research agent that produces independently corroborated, citable fills — not AI guesses. Phase 13 adds a developer and certified-user onboarding UI with manual field override controls to build high-quality datasets across PDF and crawler-driven ingestion flows.
+Fifteen phases building the world's most sophisticated restaurant wine intelligence dataset. Phases 1–6 replaced the retired YOLO+Surya stack with a hybrid extraction pipeline. Phases 7–11 transform raw extraction into a verified, enriched, cross-referenced wine knowledge base with per-field confidence scoring, web-verified data, wine ontology validation, critic score aggregation, and temporal menu intelligence. Phase 12 closes the remaining gaps with an autonomous multi-source research agent that produces independently corroborated, citable fills — not AI guesses. Phase 13 adds a developer and certified-user onboarding UI with manual field override controls to build high-quality datasets across PDF and crawler-driven ingestion flows.
 
 **Architecture pivot from:** YOLO 13-class → Surya OCR → local parser (mAP50 0.04 — retired 2026-03-31)
 **Architecture pivot to:** Claude Vision (extraction) + Gemini Flash (crawling) + YOLO 2-class (preview) + Haiku (enrichment) + Web Search (verification) + Ontology (validation) + Temporal (intelligence)
@@ -524,6 +524,43 @@ Plans:
 - [x] 13-04-PLAN.md — Wave 3a: StudioApprovalQueue (QueueTable + QueueRow + TrustProgress, 30s polling) + StudioCertify (ContributorTable + InviteDialog, invite path-param token)
 - [x] 13-05-PLAN.md — Wave 3b: test_studio_routes.py (D-07 reason enforcement, invite role guard, approve decision) + test_override_service.py (require_studio_role, trust counter RPC) + MetricCard + MetricsDashboard (4 cards, 60s polling) + Studio.tsx metrics bar
 
+### Phase 14: Comprehensive E2E Testing & Error Resilience
+**Goal**: Build a full-system E2E test framework covering both the wine scanning/onboarding pipeline (extraction → enrichment → studio → library promotion) AND the operations pipeline. Structured error logging, retry logic, JSON reporting. Fix architectural gaps found during testing (Studio→Library promotion path).
+**Depends on**: Phase 13 (studio routes), Phase 7 (field_confidence), Phase 5 (quality routes)
+**Success Criteria**:
+  1. pytest E2E suite covers health checks for all FastAPI routers (onboarding, studio, quality, research, analytics)
+  2. Extraction pipeline test: POST /extract → submission created → field_confidence populated
+  3. Studio override pipeline test: POST /overrides → override_events → promotion → field_confidence updated
+  4. Approval queue E2E: certified_contributor → pending → review_admin approves
+  5. Playwright tests: /studio flow (login → PDF drop → table → edit → submit), /studio/queue, /studio/certify, /wines
+  6. Studio→Library promotion endpoint exists and is tested
+  7. JSON error report generated at test-results/e2e-report.json
+  8. Coverage map documenting what's tested vs. aspirational (operations pipeline agents)
+**Plans**: 4 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Wave 1: Framework infrastructure + health checks + extraction pipeline E2E tests (pytest)
+- [ ] 14-02-PLAN.md — Wave 2: Studio/quality/research/analytics API E2E tests (pytest)
+- [ ] 14-03-PLAN.md — Wave 1 (parallel): Playwright frontend E2E (studio flow, navigation, auth guards)
+- [ ] 14-04-PLAN.md — Wave 3: Studio→Library promotion fix + error resilience + coverage map
+
+### Phase 15: Wine Storage Locations & Studio↔Library Format Unification
+**Goal**: Wire wine-to-storage-location assignment with per-location counts, simple location picker on wines, and unify the data format between /studio WineRecordsTable and /wines WineLibrary so promoted wines flow seamlessly into the main library view.
+**Depends on**: Phase 13 (studio WineRecord type), Phase 14 (promotion endpoint)
+**Success Criteria**:
+  1. GET /api/v1/locations/{id}/wines returns list of wines at that location with names + counts
+  2. POST /api/v1/locations/assign assigns a wine to a location with quantity
+  3. StorageLocationManager has expandable cards showing wines per location
+  4. Inventory page has a location picker per wine row
+  5. Shared format mapping function: WineRecord → master_wine_library → Wine
+  6. "Promote to Library" button in Studio WineRecordsTable for approved wines
+  7. Promoted wines appear in /wines WineLibrary without manual data translation
+**Plans**: 2 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Wave 1: Wine-to-location enriched API + expandable location cards + location picker
+- [ ] 15-02-PLAN.md — Wave 1 (parallel): Format mapper + POST /studio/promote endpoint + Promote button
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -540,7 +577,7 @@ Plans:
 | 10. Critic Scores & Pricing Intelligence | 6/6 | Complete    | 2026-04-06 |
 | 11. Temporal Menu Intelligence & Analytics | 5/5 | Complete    | 2026-04-06 |
 | 12. Extensive Gap-Filling Research Agent | 4/4 | Complete    | 2026-04-06 |
-| 13. Dev Onboarding UI with Manual Override Access | 6/6 | Complete    | 2026-04-07 |
+| 13. Dev Onboarding UI with Manual Override Access | 7/7 | Complete    | 2026-04-07 |
 | 14. Comprehensive E2E Testing & Error Resilience | 0/4 | Planned | — |
 | 15. Wine Storage Locations & Studio↔Library Unification | 0/2 | Planned | — |
 
@@ -564,3 +601,5 @@ The following phases were part of the YOLO+Surya pipeline (milestone 1.0) and ar
 *Phases 7–11 added: 2026-04-05 — World-class wine dataset pipeline: full-field confidence, web verification, ontology, critic scores, temporal intelligence*
 *Phase 12 added: 2026-04-06 — Extensive Gap-Filling Research Agent: multi-source evidence, corroboration, conflict detection, 5-category metrics dashboard — 4 plans, 3 waves*
 *Phase 13 added: 2026-04-06 — Dev Onboarding UI with Manual Override Access: role-aware ingestion UI for developers/certified contributors with auditable field-level edits — 5 plans, 3 waves*
+*Phase 14 added: 2026-04-07 — Comprehensive E2E Testing & Error Resilience: full-system test framework, extraction pipeline + studio + frontend Playwright tests, Studio→Library promotion fix — 4 plans, 3 waves*
+*Phase 15 added: 2026-04-07 — Wine Storage Locations & Studio↔Library Format Unification: per-location wine counts, location picker, format mapper, promote-to-library action — 2 plans, 1 wave*

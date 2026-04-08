@@ -1,77 +1,34 @@
-# Phase 15 Context: Wine Storage Locations & Studio↔Library Format Unification
+# Phase 15: Wine Storage Locations & Studio↔Library Format Unification — Context
+
+## Part A: Storage Locations
+
+### Existing infrastructure
+- DB: `storage_locations` table (zone, capacity, parent_id, is_active)
+- DB: `wine_location_mappings` table (wine_id, location_id, quantity)
+- DB: `restaurant_inventory.storage_location_id` FK
+- Hook: `apps/web/src/hooks/useStorageLocations.ts` — full CRUD via React Query
+- Component: `apps/web/src/components/inventory/StorageLocationManager.tsx`
+
+### What's missing
+- Enriched API endpoint: GET wines at a specific location with names + counts
+- Expandable location cards: click a location → see which wines are there
+- Location picker: assign a wine to a location from the inventory view
+
+## Part B: Studio ↔ Library Format Unification
+
+### Two incompatible types
+1. **WineRecord** (Studio): wine_name, vintage, producer, region, country, grape_variety, color, primary_type, sweetness_level, price_bottle, price_glass, tasting_notes, description + field_confidence
+2. **Wine** (Library): name, producer, vintage, region, country, price, liveStock, shadowStock, threshold, menuPrice, bottleSizeMl, etc.
+
+### What's missing
+- Format mapping function: WineRecord → master_wine_library row → Wine
+- "Promote to Library" action in Studio
+- Backend endpoint: POST /studio/promote → insert into master_wine_library
+- No bridge between these two data models
 
 ## Decisions
-
-- D-01: **Storage location display is expandable per-location card** — click a location → see wines + counts inline in StorageLocationManager (not a separate page)
-- D-02: **Wine-to-location assignment via dropdown on inventory rows** — simple select from existing locations
-- D-03: **Backend enrichment via NestJS join query** — new endpoint returns wine_location_mappings joined with master_wine_library for names/producers, not client-side cross-referencing
-- D-04: **Promotion = insert into master_wine_library** — Studio-approved wines are copied from master_wine_library_submissions to master_wine_library using a mapping function
-- D-05: **Mapping function lives in shared frontend util** — `mapWineRecordToApiWine()` for frontend preview, backend does its own field mapping for the DB insert
-- D-06: **"Promote to Library" button appears per-wine in Studio** — only for wines with status approved or where developer/review_admin has overridden fields
-- D-07: **Reuse existing NestJS storage-locations controller** — add a new endpoint to it, not a new controller
-- D-08: **No new DB migrations needed for Part A** — storage_locations + wine_location_mappings already exist
-- D-09: **Promotion endpoint on Python FastAPI (studio_routes.py)** — keeps all Studio logic in the same backend, uses existing Supabase client
-
-## Deferred Ideas
-
-- Advanced storage analytics (temperature monitoring, movement history)
-- Batch promotion of entire Studio sessions
-- Auto-assignment of wines to locations based on type/region rules
-- Location capacity enforcement (block assignment when full)
-
-## Claude's Discretion
-
-- Exact UI layout of the expandable wine list (card vs table vs simple list)
-- Whether to show a "promote all" batch action (deferred per above)
-- Error handling UX for promotion failures
-- Whether the location picker shows in the wine detail modal or only in inventory table rows
-
-## Existing Infrastructure
-
-### Backend (NestJS api-gateway)
-- `StorageLocationsController` at `apps/api-gateway/src/storage-locations/storage-locations.controller.ts`
-  - GET /:restaurantId → listLocations
-  - GET /:restaurantId/mappings → listMappings (returns raw wineId/locationId/quantity)
-  - POST /:restaurantId/mappings → assignWineToLocation (upsert)
-  - DELETE /:restaurantId/mappings/:wineId → removeWineFromLocation
-  - POST /:restaurantId → createLocation
-  - PATCH /:restaurantId/:locationId → updateLocation
-  - DELETE /:restaurantId/:locationId → deleteLocation (soft)
-- `StorageLocationsService` handles all Supabase queries
-
-### Backend (Python FastAPI agent-orchestrator)
-- `studio_routes.py` at `services/agent-orchestrator/api/studio_routes.py`
-  - POST /api/v1/studio/sessions — start session
-  - POST /api/v1/studio/overrides — submit field override
-  - GET /api/v1/studio/queue — approval queue
-  - No promotion endpoint exists yet
-
-### Frontend
-- `useStorageLocations` hook — React Query, fetches from API, has getWinesInLocation(), assignWineToLocation()
-- `StorageLocationManager` — modal with location list + edit form, shows "Stored Wines" from inventoryItems prop
-- `useStudioSessionStore` — Zustand store with WineRecord type
-- `WineRecordsTable` — renders Studio wine records with FieldCell per column
-- `useWineLibraryPage` — fetches wines via useWines hook, maps with mapApiWinesToUiWines
-- `mapApiWineToUiWine()` in `apps/web/src/lib/wine-library.ts` — converts API Wine → UI Wine
-
-### Database
-- `storage_locations` table: id, restaurant_id, name, description, parent_id, location_type, temperature, humidity, capacity, current_count, color, notes, deleted_at
-- `wine_location_mappings` table: id, restaurant_id, wine_id, location_id, quantity, assigned_at, UNIQUE(restaurant_id, wine_id)
-- `master_wine_library_submissions` table: has field_confidence JSONB, submission fields
-- `master_wine_library` table: target for promoted wines
-
-### Type gap (Studio WineRecord → Library Wine)
-| Studio WineRecord field | Library API Wine field | Notes |
-|------------------------|----------------------|-------|
-| wine_name | name | rename |
-| vintage | vintage | string → number parse |
-| producer | producer | direct |
-| region | region | direct |
-| country | country | direct |
-| grape_variety | grapeVariety | camelCase |
-| color / primary_type | category | "red"/"white"/etc |
-| price_bottle | price | string → number parse |
-| price_glass | (menuPriceGlass) | extra field |
-| sweetness_level | (no direct map) | stored in wine_structure |
-| tasting_notes | tastingNotes | camelCase |
-| description | description | direct |
+- D-01: Location display is read-only first (list wines + counts per location)
+- D-02: Location assignment uses existing wine_location_mappings table
+- D-03: Promotion endpoint writes to master_wine_library (existing table)
+- D-04: Only developer/review_admin can promote (consistent with Studio auth)
+- D-05: Format mapper is a shared TypeScript utility (not inline in components)
