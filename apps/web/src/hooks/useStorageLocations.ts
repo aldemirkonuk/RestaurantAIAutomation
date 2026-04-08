@@ -6,8 +6,8 @@
  * Same public interface as the previous localStorage-based version.
  */
 
-import { useCallback, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../services/api/client'
 import { useAuth } from '../contexts/AuthContext'
 
