@@ -561,6 +561,25 @@ Plans:
 - [x] 15-01-PLAN.md — Wave 1: Wine-to-location enriched API + expandable location cards + location picker
 - [x] 15-02-PLAN.md — Wave 1 (parallel): Format mapper + POST /studio/promote endpoint + Promote button
 
+### Phase 16: Wine → Storage Location Assignment & Auto-Locate Intelligence
+**Goal**: Two capabilities: (A) Manual wine → location assignment — add an inline LocationPickerCell to the Inventory table so users can assign any wine to a storage location in ≤3 clicks, populating wine_location_mappings and fixing the "No wines assigned" display in StorageLocationManager. (B) Auto-Locate — a one-click intelligent distribution engine that scores each wine against each location using temperature matching, wine type grouping, capacity-awareness, and accessibility optimization, presents a preview modal with score reasoning, and commits assignments on user confirmation.
+**Depends on**: Phase 15 (storage_locations table, wine_location_mappings table, POST /mappings endpoint, StorageLocationManager, useStorageLocations hook)
+**Requirements**: ALOC-01, ALOC-02, ALOC-03, ALOC-04, ALOC-05, ALOC-06, ALOC-07, ALOC-08
+**Success Criteria** (what must be TRUE):
+  1. Inventory table has a "Location" column with `LocationPickerCell` per wine row — shows assigned location or "Assign location" placeholder
+  2. Clicking the cell opens a dropdown listing all storage locations with capacity info; selecting one writes to wine_location_mappings
+  3. StorageLocationManager expanded wine lists update without page refresh after manual assignment
+  4. `POST /storage-locations/:restaurantId/auto-locate` endpoint exists accepting `{ dry_run, strategy, wine_ids, clear_existing }`
+  5. Auto-Locate scoring algorithm: temperature match (0–40 pts), type grouping (0–30 pts), capacity (0–20 pts), accessibility (0–10 pts)
+  6. Preview modal shows proposed wine → location table with score reason pills and summary banner
+  7. Strategy switcher in modal (Type Grouped / Balanced / Frequency Optimized) triggers re-scoring
+  8. "Confirm & Assign" writes all proposals to wine_location_mappings in one batch; modal closes
+**Plans**: 2 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Wave 1: LocationPickerCell component + useAssignWineToLocation mutation + Inventory "Location" column
+- [ ] 16-02-PLAN.md — Wave 1 (parallel): Auto-Locate backend scoring engine + POST /auto-locate endpoint + AutoLocateModal preview UI + useAutoLocate hook + Inventory "Auto-Locate" button
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -580,6 +599,7 @@ Plans:
 | 13. Dev Onboarding UI with Manual Override Access | 7/7 | Complete    | 2026-04-07 |
 | 14. Comprehensive E2E Testing & Error Resilience | 4/4 | Complete    | 2026-04-08 |
 | 15. Wine Storage Locations & Studio↔Library Unification | 2/2 | Complete    | 2026-04-08 |
+| 16. Wine → Storage Location Assignment & Auto-Locate | 0/2 | Planned | — |
 
 ## Archived Phases (Previous Milestone — Retired)
 
