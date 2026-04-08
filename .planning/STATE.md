@@ -334,6 +334,7 @@ Plan: Not started
 | 260407-h3k | fix PGRST116 — replace `.single()` with `.maybe_single()` on studio routes + override_service so 0 rows return 404/null instead of PostgREST coerce error | 2026-04-07 | c35d52f | [260407-h3k-fix-pgrst116-studio-maybe-single](./quick/260407-h3k-fix-pgrst116-studio-maybe-single/) |
 | 260407-q4r | fix /studio/queue access — add developer to allowed roles in App.tsx route guard and GET /queue backend dependency | 2026-04-07 | 73d3f8e | — |
 | 260407-rdb | fix studio 403 — require_studio_role DB fallback when JWT app_metadata.roles is empty; open /studio/certify and GET /contributors to developer | 2026-04-07 | b10d40e | — |
+| 260407-nav | Phase 13 gap closure: developer nav tabs (Queue + Certify), all 3 VERIFICATION gaps confirmed closed, UAT human-test instructions added | 2026-04-07 | 6b308de | — |
 
 ---
 
