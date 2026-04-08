@@ -24,7 +24,8 @@ Fifteen phases building the world's most sophisticated restaurant wine intellige
 - [x] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables. (completed 2026-04-07)
 - [x] **Phase 14: Comprehensive E2E Testing & Error Resilience** — Full-system E2E test framework covering the wine scanning/onboarding pipeline (extraction → enrichment → field_confidence → studio override → library promotion) and all registered HTTP API endpoints. pytest for FastAPI backend (mock-based), Playwright for frontend flows, structured JSON error reporting, coverage mapping, and architectural gap fixes (Studio→Library promotion path). (completed 2026-04-08)
 - [x] **Phase 15: Wine Storage Locations & Studio↔Library Format Unification** — Wire wine-to-storage-location assignment with per-location counts, simple location picker on wines, and unify the data format between /studio WineRecordsTable and /wines WineLibrary so promoted wines flow seamlessly into the main library view. (completed 2026-04-08)
-- [ ] **Phase 16: Auto-Locate Wines & Storage Intelligence** — Manual wine→location assignment picker in Inventory table + intelligent Auto-Locate engine: scores each wine against each storage location using temperature matching, wine type grouping, capacity constraints, and accessibility optimization; preview modal before committing; populates wine_location_mappings automatically.
+- [x] **Phase 16: Auto-Locate Wines & Storage Intelligence** — Manual wine→location assignment picker in Inventory table + intelligent Auto-Locate engine: scores each wine against each storage location using temperature matching, wine type grouping, capacity constraints, and accessibility optimization; preview modal before committing; populates wine_location_mappings automatically. (completed 2026-04-08)
+- [ ] **Phase 17: StorageLocationManager Intelligence & UX Refinement** — (A) Fix mock/hardcoded currentCount values in DEFAULT_LOCATIONS and use getLocationsWithActualCounts() for all capacity display so bars/footers reflect real wine_location_mappings data; (B) Replace the static "No wines assigned to this location yet" box in the location edit form with an inline wine picker that assigns wines directly from StorageLocationManager using assignWineToLocation; (C) Move the Auto-Locate button + modal from Inventory.tsx toolbar into StorageLocationManager modal footer for contextual storage management UX.
 
 ### Phase 16: Auto-Locate Wines & Storage Intelligence
 **Goal**: Fix the React Query cache invalidation bug blocking StorageLocationManager, add a state-of-the-art LocationPickerCell component for manual assignment, build a pure TypeScript scoring engine (composite 100pt algorithm: temperature match, wine type grouping, capacity availability, accessibility), and wire a preview modal that lets operators review + adjust before batch-confirming automatic wine→location assignments.
@@ -44,11 +45,11 @@ Fifteen phases building the world's most sophisticated restaurant wine intellige
 **Plans**: 5 plans
 
 Plans:
-- [ ] 16-01-PLAN.md — Wave 1: Cache invalidation fix (useStorageLocations.ts) + displayedInventory location filter (Inventory.tsx)
-- [ ] 16-02-PLAN.md — Wave 1 (parallel): Create LocationPickerCell.tsx (pill badge + styled dropdown + capacity guard)
-- [ ] 16-03-PLAN.md — Wave 2: Wire LocationPickerCell into Inventory.tsx, remove old select picker
-- [ ] 16-04-PLAN.md — Wave 2 (parallel): Create autoLocateEngine.ts + AutoLocatePreviewModal.tsx
-- [ ] 16-05-PLAN.md — Wave 3: Wire Auto-Locate button + handlers + modal render into Inventory.tsx
+- [x] 16-01-PLAN.md — Wave 1: Cache invalidation fix (useStorageLocations.ts) + displayedInventory location filter (Inventory.tsx)
+- [x] 16-02-PLAN.md — Wave 1 (parallel): Create LocationPickerCell.tsx (pill badge + styled dropdown + capacity guard)
+- [x] 16-03-PLAN.md — Wave 2: Wire LocationPickerCell into Inventory.tsx, remove old select picker
+- [x] 16-04-PLAN.md — Wave 2 (parallel): Create autoLocateEngine.ts + AutoLocatePreviewModal.tsx
+- [x] 16-05-PLAN.md — Wave 3: Wire Auto-Locate button + handlers + modal render into Inventory.tsx
 
 ### Phase 14: Comprehensive E2E Testing & Error Resilience
 **Goal**: Build a comprehensive E2E test framework covering all 25+ HTTP endpoints across 6 registered FastAPI routers, plus frontend Playwright tests for Studio and navigation flows. Fix the Studio→Library promotion architectural gap. Generate structured JSON error reports with per-test step/error/duration tracking. Document endpoint coverage map identifying tested vs. untested code paths.
@@ -500,7 +501,7 @@ Plans:
 **Goal:** Transform the Phase 12 research agent from a single-pass linear pipeline into a three-layer SOTA architecture: Layer 1 (deterministic inference from Phase 9 ontology at zero cost), Layer 2 (cascade LLM enrichment with entity caching and model routing), Layer 3 (deep research with adaptive Reflexion retry). Fix all 10 critical bugs, implement 4 unimplemented features, and add authority-weighted conflict auto-resolution. Target: 85-95% null field coverage at ~$0.008-0.012/record.
 **Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08
 **Depends on:** Phase 12
-**Plans:** 2/2 plans complete
+**Plans:** 5/5 plans complete
 
 Plans:
 - [x] 12.1-01-PLAN.md — Wave 1: settings.py cascade/cache settings + research_agent_helpers.py Layer 1 inference, select_model, entity cache, resolve_conflict, BoundedLRUCache
@@ -602,8 +603,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 16-01-PLAN.md — Wave 1: LocationPickerCell component + useAssignWineToLocation mutation + Inventory "Location" column
-- [ ] 16-02-PLAN.md — Wave 1 (parallel): Auto-Locate backend scoring engine + POST /auto-locate endpoint + AutoLocateModal preview UI + useAutoLocate hook + Inventory "Auto-Locate" button
+- [x] 16-01-PLAN.md — Wave 1: LocationPickerCell component + useAssignWineToLocation mutation + Inventory "Location" column
+- [x] 16-02-PLAN.md — Wave 1 (parallel): Auto-Locate backend scoring engine + POST /auto-locate endpoint + AutoLocateModal preview UI + useAutoLocate hook + Inventory "Auto-Locate" button
 
 ## Progress
 
@@ -624,7 +625,7 @@ Plans:
 | 13. Dev Onboarding UI with Manual Override Access | 7/7 | Complete    | 2026-04-07 |
 | 14. Comprehensive E2E Testing & Error Resilience | 4/4 | Complete    | 2026-04-08 |
 | 15. Wine Storage Locations & Studio↔Library Unification | 2/2 | Complete    | 2026-04-08 |
-| 16. Wine → Storage Location Assignment & Auto-Locate | 0/2 | Planned | — |
+| 16. Wine → Storage Location Assignment & Auto-Locate | 5/5 | Complete   | 2026-04-08 |
 
 ## Archived Phases (Previous Milestone — Retired)
 
