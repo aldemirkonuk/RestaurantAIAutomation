@@ -23,7 +23,7 @@ Fifteen phases building the world's most sophisticated restaurant wine intellige
 - [x] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety. (completed 2026-04-06)
 - [x] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables. (completed 2026-04-07)
 - [x] **Phase 14: Comprehensive E2E Testing & Error Resilience** — Full-system E2E test framework covering the wine scanning/onboarding pipeline (extraction → enrichment → field_confidence → studio override → library promotion) and all registered HTTP API endpoints. pytest for FastAPI backend (mock-based), Playwright for frontend flows, structured JSON error reporting, coverage mapping, and architectural gap fixes (Studio→Library promotion path). (completed 2026-04-08)
-- [ ] **Phase 15: Wine Storage Locations & Studio↔Library Format Unification** — Wire wine-to-storage-location assignment with per-location counts, simple location picker on wines, and unify the data format between /studio WineRecordsTable and /wines WineLibrary so promoted wines flow seamlessly into the main library view.
+- [x] **Phase 15: Wine Storage Locations & Studio↔Library Format Unification** — Wire wine-to-storage-location assignment with per-location counts, simple location picker on wines, and unify the data format between /studio WineRecordsTable and /wines WineLibrary so promoted wines flow seamlessly into the main library view. (completed 2026-04-08)
 
 ### Phase 14: Comprehensive E2E Testing & Error Resilience
 **Goal**: Build a comprehensive E2E test framework covering all 25+ HTTP endpoints across 6 registered FastAPI routers, plus frontend Playwright tests for Studio and navigation flows. Fix the Studio→Library promotion architectural gap. Generate structured JSON error reports with per-test step/error/duration tracking. Document endpoint coverage map identifying tested vs. untested code paths.
@@ -63,8 +63,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 15-01-PLAN.md — Wave 1: Enriched wines-at-location API endpoint + expandable wine list in StorageLocationManager + location picker
-- [ ] 15-02-PLAN.md — Wave 1 (parallel): Format mapper + POST /studio/promote endpoint + "Promote to Library" button in Studio
+- [x] 15-01-PLAN.md — Wave 1: Enriched wines-at-location API endpoint + expandable wine list in StorageLocationManager + location picker
+- [x] 15-02-PLAN.md — Wave 1 (parallel): Format mapper + POST /studio/promote endpoint + "Promote to Library" button in Studio
 
 ## Phase Details
 
@@ -475,7 +475,7 @@ Plans:
 **Goal:** Transform the Phase 12 research agent from a single-pass linear pipeline into a three-layer SOTA architecture: Layer 1 (deterministic inference from Phase 9 ontology at zero cost), Layer 2 (cascade LLM enrichment with entity caching and model routing), Layer 3 (deep research with adaptive Reflexion retry). Fix all 10 critical bugs, implement 4 unimplemented features, and add authority-weighted conflict auto-resolution. Target: 85-95% null field coverage at ~$0.008-0.012/record.
 **Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08
 **Depends on:** Phase 12
-**Plans:** 4/4 plans complete
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 12.1-01-PLAN.md — Wave 1: settings.py cascade/cache settings + research_agent_helpers.py Layer 1 inference, select_model, entity cache, resolve_conflict, BoundedLRUCache
@@ -558,8 +558,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 15-01-PLAN.md — Wave 1: Wine-to-location enriched API + expandable location cards + location picker
-- [ ] 15-02-PLAN.md — Wave 1 (parallel): Format mapper + POST /studio/promote endpoint + Promote button
+- [x] 15-01-PLAN.md — Wave 1: Wine-to-location enriched API + expandable location cards + location picker
+- [x] 15-02-PLAN.md — Wave 1 (parallel): Format mapper + POST /studio/promote endpoint + Promote button
 
 ## Progress
 
@@ -579,7 +579,7 @@ Plans:
 | 12. Extensive Gap-Filling Research Agent | 4/4 | Complete    | 2026-04-06 |
 | 13. Dev Onboarding UI with Manual Override Access | 7/7 | Complete    | 2026-04-07 |
 | 14. Comprehensive E2E Testing & Error Resilience | 4/4 | Complete    | 2026-04-08 |
-| 15. Wine Storage Locations & Studio↔Library Unification | 0/2 | Planned | — |
+| 15. Wine Storage Locations & Studio↔Library Unification | 2/2 | Complete    | 2026-04-08 |
 
 ## Archived Phases (Previous Milestone — Retired)
 
