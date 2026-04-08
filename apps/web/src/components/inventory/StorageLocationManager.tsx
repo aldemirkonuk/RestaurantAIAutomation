@@ -9,7 +9,6 @@ import {
   X,
   MapPin,
   Plus,
-  Edit3,
   Trash2,
   Check,
   FolderTree,
@@ -72,7 +71,7 @@ export function StorageLocationManager({
   onClose,
   onSelectLocation,
   onLocationsChange,
-  selectedWineId,
+  // selectedWineId unused — kept in props interface for future use
   inventoryItems = [],
   onAutoLocate,
 }: StorageLocationManagerProps) {
