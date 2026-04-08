@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-04-08T05:20:49.696Z"
+last_updated: "2026-04-08T16:27:03.539Z"
 progress:
   total_phases: 19
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 73
-  completed_plans: 65
-  percent: 89
+  completed_plans: 70
+  percent: 96
 ---
 
 # Project State: WineOps Menu Scanning Pipeline
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant → verified against external sources → the world's most accurate restaurant wine dataset
-**Current focus:** Phase 16 — auto-locate-wines-storage-intelligence
+**Current focus:** Phase 17 — storagelocationmanager-intelligence-ux-refinement
 
 ---
 
 ## Current Position
 
-Phase: 15
+Phase: 17
 Plan: Not started
 **Last completed:** Phase 13 Plan 07 — Gap closure, all verification gaps closed, developer nav fixed — 2026-04-07
 **Phases complete:** 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 12.1, 13
@@ -344,7 +344,7 @@ Plan: Not started
 
 - [ ] Phase 2 Wave 2: run `datasets/scripts/eval_model.py` once 2-class best.pt is ready → write `eval_report.md`
 - [x] Phase 3 Wave 1: OCR baseline complete — avg 0.8954 overall (screenshots 0.9111, pdf_pages 0.8939)
-- [ ] Phase 3 Wave 2: run `datasets/scripts/ocr_tune_preprocessing.py`, write `OCR_CONFIDENCE_REPORT.md`, update `_preprocess_for_ocr()` if improvements found
+- [ ] Phase 3 Wave 2: run `datasets/scripts/ocr_tune_preprocessing.py`, write `OCR_CONFIDENCE_REPORT.md`, update `_preprocess_for_ocr()` if improvements found 
 - [ ] Phase 4: wire 2-class best.pt into `menu_analyzer_agent.py`, E2E validation
 
 ---
