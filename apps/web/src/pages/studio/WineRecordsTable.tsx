@@ -1,6 +1,9 @@
+import { useState } from 'react'
+import { ArrowUpRight, CheckCircle2, Loader2 } from 'lucide-react'
 import { WineRecord, useStudioSessionStore } from '../../stores/useStudioSessionStore'
 import { Skeleton } from '../../components/ui/loading-skeleton'
 import { FieldCell } from './FieldCell'
+import { canPromote } from '../../lib/wine-format-mapper'
 
 // D-06: fixed column order — never reorder
 const COLUMN_ORDER: { key: keyof WineRecord; label: string; minWidth: number }[] = [
@@ -24,8 +27,40 @@ interface WineRecordsTableProps {
   isLoading: boolean
 }
 
+type PromoteState = 'idle' | 'loading' | 'promoted' | 'duplicate' | 'error'
+
 export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) {
   const { sessionId, setRecords } = useStudioSessionStore()
+  const [promoteStates, setPromoteStates] = useState<Record<string, PromoteState>>({})
+
+  const handlePromote = async (record: WineRecord) => {
+    const id = record.id
+    setPromoteStates((prev) => ({ ...prev, [id]: 'loading' }))
+    const token = localStorage.getItem('accessToken')
+    try {
+      const resp = await fetch('/api/v1/studio/promote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ submission_id: record.submission_id }),
+      })
+      if (resp.status === 409) {
+        setPromoteStates((prev) => ({ ...prev, [id]: 'duplicate' }))
+        return
+      }
+      if (!resp.ok) {
+        setPromoteStates((prev) => ({ ...prev, [id]: 'error' }))
+        setTimeout(() => setPromoteStates((prev) => ({ ...prev, [id]: 'idle' })), 3000)
+        return
+      }
+      setPromoteStates((prev) => ({ ...prev, [id]: 'promoted' }))
+    } catch {
+      setPromoteStates((prev) => ({ ...prev, [id]: 'error' }))
+      setTimeout(() => setPromoteStates((prev) => ({ ...prev, [id]: 'idle' })), 3000)
+    }
+  }
 
   const handleOverrideSuccess = (recordId: string, field: string, newValue: string) => {
     setRecords(
@@ -60,7 +95,7 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-xs bg-white max-h-[calc(100vh-320px)] overflow-y-auto">
-      <table className="w-full border-collapse" style={{ minWidth: COLUMN_ORDER.reduce((a, c) => a + c.minWidth, 0) }}>
+      <table className="w-full border-collapse" style={{ minWidth: COLUMN_ORDER.reduce((a, c) => a + c.minWidth, 0) + 110 }}>
         <thead className="sticky top-0 z-10 bg-[#F1F3F5]">
           <tr>
             {COLUMN_ORDER.map((col) => (
@@ -74,6 +109,12 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
                 {col.label}
               </th>
             ))}
+            <th
+              style={{ minWidth: 110 }}
+              className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 text-left"
+            >
+              Action
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -82,6 +123,8 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
             const hasReview = Object.values(fc).some(
               (e) => e && typeof e === 'object' && e.confidence !== null && e.confidence >= 0.5 && e.confidence < 0.8
             )
+            const promoteState = promoteStates[record.id] ?? 'idle'
+            const promotable = canPromote(record)
             return (
               <tr
                 key={record.id}
@@ -113,6 +156,40 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
                     />
                   )
                 })}
+                <td className="px-3 py-2">
+                  {promoteState === 'promoted' ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Promoted
+                    </span>
+                  ) : promoteState === 'duplicate' ? (
+                    <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
+                      Already in library
+                    </span>
+                  ) : promoteState === 'error' ? (
+                    <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-1 rounded-full">
+                      Failed
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handlePromote(record)}
+                      disabled={!promotable || promoteState === 'loading'}
+                      className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+                        promotable
+                          ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 cursor-pointer'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                      title={promotable ? 'Promote to Wine Library' : 'Wine name required to promote'}
+                    >
+                      {promoteState === 'loading' ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <ArrowUpRight className="w-3 h-3" />
+                      )}
+                      Promote
+                    </button>
+                  )}
+                </td>
               </tr>
             )
           })}
