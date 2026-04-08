@@ -22,8 +22,31 @@ Thirteen phases building the world's most sophisticated restaurant wine intellig
 - [x] **Phase 11: Temporal Menu Intelligence & Analytics** — Periodic re-crawl scheduling, menu diff detection (additions/removals/price changes), cross-restaurant wine popularity tracking, regional trend analytics, wine availability signals (completed 2026-04-06)
 - [x] **Phase 12: Extensive Gap-Filling Research Agent** — Autonomous multi-step research agent targeting NULL/low-confidence fields post Phases 7–11. Multi-source evidence gathering (Serper + fetch-verify), independent corroboration requirement, conflict detection, citable fills with url+snippet+timestamp. Exposes 5 metric categories: gap closure, quality, evidence hygiene, throughput/cost, safety. (completed 2026-04-06)
 - [x] **Phase 13: Dev Onboarding UI with Manual Override Access** — Build a secure UI for developers and certified accounts (sommeliers/producers/approved groups) to run onboarding via PDF upload or standard crawl/scan flows, then manually edit and approve per-field values before final promotion into dataset tables. (completed 2026-04-07)
-- [ ] **Phase 14: Comprehensive E2E Testing & Error Resilience** — Full-system E2E test framework covering both the wine scanning/onboarding pipeline (extraction → enrichment → studio → library promotion) AND the operations pipeline (stock → notifications → orders → email → delivery). Structured error logging, retry logic, JSON reporting, and architectural gaps identified and fixed in production code.
+- [ ] **Phase 14: Comprehensive E2E Testing & Error Resilience** — Full-system E2E test framework covering the wine scanning/onboarding pipeline (extraction → enrichment → field_confidence → studio override → library promotion) and all registered HTTP API endpoints. pytest for FastAPI backend (mock-based), Playwright for frontend flows, structured JSON error reporting, coverage mapping, and architectural gap fixes (Studio→Library promotion path).
 - [ ] **Phase 15: Wine Storage Locations & Studio↔Library Format Unification** — Wire wine-to-storage-location assignment with per-location counts, simple location picker on wines, and unify the data format between /studio WineRecordsTable and /wines WineLibrary so promoted wines flow seamlessly into the main library view.
+
+### Phase 14: Comprehensive E2E Testing & Error Resilience
+**Goal**: Build a comprehensive E2E test framework covering all 25+ HTTP endpoints across 6 registered FastAPI routers, plus frontend Playwright tests for Studio and navigation flows. Fix the Studio→Library promotion architectural gap. Generate structured JSON error reports with per-test step/error/duration tracking. Document endpoint coverage map identifying tested vs. untested code paths.
+**Depends on**: Phase 13 (studio_routes.py, override_service.py), Phase 7 (field_confidence, quality_routes.py), Phase 12 (research_routes.py)
+**Requirements**: E2E-01, E2E-02, E2E-03, E2E-04, E2E-05, E2E-06, E2E-07, E2E-08, E2E-09, E2E-10
+**Success Criteria** (what must be TRUE):
+  1. `pytest tests/e2e/ -v` runs ~40 backend E2E tests covering all 6 routers + health
+  2. Extraction pipeline E2E: POST /extract → submission persisted → field_confidence populated → Haiku enrichment queued
+  3. Studio override E2E: developer auto-promotes, contributor goes to pending queue, admin approves/rejects
+  4. Quality review E2E: GET review-queue → PATCH corrections → promotion to master_wine_library
+  5. Research + Analytics API E2E: metrics, runs, conflicts, wine scores, trends, timeline — all return correct structures
+  6. Playwright tests: login renders, auth guards redirect, Studio loads with auth, navigation works
+  7. Studio→Library promotion architectural gap FIXED: auto_promoted overrides trigger _maybe_promote_submission()
+  8. JSON report at test-results/e2e-report.json with per-test outcome, duration, error details
+  9. Error resilience: Supabase unavailable → 503 (not 500), extractor failure → 503, cap check failure → fail-open
+  10. Coverage map documents every HTTP endpoint's E2E test status
+**Plans**: 4 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Wave 1: E2E test framework infrastructure (conftest, report generator) + health checks + extraction pipeline tests (pytest)
+- [ ] 14-02-PLAN.md — Wave 2: Studio override + approval queue + quality review + research + analytics API E2E tests (pytest)
+- [ ] 14-03-PLAN.md — Wave 1: Frontend Playwright E2E tests (Studio flow, navigation guards, auth redirects)
+- [ ] 14-04-PLAN.md — Wave 3: Studio→Library promotion fix + error resilience tests + coverage map
 
 ### Phase 15: Wine Storage Locations & Studio↔Library Format Unification
 **Goal**: Two deliverables: (A) Per-location wine views with counts — expand a storage location to see which wines and how many bottles, plus a location picker for assigning wines. (B) Format unification between Studio WineRecord and Library Wine types — a "Promote to Library" action that maps Studio fields to master_wine_library and inserts, so promoted wines appear in the Wine Library.
@@ -518,7 +541,7 @@ Plans:
 | 11. Temporal Menu Intelligence & Analytics | 5/5 | Complete    | 2026-04-06 |
 | 12. Extensive Gap-Filling Research Agent | 4/4 | Complete    | 2026-04-06 |
 | 13. Dev Onboarding UI with Manual Override Access | 6/6 | Complete    | 2026-04-07 |
-| 14. Comprehensive E2E Testing & Error Resilience | 0/? | Planned | — |
+| 14. Comprehensive E2E Testing & Error Resilience | 0/4 | Planned | — |
 | 15. Wine Storage Locations & Studio↔Library Unification | 0/2 | Planned | — |
 
 ## Archived Phases (Previous Milestone — Retired)
