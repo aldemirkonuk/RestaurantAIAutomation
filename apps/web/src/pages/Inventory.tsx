@@ -29,7 +29,6 @@ import {
   Package,
   BarChart3,
   FolderTree,
-  Zap,
   RotateCcw,
   Loader2,
 } from 'lucide-react'
@@ -966,16 +965,6 @@ The wine is still in your Wine Library. You can re-add it to inventory anytime f
               <span className="text-sm font-medium">Add Wine</span>
             </button>
 
-            {/* Auto-Locate Button */}
-            <button
-              onClick={handleAutoLocate}
-              disabled={storageLocations.length === 0}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              <Zap className="w-4 h-4" />
-              <span className="text-sm font-medium">Auto-Locate</span>
-            </button>
-
             {/* Reset All Stock Button */}
             <button 
               onClick={() => setShowResetStockModal(true)}
@@ -1656,6 +1645,7 @@ The wine is still in your Wine Library. You can re-add it to inventory anytime f
         onLocationsChange={(updatedLocations) => {
           setStorageLocations(updatedLocations)
         }}
+        onAutoLocate={handleAutoLocate}
       />
 
       {/* Reset All Stock Modal */}
