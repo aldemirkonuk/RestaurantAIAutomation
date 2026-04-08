@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  Zap,
 } from 'lucide-react'
 import { useStorageLocations, useWinesAtLocation, DEFAULT_LOCATIONS } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
@@ -42,6 +43,7 @@ interface StorageLocationManagerProps {
     storageLocation?: string
     location?: string
   }>
+  onAutoLocate?: () => void
 }
 
 /** @deprecated Use the useStorageLocations hook instead */
@@ -72,6 +74,7 @@ export function StorageLocationManager({
   onLocationsChange,
   selectedWineId,
   inventoryItems = [],
+  onAutoLocate,
 }: StorageLocationManagerProps) {
   const { locations, setLocations, getLocationsWithActualCounts, mappings, assignWineToLocation, removeWineFromLocation } = useStorageLocations()
   const actualLocations = getLocationsWithActualCounts()
@@ -741,17 +744,32 @@ export function StorageLocationManager({
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
+          <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between gap-3">
             <p className="text-sm text-gray-500">
-              {locations.length} location{locations.length !== 1 ? 's' : ''} • 
-              {' '}{actualLocations.reduce((sum, l) => sum + l.currentCount, 0)} bottles stored
+              {locations.length} location{locations.length !== 1 ? 's' : ''} •{' '}
+              {actualLocations.reduce((sum, l) => sum + l.currentCount, 0)} bottles stored
             </p>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-            >
-              Close
-            </button>
+            <div className="flex items-center gap-2">
+              {onAutoLocate && (
+                <button
+                  onClick={() => {
+                    onAutoLocate()
+                    onClose()
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm"
+                  title="Auto-assign wines to optimal storage locations"
+                >
+                  <Zap className="w-4 h-4" />
+                  Auto-Locate
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </motion.div>
       </motion.div>
