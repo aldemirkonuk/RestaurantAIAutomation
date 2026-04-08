@@ -32,10 +32,10 @@ interface WineLocationMapping {
 }
 
 const DEFAULT_LOCATIONS: StorageLocation[] = [
-  { id: 'loc-1', name: 'Main Cellar', description: 'Primary wine storage', capacity: 500, currentCount: 324, temperature: '55°F', humidity: '70%', color: '#be123c' },
-  { id: 'loc-2', name: 'Bar Stock', description: 'Ready-to-serve wines', capacity: 100, currentCount: 78, temperature: '58°F', color: '#f59e0b' },
-  { id: 'loc-3', name: 'Overflow Storage', description: 'Secondary storage area', capacity: 200, currentCount: 45, color: '#10b981' },
-  { id: 'loc-4', name: 'VIP Reserve', description: 'Premium wines for special occasions', capacity: 50, currentCount: 32, temperature: '53°F', humidity: '75%', color: '#8b5cf6' },
+  { id: 'loc-1', name: 'Main Cellar', description: 'Primary wine storage', capacity: 500, currentCount: 0, temperature: '55°F', humidity: '70%', color: '#be123c' },
+  { id: 'loc-2', name: 'Bar Stock', description: 'Ready-to-serve wines', capacity: 100, currentCount: 0, temperature: '58°F', color: '#f59e0b' },
+  { id: 'loc-3', name: 'Overflow Storage', description: 'Secondary storage area', capacity: 200, currentCount: 0, color: '#10b981' },
+  { id: 'loc-4', name: 'VIP Reserve', description: 'Premium wines for special occasions', capacity: 50, currentCount: 0, temperature: '53°F', humidity: '75%', color: '#8b5cf6' },
 ]
 
 function mapServerLocation(loc: any): StorageLocation {
