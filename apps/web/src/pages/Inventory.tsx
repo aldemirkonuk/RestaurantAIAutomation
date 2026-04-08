@@ -37,6 +37,7 @@ import { getWineTypeColor, Wine } from '../data/wineData'
 import { AddWineToInventoryModal } from '../components/inventory/AddWineToInventoryModal'
 import { ManualOverrideModal, ManualOverrideData } from '../components/inventory/ManualOverrideModal'
 import { StorageLocationManager } from '../components/inventory/StorageLocationManager'
+import { LocationPickerCell } from '../components/inventory/LocationPickerCell'
 import { useStorageLocations } from '../hooks/useStorageLocations'
 import type { StorageLocation } from '../hooks/useStorageLocations'
 import { exportInventory, ExportFormat } from '../lib/exportHelpers'
@@ -142,7 +143,6 @@ export function Inventory() {
   const [showRealtimeToast, setShowRealtimeToast] = useState(false)
   const [showResetStockModal, setShowResetStockModal] = useState(false)
   const [resetStockConfirmText, setResetStockConfirmText] = useState('')
-  const [editingLocationItemId, setEditingLocationItemId] = useState<string | null>(null)
 
   const winesById = useMemo(() => {
     const map = new Map<string, Wine>()
@@ -1198,60 +1198,26 @@ The wine is still in your Wine Library. You can re-add it to inventory anytime f
                         </div>
                       </td>
                       <td className="px-4 py-3 w-32 relative">
-                        {editingLocationItemId === item.id ? (
-                          <div className="relative">
-                            <select
-                              autoFocus
-                              className="w-full text-sm border border-blue-400 rounded-lg px-2 py-1.5 bg-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
-                              value={
-                                storageLocations.find(
-                                  loc => loc.name === (item.storageLocation || getWineLocation(item.id)?.name)
-                                )?.id || ''
-                              }
-                              onChange={(e) => {
-                                const locId = e.target.value
-                                if (locId === '') {
-                                  // Unassign
-                                  removeWineFromLocation(item.id)
-                                  setInventory(prev => prev.map(inv =>
-                                    inv.id === item.id ? { ...inv, storageLocation: undefined } : inv
-                                  ))
-                                } else {
-                                  assignWineToLocation(item.id, locId, (item.liveStock || 0) + (item.shadowStock || 0) || 1)
-                                  const locName = storageLocations.find(l => l.id === locId)?.name || ''
-                                  setInventory(prev => prev.map(inv =>
-                                    inv.id === item.id ? { ...inv, storageLocation: locName } : inv
-                                  ))
-                                }
-                                setEditingLocationItemId(null)
-                              }}
-                              onBlur={() => setEditingLocationItemId(null)}
-                            >
-                              <option value="">Not assigned</option>
-                              {storageLocations.map(loc => (
-                                <option key={loc.id} value={loc.id}>{loc.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <div
-                            className="group flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded-lg px-1 py-0.5 -mx-1 transition-colors"
-                            onClick={() => setEditingLocationItemId(item.id)}
-                            title="Click to change location"
-                          >
-                            {item.storageLocation || getWineLocation(item.id)?.name ? (
-                              <>
-                                <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                                <span className="truncate">
-                                  {item.storageLocation || getWineLocation(item.id)?.name}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="text-gray-400 italic">Not assigned</span>
-                            )}
-                            <Edit className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                          </div>
-                        )}
+                        <LocationPickerCell
+                          wineId={item.id}
+                          quantity={(item.liveStock || 0) + (item.shadowStock || 0) || 1}
+                          locations={storageLocations}
+                          currentLocation={getWineLocation(item.id)}
+                          onAssign={(locationId, qty) => {
+                            assignWineToLocation(item.id, locationId, qty)
+                            setInventory(prev => prev.map(inv =>
+                              inv.id === item.id
+                                ? { ...inv, storageLocation: storageLocations.find(l => l.id === locationId)?.name }
+                                : inv
+                            ))
+                          }}
+                          onRemove={() => {
+                            removeWineFromLocation(item.id)
+                            setInventory(prev => prev.map(inv =>
+                              inv.id === item.id ? { ...inv, storageLocation: undefined } : inv
+                            ))
+                          }}
+                        />
                       </td>
                       <td className="px-4 py-3 text-center w-24">
                         <div className="flex items-center justify-center gap-1">
