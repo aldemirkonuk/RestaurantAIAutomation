@@ -26,6 +26,30 @@ Fifteen phases building the world's most sophisticated restaurant wine intellige
 - [x] **Phase 15: Wine Storage Locations & Studio↔Library Format Unification** — Wire wine-to-storage-location assignment with per-location counts, simple location picker on wines, and unify the data format between /studio WineRecordsTable and /wines WineLibrary so promoted wines flow seamlessly into the main library view. (completed 2026-04-08)
 - [ ] **Phase 16: Auto-Locate Wines & Storage Intelligence** — Manual wine→location assignment picker in Inventory table + intelligent Auto-Locate engine: scores each wine against each storage location using temperature matching, wine type grouping, capacity constraints, and accessibility optimization; preview modal before committing; populates wine_location_mappings automatically.
 
+### Phase 16: Auto-Locate Wines & Storage Intelligence
+**Goal**: Fix the React Query cache invalidation bug blocking StorageLocationManager, add a state-of-the-art LocationPickerCell component for manual assignment, build a pure TypeScript scoring engine (composite 100pt algorithm: temperature match, wine type grouping, capacity availability, accessibility), and wire a preview modal that lets operators review + adjust before batch-confirming automatic wine→location assignments.
+**Depends on**: Phase 15 (useStorageLocations hook, assignWineToLocation, wine_location_mappings table)
+**Requirements**: ALOC-01, ALOC-02, ALOC-03, ALOC-04, ALOC-05, ALOC-06, ALOC-07, ALOC-08
+**Success Criteria** (what must be TRUE):
+  1. Assigning a wine updates StorageLocationManager immediately (no stale "No wines assigned" state)
+  2. Location filter chip in Inventory toolbar filters table rows to only wines in that location
+  3. Inventory Location column shows LocationPickerCell pill badge (assigned) or dashed placeholder (unassigned)
+  4. LocationPickerCell dropdown shows all locations with {used}/{capacity} counts; full locations disabled
+  5. Auto-Locate button (Zap icon, emerald) in toolbar computes scoring plan from all inventory wines
+  6. computeAutoLocatePlan returns capacity-aware greedy assignments with 4-signal composite scores
+  7. AutoLocatePreviewModal shows per-row checkbox, location override, score badge, reasons, summary stats
+  8. "Include already-assigned wines" toggle re-computes the plan
+  9. Confirming batch-assigns all selected wines and invalidates cache
+  10. salesVelocity placeholder in WineInput type with commented scoring block ready for future wiring
+**Plans**: 5 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Wave 1: Cache invalidation fix (useStorageLocations.ts) + displayedInventory location filter (Inventory.tsx)
+- [ ] 16-02-PLAN.md — Wave 1 (parallel): Create LocationPickerCell.tsx (pill badge + styled dropdown + capacity guard)
+- [ ] 16-03-PLAN.md — Wave 2: Wire LocationPickerCell into Inventory.tsx, remove old select picker
+- [ ] 16-04-PLAN.md — Wave 2 (parallel): Create autoLocateEngine.ts + AutoLocatePreviewModal.tsx
+- [ ] 16-05-PLAN.md — Wave 3: Wire Auto-Locate button + handlers + modal render into Inventory.tsx
+
 ### Phase 14: Comprehensive E2E Testing & Error Resilience
 **Goal**: Build a comprehensive E2E test framework covering all 25+ HTTP endpoints across 6 registered FastAPI routers, plus frontend Playwright tests for Studio and navigation flows. Fix the Studio→Library promotion architectural gap. Generate structured JSON error reports with per-test step/error/duration tracking. Document endpoint coverage map identifying tested vs. untested code paths.
 **Depends on**: Phase 13 (studio_routes.py, override_service.py), Phase 7 (field_confidence, quality_routes.py), Phase 12 (research_routes.py)
