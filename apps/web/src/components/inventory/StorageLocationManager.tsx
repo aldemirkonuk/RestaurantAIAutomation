@@ -73,7 +73,8 @@ export function StorageLocationManager({
   selectedWineId,
   inventoryItems = [],
 }: StorageLocationManagerProps) {
-  const { locations, setLocations } = useStorageLocations()
+  const { locations, setLocations, getLocationsWithActualCounts } = useStorageLocations()
+  const actualLocations = getLocationsWithActualCounts()
   const onLocationsChangeRef = useRef(onLocationsChange)
   onLocationsChangeRef.current = onLocationsChange
   const [expandedLocationId, setExpandedLocationId] = useState<string | null>(null)
@@ -269,7 +270,7 @@ export function StorageLocationManager({
               </div>
 
               <div className="space-y-3">
-                {locations.map(location => (
+                {actualLocations.map(location => (
                   <motion.div
                     key={location.id}
                     initial={{ opacity: 0, x: -20 }}
@@ -672,7 +673,7 @@ export function StorageLocationManager({
           <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
             <p className="text-sm text-gray-500">
               {locations.length} location{locations.length !== 1 ? 's' : ''} • 
-              {' '}{locations.reduce((sum, l) => sum + l.currentCount, 0)} bottles stored
+              {' '}{actualLocations.reduce((sum, l) => sum + l.currentCount, 0)} bottles stored
             </p>
             <button
               onClick={onClose}
