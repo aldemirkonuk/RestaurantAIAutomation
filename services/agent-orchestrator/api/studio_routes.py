@@ -42,6 +42,7 @@ from services.override_service import (
     _get_primary_studio_role,
     _get_user_studio_roles,
     _apply_override_to_submission,
+    _maybe_promote_submission,
     check_and_update_trust,
 )
 
@@ -223,6 +224,12 @@ def submit_override(
             # Non-fatal for the response — override is logged, promotion failed
             return {"status": "logged_apply_failed", "override_id": override_id, "detail": str(exc)}
 
+        # T-14-08: attempt library promotion — non-fatal if it fails
+        try:
+            _maybe_promote_submission(supabase, body.submission_id)
+        except Exception as exc:
+            logger.error("submit_override: _maybe_promote_submission failed: %s", exc)
+
     return {"status": promotion_status, "override_id": override_id}
 
 
@@ -293,6 +300,12 @@ def decide_override(
             )
         except Exception as exc:
             logger.error("decide_override: apply failed: %s", exc)
+
+        # T-14-08: attempt library promotion — non-fatal if it fails
+        try:
+            _maybe_promote_submission(supabase, ov["submission_id"])
+        except Exception as exc:
+            logger.error("decide_override: _maybe_promote_submission failed: %s", exc)
 
     # D-12: update trust counter for certified_contributors
     from config.settings import get_settings

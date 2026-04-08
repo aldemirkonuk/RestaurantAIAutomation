@@ -223,6 +223,126 @@ def _apply_override_to_submission(supabase, submission_id: str, field_name: str,
     logger.info("Applied override to submission %s field=%s by actor=%s", submission_id, field_name, actor_id)
 
 
+def _fc_value(fc, field_name):
+    """Extract value from field_confidence entry, or None."""
+    entry = fc.get(field_name)
+    if not entry:
+        return None
+    return entry.get("value") if isinstance(entry, dict) else entry
+
+
+def _maybe_promote_submission(supabase, submission_id: str) -> bool:
+    """
+    Attempt to promote a studio-approved submission to master_wine_library.
+
+    Promotion is gated by three conditions (D-05):
+      1. Submission status must be "pending_review" (not already decided)
+      2. No remaining pending fields in field_review_queue
+      3. should_auto_block(fc) returns False
+
+    T-14-07: Only called after require_studio_role() has already verified the actor's role.
+    T-14-08: Entire function is wrapped in try/except — promotion failure is non-fatal;
+             the override response still succeeds.
+    T-14-09: Promotion values come from server-side field_confidence JSONB, not user input.
+
+    Returns True if the submission was promoted, False otherwise.
+    """
+    try:
+        from services.field_confidence import should_auto_block, JSONB_ENRICHMENT_KEYS
+        from datetime import datetime, timezone
+
+        jsonb_cols = ", ".join(JSONB_ENRICHMENT_KEYS)
+        resp = (
+            supabase.table("master_wine_library_submissions")
+            .select(f"id, payload, field_confidence, status, auto_blocked, restaurant_id, {jsonb_cols}")
+            .eq("id", submission_id)
+            .maybe_single()
+            .execute()
+        )
+        if not resp.data:
+            logger.warning("_maybe_promote_submission: submission %s not found", submission_id)
+            return False
+
+        submission = resp.data
+        if submission.get("status") != "pending_review":
+            logger.debug(
+                "_maybe_promote_submission: submission %s not in pending_review (status=%s)",
+                submission_id, submission.get("status"),
+            )
+            return False
+
+        # Gate 2: no remaining pending fields
+        pending_resp = (
+            supabase.table("field_review_queue")
+            .select("id", count="exact")
+            .eq("submission_id", submission_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        remaining_pending = pending_resp.count or 0
+        if remaining_pending > 0:
+            logger.debug(
+                "_maybe_promote_submission: %d pending fields remain for %s",
+                remaining_pending, submission_id,
+            )
+            return False
+
+        # Gate 3: field confidence ratio not auto-blocked
+        fc = submission.get("field_confidence") or {}
+        if should_auto_block(fc):
+            logger.debug("_maybe_promote_submission: submission %s is auto_blocked", submission_id)
+            return False
+
+        # Build promotion row — mirrors quality_routes.patch_review_queue mapping (D-20)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        promo_row = {
+            "restaurant_id": submission.get("restaurant_id"),
+            "submission_id": submission_id,
+            "name": _fc_value(fc, "wine_name"),
+            "producer": _fc_value(fc, "producer"),
+            "vintage": _fc_value(fc, "vintage"),
+            "region": _fc_value(fc, "region"),
+            "sub_region": _fc_value(fc, "sub_region"),
+            "appellation": _fc_value(fc, "appellation"),
+            "country": _fc_value(fc, "country"),
+            "grape_variety": _fc_value(fc, "grape_variety"),
+            "wine_type": _fc_value(fc, "primary_type"),
+            "color": _fc_value(fc, "color"),
+            "alcohol_pct": _fc_value(fc, "alcohol_pct"),
+            "sweetness_level": _fc_value(fc, "sweetness_level"),
+            "tasting_notes": _fc_value(fc, "tasting_notes"),
+            "description": _fc_value(fc, "description"),
+            "food_pairing": _fc_value(fc, "food_pairing"),
+            "producer_bio": _fc_value(fc, "producer_bio"),
+            "avg_price": _fc_value(fc, "price_bottle"),
+            "price_glass": _fc_value(fc, "price_glass"),
+            "section_name": _fc_value(fc, "section_name"),
+            "bin_number": _fc_value(fc, "bin_number"),
+            "source": "studio_approved",
+            "ai_enriched": True,
+            "enrichment_source": "haiku",
+            "created_at": now_iso,
+        }
+        for jk in JSONB_ENRICHMENT_KEYS:
+            promo_row[jk] = submission.get(jk) or {}
+
+        supabase.table("master_wine_library").insert(promo_row).execute()
+
+        supabase.table("master_wine_library_submissions").update(
+            {"status": "approved"}
+        ).eq("id", submission_id).execute()
+
+        logger.info(
+            "_maybe_promote_submission: promoted submission %s → master_wine_library",
+            submission_id,
+        )
+        return True
+
+    except Exception as exc:
+        logger.error("_maybe_promote_submission: failed for %s: %s", submission_id, exc)
+        return False
+
+
 def check_and_update_trust(supabase, user_id: str, approved: bool, threshold: int = 5) -> None:
     """
     Update consecutive_approved_overrides for certified_contributor.
