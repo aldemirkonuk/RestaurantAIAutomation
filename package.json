@@ -1,0 +1,61 @@
+{
+  "name": "wineops-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WineOps AI - Autonomous Restaurant Wine Operations System",
+  "author": "WineOps Team",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "test:e2e": "turbo run test:e2e",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:migrate": "cd packages/database && pnpm migrate",
+    "db:rollback": "cd packages/database && pnpm rollback",
+    "db:seed": "python3 scripts/seed-database.py --environment local",
+    "db:seed-test-data": "cd packages/database && pnpm seed:test",
+    "db:reset": "cd packages/database && pnpm reset",
+    "db:studio": "cd packages/database && pnpm studio",
+    "agents:start": "cd services/agent-orchestrator && source venv/bin/activate && uvicorn main:app --reload",
+    "agents:test": "cd services/agent-orchestrator && source venv/bin/activate && pytest",
+    "agents:logs": "tail -f services/agent-orchestrator/logs/agent-orchestrator.log",
+    "agents:health": "curl http://localhost:8000/health",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:clean": "docker-compose down -v",
+    "logs": "turbo run logs"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.2.1",
+    "@turbo/gen": "^1.11.0",
+    "eslint": "^8.55.0",
+    "prettier": "^3.1.0",
+    "prettier-plugin-tailwindcss": "^0.5.9",
+    "turbo": "^1.11.0",
+    "typescript": "^5.3.3",
+    "vite": "^7.3.1"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "pnpm": {
+    "overrides": {
+      "typescript": "5.3.3",
+      "@types/react": "18.2.47",
+      "@types/react-dom": "18.2.18"
+    }
+  }
+}
