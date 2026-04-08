@@ -1,41 +1,23 @@
 ---
 phase: 13-dev-onboarding-ui-with-manual-override-access
 verified: 2026-04-07T00:00:00Z
-status: passed
+status: closed
 score: 10/10 must-haves verified
 re_verification: true
-gap_closure_plan: 13-06-PLAN.md
+gap_closure_plan: 13-07-PLAN.md
 gap_closure_date: 2026-04-07
 gaps:
   - truth: "Field editor shows current value, confidence, source, verification_status, and allows per-field override"
-    status: failed
-    reason: "FieldCell displays value, confidence badge, and source — but verification_status is absent from WineRecord type, field_confidence entries, and FieldCell render. SC-3 explicitly requires verification_status display."
-    artifacts:
-      - path: "apps/web/src/pages/studio/FieldCell.tsx"
-        issue: "No verification_status field rendered in display mode"
-      - path: "apps/web/src/stores/useStudioSessionStore.ts"
-        issue: "WineRecord type has no verification_status property"
-    missing:
-      - "Add verification_status to WineRecord interface"
-      - "Render verification_status in FieldCell display mode (alongside confidence badge and source)"
+    status: closed
+    resolved_by: "verification_status present in WineRecord.field_confidence (useStudioSessionStore.ts:23) and rendered via VerificationBadge in FieldCell.tsx:139 — fixed prior to Plan 07. Confirmed via grep 2026-04-07."
 
   - truth: "Metrics endpoint includes post-override correction rate KPI"
-    status: failed
-    reason: "post_override_correction_rate is computed inside the metrics function (using field_corrections data that IS fetched) but the computed value is never added to the return dict. SC-9 explicitly lists post-override correction rate as a required KPI."
-    artifacts:
-      - path: "services/agent-orchestrator/api/studio_routes.py"
-        issue: "Variable post_override_correction_rate computed but missing from return {} block in get_studio_metrics(). The corr_resp query and corrections list are fetched at runtime but their computed result is silently discarded."
-    missing:
-      - "Add post_override_correction_rate to the metrics return dict (value is already computed — just not returned)"
+    status: closed
+    resolved_by: "post_override_correction_rate included in get_studio_metrics() return dict at studio_routes.py:472 — fixed prior to Plan 07. Confirmed via grep 2026-04-07."
 
   - truth: "E2E test covers certified_contributor → pending queue → review_admin approves → final record promoted with full audit trail"
-    status: failed
-    reason: "test_studio_e2e.py uses DEVELOPER_PAYLOAD for the override flow. Developer overrides are auto-promoted (skip the queue entirely). SC-10 explicitly requires a certified user to submit overrides that go to pending, then review_admin to approve them, with promotion verified. This path is only tested via isolated unit tests (TestPatchQueueDecision), not in a single end-to-end test."
-    artifacts:
-      - path: "services/agent-orchestrator/tests/test_studio_e2e.py"
-        issue: "test_full_developer_override_flow uses developer JWT (instant auto-promote). No E2E test exercises certified_contributor JWT → promotion_status=pending → PATCH /queue/{id} approve → _apply_override_to_submission called."
-    missing:
-      - "Add test_full_certified_contributor_approval_flow: certified_contributor JWT → POST /overrides → assert promotion_status=pending → PATCH /queue/{id} decision=approved (review_admin JWT) → assert override_events row has promotion_status=approved"
+    status: closed
+    resolved_by: "TestCertifiedContributorFlow::test_full_certified_contributor_approval_flow added in test_studio_e2e.py:280 — 1 passed confirmed via pytest 2026-04-07."
 
 human_verification:
   - test: "Navigate to /studio as a user with no studio role"

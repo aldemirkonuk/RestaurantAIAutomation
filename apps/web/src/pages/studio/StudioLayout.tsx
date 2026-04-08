@@ -43,7 +43,7 @@ export function StudioLayout({ children }: StudioLayoutProps) {
           >
             Studio
           </Link>
-          {primaryRole === 'review_admin' && (
+          {(primaryRole === 'review_admin' || primaryRole === 'developer') && (
             <>
               <Link
                 to="/studio/queue"
