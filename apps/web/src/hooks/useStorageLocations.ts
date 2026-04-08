@@ -55,6 +55,7 @@ function mapServerLocation(loc: any): StorageLocation {
 
 const LOCATIONS_KEY = 'storageLocations'
 const MAPPINGS_KEY = 'storageLocationMappings'
+const WINES_AT_LOCATION_KEY = 'winesAtLocation'
 
 export function useStorageLocations() {
   const { activeRestaurantId, isAuthenticated } = useAuth()
@@ -199,6 +200,8 @@ export function useStorageLocations() {
         locationId,
         quantity,
       })
+      queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
+      queryClient.invalidateQueries({ queryKey: [MAPPINGS_KEY, restaurantId] })
     },
     [setMappings, setLocations, persistToServer, restaurantId],
   )
@@ -218,6 +221,8 @@ export function useStorageLocations() {
       )
 
       persistToServer('DELETE', `/storage-locations/${restaurantId}/mappings/${wineId}`)
+      queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
+      queryClient.invalidateQueries({ queryKey: [MAPPINGS_KEY, restaurantId] })
     },
     [mappings, setMappings, setLocations, persistToServer, restaurantId],
   )
@@ -378,8 +383,6 @@ export interface EnrichedWineAtLocation {
   quantity: number
   assignedAt: string
 }
-
-const WINES_AT_LOCATION_KEY = 'winesAtLocation'
 
 export function useWinesAtLocation(locationId: string | null) {
   const { activeRestaurantId, isAuthenticated } = useAuth()
