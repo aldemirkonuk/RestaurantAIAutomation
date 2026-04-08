@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant → verified against external sources → the world's most accurate restaurant wine dataset
-**Current focus:** Phase 15 — wine-storage-locations-studio-library-format-unification
+**Current focus:** Phase 16 — auto-locate-wines-storage-intelligence
 
 ---
 
@@ -30,7 +30,7 @@ Plan: Not started
 **Last completed:** Phase 13 Plan 07 — Gap closure, all verification gaps closed, developer nav fixed — 2026-04-07
 **Phases complete:** 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 12.1, 13
 **Phases planned:** 14, 15
-**Next action:** `/gsd-execute-phase 14` (context gathered, plans ready)
+**Next action:** `/gsd-execute-phase 16` (plans ready — 16-01 + 16-02 in Wave 1)
 **Note:** Phase 13 signed off — SC-3/SC-9/SC-10 need recheck when real data hits
 
 ---
