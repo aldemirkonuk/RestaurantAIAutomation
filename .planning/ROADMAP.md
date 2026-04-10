@@ -66,7 +66,12 @@ Plans:
   10. ReportingAgent: SMS append only logged when SMS actually sent
   11. ReportingAgent: inventory + sales reports return real data from database
   12. ReportingAgent: PDF export generates actual PDF file via weasyprint
-**Plans**: TBD (created by `/gsd-plan-phase 19`)
+**Plans:** 4 plans
+Plans:
+- [ ] 19-01-PLAN.md — InventoryEngine: optimistic locking migration + dead code removal (BUG-01, BUG-02)
+- [ ] 19-02-PLAN.md — POSIntegrationAgent: hmac, wine detection, signature, refund fixes (BUG-03..06)
+- [ ] 19-03-PLAN.md — NotificationAgent: Redis rate limits + batch task monitoring (BUG-07, BUG-08)
+- [ ] 19-04-PLAN.md — ReportingAgent: self.db crash, SMS append, real reports, PDF export (BUG-09..12)
 
 ### Phase 20: Wave 1 Level 4 Hardening
 **Goal**: Bring each Wave 1 agent from Level 1.5 to Level 4 using the new BaseAgent infrastructure. Every agent gets idempotency, decision logging, and comprehensive tests.
