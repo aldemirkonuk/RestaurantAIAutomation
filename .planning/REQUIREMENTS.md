@@ -248,14 +248,95 @@
 || RSCH-10 | Phase 12 | Planned |
 || RSCH-11 | Phase 12 | Planned |
 
-**Coverage:**
+**Coverage (v1.0):**
 - v1 requirements (Phases 1–6): 34 total — 34 complete ✓
-- v1.5 requirements (Phases 7–11): 45 total — 0 complete, 45 planned
-- v2.0 requirements (Phase 12): 11 total — 0 complete, 11 planned
-- Grand total: 90 requirements mapped to phases
+- v1.5 requirements (Phases 7–11): 45 total — 45 complete ✓
+- v1.0 expansion (Phases 12–17): 11 total — 11 complete ✓
+- v1.0 grand total: 90 requirements — all complete ✓
+
+---
+
+## v2.0 Requirements — Backend Kitchen Architecture
+
+**Defined:** 2026-04-09
+**Core Value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it.
+
+### Infrastructure — BaseAgent Upgrade (Phase 18)
+
+- [ ] **INFRA-01**: BaseAgent provides idempotency mixin — `_check_idempotency(message_id)` checks Redis/PG `idempotency_keys` table, skips if already processed, `_mark_processed()` after success. Fails open (process twice rather than drop).
+- [ ] **INFRA-02**: BaseAgent provides `log_decision()` method — persists agent decisions to `decision_log` table with agent_name, decision_type, inputs, reasoning, output, confidence, correlation_id, restaurant_id.
+- [ ] **INFRA-03**: Structured JSON logging — all agent logs emitted as JSON with timestamp, level, logger, message, agent_name, correlation_id. `JSONFormatter` class in utils/logger.py.
+- [ ] **INFRA-04**: Distributed tracing — correlation_id extracted from incoming messages, propagated to all outgoing publishes. `self._current_correlation_id` set before every `process_message` call.
+- [ ] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
+- [ ] **INFRA-06**: Saga state helpers — `start_saga(saga_type, context, deadline_minutes)`, `advance_saga(saga_id, step, compensation)`, `complete_saga(saga_id)`, `compensate_saga(saga_id, error)`. Backed by `saga_state` PG table.
+- [ ] **INFRA-07**: Transactional outbox table — `outbox` table (event_type, exchange, routing_key, payload, published boolean). Background publisher worker polls unpublished rows and dispatches to RabbitMQ.
+- [ ] **INFRA-08**: Event store table — append-only `event_store` table (aggregate_type, aggregate_id, event_type, payload, sequence_number, correlation_id). Unique constraint on (aggregate_type, aggregate_id, sequence_number).
+
+### Infrastructure — Database Tables (Phase 18)
+
+- [ ] **INFRA-DB-01**: `idempotency_keys` table created via Supabase migration — message_id (PK), agent_name, processed_at, result (JSONB), expires_at (default NOW + 24h). Index on expires_at for cleanup.
+- [ ] **INFRA-DB-02**: `decision_log` table created — id (UUID PK), agent_name, decision_type, inputs (JSONB), reasoning (JSONB), output (JSONB), confidence (FLOAT), correlation_id, restaurant_id (FK), created_at. Indexes on (agent_name, created_at DESC) and (correlation_id).
+- [ ] **INFRA-DB-03**: `outbox` table created — id (BIGSERIAL PK), event_type, exchange, routing_key, payload (JSONB), published (BOOLEAN default FALSE), created_at, published_at. Partial index on (published, created_at) WHERE published = FALSE.
+- [ ] **INFRA-DB-04**: `saga_state` table created — saga_id (UUID PK), saga_type, current_step, status (default 'IN_PROGRESS'), context (JSONB), compensations (JSONB array), started_at, updated_at, deadline_at, error. Index on (status, saga_type).
+- [ ] **INFRA-DB-05**: `event_store` table created — event_id (UUID PK), aggregate_type, aggregate_id (UUID), event_type, payload (JSONB), sequence_number (BIGINT), correlation_id, created_at. Unique on (aggregate_type, aggregate_id, sequence_number). Index on (aggregate_type, aggregate_id, sequence_number).
+- [ ] **INFRA-DB-06**: `dead_letter_queue` table created — id (BIGSERIAL PK), agent_name, original_exchange, original_routing_key, message (JSONB), error, retry_count (INT), created_at, resolved_at, resolved_by.
+
+### Bug Fixes — Wave 1 Agents (Phase 19)
+
+- [ ] **BUG-01**: InventoryEngine race condition fixed — `update_inventory_stock` uses optimistic locking with `WHERE version = expected_version` and `SET version = version + 1`. Retry on conflict.
+- [ ] **BUG-02**: InventoryEngine dead code removed — `update_queue` and `batch_size` deleted from __init__.
+- [ ] **BUG-03**: POSIntegrationAgent `hmac.new` replaced with `hmac.HMAC` (deprecated API fix).
+- [ ] **BUG-04**: POSIntegrationAgent wine detection upgraded — Toast menu category matching replaces keyword-only detection. Fallback to keyword for uncategorized items.
+- [ ] **BUG-05**: POSIntegrationAgent signature verification fixed — uses raw payload bytes, not re-serialized `json.dumps(webhook_data)`.
+- [ ] **BUG-06**: POSIntegrationAgent refund logic separated from void logic — refunds handle partial amounts and credit tracking.
+- [ ] **BUG-07**: NotificationAgent rate limit counters persisted in Redis — `INCR wineops:ratelimit:{restaurant_id}:{channel}:hour` with TTL 3600. Survives restarts.
+- [ ] **BUG-08**: NotificationAgent batch processor task reference stored — `self._batch_task = asyncio.create_task(...)` and monitored in health check.
+- [ ] **BUG-09**: ReportingAgent `self.db` → `self.database` fix — prevents runtime crash on report generation.
+- [ ] **BUG-10**: ReportingAgent SMS `channels_used.append("sms")` moved inside if-block — cosmetic fix for accurate reporting.
+- [ ] **BUG-11**: ReportingAgent real inventory + sales reports implemented — queries actual inventory data with stock levels, thresholds, wine details; aggregates pos_webhook_logs for sales.
+- [ ] **BUG-12**: ReportingAgent PDF export implemented — HTML template → PDF via weasyprint with restaurant branding.
+
+### Hardening — Wave 1 Level 4 (Phase 20)
+
+- [ ] **HARD-01**: InventoryEngine at Level 4 — idempotency via BaseAgent, decision logging for every stock state change, event sourcing (aggregate_type='inventory'), optimistic locking. 15+ integration tests: happy path, idempotency, concurrent updates, delivery, manual correction, edge cases.
+- [ ] **HARD-02**: POSIntegrationAgent at Level 4 — webhook deduplication by (order_guid + event_type), idempotency via BaseAgent, decision logging for wine matching, Toast API polling fallback as saga. 15+ integration tests: webhook happy path, duplicate, non-wine, signature, wine matching, polling fallback.
+- [ ] **HARD-03**: NotificationAgent at Level 4 — delivery tracking table (notification_deliveries), idempotency by event_id, batch processor health monitoring, DLQ for failed notifications. 10+ integration tests: alert routing, rate limiting, delivery tracking, idempotency, channel fallback.
+- [ ] **HARD-04**: ReportingAgent at Level 4 — idempotency keyed by (restaurant_id + report_type + date), decision logging, real report generation, PDF export via weasyprint. 10+ integration tests: scheduled reports, on-demand, idempotency, timezone, PDF output.
+
+### Golden Path E2E (Phase 21)
+
+- [ ] **E2E-v2-01**: Toast webhook received → POSIntegrationAgent processes → publishes POSSaleCompleted event to `pos.events` exchange with `pos.sale.completed` routing key.
+- [ ] **E2E-v2-02**: POSSaleCompleted event → InventoryEngine subscribes → stock decremented in `inventory_stock` table → publishes `stock.state.changed` event.
+- [ ] **E2E-v2-03**: Stock below threshold → `stock.state.changed` event → NotificationAgent subscribes → manager receives SMS and/or email alert within 30 seconds.
+- [ ] **E2E-v2-04**: All stock events → ReportingAgent subscribes → dashboard data updated in real-time for inventory reports.
+- [ ] **E2E-v2-05**: Full golden path integration test with real Toast API data from friend's restaurant — historical order import + live webhook forwarding via ngrok.
+- [ ] **E2E-v2-06**: Chaos testing — kill agent mid-flow → restart → verify saga resumes. RabbitMQ disconnect → reconnect → verify buffered messages processed. Supabase 503 → circuit breaker trips → recovery after timeout. Malformed webhook → DLQ capture. 100 concurrent webhooks → no race conditions.
+
+### Observability (Phase 22)
+
+- [ ] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
+- [ ] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
+- [ ] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
+- [ ] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.
+
+### Deployment (Phase 22)
+
+- [ ] **DEP-01**: Frontend deployed to Vercel — auto-deploy from git, free tier.
+- [ ] **DEP-02**: Supabase Cloud database — all v1.0 + v2.0 migrations applied, production data accessible.
+- [ ] **DEP-03**: Python agent-orchestrator service on Railway or Fly.io — Dockerfile, uvicorn, $5-10/mo.
+- [ ] **DEP-04**: RabbitMQ on CloudAMQP — free tier instance configured.
+- [ ] **DEP-05**: Redis on Upstash — free tier with AOF persistence.
+- [ ] **DEP-06**: Toast API credentials configured — friend's restaurant Toast webhook URL pointed to production endpoint.
+
+**Coverage (v2.0):**
+- Infrastructure (Phase 18): 14 requirements — INFRA-01..08, INFRA-DB-01..06
+- Bug fixes (Phase 19): 12 requirements — BUG-01..12
+- Hardening (Phase 20): 4 requirements — HARD-01..04
+- Golden path E2E (Phase 21): 6 requirements — E2E-v2-01..06
+- Observability + Deployment (Phase 22): 10 requirements — OBS-01..04, DEP-01..06
+- v2.0 total: 46 requirements mapped to 5 phases
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-06 — Phase 12 requirements added (RSCH-01..11); 11 new requirements*
-*Previously: 2026-04-05 — Phases 7–11 requirements added (FCONF-01..12, WSRCH-01..09, ONTO-01..08, CRIT-01..07, TEMP-01..08); 45 new requirements across 5 phases*
+*Last updated: 2026-04-09 — v2.0 requirements added (46 new); v1.0 requirements all complete*
