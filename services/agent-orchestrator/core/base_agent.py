@@ -745,9 +745,142 @@ class BaseAgent(ABC):
             self.logger.error(f"CRITICAL: Failed to send to DLQ: {e}")
 
     # =========================================================================
+    # SAGA STATE MANAGEMENT (INFRA-06)
+    # =========================================================================
+
+    async def start_saga(
+        self,
+        saga_type: str,
+        context: Dict[str, Any],
+        deadline_minutes: int = 60,
+    ) -> str:
+        """Start a new saga and return its saga_id."""
+        saga_id = str(uuid.uuid4())
+        deadline_at = (datetime.utcnow() + timedelta(minutes=deadline_minutes)).isoformat()
+
+        try:
+            self.database.supabase.table("saga_state").insert({
+                "saga_id": saga_id,
+                "saga_type": saga_type,
+                "current_step": "INIT",
+                "status": "IN_PROGRESS",
+                "context": context,
+                "compensations": [],
+                "deadline_at": deadline_at,
+            }).execute()
+            self.logger.info(f"Saga started: {saga_type} ({saga_id})")
+            return saga_id
+        except Exception as e:
+            self.logger.error(f"Failed to start saga: {e}")
+            raise
+
+    async def advance_saga(
+        self,
+        saga_id: str,
+        step: str,
+        compensation_info: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Advance saga to next step and record compensation info."""
+        try:
+            result = self.database.supabase.table("saga_state") \
+                .select("compensations") \
+                .eq("saga_id", saga_id) \
+                .execute()
+
+            compensations = result.data[0]["compensations"] if result.data else []
+            if compensation_info:
+                compensations.append({
+                    "step": step,
+                    "compensation": compensation_info,
+                })
+
+            self.database.supabase.table("saga_state").update({
+                "current_step": step,
+                "compensations": compensations,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("saga_id", saga_id).execute()
+
+            self.logger.info(f"Saga {saga_id} advanced to step: {step}")
+        except Exception as e:
+            self.logger.error(f"Failed to advance saga {saga_id}: {e}")
+            raise
+
+    async def complete_saga(self, saga_id: str) -> None:
+        """Mark saga as completed."""
+        try:
+            self.database.supabase.table("saga_state").update({
+                "status": "COMPLETED",
+                "current_step": "DONE",
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("saga_id", saga_id).execute()
+            self.logger.info(f"Saga completed: {saga_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to complete saga {saga_id}: {e}")
+            raise
+
+    async def compensate_saga(self, saga_id: str, error: str) -> None:
+        """Run compensations in reverse order and mark saga as compensated."""
+        try:
+            result = self.database.supabase.table("saga_state") \
+                .select("compensations, saga_type") \
+                .eq("saga_id", saga_id) \
+                .execute()
+
+            if not result.data:
+                self.logger.warning(f"Saga {saga_id} not found for compensation")
+                return
+
+            saga = result.data[0]
+            compensations = saga.get("compensations", [])
+
+            self.logger.warning(
+                f"Compensating saga {saga_id} ({saga.get('saga_type')}): {error}. "
+                f"{len(compensations)} compensation(s) to run."
+            )
+
+            self.database.supabase.table("saga_state").update({
+                "status": "COMPENSATED",
+                "error": error,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("saga_id", saga_id).execute()
+
+            self.logger.info(f"Saga compensated: {saga_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to compensate saga {saga_id}: {e}")
+            raise
+
+    # =========================================================================
+    # EVENT STORE (INFRA-08)
+    # =========================================================================
+
+    async def append_event(
+        self,
+        aggregate_type: str,
+        aggregate_id: str,
+        event_type: str,
+        payload: Dict[str, Any],
+        sequence_number: int,
+    ) -> None:
+        """Append a domain event to the event store (append-only)."""
+        try:
+            self.database.supabase.table("event_store").insert({
+                "aggregate_type": aggregate_type,
+                "aggregate_id": aggregate_id,
+                "event_type": event_type,
+                "payload": payload,
+                "sequence_number": sequence_number,
+                "correlation_id": self._current_correlation_id,
+            }).execute()
+        except Exception as e:
+            self.logger.error(
+                f"Failed to append event {event_type} for {aggregate_type}/{aggregate_id}: {e}"
+            )
+            raise
+
+    # =========================================================================
     # CLEANUP
     # =========================================================================
-    
+
     async def cleanup(self) -> None:
         """
         Cleanup agent-specific resources.
