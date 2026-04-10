@@ -16,7 +16,7 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
 
 ## v2.0 Phases
 
-- [ ] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers)
+- [x] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers) (completed 2026-04-10)
 - [ ] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export)
 - [ ] **Phase 20: Wave 1 Level 4 Hardening** — Bring 4 golden path agents from Level 1.5 to Level 4 using new BaseAgent infrastructure: wire idempotency, decision logging, event sourcing, delivery tracking, and write 50+ integration tests across all 4 agents
 - [ ] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → ReportingAgent. Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages
@@ -43,11 +43,11 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
   12. After all retries exhausted, `_send_to_dlq()` persists failed message to dead_letter_queue
   13. `start_saga()`, `advance_saga()`, `complete_saga()`, `compensate_saga()` work end-to-end
   14. Background outbox publisher polls unpublished rows and dispatches to RabbitMQ
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 18-01-PLAN.md — Create 6 infrastructure database migration files + push to Supabase
 - [x] 18-02-PLAN.md — Add idempotency, decision logging, DLQ, structured logging, correlation ID to BaseAgent
-- [ ] 18-03-PLAN.md — Add saga helpers, event store append, and background outbox publisher
+- [x] 18-03-PLAN.md — Add saga helpers, event store append, and background outbox publisher
 
 ### Phase 19: Wave 1 Bug Fixes
 **Goal**: Fix every bug found in the surgical audit. No new features — just make existing code correct.
