@@ -1,86 +1,140 @@
-# WineOps AI — Hybrid Extraction Pipeline
+# WineOps AI — Autonomous Restaurant Operations Platform
 
 ## What This Is
 
-WineOps AI is an autonomous restaurant wine inventory and procurement system. This milestone implements the **hybrid extraction pipeline**: Claude Vision handles user-facing onboarding extraction with maximum accuracy, Gemini Flash pre-seeds the library via background web crawling, YOLO 2-class provides real-time camera preview boxes, and Claude Haiku enriches genuinely new wine records.
+WineOps AI is an autonomous restaurant wine inventory, procurement, and operations platform with 24 intelligent agents. v1.0 built the hybrid extraction pipeline (Claude Vision + Gemini Flash + YOLO 2-class + Haiku enrichment). v2.0 transforms the agent system from prototype to production: hardening all 24 agents to Level 4 (Resilient), implementing the 7 core backend principles (determinism, idempotency, replayability, observability, isolation, temporal reasoning, evolvability), and deploying with real Toast POS data from a Turkish restaurant in San Francisco.
 
 ## Core Value
 
-A restaurant manager scans a menu — photo, PDF, or web — and every wine is correctly identified, enriched, and onboarded at < $0.50 total cost per restaurant.
+The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
+
+## Current Milestone: v2.0 Backend Kitchen Architecture — Production-Grade Agent System
+
+**Goal:** Transform 24 Level 0-1 agents into Level 4 (Resilient) production agents, starting with 4 core agents in the golden path workflow, deployed and tested with real Toast data.
+
+**Target features:**
+- BaseAgent infrastructure upgrade (6 additions: idempotency, decision logging, structured JSON logging, distributed tracing, dead letter queue, saga state)
+- Wave 1 agent hardening: InventoryEngine, POSIntegrationAgent, NotificationAgent, ReportingAgent → Level 4
+- Golden path E2E: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → Manager gets SMS/email alert
+- Infrastructure tables: saga state, transactional outbox, decision log, idempotency dedup, event store
+- Observability foundation: Sentry error tracking + structured JSON logs + per-agent health dashboards
+- Production deployment: Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python services)
+- Wave 2-6: Expand all remaining 20 agents to Level 4 following the same pattern
 
 ## Requirements
 
-### Validated
+### v1.0 — Completed
+All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07, GMFL-01..05, YOLO-01..05, HAIKU-01..05, COST-01..03, QUAL-01..02, IMGX-01..07, CONF-01..08, WEBV-01..05, ONT-01..05, CRIT-01..05, TEMP-01..05, RSRCH-01..06, STUDIO-01..08, E2E-01..10, SLOC-01..03, UNIF-01..04, ALOC-01..08, SLMGR-01..03).
 
-- ✓ PDF scanning pipeline (PyPDF2 + Surya OCR) — working, high confidence — Phase 1
-- ✓ EasyOCR → Surya OCR swap in menu_analyzer_agent — Phase 1
-- ✓ Image preprocessing for OCR (RGB normalize, upscale, contrast boost) — Phase 1
-- ✓ 262 labeled images with Wine Entry + Section Header annotations — Phase 1
-- ✓ YOLO 2-class best.pt trained (mAP50 0.34–0.44, sufficient for box preview) — Phase 1
-- ✓ OCR baseline benchmark complete (0.8954 overall, 334 images) — Phase 1
-- ✓ Architecture decision: Claude Vision as extraction brain — 2026-03-31
+### v2.0 — Active
 
-### Active
+**Infrastructure (INFRA)**
+- [ ] INFRA-01: Idempotency mixin — message_id dedup via Redis/PG in BaseAgent
+- [ ] INFRA-02: Decision logging — log_decision() method + decision_log table
+- [ ] INFRA-03: Structured JSON logging — swap logger format, add correlation_id
+- [ ] INFRA-04: Distributed tracing — correlation_id propagation across agents
+- [ ] INFRA-05: Dead letter queue — publish to dlq.{agent_name} after max retries
+- [ ] INFRA-06: Saga state helpers — start_saga, advance_saga, compensate_saga + saga table
+- [ ] INFRA-07: Transactional outbox table + background publisher worker
+- [ ] INFRA-08: Event store table — append-only, for critical aggregates
 
-- ✓ Claude Vision extraction service: photo/scan → structured JSON (onboarding path) — Validated in Phase 01: claude-vision-extraction-service
-- ✓ Gemini Flash web crawler: HTML/PDF → structured JSON (background pre-seeding) — Validated in Phase 02: gemini-flash-crawler
-- [ ] YOLO 2-class real-time camera preview: box drawing only, no extraction
-- [ ] Claude Haiku enrichment: region/variety/bio for new wine records
-- [ ] Onboarding flow E2E: manager uploads photo → wines in inventory in <10s
-- [ ] Cost guardrails: per-extraction cost tracking + monthly spend cap enforcement
+**Bug Fixes (BUG)**
+- [ ] BUG-01: InventoryEngine race condition — add optimistic locking
+- [ ] BUG-02: InventoryEngine dead code removal (update_queue, batch_size)
+- [ ] BUG-03: POSIntegrationAgent hmac.new → hmac.HMAC fix
+- [ ] BUG-04: POSIntegrationAgent wine detection beyond keywords
+- [ ] BUG-05: POSIntegrationAgent signature verification raw payload fix
+- [ ] BUG-06: POSIntegrationAgent refund logic separation from void
+- [ ] BUG-07: NotificationAgent persist rate limit counters in Redis
+- [ ] BUG-08: NotificationAgent store batch processor task reference
+- [ ] BUG-09: ReportingAgent self.db → self.database fix
+- [ ] BUG-10: ReportingAgent SMS append outside if-block fix
+- [ ] BUG-11: ReportingAgent implement real inventory + sales reports
+- [ ] BUG-12: ReportingAgent implement PDF export
 
-### Out of Scope
+**Hardening (HARD)**
+- [ ] HARD-01: InventoryEngine to Level 4 (idempotency, decision log, optimistic lock, tests)
+- [ ] HARD-02: POSIntegrationAgent to Level 4 (webhook dedup, Toast polling fallback, tests)
+- [ ] HARD-03: NotificationAgent to Level 4 (delivery tracking, DLQ, persisted rate limits, tests)
+- [ ] HARD-04: ReportingAgent to Level 4 (real reports, real export, idempotent scheduling, tests)
 
-- 13-class YOLO training — retired (sub-field detection mAP50 0.04, not viable)
-- Surya OCR as extraction engine — retired (Claude Vision reads text directly)
-- EasyOCR — replaced, not revisited
-- YOLO as extraction engine — retired (YOLO is UX preview only)
-- Invoice OCR pipeline — separate pipeline, not this milestone
-- Procurement/RFQ agents — unaffected
+**Golden Path E2E (E2E-v2)**
+- [ ] E2E-v2-01: Toast webhook → POSIntegrationAgent → wine sale event published
+- [ ] E2E-v2-02: Wine sale event → InventoryEngine → stock decremented + state changed
+- [ ] E2E-v2-03: Stock threshold breach → NotificationAgent → manager gets SMS/email
+- [ ] E2E-v2-04: All events → ReportingAgent → dashboard data updated
+- [ ] E2E-v2-05: Full path integration test with real Toast data
+- [ ] E2E-v2-06: Chaos test — kill agent mid-flow → verify recovery
+
+**Observability (OBS)**
+- [ ] OBS-01: Sentry integration for error tracking
+- [ ] OBS-02: Per-agent health dashboard endpoint
+- [ ] OBS-03: Structured JSON log aggregation
+- [ ] OBS-04: Business metrics (stock updates/sec, notification delivery rate)
+
+**Deployment (DEP)**
+- [ ] DEP-01: Frontend deployed to Vercel
+- [ ] DEP-02: Supabase Cloud database with migrations applied
+- [ ] DEP-03: Python services on Railway/Fly.io (Docker)
+- [ ] DEP-04: RabbitMQ on CloudAMQP
+- [ ] DEP-05: Redis on Upstash
+- [ ] DEP-06: Toast API credentials configured for friend's restaurant
+
+### Out of Scope (v2.0)
+- Waves 2-6 agent hardening (20 remaining agents) — future milestone
+- Multi-POS support (Square, Clover) — future
+- Invoice OCR pipeline — separate pipeline
 
 ## Context
 
-**Architecture pivot (2026-03-31):** After 3 weeks of YOLO training, 13-class detection proved fundamentally limited (sub-field boxes too small at imgsz=640, error compounding across YOLO→OCR→parser). Claude Vision categorically solves different failure modes (abbreviations, multi-line entries, creative layouts).
+**v1.0 completed (2026-04-08):** 17 phases, 73 plans, 96% completion. Hybrid extraction pipeline (Claude Vision + Gemini Flash + YOLO 2-class + Haiku enrichment) fully operational with web verification, ontology validation, critic scores, temporal intelligence, research agent, and dev onboarding UI.
 
-**Hybrid pipeline roles:**
-- **Claude Vision** → onboarding extraction. User-facing. ~$0.009/page, ~$0.45/10-page menu. Accuracy-critical.
-- **Gemini Flash** → background crawling. Cost-critical. 93-95% accuracy OK for pre-seeding.
-- **YOLO 2-class** → real-time camera feed boxes. Fast visual feedback only. wine_entry + section_header.
-- **Claude Haiku** → enrichment of genuinely new wines. Background. ~$0.01/wine.
+**v2.0 motivation:** 24 agents exist but all are Level 0-1 (prototype quality). BaseAgent already provides Level 3 infrastructure (circuit breaker, retry, backpressure, metrics, health checks, graceful shutdown). Gap to Level 4 is 6 additions to BaseAgent + per-agent bug fixes and hardening.
 
-**Existing services to build on:**
-- `services/agent-orchestrator/services/vlm_extraction_service.py` — Gemini extraction (extend, not replace)
-- `services/agent-orchestrator/services/web_crawler.py` — Playwright crawler (already exists)
-- `services/agent-orchestrator/agents/menu_analyzer_agent.py` — YOLO + extraction orchestrator
-- `services/agent-orchestrator/api/scan_routes.py` — API surface
+**Agent system architecture:**
+- `services/agent-orchestrator/core/base_agent.py` — BaseAgent with circuit breaker, retry, backpressure, lifecycle management (already Level 3)
+- `services/agent-orchestrator/agents/` — 24 agents, all Level 0-1
+- Infrastructure: Docker Compose (Postgres, RabbitMQ, Redis)
+- Wave 1 agents (golden path): InventoryEngine (326 lines, Level 1.5), POSIntegrationAgent (520 lines, Level 1.5), NotificationAgent (1,761 lines, Level 2), ReportingAgent (682 lines, Level 0.5)
 
-**Cost validation:** Claude Vision benchmark run 2026-04-01 on 8 real Chicago restaurant menus. Results in `scripts/benchmark_results/`.
+**Surgical audit completed (2026-04-09):** Deep code review of all 4 Wave 1 agents + BaseAgent. Bug lists, maturity levels, gap-to-Level-4 documented. See memory: `agent_surgical_audit.md`.
 
-**YOLO 2-class state:** best.pt trained (mAP50 0.34–0.44). Sufficient for visual box preview. Located at `datasets/wine_menus_2class/runs/train2/weights/best.pt`.
+**First user:** Friend's Turkish restaurant in SF using Toast POS. Full API access available.
+
+**Deployment target:** Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python, ~$10-20/mo) + CloudAMQP (RabbitMQ) + Upstash (Redis).
 
 ## Constraints
 
-- **Cost**: Claude Vision must stay < $0.50/menu (10-page average). Haiku enrichment < $0.01/wine.
-- **Latency**: Onboarding extraction < 10s for a 10-page menu (parallel page processing).
-- **Deployment**: Railway CPU-only. No GPU. YOLO must be 2-class only for inference speed.
-- **API keys**: CLAUDE_API_KEY + GOOGLE_API_KEY both in .env — confirmed present.
-- **Compatibility**: Must not break existing procurement/inventory/RFQ agents. Extraction is additive.
+- **Quality target**: Level 4 (Resilient) for all agents — not demo-ware, not happy-path-only
+- **Solo founder**: Founder + Claude = 2-3 focused things per week
+- **No revenue pressure**: Build right, not fast
+- **Deployment budget**: ~$10-20/month (Vercel free + Supabase free + Railway $5-10 + CloudAMQP free + Upstash free)
+- **Architectural defaults locked**: RabbitMQ+saga, PG events, Redis, Sentry+logs, Diamond testing
+- **Backward compatibility**: v2.0 infrastructure must not break v1.0 extraction pipeline
+- **Real data**: All E2E testing against real Toast data from friend's restaurant
 
 ## Current State
 
-Phase 13 complete (2026-04-07) — Dev Onboarding UI with Manual Override Access. Gated `/studio` screen live: AuthContext → ProtectedRoute → CommandBar ingestion → WineRecordsTable with inline FieldCell editing + VerificationBadge + ReasonInput. Approval queue + certification management screens built. 13 backend endpoints + 33 tests passing (16 pytest + 17 Vitest). Milestone v1.0 is the last planned phase.
+v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extraction, enrichment, verification, ontology, research, and UI phases done. v2.0 milestone setup in progress — surgical audit of Wave 1 agents complete, requirements defined, phase sequencing planned (Phases 18-22+).
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| EasyOCR → Surya OCR | CPU performance, proven in PDF path | ✓ Good |
-| 13-class YOLO: retired | mAP50 0.04 on sub-fields; error compounding | ✓ Good |
-| YOLO 2-class: UX preview only | wine_entry + section_header sufficient for box drawing | ✓ Good |
-| Claude Vision: extraction brain | Categorically solves abbreviation/layout failures | ✓ Validated — Phase 01 complete, 16/16 tests pass |
-| Gemini Flash: crawling brain | 10x cheaper than Claude Vision for bulk crawling | ✓ Validated — Phase 02 complete, 11/11 must-haves, 27 tests pass |
-| Surya OCR: retired from extraction | Claude Vision reads text directly from images | ✓ Good |
-| Claude Haiku: enrichment | $0.01/wine for background enrichment of new records | — Pending |
+| Extend BaseAgent, not rebuild | BaseAgent already Level 3 (circuit breaker, retry, backpressure, metrics, health, shutdown) | — v2.0 |
+| Workflow-first agent hardening | Identify first E2E workflow → bring its agents to Level 4 → expand | — v2.0 |
+| Wave sequencing (6 waves, 24 agents) | Golden path first, then communication, intelligence, support, stubs, specialty | — v2.0 |
+| C→A→B approach | Audit agents → build infrastructure → wire golden path E2E | — v2.0 |
+| 7 core principles | Determinism, idempotency, replayability, observability, isolation, temporal reasoning, evolvability | — v2.0 |
+| Real Toast data from day 1 | Friend's restaurant in SF — no mock-only testing | — v2.0 |
+
+### v1.0 Decisions (archived)
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| Claude Vision: extraction brain | Categorically solves abbreviation/layout failures | ✓ Validated |
+| Gemini Flash: crawling brain | 10x cheaper than Claude Vision for bulk crawling | ✓ Validated |
+| YOLO 2-class: UX preview only | Sufficient for box drawing | ✓ Good |
+| Claude Haiku: enrichment | $0.01/wine background enrichment | ✓ Validated |
 
 ---
-*Last updated: 2026-04-06 — Phase 12.1 complete (Research Agent SOTA Redesign — three-layer architecture: Layer 1 ontology inference + Layer 2 cascade LLM + Layer 3 Reflexion with plateau detection, all 10 bug fixes, auth, entity cache, conflict resolution)*
+*Last updated: 2026-04-09 — v2.0 milestone setup in progress, surgical audit complete*

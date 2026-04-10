@@ -1,43 +1,71 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: unknown
-last_updated: "2026-04-08T16:27:03.539Z"
+milestone: v2.0
+milestone_name: backend-kitchen-architecture
+status: active
+last_updated: "2026-04-09T00:00:00.000Z"
 progress:
-  total_phases: 19
-  completed_phases: 17
-  total_plans: 73
-  completed_plans: 70
-  percent: 96
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
-# Project State: WineOps Menu Scanning Pipeline
+# Project State: WineOps Backend Kitchen Architecture
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-01)
+See: .planning/PROJECT.md (updated 2026-04-09)
 
-**Core value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant → verified against external sources → the world's most accurate restaurant wine dataset
-**Current focus:** Phase 17 — storagelocationmanager-intelligence-ux-refinement
+**Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
+**Current focus:** Phase 18 — Infrastructure Foundation (BaseAgent upgrade + database tables)
 
 ---
 
 ## Current Position
 
-Phase: 17
+Phase: 18
 Plan: Not started
-**Last completed:** Phase 13 Plan 07 — Gap closure, all verification gaps closed, developer nav fixed — 2026-04-07
-**Phases complete:** 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 12.1, 13
-**Phases planned:** 14, 15
-**Next action:** `/gsd-execute-phase 16` (plans ready — 16-01 + 16-02 in Wave 1)
-**Note:** Phase 13 signed off — SC-3/SC-9/SC-10 need recheck when real data hits
+**Last completed:** v1.0 milestone — 17 phases, 73 plans, 96% completion (2026-04-08)
+**Phases complete:** (none in v2.0)
+**Phases planned:** 18, 19, 20, 21, 22
+**Next action:** `/gsd-plan-phase 18` — Infrastructure Foundation (BaseAgent upgrade + 6 database tables)
+**Note:** Surgical audit of Wave 1 agents complete. All REQ-IDs and phase blueprints pre-defined in memory.
+
+---
+
+## v1.0 Archive
+
+v1.0 session history (Sessions 1-11) archived with milestone completion on 2026-04-08. See git history for full details.
 
 ---
 
 ## Session History
 
-### Session 10 — 2026-04-05
+### Session 1 (v2.0) — 2026-04-09
+
+**Completed this session:**
+
+- Surgical audit of 4 Wave 1 agents + BaseAgent (deep code review, bug lists, maturity levels)
+- Discovered BaseAgent is already Level 3 (circuit breaker, retry, backpressure, metrics, health, shutdown, auto-restart)
+- Identified 6 gaps to Level 4: idempotency, decision logging, structured JSON logging, distributed tracing, DLQ, saga state
+- Defined all v2.0 REQ-IDs: INFRA-01..08, BUG-01..12, HARD-01..04, E2E-v2-01..06, OBS-01..04, DEP-01..06
+- Phase sequencing: 18 (infra) → 19 (bug fixes) → 20 (hardening) → 21 (golden path E2E) → 22 (observability + deploy)
+- Updated PROJECT.md, STATE.md, REQUIREMENTS.md for v2.0 milestone
+- v2.0 milestone setup workflow (Steps 4-11)
+
+**Key findings:**
+
+- BaseAgent Level 3 surprise: no need to build ResilienceAgent from scratch — extend existing
+- InventoryEngine: race condition (read-then-write without locking), unused dead code
+- POSIntegrationAgent: deprecated hmac.new, keyword-only wine detection, broken signature verification
+- NotificationAgent: in-memory rate limits lost on restart, no delivery persistence
+- ReportingAgent: 3/4 report types are stubs, all exports are mocks, self.db bug
+
+---
+
+### Session 10 (v1.0) — 2026-04-05
 
 **Completed this session:**
 
