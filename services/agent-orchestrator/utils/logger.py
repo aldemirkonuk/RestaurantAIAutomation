@@ -1,12 +1,15 @@
 """
 Structured JSON Logging with Agent Context (INFRA-03)
 =====================================================
-All agent logs emit JSON with: timestamp, level, logger, message, agent_name, correlation_id.
-Console handler remains human-readable for development.
-File handler emits structured JSON for production log aggregation.
+Two output modes:
+- Console (stdout): human-readable by default; set LOG_JSON_STDOUT=1 for JSON (CI/production)
+- File (logs/agent-orchestrator.log): always structured JSON for log aggregation
+
+Both modes include: timestamp, level, logger, message, agent_name, correlation_id.
 """
 
 import logging
+import os
 import sys
 import threading
 from pathlib import Path
@@ -71,12 +74,17 @@ def setup_logger(name: str) -> logging.Logger:
     context_filter = AgentContextFilter()
     logger.addFilter(context_filter)
 
-    # Console Handler (Human-readable for development)
+    # Console Handler (human-readable by default; JSON when LOG_JSON_STDOUT=1)
     console_handler = logging.StreamHandler(sys.stdout)
-    console_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - [%(agent_name)s] [%(correlation_id)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    if os.environ.get("LOG_JSON_STDOUT"):
+        console_formatter = AgentJsonFormatter(
+            '%(asctime)s %(name)s %(levelname)s %(message)s %(agent_name)s %(correlation_id)s'
+        )
+    else:
+        console_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - [%(agent_name)s] [%(correlation_id)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
     console_handler.setFormatter(console_formatter)
     console_handler.addFilter(context_filter)
     logger.addHandler(console_handler)
