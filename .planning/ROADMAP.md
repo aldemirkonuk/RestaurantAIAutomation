@@ -43,10 +43,10 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
   12. After all retries exhausted, `_send_to_dlq()` persists failed message to dead_letter_queue
   13. `start_saga()`, `advance_saga()`, `complete_saga()`, `compensate_saga()` work end-to-end
   14. Background outbox publisher polls unpublished rows and dispatches to RabbitMQ
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 - [x] 18-01-PLAN.md — Create 6 infrastructure database migration files + push to Supabase
-- [ ] 18-02-PLAN.md — Add idempotency, decision logging, DLQ, structured logging, correlation ID to BaseAgent
+- [x] 18-02-PLAN.md — Add idempotency, decision logging, DLQ, structured logging, correlation ID to BaseAgent
 - [ ] 18-03-PLAN.md — Add saga helpers, event store append, and background outbox publisher
 
 ### Phase 19: Wave 1 Bug Fixes
