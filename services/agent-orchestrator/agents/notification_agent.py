@@ -14,6 +14,7 @@ Handles:
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
+import uuid
 
 import redis.asyncio as aioredis
 
@@ -89,6 +90,9 @@ class NotificationAgent(BaseAgent):
 
         # BUG-08: Store batch processor task reference for health monitoring
         self._batch_task: Optional[asyncio.Task] = None
+
+        # HARD-03: Retry counter for DLQ escalation (event_id -> failure count)
+        self._notification_retry_counts: Dict[str, int] = {}
 
         # Notification queue (for batching)
         self.notification_queue: Dict[str, List[Dict]] = {}  # manager_id -> notifications
@@ -298,71 +302,163 @@ Please try again or add items to inventory manually.''',
             ("reports", "report.monthly"),
         ]
     
+    async def _track_notification_delivery(
+        self,
+        event_id: str,
+        restaurant_id: Optional[str],
+        channel: str,
+    ) -> Optional[str]:
+        """
+        Insert a pending delivery record into notification_deliveries.
+        Returns the notification_id for subsequent status updates.
+        HARD-03: delivery tracking.
+        """
+        try:
+            result = self.database.supabase.table("notification_deliveries").insert({
+                "event_id": event_id,
+                "restaurant_id": restaurant_id,
+                "channel": channel,
+                "status": "pending",
+            }).execute()
+            rows = result.data or []
+            if rows:
+                return rows[0].get("notification_id")
+        except Exception as e:
+            self.logger.warning(f"Failed to insert notification_deliveries pending row: {e}")
+        return None
+
+    async def _mark_delivery_sent(self, notification_id: str) -> None:
+        """Update notification_deliveries row to status='sent'. HARD-03."""
+        try:
+            self.database.supabase.table("notification_deliveries").update({
+                "status": "sent",
+                "delivered_at": datetime.utcnow().isoformat(),
+            }).eq("notification_id", notification_id).execute()
+        except Exception as e:
+            self.logger.warning(f"Failed to update notification_deliveries to sent: {e}")
+
+    async def _mark_delivery_failed(self, notification_id: str, error: str) -> None:
+        """Update notification_deliveries row to status='failed'. HARD-03."""
+        try:
+            self.database.supabase.table("notification_deliveries").update({
+                "status": "failed",
+                "error": error,
+            }).eq("notification_id", notification_id).execute()
+        except Exception as e:
+            self.logger.warning(f"Failed to update notification_deliveries to failed: {e}")
+
     async def process_message(self, message: Dict[str, Any]) -> None:
         """Process incoming notification requests"""
         try:
-            routing_key = message.get("routing_key")
+            routing_key = message.get("routing_key") or ""
             payload = message.get("payload", {})
-            
-            # Route to appropriate handler
-            if "stock.threshold.breached" in routing_key:
-                await self.send_low_stock_alert(payload)
-            
-            elif "stock.critical" in routing_key:
-                await self.send_critical_stock_alert(payload)
-            
-            elif "procurement.order.requires_approval" in routing_key:
-                await self.send_order_approval_request(payload)
-            
-            elif "procurement.negotiation.completed" in routing_key:
-                await self.send_negotiation_complete_notification(payload)
-            
-            elif "procurement.order.delivered" in routing_key:
-                await self.send_delivery_confirmation_request(payload)
-            
-            elif "alert.high_priority" in routing_key:
-                await self.send_high_priority_alert(payload)
-            
-            elif "alert.fraud" in routing_key:
-                await self.send_fraud_alert(payload)
-            
-            elif "report.daily" in routing_key:
-                await self.send_daily_report(payload)
-            
-            elif "report.weekly" in routing_key:
-                await self.send_weekly_report(payload)
-            
-            # Recurring order events
-            elif "recurring.order.reminder" in routing_key:
-                await self.send_recurring_order_reminder(payload)
-            
-            elif "recurring.order.executed" in routing_key:
-                await self.send_recurring_order_executed(payload)
-            
-            elif "recurring.order.approval_needed" in routing_key:
-                await self.send_recurring_order_approval(payload)
-            
-            # Vendor deadline events
-            elif "vendor.deadline.reminder" in routing_key:
-                await self.send_vendor_deadline_reminder(payload)
-            
-            elif "vendor.deadline.missed" in routing_key:
-                await self.send_vendor_deadline_missed(payload)
-            
-            # Invoice events
-            elif "invoice.processed" in routing_key:
-                await self.send_invoice_processed(payload)
-            
-            elif "invoice.scan_failed" in routing_key:
-                await self.send_invoice_scan_failed(payload)
-            
-            # Auction events
-            elif "auction.purchase.recorded" in routing_key:
-                await self.send_auction_purchase_recorded(payload)
-            
+
+            # HARD-03: Idempotency gate — skip if this event_id was already processed
+            event_id = message.get("event_id", "") or payload.get("event_id", "")
+            if event_id and await self._check_idempotency(event_id):
+                self.logger.info(f"Duplicate notification skipped: {event_id}")
+                return
+
+            restaurant_id = payload.get("restaurant_id")
+            # Determine primary channel from routing key for delivery tracking
+            if "sms" in routing_key:
+                _primary_channel = "sms"
+            elif "email" in routing_key or "report" in routing_key:
+                _primary_channel = "email"
             else:
-                self.logger.warning(f"No handler for routing key: {routing_key}")
-        
+                _primary_channel = "sms"  # default for stock/fraud alerts
+
+            # HARD-03: Insert pending delivery record before dispatching
+            _effective_event_id = event_id or str(uuid.uuid4())
+            notification_id = await self._track_notification_delivery(
+                event_id=_effective_event_id,
+                restaurant_id=restaurant_id,
+                channel=_primary_channel,
+            )
+
+            try:
+                # Route to appropriate handler
+                if "stock.threshold.breached" in routing_key:
+                    await self.send_low_stock_alert(payload)
+
+                elif "stock.critical" in routing_key:
+                    await self.send_critical_stock_alert(payload)
+
+                elif "procurement.order.requires_approval" in routing_key:
+                    await self.send_order_approval_request(payload)
+
+                elif "procurement.negotiation.completed" in routing_key:
+                    await self.send_negotiation_complete_notification(payload)
+
+                elif "procurement.order.delivered" in routing_key:
+                    await self.send_delivery_confirmation_request(payload)
+
+                elif "alert.high_priority" in routing_key:
+                    await self.send_high_priority_alert(payload)
+
+                elif "alert.fraud" in routing_key:
+                    await self.send_fraud_alert(payload)
+
+                elif "report.daily" in routing_key:
+                    await self.send_daily_report(payload)
+
+                elif "report.weekly" in routing_key:
+                    await self.send_weekly_report(payload)
+
+                # Recurring order events
+                elif "recurring.order.reminder" in routing_key:
+                    await self.send_recurring_order_reminder(payload)
+
+                elif "recurring.order.executed" in routing_key:
+                    await self.send_recurring_order_executed(payload)
+
+                elif "recurring.order.approval_needed" in routing_key:
+                    await self.send_recurring_order_approval(payload)
+
+                # Vendor deadline events
+                elif "vendor.deadline.reminder" in routing_key:
+                    await self.send_vendor_deadline_reminder(payload)
+
+                elif "vendor.deadline.missed" in routing_key:
+                    await self.send_vendor_deadline_missed(payload)
+
+                # Invoice events
+                elif "invoice.processed" in routing_key:
+                    await self.send_invoice_processed(payload)
+
+                elif "invoice.scan_failed" in routing_key:
+                    await self.send_invoice_scan_failed(payload)
+
+                # Auction events
+                elif "auction.purchase.recorded" in routing_key:
+                    await self.send_auction_purchase_recorded(payload)
+
+                else:
+                    self.logger.warning(f"No handler for routing key: {routing_key}")
+
+                # HARD-03: Mark delivery as sent and record idempotency
+                if notification_id:
+                    await self._mark_delivery_sent(notification_id)
+                if event_id:
+                    await self._mark_processed(event_id, result={"status": "sent", "channel": _primary_channel})
+
+            except Exception as dispatch_exc:
+                # HARD-03: Track failure and escalate to DLQ after 3 retries
+                self._notification_retry_counts[_effective_event_id] = (
+                    self._notification_retry_counts.get(_effective_event_id, 0) + 1
+                )
+                if notification_id:
+                    await self._mark_delivery_failed(notification_id, str(dispatch_exc))
+                if self._notification_retry_counts.get(_effective_event_id, 0) >= 3:
+                    await self._send_to_dlq(
+                        message,
+                        error=str(dispatch_exc),
+                        retry_count=3,
+                        original_exchange="notification.events",
+                        original_routing_key="notification.send",
+                    )
+                raise
+
         except Exception as e:
             self.logger.error(f"Error processing notification message: {e}", exc_info=True)
             raise
