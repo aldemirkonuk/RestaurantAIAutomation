@@ -475,3 +475,72 @@ class TestHARD02EdgeCases:
             f"Expected ':OrderCompleted' for missing guid, got: '{key}'"
         # Result should not be an exception-driven crash
         assert result is not None
+
+    # -----------------------------------------------------------------------
+    # Gap D tests (Plan 20-08): top-level items payload shape
+    # -----------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_top_level_items_triggers_saga_when_selections_empty(self, mock_sleep, full_agent):
+        """Payload with top-level items=[] and no nested order selections triggers saga."""
+        full_agent._poll_toast_for_order = AsyncMock(return_value=[])
+
+        webhook_data = {
+            "items": [],
+            "data": {"order": {}},
+            "order_guid": "guid-tl-empty",
+        }
+
+        # handle_order_completed needs restaurant_guid and order_guid — provide via nested order
+        # but with empty order dict these will be missing, so it returns early with error.
+        # Instead exercise the saga trigger path by providing a valid order shell.
+        webhook_data = {
+            "items": [],
+            "data": {
+                "order": {
+                    "guid": "guid-tl-empty",
+                    "restaurantGuid": "rest-guid-tl",
+                    "closedDate": "2026-01-01",
+                    "selections": [],
+                }
+            },
+            "order_guid": "guid-tl-empty",
+        }
+
+        await full_agent.handle_order_completed(webhook_data)
+
+        # With both nested selections=[] and top-level items=[], saga must be triggered
+        full_agent.start_saga.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_top_level_items_used_when_nested_missing(self, full_agent):
+        """Payload with top-level wine item and no nested selections produces wine detection (no saga)."""
+        wine_selection = {
+            "itemGroup": {"name": "Pinot Noir Top Level"},
+            "quantity": 2,
+            "preDiscountPrice": 6000,
+            "guid": "sel-tl-1",
+            "voided": False,
+            "menuGroup": {"name": "", "category": ""},
+        }
+
+        webhook_data = {
+            "items": [wine_selection],
+            "data": {
+                "order": {
+                    "guid": "guid-tl-wine",
+                    "restaurantGuid": "rest-guid-tl",
+                    "closedDate": "2026-01-01",
+                    "selections": [],  # empty nested selections
+                }
+            },
+            "order_guid": "guid-tl-wine",
+        }
+
+        result = await full_agent.handle_order_completed(webhook_data)
+
+        # Saga must NOT have been triggered — items came from top level
+        full_agent.start_saga.assert_not_called()
+        # log_decision should have been called for the wine item
+        full_agent.log_decision.assert_called()

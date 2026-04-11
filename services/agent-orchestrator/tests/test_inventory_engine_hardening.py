@@ -140,6 +140,66 @@ class TestHARD01Idempotency:
 
         mock_db.update_inventory_stock.assert_called_once()
 
+    # -----------------------------------------------------------------------
+    # Gap E tests (Plan 20-08): dedup key fallback chain
+    # -----------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_dedup_falls_back_to_payload_event_id(self, agent, mock_db):
+        """Message with no message_id but payload.event_id='abc' deduplicates on 'abc'."""
+        checked_keys = []
+
+        # Patch _check_idempotency to capture which key the handler resolves
+        original_check = agent._check_idempotency
+
+        async def capturing_check(key):
+            checked_keys.append(key)
+            return False  # not a duplicate — allow processing
+
+        agent._check_idempotency = capturing_check
+
+        msg = {
+            # No message_id at envelope level
+            "routing_key": "stock.evaluated",
+            "payload": {
+                "event_id": "abc",
+                "inventory_id": "inv-1",
+                "stock_after": 5,
+                "restaurant_id": "rest-1",
+            },
+        }
+        await agent._handle_stock_evaluated(msg)
+
+        # The key used for idempotency check must be "abc" (from payload.event_id)
+        assert "abc" in checked_keys, (
+            f"Expected dedup key 'abc' from payload.event_id, got keys checked: {checked_keys}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_missing_message_id_and_event_id_logs_warning(self, agent, mock_db):
+        """Message with neither message_id nor event_id logs a WARNING containing 'idempotency bypassed'."""
+        import logging
+
+        msg = {
+            # No message_id, no event_id anywhere
+            "routing_key": "stock.evaluated",
+            "payload": {
+                "inventory_id": "inv-1",
+                "stock_after": 5,
+                "restaurant_id": "rest-1",
+            },
+        }
+
+        with pytest.raises(Exception) if False else __import__("contextlib").nullcontext():
+            with __import__("unittest.mock", fromlist=["patch"]).patch.object(
+                agent.logger, "warning"
+            ) as mock_warn:
+                await agent._handle_stock_evaluated(msg)
+                warning_messages = [str(c.args[0]) for c in mock_warn.call_args_list]
+                assert any("idempotency bypassed" in m for m in warning_messages), (
+                    f"Expected WARNING containing 'idempotency bypassed', got: {warning_messages}"
+                )
+
 
 # =========================================================================
 # TestHARD01DecisionLogging

@@ -90,7 +90,15 @@ class InventoryEngineAgent(BaseAgent):
         Handle stock.evaluated event from Buffer Manager
         Update stock_live with final stock value
         """
-        message_id = message.get("message_id", "")
+        # Gap E fix: fallback chain for stable dedup key
+        message_id = (
+            message.get("message_id")
+            or message.get("payload", {}).get("event_id")
+            or message.get("event_id")
+            or ""
+        )
+        if not message_id:
+            self.logger.warning("No stable message_id or event_id in message — idempotency bypassed")
         if await self._check_idempotency(message_id):
             self.logger.info(f"Duplicate stock.evaluated skipped: {message_id}")
             return
@@ -172,7 +180,15 @@ class InventoryEngineAgent(BaseAgent):
         Handle delivery of procurement order
         Increase stock_live and update order status
         """
-        message_id = message.get("message_id", "")
+        # Gap E fix: fallback chain for stable dedup key
+        message_id = (
+            message.get("message_id")
+            or message.get("payload", {}).get("event_id")
+            or message.get("event_id")
+            or ""
+        )
+        if not message_id:
+            self.logger.warning("No stable message_id or event_id in message — idempotency bypassed")
         if await self._check_idempotency(message_id):
             self.logger.info(f"Duplicate order.delivered skipped: {message_id}")
             return
@@ -266,7 +282,15 @@ class InventoryEngineAgent(BaseAgent):
         Handle manual stock correction by manager
         Used for physical inventory counts
         """
-        message_id = message.get("message_id", "")
+        # Gap E fix: fallback chain for stable dedup key
+        message_id = (
+            message.get("message_id")
+            or message.get("payload", {}).get("event_id")
+            or message.get("event_id")
+            or ""
+        )
+        if not message_id:
+            self.logger.warning("No stable message_id or event_id in message — idempotency bypassed")
         if await self._check_idempotency(message_id):
             self.logger.info(f"Duplicate stock.manual_correction skipped: {message_id}")
             return

@@ -257,7 +257,26 @@ class POSIntegrationAgent(BaseAgent):
 
             # Extract wine items from order
             wine_sales = []
+
+            # Gap D fix: support both nested Toast shape (order.selections) and
+            # top-level items shape ({"items": [...], "order_guid": "x"}).
+            nested_found = False
+            toplevel_found = False
+
             selections = order.get("selections", [])
+            if selections:
+                nested_found = True
+            else:
+                # Fallback: caller sent items at envelope top level
+                top_level_items = webhook_data.get("items", [])
+                if top_level_items:
+                    selections = top_level_items
+                    toplevel_found = True
+
+            self.logger.debug(
+                f"Item source: "
+                f"{'nested selections' if nested_found else 'top-level items' if toplevel_found else 'saga fallback'}"
+            )
 
             # HARD-02: Check for incomplete webhook (empty selections may need polling)
             if not selections:
