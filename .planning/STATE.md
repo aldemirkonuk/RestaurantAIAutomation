@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Archive
 status: unknown
-last_updated: "2026-04-10T18:47:50.593Z"
+last_updated: "2026-04-11T23:44:02.685Z"
 progress:
-  total_phases: 21
-  completed_phases: 16
-  total_plans: 68
-  completed_plans: 65
-  percent: 96
+  total_phases: 23
+  completed_phases: 17
+  total_plans: 81
+  completed_plans: 75
+  percent: 93
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -61,6 +61,7 @@ correctly propagated via `publish()` to `pos.events` exchange — not via event 
 The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-04-11.
 
 **5 test failures fixed before UAT (committed 12b7fad):**
+
 - `inventory_engine.py`: spurious `await` on sync supabase chain in `_handle_manual_correction`
 - `pos_integration_agent.py`: `metrics.errors_count` → `metrics.record_error()`
 - `notification_agent.py`: idempotency exception not fail-open
