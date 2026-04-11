@@ -629,6 +629,7 @@ class BaseAgent(ABC):
             routing_key=routing_key,
             message_body=message_body,
             priority=priority,
+            correlation_id=self._current_correlation_id,
         )
     
     async def publish_event(
@@ -923,14 +924,23 @@ class BaseAgent(ABC):
         health["subscriptions"] = self.get_subscribed_routing_keys()
         health["queue_size"] = self._message_queue.qsize()
         health["active_tasks"] = len(self._active_tasks)
-        
+
         if self._circuit_breaker:
             health["circuit_breaker"] = {
                 "state": self._circuit_breaker.state.value,
                 "available": self._circuit_breaker.is_available,
             }
-        
+
         return health
+
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Async health check returning a status dict.
+
+        Subclasses should call ``await super().health_check()`` and augment
+        the returned dict with their own subsystem checks.
+        """
+        return self.get_health()
     
     # =========================================================================
     # UTILITY
