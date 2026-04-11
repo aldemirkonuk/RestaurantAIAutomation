@@ -355,9 +355,12 @@ Please try again or add items to inventory manually.''',
 
             # HARD-03: Idempotency gate — skip if this event_id was already processed
             event_id = message.get("event_id", "") or payload.get("event_id", "")
-            if event_id and await self._check_idempotency(event_id):
-                self.logger.info(f"Duplicate notification skipped: {event_id}")
-                return
+            try:
+                if event_id and await self._check_idempotency(event_id):
+                    self.logger.info(f"Duplicate notification skipped: {event_id}")
+                    return
+            except Exception as idempotency_exc:
+                self.logger.warning(f"Idempotency check failed, proceeding (fail open): {idempotency_exc}")
 
             restaurant_id = payload.get("restaurant_id")
             # Determine primary channel from routing key for delivery tracking

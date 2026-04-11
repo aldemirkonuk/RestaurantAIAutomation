@@ -237,7 +237,7 @@ class POSIntegrationAgent(BaseAgent):
 
         except Exception as e:
             self.logger.error(f"Error processing webhook: {e}", exc_info=True)
-            self.metrics.errors_count += 1
+            self.metrics.record_error(str(e))
             return {"status": "error", "message": str(e)}
 
     async def handle_order_completed(self, webhook_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -375,7 +375,7 @@ class TestHARD02ToastPollingSaga:
 
         full_agent.compensate_saga.assert_called_once()
         error_arg = full_agent.compensate_saga.call_args.args[1] \
-            if full_agent.compensate_saga.call_args.args \
+            if len(full_agent.compensate_saga.call_args.args) > 1 \
             else full_agent.compensate_saga.call_args.kwargs.get("error", "")
         assert "exhausted" in error_arg.lower() or "3" in error_arg, \
             f"Expected exhaustion error message, got: '{error_arg}'"

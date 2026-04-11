@@ -291,7 +291,7 @@ class InventoryEngineAgent(BaseAgent):
 
             if success:
                 # Log to audit trail
-                await self.database.supabase.table("system_audit_log").insert({
+                self.database.supabase.table("system_audit_log").insert({
                     "actor_type": "manager",
                     "actor_id": manager_id,
                     "action": "manual_stock_correction",
