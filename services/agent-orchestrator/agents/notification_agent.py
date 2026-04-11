@@ -94,6 +94,9 @@ class NotificationAgent(BaseAgent):
         # HARD-03: Retry counter for DLQ escalation (event_id -> failure count)
         self._notification_retry_counts: Dict[str, int] = {}
 
+        # HARD-03: Set of event_ids that have already been DLQ-escalated (prevents re-trigger)
+        self._dlq_escalated: set = set()
+
         # Notification queue (for batching)
         self.notification_queue: Dict[str, List[Dict]] = {}  # manager_id -> notifications
         self.batch_interval_seconds = 300  # 5 minutes
@@ -371,8 +374,13 @@ Please try again or add items to inventory manually.''',
             else:
                 _primary_channel = "sms"  # default for stock/fraud alerts
 
-            # HARD-03: Insert pending delivery record before dispatching
+            # HARD-03: DLQ escalation guard — drop messages for already-escalated event_ids
             _effective_event_id = event_id or str(uuid.uuid4())
+            if _effective_event_id in self._dlq_escalated:
+                self.logger.warning(f"Notification already DLQ-escalated, dropping: {_effective_event_id}")
+                return
+
+            # HARD-03: Insert pending delivery record before dispatching
             notification_id = await self._track_notification_delivery(
                 event_id=_effective_event_id,
                 restaurant_id=restaurant_id,
@@ -456,10 +464,12 @@ Please try again or add items to inventory manually.''',
                     await self._send_to_dlq(
                         message,
                         error=str(dispatch_exc),
-                        retry_count=3,
+                        retry_count=self._notification_retry_counts[_effective_event_id],
                         original_exchange="notification.events",
                         original_routing_key="notification.send",
                     )
+                    self._dlq_escalated.add(_effective_event_id)
+                    return  # do not re-raise after DLQ — message is handled
                 raise
 
         except Exception as e:

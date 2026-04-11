@@ -50,6 +50,7 @@ def agent():
     a._batch_task = None
     a._redis = None
     a._notification_retry_counts = {}
+    a._dlq_escalated = set()
     a.sms_client = MagicMock()
     a.sms_client.send_sms = AsyncMock(return_value={"success": True})
     a.email_client = MagicMock()
@@ -293,6 +294,78 @@ class TestHARD03DLQ:
                             pass
 
         assert len(dlq_calls) == 0, "_send_to_dlq should NOT be called after only 1 failure"
+
+    @pytest.mark.asyncio
+    async def test_dlq_not_retriggered_on_fourth_failure(self, agent):
+        """4 calls with same event_id, handler always raises; _send_to_dlq called exactly once."""
+        dlq_calls = []
+
+        async def fake_dlq(message, error, retry_count, **kwargs):
+            dlq_calls.append(retry_count)
+
+        with patch.object(agent, "_check_idempotency", new=AsyncMock(return_value=False)):
+            with patch.object(agent, "_mark_processed", new=AsyncMock()):
+                with patch.object(agent, "_send_to_dlq", new=AsyncMock(side_effect=fake_dlq)):
+                    with patch.object(agent, "send_high_priority_alert", new=AsyncMock(side_effect=Exception("provider down"))):
+                        for _ in range(4):
+                            try:
+                                await agent.process_message(_base_message(event_id="evt-dlq-once"))
+                            except Exception:
+                                pass
+
+        assert len(dlq_calls) == 1, "_send_to_dlq must be called exactly once, not on the 4th failure"
+
+    @pytest.mark.asyncio
+    async def test_dlq_escalated_drops_delivery_silently(self, agent):
+        """After 3 failures, 4th call returns without calling handler or _send_to_dlq again."""
+        handler_calls = []
+        dlq_calls = []
+
+        async def failing_handler(payload):
+            handler_calls.append(1)
+            raise Exception("provider down")
+
+        async def fake_dlq(message, error, retry_count, **kwargs):
+            dlq_calls.append(retry_count)
+
+        with patch.object(agent, "_check_idempotency", new=AsyncMock(return_value=False)):
+            with patch.object(agent, "_mark_processed", new=AsyncMock()):
+                with patch.object(agent, "_send_to_dlq", new=AsyncMock(side_effect=fake_dlq)):
+                    with patch.object(agent, "send_high_priority_alert", new=AsyncMock(side_effect=failing_handler)):
+                        # First 3 calls to reach DLQ threshold
+                        for _ in range(3):
+                            try:
+                                await agent.process_message(_base_message(event_id="evt-drop-silent"))
+                            except Exception:
+                                pass
+                        # 4th call: handler and DLQ must NOT be called
+                        handler_calls.clear()
+                        dlq_calls.clear()
+                        await agent.process_message(_base_message(event_id="evt-drop-silent"))
+
+        assert len(handler_calls) == 0, "Handler must NOT be called for already-DLQ-escalated event_id"
+        assert len(dlq_calls) == 0, "_send_to_dlq must NOT be called again for already-escalated event_id"
+
+    @pytest.mark.asyncio
+    async def test_retry_count_in_dlq_payload_is_accurate(self, agent):
+        """DLQ call receives actual retry count (3), not hardcoded 3."""
+        dlq_calls = []
+
+        async def fake_dlq(message, error, retry_count, **kwargs):
+            dlq_calls.append(retry_count)
+
+        with patch.object(agent, "_check_idempotency", new=AsyncMock(return_value=False)):
+            with patch.object(agent, "_mark_processed", new=AsyncMock()):
+                with patch.object(agent, "_send_to_dlq", new=AsyncMock(side_effect=fake_dlq)):
+                    with patch.object(agent, "send_high_priority_alert", new=AsyncMock(side_effect=Exception("fail"))):
+                        for _ in range(3):
+                            try:
+                                await agent.process_message(_base_message(event_id="evt-count-check"))
+                            except Exception:
+                                pass
+
+        assert len(dlq_calls) == 1, "_send_to_dlq should be called exactly once"
+        assert dlq_calls[0] == 3, f"retry_count passed to DLQ must be 3, got {dlq_calls[0]}"
 
 
 # ---------------------------------------------------------------------------
