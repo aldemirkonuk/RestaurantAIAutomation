@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Archive
-status: unknown
-last_updated: "2026-04-11T23:55:35.905Z"
+status: in_progress
+last_updated: "2026-04-11T00:00:00.000Z"
 progress:
   total_phases: 23
   completed_phases: 18
   total_plans: 81
-  completed_plans: 78
-  percent: 96
+  completed_plans: 81
+  percent: 100
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,30 +19,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 18 — infrastructure-foundation
+**Current focus:** Phase 20 — wave-1-level-4-hardening (Wave 2 complete)
 
 ---
 
 ## Current Position
 
-Phase: 20 (wave-1-level-4-hardening) — WAVE 2 READY
-Plan: Wave 1 complete (20-01 through 20-04). Wave 2 plans written, not yet executed.
-**Last completed:** Phase 20 Wave 1 UAT — 12/12 passed, 0 issues (2026-04-11)
-**Phases complete:** 18, 19, 20-wave-1 (v2.0)
-**Phases planned:** 20-wave-2, 21, 22
-**Next action:** `/clear` then `/gsd-execute-phase 20 --wave 2` — execute Wave 2 hardening fixes
-**Note:** Context was at 79% when wave 2 was about to start. All 4 plans committed. Start fresh session.
+Phase: 20 (wave-1-level-4-hardening) — WAVE 2 COMPLETE
+Plan: All 8 plans complete (20-01 through 20-08).
+**Last completed:** Phase 20 Wave 2 — 4 hardening fixes, 10 new tests (2026-04-11)
+**Phases complete:** 18, 19, 20-wave-1, 20-wave-2 (v2.0)
+**Phases planned:** 21, 22
+**Next action:** `/gsd-verify-work 20` to UAT Wave 2 fixes, then proceed to Phase 21
 
-### Wave 2 Plans — Ready to Execute
+### Wave 2 Plans — COMPLETE
 
-| Plan | Agent | Fix | Risk |
-|------|-------|-----|------|
-| 20-05 | NotificationAgent | DLQ re-trigger guard (`_dlq_escalated` set) | **CRITICAL (0.3)** |
-| 20-06 | InventoryEngine | Per-aggregate monotonic `sequence_number` via `_next_sequence()` | High (0.5) |
-| 20-07 | ReportingAgent | UTC midnight warning log + `date_source` audit field in `log_decision` | Medium (0.6) |
-| 20-08 | POS + Inventory | Top-level `items` saga fallback; dedup key fallback chain | Medium (0.65/0.7) |
-
-All plans are in `.planning/phases/20-wave-1-level-4-hardening/` with `wave: 2` frontmatter.
+| Plan | Agent | Fix | Result |
+|------|-------|-----|--------|
+| 20-05 | NotificationAgent | DLQ re-trigger guard (`_dlq_escalated` set) | 16/16 tests pass |
+| 20-06 | InventoryEngine | Per-aggregate monotonic `sequence_number` via `_next_sequence()` | 22/22 tests pass |
+| 20-07 | ReportingAgent | UTC midnight warning log + `date_source` audit field in `log_decision` | 16/16 tests pass |
+| 20-08 | POS + Inventory | Top-level `items` saga fallback; dedup key fallback chain | 42/42 tests pass |
 
 ---
 
