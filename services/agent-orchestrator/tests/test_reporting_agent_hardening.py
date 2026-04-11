@@ -227,3 +227,64 @@ class TestHARD04EdgeCases:
         await agent.process_message(msg)
         mark_key = agent._mark_processed.call_args[0][0]
         assert mark_key == "rest-42:procurement:2026-05-01"
+
+    @pytest.mark.asyncio
+    async def test_missing_date_logs_warning(self, agent):
+        """Message with no date field triggers a WARNING log containing 'defaulting to UTC date'."""
+        agent._check_idempotency.return_value = False
+        msg = {
+            "type": "generate_on_demand_report",
+            "restaurant_id": "rest-1",
+            "report_type": "inventory",
+            # no "date" key — intentionally absent
+        }
+        with patch.object(agent.logger, "warning") as mock_warn:
+            await agent.process_message(msg)
+        assert mock_warn.called, "Expected logger.warning to be called when date is absent"
+        warning_text = mock_warn.call_args[0][0]
+        assert "defaulting to UTC date" in warning_text
+
+    @pytest.mark.asyncio
+    async def test_explicit_date_overrides_utc(self, agent):
+        """Message with date='2026-04-10' uses that date in the idempotency key regardless of UTC now."""
+        agent._check_idempotency.return_value = False
+        msg = {
+            "type": "generate_on_demand_report",
+            "restaurant_id": "rest-1",
+            "report_type": "inventory",
+            "date": "2026-04-10",
+        }
+        # Patch utcnow to return a different date to confirm caller date wins
+        with patch("agents.reporting_agent.datetime") as mock_dt:
+            mock_dt.utcnow.return_value.strftime = lambda fmt: "2026-04-11"
+            await agent.process_message(msg)
+        call_args = agent._check_idempotency.call_args[0][0]
+        assert "2026-04-10" in call_args, f"Expected caller date '2026-04-10' in key, got: {call_args}"
+        assert "2026-04-11" not in call_args, "UTC fallback date should not appear when caller date is supplied"
+
+    @pytest.mark.asyncio
+    async def test_log_decision_output_includes_date_source(self, agent):
+        """log_decision output dict includes date_source: 'caller' or 'utc_default'."""
+        agent._check_idempotency.return_value = False
+
+        # Case 1: caller supplies date → date_source should be "caller"
+        msg_with_date = report_message(date="2026-04-10")
+        await agent.process_message(msg_with_date)
+        output_with_date = agent.log_decision.call_args[1].get("output", {})
+        assert output_with_date.get("date_source") == "caller", (
+            f"Expected date_source='caller', got: {output_with_date.get('date_source')}"
+        )
+
+        agent.log_decision.reset_mock()
+
+        # Case 2: no date in message → date_source should be "utc_default"
+        msg_no_date = {
+            "type": "generate_on_demand_report",
+            "restaurant_id": "rest-1",
+            "report_type": "inventory",
+        }
+        await agent.process_message(msg_no_date)
+        output_no_date = agent.log_decision.call_args[1].get("output", {})
+        assert output_no_date.get("date_source") == "utc_default", (
+            f"Expected date_source='utc_default', got: {output_no_date.get('date_source')}"
+        )

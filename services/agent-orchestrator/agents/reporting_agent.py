@@ -136,11 +136,30 @@ class ReportingAgent(BaseAgent):
         - generate_scheduled_report: Generate report based on schedule
         - generate_event_report: Generate report for calendar event
         - generate_on_demand_report: Generate report on manager request
+
+        IMPORTANT — scheduler contract: callers MUST supply an explicit ``date``
+        field (YYYY-MM-DD, in the restaurant's local timezone) to guarantee
+        timezone-correct idempotency deduplication.  Omitting ``date`` causes the
+        agent to fall back to the current UTC date, which can produce duplicate
+        reports for restaurants whose local midnight crosses a UTC day boundary
+        (e.g., UTC+1 schedulers firing at 23:55 and 00:05 local time).
         """
         # Composite idempotency gate — deduplicates pg_cron re-triggers and duplicate API calls
         restaurant_id = message.get("restaurant_id") or message.get("payload", {}).get("restaurant_id", "")
         report_type = message.get("report_type") or message.get("payload", {}).get("report_type", "inventory")
-        date_str = message.get("date") or message.get("payload", {}).get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+        caller_date = message.get("date") or message.get("payload", {}).get("date")
+        if caller_date:
+            date_str = caller_date
+            date_source = "caller"
+        else:
+            self.logger.warning(
+                f"No date in report message for restaurant {restaurant_id} — "
+                f"defaulting to UTC date {date_str}. Scheduler should supply explicit date."
+            )
+            date_source = "utc_default"
+
         idempotency_key = f"{restaurant_id}:{report_type}:{date_str}"
 
         try:
@@ -170,7 +189,7 @@ class ReportingAgent(BaseAgent):
             await self.log_decision(
                 "report_generated",
                 inputs={"restaurant_id": restaurant_id, "report_type": report_type, "date": date_str},
-                output={"status": "generated", "format": "pdf"},
+                output={"status": "generated", "format": "pdf", "date_source": date_source},
                 reasoning="Scheduled or on-demand report trigger; generating from real inventory and sales data",
                 confidence=0.9,
                 restaurant_id=restaurant_id,
