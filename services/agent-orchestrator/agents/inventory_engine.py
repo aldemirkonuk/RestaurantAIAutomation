@@ -80,16 +80,21 @@ class InventoryEngineAgent(BaseAgent):
         Handle stock.evaluated event from Buffer Manager
         Update stock_live with final stock value
         """
+        message_id = message.get("message_id", "")
+        if await self._check_idempotency(message_id):
+            self.logger.info(f"Duplicate stock.evaluated skipped: {message_id}")
+            return
+
         payload = message.get("payload", {})
-        
+
         inventory_id = payload.get("inventory_id")
         final_stock = payload.get("stock_after")
         restaurant_id = payload.get("restaurant_id")
-        
+
         if not inventory_id or final_stock is None:
             self.logger.error("Missing required fields in stock.evaluated event")
             return
-        
+
         try:
             # Update stock_live in database
             success = await self.database.update_inventory_stock(
@@ -97,15 +102,15 @@ class InventoryEngineAgent(BaseAgent):
                 new_stock=final_stock,
                 update_reason="buffer_evaluation"
             )
-            
+
             if success:
                 # Get updated inventory to determine new state
                 inventory = await self.database.get_inventory_item(inventory_id, use_cache=False)
-                
+
                 if inventory:
                     # Calculate new state
                     new_state = self._calculate_inventory_state(inventory)
-                    
+
                     # Publish state change event
                     await self.publish(
                         exchange_name="stock.events",
@@ -124,14 +129,31 @@ class InventoryEngineAgent(BaseAgent):
                         },
                         priority=6,
                     )
-                    
+
+                    await self._mark_processed(message_id, result={"status": "ok", "inventory_id": inventory_id, "stock_after": final_stock})
+                    await self.log_decision(
+                        "stock_update",
+                        inputs={"inventory_id": inventory_id, "stock_after": final_stock, "restaurant_id": restaurant_id},
+                        output={"new_state": new_state.value, "success": success},
+                        reasoning="Buffer Manager evaluated stock; updating system-of-record",
+                        confidence=0.9,
+                        restaurant_id=restaurant_id,
+                    )
+                    await self.append_event(
+                        "inventory",
+                        str(inventory_id),
+                        "StockUpdated",
+                        payload={"inventory_id": inventory_id, "stock_after": final_stock, "new_state": new_state.value, "restaurant_id": restaurant_id},
+                        sequence_number=1,
+                    )
+
                     self.logger.info(
                         f"Updated stock: {inventory.get('wine_name')} = {final_stock} bottles "
                         f"(state={new_state.value})"
                     )
             else:
                 self.logger.error(f"Failed to update stock for {inventory_id}")
-                
+
         except Exception as e:
             self.logger.error(f"Error handling stock.evaluated: {e}", exc_info=True)
     
@@ -140,34 +162,39 @@ class InventoryEngineAgent(BaseAgent):
         Handle delivery of procurement order
         Increase stock_live and update order status
         """
+        message_id = message.get("message_id", "")
+        if await self._check_idempotency(message_id):
+            self.logger.info(f"Duplicate order.delivered skipped: {message_id}")
+            return
+
         payload = message.get("payload", {})
-        
+
         order_id = payload.get("order_id")
         inventory_id = payload.get("inventory_id")
         quantity_delivered = payload.get("quantity_delivered")
-        
+
         if not all([order_id, inventory_id, quantity_delivered]):
             self.logger.error("Missing required fields in order.delivered event")
             return
-        
+
         try:
             # Get current inventory
             inventory = await self.database.get_inventory_item(inventory_id, use_cache=False)
-            
+
             if not inventory:
                 self.logger.error(f"Inventory not found: {inventory_id}")
                 return
-            
+
             current_stock = inventory.get("stock_live", 0)
             new_stock = current_stock + quantity_delivered
-            
+
             # Update stock_live
             success = await self.database.update_inventory_stock(
                 inventory_id=inventory_id,
                 new_stock=new_stock,
                 update_reason=f"delivery_order_{order_id}"
             )
-            
+
             if success:
                 # Update order status
                 await self.database.update_order_status(
@@ -178,7 +205,7 @@ class InventoryEngineAgent(BaseAgent):
                         "delivered_quantity": quantity_delivered,
                     }
                 )
-                
+
                 # Publish stock increase event
                 await self.publish(
                     exchange_name="stock.events",
@@ -198,12 +225,29 @@ class InventoryEngineAgent(BaseAgent):
                     },
                     priority=5,
                 )
-                
+
+                await self._mark_processed(message_id, result={"status": "ok", "inventory_id": inventory_id, "stock_after": new_stock})
+                await self.log_decision(
+                    "delivery_received",
+                    inputs={"inventory_id": inventory_id, "stock_before": current_stock, "stock_after": new_stock, "restaurant_id": inventory.get("restaurant_id")},
+                    output={"new_state": self._calculate_inventory_state(inventory).value, "success": success},
+                    reasoning="Procurement order delivered; incrementing stock from delivery",
+                    confidence=0.9,
+                    restaurant_id=inventory.get("restaurant_id"),
+                )
+                await self.append_event(
+                    "inventory",
+                    str(inventory_id),
+                    "DeliveryReceived",
+                    payload={"inventory_id": inventory_id, "stock_before": current_stock, "stock_after": new_stock, "order_id": order_id, "restaurant_id": inventory.get("restaurant_id")},
+                    sequence_number=1,
+                )
+
                 self.logger.info(
                     f"✓ Delivered: {inventory.get('wine_name')} "
                     f"+{quantity_delivered} bottles ({current_stock} → {new_stock})"
                 )
-            
+
         except Exception as e:
             self.logger.error(f"Error handling order delivery: {e}", exc_info=True)
     
@@ -212,34 +256,39 @@ class InventoryEngineAgent(BaseAgent):
         Handle manual stock correction by manager
         Used for physical inventory counts
         """
+        message_id = message.get("message_id", "")
+        if await self._check_idempotency(message_id):
+            self.logger.info(f"Duplicate stock.manual_correction skipped: {message_id}")
+            return
+
         payload = message.get("payload", {})
-        
+
         inventory_id = payload.get("inventory_id")
         corrected_stock = payload.get("corrected_stock")
         manager_id = payload.get("manager_id")
         reason = payload.get("reason", "manual_correction")
-        
+
         if not all([inventory_id, corrected_stock is not None, manager_id]):
             self.logger.error("Missing required fields in manual_correction event")
             return
-        
+
         try:
             # Get current inventory
             inventory = await self.database.get_inventory_item(inventory_id, use_cache=False)
-            
+
             if not inventory:
                 self.logger.error(f"Inventory not found: {inventory_id}")
                 return
-            
+
             old_stock = inventory.get("stock_live", 0)
-            
+
             # Update stock with audit trail
             success = await self.database.update_inventory_stock(
                 inventory_id=inventory_id,
                 new_stock=corrected_stock,
                 update_reason=f"manual_correction_by_{manager_id}"
             )
-            
+
             if success:
                 # Log to audit trail
                 await self.database.supabase.table("system_audit_log").insert({
@@ -255,7 +304,7 @@ class InventoryEngineAgent(BaseAgent):
                         "reason": reason,
                     }
                 }).execute()
-                
+
                 # Publish correction event
                 await self.publish(
                     exchange_name="stock.events",
@@ -275,12 +324,29 @@ class InventoryEngineAgent(BaseAgent):
                     },
                     priority=6,
                 )
-                
+
+                await self._mark_processed(message_id, result={"status": "ok", "inventory_id": inventory_id, "corrected_stock": corrected_stock})
+                await self.log_decision(
+                    "manual_correction",
+                    inputs={"inventory_id": inventory_id, "corrected_stock": corrected_stock, "restaurant_id": inventory.get("restaurant_id")},
+                    output={"new_state": self._calculate_inventory_state(inventory).value, "success": success},
+                    reasoning="Manager submitted physical count correction",
+                    confidence=0.7,
+                    restaurant_id=inventory.get("restaurant_id"),
+                )
+                await self.append_event(
+                    "inventory",
+                    str(inventory_id),
+                    "ManualCorrectionApplied",
+                    payload={"inventory_id": inventory_id, "corrected_stock": corrected_stock, "manager_id": manager_id, "restaurant_id": inventory.get("restaurant_id")},
+                    sequence_number=1,
+                )
+
                 self.logger.info(
                     f"✓ Manual correction: {inventory.get('wine_name')} "
                     f"{old_stock} → {corrected_stock} by manager {manager_id}"
                 )
-            
+
         except Exception as e:
             self.logger.error(f"Error handling manual correction: {e}", exc_info=True)
     
