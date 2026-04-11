@@ -11,6 +11,19 @@ import asyncio
 from typing import Generator, AsyncGenerator
 from unittest.mock import MagicMock, AsyncMock
 
+# ---------------------------------------------------------------------------
+# Stub weasyprint before any agent module imports it.
+# On macOS dev machines (and CI) without libgobject/pango, weasyprint raises
+# OSError at import time.  The reporting_agent already guards with try/except,
+# but providing a module-level stub here ensures patch() works in tests.
+# ---------------------------------------------------------------------------
+import importlib
+if importlib.util.find_spec("weasyprint") is None or True:
+    import types as _types
+    _wp_stub = _types.ModuleType("weasyprint")
+    _wp_stub.HTML = MagicMock()  # type: ignore[attr-defined]
+    sys.modules.setdefault("weasyprint", _wp_stub)
+
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _PROJECT_ROOT not in sys.path:
