@@ -25,13 +25,24 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 ## Current Position
 
-Phase: 18 (infrastructure-foundation) — EXECUTING
-Plan: 1 of 3
-**Last completed:** v1.0 milestone — 17 phases, 73 plans, 96% completion (2026-04-08)
-**Phases complete:** (none in v2.0)
-**Phases planned:** 18, 19, 20, 21, 22
-**Next action:** `/gsd-plan-phase 18` — Infrastructure Foundation (BaseAgent upgrade + 6 database tables)
-**Note:** Surgical audit of Wave 1 agents complete. All REQ-IDs and phase blueprints pre-defined in memory.
+Phase: 20 (wave-1-level-4-hardening) — WAVE 2 READY
+Plan: Wave 1 complete (20-01 through 20-04). Wave 2 plans written, not yet executed.
+**Last completed:** Phase 20 Wave 1 UAT — 12/12 passed, 0 issues (2026-04-11)
+**Phases complete:** 18, 19, 20-wave-1 (v2.0)
+**Phases planned:** 20-wave-2, 21, 22
+**Next action:** `/clear` then `/gsd-execute-phase 20 --wave 2` — execute Wave 2 hardening fixes
+**Note:** Context was at 79% when wave 2 was about to start. All 4 plans committed. Start fresh session.
+
+### Wave 2 Plans — Ready to Execute
+
+| Plan | Agent | Fix | Risk |
+|------|-------|-----|------|
+| 20-05 | NotificationAgent | DLQ re-trigger guard (`_dlq_escalated` set) | **CRITICAL (0.3)** |
+| 20-06 | InventoryEngine | Per-aggregate monotonic `sequence_number` via `_next_sequence()` | High (0.5) |
+| 20-07 | ReportingAgent | UTC midnight warning log + `date_source` audit field in `log_decision` | Medium (0.6) |
+| 20-08 | POS + Inventory | Top-level `items` saga fallback; dedup key fallback chain | Medium (0.65/0.7) |
+
+All plans are in `.planning/phases/20-wave-1-level-4-hardening/` with `wave: 2` frontmatter.
 
 ---
 
