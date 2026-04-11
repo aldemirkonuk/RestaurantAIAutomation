@@ -131,23 +131,52 @@ class ReportingAgent(BaseAgent):
     async def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process incoming messages
-        
+
         Message types:
         - generate_scheduled_report: Generate report based on schedule
         - generate_event_report: Generate report for calendar event
         - generate_on_demand_report: Generate report on manager request
         """
+        # Composite idempotency gate — deduplicates pg_cron re-triggers and duplicate API calls
+        restaurant_id = message.get("restaurant_id") or message.get("payload", {}).get("restaurant_id", "")
+        report_type = message.get("report_type") or message.get("payload", {}).get("report_type", "inventory")
+        date_str = message.get("date") or message.get("payload", {}).get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+        idempotency_key = f"{restaurant_id}:{report_type}:{date_str}"
+
+        try:
+            if await self._check_idempotency(idempotency_key):
+                self.logger.info(f"Duplicate report request skipped: {idempotency_key}")
+                return {"success": True, "skipped": True, "reason": "duplicate"}
+        except Exception:
+            pass  # fail-open: proceed with report generation if idempotency check fails
+
         message_type = message.get("type")
-        
+
         if message_type == "generate_scheduled_report":
-            return await self._generate_scheduled_report(message)
+            result = await self._generate_scheduled_report(message)
         elif message_type == "generate_event_report":
-            return await self._generate_event_report(message)
+            result = await self._generate_event_report(message)
         elif message_type == "generate_on_demand_report":
-            return await self._generate_on_demand_report(message)
+            result = await self._generate_on_demand_report(message)
         else:
             logger.warning(f"Unknown message type: {message_type}")
             return {"success": False, "error": "Unknown message type"}
+
+        if result and result.get("success") and not result.get("skipped"):
+            await self._mark_processed(
+                idempotency_key,
+                result={"report_type": report_type, "date": date_str, "status": "generated"},
+            )
+            await self.log_decision(
+                "report_generated",
+                inputs={"restaurant_id": restaurant_id, "report_type": report_type, "date": date_str},
+                output={"status": "generated", "format": "pdf"},
+                reasoning="Scheduled or on-demand report trigger; generating from real inventory and sales data",
+                confidence=0.9,
+                restaurant_id=restaurant_id,
+            )
+
+        return result
     
     async def _generate_scheduled_report(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
