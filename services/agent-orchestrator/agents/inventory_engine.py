@@ -40,11 +40,21 @@ class InventoryEngineAgent(BaseAgent):
     
     def __init__(self, agent_name: str, message_bus, database, config: Dict[str, Any]):
         super().__init__(agent_name, message_bus, database, config)
-        
+
         # Configuration
         self.default_threshold = config.get("default_threshold", 3)
-        
+
+        # Per-aggregate monotonic sequence counter for event sourcing.
+        # Key: aggregate_id (str), Value: last sequence_number emitted.
+        # In-memory only — resets on agent restart (acceptable for Phase 20).
+        self._event_sequence: dict[str, int] = {}
+
     
+    def _next_sequence(self, aggregate_id: str) -> int:
+        """Return the next monotonic sequence number for the given aggregate_id."""
+        self._event_sequence[aggregate_id] = self._event_sequence.get(aggregate_id, 0) + 1
+        return self._event_sequence[aggregate_id]
+
     async def initialize(self) -> None:
         """Initialize inventory engine"""
         self.logger.info("Initializing Inventory Engine")
@@ -144,7 +154,7 @@ class InventoryEngineAgent(BaseAgent):
                         str(inventory_id),
                         "StockUpdated",
                         payload={"inventory_id": inventory_id, "stock_after": final_stock, "new_state": new_state.value, "restaurant_id": restaurant_id},
-                        sequence_number=1,
+                        sequence_number=self._next_sequence(str(inventory_id)),
                     )
 
                     self.logger.info(
@@ -240,7 +250,7 @@ class InventoryEngineAgent(BaseAgent):
                     str(inventory_id),
                     "DeliveryReceived",
                     payload={"inventory_id": inventory_id, "stock_before": current_stock, "stock_after": new_stock, "order_id": order_id, "restaurant_id": inventory.get("restaurant_id")},
-                    sequence_number=1,
+                    sequence_number=self._next_sequence(str(inventory_id)),
                 )
 
                 self.logger.info(
@@ -339,7 +349,7 @@ class InventoryEngineAgent(BaseAgent):
                     str(inventory_id),
                     "ManualCorrectionApplied",
                     payload={"inventory_id": inventory_id, "corrected_stock": corrected_stock, "manager_id": manager_id, "restaurant_id": inventory.get("restaurant_id")},
-                    sequence_number=1,
+                    sequence_number=self._next_sequence(str(inventory_id)),
                 )
 
                 self.logger.info(

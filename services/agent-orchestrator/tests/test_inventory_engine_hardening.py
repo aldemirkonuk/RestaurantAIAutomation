@@ -429,6 +429,142 @@ class TestHARD01EventSourcing:
         assert any(e.get("event_type") == "ManualCorrectionApplied" for e in event_inserts), \
             "event_store must include event_type='ManualCorrectionApplied' for manual_correction"
 
+    @pytest.mark.asyncio
+    async def test_sequence_increments_per_aggregate(self, agent, mock_db):
+        """Two StockUpdated events for the same inventory_id get sequence_number 1 then 2."""
+        event_inserts = []
+
+        def table_side_effect(table_name):
+            tbl = MagicMock()
+            tbl.select.return_value.eq.return_value.execute.return_value.data = []
+            tbl.insert.return_value.execute.return_value.data = [{}]
+            tbl.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "inv-1", "stock_live": 5, "version": 2}
+            ]
+            if table_name == "event_store":
+                orig_insert = tbl.insert
+
+                def capture_insert(data):
+                    event_inserts.append(data)
+                    return orig_insert(data)
+
+                tbl.insert = capture_insert
+            return tbl
+
+        mock_db.supabase.table = table_side_effect
+
+        msg1 = {
+            "message_id": "seq-001",
+            "routing_key": "stock.evaluated",
+            "payload": {"inventory_id": "inv-seq", "stock_after": 5, "restaurant_id": "rest-1"},
+        }
+        msg2 = {
+            "message_id": "seq-002",
+            "routing_key": "stock.evaluated",
+            "payload": {"inventory_id": "inv-seq", "stock_after": 4, "restaurant_id": "rest-1"},
+        }
+        await agent._handle_stock_evaluated(msg1)
+        await agent._handle_stock_evaluated(msg2)
+
+        stock_events = [e for e in event_inserts if e.get("event_type") == "StockUpdated"]
+        assert len(stock_events) == 2, "Expected two StockUpdated events"
+        sequences = [e.get("sequence_number") for e in stock_events]
+        assert sequences == [1, 2], f"Expected sequence [1, 2], got {sequences}"
+
+    @pytest.mark.asyncio
+    async def test_different_aggregates_have_independent_sequences(self, agent, mock_db):
+        """Events for two different inventory_ids each start at sequence_number 1."""
+        event_inserts = []
+
+        def table_side_effect(table_name):
+            tbl = MagicMock()
+            tbl.select.return_value.eq.return_value.execute.return_value.data = []
+            tbl.insert.return_value.execute.return_value.data = [{}]
+            tbl.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "inv-a", "stock_live": 5, "version": 2}
+            ]
+            if table_name == "event_store":
+                orig_insert = tbl.insert
+
+                def capture_insert(data):
+                    event_inserts.append(data)
+                    return orig_insert(data)
+
+                tbl.insert = capture_insert
+            return tbl
+
+        mock_db.supabase.table = table_side_effect
+
+        msg_a = {
+            "message_id": "seq-indep-a",
+            "routing_key": "stock.evaluated",
+            "payload": {"inventory_id": "inv-agg-a", "stock_after": 5, "restaurant_id": "rest-1"},
+        }
+        msg_b = {
+            "message_id": "seq-indep-b",
+            "routing_key": "stock.evaluated",
+            "payload": {"inventory_id": "inv-agg-b", "stock_after": 3, "restaurant_id": "rest-1"},
+        }
+        await agent._handle_stock_evaluated(msg_a)
+        await agent._handle_stock_evaluated(msg_b)
+
+        stock_events = [e for e in event_inserts if e.get("event_type") == "StockUpdated"]
+        assert len(stock_events) == 2, "Expected two StockUpdated events"
+        for ev in stock_events:
+            assert ev.get("sequence_number") == 1, (
+                f"Each new aggregate should start at sequence 1, got {ev.get('sequence_number')} "
+                f"for aggregate {ev.get('aggregate_id')}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_manual_correction_sequence_continues_after_stock(self, agent, mock_db):
+        """Stock event gets sequence 1, then manual correction for same aggregate gets sequence 2."""
+        event_inserts = []
+
+        def table_side_effect(table_name):
+            tbl = MagicMock()
+            tbl.select.return_value.eq.return_value.execute.return_value.data = []
+            tbl.insert.return_value.execute.return_value.data = [{}]
+            tbl.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "inv-mix", "stock_live": 5, "version": 2}
+            ]
+            if table_name == "event_store":
+                orig_insert = tbl.insert
+
+                def capture_insert(data):
+                    event_inserts.append(data)
+                    return orig_insert(data)
+
+                tbl.insert = capture_insert
+            return tbl
+
+        mock_db.supabase.table = table_side_effect
+
+        stock_msg = {
+            "message_id": "seq-mix-stock",
+            "routing_key": "stock.evaluated",
+            "payload": {"inventory_id": "inv-mix", "stock_after": 5, "restaurant_id": "rest-1"},
+        }
+        correction_msg = {
+            "message_id": "seq-mix-correction",
+            "routing_key": "stock.manual_correction",
+            "payload": {"inventory_id": "inv-mix", "corrected_stock": 8, "manager_id": "mgr-1"},
+        }
+        await agent._handle_stock_evaluated(stock_msg)
+        await agent._handle_manual_correction(correction_msg)
+
+        stock_ev = next((e for e in event_inserts if e.get("event_type") == "StockUpdated"), None)
+        correction_ev = next((e for e in event_inserts if e.get("event_type") == "ManualCorrectionApplied"), None)
+
+        assert stock_ev is not None, "StockUpdated event not found"
+        assert correction_ev is not None, "ManualCorrectionApplied event not found"
+        assert stock_ev.get("sequence_number") == 1, (
+            f"StockUpdated should have sequence 1, got {stock_ev.get('sequence_number')}"
+        )
+        assert correction_ev.get("sequence_number") == 2, (
+            f"ManualCorrectionApplied should have sequence 2, got {correction_ev.get('sequence_number')}"
+        )
+
 
 # =========================================================================
 # TestHARD01EdgeCases
