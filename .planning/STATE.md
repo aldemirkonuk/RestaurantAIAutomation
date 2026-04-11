@@ -41,6 +41,22 @@ v1.0 session history (Sessions 1-11) archived with milestone completion on 2026-
 
 ---
 
+## Phase 20 UAT Notes (2026-04-11)
+
+**Scope clarification — POSIntegrationAgent (plan 20-02):**
+`append_event` is NOT in scope for POSIntegrationAgent. The 20-02 PLAN.md specifies only
+`_check_idempotency`, `_mark_processed`, `log_decision`, and saga methods. Wine outcomes are
+correctly propagated via `publish()` to `pos.events` exchange — not via event store.
+The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-04-11.
+
+**5 test failures fixed before UAT (committed 12b7fad):**
+- `inventory_engine.py`: spurious `await` on sync supabase chain in `_handle_manual_correction`
+- `pos_integration_agent.py`: `metrics.errors_count` → `metrics.record_error()`
+- `notification_agent.py`: idempotency exception not fail-open
+- `test_pos_integration_hardening.py`: `args[1]` IndexError fixed to `len(args) > 1`
+
+---
+
 ## Session History
 
 ### Session 1 (v2.0) — 2026-04-09
