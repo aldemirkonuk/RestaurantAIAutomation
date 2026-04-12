@@ -5,7 +5,9 @@ Registers all routers for the WineOps agent orchestration service.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -21,13 +23,61 @@ from api.scan_routes import router_preview as preview_router
 from api.analytics_routes import router as analytics_router
 from api.studio_routes import studio_router
 
+from core.orchestrator import AgentOrchestrator
+from core.message_bus import MessageBus, set_message_bus
+from config.settings import get_settings
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_orchestrator: Optional[AgentOrchestrator] = None
+
+
+def get_orchestrator() -> Optional[AgentOrchestrator]:
+    """Return the running AgentOrchestrator instance. None if not started yet."""
+    return _orchestrator
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start all CORE-tier agents on startup, shut them down on exit."""
+    global _orchestrator
+    settings = get_settings()
+    bus = MessageBus(rabbitmq_url=settings.rabbitmq_url)
+    try:
+        await bus.connect()
+    except Exception as exc:
+        logger.warning(
+            "RabbitMQ not available at startup (%s). "
+            "Agents will not start. App will still serve HTTP routes.",
+            exc,
+        )
+        yield
+        return
+
+    set_message_bus(bus)
+    _orchestrator = AgentOrchestrator(message_bus=bus, settings=settings)
+    try:
+        await _orchestrator.initialize()
+        await _orchestrator.start_all_agents()
+        logger.info("All CORE agents started successfully.")
+    except Exception as exc:
+        logger.error("Agent startup failed: %s", exc)
+
+    yield  # App serves requests here
+
+    logger.info("Shutting down agents...")
+    if _orchestrator:
+        await _orchestrator.stop_all_agents()
+    await bus.disconnect()
+    logger.info("Agent shutdown complete.")
+
 
 app = FastAPI(
     title="WineOps Agent Orchestrator",
     description="Orchestrates AI agents for restaurant wine management.",
-    version="1.0.0",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 # Register routers
@@ -43,3 +93,9 @@ app.include_router(studio_router)
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# POS routes — imported at the very bottom to avoid circular import
+# (pos_routes.py calls get_orchestrator() which is defined above)
+from api.pos_routes import router as pos_router  # noqa: E402
+app.include_router(pos_router)
