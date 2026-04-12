@@ -101,6 +101,68 @@ class Settings:
         # Trust level threshold: certified_contributor auto-promotes after this many consecutive approvals (D-12)
         self.trust_level_threshold: int = int(os.getenv("TRUST_LEVEL_THRESHOLD", "5"))
 
+        # Phase 21: RabbitMQ connection (E2E-v2-01)
+        self.rabbitmq_host: str = os.getenv("RABBITMQ_HOST", "localhost")
+        self.rabbitmq_port: int = int(os.getenv("RABBITMQ_PORT", "5672"))
+        self.rabbitmq_user: str = os.getenv("RABBITMQ_USER", "guest")
+        self.rabbitmq_password: str = os.getenv("RABBITMQ_PASSWORD", "guest")
+        self.rabbitmq_vhost: str = os.getenv("RABBITMQ_VHOST", "/")
+        self.rabbitmq_url: str = os.getenv(
+            "RABBITMQ_URL",
+            f"amqp://{os.getenv('RABBITMQ_USER', 'guest')}:{os.getenv('RABBITMQ_PASSWORD', 'guest')}@{os.getenv('RABBITMQ_HOST', 'localhost')}:{os.getenv('RABBITMQ_PORT', '5672')}/{os.getenv('RABBITMQ_VHOST', '%2F')}",
+        )
+
+        # Phase 21: Application environment
+        self.environment: str = os.getenv("ENVIRONMENT", "development")
+        self.debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+
+        # Phase 21: Toast POS integration (E2E-v2-01, E2E-v2-02)
+        self.toast_api_url: str = os.getenv(
+            "TOAST_API_URL", "https://ws-api.toasttab.com"
+        )
+        self.toast_client_id: Optional[str] = os.getenv("TOAST_CLIENT_ID")
+        self.toast_client_secret: Optional[str] = os.getenv("TOAST_CLIENT_SECRET")
+        self.toast_restaurant_guid: Optional[str] = os.getenv("TOAST_RESTAURANT_GUID")
+        self.toast_webhook_secret: Optional[str] = os.getenv("TOAST_WEBHOOK_SECRET")
+        self.toast_environment: str = os.getenv("TOAST_ENVIRONMENT", "sandbox")
+        self.mock_pos: bool = os.getenv("MOCK_POS", "true").lower() == "true"
+
+        # Phase 21: Inventory and buffer configuration (E2E-v2-02, E2E-v2-03)
+        self.buffer_window_minutes: int = int(os.getenv("BUFFER_WINDOW_MINUTES", "30"))
+        self.evaluation_interval_seconds: int = int(
+            os.getenv("EVALUATION_INTERVAL_SECONDS", "60")
+        )
+        self.default_threshold_min: int = int(os.getenv("DEFAULT_THRESHOLD_MIN", "2"))
+        self.notification_threshold_pct: float = float(
+            os.getenv("NOTIFICATION_THRESHOLD_PCT", "0.2")
+        )
+
+        # Phase 21: LLM routing defaults
+        self.llm_primary_model: str = os.getenv(
+            "LLM_PRIMARY_MODEL", "claude-haiku-4-5-20251001"
+        )
+        self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+
+        # Phase 21: Notification backends (E2E-v2-03)
+        self.plivo_auth_id: Optional[str] = os.getenv("PLIVO_AUTH_ID")
+        self.plivo_auth_token: Optional[str] = os.getenv("PLIVO_AUTH_TOKEN")
+        self.plivo_phone_number: Optional[str] = os.getenv("PLIVO_PHONE_NUMBER")
+        self.email_backend: str = os.getenv("EMAIL_BACKEND", "gmail")
+        self.from_email: Optional[str] = os.getenv("FROM_EMAIL")
+        self.sendgrid_api_key: Optional[str] = os.getenv("SENDGRID_API_KEY")
+        self.vapid_private_key: Optional[str] = os.getenv("VAPID_PRIVATE_KEY")
+        self.vapid_public_key: Optional[str] = os.getenv("VAPID_PUBLIC_KEY")
+        self.vapid_email: Optional[str] = os.getenv("VAPID_EMAIL")
+        self.fcm_server_key: Optional[str] = os.getenv("FCM_SERVER_KEY")
+        self.mock_notifications: bool = (
+            os.getenv("MOCK_NOTIFICATIONS", "true").lower() == "true"
+        )
+
+        # Phase 21: Supabase service role key alias (agents read this attr)
+        self.supabase_service_role_key: Optional[str] = (
+            os.getenv("SUPABASE_SERVICE_ROLE_KEY") or self.supabase_key
+        )
+
     @property
     def supabase_client(self):
         """Lazy-init Supabase client. Returns None if not configured."""
