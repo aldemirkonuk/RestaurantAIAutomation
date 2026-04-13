@@ -27,6 +27,7 @@ const Reports = lazy(() => import('./pages/Reports'))
 const WineLibrary = lazy(() => import('./pages/wine-library'))
 const SommelierAI = lazy(() => import('./pages/SommelierAI'))
 const AdminPanel = lazy(() => import('./pages/AdminPanel'))
+const AdminHealth = lazy(() => import('./pages/AdminHealth'))
 
 // Standard pages (lazy loaded)
 const Providers = lazy(() => import('./pages/Providers'))
@@ -127,6 +128,7 @@ function App() {
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/help" element={<PlaceholderPage title="Help & Support" />} />
                   <Route path="/admin" element={<AdminPanel />} />
+                  <Route path="/admin/health" element={<AdminHealth />} />
                   
                   {/* AI Assistants */}
                   <Route path="/sommelier" element={<SommelierAI />} />
