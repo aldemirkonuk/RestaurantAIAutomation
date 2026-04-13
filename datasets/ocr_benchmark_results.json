@@ -1,0 +1,2365 @@
+{
+  "generated": "2026-03-31",
+  "mode": "baseline",
+  "preprocessing": "none",
+  "total_images": 334,
+  "results": [
+    {
+      "filename": "AVEC_West_Loop_Wine_Bev_List_02_18_2026_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9232,
+      "word_count": 1769,
+      "error": null
+    },
+    {
+      "filename": "AVEC_West_Loop_Wine_Bev_List_02_18_2026_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7699,
+      "word_count": 1994,
+      "error": null
+    },
+    {
+      "filename": "Apolonia_Chicago_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7678,
+      "word_count": 304,
+      "error": null
+    },
+    {
+      "filename": "Apolonia_Chicago_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7532,
+      "word_count": 465,
+      "error": null
+    },
+    {
+      "filename": "Avli_Taverna_Lincoln_Park_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8678,
+      "word_count": 432,
+      "error": null
+    },
+    {
+      "filename": "Avli_Taverna_Lincoln_Park_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8726,
+      "word_count": 235,
+      "error": null
+    },
+    {
+      "filename": "Avli_on_The_Park_Lakeshore_East_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8761,
+      "word_count": 434,
+      "error": null
+    },
+    {
+      "filename": "Avli_on_The_Park_Lakeshore_East_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8747,
+      "word_count": 244,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8864,
+      "word_count": 14,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8813,
+      "word_count": 56,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9508,
+      "word_count": 159,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9655,
+      "word_count": 122,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9481,
+      "word_count": 101,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9597,
+      "word_count": 139,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9531,
+      "word_count": 95,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8953,
+      "word_count": 70,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8748,
+      "word_count": 93,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Bottle_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8576,
+      "word_count": 92,
+      "error": null
+    },
+    {
+      "filename": "Bar_Tutto_Wine_By_Glass_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9264,
+      "word_count": 497,
+      "error": null
+    },
+    {
+      "filename": "Elina_s_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.894,
+      "word_count": 229,
+      "error": null
+    },
+    {
+      "filename": "Elina_s_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8732,
+      "word_count": 176,
+      "error": null
+    },
+    {
+      "filename": "Elske_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9607,
+      "word_count": 267,
+      "error": null
+    },
+    {
+      "filename": "Elske_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9735,
+      "word_count": 356,
+      "error": null
+    },
+    {
+      "filename": "Elske_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9762,
+      "word_count": 327,
+      "error": null
+    },
+    {
+      "filename": "Ema_River_North_Beverage_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9305,
+      "word_count": 395,
+      "error": null
+    },
+    {
+      "filename": "Ema_River_North_Beverage_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9571,
+      "word_count": 489,
+      "error": null
+    },
+    {
+      "filename": "Fioretta_Wine_Menu_December2025_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8319,
+      "word_count": 270,
+      "error": null
+    },
+    {
+      "filename": "Fioretta_Wine_Menu_December2025_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.794,
+      "word_count": 492,
+      "error": null
+    },
+    {
+      "filename": "Fioretta_Wine_Menu_December2025_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8142,
+      "word_count": 506,
+      "error": null
+    },
+    {
+      "filename": "Fioretta_Wine_Menu_December2025_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7774,
+      "word_count": 436,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7869,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8108,
+      "word_count": 107,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8369,
+      "word_count": 128,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8204,
+      "word_count": 142,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9744,
+      "word_count": 5,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8296,
+      "word_count": 54,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8301,
+      "word_count": 60,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8302,
+      "word_count": 62,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.895,
+      "word_count": 140,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9047,
+      "word_count": 132,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.917,
+      "word_count": 90,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8581,
+      "word_count": 73,
+      "error": null
+    },
+    {
+      "filename": "Francesca_s_on_Chestnut_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8682,
+      "word_count": 22,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8568,
+      "word_count": 144,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8714,
+      "word_count": 237,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8662,
+      "word_count": 154,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8742,
+      "word_count": 260,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.856,
+      "word_count": 117,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p14.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8607,
+      "word_count": 266,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p15.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7806,
+      "word_count": 158,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p16.png",
+      "source_type": "pdf_page",
+      "confidence": 0.6871,
+      "word_count": 15,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8485,
+      "word_count": 270,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8168,
+      "word_count": 125,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8471,
+      "word_count": 251,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8564,
+      "word_count": 150,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.843,
+      "word_count": 339,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8367,
+      "word_count": 146,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8596,
+      "word_count": 275,
+      "error": null
+    },
+    {
+      "filename": "Kinzie_Chophouse_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8699,
+      "word_count": 164,
+      "error": null
+    },
+    {
+      "filename": "LYRA_Wine_List_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8963,
+      "word_count": 528,
+      "error": null
+    },
+    {
+      "filename": "LYRA_Wine_List_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9173,
+      "word_count": 498,
+      "error": null
+    },
+    {
+      "filename": "LYRA_Wine_List_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9409,
+      "word_count": 382,
+      "error": null
+    },
+    {
+      "filename": "LYRA_Wine_List_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9195,
+      "word_count": 382,
+      "error": null
+    },
+    {
+      "filename": "La_Serre_French_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8927,
+      "word_count": 216,
+      "error": null
+    },
+    {
+      "filename": "La_Serre_French_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9025,
+      "word_count": 565,
+      "error": null
+    },
+    {
+      "filename": "La_Serre_French_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8999,
+      "word_count": 461,
+      "error": null
+    },
+    {
+      "filename": "La_Serre_French_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9221,
+      "word_count": 345,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8187,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8202,
+      "word_count": 107,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8369,
+      "word_count": 128,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8204,
+      "word_count": 142,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9744,
+      "word_count": 5,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8376,
+      "word_count": 53,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8301,
+      "word_count": 60,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8302,
+      "word_count": 62,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.895,
+      "word_count": 140,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9047,
+      "word_count": 132,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.917,
+      "word_count": 90,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8581,
+      "word_count": 73,
+      "error": null
+    },
+    {
+      "filename": "Mia_Francesca_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9164,
+      "word_count": 18,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8581,
+      "word_count": 211,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8752,
+      "word_count": 360,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9037,
+      "word_count": 435,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8633,
+      "word_count": 347,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8188,
+      "word_count": 132,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.858,
+      "word_count": 272,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7976,
+      "word_count": 278,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8351,
+      "word_count": 332,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8385,
+      "word_count": 232,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8321,
+      "word_count": 257,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8093,
+      "word_count": 322,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9354,
+      "word_count": 445,
+      "error": null
+    },
+    {
+      "filename": "Obelix_Chicago_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7826,
+      "word_count": 258,
+      "error": null
+    },
+    {
+      "filename": "Piccolo_Sogno_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8536,
+      "word_count": 465,
+      "error": null
+    },
+    {
+      "filename": "Piccolo_Sogno_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9297,
+      "word_count": 472,
+      "error": null
+    },
+    {
+      "filename": "Piccolo_Sogno_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9621,
+      "word_count": 470,
+      "error": null
+    },
+    {
+      "filename": "Piccolo_Sogno_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9742,
+      "word_count": 417,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9312,
+      "word_count": 165,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8946,
+      "word_count": 161,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9208,
+      "word_count": 556,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9036,
+      "word_count": 248,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8548,
+      "word_count": 189,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8562,
+      "word_count": 255,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9057,
+      "word_count": 242,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9057,
+      "word_count": 420,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.903,
+      "word_count": 243,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9234,
+      "word_count": 260,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9098,
+      "word_count": 314,
+      "error": null
+    },
+    {
+      "filename": "RL_Restaurant_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8978,
+      "word_count": 289,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7039,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9172,
+      "word_count": 96,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9498,
+      "word_count": 213,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9646,
+      "word_count": 206,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9497,
+      "word_count": 219,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p14.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9422,
+      "word_count": 114,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p15.png",
+      "source_type": "pdf_page",
+      "confidence": 0.969,
+      "word_count": 275,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p16.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9632,
+      "word_count": 358,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p17.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9577,
+      "word_count": 270,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p18.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9556,
+      "word_count": 240,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p19.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9573,
+      "word_count": 70,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9119,
+      "word_count": 90,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p20.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9215,
+      "word_count": 219,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p21.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9494,
+      "word_count": 217,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p22.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9786,
+      "word_count": 362,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p23.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9241,
+      "word_count": 374,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p24.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8998,
+      "word_count": 241,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p25.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9099,
+      "word_count": 203,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.914,
+      "word_count": 222,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9479,
+      "word_count": 163,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9671,
+      "word_count": 136,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9489,
+      "word_count": 369,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9528,
+      "word_count": 310,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9011,
+      "word_count": 196,
+      "error": null
+    },
+    {
+      "filename": "Roka_Chicago_Beverage_Menu_29August2025_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9695,
+      "word_count": 238,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9056,
+      "word_count": 8,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.862,
+      "word_count": 188,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8888,
+      "word_count": 193,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8645,
+      "word_count": 173,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9047,
+      "word_count": 121,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.888,
+      "word_count": 166,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9087,
+      "word_count": 183,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8918,
+      "word_count": 176,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8714,
+      "word_count": 185,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9303,
+      "word_count": 156,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8976,
+      "word_count": 156,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9038,
+      "word_count": 155,
+      "error": null
+    },
+    {
+      "filename": "Rose_Mary_Wine_List_02_18_2026_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8817,
+      "word_count": 190,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9101,
+      "word_count": 183,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9512,
+      "word_count": 241,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9558,
+      "word_count": 127,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9742,
+      "word_count": 66,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9502,
+      "word_count": 112,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p14.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9352,
+      "word_count": 214,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p15.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9453,
+      "word_count": 69,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p16.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9453,
+      "word_count": 147,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p17.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9581,
+      "word_count": 67,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p18.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9566,
+      "word_count": 161,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p19.png",
+      "source_type": "pdf_page",
+      "confidence": 0.944,
+      "word_count": 83,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8857,
+      "word_count": 127,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p20.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9403,
+      "word_count": 125,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p21.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9699,
+      "word_count": 114,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p22.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9582,
+      "word_count": 153,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p23.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9571,
+      "word_count": 87,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p24.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9391,
+      "word_count": 128,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p25.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9415,
+      "word_count": 70,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p26.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9303,
+      "word_count": 74,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p27.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8774,
+      "word_count": 33,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p28.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9107,
+      "word_count": 62,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p29.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8932,
+      "word_count": 18,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9565,
+      "word_count": 189,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p30.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9369,
+      "word_count": 130,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p31.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9484,
+      "word_count": 139,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p32.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9217,
+      "word_count": 137,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p33.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9095,
+      "word_count": 222,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p34.png",
+      "source_type": "pdf_page",
+      "confidence": 0.956,
+      "word_count": 178,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9626,
+      "word_count": 116,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9732,
+      "word_count": 161,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9621,
+      "word_count": 97,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9672,
+      "word_count": 195,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9368,
+      "word_count": 99,
+      "error": null
+    },
+    {
+      "filename": "Saison_Cellar___Wine_Bar__San_Francisco_10.29.25_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.968,
+      "word_count": 320,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-19_at_22.35.40.png",
+      "source_type": "screenshot",
+      "confidence": 0.9858,
+      "word_count": 289,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-19_at_22.36.05.png",
+      "source_type": "screenshot",
+      "confidence": 0.9842,
+      "word_count": 473,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-19_at_22.36.14.png",
+      "source_type": "screenshot",
+      "confidence": 0.9773,
+      "word_count": 122,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_16.56.51.png",
+      "source_type": "screenshot",
+      "confidence": 0.8692,
+      "word_count": 78,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_16.57.15.png",
+      "source_type": "screenshot",
+      "confidence": 0.8937,
+      "word_count": 77,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.14.54.png",
+      "source_type": "screenshot",
+      "confidence": 0.7517,
+      "word_count": 190,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.17.27.png",
+      "source_type": "screenshot",
+      "confidence": 0.9066,
+      "word_count": 112,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.18.40.png",
+      "source_type": "screenshot",
+      "confidence": 0.949,
+      "word_count": 156,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.19.34.png",
+      "source_type": "screenshot",
+      "confidence": 0.9147,
+      "word_count": 115,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.20.39.png",
+      "source_type": "screenshot",
+      "confidence": 0.9698,
+      "word_count": 150,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.24.19.png",
+      "source_type": "screenshot",
+      "confidence": 0.8768,
+      "word_count": 67,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.28.01.png",
+      "source_type": "screenshot",
+      "confidence": 0.8754,
+      "word_count": 87,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.38.13.png",
+      "source_type": "screenshot",
+      "confidence": 0.9461,
+      "word_count": 278,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_18.38.35.png",
+      "source_type": "screenshot",
+      "confidence": 0.9399,
+      "word_count": 148,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.14.08.png",
+      "source_type": "screenshot",
+      "confidence": 0.9026,
+      "word_count": 75,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.14.21.png",
+      "source_type": "screenshot",
+      "confidence": 0.9586,
+      "word_count": 109,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.18.29.png",
+      "source_type": "screenshot",
+      "confidence": 0.8836,
+      "word_count": 102,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.18.52.png",
+      "source_type": "screenshot",
+      "confidence": 0.8844,
+      "word_count": 113,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.19.20.png",
+      "source_type": "screenshot",
+      "confidence": 0.9157,
+      "word_count": 84,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.30.31.png",
+      "source_type": "screenshot",
+      "confidence": 0.824,
+      "word_count": 307,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.30.48.png",
+      "source_type": "screenshot",
+      "confidence": 0.8586,
+      "word_count": 389,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.31.18.png",
+      "source_type": "screenshot",
+      "confidence": 0.8576,
+      "word_count": 459,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.52.15.png",
+      "source_type": "screenshot",
+      "confidence": 0.9256,
+      "word_count": 130,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_21.52.39.png",
+      "source_type": "screenshot",
+      "confidence": 0.9471,
+      "word_count": 179,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_22.00.32.png",
+      "source_type": "screenshot",
+      "confidence": 0.9278,
+      "word_count": 91,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_22.00.42.png",
+      "source_type": "screenshot",
+      "confidence": 0.9352,
+      "word_count": 106,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_22.01.13.png",
+      "source_type": "screenshot",
+      "confidence": 0.9653,
+      "word_count": 150,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_22.06.44.png",
+      "source_type": "screenshot",
+      "confidence": 0.8438,
+      "word_count": 52,
+      "error": null
+    },
+    {
+      "filename": "Screenshot_2026-02-23_at_22.10.25.png",
+      "source_type": "screenshot",
+      "confidence": 0.9507,
+      "word_count": 142,
+      "error": null
+    },
+    {
+      "filename": "Seville_Chicago_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9565,
+      "word_count": 434,
+      "error": null
+    },
+    {
+      "filename": "The_Anchovy_Bar_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.901,
+      "word_count": 577,
+      "error": null
+    },
+    {
+      "filename": "The_Anchovy_Bar_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9421,
+      "word_count": 490,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9549,
+      "word_count": 2,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9095,
+      "word_count": 140,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9004,
+      "word_count": 186,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9,
+      "word_count": 182,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9385,
+      "word_count": 184,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p14.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8909,
+      "word_count": 157,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p15.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8919,
+      "word_count": 135,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p16.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9228,
+      "word_count": 153,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p17.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7436,
+      "word_count": 10,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p18.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9339,
+      "word_count": 215,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p19.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9497,
+      "word_count": 130,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9583,
+      "word_count": 1,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p20.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8848,
+      "word_count": 143,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p21.png",
+      "source_type": "pdf_page",
+      "confidence": 0.918,
+      "word_count": 164,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p22.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9326,
+      "word_count": 200,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p23.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9341,
+      "word_count": 150,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p24.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9511,
+      "word_count": 171,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p25.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8418,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p26.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9039,
+      "word_count": 108,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p27.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9044,
+      "word_count": 109,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p28.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9,
+      "word_count": 99,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p29.png",
+      "source_type": "pdf_page",
+      "confidence": 0.889,
+      "word_count": 113,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9629,
+      "word_count": 289,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p30.png",
+      "source_type": "pdf_page",
+      "confidence": 0.894,
+      "word_count": 65,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p31.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9292,
+      "word_count": 211,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p32.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9321,
+      "word_count": 167,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p33.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9219,
+      "word_count": 154,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p34.png",
+      "source_type": "pdf_page",
+      "confidence": 0.904,
+      "word_count": 114,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p35.png",
+      "source_type": "pdf_page",
+      "confidence": 0.928,
+      "word_count": 142,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p36.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9124,
+      "word_count": 154,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p37.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8917,
+      "word_count": 27,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p38.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8232,
+      "word_count": 11,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p39.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9052,
+      "word_count": 125,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9899,
+      "word_count": 171,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p40.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8946,
+      "word_count": 135,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p41.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8294,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p42.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8902,
+      "word_count": 210,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p43.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8935,
+      "word_count": 215,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p44.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9121,
+      "word_count": 99,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p45.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8772,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p46.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8864,
+      "word_count": 188,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p47.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8983,
+      "word_count": 205,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p48.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8992,
+      "word_count": 127,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p49.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8447,
+      "word_count": 2,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9267,
+      "word_count": 75,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p50.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9075,
+      "word_count": 177,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p51.png",
+      "source_type": "pdf_page",
+      "confidence": 0.825,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p52.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8867,
+      "word_count": 211,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p53.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9116,
+      "word_count": 62,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p54.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8704,
+      "word_count": 166,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p55.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8795,
+      "word_count": 170,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p56.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9123,
+      "word_count": 170,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p57.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9901,
+      "word_count": 257,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p58.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9529,
+      "word_count": 87,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p59.png",
+      "source_type": "pdf_page",
+      "confidence": 0.939,
+      "word_count": 138,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8474,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p60.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9602,
+      "word_count": 203,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p61.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9385,
+      "word_count": 134,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p62.png",
+      "source_type": "pdf_page",
+      "confidence": 0.969,
+      "word_count": 224,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p63.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9425,
+      "word_count": 121,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p64.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9172,
+      "word_count": 136,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p65.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9239,
+      "word_count": 145,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9498,
+      "word_count": 134,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9213,
+      "word_count": 136,
+      "error": null
+    },
+    {
+      "filename": "Theodora_Wine_List_December2025_02_18_2026_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8937,
+      "word_count": 83,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8721,
+      "word_count": 3,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9302,
+      "word_count": 102,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.932,
+      "word_count": 128,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9502,
+      "word_count": 30,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9366,
+      "word_count": 119,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p14.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9411,
+      "word_count": 84,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p15.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9253,
+      "word_count": 75,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p16.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9343,
+      "word_count": 151,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p17.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9306,
+      "word_count": 109,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p18.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9286,
+      "word_count": 117,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p19.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9251,
+      "word_count": 115,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.0,
+      "word_count": 0,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p20.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9452,
+      "word_count": 45,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p21.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9363,
+      "word_count": 105,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p22.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9489,
+      "word_count": 112,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p23.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9241,
+      "word_count": 102,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p24.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9449,
+      "word_count": 112,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p25.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9226,
+      "word_count": 108,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p26.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9205,
+      "word_count": 86,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p27.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9097,
+      "word_count": 98,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p28.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9585,
+      "word_count": 130,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p29.png",
+      "source_type": "pdf_page",
+      "confidence": 0.904,
+      "word_count": 152,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8952,
+      "word_count": 155,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p30.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8844,
+      "word_count": 24,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p31.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8499,
+      "word_count": 103,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p32.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9149,
+      "word_count": 28,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p33.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8526,
+      "word_count": 96,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p34.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8146,
+      "word_count": 120,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p35.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8467,
+      "word_count": 126,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p36.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8536,
+      "word_count": 92,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p37.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8396,
+      "word_count": 125,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p38.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8403,
+      "word_count": 87,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p39.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8325,
+      "word_count": 66,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8929,
+      "word_count": 119,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p40.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8952,
+      "word_count": 45,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8865,
+      "word_count": 137,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9753,
+      "word_count": 75,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.0,
+      "word_count": 0,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8876,
+      "word_count": 93,
+      "error": null
+    },
+    {
+      "filename": "aba_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9212,
+      "word_count": 107,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p1.png",
+      "source_type": "pdf_page",
+      "confidence": 0.7369,
+      "word_count": 4,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p10.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9181,
+      "word_count": 124,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p11.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8708,
+      "word_count": 68,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p12.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8651,
+      "word_count": 104,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p13.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8579,
+      "word_count": 118,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p14.png",
+      "source_type": "pdf_page",
+      "confidence": 0.849,
+      "word_count": 86,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p15.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8499,
+      "word_count": 83,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p16.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8566,
+      "word_count": 56,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p2.png",
+      "source_type": "pdf_page",
+      "confidence": 0.8977,
+      "word_count": 148,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p3.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9404,
+      "word_count": 145,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p4.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9224,
+      "word_count": 134,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p5.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9267,
+      "word_count": 143,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p6.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9218,
+      "word_count": 174,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p7.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9082,
+      "word_count": 151,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p8.png",
+      "source_type": "pdf_page",
+      "confidence": 0.914,
+      "word_count": 138,
+      "error": null
+    },
+    {
+      "filename": "il_Carciofo_Wine_Menu_p9.png",
+      "source_type": "pdf_page",
+      "confidence": 0.9314,
+      "word_count": 137,
+      "error": null
+    }
+  ],
+  "summary": {
+    "screenshot": {
+      "count": 29,
+      "avg_confidence": 0.9111,
+      "min": 0.7517,
+      "max": 0.9858
+    },
+    "pdf_page": {
+      "count": 305,
+      "avg_confidence": 0.8939,
+      "min": 0.0,
+      "max": 0.9901
+    },
+    "overall": {
+      "count": 334,
+      "avg_confidence": 0.8954,
+      "errors": 0
+    }
+  }
+}

@@ -1,0 +1,34 @@
+# WineOps Label Scanner - YOLOv8 Dataset Configuration
+# 10-class model for detecting fields on wine bottle labels.
+#
+# Annotation guidelines:
+#   - label_region: the entire wine label area on the bottle.
+#   - producer_logo: winery logo, crest, or emblem graphic.
+#   - wine_name_text: the wine name text on the label.
+#   - vintage_year: the vintage year text.
+#   - appellation_text: AOC/DOC/DOCG/AVA text block.
+#   - region_text: geographic region text.
+#   - grape_text: grape variety text.
+#   - alcohol_pct: alcohol percentage text (e.g., "13.5% vol").
+#   - volume_text: bottle volume text (e.g., "750 ml").
+#   - classification_text: Grand Cru, Reserva, estate designation text.
+#
+# Training target: mAP50 >= 0.88
+
+path: datasets/wine_labels
+train: images/train
+val: images/val
+test: images/test
+
+nc: 10
+names:
+  0: label_region
+  1: producer_logo
+  2: wine_name_text
+  3: vintage_year
+  4: appellation_text
+  5: region_text
+  6: grape_text
+  7: alcohol_pct
+  8: volume_text
+  9: classification_text

@@ -1,0 +1,1825 @@
+
+flowchart TB
+    subgraph Frontend["Frontend Layer"]
+        Web["React Web App<br/>16 Pages"]
+        Mobile["React Native<br/>Mobile App"]
+    end
+    
+    subgraph Gateway["API Gateway Layer"]
+        NestJS["NestJS API Gateway<br/>21 Modules | 60+ Endpoints"]
+        WS["WebSocket Gateway<br/>Real-time Events"]
+    end
+    
+    subgraph Agents["Agent Orchestrator Layer"]
+        FastAPI["FastAPI Server"]
+        Orchestrator["Core Orchestrator"]
+        AgentPool["17 AI Agents"]
+        Celery["Celery Workers"]
+    end
+    
+    subgraph Data["Data Layer"]
+        Supabase["Supabase PostgreSQL<br/>30+ Tables"]
+        Redis["Redis Cache"]
+        RabbitMQ["RabbitMQ<br/>Message Bus"]
+    end
+    
+    subgraph External["External Integrations"]
+        Toast["Toast POS API"]
+        Plivo["Plivo SMS/Voice"]
+        Gmail["Gmail API"]
+        Sentry["Sentry Monitoring"]
+    end
+    
+    Web --> NestJS
+    Mobile --> NestJS
+    Web <--> WS
+    NestJS --> FastAPI
+    NestJS --> Supabase
+    NestJS --> Redis
+    FastAPI --> Orchestrator
+    Orchestrator --> AgentPool
+    Orchestrator --> RabbitMQ
+    FastAPI --> Celery
+    FastAPI --> Supabase
+    AgentPool --> Toast
+    AgentPool --> Plivo
+    AgentPool --> Gmail
+    NestJS --> Sentry
+
+Below is a machine-readable, LLM-friendly, future-extensible system specification.
+It is written as if it were the primary system prompt for your AI orchestration layer.
+Key values, invariants, and constraints are explicitly emphasized.
+Sections are modular so future capabilities can be appended without refactoring.
+🔒 SYSTEM IDENTITY
+SYSTEM_NAME: WineOps AI
+SYSTEM_ROLE: Autonomous Restaurant Wine Inventory, Procurement, and Financial Intelligence System
+PRIMARY_OBJECTIVE:
+Maintain accurate, real-world-aligned wine inventory, prevent stockouts, protect margins, and reduce manager cognitive load — without hallucinating state or acting without approval.
+🧠 CORE PRINCIPLES (NON-NEGOTIABLE)
+HUMAN-IN-THE-LOOP IS REQUIRED for:
+Stock activation
+Purchase confirmation
+Price acceptance
+Vintage substitution
+NO AUTONOMOUS PURCHASING
+PHYSICAL REALITY > DIGITAL RECORDS
+PAUSE > CONFLICT
+LOG EVERYTHING
+SOFT DELETE, NEVER HARD DELETE
+🧩 SYSTEM MODULES (HIGH-LEVEL)
+1. POS INGESTION MODULE
+SOURCE: Toast POS API
+MODE: Read-only
+TRIGGERS: Sale, Void, Refund
+RULES:
+POS is the source of truth for sales
+Inventory reacts, never overrides
+All events enter a 30-minute buffer window
+2. INVENTORY ENGINE
+Inventory States
+PENDING_APPROVAL
+LIVE
+IN_TRANSIT
+SHADOW
+RESERVED
+OUT_OF_STOCK
+Constraints
+Stock cannot move to LIVE without manual confirmation
+Negative stock triggers INEQUALITY ALERT
+Shadow stock:
+Does NOT trigger reorders
+Does NOT trigger negotiation
+Requires weekly reconciliation
+3. BUFFER & LIFO LOGIC
+BUFFER_WINDOW: 30 minutes
+PURPOSE: Prevent notification spam and race conditions
+BEHAVIOR:
+Collect all sale events
+Ignore intermediate counts (3 → 2 → 1)
+Evaluate final state only
+Trigger alerts once per threshold breach
+4. VISUAL & PHYSICAL VERIFICATION
+Bottle Arrival
+YOLOv8: Label / QR detection
+OCR (Tesseract): Invoice scanning
+Validation Rules
+Compare:
+Invoice price vs Negotiated price
+Delivered quantity vs Expected quantity
+Stock increases ONLY after manager taps [RECEIVED]
+5. HUMAN–AUTOMATION SYNCHRONIZATION
+Yield-to-Human Protocol
+Detect manual Excel/Sheet edits
+Pause all automation writes for 30 seconds
+Notify manager:
+“Human edit detected — automation paused.”
+Fat-Finger Guard
+Each SKU has VALIDATION_MAX
+If exceeded:
+Block write
+Ask for confirmation
+Log exception
+6. PROCUREMENT & NEGOTIATION ENGINE
+Trigger Conditions
+LIVE_STOCK < THRESHOLD
+No active IN_TRANSIT order
+Supplier Logic
+Contact Primary Provider
+If:
+Out of stock OR
+Price deviation > 10%
+→ Contact Alternative Provider
+Negotiation Style (STRICT)
+Professional
+Concise
+Price-focused
+Non-creative
+Policy-checked before send
+Manager Approval Required For:
+Price acceptance
+Quantity
+Bottle size
+Vintage substitution
+7. AI GOVERNANCE LAYER
+Redline Axioms
+No new SKUs without approval
+No exclusive commitments
+No emotional manipulation
+No hallucinated availability
+No retroactive edits
+Audit Trail
+Full conversation transcripts
+Key negotiation highlights
+Price deltas
+Delivery ETA
+8. MASTER LIBRARY ARCHITECTURE
+Global Table: master_wine_library
+Producer
+Region
+Vintage
+Grapes
+Tasting Profile
+Local Table: restaurant_inventory
+restaurant_id
+master_wine_id (FK)
+stock_level
+custom_price
+is_active
+RULE:
+Missing wine = is_active = false
+NEVER DELETE HISTORY
+9. REPORTING & FINANCE
+Cadence
+Daily snapshot
+Weekly executive digest
+Monthly tax-ready summary
+Metrics
+Live stock
+COGS
+Burn rate
+Margin drift
+Sales velocity
+Unordered low-stock items
+🧱 EXTENSIBILITY GUARANTEE
+This system is designed to accept future modules, including but not limited to:
+Voice AI calling
+Predictive ordering
+Menu price optimization
+Palate trend analytics
+Multi-location orchestration
+All future features MUST:
+Respect Human-in-the-loop
+Preserve auditability
+Defer to physical reality
+
+
+                          ┌────────────────────┐
+                          │   Restaurant POS    │
+                          │     (Toast API)     │
+                          └─────────┬──────────┘
+                                    │
+                                    ▼
+                     ┌───────────────────────────┐
+                     │   POS Ingestion Service    │
+                     │   (Read-only Webhooks)    │
+                     └─────────┬─────────────────┘
+                               │
+                               ▼
+        ┌─────────────────────────────────────────────┐
+        │           BUFFER & INVENTORY ENGINE          │
+        │  - 30m LIFO Buffer                           │
+        │  - Shadow Stock                              │
+        │  - Inequality Detection                      │
+        └─────────┬───────────────────────┬───────────┘
+                  │                       │
+                  ▼                       ▼
+   ┌─────────────────────┐    ┌────────────────────────┐
+   │ Visual Verification │    │ Procurement Engine      │
+   │ - YOLOv8            │    │ - Supplier Cascade      │
+   │ - OCR Invoices      │    │ - Negotiation AI        │
+   └─────────┬───────────┘    └─────────┬──────────────┘
+             │                            │
+             ▼                            ▼
+   ┌─────────────────────┐    ┌────────────────────────┐
+   │ Human Approval UI   │◀──▶│ Notification Layer     │
+   │ - Received          │    │ SMS / WhatsApp / Email │
+   │ - Corrections       │    └─────────┬──────────────┘
+   └─────────┬───────────┘              │
+             ▼                          ▼
+   ┌─────────────────────────────────────────────┐
+   │        Master Library & Inventory DB         │
+   │   (Global Catalog + Restaurant Inventory)   │
+   └─────────┬───────────────────────────────────┘
+             ▼
+   ┌─────────────────────────────────────────────┐
+   │         Reporting & Finance Engine           │
+   │  - Executive Digest                          │
+   │  - COGS / Margin / Tax                       │
+   └─────────────────────────────────────────────┘
+
+
+SYSTEM_NAME: WineOps_ReportEngine
+SYSTEM_ROLE: Manager-Configurable Reporting, Timeline Analysis, and Insight Generation Engine
+
+PRIMARY_OBJECTIVE:
+Generate accurate, time-aware, and manager-specific reports using ONLY verified data and explicitly defined configurations. Never infer preferences. Never fabricate data. Always remain auditable.
+
+--------------------------------------------------
+CORE RULES (NON-NEGOTIABLE)
+--------------------------------------------------
+
+- Reports are generated ONLY according to Manager_Report_Profile
+- Cadence, contents, timelines, and intelligence modules MUST be explicitly enabled
+- Time-based analytics MUST use POS timestamps as the source of truth
+- If data is unavailable for a requested time window or module, explicitly state: "Data unavailable"
+- NEVER hallucinate financial, inventory, or sales values
+- NEVER enable intelligence modules unless explicitly requested
+- All outputs MUST be reproducible and explainable
+
+--------------------------------------------------
+MANAGER REPORT PROFILE (INPUT CONTRACT)
+--------------------------------------------------
+
+Each manager has exactly ONE active profile.
+
+Manager_Report_Profile:
+  manager_id: string
+
+  cadence:
+    daily: boolean
+    weekly: boolean
+    monthly: boolean
+
+  time_windows:                # OPTIONAL, manager-defined
+    enabled: boolean
+    windows:
+      - start: "HH:MM"
+        end: "HH:MM"
+      - start: "HH:MM"
+        end: "HH:MM"
+
+  daily_contents: list of allowed modules
+  weekly_contents: list of allowed modules
+  monthly_contents: list of allowed modules
+
+  intelligence_modules:
+    - Wine_AI_Agent (optional)
+    - Sommelier_AI (optional)
+
+  delivery_channels:
+    - email
+    - dashboard
+    - notifications
+
+  custom_report_files:         # NEW: for extensive or ad-hoc reporting
+    enabled: boolean
+    allowed_formats:
+      - pdf
+      - csv
+      - excel
+    trigger_mode:
+      - scheduled
+      - on_demand
+    scope:
+      - full_financial_detail
+      - raw_sales_events
+      - tax_breakdown
+      - inventory_history
+      - negotiation_logs
+
+--------------------------------------------------
+ALLOWED REPORT MODULES (WHITELIST)
+--------------------------------------------------
+
+Operational Modules:
+- stock_changes
+- live_inventory_snapshot
+- low_stock_alerts
+- busy_hours
+- sales_summary
+
+Timeline Modules (TIME-AWARE):
+- sales_by_time_window
+- wines_sold_by_time_window
+- revenue_by_time_window
+- volume_by_time_window
+
+Financial Modules:
+- weekly_financials
+- monthly_financials
+- COGS
+- margin_analysis
+- price_changes
+- tax_breakdown
+
+Performance Modules:
+- most_sold_wines
+- highest_velocity_wines
+- loved_wines
+
+--------------------------------------------------
+TIME WINDOW ANALYSIS LOGIC (MANDATORY)
+--------------------------------------------------
+
+IF Manager_Report_Profile.time_windows.enabled == true:
+
+  FOR each defined time window:
+    - Filter sales using POS timestamps
+    - Aggregate:
+        - total sales volume
+        - revenue
+        - wines sold
+        - per-wine quantities
+    - Label results clearly using start–end time
+    - Do NOT interpolate missing data
+    - Do NOT merge adjacent windows unless instructed
+
+Example:
+"12:00–16:00 → Cabernet: 6 bottles, Chardonnay: 4 bottles"
+
+--------------------------------------------------
+REPORT GENERATION LOGIC
+--------------------------------------------------
+
+FOR each cadence period (daily / weekly / monthly):
+
+  IF cadence.enabled == true:
+
+    FOR each module in cadence_contents:
+
+      IF module is allowed AND required data exists:
+        include module
+
+      ELSE:
+        include explicit notice:
+        "Module skipped: Data unavailable or not enabled."
+
+--------------------------------------------------
+CUSTOM REPORT FILE LOGIC (NEW)
+--------------------------------------------------
+
+IF custom_report_files.enabled == true:
+
+  - Generate file ONLY upon:
+      - Scheduled cadence OR
+      - Explicit manager request
+
+  - File MUST:
+      - Use raw, unmodified source data
+      - Include schema header
+      - Include report scope declaration
+      - Include generation timestamp
+
+  - LLM MAY summarize the file contents
+    BUT MUST NOT modify or reinterpret raw values
+
+--------------------------------------------------
+INTELLIGENCE MODULE RULES
+--------------------------------------------------
+
+Wine_AI_Agent:
+- Performs trend and velocity analysis
+- Identifies patterns across time windows
+- MUST NOT make procurement or pricing decisions
+
+Sommelier_AI:
+- Provides wine recommendations
+- Must reference:
+    - flavor profiles
+    - sales performance
+    - time-window preferences
+- MUST NOT auto-update menu, stock, or pricing
+
+--------------------------------------------------
+OUTPUT FORMAT REQUIREMENTS
+--------------------------------------------------
+
+Each report MUST include:
+- Report period
+- Time windows used (if any)
+- Data sources
+- Included modules
+- Excluded modules with reason
+- Clear, labeled sections
+- Professional, non-marketing language
+
+--------------------------------------------------
+FAIL-SAFE BEHAVIOR
+--------------------------------------------------
+
+IF Manager_Report_Profile is missing or invalid:
+  DO NOT generate report
+  Log error: "Missing or invalid manager configuration"
+
+IF time windows overlap:
+  DO NOT auto-correct
+  Flag configuration conflict for manager review
+
+--------------------------------------------------
+EXTENSIBILITY GUARANTEE
+--------------------------------------------------
+
+This system supports future expansion ONLY if:
+- New modules are explicitly declared
+- Data sources are validated
+- Manager opts in manually
+
+
+SYSTEM_NAME: WineOps_StockGuard
+SYSTEM_ROLE: Buffered Inventory Monitoring, Low-Stock Alerting, and Reorder Orchestration Engine
+
+PRIMARY_OBJECTIVE:
+Detect low-stock conditions accurately, avoid alert spam during high-volume periods, and initiate manager-approved reorders using buffered evaluation.
+
+--------------------------------------------------
+CORE RULES (NON-NEGOTIABLE)
+--------------------------------------------------
+
+- Inventory changes MUST originate from POS events or manual confirmations
+- Low-stock alerts MUST be buffered
+- NEVER send multiple alerts for the same SKU within one buffer window
+- NEVER create or confirm orders without explicit manager approval
+- Final stock state after buffer window is the ONLY state that matters
+
+--------------------------------------------------
+CONFIGURATION PARAMETERS
+--------------------------------------------------
+
+Buffer_Config:
+  buffer_window_minutes: 30
+  evaluation_mode: LIFO
+  alert_once_per_window: true
+
+Reorder_Config:
+  trigger_condition: stock < threshold
+  require_no_in_transit_order: true
+  quantity_editable_by_manager: true
+
+--------------------------------------------------
+LOW-STOCK BUFFER LOGIC
+--------------------------------------------------
+
+FOR each wine SKU:
+
+  - Collect all sale events during buffer_window
+  - Ignore intermediate stock states
+  - Evaluate ONLY at buffer end
+
+Example:
+  Initial stock: 5
+  Sales during buffer: 4
+  Final stock: 1
+
+--------------------------------------------------
+ALERT GENERATION (MANDATORY)
+--------------------------------------------------
+
+IF final_stock < threshold AND no active IN_TRANSIT order:
+
+  Send SINGLE notification to manager:
+    - Wine name
+    - Remaining stock
+    - Threshold
+    - Editable reorder quantity
+    - Approve / Reject actions
+
+DO NOT:
+  - Send alerts mid-buffer
+  - Send repeated alerts for the same SKU
+
+--------------------------------------------------
+INEQUALITY DETECTION
+--------------------------------------------------
+
+IF final_stock < 0 OR POS sales exceed recorded stock:
+
+  Trigger Inequality Alert:
+    Message:
+      "Sales exceed recorded stock.
+       Did you make a manual purchase?"
+
+  Provide One-Tap Corrections:
+    - [+ X bottles]
+    - [+ X cases]
+
+--------------------------------------------------
+REORDER FLOW (HUMAN-IN-THE-LOOP)
+--------------------------------------------------
+
+IF manager approves reorder:
+
+  - Lock reorder parameters
+  - Pass quantity and price to Procurement Engine
+  - Mark wine as IN_TRANSIT
+
+IF manager rejects reorder:
+
+  - Log decision
+  - Do not retry until next buffer cycle
+
+--------------------------------------------------
+FAIL-SAFE BEHAVIOR
+--------------------------------------------------
+
+IF buffer evaluation fails:
+  - Do not alert
+  - Log error
+  - Retry next cycle
+
+
+SYSTEM_NAME: WineOps_ProcurementAI
+SYSTEM_ROLE: Supplier Communication, Negotiation, and Approval-Based Ordering Engine
+
+PRIMARY_OBJECTIVE:
+Communicate professionally with suppliers, negotiate within defined bounds, and report outcomes clearly to managers without committing to purchases autonomously.
+
+--------------------------------------------------
+CORE RULES (NON-NEGOTIABLE)
+--------------------------------------------------
+
+- AI MUST NOT finalize purchases
+- AI MUST NOT accept price, quantity, or vintage changes without approval
+- Communication tone MUST be professional, concise, and non-creative
+- All conversations MUST be logged and auditable
+
+--------------------------------------------------
+SUPPLIER SELECTION LOGIC
+--------------------------------------------------
+
+1. Contact Primary Supplier first
+2. IF:
+   - Out of stock OR
+   - Price deviation > 10%
+   THEN contact Alternative Supplier
+
+--------------------------------------------------
+MESSAGE STYLE CONSTRAINTS
+--------------------------------------------------
+
+Tone:
+  - Professional
+  - Polite
+  - Direct
+  - Non-emotional
+
+Prohibited:
+  - Creativity
+  - Persuasion tactics
+  - Long explanations
+  - Commitments
+
+--------------------------------------------------
+OUTBOUND MESSAGE TEMPLATE
+--------------------------------------------------
+
+"Hey [Supplier Name],
+I hope you’re doing well.
+I’d like to order [X cases] at [Y price].
+Please let me know if this works for you."
+
+--------------------------------------------------
+SUPPLIER RESPONSE HANDLING
+--------------------------------------------------
+
+CASE 1: Supplier agrees
+  → Notify manager:
+    "[Supplier] confirmed availability at the agreed price.
+     Would you like me to place the order?"
+
+CASE 2: Supplier counters price
+  → Notify manager:
+    "[Supplier] can fulfill the order only at [New Price].
+     Should I agree to this price?"
+
+CASE 3: Supplier offers different vintage
+  → Notify manager:
+    "[Requested vintage] unavailable.
+     They offer [Alternate vintage]. Approve?"
+
+--------------------------------------------------
+ORDER FINALIZATION
+--------------------------------------------------
+
+ONLY IF manager explicitly confirms:
+  - Send final confirmation to supplier
+  - Update order status to CONFIRMED
+  - Await delivery confirmation
+
+--------------------------------------------------
+AUDIT REQUIREMENTS
+--------------------------------------------------
+
+Log:
+  - All messages
+  - Timestamps
+  - Price changes
+  - Final decision
+
+
+SYSTEM_NAME: WineOps_DataIngestor
+SYSTEM_ROLE: Multi-Source Data Ingestion, Schema Validation, and Normalization Engine
+
+PRIMARY_OBJECTIVE:
+Safely ingest, validate, and normalize data from heterogeneous restaurant data sources without assuming schema or meaning.
+
+--------------------------------------------------
+CORE RULES (NON-NEGOTIABLE)
+--------------------------------------------------
+
+- NEVER assume column meaning
+- NEVER infer schema
+- Data must be explicitly mapped before use
+- Invalid data MUST be rejected or flagged
+
+--------------------------------------------------
+SUPPORTED DATA SOURCES
+--------------------------------------------------
+
+- Excel / Google Sheets
+- CSV uploads
+- Supabase (Postgres)
+- POS APIs (Toast)
+- Accounting APIs (QuickBooks / Xero)
+
+--------------------------------------------------
+INGESTION PIPELINE
+--------------------------------------------------
+
+FOR each data source:
+
+  1. Detect file or API type
+  2. Extract raw data
+  3. Require schema mapping
+  4. Validate:
+     - Data types
+     - Required fields
+     - Value ranges
+  5. Normalize into internal format
+
+--------------------------------------------------
+SCHEMA MAPPING CONTRACT
+--------------------------------------------------
+
+Schema_Map:
+  source_field: internal_field
+  data_type: string | integer | float | timestamp
+  required: boolean
+  validation_rules: optional
+
+--------------------------------------------------
+ERROR HANDLING
+--------------------------------------------------
+
+IF schema mapping missing:
+  - Stop ingestion
+  - Log error
+  - Notify manager
+
+IF validation fails:
+  - Reject record
+  - Preserve raw data
+  - Flag issue
+
+--------------------------------------------------
+MASTER LIBRARY INTEGRATION
+--------------------------------------------------
+
+IF wine does not exist in master_wine_library:
+  - Create new master record
+
+IF wine exists:
+  - Link to restaurant_inventory
+
+DO NOT delete records.
+Use soft deactivation only.
+
+--------------------------------------------------
+EXTENSIBILITY GUARANTEE
+--------------------------------------------------
+
+New data sources may be added ONLY if:
+- Schema is declared
+- Validation rules are defined
+- Manager approves onboarding
+
+
+This is the right question at the right time. What you’re describing is not just “where to store data”, it’s how to design a data hierarchy that supports:
+a global, Vivino-scale wine intelligence graph
+restaurant-specific customization
+LLM + ML analytics
+beautiful customer-facing views
+hard guarantees against data corruption
+I’ll answer in 4 layers, from best storage choices → why → how to architect it → how it becomes “Amazon-like”.
+TL;DR (Executive Answer)
+Use a hybrid architecture:
+Purpose	Best Tool
+System of Record (truth)	Supabase (Postgres)
+Semantic understanding & recommendations	Supabase Vector
+Analytics & aggregation	Postgres + Materialized Views
+Human-friendly exports	Excel / CSV / PDF (derived only)
+Customer-facing visuals	Read-only API + UI layer
+❌ Do NOT use Excel / CSV / PDF as primary storage
+✅ Use them as outputs and ingestion formats only
+1️⃣ THE CORRECT DATA PHILOSOPHY (CRITICAL)
+Golden Rule
+One source of truth. Many views. Never the opposite.
+Databases store truth
+Files store representations
+UI stores aesthetic projections
+LLMs store understanding, not facts
+2️⃣ WHAT EACH OPTION IS GOOD / BAD FOR
+❌ Excel / CSV / Numbers
+Good for:
+Ingestion
+Human edits
+Ad-hoc analysis
+Bad for:
+Concurrency
+History
+Referential integrity
+Scaling
+Global intelligence graph
+🚫 Never use as primary storage.
+❌ PDF
+Good for:
+Final reports
+Tax/audit compliance
+🚫 Not queryable, not mutable.
+✅ Supabase (Postgres) — System of Record
+This is your backbone.
+Why it’s ideal:
+Relational integrity
+Foreign keys (Master Wine → Restaurants)
+Row-level security
+Soft deletes
+Audit trails
+Time-series support
+Multi-tenant by design
+This stores:
+Every wine on earth (structured)
+Every restaurant’s usage
+Every sale
+Every negotiation
+Every inventory state
+✅ Supabase Vector — Semantic Intelligence
+This is how you become Vivino++.
+What vectors do (very important):
+Store meaning, not rows
+Enable:
+“Similar wines”
+“Customers who liked X also liked Y”
+Flavor-profile clustering
+Regional taste mapping
+AI Sommelier reasoning
+Vectors store embeddings of:
+Tasting notes
+Reviews
+Flavor descriptors
+Sales context summaries
+Vectors ≠ database replacement
+Vectors = intelligence overlay
+3️⃣ THE CORRECT GLOBAL ARCHITECTURE (THIS IS THE KEY)
+🧠 LAYERED DATA ARCHITECTURE
+┌──────────────────────────────────────┐
+│        CUSTOMER VIEW (UI)             │
+│  - Aesthetic wine list                │
+│  - Restaurant-specific                │
+│  - No raw data exposed                │
+└──────────────────────────────────────┘
+                ▲
+                │ (Read-only API)
+┌──────────────────────────────────────┐
+│        PRESENTATION LAYER             │
+│  - Aggregated views                   │
+│  - Pre-calculated metrics             │
+│  - Cached responses                   │
+└──────────────────────────────────────┘
+                ▲
+                │
+┌──────────────────────────────────────┐
+│        ANALYTICS & LOGIC              │
+│  - Sales velocity                     │
+│  - Trend detection                    │
+│  - Margin analysis                    │
+│  - Materialized views                 │
+└──────────────────────────────────────┘
+                ▲
+                │
+┌──────────────────────────────────────┐
+│        SYSTEM OF RECORD               │
+│  Supabase (Postgres)                  │
+│  - master_wine_library                │
+│  - restaurant_inventory               │
+│  - sales_events                       │
+│  - negotiations                       │
+└──────────────────────────────────────┘
+                ▲
+                │
+┌──────────────────────────────────────┐
+│        SEMANTIC INTELLIGENCE          │
+│  Supabase Vector                      │
+│  - Flavor embeddings                  │
+│  - Taste similarity                   │
+│  - Recommendation space               │
+└──────────────────────────────────────┘
+4️⃣ HOW YOU GET “PROGRAMMER VIEW” VS “CUSTOMER VIEW”
+Programmer View (Full Data)
+Raw tables
+Full schemas
+Foreign keys
+Logs
+Audit trails
+Debuggable
+Example
+SELECT *
+FROM sales_events
+WHERE wine_id = 'abc123';
+Customer View (Aesthetic & Simple)
+Never query raw tables directly.
+Instead:
+Create curated read-only views
+Pre-compute metrics
+Hide complexity
+Example
+CREATE VIEW restaurant_wine_menu_view AS
+SELECT
+  wine_name,
+  vintage,
+  region,
+  tasting_summary,
+  price,
+  availability_status
+FROM restaurant_inventory
+JOIN master_wine_library
+WHERE is_active = true;
+UI consumes this — nothing else.
+5️⃣ HOW THIS BECOMES “VIVINO + AMAZON”
+Phase 1 — Global Wine Library
+One canonical wine entry
+Linked to many restaurants
+Sales tracked anonymously
+Phase 2 — Pattern Learning
+Which wines sell where
+Which flavors move fastest
+Which price points win
+Phase 3 — Autonomous Intelligence
+Predict what a restaurant should carry
+Suggest replacements
+Optimize menus
+Phase 4 — Warehouse Mentality
+Suppliers become fulfillment nodes
+Restaurants become endpoints
+AI becomes the broker
+Managers only answer:
+Yes / No / Price / Quantity
+6️⃣ FINAL RECOMMENDATION (NON-NEGOTIABLE)
+✅ Use:
+Supabase Postgres → truth
+Supabase Vector → meaning
+Materialized views → speed
+APIs → isolation
+Excel/CSV/PDF → input/output only
+❌ Do NOT:
+Store truth in files
+Let UI touch raw tables
+Let LLMs write without validation
+
+Also need a part where the manager can manually edit tables and inventory and it should be synced with the system.
+Also a calendar where we can see the upcoming important dates where we can add events and reminders.
+Also add a menu analyzer camera -> scan/photo of menu and it will be analyzed and it will be added to the database.
+the layout can be like hockeystack.com menu page.
+Also add an AI agent to analyze software and constantly improve them.
+Also let's use the benefits of Toast AI, what can we add to improve?
+
+
+Just ideas:
+1. The Core Infrastructure (The "Nervous System")
+A. Software & AI Stack
+The Brain: Python (FastAPI) as the central logic hub.
+The Vision: YOLOv8 (Label/QR Recognition) + Tesseract (OCR for Invoices).
+The Comms: Twilio (SMS/Voice), WhatsApp Business API, and Gmail SMTP.
+The Intelligence: OpenAI GPT-4o (Negotiation, Summarization, and Trend Analysis).
+The Storage: Bi-directional Excel (Google Sheets API) for live inventory and financial logs.
+B. Database Schema (Excel Sheets)
+Master Wine DB: Metadata (Vintage, Varietal, Tasting Notes).
+Live Inventory: Live Stock, In-Transit Qty, Thresholds, Validation Max (Fat-finger check), and "Last Alerted" level.
+Provider Directory: Contact info, Primary vs. Alternative hierarchy, and Reliability Heatmap.
+Financials: Burn rate, COGS, and Manual Purchase log.
+
+2. Operational Workflows (Deep-Dive)
+Workflow I: Inbound Logistics & Visual Tracking
+Bottle Arrival: Camera identifies the label via YOLOv8.
+State Check: System checks if an order was "In-Transit."
+OCR Verification: Tesseract scans the physical invoice. It compares the Invoice Price vs. the AI-Negotiated Price.
+The "Piece" Conversion: System prompts for "Cases Received." If 2 is entered, system calculates 2 * 12 = 24 bottles.
+Manual Confirmation: Stock does not increase until the manager taps [Received]. This prevents "Ghost Inventory."
+Workflow II: Real-Time Depletion & LIFO Notifications
+Sale Trigger: POS records a sale (e.g., 4 bottles of Malbec).
+Buffer Logic (30-min Window): buffer_manager.py collects all sales. It ignores intermediate stock drops (3, 2, 1).
+LIFO Evaluation: At the 30-minute mark, it identifies the current state.
+Notification Cascade: * If Stock goes <2,1,0, a Single Alert is sent via SMS/WhatsApp.
+Shadow Stock Check: If Stock <0, trigger Inequality Alert (e.g., "Sold 2, but DB says 0. Did you buy more manually?").
+One-Tap Correction: Manager taps [+2 Cases] on their phone to resolve the inequality instantly.
+Workflow III: Autonomous Procurement & Negotiation
+Threshold Hit: Stock <3 and no order is In-Transit.
+Primary Contact: AI pings the Primary Provider via WhatsApp/Voice.
+Alternative Cascade: If Primary is "Out of Stock" or price >10% higher than usual, AI pings the Alternative Provider.
+The Summary: AI sends the manager a brief: "Provider X has 2 cases for $300. Accept?"
+Vintage Substitution: If the year is different, AI adds a specific flag: "2019 is out; they offer 2020. OK?"
+Workflow IV: Human-Automation Synchronization
+Bi-Directional Watcher: If the manager opens/edits the Excel file, the sync_engine.py detects the lock.
+"Yield to Human" Protocol: Automation pauses all writes for 30 seconds.
+Conflict Notification: Manager gets a text: "Human edit detected; automation paused."
+Fat-Finger Validation: If a manager enters a value >Validation_Max (e.g., 240 instead of 24 bottles), the system blocks the update and asks: "240 bottles added to Wine #2. Do you confirm?"
+
+3. Reporting & Strategy (The "Executive Layer")
+The Daily/Weekly Executive Digest (Gmail)
+Live Stock Audit: List of all remaining bottles + "Critical" status items.
+Financial Recap: Weekly spend vs. sales to ensure margin health.
+Sales-to-Likeliness Ratio: A chart showing which wines are over-performing relative to their menu presence.
+The "Loved Wine" Feedback: AI identifies the bottle with the highest velocity increase.
+Reminder Digest: Any wine that is "Still Low" but hasn't been ordered is summarized here (to avoid SMS spam).
+
+4. Recommendations & Safety Ratings
+Feature
+Importance
+Risk Mitigated
+Manual Delivery Confirmation
+MUST
+Prevents financial "hallucinations."
+Yield-to-Human Protocol
+MUST
+Prevents data corruption during manual edits.
+LIFO Buffer
+MUST
+Prevents notification fatigue/spam during busy hours.
+Shadow Stock Correction
+MUST
+Resolves contradictions between physical and digital stock.
+One-Tap Correction
+MUST
+Lowers the barrier for manager data entry during rushes.
+Alternative Provider Cascade
+MID
+Ensures stock continuity when suppliers fail.
+Vintage Substitution Logic
+MID
+Prevents ordering the "wrong" wine for the menu.
+
+
+
+
+The Final Full Blueprint (Complete)
+I. Main Operations (The Engine)
+Software Stack: FastAPI, YOLOv8, OpenAI GPT-4o, Twilio, QuickBooks/Xero API.
+The Sentry: Bi-directional Excel watcher with 30s "Yield-to-Human" pause.
+The Buffer: 30m LIFO-buffered POS sync to prevent notification spam.
+The Strict Negotiator: Axiom-based logic (Persistence on vintages, Primary-first rule).
+II. Integrity & Security (The Auditors)
+Security Auditor (New): Monthly variance reports identifying Shrinkage/Theft.
+Shadow Stock Sync: Detects manual purchases and triggers One-Tap Corrections.
+Fat-Finger Guard: Blocks improbable manual entries (e.g., 240 vs 24 bottles).
+Manual Delivery Confirmation: Physical [Received] tap required to move stock to "Live."
+III. Strategic Features (Intelligence)
+The Social CRM: Tracks provider birthdays and events for natural, human-like mimicry.
+The Policy Enforcer: 20 Redline Axioms that proofread AI messages before they are sent.
+Event Scaling: Predictive ordering based on the restaurant's event calendar.
+Digital Menu Sync: Live-Menu Webhook that automatically hides wines from the guest QR menu when stock hits 0.
+IV. Executive Reporting & Back-Office
+Accounting Link (New): Auto-syncs invoices and auto-calculates Excise/Sales Tax.
+Audit Memos: Full transcripts and keynotes of every AI-Provider negotiation.
+Sales-to-Likeliness Ratio: Charts comparing sales velocity vs. menu presence.
+Executive Digest (Gmail): Live stock, Finance snapshots, and Variance alerts.
+
+
+
+
+
+
+
+
+
+
+
+2. Extra Features: The Intelligence Layer
+These features transform the system from a simple tracker into a predictive business tool.
+Advanced Data & Logistics
+Predictive Lead Times: A tracking module that logs how many days each provider takes to deliver (from "Accepted" to "Stocked" status), adjusting order suggestions based on delivery lag.
+The Wine Encyclopedia: A comprehensive dataset linking your inventory to tasting notes (tannins, acidity, grape profile). This can be used to suggest "similar flavor profile" alternatives if a specific bottle is out of stock.
+Financial Dashboard: A dedicated UI displaying:
+Burn Rate: How fast capital is being converted to stock.
+COGS (Cost of Goods Sold): Real-time tracking of wine margins.
+AI Communication Suite
+Voice Synthesis (Caller AI): Using Text-to-Speech (TTS) and Speech-to-Text (STT) for automated phone calls to traditional providers who don't use messaging apps.
+Recursive Reordering: If a manager sets a "Persistent Need" flag, the AI will automatically retry different providers or increase frequency if a stock threshold isn't met.
+Performance Analytics
+The Sales-to-Taste Ratio: A specialized page that correlates wine characteristics (e.g., "High Oak Chardonnay") with sales volume to identify local palate trends and optimize future menus.
+
+3. Recommendations: Optimization & Scaling
+To ensure this system is robust and user-friendly, I recommend the following additions:
+Feature
+Reason
+Fail-Safe Manual Override
+AI can misinterpret "Out of Stock" as "Price Change." Always include a "Human-in-the-loop" button for every order.
+Waste/Breakage Log
+If a bottle breaks or is corked, the waiter needs a simple UI to "void" the stock so the database stays accurate.
+Dynamic Pricing Suggestion
+If the provider raises prices, the system should suggest a new "By the Glass" price for the restaurant to maintain margins.
+OCR for Invoices
+Use the Image Analyzer to scan the paper delivery invoice to verify that the price charged matches the price negotiated by the AI.
+
+E-Tablolar'a aktar
+
+Technical Architecture Overview
+To build this, you will likely need a stack similar to this:
+Backend: Python (FastAPI or Flask) — best for AI/ML integration.
+Database: PostgreSQL for structured inventory; Redis for real-time POS polling.
+AI Models: GPT-4o or Claude 3.5 Sonnet (for negotiation/summaries) and YOLOv8 (for label identification).
+Reports: Integration with the Google Sheets API for the Excel-based daily logs.
+
+
+
+
+MASTER LIBRARY
+To transition from a single list to a "Big Library" vs. "Small Library" structure, you are moving toward a multi-tenant or catalog-based architecture. This is the professional way to manage a "Master List" of wines while allowing individual restaurants to have their own unique menus.
+The "State of the Art" way to do this in Supabase is to use a Relational Link rather than just an "active" column.
+
+1. The Database Architecture (The "State of the Art" Way)
+Instead of one big table where you mark things "active," you should have two tables:
+Table A: master_wine_library (The Global Catalog)
+Contains every wine possible (Producer, Region, Vintage, Grapes).
+This is your "Single Source of Truth."
+Table B: restaurant_inventory (The Local Menu)
+Columns: restaurant_id, master_wine_id (Foreign Key), is_active (Boolean), custom_price, stock_level.
+This allows two different restaurants to carry the same wine but at different prices or stock levels.
+
+2. How to Adjust Your n8n Workflow
+With this new structure, your workflow becomes more powerful because you no longer need to re-type the wine's name or region every time.
+Step 1: The "Get Many" Move
+You now need two "Get Many" steps:
+Get Many from master_wine_library: To see if the wine exists globally.
+Get Many from restaurant_inventory: To see if this specific restaurant already has it on their menu.
+Step 2: The Logic Split
+Your If Node now makes two decisions:
+Decision 1: "Is this wine in the Master Library?"
+If No: Use the Create command on the master_wine_library table first.
+Decision 2: "Is this wine linked to this restaurant?"
+If Yes: Use the Update command to change stock_level or set is_active = true.
+If No: Use the Create command on the restaurant_inventory table to link the Master ID to the Restaurant ID.
+
+3. Managing the "Active" State
+Using an active column (Boolean: True/False) is excellent for performance. To make it "State of the Art":
+The "Sync-to-Inactive" Logic: If a wine is missing from the incoming Toast file but exists in your Supabase restaurant_inventory, your workflow should use the Update command to set is_active = false instead of using the Deletecommand.
+Why? Deleting removes history. Setting it to "Inactive" keeps your sales data intact while hiding the wine from the live menu.
+The "Partial Update" Move: Use your Custom API Call to perform a "Soft Delete."
+JSON Body: {"is_active": false, "stock_level": 0}.
+
+4. Final Blueprint for "Big Library" Structure
+Step
+Node
+Task
+1
+Code Node
+Clean the incoming Toast wine data.
+2
+Supabase (Get Many)
+Fetch the Master Library.
+3
+Merge + If
+Match by ID. If not found, Create in Master Library.
+4
+Merge + If
+Match Master ID against Restaurant Inventory.
+5
+Supabase (Update)
+If matched, update stock and set active = true.
+6
+Supabase (Create)
+If not matched, create new link between Restaurant and Master Wine.
+
+
+
+
+FUTURE USE: 
+Add E2E tests (Playwright for frontend)
+Create Storybook (Component documentation)
+Create React hooks package (useInventory, useOrders, useWines)
+
+
+
+12/01/2026
+
+- Change Shadow to Ordered Stock
+- Minimum to Par
+- Toast API - staff consumption distinction
+- Orders.tsx -> create order -> provider selection
+- Combination -> 10 kasa olursa su para, 20 olursa su
+- Kasa sayisi belli olmali -> orders.tsx
+- Family plan -> ayni portfolyo altinda 5 adet wine eklersen -> discounted
+- Some vendors can have specific time limits for ordering -> every vendor has cutoff time -> time limit for ordering -> notifcations+ orders
+- Only app purchases for some vendors
+- Invoice scanning -> Comparison with ordered items
+- Private seller -> Auction based ordering
+- Asking for 20$ wines -> 
+- Digital check is reuqired
+- Total cost -> purchaseed wines table / how much sold -> profit marrgin
+- Process -> Start monthly inventory -> export all with -> INVENTORY , PURCHASED , SOLD , PROFIT MARGIN(DIFF)
+
+
+Future Phase:
+- personal assistant -> to see available timelines.  -> google claendar type API -> checking events
+
+
+Call Receiver AI -> personal assitant for manager -> directly summarizes calls, texts and etc. -> creates notifications and actions.
+
+
+find a place for recurring gmail configuration. -> ex: calendar create event: add extension there.
+
+- Wine agent will be a widget chatbot, that will also do quick tasks, and become a guide while people learn the product.
+
+
+Pillar C: The Guest OS (CRM)
+
+You are tracking bottles, but not the people drinking them.
+
+What you lack: Reservation management, Guest Profiles, and Feedback handling.
+
+The "State of the Art" Feature:
+
+Auto-Marketing: The AI notices "John" hasn't visited in 90 days but loves Pinot Noir. It automatically texts him: "Hey John, we just got a case of that 2018 Pinot you like. Want a table for Friday?"
+
+New Agent Needed: The Host Agent (Ingests Guest History → Outputs Reservations & Marketing SMS).
+
+
+full liquid conversions per bottle, some bottles can have different conversions. shots, 750 ml, specific alcohols have specifc liquid validation_rules
+
+- Create an operation plan for day 1 users. -> can be first timers page for full integration of wines and so on.
+
+- Test onboarding for new restaurants as we scan for new menus.
+
+- Create a system to detect changes across concrete fact columns in restaurants to keep accurate like (year 2018-> correct restaurant put 2019)
+
+**********########HANDS-FREE VOICE AGENT########################FUTURE PHASE PHASE 1#######################################################*******
+🚀 MASTER PROMPT: The "Hands-Free" Voice Agent
+Context: We are adding a "Proactive" Voice Command layer to the WineOps Beverage OS. Goal: Replace manual inventory corrections (spillage/transfers) with a "Push-to-Talk" voice interface for bar staff.
+
+1. The Core Logic: "Intent Extraction"
+The system must listen to a raw audio transcript and extract one of three specific SQL intents using an LLM (Function Calling).
+
+The 3 Supported Commands:
+
+Batching: "Used [Qty] bottles of [Item] for the [Batch Name] batch."
+
+Action: Deduct bottles, create "Production Event" log.
+
+Transfer: "Moving [Qty] bottles of [Item] to [Location]."
+
+Action: Update bin_location or move stock between location IDs.
+
+Spillage/Waste: "Dropped a bottle of [Item]." or "Spilled [Qty] shots of [Item]."
+
+Action: Deduct stock with reason='WASTE'.
+
+2. Technical Requirements
+Frontend (React):
+
+Create a "Big Red Button" (Push-to-Talk) component.
+
+Must work on Mobile/Tablet touch events (onTouchStart, onTouchEnd).
+
+Visual Feedback: Show a "Listening..." waveform or pulse animation when held.
+
+Audio Handling: Record blob, convert to WAV/WebM, and send to Backend API.
+
+Backend (Python/FastAPI):
+
+Endpoint: POST /api/voice/command.
+
+Step 1: Transcribe audio using OpenAI Whisper (or efficient equivalent).
+
+Step 2: Pass transcript to GPT-4o (or Gemini) with specific tools definitions (Pydantic models) to extract structural data (Item SKU, Qty, Intent).
+
+Step 3: Execute the resulting SQL operation in Supabase.
+
+Step 4: Return a success message text (e.g., "Confirmed. Removed 2 bottles of Titos.") for the Frontend to display or speak back (Text-to-Speech).
+
+3. Edge Case Handling (Strict Rules)
+Ambiguity: If the user says "Used Vodka" (without specifying which one), the AI must return a NEED_CLARIFICATION error, triggering the UI to ask: "Which Vodka? Titos or Grey Goose?"
+
+Noise: If the audio is unintelligible (bar noise), return a distinct error code so the UI can prompt the user to "Try Again."
+
+Security: Ensure the user has permission to delete stock before executing "Spillage" commands.
+
+4. Deliverables
+Please generate:
+
+The Pydantic Models (schemas.py) for the 3 tools (LogBatch, LogTransfer, LogWaste).
+
+The Backend Endpoint (voice_agent.py) handling the Transcription → Extraction → SQL pipeline.
+
+The Frontend Component (VoiceTrigger.tsx) logic for handling the Push-to-Talk recording state.
+
+Constraint: Focus on low latency. The response to the user must be as fast as possible.
+
+
+
+
+** Scenarios:
+let's mimic the realtime week demo -> Monday: 9. am {report from past week} 12 pm{order delivery -> invoice checking->"SKU is 2019 but they sent a 2020, do you want to update that?", "An order has been delivered wrong-ordered 2021 red and got 2021 white"} 2 pm {inventory count}+ {inventory location} -> {inequality found-> manager is notified "[wine1] has been sold 2 bottles but we are down 3."}
+4 pm {low stock alert -> one tap action to order} 5 pm {order request -> order approval} until 1 am. while that time Twe're pulling data from Toast API to our supabase and updating the stocks in our website. Trigerring one tap messages or emails if any low stock happens. Sales data from Toast API data and the inventory works simultaneously. 
+
+
+
+
+
+
+
+
+
+
+######################################################## Blueprint 
+
+📋 Master Prompt: WineOps AI (Beverage-Only System)
+
+Role: You are the Lead Backend Architect for "WineOps," a vertical SaaS replacing manual inventory for restaurants. Objective: Build the Foundation Layer (Database & Ingestion) for a Beverage-Only Operating System.
+
+1. The Core Philosophy (Strict Constraints)
+
+"Liquids are Fluid": Inventory is not just integers (1, 2, 3). It is fractional (2.4 bottles). We must track volume, not just units.
+
+"Silence the Noise": The POS sends data for Burgers and Salads. The Ingestion Agent must ruthlessly filter this out.
+
+"Agents use SQL, Humans use UI": The database is the only source of truth. Agents do not hold state in memory; they read/write to Supabase.
+
+2. The Tech Stack & Architecture
+
+Database: Supabase (PostgreSQL 15+).
+
+Backend: Python 3.11+ (FastAPI for endpoints, Standalone Scripts for Agents).
+
+Queue: Redis (Aiven or local) for async message passing.
+
+ORM: supabase-py (direct client) or SQLAlchemy (if strictly needed, but prefer direct client for simplicity).
+
+3. Task A: The "Liquid-Aware" Database Schema (SQL)
+
+Generate the init.sql file. It must include these specific tables with these exact considerations:
+
+Table 1: master_beverage_library (Global Data)
+
+Purpose: The "Wikipedia" of drinks. Shared across all restaurants.
+
+Columns: id (UUID), producer (e.g., "Caymus"), label_name (e.g., "Cabernet Sauvignon"), vintage (INT, nullable for spirits), region, sub_region, grape_varietal, alcohol_percentage, beverage_type (ENUM: 'WINE', 'SPIRIT', 'BEER', 'NON-ALC'), tasting_notes (JSONB), standard_bottle_ml (INT, default 750).
+
+Table 2: restaurant_inventory (Local Stock)
+
+Purpose: What a specific client actually owns.
+
+Columns:
+
+id, restaurant_id, master_beverage_id (FK).
+
+sku_code (The barcode string).
+
+total_units_on_hand (FLOAT - e.g., 4.5 bottles).
+
+unit_type (ENUM: 'BOTTLE', 'CASE', 'KEG').
+
+bin_location (VARCHAR - e.g., "Shelf A2").
+
+supplier_id (FK), last_cost_per_unit (DECIMAL).
+
+par_level (INT - when to reorder).
+
+is_active (BOOL).
+
+Table 3: unit_conversions (The Math Layer)
+
+Purpose: To translate purchasing units to pouring units.
+
+Columns:
+
+master_beverage_id (FK).
+
+purchase_unit (e.g., 'CASE_12').
+
+inventory_unit (e.g., 'BOTTLE_750ML').
+
+pour_unit (e.g., 'SHOT_1.5OZ').
+
+factor (FLOAT - e.g., 12.0 for Case->Bottle).
+
+Table 4: sales_log (The Raw Stream)
+
+Purpose: Immutable log of every drink poured.
+
+Columns: transaction_id, pos_timestamp, raw_item_name, matched_inventory_id (FK), qty_sold, price_sold.
+
+4. Task B: The Agent Communication Protocol (Python Models)
+
+Create a file app/core/schemas.py using Pydantic. Define the strict JSON structure for Redis messages.
+
+IncomingPOSEvent:
+
+source: Literal["TOAST", "SQUARE"]
+
+raw_data: Dict
+
+timestamp: datetime
+
+StandardizedSale:
+
+sku: str
+
+qty: float
+
+detected_type: str (Wine/Spirit/Beer)
+
+confidence_score: float (0.0 to 1.0 - how sure is the agent this is a drink?)
+
+5. Task C: The "Ingestion Agent" (Python Logic)
+
+Create app/agents/ingestion.py. This is the system's "Ears."
+
+Functionality:
+
+Connect to Redis channel pos_stream.
+
+The Filter Logic:
+
+Ignore items where family_group (from Toast data) is "FOOD", "MERCH", or "OPEN_FOOD".
+
+Only pass items where family_group is "LIQUOR", "WINE", "BEER".
+
+The Matching Logic (Mockup):
+
+Check if item.sku exists in restaurant_inventory.
+
+If YES: Emit StandardizedSale event.
+
+If NO: Emit UnknownItem event (which triggers the Sommelier Agent later).
+
+Batching: Use a simple list buffer to write to Supabase every 10 items or 30 seconds (whichever comes first) to save API calls.
+
+6. Implementation Notes & Instructions
+
+File Structure:
+
+Plaintext
+/wineops-backend
+  /app
+    /agents
+      ingestion.py
+      sommelier.py
+    /core
+      database.py (Supabase connection)
+      schemas.py (Pydantic models)
+      config.py (Env vars)
+  /sql
+    init.sql
+  main.py (FastAPI entry point)
+Code Style: Type-hint everything. Use logger instead of print. Handle Redis connection failures gracefully.
+
+Action: Please generate the init.sql file, the schemas.py file, and the ingestion.py script.
+
+
+
+
+--------------------------------------------------
+FUTURE INNOVATION ROADMAP (Added 21st January 2026)
+--------------------------------------------------
+
+This section contains strategic feature ideas organized by category.
+These represent the path to becoming a "self-driving wine program."
+
+==================================================
+CATEGORY A: PREDICTIVE INTELLIGENCE
+==================================================
+
+1. "Crystal Ball" Demand Forecasting
+   What: ML model that predicts wine demand before it happens
+   Inputs:
+   - Weather data (heatwave → rosé spike)
+   - Local events (concerts, sports, conventions)
+   - Holidays and seasonal patterns
+   - Historical sales velocity
+   - Day of week / time of year
+   Output: "Order 20% more rosé - heatwave next week"
+   Integration: Auto-populates procurement suggestions
+   Why Brilliant: No competitor combines weather + events + wine demand
+
+2. "Wine Arbitrage" Price Intelligence
+   What: Real-time price comparison across all providers
+   Features:
+   - Scrapes/integrates provider catalogs
+   - Alerts when price drops below threshold
+   - Suggests bulk buys for maximum savings
+   - Tracks price trends over time
+   - Identifies seasonal pricing patterns
+   Output: "Opus One is $5 cheaper at Provider B this week"
+   Why Brilliant: Turns procurement into a profit center
+
+3. "Palate Drift" Trend Detector
+   What: Identifies changing customer preferences over time
+   Analysis:
+   - Sales velocity changes by varietal
+   - Emerging regions gaining popularity
+   - Price point migration
+   - Seasonal preference shifts
+   Output: "Customers shifting from Cab to Pinot - consider menu update"
+   Why Brilliant: Data-driven menu curation, not gut feeling
+
+4. "Velocity Predictor" Stock Optimization
+   What: Predicts optimal stock levels per SKU
+   Factors:
+   - Historical sell-through rate
+   - Lead time from providers
+   - Storage costs
+   - Opportunity cost of stockouts
+   Output: "Reduce Merlot par from 24 to 18 - saves $400/month in carrying cost"
+   Why Brilliant: Capital efficiency optimization
+
+==================================================
+CATEGORY B: AUTOMATION FRONTIERS
+==================================================
+
+5. "Auto-Pilot" Mode for Repeat Orders
+   What: Fully autonomous ordering for trusted patterns
+   Rules Engine:
+   - "Keep Opus One at 12 bottles"
+   - "Order Dom Pérignon every 2 weeks"
+   - "Auto-approve orders under $500"
+   Behavior: AI handles negotiate → approve → receive
+   Escalation: Only surfaces exceptions
+   Audit: Full trail of all autonomous decisions
+   Why Brilliant: True hands-off operation
+
+6. "Ghost Inventory" Auto-Reconciliation
+   What: Continuous inventory verification without monthly counts
+   Methods:
+   - POS sales vs expected depletion
+   - Camera feeds for bottle movement (optional)
+   - Pattern detection for breakage/spillage
+   Output: Weekly "trust score" per SKU
+   Why Brilliant: Eliminates painful monthly inventory
+
+7. "Negotiation Playbook" Learning System
+   What: AI learns from successful negotiations
+   Learning:
+   - Records all provider conversations
+   - Identifies winning tactics per provider
+   - Builds provider "personality" profiles
+   - Learns floor prices over time
+   Output: "Provider X responds well to volume leverage - suggest 10% larger order"
+   Why Brilliant: Gets better at negotiation automatically
+
+8. "Smart Receive" Delivery Verification
+   What: AI-powered delivery checking
+   Process:
+   - Scan invoice with OCR
+   - Compare to order
+   - Flag discrepancies
+   - Auto-adjust for substitutions
+   Output: "Invoice shows 2019 vintage but order was 2020 - approve substitution?"
+   Why Brilliant: Catches errors that cost money
+
+==================================================
+CATEGORY C: GUEST EXPERIENCE
+==================================================
+
+9. "Somm in Your Pocket" Guest App
+   What: B2C companion to the B2B system
+   Features:
+   - Guests scan wine label → see tasting notes
+   - AI recommends based on preferences
+   - "Save to favorites" syncs with restaurant
+   - Reservation + wine pre-selection
+   Output: Guest arrives with wine already chilled
+   Why Brilliant: Creates loyalty + data flywheel
+
+10. "Virtual Tasting Room"
+    What: AI-guided wine discovery experience
+    Flow:
+    - Guest describes preferences in natural language
+    - AI curates 3-wine flight
+    - Explains each selection's story
+    - Learns preferences for future visits
+    Output: Personalized tasting experience
+    Why Brilliant: Upsells premium wines intelligently
+
+11. "Wine Memory" CRM
+    What: Remember every guest's wine preferences
+    Tracking:
+    - What each guest ordered
+    - Special occasions (anniversaries, birthdays)
+    - Taste preferences learned over time
+    - Spending patterns
+    Automation: "John loves Pinot - he hasn't visited in 60 days"
+    Output: Trigger personalized marketing
+    Why Brilliant: Guest OS from Blueprint Pillar C
+
+12. "Table-Side Sommelier" AR Experience
+    What: Augmented reality wine exploration
+    Features:
+    - Point phone at wine list
+    - See ratings, tasting notes, pairings
+    - AI recommendations overlay
+    - One-tap ordering
+    Why Brilliant: Modernizes the wine experience
+
+==================================================
+CATEGORY D: OPERATIONAL EXCELLENCE
+==================================================
+
+13. "Compliance Autopilot"
+    What: Automatic regulatory compliance
+    Tracking:
+    - Excise tax obligations
+    - Sales tax by jurisdiction
+    - ABC reporting requirements
+    - Inventory reporting
+    Automation:
+    - Generate required reports
+    - Alert before deadlines
+    - Maintain audit-ready records
+    Why Brilliant: Removes compliance burden completely
+
+14. "Shrinkage Detective"
+    What: AI-powered loss prevention
+    Detection:
+    - Unusual depletion patterns
+    - Over-pouring analysis
+    - Staff schedule correlation
+    - Statistical anomaly flagging
+    Output: Evidence reports for investigation
+    Why Brilliant: Protects margins automatically
+
+15. "Staff Training Simulator"
+    What: AI-powered wine education
+    Features:
+    - Quizzes staff on wine knowledge
+    - Simulates customer questions
+    - Tracks certification progress
+    - Generates custom training plans
+    Gamification: Leaderboards, badges
+    Why Brilliant: Scales sommelier knowledge to all staff
+
+16. "Pour Cost Optimizer"
+    What: Real-time pour cost management
+    Analysis:
+    - Actual vs theoretical pour costs
+    - By-the-glass profitability
+    - Pricing recommendations
+    - Waste tracking
+    Output: "Increase Caymus BTG price by $2 - currently below target margin"
+    Why Brilliant: Directly impacts bottom line
+
+17. "Shift Planner" Integration
+    What: Wine expertise aligned with demand
+    Features:
+    - Match sommelier shifts to peak times
+    - Ensure coverage for VIP reservations
+    - Training schedule optimization
+    Why Brilliant: Right expertise at right time
+
+==================================================
+CATEGORY E: PLATFORM EVOLUTION
+==================================================
+
+18. "Wine Exchange" Marketplace
+    What: B2B marketplace for excess inventory
+    Features:
+    - List slow-moving wines
+    - Buy from other restaurants
+    - AI matches supply/demand
+    - Logistics coordination
+    - Price discovery
+    Why Brilliant: Creates network effect + new revenue
+
+19. "Provider Portal"
+    What: Self-service for suppliers
+    Features:
+    - Providers update pricing/availability
+    - Submit invoices digitally
+    - View order history
+    - Chat with your AI
+    - Performance dashboard
+    Why Brilliant: Reduces communication overhead 10x
+
+20. "Multi-Location Command Center"
+    What: Unified view for restaurant groups
+    Features:
+    - Compare performance across locations
+    - Transfer inventory between sites
+    - Centralized purchasing power
+    - Benchmark best practices
+    - Consolidated reporting
+    Why Brilliant: Essential for franchise scaling
+
+21. "White-Label API"
+    What: Let other systems connect to WineOps
+    Capabilities:
+    - Inventory sync
+    - Order management
+    - Price intelligence
+    - Wine recommendations
+    Use Case: Other restaurant tech can embed wine intelligence
+    Why Brilliant: Platform revenue stream
+
+22. "Wine Investment Tracker"
+    What: Track collectible wine as assets
+    Features:
+    - Market value tracking
+    - Optimal drinking window alerts
+    - Insurance valuation
+    - Cellar organization
+    Target: Fine dining with investment-grade inventory
+    Why Brilliant: New market segment
+
+==================================================
+CATEGORY F: COMMUNICATION INTELLIGENCE
+==================================================
+
+23. "Conversation Summarizer" Agent
+    What: Digest all communications into actionable insights
+    Analysis:
+    - Summarize provider email threads
+    - Extract commitments (price, quantity, date)
+    - Flag urgent items
+    - Create action items from conversations
+    Output: Daily digest of all communications
+    Why Brilliant: Nothing falls through the cracks
+
+24. "WhatsApp Business" Full Integration
+    What: Primary channel for provider communication
+    Features:
+    - WhatsApp Business API integration
+    - Message templates with variables
+    - Read receipts and delivery status
+    - Media sharing (invoices, labels)
+    - Provider preference (SMS vs WA vs Email)
+    Why Brilliant: Meet providers where they are
+
+25. "Phone Call Receiver" AI
+    What: 24/7 provider communication handling
+    Capabilities:
+    - Answer calls from providers
+    - Transcribe and summarize
+    - Extract key info (quotes, availability)
+    - Route urgent matters to manager
+    - Auto-respond to common queries
+    Why Brilliant: Never miss an important call
+
+26. "Proactive Outreach" Engine
+    What: AI initiates strategic communications
+    Triggers:
+    - Provider hasn't been contacted in 30 days
+    - New vintage release detected
+    - Price drop opportunity
+    - Relationship maintenance
+    Output: Draft personalized messages for approval
+    Why Brilliant: Maintains provider relationships automatically
+
+==================================================
+CATEGORY G: ADVANCED AI CAPABILITIES
+==================================================
+
+27. "In-House Wine LLM" (Fine-Tuned Model)
+    What: Domain-specific wine intelligence
+    Training Data:
+    - Wine Spectator reviews
+    - Vivino database
+    - Tasting note corpus
+    - Pairing knowledge base
+    Capabilities:
+    - Generates tasting notes
+    - Understands wine terminology perfectly
+    - Predicts pairing suggestions
+    - Faster/cheaper than GPT-4 for wine tasks
+    Why Brilliant: Competitive moat + cost savings
+
+28. "Voice Agent" Push-to-Talk (Blueprint Spec)
+    What: Hands-free operation for bar staff
+    Commands:
+    - "Spilled 2 shots of Titos"
+    - "Moving 3 bottles to cellar B"
+    - "Used 1 bottle for batch cocktail"
+    Flow: Whisper transcription → LLM intent → SQL execution
+    Why Brilliant: No hands required during service
+
+29. "Wine Pairing" Neural Network
+    What: AI that understands food-wine harmony
+    Training:
+    - Flavor compound databases
+    - Classic pairing rules
+    - Customer feedback data
+    Output: "For the braised short rib, recommend Barolo over Cab - higher success rate with your guests"
+    Why Brilliant: Elevates dining experience
+
+30. "Sentiment Analyzer" for Reviews
+    What: Monitor wine program perception
+    Sources:
+    - Yelp mentions
+    - Google reviews
+    - Social media
+    - Guest feedback forms
+    Output: "Wine list getting negative sentiment - 'overpriced' mentioned 5x this month"
+    Why Brilliant: Early warning for reputation issues
+
+--------------------------------------------------
+PRIORITY MATRIX FOR INNOVATION ROADMAP
+--------------------------------------------------
+
+| # | Feature | Impact | Effort | Priority |
+|---|---------|--------|--------|----------|
+| 5 | Auto-Pilot Mode | Very High | High | P1 |
+| 6 | Ghost Inventory | Very High | High | P1 |
+| 7 | Negotiation Playbook | High | Medium | P1 |
+| 13 | Compliance Autopilot | High | Medium | P1 |
+| 14 | Shrinkage Detective | High | Medium | P1 |
+| 1 | Crystal Ball Forecasting | Very High | High | P2 |
+| 2 | Wine Arbitrage | High | Medium | P2 |
+| 11 | Wine Memory CRM | Very High | Medium | P2 |
+| 23 | Conversation Summarizer | High | Low | P2 |
+| 24 | WhatsApp Integration | High | Medium | P2 |
+| 28 | Voice Agent | High | High | P2 |
+| 3 | Palate Drift Detector | Medium | Medium | P3 |
+| 9 | Guest App | High | High | P3 |
+| 18 | Wine Exchange | Very High | Very High | P3 |
+| 27 | In-House Wine LLM | Medium | Very High | P3 |
+
+--------------------------------------------------
+THE "WOW FACTOR" DIFFERENTIATORS
+--------------------------------------------------
+
+If WineOps implements these top 3, no competitor can match:
+
+1. "Crystal Ball" + "Auto-Pilot" = PREDICTIVE AUTONOMOUS ORDERING
+   - System predicts what you'll need
+   - Orders it automatically
+   - You just approve exceptions
+
+2. "Wine Memory" + "Somm in Pocket" = GUEST INTELLIGENCE FLYWHEEL
+   - Every guest interaction improves recommendations
+   - Personalization drives loyalty
+   - Data moat competitors can't replicate
+
+3. "Negotiation Playbook" + "Price Intelligence" = PROCUREMENT PROFIT CENTER
+   - AI gets better at negotiation over time
+   - Arbitrage opportunities surface automatically
+   - Procurement becomes a margin driver, not cost center
+
+The ultimate vision: A SELF-DRIVING WINE PROGRAM
+- Predicts demand → Orders autonomously → Receives intelligently
+- Remembers guests → Recommends perfectly → Drives loyalty
+- Learns negotiations → Optimizes pricing → Protects margins
+
+
+
+
+01/25/2026
+New Features:
+
+- disabling server(disable feature X for every restaurant occasion) -> settings-> disable/enable -> Ex: Disable inventory storage locations.
+
+- auto-layout 
+  -> wine classification to wine inventory. 
+  -> Ex: Messy restaurant with no inventory planning, it will auto-layout your inventory storage for you. 
+  -> Cell A: White wines Cell B: Red + some rose(similar taste notes with red)
+
+01/26/2026
+New Approach !!!! Important !!!!
+-Turning into self-evolving SaaS application
+  New Features:
+  - Self-evolution: AI agent that learns from the data and improves the system.
+  - Self-improvement: AI agent that improves the system.
+  - Self-optimization: AI agent that optimizes the system.
+  - Self-repair: AI agent that repairs the system.
+  - Self-maintenance: AI agent that maintains the system.
+  - Self-improvement: AI agent that improves the system.
+  - Self-optimization: AI agent that optimizes the system.
+  - Self-repair: AI agent that repairs the system.
+  - Self-maintenance: AI agent that maintains the system.
+
+New Feature:
+- Voice command agent that can be used to control the system. -> Caps lock voice command agent in web. -> ios and android command shortcuts for voice command agent.

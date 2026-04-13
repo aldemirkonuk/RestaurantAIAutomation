@@ -1,0 +1,30 @@
+# WineOps Invoice Scanner - YOLOv8 Dataset Configuration
+# 8-class model for detecting fields on wine invoices and delivery receipts.
+#
+# Annotation guidelines:
+#   - invoice_header: the top section with invoice number, date, vendor info.
+#   - line_item: a single wine line-item row.
+#   - wine_text: the wine name/description text within a line item.
+#   - quantity: the quantity number.
+#   - unit_price: the per-unit price text.
+#   - line_total: the total for that line item.
+#   - invoice_total: the grand-total area (including subtotal/tax/total).
+#   - vintage_text: vintage year text within a line item.
+#
+# Training target: mAP50 >= 0.85
+
+path: datasets/wine_invoices
+train: images/train
+val: images/val
+test: images/test
+
+nc: 8
+names:
+  0: invoice_header
+  1: line_item
+  2: wine_text
+  3: quantity
+  4: unit_price
+  5: line_total
+  6: invoice_total
+  7: vintage_text
