@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE_WITH_RAILWAY_API_GATEWAY_URL/api/:path*"
+      "destination": "https://wineopsapi-gateway-production.up.railway.app/api/:path*"
     }
   ]
 }
