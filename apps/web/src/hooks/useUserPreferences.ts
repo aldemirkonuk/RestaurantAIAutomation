@@ -1,0 +1,120 @@
+/**
+ * useUserPreferences Hook
+ *
+ * Fetches and updates user preferences stored as JSONB via the
+ * backend user preferences API (GET/PATCH /users/:userId/preferences).
+ * Falls back gracefully if the API is unavailable.
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '../lib/query-keys'
+import { apiClient } from '../services/api/client'
+import { useAuthStore } from '../stores'
+
+export interface UserPreferences {
+  providerFavorites?: string[]
+  providerNotes?: Record<string, { note: string; updatedAt: string }>
+  providerRatings?: Record<string, number>
+  wineFavorites?: string[]
+  removedWines?: string[]
+  templateFavorites?: string[]
+  templateDefaults?: Record<string, { templateId: string; templateName: string }>
+  reportsLayout?: unknown
+  dashboardBlocks?: unknown
+  [key: string]: unknown
+}
+
+function getUserId(): string | null {
+  const user = useAuthStore.getState().user
+  return user?.userId ?? null
+}
+
+async function fetchPreferences(userId: string): Promise<UserPreferences> {
+  const { data } = await apiClient.get<{ preferences: UserPreferences }>(
+    `/users/${userId}/preferences`,
+  )
+  return data?.preferences ?? {}
+}
+
+async function patchPreferences(
+  userId: string,
+  partial: Partial<UserPreferences>,
+): Promise<UserPreferences> {
+  const { data } = await apiClient.patch<{ preferences: UserPreferences }>(
+    `/users/${userId}/preferences`,
+    { preferences: partial },
+  )
+  return data?.preferences ?? {}
+}
+
+export function useUserPreferences() {
+  const userId = useAuthStore(s => s.user?.userId) ?? null
+  const queryClient = useQueryClient()
+
+  const query = useQuery<UserPreferences>({
+    queryKey: queryKeys.user.preferences(userId ?? ''),
+    queryFn: () => fetchPreferences(userId!),
+    enabled: !!userId,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    placeholderData: {} as UserPreferences,
+    retry: 1,
+  })
+
+  const mutation = useMutation<
+    UserPreferences,
+    Error,
+    Partial<UserPreferences>,
+    { previous: UserPreferences | undefined }
+  >({
+    mutationFn: (partial) => patchPreferences(userId!, partial),
+    onMutate: async (partial) => {
+      if (!userId) return { previous: undefined }
+
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.user.preferences(userId),
+      })
+
+      const previous = queryClient.getQueryData<UserPreferences>(
+        queryKeys.user.preferences(userId),
+      )
+
+      queryClient.setQueryData<UserPreferences>(
+        queryKeys.user.preferences(userId),
+        (old) => ({ ...old, ...partial }),
+      )
+
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous && userId) {
+        queryClient.setQueryData(
+          queryKeys.user.preferences(userId),
+          context.previous,
+        )
+      }
+    },
+    onSettled: () => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.user.preferences(userId),
+        })
+      }
+    },
+  })
+
+  const preferences: UserPreferences = query.data ?? ({} as UserPreferences)
+
+  const updatePreferences = (partial: Partial<UserPreferences>) => {
+    if (!userId) return
+    mutation.mutate(partial)
+  }
+
+  return {
+    preferences,
+    isLoading: query.isLoading,
+    error: query.error,
+    updatePreferences,
+    isUpdating: mutation.isPending,
+  }
+}

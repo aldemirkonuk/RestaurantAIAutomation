@@ -61,6 +61,7 @@ datasets/wine_menus_2class/
 
 # Merge / local backup files
 README.md.local-backup
+*.backup
 
 # Binary office docs (use markdown in repo instead)
 *.docx

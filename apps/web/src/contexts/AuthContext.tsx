@@ -148,14 +148,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const response = await api.get('/api/v1/auth/me')
-        setUser(response.data.user)
-        // Load studio roles after auth — non-blocking (studioRoles stays undefined until resolved)
-        api.get('/api/v1/studio/me/roles').then((r) => {
-          setUser(prev => prev ? { ...prev, studioRoles: r.data.roles ?? [] } : prev)
-        }).catch(() => {
-          // No studio roles endpoint yet — set to empty array so ProtectedRoute doesn't spinner forever
-          setUser(prev => prev ? { ...prev, studioRoles: [] } : prev)
-        })
+        // Extract studio roles from the JWT itself (app_metadata.roles) — avoids cross-service call
+        const token = localStorage.getItem('accessToken')
+        let studioRoles: ('developer' | 'certified_contributor' | 'review_admin')[] = []
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            studioRoles = payload?.app_metadata?.roles ?? []
+          } catch { /* malformed token — no studio roles */ }
+        }
+        setUser({ ...response.data.user, studioRoles })
       } catch (err) {
         console.error('Failed to load user:', err)
         // Clear invalid tokens
@@ -214,7 +216,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
 
       const userResponse = await api.get('/api/v1/auth/me')
-      setUser(userResponse.data.user)
+      let studioRoles: string[] = []
+      try {
+        const payload = JSON.parse(atob(accessToken.split('.')[1]))
+        studioRoles = payload?.app_metadata?.roles ?? []
+      } catch { /* malformed token */ }
+      setUser({ ...userResponse.data.user, studioRoles })
     } catch (err: any) {
       const message = err?.code === 'ERR_NETWORK' && !err?.response
         ? 'Cannot reach server. Start the API Gateway: cd apps/api-gateway && pnpm start:dev'

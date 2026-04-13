@@ -1,0 +1,25 @@
+{
+  "name": "WineOps AI",
+  "short_name": "WineOps",
+  "description": "AI-powered wine inventory & procurement automation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#7c2d12",
+  "orientation": "any",
+  "categories": ["business", "food"],
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

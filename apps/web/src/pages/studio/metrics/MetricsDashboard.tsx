@@ -1,8 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { MetricCard } from './MetricCard'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
 interface StudioMetrics {
   total_overrides: number
   pending_queue: number
@@ -23,7 +21,8 @@ interface StudioMetrics {
 async function fetchMetrics(): Promise<StudioMetrics> {
   const token = localStorage.getItem('accessToken')
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
-  const resp = await fetch(`${API_URL}/api/v1/studio/metrics`, { headers })
+  // Use relative URL — Vite proxy routes /api → FastAPI (port 8000)
+  const resp = await fetch('/api/v1/studio/metrics', { headers })
   if (!resp.ok) throw new Error('Failed to load studio metrics')
   return resp.json()
 }

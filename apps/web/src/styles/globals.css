@@ -1,0 +1,677 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   WineOps AI - Clean Design System
+   Inspired by Toast, Stripe, Linear
+   ============================================ */
+
+@layer base {
+  :root {
+    /* Background & Surface */
+    --background: 0 0% 98.5%;
+    --foreground: 222 47% 11%;
+
+    /* Card surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    /* Popover & Dropdown */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary brand (elegant burgundy) */
+    --primary: 344 79% 54%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary (subtle gray) */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    /* Muted elements */
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    /* Accent highlight */
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Destructive/Error */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & Inputs */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 222 47% 11%;
+
+    /* Border radius - generous curves */
+    --radius: 0.75rem;
+
+    /* Force consistent form control rendering in light mode */
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 0 0% 3%;
+    --foreground: 210 40% 96%;
+
+    --card: 0 0% 6%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 0 0% 6%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 344 79% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 0 0% 12%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 0 0% 12%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 210 40% 90%;
+
+    /* Force consistent form control rendering in dark mode */
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-slate-50 text-foreground font-sans;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  .dark body {
+    @apply bg-black text-slate-100;
+  }
+
+  /* Guardrails: prevent accidental global dimming */
+  html,
+  body,
+  #root {
+    opacity: 1 !important;
+    filter: none !important;
+    mix-blend-mode: normal !important;
+  }
+
+  /* Clean typography */
+  h1 {
+    @apply text-4xl font-bold tracking-tight text-slate-900;
+    letter-spacing: -0.025em;
+  }
+
+  h2 {
+    @apply text-2xl font-semibold tracking-tight text-slate-900;
+    letter-spacing: -0.02em;
+  }
+
+  h3 {
+    @apply text-xl font-semibold text-slate-800;
+  }
+
+  h4 {
+    @apply text-lg font-medium text-slate-800;
+  }
+
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4 {
+    @apply text-slate-100;
+  }
+
+  p {
+    @apply leading-relaxed text-slate-600;
+  }
+
+  .dark p {
+    @apply text-slate-300;
+  }
+
+  /* Dark theme overrides for common utility classes */
+  .dark .bg-white {
+    background-color: #0b0b0b !important;
+  }
+
+  .dark .bg-gray-50 {
+    background-color: #0b0b0b !important;
+  }
+
+  .dark .bg-gray-100 {
+    background-color: #111111 !important;
+  }
+
+  .dark .bg-gray-200 {
+    background-color: #1a1a1a !important;
+  }
+
+  .dark .text-gray-900,
+  .dark .text-gray-800,
+  .dark .text-gray-700 {
+    color: #f3f4f6 !important;
+  }
+
+  .dark .text-gray-600,
+  .dark .text-gray-500 {
+    color: #cbd5f5 !important;
+  }
+
+  .dark .border-gray-100,
+  .dark .border-gray-200,
+  .dark .border-gray-300 {
+    border-color: #1f1f1f !important;
+  }
+
+  /* Better focus states - High contrast for accessibility */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-wine-500 ring-offset-2 ring-offset-white;
+  }
+
+  .dark *:focus-visible {
+    @apply ring-wine-400 ring-offset-gray-900;
+  }
+
+  /* Button focus states */
+  button:focus-visible {
+    @apply ring-2 ring-wine-500 ring-offset-2;
+  }
+
+  .dark button:focus-visible {
+    @apply ring-wine-400 ring-offset-gray-900;
+  }
+
+  /* Input focus states */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    @apply outline-none ring-2 ring-wine-500 border-transparent;
+  }
+
+  .dark input:focus-visible,
+  .dark textarea:focus-visible,
+  .dark select:focus-visible {
+    @apply ring-wine-400;
+  }
+
+  /* Link focus states */
+  a:focus-visible {
+    @apply ring-2 ring-wine-500 ring-offset-2 rounded;
+  }
+
+  .dark a:focus-visible {
+    @apply ring-wine-400 ring-offset-gray-900;
+  }
+
+  /* Card interactive focus states */
+  [role="button"]:focus-visible,
+  [tabindex="0"]:focus-visible {
+    @apply ring-2 ring-wine-500 ring-offset-2;
+  }
+
+  /* Skip navigation link */
+  .skip-to-content {
+    @apply absolute -top-10 left-4 z-[9999];
+    @apply px-4 py-2 bg-wine-600 text-white font-medium rounded-lg;
+    @apply focus:top-4 transition-all;
+  }
+}
+
+/* ============================================
+   Component Layer - Clean Card System
+   ============================================ */
+
+@layer components {
+  /* Primary card - clean and elevated */
+  .card {
+    @apply bg-white rounded-xl border border-slate-200/80 shadow-card;
+    @apply transition-shadow duration-200 ease-smooth;
+  }
+
+  .card:hover {
+    @apply shadow-card-hover;
+  }
+
+  /* Subtle card - less prominent */
+  .card-subtle {
+    @apply bg-slate-50 rounded-xl border border-slate-200/60;
+  }
+
+  /* Elevated card - more prominent */
+  .card-elevated {
+    @apply bg-white rounded-2xl shadow-elevated;
+  }
+
+  /* Status cards */
+  .card-success {
+    @apply bg-success-50 rounded-xl border border-success-200;
+  }
+
+  .card-warning {
+    @apply bg-warning-50 rounded-xl border border-warning-200;
+  }
+
+  .card-danger {
+    @apply bg-danger-50 rounded-xl border border-danger-200;
+  }
+
+  .card-info {
+    @apply bg-info-50 rounded-xl border border-info-200;
+  }
+
+  /* Button base styles */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply px-4 py-2.5 rounded-lg font-medium text-sm;
+    @apply transition-all duration-150 ease-smooth;
+    @apply focus-visible:ring-2 focus-visible:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply btn bg-slate-900 text-white hover:bg-slate-800;
+    @apply focus-visible:ring-slate-900;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-slate-700 border border-slate-200;
+    @apply hover:bg-slate-50 hover:border-slate-300;
+    @apply focus-visible:ring-slate-400;
+  }
+
+  .btn-brand {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply focus-visible:ring-brand-500;
+  }
+
+  .btn-success {
+    @apply btn bg-success-600 text-white hover:bg-success-700;
+    @apply focus-visible:ring-success-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger-600 text-white hover:bg-danger-700;
+    @apply focus-visible:ring-danger-500;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full px-3.5 py-2.5 rounded-lg text-sm;
+    @apply bg-white border border-slate-200;
+    @apply text-slate-900 placeholder:text-slate-500;
+    @apply transition-colors duration-150;
+    @apply hover:border-slate-300;
+    @apply focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10;
+  }
+
+  /* Global input text color fix - ensure all inputs have visible text */
+  /* Using multiple properties to ensure cross-browser compatibility */
+  input,
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    color: #1f2937 !important; /* gray-800 - very dark */
+    -webkit-text-fill-color: #1f2937 !important; /* Safari fix */
+    opacity: 1 !important;
+    background-color: white !important;
+    filter: none !important;
+    mix-blend-mode: normal !important;
+    color-scheme: light !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #6B7280 !important; /* gray-500 - darker placeholder */
+    -webkit-text-fill-color: #6B7280 !important;
+    opacity: 1 !important;
+  }
+
+  /* Safari/WebKit specific fixes */
+  input::-webkit-input-placeholder,
+  textarea::-webkit-input-placeholder {
+    color: #6B7280 !important;
+    -webkit-text-fill-color: #6B7280 !important;
+    opacity: 1 !important;
+  }
+
+  /* Safari date/time input fix */
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    color: #1f2937 !important;
+    -webkit-text-fill-color: #1f2937 !important;
+  }
+
+  input[type="date"]::-webkit-datetime-edit,
+  input[type="time"]::-webkit-datetime-edit,
+  input[type="datetime-local"]::-webkit-datetime-edit {
+    color: #1f2937 !important;
+    -webkit-text-fill-color: #1f2937 !important;
+  }
+
+  input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  input[type="time"]::-webkit-datetime-edit-fields-wrapper,
+  input[type="date"]::-webkit-datetime-edit-text,
+  input[type="time"]::-webkit-datetime-edit-text,
+  input[type="date"]::-webkit-datetime-edit-month-field,
+  input[type="date"]::-webkit-datetime-edit-day-field,
+  input[type="date"]::-webkit-datetime-edit-year-field,
+  input[type="time"]::-webkit-datetime-edit-hour-field,
+  input[type="time"]::-webkit-datetime-edit-minute-field,
+  input[type="time"]::-webkit-datetime-edit-ampm-field {
+    color: #1f2937 !important;
+    -webkit-text-fill-color: #1f2937 !important;
+  }
+
+  /* Select dropdown text */
+  select,
+  select option {
+    color: #1f2937 !important;
+    -webkit-text-fill-color: #1f2937 !important;
+    background: white !important;
+  }
+
+  /* Dark mode */
+  .dark input,
+  .dark input[type="text"],
+  .dark input[type="email"],
+  .dark input[type="password"],
+  .dark input[type="number"],
+  .dark input[type="date"],
+  .dark input[type="time"],
+  .dark input[type="datetime-local"],
+  .dark input[type="search"],
+  .dark input[type="tel"],
+  .dark input[type="url"],
+  .dark textarea,
+  .dark select {
+    color: #F3F4F6 !important;
+    -webkit-text-fill-color: #F3F4F6 !important;
+    background-color: #0b0b0b !important;
+    filter: none !important;
+    mix-blend-mode: normal !important;
+    color-scheme: dark !important;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #9CA3AF !important;
+    -webkit-text-fill-color: #9CA3AF !important;
+    opacity: 1 !important;
+  }
+
+  /* Badge styles */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full;
+    @apply text-xs font-medium;
+  }
+
+  .badge-default {
+    @apply badge bg-slate-100 text-slate-700;
+  }
+
+  .badge-success {
+    @apply badge bg-success-100 text-success-700;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning-100 text-warning-700;
+  }
+
+  .badge-danger {
+    @apply badge bg-danger-100 text-danger-700;
+  }
+
+  .badge-info {
+    @apply badge bg-info-100 text-info-700;
+  }
+
+  .badge-brand {
+    @apply badge bg-brand-100 text-brand-700;
+  }
+
+  /* Status indicator dot */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot-success {
+    @apply status-dot bg-success-500;
+  }
+
+  .status-dot-warning {
+    @apply status-dot bg-warning-500;
+  }
+
+  .status-dot-danger {
+    @apply status-dot bg-danger-500;
+  }
+
+  .status-dot-pulse {
+    @apply animate-pulse-soft;
+  }
+
+  /* Metric display */
+  .metric {
+    @apply text-3xl font-bold tracking-tight text-slate-900;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-lg {
+    @apply text-4xl font-bold tracking-tight text-slate-900;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Section header */
+  .section-title {
+    @apply text-sm font-semibold uppercase tracking-wider text-slate-500;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-slate-200;
+  }
+
+  /* Pill navigation */
+  .pill-nav {
+    @apply inline-flex items-center gap-1 p-1 bg-slate-100 rounded-lg;
+  }
+
+  .pill-nav-item {
+    @apply px-3 py-1.5 rounded-md text-sm font-medium;
+    @apply text-slate-600 hover:text-slate-900;
+    @apply transition-all duration-150;
+  }
+
+  .pill-nav-item-active {
+    @apply pill-nav-item bg-white text-slate-900 shadow-sm;
+  }
+
+  /* Smooth transitions */
+  .transition-base {
+    @apply transition-all duration-200 ease-smooth;
+  }
+
+  /* Interactive card */
+  .interactive-card {
+    @apply card cursor-pointer;
+    @apply hover:border-slate-300 active:scale-[0.99];
+  }
+
+  /* Table styles */
+  .table-header {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50;
+  }
+
+  .table-cell {
+    @apply px-4 py-4 text-sm text-slate-700;
+  }
+
+  .table-row {
+    @apply border-b border-slate-100 last:border-0;
+    @apply hover:bg-slate-50/50 transition-colors;
+  }
+}
+
+/* ============================================
+   Utility Layer
+   ============================================ */
+
+@layer utilities {
+  /* Text utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent;
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.slate.300') transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+
+  /* Hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Number formatting */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Shimmer loading effect */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      theme('colors.slate.100') 0%,
+      theme('colors.slate.50') 50%,
+      theme('colors.slate.100') 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply bg-slate-200 rounded animate-pulse;
+  }
+
+  /* Truncate with ellipsis */
+  .truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .truncate-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* ============================================
+   Animation Keyframes
+   ============================================ */
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ============================================
+   Tremor Overrides (for consistent styling)
+   ============================================ */
+
+/* Override Tremor default styles to match our design system */
+[data-tremor-component] {
+  font-family: inherit !important;
+}
+
+.tremor-Card-root {
+  @apply !rounded-xl !border-slate-200/80 !shadow-card;
+}
+
+.tremor-Title-root {
+  @apply !text-slate-900 !font-semibold;
+}
+
+.tremor-Text-root {
+  @apply !text-slate-600;
+}
+
+.tremor-Metric-root {
+  @apply !text-slate-900 !font-bold;
+}
+
+/* Chart tooltip styling */
+.tremor-Tooltip-root {
+  @apply !rounded-lg !border-slate-200 !shadow-lg !bg-white;
+}

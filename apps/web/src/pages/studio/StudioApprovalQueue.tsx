@@ -8,21 +8,19 @@ import { Badge } from '../../components/ui/badge'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('accessToken')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 async function fetchQueue(): Promise<{ queue: QueueItem[]; total: number }> {
-  const resp = await fetch(`${API_URL}/api/v1/studio/queue`, { headers: getAuthHeaders() })
+  const resp = await fetch(`/api/v1/studio/queue`, { headers: getAuthHeaders() })
   if (!resp.ok) throw new Error('Failed to load queue')
   return resp.json()
 }
 
 async function decideOverride(id: string, decision: 'approved' | 'rejected', note?: string) {
-  const resp = await fetch(`${API_URL}/api/v1/studio/queue/${id}`, {
+  const resp = await fetch(`/api/v1/studio/queue/${id}`, {
     method: 'PATCH',
     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ decision, note }),

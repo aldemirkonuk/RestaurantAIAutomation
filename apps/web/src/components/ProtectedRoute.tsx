@@ -33,6 +33,11 @@ export function ProtectedRoute({
     )
   }
 
+  // Not Authenticated — must redirect before any role checks to avoid infinite spinner
+  if (!isAuthenticated) {
+    return <Navigate to={redirectTo} state={{ from: location }} replace />
+  }
+
   // Studio role loading guard (Pitfall 6: undefined = still loading, not denied)
   if (requiredStudioRole && user?.studioRoles === undefined) {
     return (
@@ -46,11 +51,6 @@ export function ProtectedRoute({
         </div>
       </div>
     )
-  }
-
-  // Not Authenticated
-  if (!isAuthenticated) {
-    return <Navigate to={redirectTo} state={{ from: location }} replace />
   }
 
   // Role Check

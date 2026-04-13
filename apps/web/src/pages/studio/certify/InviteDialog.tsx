@@ -7,8 +7,6 @@ import { format, addDays } from 'date-fns'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
 interface InviteDialogProps {
   open: boolean
   onClose: () => void
@@ -30,7 +28,7 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
     setIsGenerating(true)
     try {
       const token = localStorage.getItem('accessToken')
-      const resp = await fetch(`${API_URL}/api/v1/studio/invite`, {
+      const resp = await fetch(`/api/v1/studio/invite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

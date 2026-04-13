@@ -7,15 +7,13 @@ import { InviteDialog } from './certify/InviteDialog'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('accessToken')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 async function fetchContributors(): Promise<{ contributors: Contributor[] }> {
-  const resp = await fetch(`${API_URL}/api/v1/studio/contributors`, { headers: getAuthHeaders() })
+  const resp = await fetch(`/api/v1/studio/contributors`, { headers: getAuthHeaders() })
   if (!resp.ok) throw new Error('Failed to load contributors')
   return resp.json()
 }
@@ -32,7 +30,7 @@ export default function StudioCertify() {
   const contributors = data?.contributors ?? []
 
   const handleRevoke = async (userId: string) => {
-    await fetch(`${API_URL}/api/v1/studio/contributors/${userId}/revoke`, {
+    await fetch(`/api/v1/studio/contributors/${userId}/revoke`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
     })
@@ -40,7 +38,7 @@ export default function StudioCertify() {
   }
 
   const handleToggleEnable = async (userId: string, enable: boolean) => {
-    await fetch(`${API_URL}/api/v1/studio/contributors/${userId}/${enable ? 'enable' : 'disable'}`, {
+    await fetch(`/api/v1/studio/contributors/${userId}/${enable ? 'enable' : 'disable'}`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
     })
