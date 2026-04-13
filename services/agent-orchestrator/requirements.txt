@@ -86,6 +86,8 @@ urllib3==2.1.0
 plivo==4.47.0
 sendgrid==6.11.0
 aiosmtplib>=3.0.0  # Async SMTP for email_client.py
+pywebpush>=2.0.0   # Web push notifications
+jinja2>=3.1.0      # Template rendering
 
 # =============================================================================
 # DATA PROCESSING
