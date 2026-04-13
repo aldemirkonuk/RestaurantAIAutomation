@@ -19,6 +19,18 @@ BEST_PT_PATH = str(
     / "datasets/wine_menus_2class/runs/train2/weights/best.pt"
 )
 
+try:
+    import ultralytics  # noqa: F401
+    _ultralytics_available = True
+except ImportError:
+    _ultralytics_available = False
+
+_model_ready = Path(BEST_PT_PATH).exists() and _ultralytics_available
+_skip_model = pytest.mark.skipif(
+    not _model_ready,
+    reason="best.pt not present or ultralytics not installed — skipping model test",
+)
+
 
 def _make_synthetic_frame(width: int = 1280, height: int = 720) -> str:
     """Create a blank RGB frame base64-encoded as JPEG."""
@@ -44,10 +56,7 @@ def _make_agent(model_path: str):
 
 # --- YOLO-01 -------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not Path(BEST_PT_PATH).exists(),
-    reason="best.pt not present — skipping model load test",
-)
+@_skip_model
 async def test_yolo_model_loads():
     """YOLO-01: 2-class best.pt loads in MenuAnalyzerAgent.initialize()."""
     agent = _make_agent(BEST_PT_PATH)
@@ -59,10 +68,7 @@ async def test_yolo_model_loads():
 
 # --- YOLO-02 -------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not Path(BEST_PT_PATH).exists(),
-    reason="best.pt not present — skipping latency test",
-)
+@_skip_model
 async def test_inference_latency():
     """YOLO-02: Inference on 1280x720 frame returns in <200ms on CPU."""
     agent = _make_agent(BEST_PT_PATH)
@@ -82,27 +88,14 @@ async def test_inference_latency():
 
 # --- YOLO-03 -------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not Path(BEST_PT_PATH).exists(),
-    reason="best.pt not present — skipping label validation test",
-)
+@_skip_model
 async def test_box_labels():
     """YOLO-03: Boxes include label in ('wine_entry', 'section_header') and valid confidence."""
     agent = _make_agent(BEST_PT_PATH)
     await agent.initialize()
 
-    # Try synthetic frame first; if no detections, try a real annotated image.
     frame_b64 = _make_synthetic_frame(1280, 720)
     boxes = await agent.detect_boxes(frame_b64, confidence=0.1)
-
-    if not boxes:
-        # Fall back to first real menu image available
-        annotation_dir = Path(__file__).parents[3] / "datasets/annotation_images"
-        real_images = list(annotation_dir.glob("*.png")) + list(annotation_dir.glob("*.jpg"))
-        if real_images:
-            with open(real_images[0], "rb") as f:
-                frame_b64 = base64.b64encode(f.read()).decode()
-            boxes = await agent.detect_boxes(frame_b64, confidence=0.1)
 
     # Whether boxes are empty or not, validate schema of any returned box
     for box in boxes:

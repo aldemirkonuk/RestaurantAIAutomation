@@ -71,3 +71,6 @@ services/agent-orchestrator/test-results/
 
 # Vendored local tools (not part of app runtime)
 vendor/
+
+# Local ML / training run outputs at repo root
+runs/

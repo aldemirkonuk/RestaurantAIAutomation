@@ -1,0 +1,32 @@
+# WineOps AI - Training Dependencies
+# Install with: pip install -r training/requirements-training.txt
+
+# Core ML
+ultralytics>=8.1.0          # YOLOv8 training and inference
+torch>=2.0.0                # PyTorch backend
+torchvision>=0.15.0         # Vision utilities
+
+# Roboflow (annotation management + hosted inference)
+roboflow>=1.1.0             # Roboflow Python SDK
+inference>=0.9.0            # Roboflow inference runtime
+supervision>=0.19.0         # Detection visualisation + annotation tools
+
+# OCR
+easyocr>=1.7.0              # Multi-language OCR
+
+# Image processing
+Pillow>=10.0.0              # Image loading/manipulation
+opencv-python>=4.8.0        # Image processing
+numpy>=1.24.0               # Numerical operations
+
+# ONNX export
+onnx>=1.14.0                # ONNX model format
+onnxruntime>=1.16.0         # ONNX inference runtime
+
+# Evaluation / visualisation
+matplotlib>=3.7.0           # Plotting
+seaborn>=0.12.0             # Statistical plots
+pandas>=2.0.0               # Data manipulation
+
+# Sentence embeddings (for pgvector matching)
+sentence-transformers>=2.2.0  # Generate wine name embeddings

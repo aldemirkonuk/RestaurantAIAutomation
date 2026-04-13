@@ -9,7 +9,7 @@ Tests:
   5. _mark_crawl_error: consecutive_failures incremented; status='error' after threshold
 """
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, AsyncMock
 
 
 # =============================================================================
@@ -134,3 +134,78 @@ def test_mark_crawl_error_stays_active_below_threshold(mock_create_client):
     update_call = mock_sb.table.return_value.update.call_args[0][0]
     assert update_call["status"] == "active"
     assert update_call["consecutive_failures"] == 2
+
+
+# =============================================================================
+# Test 8: E2E-ish core flow — wines flow into diff + schedule updates
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@patch("supabase.create_client")
+@patch("services.menu_diff_service.MenuDiffService")
+@patch("services.web_crawler.WebCrawlerService")
+async def test_crawl_and_diff_async_flows_wines_to_diff_and_updates_schedule(
+    mock_crawler_cls,
+    mock_diff_cls,
+    mock_create_client,
+):
+    """
+    Verifies the core behavior requested in UAT:
+    - crawl produces result.wines
+    - result.wines is passed to MenuDiffService.run_diff()
+    - crawl_schedule.last_crawled_at is updated on success
+    """
+    mock_sb = MagicMock()
+    mock_create_client.return_value = mock_sb
+
+    restaurant_directory_table = MagicMock()
+    restaurant_directory_table.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
+        "id": "rest-001",
+        "name": "Test Restaurant",
+        "website_url": "https://example.com/menu",
+    }
+
+    crawl_schedule_table = MagicMock()
+    crawl_schedule_table.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
+        "crawl_frequency": "weekly",
+    }
+    crawl_schedule_table.update.return_value.eq.return_value.execute.return_value.data = {"ok": True}
+
+    def table_side_effect(table_name: str):
+        if table_name == "restaurant_directory":
+            return restaurant_directory_table
+        if table_name == "crawl_schedule":
+            return crawl_schedule_table
+        return MagicMock()
+
+    mock_sb.table.side_effect = table_side_effect
+
+    # Mock crawl result with wines
+    wines = [
+        {"signature_hash": "hash-1", "wine_name": "Wine A", "price_reference": 10.0},
+        {"signature_hash": "hash-2", "wine_name": "Wine B", "price_reference": 12.0},
+    ]
+    mock_crawler = MagicMock()
+    mock_crawler.crawl_restaurant = AsyncMock(return_value=MagicMock(wines=wines))
+    mock_crawler_cls.return_value = mock_crawler
+
+    # Mock diff result
+    mock_diff = MagicMock()
+    mock_diff.run_diff.return_value = {"added": 1, "removed": 0, "price_changed": 0, "skipped": False}
+    mock_diff_cls.return_value = mock_diff
+
+    from jobs.recrawl_tasks import _crawl_and_diff_async
+
+    result = await _crawl_and_diff_async("rest-001")
+    assert result["restaurant_id"] == "rest-001"
+    assert result["wines_crawled"] == 2
+
+    mock_diff.run_diff.assert_called_once_with("rest-001", wines)
+
+    # last_crawled_at should be written on crawl_schedule update
+    update_args = crawl_schedule_table.update.call_args[0][0]
+    assert "last_crawled_at" in update_args
+    assert "next_crawl_at" in update_args
+    assert update_args["consecutive_failures"] == 0
+    assert update_args["status"] == "active"
