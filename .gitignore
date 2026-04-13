@@ -1,0 +1,72 @@
+# =============================================================================
+# WineOps monorepo — root ignores (sub-apps have their own .gitignore too)
+# =============================================================================
+
+# Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Python (root-level scripts, datasets tooling)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Build / caches
+.turbo/
+dist/
+.next/
+*.log
+logs/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+
+# Supabase CLI temp
+supabase/.temp/
+
+# Large local model weights (keep out of git unless you intend to LFS)
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# IDE / local tooling (never ship to CI or production images from git)
+.cursor/
+
+# Large third-party or scraped dataset trees (keep scripts + small samples only)
+External_Wine_Datasets/
+datasets/annotation_images/
+datasets/annotation_inbox/
+datasets/wine_menus/images/
+datasets/wine_menus/runs/
+datasets/wine_menus/labels/*.cache
+datasets/wine_menus_2class/
+
+# Accidental duplicate filenames (editor copies)
+* 2.py
+* 2.md
+
+# Merge / local backup files
+README.md.local-backup
+
+# Binary office docs (use markdown in repo instead)
+*.docx
+
+# Local test output
+services/agent-orchestrator/test-results/
+
+# Vendored local tools (not part of app runtime)
+vendor/
