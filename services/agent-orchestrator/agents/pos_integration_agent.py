@@ -240,6 +240,40 @@ class POSIntegrationAgent(BaseAgent):
             self.metrics.record_error(str(e))
             return {"status": "error", "message": str(e)}
 
+    async def process_pos_event(self, event) -> dict:
+        """Process a normalized POSEvent from any POS provider.
+
+        This is the provider-agnostic entry point (POS-ABSTRACT).
+        Delegates to internal logic shared with process_toast_webhook().
+
+        Args:
+            event: POSEvent instance from any POSProvider adapter
+
+        Returns:
+            dict with status key ("accepted", "ignored", "error")
+        """
+        from core.pos_provider import POSEvent as _POSEvent
+        if not isinstance(event, _POSEvent):
+            return {"status": "error", "reason": "Invalid event type — expected POSEvent"}
+
+        # Reconstruct webhook_data-compatible dict from POSEvent for internal processing
+        webhook_data = event.raw_payload
+
+        # Delegate to existing internal processing logic via process_toast_webhook
+        # using raw_payload as both source and raw_bytes (signature already verified by adapter)
+        import json as _json  # noqa: PLC0415
+        raw_bytes = _json.dumps(webhook_data).encode("utf-8")
+
+        try:
+            return await self.process_toast_webhook(
+                webhook_data=webhook_data,
+                signature=None,          # Signature already verified by POSProvider adapter
+                raw_payload=raw_bytes,
+            )
+        except Exception as exc:
+            self.logger.error("process_pos_event error: %s", exc)
+            return {"status": "error", "reason": str(exc)}
+
     async def handle_order_completed(self, webhook_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle completed order from Toast POS

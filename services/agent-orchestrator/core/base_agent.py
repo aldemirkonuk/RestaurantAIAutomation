@@ -530,6 +530,15 @@ class BaseAgent(ABC):
         self._current_correlation_id = message.get("correlation_id") or str(uuid.uuid4())
         set_log_context(agent_name=self.agent_name, correlation_id=self._current_correlation_id)
 
+        # Set Sentry scope tags for per-agent error attribution (OBS-01)
+        try:
+            import sentry_sdk
+            sentry_sdk.set_tag("agent", self.agent_name)
+            if hasattr(self, "_current_correlation_id") and self._current_correlation_id:
+                sentry_sdk.set_tag("correlation_id", self._current_correlation_id)
+        except ImportError:
+            pass  # Sentry not installed (shouldn't happen in production)
+
         # Idempotency check (INFRA-01)
         message_id = message.get("message_id") or message.get("event_id")
         if message_id and await self._check_idempotency(message_id):
