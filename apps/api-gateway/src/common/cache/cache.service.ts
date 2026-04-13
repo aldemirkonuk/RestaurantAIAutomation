@@ -1,0 +1,62 @@
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { createClient, RedisClientType } from 'redis'
+
+@Injectable()
+export class CacheService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(CacheService.name)
+  private client: RedisClientType | null = null
+
+  constructor(private readonly configService: ConfigService) {}
+
+  async onModuleInit() {
+    const redisUrl = this.configService.get<string>('REDIS_URL', 'redis://localhost:6379')
+    try {
+      this.client = createClient({
+        url: redisUrl,
+        socket: { connectTimeout: 3000 },
+      })
+      this.client.on('error', (error) => this.logger.error(error))
+      await this.client.connect()
+      this.logger.log('✅ Redis cache connected')
+    } catch (error) {
+      this.logger.warn(`⚠️ Redis unavailable, caching disabled: ${error}`)
+      this.client = null
+    }
+  }
+
+  async onModuleDestroy() {
+    if (this.client) {
+      await this.client.quit()
+      this.client = null
+      this.logger.log('✅ Redis cache disconnected')
+    }
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    if (!this.client) return null
+    const value = await this.client.get(key)
+    return value ? (JSON.parse(value) as T) : null
+  }
+
+  async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    if (!this.client) return
+    await this.client.set(key, JSON.stringify(value), { EX: ttlSeconds })
+  }
+
+  async del(keys: string | string[]): Promise<void> {
+    if (!this.client) return
+    const targetKeys = Array.isArray(keys) ? keys : [keys]
+    if (targetKeys.length > 0) {
+      await this.client.del(targetKeys)
+    }
+  }
+
+  async invalidateByPattern(pattern: string): Promise<number> {
+    if (!this.client) return 0
+    const keys = await this.client.keys(pattern)
+    if (keys.length === 0) return 0
+    await this.client.del(keys)
+    return keys.length
+  }
+}

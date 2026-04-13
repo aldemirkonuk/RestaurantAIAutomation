@@ -1,0 +1,226 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpException,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import {
+  CreateOrderDto,
+  OrderFilterDto,
+  OrderListResponseDto,
+  OrderResponseDto,
+  UpdateOrderDto,
+} from './dto/procurement.dto';
+import { ProcurementService } from './procurement.service';
+
+@ApiTags('procurement')
+@Controller('procurement')
+@UseGuards(JwtAuthGuard)
+export class ProcurementController {
+  constructor(private readonly procurementService: ProcurementService) {}
+
+  @Post('orders')
+  @ApiOperation({ summary: 'Create procurement order' })
+  @ApiResponse({ status: 201, type: OrderResponseDto })
+  async createOrder(
+    @Body() dto: CreateOrderDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.procurementService.createOrder(
+        user.restaurantId,
+        user.userId,
+        dto,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to create procurement order',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders')
+  @ApiOperation({ summary: 'List procurement orders (paginated)' })
+  @ApiResponse({ status: 200, type: OrderListResponseDto })
+  async listOrders(
+    @Query() query: OrderFilterDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderListResponseDto> {
+    try {
+      return await this.procurementService.listOrders(user.restaurantId, query);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch procurement orders',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders/pending/count')
+  @ApiOperation({ summary: 'Get count of pending procurement orders' })
+  @ApiResponse({ status: 200 })
+  async getPendingOrderCount(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ count: number }> {
+    try {
+      const pending = await this.procurementService.listPendingOrders(user.restaurantId);
+      return { count: pending.length };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch pending order count',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders/pending')
+  @ApiOperation({ summary: 'Get pending procurement orders' })
+  @ApiResponse({ status: 200, type: [OrderResponseDto] })
+  async listPendingOrders(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto[]> {
+    try {
+      return await this.procurementService.listPendingOrders(user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch pending orders',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders/history')
+  @ApiOperation({ summary: 'Get procurement order history with filters' })
+  @ApiResponse({ status: 200, type: OrderListResponseDto })
+  async listOrderHistory(
+    @Query() query: OrderFilterDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderListResponseDto> {
+    try {
+      return await this.procurementService.listOrders(user.restaurantId, query);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch order history',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders/:id')
+  @ApiOperation({ summary: 'Get procurement order details' })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  async getOrder(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.procurementService.getOrder(user.restaurantId, orderId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch order',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch('orders/:id')
+  @ApiOperation({ summary: 'Update procurement order' })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  async updateOrder(
+    @Param('id') orderId: string,
+    @Body() dto: UpdateOrderDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.procurementService.updateOrder(
+        user.restaurantId,
+        orderId,
+        dto,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to update order',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Delete('orders/:id')
+  @ApiOperation({ summary: 'Cancel procurement order' })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  async cancelOrder(
+    @Param('id') orderId: string,
+    @Query('reason') reason: string | undefined,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.procurementService.cancelOrder(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        reason,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to cancel order',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('orders/:id/approve')
+  @ApiOperation({ summary: 'Approve procurement order' })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  async approveOrder(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.procurementService.approveOrder(
+        user.restaurantId,
+        orderId,
+        user.userId,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to approve order',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('orders/:id/deliver')
+  @ApiOperation({ summary: 'Mark procurement order delivered' })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  async markDelivered(
+    @Param('id') orderId: string,
+    @Query('quantityReceived') quantityReceived: string | undefined,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      const parsedQuantity = quantityReceived ? Number(quantityReceived) : undefined;
+      return await this.procurementService.markDelivered(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        parsedQuantity,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to mark order delivered',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+}
