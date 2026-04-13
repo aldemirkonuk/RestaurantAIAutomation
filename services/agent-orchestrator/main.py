@@ -4,7 +4,9 @@ Agent Orchestrator — FastAPI Application Entry Point
 Registers all routers for the WineOps agent orchestration service.
 """
 
+import json as _json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -13,6 +15,33 @@ from dotenv import load_dotenv
 
 # Load services/agent-orchestrator/.env so ADMIN_API_KEY and other vars match curl / IDE.
 load_dotenv(Path(__file__).resolve().parent / ".env")
+
+# ── Sentry SDK — init BEFORE app = FastAPI() so integrations register correctly ──
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+
+_sentry_dsn = os.getenv("SENTRY_DSN")
+_environment = os.getenv("ENVIRONMENT", "development")
+
+if not _sentry_dsn:
+    if _environment == "production":
+        raise ValueError(
+            "SENTRY_DSN is required when ENVIRONMENT=production. "
+            "Set SENTRY_DSN in Railway dashboard environment variables."
+        )
+    logging.getLogger(__name__).warning(
+        "SENTRY_DSN not set — Sentry disabled. "
+        "(Set ENVIRONMENT=production to fail fast on missing DSN)"
+    )
+else:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        traces_sample_rate=0.1,
+        environment=_environment,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+    )
+# ── End Sentry ────────────────────────────────────────────────────────────────
 
 from fastapi import FastAPI
 
@@ -79,6 +108,28 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# ── CORS middleware — defense-in-depth for local dev and direct access (INFRA-01) ──
+from fastapi.middleware.cors import CORSMiddleware
+
+_allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", '["http://localhost:5173"]')
+try:
+    _allowed_origins = _json.loads(_allowed_origins_raw)
+except _json.JSONDecodeError:
+    logger.warning(
+        "ALLOWED_ORIGINS env var is not valid JSON — defaulting to localhost:5173. "
+        "Expected format: '[\"https://myapp.vercel.app\"]'"
+    )
+    _allowed_origins = ["http://localhost:5173"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# ── End CORS ──────────────────────────────────────────────────────────────────
 
 # Register routers
 app.include_router(onboarding_router)
