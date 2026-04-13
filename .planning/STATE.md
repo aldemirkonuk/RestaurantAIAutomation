@@ -19,18 +19,52 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 22 — observability-deployment (IN PLANNING)
+**Current focus:** Phase 22 — observability-deployment (PLANNING COMPLETE — 5 plans, 3 waves)
 
 ---
 
 ## Current Position
 
-Phase: 22 (observability-deployment) — IN PLANNING
-Plan: 0 plans created. CONTEXT.md pending.
+Phase: 22 (observability-deployment) — PLANNING COMPLETE
+Plan: 5 plans created across 3 waves (2026-04-13).
 **Last completed:** Phase 21 — fully closed 2026-04-13 (UAT 6/6, SECURITY 14/14, VALIDATION 10 tests, VERIFICATION 8/10)
 **Phases complete:** 18, 19, 20, 21 (v2.0)
-**Phases planned:** 22
-**Next action:** `/gsd-discuss-phase 22` → `/gsd-plan-phase 22` → `/gsd-execute-phase 22`
+**Phases planned:** 22 — 5 plans ready for execution
+**Next action:** `/gsd-execute-phase 22`
+
+### Phase 22 Plans Summary
+
+| Plan | Wave | Depends On | Focus | Key Files |
+|------|------|------------|-------|-----------|
+| 22-01 | 1 | — | Python infra | requirements.txt (sentry upgrade), requirements.prod.txt, settings.py, .env.example |
+| 22-02 | 1 | — | POS abstraction | core/pos_provider.py, adapters/toast_adapter.py |
+| 22-03 | 2 | 22-01, 22-02 | FastAPI wiring | main.py (Sentry+CORS), api/health_routes.py, api/pos_routes.py (generic) |
+| 22-04 | 2 | 22-01 | Docker/Railway | services/agent-orchestrator/Dockerfile, .dockerignore |
+| 22-05 | 3 | 22-03 | NestJS+Frontend | health-proxy.controller.ts, AdminHealth.tsx, vercel.json |
+
+### Phase 22 Context — COMPLETE (2026-04-13)
+
+**Discussion Summary (4 locked decisions + 5 gray areas explored):**
+1. **Auth (3-layer)** — `GET /health` public · API endpoints `X-Admin-Key` · `/admin/health` ProtectedRoute
+2. **Sentry init** — Fail at startup in `production` if no DSN · warn + continue in `development`
+3. **POS abstraction** — `POST /api/v1/pos/webhook/{provider}` + `POSProvider` protocol + `ToastAdapter`
+4. **Railway deploy** — GitHub auto-deploy on push to main · Dockerfile in `services/agent-orchestrator/`
+5. **Toast DEP-06** — Production creds → Railway dashboard (never git) · read-only connectivity test
+
+**Audit (6 gaps found and fixed):**
+1. **CORS** — No CORSMiddleware existed; added with defense-in-depth + Vercel rewrites eliminate CORS in production
+2. **Frontend API key** — ADMIN_API_KEY would be exposed in browser JS; fixed: frontend calls api-gateway (JWT auth), gateway adds X-Admin-Key server-side
+3. **Frontend URL clarity** — Undefined how AdminHealth.tsx reaches orchestrator; locked: all calls through `VITE_API_GATEWAY_URL`, api-gateway proxies
+4. **env.example missing** — CONTEXT claimed it existed (Phase 21 note was wrong); corrected: create `.env.example` (only `.env` exists today)
+5. **vercel.json missing** — No monorepo build config; added: `vercel.json` at repo root with framework preset, build dir, `/api/*` rewrites
+6. **admin_routes auth pattern unclear** — "same pattern as other routes" was vague; corrected: auth pattern from `research_routes.py:35` specifically
+
+**Scope changes:**
+- Added INFRA-01..04 (CORS, vercel.json, .env.example, api-gateway proxy)
+- Added "Network Architecture" decision section (API gateway pattern)
+- Scope slightly expanded but all user-intentional (POS abstraction + public /health endpoint)
+
+**22-CONTEXT.md ready for planning** — no false assumptions, no security gaps, clear auth flow from browser to backend, network architecture locked.
 
 ### Phase 21 Closure — COMPLETE (2026-04-13)
 
