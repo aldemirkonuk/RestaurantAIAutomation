@@ -263,10 +263,10 @@
 
 ### Infrastructure — BaseAgent Upgrade (Phase 18)
 
-- [ ] **INFRA-01**: BaseAgent provides idempotency mixin — `_check_idempotency(message_id)` checks Redis/PG `idempotency_keys` table, skips if already processed, `_mark_processed()` after success. Fails open (process twice rather than drop).
+- [x] **INFRA-01**: BaseAgent provides idempotency mixin — `_check_idempotency(message_id)` checks Redis/PG `idempotency_keys` table, skips if already processed, `_mark_processed()` after success. Fails open (process twice rather than drop).
 - [ ] **INFRA-02**: BaseAgent provides `log_decision()` method — persists agent decisions to `decision_log` table with agent_name, decision_type, inputs, reasoning, output, confidence, correlation_id, restaurant_id.
-- [ ] **INFRA-03**: Structured JSON logging — all agent logs emitted as JSON with timestamp, level, logger, message, agent_name, correlation_id. `JSONFormatter` class in utils/logger.py.
-- [ ] **INFRA-04**: Distributed tracing — correlation_id extracted from incoming messages, propagated to all outgoing publishes. `self._current_correlation_id` set before every `process_message` call.
+- [x] **INFRA-03**: Structured JSON logging — all agent logs emitted as JSON with timestamp, level, logger, message, agent_name, correlation_id. `JSONFormatter` class in utils/logger.py.
+- [x] **INFRA-04**: Distributed tracing — correlation_id extracted from incoming messages, propagated to all outgoing publishes. `self._current_correlation_id` set before every `process_message` call.
 - [ ] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
 - [ ] **INFRA-06**: Saga state helpers — `start_saga(saga_type, context, deadline_minutes)`, `advance_saga(saga_id, step, compensation)`, `complete_saga(saga_id)`, `compensate_saga(saga_id, error)`. Backed by `saga_state` PG table.
 - [ ] **INFRA-07**: Transactional outbox table — `outbox` table (event_type, exchange, routing_key, payload, published boolean). Background publisher worker polls unpublished rows and dispatches to RabbitMQ.
