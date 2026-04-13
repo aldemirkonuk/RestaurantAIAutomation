@@ -8,14 +8,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     cors: {
       origin: [
-        process.env.FRONTEND_URL || 'http://localhost:3000',
-        'http://localhost:5173', // Vite dev server
-        'http://127.0.0.1:5173', // Vite dev server (IP)
-        'http://127.0.0.1:3000', // Vite dev server (IP)
-        'http://localhost:19006', // Expo web
-        'http://localhost:8081', // Expo dev server
-        /^http:\/\/192\.168\.\d+\.\d+:\d+$/, // Local network IPs (physical devices)
-        /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/, // Local network IPs (10.x.x.x)
+        ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : []),
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:3000',
+        /^https:\/\/.*\.vercel\.app$/,        // all Vercel preview + production URLs
+        /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+        /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
       ],
       credentials: true,
     },

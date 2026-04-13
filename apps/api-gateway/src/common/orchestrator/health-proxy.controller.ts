@@ -14,7 +14,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantBypass } from '../tenant/tenant.decorator';
 import { OrchestratorService } from './orchestrator.service';
 
-@Controller('api/health')
+@Controller('health')
 @UseGuards(JwtAuthGuard)
 @TenantBypass()
 export class HealthProxyController {
@@ -31,7 +31,7 @@ export class HealthProxyController {
   }
 }
 
-@Controller('api/metrics')
+@Controller('metrics')
 @UseGuards(JwtAuthGuard)
 @TenantBypass()
 export class MetricsProxyController {
