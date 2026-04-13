@@ -1,6 +1,5 @@
 {
   "framework": "vite",
-  "rootDirectory": "apps/web",
   "rewrites": [
     {
       "source": "/api/:path*",
