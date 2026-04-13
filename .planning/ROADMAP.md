@@ -156,10 +156,10 @@ Plans:
   7. `GmailWatchService` subscribes to inbox if `GMAIL_PUBSUB_TOPIC` set (optional for Phase 23)
   8. All email types tested with real credentials — delivery confirmed
 
-### Phase 24: Provider Communication Pipeline
-**Goal**: Full manager↔provider communication loop — every email sent and received is saved, summarized, and analyzed. Surface relationship health in the frontend dashboard.
-**Depends on**: Phase 23 (Gmail working)
-**Requirements**: COMMS-01..08, SENTIMENT-01..03
+### Phase 24: Provider Communication Pipeline + Email Intelligence Agent
+**Goal**: Full manager↔provider communication loop with a new `EmailIntelAgent` handling inbox triage, promotional email intelligence, and daily digests. Surface relationship health + deal opportunities in the frontend.
+**Depends on**: Phase 23 (Gmail working, inbox accessible)
+**Requirements**: COMMS-01..08, SENTIMENT-01..03, INTEL-01..06
 **Success Criteria** (what must be TRUE):
   1. `ProviderConversationAgent` upgraded to Level 4 (idempotency, decision logging, DLQ)
   2. `EmailParsingAgent` upgraded to Level 4 — all inbound vendor emails parsed + saved to `order_interactions`
@@ -168,8 +168,15 @@ Plans:
   5. Conversation summaries: LLM generates highlights for each provider thread, saved to DB
   6. Sentiment analysis: positive/neutral/negative scored per message + per provider aggregate
   7. Gap detection: flags unanswered threads > 48h, missing order confirmations, price discrepancies
-  8. Frontend: Provider Comms card on dashboard showing health score, last contact, open threads
-  9. 15+ integration tests covering: parse → save → reply → summarize → sentiment pipeline
+  8. **`EmailIntelAgent` (new)**: classifies every inbound email as OPERATIONAL / PROMO / NOISE
+  9. OPERATIONAL emails → routed to ProviderConversationAgent (existing path)
+  10. PROMO emails → LLM extracts: product, discount %, valid-until date, vendor — saved to `vendor_promotions` table
+  11. High-relevance promos → nudge `ProcurementAgent` ("Burgundy 20% off, stock low")
+  12. Daily digest at 8am: LLM-generated promo summary emailed to `MANAGER_EMAIL` ("3 deals yesterday…")
+  13. Promo deduplication: same deal from same vendor within 7 days → suppress re-alert
+  14. Expiry tracking: "expiring today" surfaced in digest
+  15. Frontend: Provider Comms card (health score, last contact, open threads) + Deals card (active promos count)
+  16. 20+ integration tests covering: classify → route → extract → digest → sentiment pipeline
 
 ### Phase 25: Production E2E Test Suite
 **Goal**: Prove every agent and every process works against the live Vercel + Railway production stack. No mocks — real JWT, real RabbitMQ, real Supabase.
