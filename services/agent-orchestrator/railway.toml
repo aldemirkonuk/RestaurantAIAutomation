@@ -1,0 +1,9 @@
+# Railway service config for WineOps Agent Orchestrator
+# Railway auto-detects the Dockerfile in this directory.
+# Root Directory in Railway dashboard: services/agent-orchestrator
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
