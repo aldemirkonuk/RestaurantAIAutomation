@@ -1,0 +1,10 @@
+{
+  "framework": "vite",
+  "rootDirectory": "apps/web",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://REPLACE_WITH_RAILWAY_API_GATEWAY_URL/api/:path*"
+    }
+  ]
+}
