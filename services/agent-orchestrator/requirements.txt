@@ -23,7 +23,7 @@ email-validator==2.1.0
 # =============================================================================
 supabase>=2.10.0  # Will manage postgrest-py dependency automatically
 psycopg2-binary==2.9.9
-sqlalchemy==2.0.25
+sqlalchemy==2.0.49
 asyncpg==0.29.0  # Async PostgreSQL driver
 
 # =============================================================================
