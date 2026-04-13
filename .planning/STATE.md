@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Archive
-status: unknown
-last_updated: "2026-04-13T15:06:40.927Z"
+milestone: v2.0
+milestone_name: Production Kitchen
+status: active
+last_updated: "2026-04-13T21:55:22.783Z"
 progress:
-  total_phases: 25
-  completed_phases: 20
+  total_phases: 28
+  completed_phases: 22
   total_plans: 90
-  completed_plans: 87
-  percent: 97
+  completed_plans: 90
+  percent: 100
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,29 +19,37 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 22 — observability-deployment (PLANNING COMPLETE — 5 plans, 2 waves)
+**Current focus:** Phase 23 — Gmail & Calendar Reminder Emails (next up)
 
 ---
 
 ## Current Position
 
-Phase: 22 (observability-deployment) — PLANNING COMPLETE (2026-04-13)
-Plan: 5 plans created across 2 waves (Wave 1: 22-01, 22-02, 22-04 parallel; Wave 2: 22-03, 22-05 parallel).
-**Last completed:** Phase 21 — fully closed 2026-04-13 (UAT 6/6, SECURITY 14/14, VALIDATION 10 tests, VERIFICATION 8/10)
-**Phases complete:** 18, 19, 20, 21 (v2.0)
-**Phases planned:** 22 — 5 plans ready for execution
-**Next action:** `/gsd-execute-phase 22`
+Phase: 22 (observability-deployment) — **COMPLETE** (2026-04-13 — live in production)
+**Last completed:** Phase 22 — 9/9 agents healthy on Railway, Admin Health UI live on Vercel, all services connected
+**Phases complete (v2.0):** 18, 19, 20, 21, 22
+**Next:** Phase 23 — Gmail Integration & Calendar Reminders
 
-### Phase 22 Plans — READY FOR EXECUTION
+### Phase 22 — COMPLETE (Deployed to Production 2026-04-13)
 
-| Plan | Wave | Objective | Key Files |
-|------|------|-----------|-----------|
-| 22-01 | 1 | Sentry init + CORS + requirements.prod.txt + .env.example | main.py, requirements.txt, requirements.prod.txt, .env.example |
-| 22-02 | 1 | POS abstraction (POSProvider Protocol + ToastAdapter + generic route) + Sentry per-agent tags | core/pos_provider.py, adapters/toast_adapter.py, api/pos_routes.py, core/base_agent.py |
-| 22-03 | 2 | Health routes (/api/v1/health/agents, /metrics) + Railway Dockerfile + CloudAMQP/Upstash setup | api/health_routes.py, main.py, Dockerfile |
-| 22-04 | 1 | NestJS health proxy controller (api-gateway → orchestrator) | orchestrator.service.ts, health-proxy.controller.ts, orchestrator.module.ts |
-| 22-05 | 2 | AdminHealth.tsx React page + App.tsx route + vercel.json + Railway deploy checkpoint | AdminHealth.tsx, App.tsx, vercel.json |
-**Next action:** `/gsd-execute-phase 22`
+| Artifact | Status |
+|----------|--------|
+| 22-01: Sentry + CORS + requirements.prod.txt | ✅ Complete |
+| 22-02: POS abstraction (POSProvider + ToastAdapter) | ✅ Complete |
+| 22-03: Health routes + Railway Dockerfile | ✅ Complete |
+| 22-04: NestJS health proxy controller | ✅ Complete |
+| 22-05: AdminHealth.tsx + vercel.json + deploy | ✅ Complete |
+| Railway deploy: agent-orchestrator (9/9 agents Active) | ✅ Live |
+| Railway deploy: api-gateway (NestJS, JWT+Redis+RabbitMQ) | ✅ Live |
+| Vercel deploy: frontend (admin health UI working) | ✅ Live |
+| CloudAMQP: RabbitMQ connected | ✅ Live |
+| Upstash: Redis TLS connected | ✅ Live |
+
+**Remaining Phase 22 ops checkpoints (non-blocking, user-driven):**
+- [ ] Supabase db push (v1.0 + v2.0 migrations on cloud project)
+- [ ] Toast webhook URL pointed at production api-gateway endpoint
+- [ ] JWT_REFRESH_SECRET set on api-gateway Railway service
+- [ ] CORS_ORIGINS on orchestrator updated to include final Vercel URL(s)
 
 ### Phase 22 Plans Summary
 
@@ -109,9 +117,50 @@ Plan: 5 plans created across 2 waves (Wave 1: 22-01, 22-02, 22-04 parallel; Wave
 
 ---
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260413-ow5 | Close Phase 22, update STATE/ROADMAP, add Phases 23-25 (Gmail, Comms Agent, Prod Tests) | 2026-04-13 | — | [260413-ow5-close-phase-22-update-state-and-roadmap-](./quick/260413-ow5-close-phase-22-update-state-and-roadmap-/) |
+
+---
+
 ## v1.0 Archive
 
 v1.0 session history (Sessions 1-11) archived with milestone completion on 2026-04-08. See git history for full details.
+
+---
+
+### Session 13 — 2026-04-13 (Phase 22: Observability & Deployment — Executed Live)
+
+**Completed this session:**
+
+- Deployed all three services to production and confirmed 9/9 agents healthy
+- **API Gateway (Railway)**: Fixed Redis TLS (`redis://` → `rediss://` for Upstash), fixed Redis infinite retry loop in `CacheService`, fixed NestJS `start` script to `node dist/main` (was running `nest start` dev mode), fixed double-prefix on health controller (`api/health` → `health`), wired `ADMIN_API_KEY` + `AGENT_ORCHESTRATOR_URL` + `RABBITMQ_URL` + `JWT_SECRET` env vars
+- **Agent Orchestrator (Railway)**: Added `api_gateway_url`, `frontend_url`, `allowed_origins` to `Settings`, resolved all `ModuleNotFoundError` crashes (celery, aiosmtplib, asyncpg, sqlalchemy, kombu, apscheduler, prometheus-client, openai, python-slugify, unidecode, rich, pywebpush, jinja2), fixed `database.py` Redis TLS normalization
+- **Frontend (Vercel)**: Fixed Sentry `@sentry/tracing` deprecated import → `Sentry.browserTracingIntegration()`, added `export default` to `Settings.tsx`, fixed `vercel.json` placement (moved to `apps/web/`), fixed SPA fallback rewrite, fixed `VITE_API_GATEWAY_URL` not baked in (triggered cache-busting redeploy), fixed `AdminHealth.tsx` API path `/api/health/agents` → `/api/v1/health/agents`
+- **GitHub CI**: Rewrote `.github/workflows/deploy.yml` (removed Fly.io/Slack/Railway CLI steps → frontend build check only), fixed TypeScript build (`vite build` only, `tsc` in separate `build:check` script), fixed `dtrace-provider` native compile issue (added to `pnpm.neverBuiltDependencies`)
+- **End state**: Login successful on Vercel, `/admin/health` shows 9/9 Active agents (pos integration, buffer manager, inventory engine, inequality detector, state invariant enforcer, notification, procurement, calendar, reporting)
+
+**Key Railway env vars set this session:**
+- api-gateway: `JWT_SECRET`, `REDIS_URL` (rediss://), `RABBITMQ_URL` (amqps://), `ADMIN_API_KEY`, `AGENT_ORCHESTRATOR_URL`, `FRONTEND_URL`, `NODE_ENV=production`
+- agent-orchestrator: `ADMIN_API_KEY`, `API_GATEWAY_URL`, `CORS_ORIGINS`
+
+**Files changed this session:**
+- `apps/api-gateway/src/common/cache/cache.service.ts` — Redis TLS normalization + retry cap + graceful fallback
+- `apps/api-gateway/src/main.ts` — CORS dynamic Vercel origins
+- `apps/api-gateway/src/common/orchestrator/health-proxy.controller.ts` — remove double `api/` prefix
+- `apps/api-gateway/package.json` — `start: node dist/main`
+- `apps/api-gateway/Dockerfile` — WORKDIR to apps/api-gateway before CMD
+- `apps/web/src/lib/error-tracking.ts` — Sentry browserTracingIntegration()
+- `apps/web/src/pages/Settings.tsx` — export default
+- `apps/web/src/pages/AdminHealth.tsx` — /api/v1/health/agents path fix
+- `apps/web/vercel.json` — SPA fallback rewrite + moved from root
+- `services/agent-orchestrator/config/settings.py` — api_gateway_url, frontend_url, allowed_origins
+- `services/agent-orchestrator/core/database.py` — redis:// → rediss:// for Upstash
+- `services/agent-orchestrator/requirements.prod.txt` — all missing production deps
+- `.github/workflows/deploy.yml` — clean frontend-build-check only
+- `package.json` (root) — dtrace-provider neverBuiltDependencies
 
 ---
 

@@ -17,10 +17,10 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
 ## v2.0 Phases
 
 - [x] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers) (completed 2026-04-10)
-- [ ] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export)
+- [x] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export) (completed — absorbed into Phase 20 execution)
 - [x] **Phase 20: Wave 1 Level 4 Hardening** — Bring 4 golden path agents from Level 1.5 to Level 4 using new BaseAgent infrastructure: wire idempotency, decision logging, event sourcing, delivery tracking, and write 50+ integration tests across all 4 agents (completed 2026-04-11)
 - [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → ReportingAgent. Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
-- [x] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python) + CloudAMQP (RabbitMQ) + Upstash (Redis). Total ~$10-20/mo (completed 2026-04-13)
+- [x] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway (Python + NestJS) + CloudAMQP (RabbitMQ) + Upstash (Redis). 9/9 agents live. (completed + deployed 2026-04-13)
 
 ## Phase Details
 
@@ -137,9 +137,61 @@ Plans:
 - [x] 22-04-PLAN.md — NestJS api-gateway health proxy controller + OrchestratorModule update (Wave 1)
 - [x] 22-05-PLAN.md — AdminHealth.tsx + App.tsx route + vercel.json + Railway/Vercel deployment checkpoint (Wave 2)
 
+- [ ] **Phase 23: Gmail Integration & Calendar Reminder Emails** — Wire Gmail OAuth2 (api-gateway `GmailService`) with `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` on Railway. Fix orchestrator SMTP path (`GMAIL_USER/PASSWORD` app-password). Activate calendar reminder emails: CalendarAgent sends reminders at T-7, T-1, T-0 via `email_client.py`. Confirm `scheduled-tasks.service.ts` weekly/daily email reports work end-to-end. Test email pipeline with real credentials. *(Research-first — ask user how the flow should work after explaining code design)*
+- [ ] **Phase 24: Provider Communication Pipeline** — Bring `ProviderConversationAgent` (2,519 lines) and `EmailParsingAgent` (664 lines) to Level 4. Full pipeline: inbound email parsed → `order_interactions` saved → `EmailComposerService` generates reply → outbound sent via GmailService. Conversation summarization: LLM-generated highlights saved to `provider_conversation_summaries`. Sentiment analysis per conversation thread. Gap detection: missing confirmations, price discrepancies, unanswered threads. Dashboard card in frontend showing provider relationship health.
+- [ ] **Phase 25: Production E2E Test Suite** — Comprehensive test coverage for the live Vercel + Railway stack. Wave A (API contract tests): every `/api/v1/` endpoint checked against deployed api-gateway with real JWT. Wave B (agent integration): each of the 9 active agents triggered via RabbitMQ publish, response verified. Wave C (cross-service): Toast webhook → POS → Inventory → Notification full pipeline on staging data. Wave D (frontend smoke): Playwright or Puppeteer headless checks — login, `/admin/health`, dashboard load, at least one data-write flow. Failure alerting via Sentry.
+
+### Phase 23: Gmail Integration & Calendar Reminder Emails
+**Goal**: Make every email path in the system actually send. Two Gmail subsystems exist (OAuth2 API in api-gateway, SMTP app-password in orchestrator) — both need credentials wired and verified end-to-end.
+**Depends on**: Phase 22 (deployed infrastructure)
+**Research note**: Before planning, read `gmail.service.ts`, `gmail-watch.service.ts`, `email_client.py`, `scheduled-tasks.service.ts`, `notification_agent.py`, and `calendar agent`. Explain design to user then ask: (1) Should calendar reminders go through the api-gateway GmailService or the orchestrator EmailClient? (2) Which Gmail account should send (restaurant owner's account or a dedicated WineOps account)? (3) Should incoming emails (vendor replies) be processed via Gmail Watch + Pub/Sub, or polling?
+**Requirements**: GMAIL-01..06, CAL-EMAIL-01..03
+**Success Criteria** (what must be TRUE):
+  1. `GmailService.isConfigured = true` on api-gateway startup (Railway env vars set)
+  2. Weekly report email delivered to `MANAGER_EMAIL` every Monday 9am
+  3. Daily summary email delivered every day
+  4. Calendar reminder emails sent at T-7 days, T-1 day, T-0 (event day)
+  5. `scheduled-tasks.service.ts` low stock midday report working
+  6. Orchestrator `EmailClient` sends via SMTP (app-password path) for agent-triggered alerts
+  7. `GmailWatchService` subscribes to inbox if `GMAIL_PUBSUB_TOPIC` set (optional for Phase 23)
+  8. All email types tested with real credentials — delivery confirmed
+
+### Phase 24: Provider Communication Pipeline
+**Goal**: Full manager↔provider communication loop — every email sent and received is saved, summarized, and analyzed. Surface relationship health in the frontend dashboard.
+**Depends on**: Phase 23 (Gmail working)
+**Requirements**: COMMS-01..08, SENTIMENT-01..03
+**Success Criteria** (what must be TRUE):
+  1. `ProviderConversationAgent` upgraded to Level 4 (idempotency, decision logging, DLQ)
+  2. `EmailParsingAgent` upgraded to Level 4 — all inbound vendor emails parsed + saved to `order_interactions`
+  3. Outbound replies generated by `EmailComposerService` and sent via GmailService
+  4. Thread linking: `gmail_thread_id` connects inbound + outbound messages
+  5. Conversation summaries: LLM generates highlights for each provider thread, saved to DB
+  6. Sentiment analysis: positive/neutral/negative scored per message + per provider aggregate
+  7. Gap detection: flags unanswered threads > 48h, missing order confirmations, price discrepancies
+  8. Frontend: Provider Comms card on dashboard showing health score, last contact, open threads
+  9. 15+ integration tests covering: parse → save → reply → summarize → sentiment pipeline
+
+### Phase 25: Production E2E Test Suite
+**Goal**: Prove every agent and every process works against the live Vercel + Railway production stack. No mocks — real JWT, real RabbitMQ, real Supabase.
+**Depends on**: Phases 22, 23 (all services live)
+**Requirements**: TEST-PROD-01..12
+**Success Criteria** (what must be TRUE):
+  1. Wave A — API contract: all `/api/v1/` endpoints return expected status codes with valid JWT
+  2. Wave B — Agent health: each of the 9 agents returns `healthy: true` via `/api/v1/health/agents`
+  3. Wave C — Agent trigger: each agent can be triggered via a test RabbitMQ message + acknowledges
+  4. Wave D — Toast pipeline: test webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent (staging data)
+  5. Wave E — Gmail pipeline: test email send (low stock alert) + delivery confirmed
+  6. Wave F — Frontend smoke (Playwright): login, `/admin/health` cards visible, dashboard loads
+  7. Wave G — Calendar: create test event → reminder email sent at correct time
+  8. All test results exported as JUnit XML for CI
+  9. Failures trigger Sentry alert automatically
+  10. Test suite runs in < 10 minutes total
+
+---
+
 ## Future: Waves 2-6
 
-After v2.0 completes (Wave 1 at Level 4 + deployed), expand to remaining agents:
+After Phases 23-25 complete, expand to remaining agents:
 
 **Wave 2 — Communication Layer (4 agents):**
 - EmailParsingAgent (664 lines) → Level 4
