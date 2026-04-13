@@ -76,5 +76,7 @@ vendor/
 runs/
 
 # Archived Cursor chat exports (huge, non-source)
+md/Agent_Chat_History/
 md_files/Agent_Chat_History/
+md/**/*.png
 md_files/**/*.png
