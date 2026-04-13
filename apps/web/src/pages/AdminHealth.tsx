@@ -45,7 +45,7 @@ export default function AdminHealth() {
   const fetchHealth = async () => {
     try {
       const token = localStorage.getItem('accessToken')
-      const res = await axios.get<HealthResponse>(`${API_GATEWAY_URL}/api/health/agents`, {
+      const res = await axios.get<HealthResponse>(`${API_GATEWAY_URL}/api/v1/health/agents`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       setAgents(res.data.agents ?? [])
