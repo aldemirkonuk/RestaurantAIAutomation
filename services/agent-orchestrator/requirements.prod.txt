@@ -18,9 +18,10 @@ email-validator==2.1.0
 supabase>=2.10.0
 psycopg2-binary==2.9.9
 
-# Message queue (RabbitMQ)
+# Message queue (RabbitMQ + Celery task queue)
 aio-pika==9.4.0
 aiormq==6.8.0
+celery==5.3.6
 
 # Cache (Redis / Upstash)
 redis[hiredis]==5.0.1
