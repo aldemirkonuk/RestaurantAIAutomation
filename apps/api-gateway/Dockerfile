@@ -42,4 +42,5 @@ COPY --from=builder /app/apps/api-gateway/dist ./apps/api-gateway/dist
 ENV NODE_ENV=production
 EXPOSE 3000
 
-CMD ["sh", "-c", "node apps/api-gateway/dist/main.js"]
+WORKDIR /app/apps/api-gateway
+CMD ["node", "dist/main"]
