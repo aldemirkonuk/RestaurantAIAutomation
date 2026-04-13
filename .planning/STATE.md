@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Archive
 status: in_progress
-last_updated: "2026-04-12T00:00:00.000Z"
+last_updated: "2026-04-13T00:00:00.000Z"
 progress:
-  total_phases: 23
-  completed_phases: 20
+  total_phases: 24
+  completed_phases: 21
   total_plans: 85
   completed_plans: 85
   percent: 100
@@ -19,18 +19,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 21 — golden-path-e2e (ALL WAVES COMPLETE)
+**Current focus:** Phase 22 — observability-deployment (IN PLANNING)
 
 ---
 
 ## Current Position
 
-Phase: 21 (golden-path-e2e) — COMPLETE
-Plan: All 4 plans complete (21-01 through 21-04). Security audit complete (21-SECURITY.md).
-**Last completed:** Phase 21 — Settings extension, FastAPI lifespan, POS webhook, 10 E2E tests (2026-04-12)
-**Phases complete:** 18, 20, 21 (v2.0)
+Phase: 22 (observability-deployment) — IN PLANNING
+Plan: 0 plans created. CONTEXT.md pending.
+**Last completed:** Phase 21 — fully closed 2026-04-13 (UAT 6/6, SECURITY 14/14, VALIDATION 10 tests, VERIFICATION 8/10)
+**Phases complete:** 18, 19, 20, 21 (v2.0)
 **Phases planned:** 22
-**Next action:** `/gsd-validate-phase 21` → `/gsd-verify-work 21` → Phase 22
+**Next action:** `/gsd-discuss-phase 22` → `/gsd-plan-phase 22` → `/gsd-execute-phase 22`
+
+### Phase 21 Closure — COMPLETE (2026-04-13)
+
+| Artifact | Status |
+|----------|--------|
+| 21-SECURITY.md | 14/14 threats closed |
+| 21-VALIDATION.md | Nyquist compliant — 10 tests, 0 gaps |
+| 21-UAT.md | 6/6 passed, 0 issues (1 fix: pos_routes.py reason/message normalization) |
+| 21-VERIFICATION.md | 8/10 verified (2 require live Toast credentials — by design) |
 
 ### Phase 21 Plans — COMPLETE
 
