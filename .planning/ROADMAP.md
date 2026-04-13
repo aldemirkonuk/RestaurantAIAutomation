@@ -20,7 +20,7 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
 - [ ] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export)
 - [x] **Phase 20: Wave 1 Level 4 Hardening** — Bring 4 golden path agents from Level 1.5 to Level 4 using new BaseAgent infrastructure: wire idempotency, decision logging, event sourcing, delivery tracking, and write 50+ integration tests across all 4 agents (completed 2026-04-11)
 - [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → ReportingAgent. Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
-- [ ] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python) + CloudAMQP (RabbitMQ) + Upstash (Redis). Total ~$10-20/mo
+- [x] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python) + CloudAMQP (RabbitMQ) + Upstash (Redis). Total ~$10-20/mo (completed 2026-04-13)
 
 ## Phase Details
 
@@ -129,11 +129,11 @@ Plans:
   10. Redis running on Upstash with AOF persistence
   11. Toast API credentials configured, webhook URL pointed to production endpoint
   12. Friend's restaurant receiving live inventory alerts
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 Plans:
 - [x] 22-01-PLAN.md — Sentry init + CORS middleware + requirements.prod.txt + .env.example (Wave 1)
 - [x] 22-02-PLAN.md — POS abstraction (POSProvider + ToastAdapter + generic route) + Sentry per-agent tags (Wave 1)
-- [ ] 22-03-PLAN.md — Health routes (/api/v1/health/agents, /metrics) + Railway Dockerfile + infra checkpoints (Wave 2)
+- [x] 22-03-PLAN.md — Health routes (/api/v1/health/agents, /metrics) + Railway Dockerfile + infra checkpoints (Wave 2)
 - [x] 22-04-PLAN.md — NestJS api-gateway health proxy controller + OrchestratorModule update (Wave 1)
 - [x] 22-05-PLAN.md — AdminHealth.tsx + App.tsx route + vercel.json + Railway/Vercel deployment checkpoint (Wave 2)
 

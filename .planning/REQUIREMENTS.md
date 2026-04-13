@@ -316,16 +316,16 @@
 
 - [x] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
 - [x] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
-- [ ] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
-- [ ] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.
+- [x] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
+- [x] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.
 
 ### Deployment (Phase 22)
 
 - [x] **DEP-01**: Frontend deployed to Vercel — auto-deploy from git, free tier.
 - [x] **DEP-02**: Supabase Cloud database — all v1.0 + v2.0 migrations applied, production data accessible.
 - [x] **DEP-03**: Python agent-orchestrator service on Railway or Fly.io — Dockerfile, uvicorn, $5-10/mo.
-- [ ] **DEP-04**: RabbitMQ on CloudAMQP — free tier instance configured.
-- [ ] **DEP-05**: Redis on Upstash — free tier with AOF persistence.
+- [x] **DEP-04**: RabbitMQ on CloudAMQP — free tier instance configured.
+- [x] **DEP-05**: Redis on Upstash — free tier with AOF persistence.
 - [x] **DEP-06**: Toast API credentials configured — friend's restaurant Toast webhook URL pointed to production endpoint.
 
 **Coverage (v2.0):**
