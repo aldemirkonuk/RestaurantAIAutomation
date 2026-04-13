@@ -10,13 +10,26 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
-    const redisUrl = this.configService.get<string>('REDIS_URL', 'redis://localhost:6379')
+    let redisUrl = this.configService.get<string>('REDIS_URL', '')
+    if (!redisUrl) {
+      this.logger.warn('⚠️ REDIS_URL not set, caching disabled')
+      return
+    }
+    // Upstash requires TLS — normalise redis:// → rediss://
+    if (redisUrl.startsWith('redis://') && redisUrl.includes('upstash.io')) {
+      redisUrl = 'rediss://' + redisUrl.slice('redis://'.length)
+    }
     try {
       this.client = createClient({
         url: redisUrl,
-        socket: { connectTimeout: 3000 },
+        socket: {
+          connectTimeout: 3000,
+          reconnectStrategy: (retries) => (retries > 3 ? false : Math.min(retries * 200, 2000)),
+        },
       })
-      this.client.on('error', (error) => this.logger.error(error))
+      this.client.on('error', (error) => {
+        this.logger.warn(`Redis error: ${error.message || error}`)
+      })
       await this.client.connect()
       this.logger.log('✅ Redis cache connected')
     } catch (error) {
