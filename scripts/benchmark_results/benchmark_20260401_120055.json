@@ -1,0 +1,990 @@
+{
+  "meta": {
+    "date": "2026-04-01T12:00:55.111313",
+    "model": "claude-sonnet-4-20250514",
+    "images_tested": 8,
+    "successful": 6
+  },
+  "summary": {
+    "total_wines": 75,
+    "avg_wines_per_page": 9.4,
+    "avg_latency_seconds": 25.82,
+    "total_cost_usd": 0.304623,
+    "avg_cost_per_page": 0.038078,
+    "avg_field_completeness": 0.484,
+    "projected_cost_per_menu_10pg": 0.3808
+  },
+  "results": [
+    {
+      "image": "Fioretta_Wine_Menu_December2025_p1.png",
+      "wines": [],
+      "total_wines": 0,
+      "page_notes": "This is an informational map/guide titled 'ITALIAN WINE REGIONS' showing the wine regions of Italy and their characteristic grape varieties. It contains educational content about Italian wine regions rather than a menu with specific wines, prices, or vintages. The image shows regions like Piedmont (moscato, nebbiolo, barbera, dolcetto), Tuscany (trebbiano, vernaccia, merlot, sangiovese), Sicily (catarratto, carricante, nero d'avola, nerello mascalese), and others, but does not list specific wine products for purchase.",
+      "latency_seconds": 5.67,
+      "input_tokens": 1825,
+      "output_tokens": 222,
+      "cost_usd": 0.008805,
+      "parse_error": false,
+      "quality": {
+        "field_completeness": 0,
+        "has_prices": false,
+        "has_vintages": false
+      }
+    },
+    {
+      "image": "Kinzie_Chophouse_Wine_Menu_p6.png",
+      "wines": [
+        {
+          "wine_name": "Whitehall Lane Winery St. Helena",
+          "vintage": 2022,
+          "price_bottle": 120.0,
+          "price_glass": null,
+          "region": "Napa Valley",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Clos du Val Stags Leap District",
+          "vintage": 2022,
+          "price_bottle": 145.0,
+          "price_glass": null,
+          "region": "Stags Leap District",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Ramey Wine Cellars",
+          "vintage": 2020,
+          "price_bottle": 170.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Scattered Peaks",
+          "vintage": 2022,
+          "price_bottle": 95.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Duckhorn",
+          "vintage": 2022,
+          "price_bottle": 170.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Prisoner",
+          "vintage": 2021,
+          "price_bottle": 180.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Frank Family",
+          "vintage": 2022,
+          "price_bottle": 175.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Frog's Leap Rutherford Estate",
+          "vintage": 2021,
+          "price_bottle": 180.0,
+          "price_glass": null,
+          "region": "Rutherford",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Cakebread Cellars",
+          "vintage": 2022,
+          "price_bottle": 200.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Stag's Leap Fay",
+          "vintage": 2021,
+          "price_bottle": 350.0,
+          "price_glass": null,
+          "region": "Stags Leap District",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Silver Oak",
+          "vintage": 2019,
+          "price_bottle": 450.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "BV Rutherford Reserve Vintage Release",
+          "vintage": 2019,
+          "price_bottle": 175.0,
+          "price_glass": null,
+          "region": "Rutherford",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Heitz",
+          "vintage": 2021,
+          "price_bottle": 180.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Faust",
+          "vintage": 2022,
+          "price_bottle": 135.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Stipulation Howell Mountain",
+          "vintage": 2020,
+          "price_bottle": 160.0,
+          "price_glass": null,
+          "region": "Howell Mountain",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Freemark Abbey Rutherford",
+          "vintage": 2019,
+          "price_bottle": 200.0,
+          "price_glass": null,
+          "region": "Rutherford",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Paul Hobbs Oakville",
+          "vintage": 2022,
+          "price_bottle": 245.0,
+          "price_glass": null,
+          "region": "Oakville",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Stag's Leap Artemis",
+          "vintage": 2021,
+          "price_bottle": 250.0,
+          "price_glass": null,
+          "region": "Stags Leap District",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Ch\u00e2teau Montelena Winery",
+          "vintage": 2021,
+          "price_bottle": 220.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Rombauer",
+          "vintage": 2021,
+          "price_bottle": 195.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Palermo Orin Swift",
+          "vintage": 2022,
+          "price_bottle": 180.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Mt. Brave Mt. Veeder",
+          "vintage": 2019,
+          "price_bottle": 245.0,
+          "price_glass": null,
+          "region": "Mt. Veeder",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Caymus Vineyards",
+          "vintage": 2023,
+          "price_bottle": 280.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Joseph Phelps",
+          "vintage": 2022,
+          "price_bottle": 270.0,
+          "price_glass": null,
+          "region": null,
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Taub Family Vineyards Rutherford",
+          "vintage": 2017,
+          "price_bottle": 180.0,
+          "price_glass": null,
+          "region": "Rutherford",
+          "country": "USA",
+          "grape_variety": "Cabernet Sauvignon",
+          "section_name": "Cabernet Sauvignon",
+          "bin_number": null
+        }
+      ],
+      "total_wines": 25,
+      "page_notes": "This is a Cabernet Sauvignon section from what appears to be a wine list. Many wines are from Napa Valley and surrounding regions. Each wine entry includes tasting notes/flavor profiles. There's a note at the bottom about wine vintages being subject to change.",
+      "latency_seconds": 28.15,
+      "input_tokens": 1825,
+      "output_tokens": 2819,
+      "cost_usd": 0.04776,
+      "parse_error": false,
+      "quality": {
+        "field_completeness": 0.907,
+        "has_prices": true,
+        "has_vintages": true,
+        "has_regions": true,
+        "has_sections": true,
+        "wines_with_name": 25,
+        "wines_with_price": 25,
+        "wines_with_vintage": 25
+      }
+    },
+    {
+      "image": "RL_Restaurant_Wine_Menu_p9.png",
+      "wines": [],
+      "total_wines": 0,
+      "page_notes": "",
+      "latency_seconds": 41.36,
+      "input_tokens": 1897,
+      "output_tokens": 4096,
+      "cost_usd": 0.067131,
+      "parse_error": true,
+      "quality": {
+        "field_completeness": 0,
+        "has_prices": false,
+        "has_vintages": false
+      }
+    },
+    {
+      "image": "Rose_Mary_Wine_List_02_18_2026_p6.png",
+      "wines": [
+        {
+          "wine_name": "Marjan Sim\u010di\u010d Ribolla Gialla",
+          "vintage": 2023,
+          "price_bottle": 80.0,
+          "price_glass": null,
+          "region": "Gori\u0161ka Brda",
+          "country": "Slovenia",
+          "grape_variety": "Ribolla Gialla",
+          "section_name": "SLOVENIA & CROATIA",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Grgi\u0107 Po\u0161ip",
+          "vintage": 2022,
+          "price_bottle": 120.0,
+          "price_glass": null,
+          "region": "Pelje\u0161ac",
+          "country": "Croatia",
+          "grape_variety": "Po\u0161ip",
+          "section_name": "SLOVENIA & CROATIA",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Ulli Stein Palmberg Sp\u00e4tlese Trocken Alte Reben",
+          "vintage": 2022,
+          "price_bottle": 110.0,
+          "price_glass": null,
+          "region": "Mosel",
+          "country": "Germany",
+          "grape_variety": "bone-dry Riesling",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "\u00d6konomierat Rebholz 'Birkweiler' Pinot Blanc",
+          "vintage": 2022,
+          "price_bottle": 70.0,
+          "price_glass": null,
+          "region": "Pfalz",
+          "country": "Germany",
+          "grape_variety": "Pinot Blanc",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "M\u00fcller-Catoir Haardter B\u00fcrgergarten Erste Lage",
+          "vintage": 2020,
+          "price_bottle": 114.0,
+          "price_glass": null,
+          "region": "Pfalz",
+          "country": "Germany",
+          "grape_variety": "bone-dry Riesling",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Robert Weil Kiedrich Turmberg Trocken",
+          "vintage": 2017,
+          "price_bottle": 138.0,
+          "price_glass": null,
+          "region": "Rheingau",
+          "country": "Germany",
+          "grape_variety": "bone-dry Riesling",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Emrich-Sch\u00f6nleber Halenberg GG",
+          "vintage": 2018,
+          "price_bottle": 175.0,
+          "price_glass": null,
+          "region": "Nahe",
+          "country": "Germany",
+          "grape_variety": "bone-dry Riesling",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Rolly Gassman Gew\u00fcztraminer",
+          "vintage": 2016,
+          "price_bottle": 94.0,
+          "price_glass": null,
+          "region": "Alsace",
+          "country": "France",
+          "grape_variety": "Gew\u00fcztraminer",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Rolly Gassman Brandhurst de Bergheim",
+          "vintage": 2010,
+          "price_bottle": 116.0,
+          "price_glass": null,
+          "region": "Alsace",
+          "country": "France",
+          "grape_variety": "off-dry Pinot Gris",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Trimbach 'Cuv\u00e9e Frederic Emile' Riesling",
+          "vintage": 2015,
+          "price_bottle": 248.0,
+          "price_glass": null,
+          "region": "Alsace",
+          "country": "France",
+          "grape_variety": "Riesling",
+          "section_name": "AUSTRIA, GERMANY & ALSACE",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Beckmen Vineyards Sauvignon Blanc",
+          "vintage": 2023,
+          "price_bottle": 68.0,
+          "price_glass": null,
+          "region": "Santa Ynez, California",
+          "country": "United States",
+          "grape_variety": "Sauvignon Blanc",
+          "section_name": "UNITED STATES",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Massican Falanghina, Greco, Fiano",
+          "vintage": 2023,
+          "price_bottle": 95.0,
+          "price_glass": null,
+          "region": "Napa Valley, California",
+          "country": "United States",
+          "grape_variety": "Falanghina, Greco, Fiano",
+          "section_name": "UNITED STATES",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Stolpman Vineyards 'Unfiltered' Sauvignon Blanc",
+          "vintage": 2024,
+          "price_bottle": 80.0,
+          "price_glass": null,
+          "region": "Ballard Canyon, California",
+          "country": "United States",
+          "grape_variety": "Sauvignon Blanc",
+          "section_name": "UNITED STATES",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Farm Cottage Trout Gulch Vineyard Chardonnay",
+          "vintage": 2023,
+          "price_bottle": 120.0,
+          "price_glass": null,
+          "region": "Santa Cruz Mountains, California",
+          "country": "United States",
+          "grape_variety": "Chardonnay",
+          "section_name": "UNITED STATES",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Arnot-Roberts Randle Hill Vineyard Sauvignon Blanc",
+          "vintage": 2022,
+          "price_bottle": 102.0,
+          "price_glass": null,
+          "region": "Yorkville Highlands, California",
+          "country": "United States",
+          "grape_variety": "Sauvignon Blanc",
+          "section_name": "UNITED STATES",
+          "bin_number": null
+        }
+      ],
+      "total_wines": 15,
+      "page_notes": "This appears to be page 5 of a wine menu focusing on white wines from Slovenia/Croatia, Austria/Germany/Alsace, and United States regions. All prices appear to be for bottles only.",
+      "latency_seconds": 24.76,
+      "input_tokens": 1880,
+      "output_tokens": 1892,
+      "cost_usd": 0.03402,
+      "parse_error": false,
+      "quality": {
+        "field_completeness": 1.0,
+        "has_prices": true,
+        "has_vintages": true,
+        "has_regions": true,
+        "has_sections": true,
+        "wines_with_name": 15,
+        "wines_with_price": 15,
+        "wines_with_vintage": 15
+      }
+    },
+    {
+      "image": "Theodora_Wine_List_December2025_02_18_2026_p3.png",
+      "wines": [],
+      "total_wines": 0,
+      "page_notes": "This is an introduction/welcome page from Theodora's Winter 2026 wine list. No wines are listed on this page. The text provides navigation information stating that winemaker biographies are on the next 30 pages, the complete wine list starts on page 38 arranged by color and flavor profiles, with specific mentions of Salt and Herbs white wines section (p. 42) and German Pinot Noirs including Lukas Hammelmann's Spatburgunder (p. 52) and Enderle & Moll's Liaison (p. 55). Updated 01/07/2025.",
+      "latency_seconds": 6.07,
+      "input_tokens": 1897,
+      "output_tokens": 173,
+      "cost_usd": 0.008286,
+      "parse_error": false,
+      "quality": {
+        "field_completeness": 0,
+        "has_prices": false,
+        "has_vintages": false
+      }
+    },
+    {
+      "image": "Roka_Chicago_Beverage_Menu_29August2025_p3.png",
+      "wines": [],
+      "total_wines": 0,
+      "page_notes": "This page contains only cocktails menu - no wines present. Features cocktail sections including 'Featured', 'Signature', and 'The Macallan' with various cocktails and whisky-based drinks. Also mentions that Roka Akor proudly serves Quari Ice in their cocktails.",
+      "latency_seconds": 4.53,
+      "input_tokens": 1825,
+      "output_tokens": 103,
+      "cost_usd": 0.00702,
+      "parse_error": false,
+      "quality": {
+        "field_completeness": 0,
+        "has_prices": false,
+        "has_vintages": false
+      }
+    },
+    {
+      "image": "Obelix_Chicago_Wine_Menu_p6.png",
+      "wines": [
+        {
+          "wine_name": "Le Beaujolais, Lapierre",
+          "vintage": 2024,
+          "price_bottle": 70.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Morgon S. Lapierre",
+          "vintage": 2024,
+          "price_bottle": 85.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Morgon Cuv\u00e9e Camille, Lapierre",
+          "vintage": 2024,
+          "price_bottle": 120.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Morgon Cuv\u00e9e Marcel, Lapierre",
+          "vintage": 2024,
+          "price_bottle": 135.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Morgon Corcelette - Cailloux, Daniel Bouland",
+          "vintage": 2022,
+          "price_bottle": 105.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Moulin-\u00e0-Vent Deschannes, Mae Godard",
+          "vintage": 2023,
+          "price_bottle": 110.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Juli\u00e9nas Les Fouillouses, Sylvain Martel",
+          "vintage": 2022,
+          "price_bottle": 75.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "R\u00e9gni\u00e9 Montmerand, Antoine Sunier",
+          "vintage": 2022,
+          "price_bottle": 80.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "R\u00e9gni\u00e9 Haut-Ronze, Philippe Viet",
+          "vintage": 2022,
+          "price_bottle": 85.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Brouilly V.V., Jean-Claude Lapalu",
+          "vintage": 2023,
+          "price_bottle": 66.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Brouilly La Croix de Rameau, Jean-Claude Lapalu",
+          "vintage": 2023,
+          "price_bottle": 78.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Beaujolais-Villages Smith-Chapel",
+          "vintage": 2023,
+          "price_bottle": 60.0,
+          "price_glass": null,
+          "region": "Beaujolais",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Vin de France Libation, Clotaire Michal",
+          "vintage": 2020,
+          "price_bottle": 130.0,
+          "price_glass": null,
+          "region": "France",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Beaujolais",
+          "bin_number": null
+        },
+        {
+          "wine_name": "M\u00e2con-Bussi\u00e8res Les Devants, Sarzaniero (Gamay)",
+          "vintage": 2022,
+          "price_bottle": 65.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": "Gamay",
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Givry 1er Cru Grande Berge, Desvignes",
+          "vintage": 2022,
+          "price_bottle": 145.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Bourgogne Hauts Cotes de Beaune Roblet Monnot",
+          "vintage": 2020,
+          "price_bottle": 100.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Bourgogne Rouge En Bully, Rapet",
+          "vintage": 2020,
+          "price_bottle": 70.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Savigny Les Beaune V.V., Ledy",
+          "vintage": 2021,
+          "price_bottle": 110.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Savigny Les Beaune Aux Grand Liards, Bize",
+          "vintage": 2022,
+          "price_bottle": 160.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Savigny Les Beaune Aux Grand Liards, Bize",
+          "vintage": 2018,
+          "price_bottle": 200.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Ladoix Les Ranches, Cruchardeau",
+          "vintage": 2023,
+          "price_bottle": 125.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Volnay Vendanges S\u00e9lectionn\u00e9es, Lafarge",
+          "vintage": 2022,
+          "price_bottle": 200.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Volnay Y. Clerget",
+          "vintage": 2022,
+          "price_bottle": 250.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Volnay Marquis d'Angerville",
+          "vintage": 2023,
+          "price_bottle": 225.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Pommard Georges Glantenay",
+          "vintage": 2022,
+          "price_bottle": 175.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Pommard Noizons, Nicolas Rossignol",
+          "vintage": 2022,
+          "price_bottle": 250.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Pommard La Levri\u00e9re, Tr\u00e8s Vieilles Vignes, Dugat-Py",
+          "vintage": 2022,
+          "price_bottle": 275.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Monthelie Roulot",
+          "vintage": 2018,
+          "price_bottle": 225.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Pernand-Vergelesses 1er Cru Chandon de Brialle",
+          "vintage": 2021,
+          "price_bottle": 250.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Savigny-les-Beaune 1er Cru Talmette, Bize",
+          "vintage": 2022,
+          "price_bottle": 200.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Savigny-les-Beaune 1er Cru Marconnets, Bize",
+          "vintage": 2022,
+          "price_bottle": 200.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Savigny-les-Beaune 1er Cru Aux Vergelesses, Bize",
+          "vintage": 2022,
+          "price_bottle": 240.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Beaune 1er Cru Gr\u00e8ves, Lafarge",
+          "vintage": 2020,
+          "price_bottle": 240.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Pommard 1er Cru Pezerolles, Joseph Voillot",
+          "vintage": 2020,
+          "price_bottle": 300.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        },
+        {
+          "wine_name": "Aloxe-Corton 1er Cru Les Valozi\u00e8res, Charles Lachaux",
+          "vintage": 2021,
+          "price_bottle": 800.0,
+          "price_glass": null,
+          "region": "Burgundy",
+          "country": "France",
+          "grape_variety": null,
+          "section_name": "Burgundy",
+          "bin_number": null
+        }
+      ],
+      "total_wines": 35,
+      "page_notes": "Wine menu pages showing Beaujolais and Burgundy sections with Rouge (red) wines. Prices appear to be in a single currency unit. Some wines include producer names and vineyard designations.",
+      "latency_seconds": 43.47,
+      "input_tokens": 1825,
+      "output_tokens": 3933,
+      "cost_usd": 0.06447,
+      "parse_error": false,
+      "quality": {
+        "field_completeness": 1.0,
+        "has_prices": true,
+        "has_vintages": true,
+        "has_regions": true,
+        "has_sections": true,
+        "wines_with_name": 35,
+        "wines_with_price": 35,
+        "wines_with_vintage": 35
+      }
+    },
+    {
+      "image": "AVEC_West_Loop_Wine_Bev_List_02_18_2026_p2.png",
+      "wines": [],
+      "total_wines": 0,
+      "page_notes": "",
+      "latency_seconds": 52.58,
+      "input_tokens": 1897,
+      "output_tokens": 4096,
+      "cost_usd": 0.067131,
+      "parse_error": true,
+      "quality": {
+        "field_completeness": 0,
+        "has_prices": false,
+        "has_vintages": false
+      }
+    }
+  ]
+}

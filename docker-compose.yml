@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Supabase-compatible)
+  postgres:
+    image: postgres:15-alpine
+    container_name: wineops-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wineops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wineops_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-wineops}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wineops"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - wineops-network
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: wineops-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP protocol
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-wineops}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-wineops_secret}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - wineops-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: wineops-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - wineops-network
+
+  # pgAdmin moved to docker-compose.override.yml (dev-only)
+
+volumes:
+  postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  wineops-network:
+    driver: bridge
+
+# =============================================================================
+# USAGE:
+# =============================================================================
+# Start all services:      docker-compose up -d
+# View logs:               docker-compose logs -f
+# Stop all services:       docker-compose down
+# Stop & remove volumes:   docker-compose down -v
+# 
+# Access services:
+# - PostgreSQL:     localhost:5432 (user: wineops, pass: wineops_secret)
+# - RabbitMQ UI:    http://localhost:15672 (
+

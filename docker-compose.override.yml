@@ -1,0 +1,32 @@
+# =============================================================================
+# Development-Only Services
+# =============================================================================
+# This file is auto-loaded by `docker-compose up` alongside docker-compose.yml.
+# It contains dev tools that should NOT run in production.
+#
+# To run WITHOUT dev services: docker-compose -f docker-compose.yml up -d
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # pgAdmin (Database Management UI) - Dev Only
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: wineops-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@wineops.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - wineops-network
+
+volumes:
+  pgadmin_data:
+    driver: local

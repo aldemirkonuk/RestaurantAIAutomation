@@ -1,0 +1,5 @@
+# Seed Script Dependencies
+python-dotenv==1.0.0
+supabase==2.3.0
+bcrypt==4.1.2
+

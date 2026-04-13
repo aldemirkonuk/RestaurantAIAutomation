@@ -1,0 +1,63 @@
+<!--
+  Wine Menu Extraction Review — Simple Config
+  =============================================
+  Quick pipeline QA: see what was extracted, decide if it's right, note fixes.
+
+  TASK DATA:
+    restaurant_name   : string
+    raw_text          : string  (extracted text from pipeline)
+    wines             : array   (extracted wine objects)
+    image             : string  (optional — screenshot or photo)
+    source_url        : string  (optional)
+    quality_score     : number  (optional, 0-100)
+    extraction_method : string  (optional)
+
+  HOTKEYS:  1 = Approve   2 = Fix   3 = Reject
+-->
+<View>
+
+  <View style="display:flex; gap:8px; margin-bottom:8px;">
+    <View style="flex:1; padding:8px 12px; background:#f0f4ff; border-radius:6px;">
+      <Header value="Restaurant" size="5"/>
+      <Text name="t_restaurant" value="$restaurant_name"/>
+    </View>
+    <View style="flex:1; padding:8px 12px; background:#f0fff4; border-radius:6px;">
+      <Header value="Source" size="5"/>
+      <Text name="t_method" value="$extraction_method"/>
+    </View>
+  </View>
+
+  <Image name="menu_image" value="$image" zoom="true" zoomControl="true" rotateControl="true"/>
+
+  <View style="border:1px solid #ddd; border-radius:6px; margin:8px 0; overflow:hidden;">
+    <View style="background:#f6f8fa; padding:6px 12px; border-bottom:1px solid #ddd;">
+      <Header value="Extracted Text" size="4"/>
+    </View>
+    <View style="padding:8px 12px;">
+      <Text name="raw_text" value="$raw_text"/>
+    </View>
+  </View>
+
+  <View style="border:1px solid #ddd; border-radius:6px; margin-bottom:12px; overflow:hidden;">
+    <View style="background:#f6f8fa; padding:6px 12px; border-bottom:1px solid #ddd;">
+      <Header value="Extracted Wines" size="4"/>
+    </View>
+    <View style="padding:8px 12px;">
+      <Table name="wines_table" value="$wines"/>
+    </View>
+  </View>
+
+  <Header value="Decision" size="3"/>
+  <Choices name="decision" toName="raw_text" choice="single" showInline="true"
+           required="true" requiredMessage="Pick a decision.">
+    <Choice value="approve" alias="Approve — extraction is accurate" hotkey="1"/>
+    <Choice value="fix"     alias="Fix — has errors (describe below)" hotkey="2"/>
+    <Choice value="reject"  alias="Reject — not a wine menu or unusable" hotkey="3"/>
+  </Choices>
+
+  <Header value="Corrections / Notes" size="4"/>
+  <TextArea name="corrections" toName="raw_text"
+            placeholder="Wrong prices, missing wines, bad OCR, section issues — write anything here."
+            rows="4" editable="true" showSubmitButton="false"/>
+
+</View>

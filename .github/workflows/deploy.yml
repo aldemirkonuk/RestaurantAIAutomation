@@ -1,0 +1,187 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: # Manual trigger
+
+env:
+  NODE_VERSION: "20.x"
+  PYTHON_VERSION: "3.11"
+  PNPM_VERSION: "8"
+
+jobs:
+  # Deploy React frontend to Vercel
+  deploy-frontend:
+    name: Deploy Frontend (Vercel)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm run build --filter=web
+        env:
+          VITE_API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./apps/web
+          vercel-args: "--prod"
+
+  # Deploy NestJS API Gateway to Fly.io
+  deploy-api-gateway:
+    name: Deploy API Gateway (Fly.io)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only --config apps/api-gateway/fly.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # Deploy FastAPI Agent Orchestrator to Railway
+  deploy-agent-orchestrator:
+    name: Deploy Agent Orchestrator (Railway)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        run: |
+          cd services/agent-orchestrator
+          railway up
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  # Run database migrations
+  migrate-database:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [deploy-api-gateway, deploy-agent-orchestrator]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install migration dependencies
+        run: |
+          pip install psycopg2-binary
+
+      - name: Run migrations
+        run: |
+          python3 services/database/migrate.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  # Health check
+  health-check:
+    name: Production Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend, deploy-api-gateway, deploy-agent-orchestrator]
+    steps:
+      - name: Check Frontend
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.FRONTEND_URL }})
+          if [ $response != "200" ]; then
+            echo "❌ Frontend health check failed"
+            exit 1
+          fi
+          echo "✅ Frontend is healthy"
+
+      - name: Check API Gateway
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.API_GATEWAY_URL }}/health)
+          if [ $response != "200" ]; then
+            echo "❌ API Gateway health check failed"
+            exit 1
+          fi
+          echo "✅ API Gateway is healthy"
+
+      - name: Check Agent Orchestrator
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.AGENT_ORCHESTRATOR_URL }}/api/v1/health)
+          if [ $response != "200" ]; then
+            echo "❌ Agent Orchestrator health check failed"
+            exit 1
+          fi
+          echo "✅ Agent Orchestrator is healthy"
+
+  # Notify deployment
+  notify:
+    name: Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: always()
+    steps:
+      - name: Send Slack notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🚀 Deployment to Production
+            Status: ${{ needs.health-check.result }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        if: always()
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            ## 🎉 WineOps AI ${{ github.ref_name }}
+            
+            **Deployed Services:**
+            - Frontend: Vercel
+            - API Gateway: Fly.io
+            - Agent Orchestrator: Railway
+            
+            **Health Status:** All systems operational ✅
+          draft: false
+          prerelease: false
+

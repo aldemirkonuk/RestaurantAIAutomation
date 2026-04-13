@@ -1,0 +1,112 @@
+<!--
+  Wine Menu Annotation Config — Two-Tier Gold Dataset Pipeline
+  =============================================================
+  Zone-level (Wine Entry / Section Header) + field-level bounding boxes
+  with per-region metadata (transcription, wine type, confidence).
+
+  DATA FIELDS:
+    $image            : page image URL (required)
+    $restaurant_name  : restaurant name
+    $source_file      : original filename
+    $page_info        : "Page 2 of 13 · pdf"
+    $pipeline_info    : "66 entries · 0.91 conf · gemini-3.1-flash-lite"
+    $ocr_line_count   : total OCR lines detected
+    $labeled_count    : lines matched by pipeline
+
+  HOTKEYS (Zones):
+    e  Wine Entry       s  Section Header   n  Non-Wine
+
+  HOTKEYS (Fields):
+    w  Wine Name        p  Price (Bottle)   g  Price (Glass)
+    v  Vintage          r  Region           c  Country
+    d  Producer         a  Grape            l  Appellation
+    t  Wine Type        b  Bottle Size      y  Serving Type
+-->
+<View>
+
+  <!-- Top info bar -->
+  <View style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+    <View style="flex:2; padding:8px 14px; background:#1a1a2e; border-radius:8px; color:#fff;">
+      <Header value="$restaurant_name" size="4" style="color:#fff; margin:0;"/>
+      <Text name="t_page" value="$page_info" style="color:#94a3b8; font-size:13px;"/>
+    </View>
+    <View style="flex:1; padding:8px 14px; background:#0f3460; border-radius:8px; color:#fff;">
+      <Header value="Pipeline" size="5" style="color:#60a5fa; margin:0;"/>
+      <Text name="t_pipe" value="$pipeline_info" style="color:#94a3b8; font-size:13px;"/>
+    </View>
+  </View>
+
+  <!-- Image -->
+  <Image name="image" value="$image"
+         zoom="true" zoomControl="true" rotateControl="true"
+         crosshair="true" maxWidth="100%"/>
+
+  <!-- Tier 1: Zone-level boxes -->
+  <Header value="Step 1: Verify wine entry zones" size="4" style="margin-top:12px;"/>
+  <RectangleLabels name="zone" toName="image" strokeWidth="3">
+    <Label value="Wine Entry"      background="#1890FF" hotkey="e"/>
+    <Label value="Section Header"  background="#FF85C0" hotkey="s"/>
+    <Label value="Non-Wine"        background="#8C8C8C" hotkey="n"/>
+  </RectangleLabels>
+
+  <!-- Tier 2: Field-level boxes -->
+  <Header value="Step 2: Verify field boxes inside entries" size="4" style="margin-top:12px;"/>
+  <RectangleLabels name="field" toName="image" strokeWidth="2">
+    <Label value="Wine Name"       background="#FF0000" hotkey="w"/>
+    <Label value="Producer"        background="#389E0D" hotkey="d"/>
+    <Label value="Vintage"         background="#5CDBD3" hotkey="v"/>
+    <Label value="Price (Bottle)"  background="#096DD9" hotkey="p"/>
+    <Label value="Price (Glass)"   background="#13C2C2" hotkey="g"/>
+    <Label value="Region"          background="#AD8B00" hotkey="r"/>
+    <Label value="Country"         background="#D4380D" hotkey="c"/>
+    <Label value="Grape"           background="#722ED1" hotkey="a"/>
+    <Label value="Appellation"     background="#EB2F96" hotkey="l"/>
+    <Label value="Wine Type"       background="#FA8C16" hotkey="t"/>
+    <Label value="Bottle Size"    background="#597EF7" hotkey="b"/>
+    <Label value="Serving Type"   background="#36CFC9" hotkey="y"/>
+  </RectangleLabels>
+
+  <!-- Per-region OCR transcription -->
+  <TextArea name="transcription" toName="image"
+            editable="true" perRegion="true" rows="1"
+            placeholder="OCR text (edit if wrong)"
+            displayMode="region-list"/>
+
+  <!-- Per-region wine type (on Wine Entry zones only) -->
+  <Choices name="wine_type_choice" toName="image" perRegion="true"
+           choice="single" showInline="true"
+           visibleWhen="region-selected"
+           whenTagName="zone" whenLabelValue="Wine Entry">
+    <Choice value="red"/>
+    <Choice value="white"/>
+    <Choice value="rose"/>
+    <Choice value="orange"/>
+    <Choice value="sparkling"/>
+    <Choice value="fortified"/>
+    <Choice value="dessert"/>
+    <Choice value="other"/>
+  </Choices>
+
+  <!-- Per-region confidence -->
+  <Choices name="confidence" toName="image" perRegion="true"
+           choice="single" showInline="true"
+           visibleWhen="region-selected">
+    <Choice value="high"   alias="Correct"/>
+    <Choice value="medium" alias="Needs minor fix"/>
+    <Choice value="low"    alias="Mostly wrong"/>
+  </Choices>
+
+  <!-- Page-level QA -->
+  <View style="margin-top:16px; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+    <Header value="Page Quality" size="4"/>
+    <Choices name="page_quality" toName="image" choice="single" showInline="true">
+      <Choice value="good"    alias="Good — labels look correct"/>
+      <Choice value="partial" alias="Partial — some labels need fixing"/>
+      <Choice value="bad"     alias="Bad — mostly wrong or not a menu"/>
+    </Choices>
+    <TextArea name="notes" toName="image"
+              placeholder="Optional corrections or notes..."
+              rows="2" editable="true" showSubmitButton="false"/>
+  </View>
+
+</View>

@@ -1,0 +1,54 @@
+# Label Studio for Wine Menu Extraction Review
+# ==============================================
+# Human-in-the-loop review for 10-20% sample + flagged extractions.
+#
+# Usage:
+#   cd docker/label-studio
+#   docker-compose up -d
+#
+# Access: http://localhost:8080
+# Default admin: admin@wineops.ai / wineops2026
+#
+# Data is persisted in ./data volume.
+
+services:
+  label-studio:
+    image: heartexlabs/label-studio:latest
+    container_name: wineops-label-studio
+    ports:
+      - "8080:8080"
+    environment:
+      - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
+      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/files
+      - DJANGO_DB=default
+      - POSTGRE_NAME=labelstudio
+      - POSTGRE_USER=labelstudio
+      - POSTGRE_PASSWORD=labelstudio_pass
+      - POSTGRE_PORT=5432
+      - POSTGRE_HOST=postgres
+      # Disable signup for security
+      - LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK=true
+      - LABEL_STUDIO_USERNAME=admin@wineops.ai
+      - LABEL_STUDIO_PASSWORD=wineops2026
+    volumes:
+      - ls-data:/label-studio/data
+      - ../../datasets:/label-studio/files/datasets:ro
+    depends_on:
+      postgres:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: wineops-label-studio-db
+    environment:
+      - POSTGRES_USER=labelstudio
+      - POSTGRES_PASSWORD=labelstudio_pass
+      - POSTGRES_DB=labelstudio
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  ls-data:
+  pg-data:

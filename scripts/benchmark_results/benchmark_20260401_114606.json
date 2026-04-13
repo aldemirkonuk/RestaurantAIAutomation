@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "date": "2026-04-01T11:46:06.952997",
+    "model": "claude-sonnet-4-20250514",
+    "images_tested": 8,
+    "successful": 0
+  },
+  "summary": {
+    "total_wines": 0,
+    "avg_wines_per_page": 0.0,
+    "avg_latency_seconds": 0.0,
+    "total_cost_usd": 0,
+    "avg_cost_per_page": 0.0,
+    "avg_field_completeness": 0,
+    "projected_cost_per_menu_10pg": 0.0
+  },
+  "results": [
+    {
+      "image": "Fioretta_Wine_Menu_December2025_p1.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdJzzhvTgo3Cv64yhgKk'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "Kinzie_Chophouse_Wine_Menu_p6.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK11MN4312sjpWrtMvX'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "RL_Restaurant_Wine_Menu_p9.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK11u7Q3PycqyUePZML'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "Rose_Mary_Wine_List_02_18_2026_p6.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK12KQYgjo52VUKr5m8'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "Theodora_Wine_List_December2025_02_18_2026_p3.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK12hUm6LncXHgmyZqr'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "Roka_Chicago_Beverage_Menu_29August2025_p3.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK136YLZn7uxXfYmPTs'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "Obelix_Chicago_Wine_Menu_p6.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK13XqDfkpfBU2xrzZr'}",
+      "wines": [],
+      "total_wines": 0
+    },
+    {
+      "image": "AVEC_West_Loop_Wine_Bev_List_02_18_2026_p2.png",
+      "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CZdK14YMiEoxcUpkCA4EE'}",
+      "wines": [],
+      "total_wines": 0
+    }
+  ]
+}

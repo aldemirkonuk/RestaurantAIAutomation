@@ -1,0 +1,24 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+.turbo
+
+# Logs
+*.log
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files (should use root .env)
+.env
+.env.local
+
