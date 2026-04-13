@@ -314,7 +314,7 @@
 
 ### Observability (Phase 22)
 
-- [ ] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
+- [x] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
 - [ ] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
 - [ ] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
 - [ ] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Archive
-status: in_progress
-last_updated: "2026-04-13T00:00:00.000Z"
+status: unknown
+last_updated: "2026-04-13T14:58:56.412Z"
 progress:
-  total_phases: 24
-  completed_phases: 21
-  total_plans: 85
-  completed_plans: 85
-  percent: 100
+  total_phases: 25
+  completed_phases: 19
+  total_plans: 90
+  completed_plans: 83
+  percent: 92
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -56,6 +56,7 @@ Plan: 5 plans created across 2 waves (Wave 1: 22-01, 22-02, 22-04 parallel; Wave
 ### Phase 22 Context — COMPLETE (2026-04-13)
 
 **Discussion Summary (4 locked decisions + 5 gray areas explored):**
+
 1. **Auth (3-layer)** — `GET /health` public · API endpoints `X-Admin-Key` · `/admin/health` ProtectedRoute
 2. **Sentry init** — Fail at startup in `production` if no DSN · warn + continue in `development`
 3. **POS abstraction** — `POST /api/v1/pos/webhook/{provider}` + `POSProvider` protocol + `ToastAdapter`
@@ -63,6 +64,7 @@ Plan: 5 plans created across 2 waves (Wave 1: 22-01, 22-02, 22-04 parallel; Wave
 5. **Toast DEP-06** — Production creds → Railway dashboard (never git) · read-only connectivity test
 
 **Audit (6 gaps found and fixed):**
+
 1. **CORS** — No CORSMiddleware existed; added with defense-in-depth + Vercel rewrites eliminate CORS in production
 2. **Frontend API key** — ADMIN_API_KEY would be exposed in browser JS; fixed: frontend calls api-gateway (JWT auth), gateway adds X-Admin-Key server-side
 3. **Frontend URL clarity** — Undefined how AdminHealth.tsx reaches orchestrator; locked: all calls through `VITE_API_GATEWAY_URL`, api-gateway proxies
@@ -71,6 +73,7 @@ Plan: 5 plans created across 2 waves (Wave 1: 22-01, 22-02, 22-04 parallel; Wave
 6. **admin_routes auth pattern unclear** — "same pattern as other routes" was vague; corrected: auth pattern from `research_routes.py:35` specifically
 
 **Scope changes:**
+
 - Added INFRA-01..04 (CORS, vercel.json, .env.example, api-gateway proxy)
 - Added "Network Architecture" decision section (API gateway pattern)
 - Scope slightly expanded but all user-intentional (POS abstraction + public /health endpoint)
