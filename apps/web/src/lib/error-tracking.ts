@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/react'
-import { BrowserTracing } from '@sentry/tracing'
 
 /**
  * Error Tracking Library
@@ -57,7 +56,7 @@ class ErrorTrackingService {
       environment: config.environment,
       release: config.release,
       tracesSampleRate: config.tracesSampleRate ?? 0.1,
-      integrations: [new BrowserTracing()],
+      integrations: [Sentry.browserTracingIntegration()],
       beforeSend(event) {
         // Placeholder for any filtering rules
         return event

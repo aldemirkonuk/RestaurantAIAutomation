@@ -356,7 +356,7 @@ const categoryLabels = {
   operations: 'Operations',
 };
 
-export function Settings() {
+export default function Settings() {
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
