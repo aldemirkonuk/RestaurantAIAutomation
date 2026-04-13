@@ -76,7 +76,7 @@ weasyprint>=60.0
 apscheduler==3.10.4
 
 # Metrics
-prometheus-client==0.19.0
+prometheus-client==0.25.0
 
 # LLM (optional fallback)
 openai==1.10.0
