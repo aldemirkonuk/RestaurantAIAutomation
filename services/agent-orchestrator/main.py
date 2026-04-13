@@ -150,3 +150,8 @@ async def health_check():
 # (pos_routes.py calls get_orchestrator() which is defined above)
 from api.pos_routes import router as pos_router  # noqa: E402
 app.include_router(pos_router)
+
+# Health routes — imported at the bottom to avoid circular import
+# (health_routes.py imports get_orchestrator() defined above in this file)
+from api.health_routes import router as health_router  # noqa: E402
+app.include_router(health_router)
