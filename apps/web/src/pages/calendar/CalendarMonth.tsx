@@ -154,7 +154,6 @@ function DayCellComponent({
     [cell.date, onDayClick]
   )
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   const minHeight = isMobile ? 'min-h-[60px]' : 'min-h-[100px]'
   
   return (
