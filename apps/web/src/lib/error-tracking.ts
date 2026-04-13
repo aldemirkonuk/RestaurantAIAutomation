@@ -56,7 +56,7 @@ class ErrorTrackingService {
       environment: config.environment,
       release: config.release,
       tracesSampleRate: config.tracesSampleRate ?? 0.1,
-      integrations: [Sentry.browserTracingIntegration()],
+      integrations: [],
       beforeSend(event) {
         // Placeholder for any filtering rules
         return event
