@@ -74,3 +74,7 @@ vendor/
 
 # Local ML / training run outputs at repo root
 runs/
+
+# Archived Cursor chat exports (huge, non-source)
+md_files/Agent_Chat_History/
+md_files/**/*.png

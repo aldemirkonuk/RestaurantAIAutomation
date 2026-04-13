@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# Send a template email to suley1742@gmail.com via WineOps API
+# Send a template email via WineOps API (recipient from TO_EMAIL).
 # Uses the ready-made "test" template.
 #
 # Requirements:
 #   - API gateway running: pnpm --filter @wineops/api-gateway start:dev (port 4000)
 #   - Gmail configured (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN) for real sends;
 #     otherwise the API mocks and logs only.
+#
+# Usage:
+#   TO_EMAIL=you@example.com ./scripts/send_email_to_suley.sh
 
 set -e
 
+TO_EMAIL="${TO_EMAIL:-you@example.com}"
 API_URL="${API_URL:-http://localhost:4000}"
 ENDPOINT="${API_URL}/api/v1/communications/test/send-template"
 
-echo "Sending template email to suley1742@gmail.com..."
+echo "Sending template email to ${TO_EMAIL}..."
 echo "API: $ENDPOINT"
 
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT" \
   -H "Content-Type: application/json" \
-  -d '{"to": ["suley1742@gmail.com"], "template": "test"}' 2>/dev/null) || true
+  -d "{\"to\": [\"${TO_EMAIL}\"], \"template\": \"test\"}" 2>/dev/null) || true
 
 if [ -z "$RESPONSE" ]; then
   echo ""
