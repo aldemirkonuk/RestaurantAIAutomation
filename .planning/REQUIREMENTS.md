@@ -264,7 +264,7 @@
 ### Infrastructure — BaseAgent Upgrade (Phase 18)
 
 - [x] **INFRA-01**: BaseAgent provides idempotency mixin — `_check_idempotency(message_id)` checks Redis/PG `idempotency_keys` table, skips if already processed, `_mark_processed()` after success. Fails open (process twice rather than drop).
-- [ ] **INFRA-02**: BaseAgent provides `log_decision()` method — persists agent decisions to `decision_log` table with agent_name, decision_type, inputs, reasoning, output, confidence, correlation_id, restaurant_id.
+- [x] **INFRA-02**: BaseAgent provides `log_decision()` method — persists agent decisions to `decision_log` table with agent_name, decision_type, inputs, reasoning, output, confidence, correlation_id, restaurant_id.
 - [x] **INFRA-03**: Structured JSON logging — all agent logs emitted as JSON with timestamp, level, logger, message, agent_name, correlation_id. `JSONFormatter` class in utils/logger.py.
 - [x] **INFRA-04**: Distributed tracing — correlation_id extracted from incoming messages, propagated to all outgoing publishes. `self._current_correlation_id` set before every `process_message` call.
 - [ ] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
@@ -315,18 +315,18 @@
 ### Observability (Phase 22)
 
 - [x] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
-- [ ] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
+- [x] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
 - [ ] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
 - [ ] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.
 
 ### Deployment (Phase 22)
 
-- [ ] **DEP-01**: Frontend deployed to Vercel — auto-deploy from git, free tier.
-- [ ] **DEP-02**: Supabase Cloud database — all v1.0 + v2.0 migrations applied, production data accessible.
-- [ ] **DEP-03**: Python agent-orchestrator service on Railway or Fly.io — Dockerfile, uvicorn, $5-10/mo.
+- [x] **DEP-01**: Frontend deployed to Vercel — auto-deploy from git, free tier.
+- [x] **DEP-02**: Supabase Cloud database — all v1.0 + v2.0 migrations applied, production data accessible.
+- [x] **DEP-03**: Python agent-orchestrator service on Railway or Fly.io — Dockerfile, uvicorn, $5-10/mo.
 - [ ] **DEP-04**: RabbitMQ on CloudAMQP — free tier instance configured.
 - [ ] **DEP-05**: Redis on Upstash — free tier with AOF persistence.
-- [ ] **DEP-06**: Toast API credentials configured — friend's restaurant Toast webhook URL pointed to production endpoint.
+- [x] **DEP-06**: Toast API credentials configured — friend's restaurant Toast webhook URL pointed to production endpoint.
 
 **Coverage (v2.0):**
 - Infrastructure (Phase 18): 14 requirements — INFRA-01..08, INFRA-DB-01..06
