@@ -1485,6 +1485,9 @@ class DatabaseClient:
     ):
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
+        # Upstash Redis requires TLS — normalise redis:// → rediss://
+        if redis_url and redis_url.startswith("redis://") and "upstash.io" in redis_url:
+            redis_url = "rediss://" + redis_url[len("redis://"):]
         self.redis_url = redis_url
         
         # Clients

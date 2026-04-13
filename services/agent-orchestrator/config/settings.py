@@ -163,6 +163,15 @@ class Settings:
             os.getenv("SUPABASE_SERVICE_ROLE_KEY") or self.supabase_key
         )
 
+        # Phase 22: Service URLs
+        self.api_gateway_url: str = os.getenv(
+            "API_GATEWAY_URL", "http://localhost:4000"
+        )
+        self.frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        self.allowed_origins: str = os.getenv(
+            "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
+        )
+
     @property
     def supabase_client(self):
         """Lazy-init Supabase client. Returns None if not configured."""
