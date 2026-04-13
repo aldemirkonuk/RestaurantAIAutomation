@@ -17,11 +17,14 @@ email-validator==2.1.0
 # Database
 supabase>=2.10.0
 psycopg2-binary==2.9.9
+asyncpg==0.29.0
+sqlalchemy==2.0.25
 
 # Message queue (RabbitMQ + Celery task queue)
 aio-pika==9.4.0
 aiormq==6.8.0
 celery==5.3.6
+kombu>=5.3.0
 
 # Cache (Redis / Upstash)
 redis[hiredis]==5.0.1
@@ -50,6 +53,7 @@ urllib3==2.1.0
 # Communication (NotificationAgent)
 plivo==4.47.0
 sendgrid==6.11.0
+aiosmtplib>=3.0.0
 
 # Data processing
 pandas==2.2.0
@@ -67,6 +71,20 @@ backoff==2.2.1
 
 # PDF generation (ReportingAgent)
 weasyprint>=60.0
+
+# Scheduling
+apscheduler==3.10.4
+
+# Metrics
+prometheus-client==0.19.0
+
+# LLM (optional fallback)
+openai==1.10.0
+
+# Text utilities
+python-slugify==8.0.1
+unidecode==1.3.7
+rich>=13.0.0
 
 # Utilities
 python-dotenv==1.0.0
