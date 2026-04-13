@@ -129,7 +129,13 @@ Plans:
   10. Redis running on Upstash with AOF persistence
   11. Toast API credentials configured, webhook URL pointed to production endpoint
   12. Friend's restaurant receiving live inventory alerts
-**Plans**: TBD (created by `/gsd-plan-phase 22`)
+**Plans:** 5 plans
+Plans:
+- [ ] 22-01-PLAN.md — Sentry init + CORS middleware + requirements.prod.txt + .env.example (Wave 1)
+- [ ] 22-02-PLAN.md — POS abstraction (POSProvider + ToastAdapter + generic route) + Sentry per-agent tags (Wave 1)
+- [ ] 22-03-PLAN.md — Health routes (/api/v1/health/agents, /metrics) + Railway Dockerfile + infra checkpoints (Wave 2)
+- [ ] 22-04-PLAN.md — NestJS api-gateway health proxy controller + OrchestratorModule update (Wave 1)
+- [ ] 22-05-PLAN.md — AdminHealth.tsx + App.tsx route + vercel.json + Railway/Vercel deployment checkpoint (Wave 2)
 
 ## Future: Waves 2-6
 

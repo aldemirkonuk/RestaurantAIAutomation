@@ -19,17 +19,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 22 — observability-deployment (PLANNING COMPLETE — 5 plans, 3 waves)
+**Current focus:** Phase 22 — observability-deployment (PLANNING COMPLETE — 5 plans, 2 waves)
 
 ---
 
 ## Current Position
 
-Phase: 22 (observability-deployment) — PLANNING COMPLETE
-Plan: 5 plans created across 3 waves (2026-04-13).
+Phase: 22 (observability-deployment) — PLANNING COMPLETE (2026-04-13)
+Plan: 5 plans created across 2 waves (Wave 1: 22-01, 22-02, 22-04 parallel; Wave 2: 22-03, 22-05 parallel).
 **Last completed:** Phase 21 — fully closed 2026-04-13 (UAT 6/6, SECURITY 14/14, VALIDATION 10 tests, VERIFICATION 8/10)
 **Phases complete:** 18, 19, 20, 21 (v2.0)
 **Phases planned:** 22 — 5 plans ready for execution
+**Next action:** `/gsd-execute-phase 22`
+
+### Phase 22 Plans — READY FOR EXECUTION
+
+| Plan | Wave | Objective | Key Files |
+|------|------|-----------|-----------|
+| 22-01 | 1 | Sentry init + CORS + requirements.prod.txt + .env.example | main.py, requirements.txt, requirements.prod.txt, .env.example |
+| 22-02 | 1 | POS abstraction (POSProvider Protocol + ToastAdapter + generic route) + Sentry per-agent tags | core/pos_provider.py, adapters/toast_adapter.py, api/pos_routes.py, core/base_agent.py |
+| 22-03 | 2 | Health routes (/api/v1/health/agents, /metrics) + Railway Dockerfile + CloudAMQP/Upstash setup | api/health_routes.py, main.py, Dockerfile |
+| 22-04 | 1 | NestJS health proxy controller (api-gateway → orchestrator) | orchestrator.service.ts, health-proxy.controller.ts, orchestrator.module.ts |
+| 22-05 | 2 | AdminHealth.tsx React page + App.tsx route + vercel.json + Railway deploy checkpoint | AdminHealth.tsx, App.tsx, vercel.json |
 **Next action:** `/gsd-execute-phase 22`
 
 ### Phase 22 Plans Summary
