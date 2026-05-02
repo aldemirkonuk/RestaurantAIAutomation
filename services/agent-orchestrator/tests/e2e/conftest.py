@@ -37,3 +37,21 @@ def pytest_configure(config):
     """Register E2EReportGenerator plugin once per session."""
     if not config.pluginmanager.get_plugin("e2e_report_generator"):
         config.pluginmanager.register(E2EReportGenerator(), "e2e_report_generator")
+
+
+# Re-export production fixtures from conftest_prod so wave test files can use them.
+# conftest_prod.py is NOT auto-loaded by pytest (not named conftest.py).
+# This import registers all prod_ fixtures and pytest hooks with the session.
+from e2e.conftest_prod import (  # noqa: F401
+    prod_base_url,
+    prod_frontend_url,
+    prod_jwt,
+    prod_admin_headers,
+    prod_supabase,
+    e2e_created_ids,
+    teardown_e2e_records,
+    # get_with_retry and post_with_retry are helpers, not pytest fixtures;
+    # wave files import them directly: from e2e.conftest_prod import get_with_retry
+)
+# Import conftest_prod module-level code (Sentry init + pytest_runtest_logreport hook)
+import e2e.conftest_prod  # noqa: F401
