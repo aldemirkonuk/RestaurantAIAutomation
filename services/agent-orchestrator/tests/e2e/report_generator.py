@@ -25,6 +25,23 @@ class E2EReportGenerator:
         self._results: List[Dict[str, Any]] = []
         self._session_start: float = time.time()
 
+    @staticmethod
+    def _extract_wave_from_nodeid(nodeid: str) -> str:
+        """Extract wave letter from test node ID for cascading report correlation."""
+        wave_map = {
+            "wave_a_api_contracts": "A",
+            "wave_b_agent_health": "B",
+            "wave_c_agent_triggers": "C",
+            "wave_d_toast_pipeline": "D",
+            "wave_e_gmail_pipeline": "E",
+            "prod_smoke": "F",
+            "wave_g_calendar": "G",
+        }
+        for key, letter in wave_map.items():
+            if key in nodeid:
+                return letter
+        return "unknown"
+
     def pytest_runtest_makereport(self, item, call):
         if call.when != "call":
             return
@@ -45,6 +62,7 @@ class E2EReportGenerator:
         self._results.append(
             {
                 "name": item.nodeid,
+                "wave": self._extract_wave_from_nodeid(item.nodeid),
                 "outcome": outcome,
                 "duration_s": round(duration, 4),
                 "error": error,
