@@ -576,6 +576,7 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 | 260407-nav | Phase 13 gap closure: developer nav tabs (Queue + Certify), all 3 VERIFICATION gaps confirmed closed, UAT human-test instructions added | 2026-04-07 | 6b308de | — |
 | 260408-02o | fix lucide-react TS2786 JSX component errors across codebase — pinned @types/react@18.2.47 + typescript@5.3.3 workspace-wide via pnpm.overrides | 2026-04-08 | — | [260408-02o-fix-lucide-react-ts2786-jsx-component-er](./quick/260408-02o-fix-lucide-react-ts2786-jsx-component-er/) |
 | 260502-00z | analyze phase 25 plans for mistakes and future problems | 2026-05-02 | — | [260502-00z-analyze-phase-25-plans-for-mistakes-and-](./quick/260502-00z-analyze-phase-25-plans-for-mistakes-and-/) |
+| 260502-06m | fix phase 25 execution issues from analysis 260502-00z | 2026-05-02 | — | [260502-06m-fix-phase-25-execution-issues-from-analy](./quick/260502-06m-fix-phase-25-execution-issues-from-analy/) |
 
 ---
 
