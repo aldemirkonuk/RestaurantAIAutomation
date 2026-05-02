@@ -194,6 +194,16 @@ Plans:
   9. Failures trigger Sentry alert automatically
   10. Test suite runs in < 10 minutes total
 
+**Plans:** 7 plans across 4 waves
+Plans:
+- [ ] 25-01-PLAN.md — Requirements (TEST-PROD-01..12) + production setup scripts (Wave 1)
+- [ ] 25-02-PLAN.md — conftest_prod.py: JWT session fixture, teardown, Sentry hook, retry (Wave 2)
+- [ ] 25-03-PLAN.md — Wave A (API contracts) + Wave B (agent health) [parallel] (Wave 3)
+- [ ] 25-04-PLAN.md — Wave C (RabbitMQ triggers) + Wave D (Toast pipeline) [parallel] (Wave 3)
+- [ ] 25-05-PLAN.md — Wave E (Gmail pipeline) + Wave G (Calendar DB assertion) [parallel] (Wave 3)
+- [ ] 25-06-PLAN.md — Playwright prod config + Wave F smoke tests (Wave 3)
+- [ ] 25-07-PLAN.md — GitHub Actions e2e-prod.yml + cascading_report.py + report_generator extension (Wave 4)
+
 ---
 
 ## Future: Waves 2-6
