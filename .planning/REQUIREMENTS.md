@@ -328,15 +328,31 @@
 - [x] **DEP-05**: Redis on Upstash — free tier with AOF persistence.
 - [x] **DEP-06**: Toast API credentials configured — friend's restaurant Toast webhook URL pointed to production endpoint.
 
+### Production E2E (Phase 25)
+
+- [ ] **TEST-PROD-01**: Wave A — API contract: all `/api/v1/` endpoints on the live Railway agent-orchestrator return expected HTTP status codes with valid JWT (`Authorization: Bearer`) or `X-Admin-Key` header. Public `/health` returns 200. Auth-protected routes return 401 without credentials. Zero 500 errors.
+- [ ] **TEST-PROD-02**: Wave B — Agent health: `GET /api/v1/health/agents` with `X-Admin-Key` returns all 9 agents (pos_integration, buffer_manager, inventory_engine, inequality_detector, state_invariant_enforcer, notification, procurement, calendar, reporting) with at least 7 showing `healthy: true` or `status: "Active"`.
+- [ ] **TEST-PROD-03**: Wave C — Agent trigger: each of the 9 agents can receive a test RabbitMQ message published to its routing key; the agent remains healthy (does not crash or enter error state) within 5 seconds of receiving the message.
+- [ ] **TEST-PROD-04**: Wave D — Toast pipeline: a HMAC-signed test Toast webhook delivered to `POST /api/v1/pos/webhook/toast` flows through POSIntegrationAgent → InventoryEngine → NotificationAgent using `restaurant_id: "e2e-test-restaurant"` staging data. Supabase records created with deterministic IDs, verified, and torn down in session teardown.
+- [ ] **TEST-PROD-05**: Wave E — Gmail pipeline: a low-stock alert triggered via the NotificationAgent produces a `notification_deliveries` row in Supabase with `channel: "email"` and `status: "sent"` or `"delivered"` within 30 seconds.
+- [ ] **TEST-PROD-06**: Wave F — Frontend smoke (Playwright headless Chromium against production Vercel URL): login redirect succeeds, `/admin/health` displays ≥7 agent cards with Active status, dashboard loads without JS console errors in < 5s, one `/studio` write-flow completes and is torn down.
+- [ ] **TEST-PROD-07**: Wave G — Calendar: a `calendar_events` row with `event_date = today + 7 days` and `id = "e2e-cal-001"` is upserted into Supabase; a corresponding scheduled reminder record is verified to exist — confirming CalendarAgent will dispatch the T-7 day reminder without needing to wait 7 days.
+- [ ] **TEST-PROD-08**: All 7 wave test results exported as JUnit XML via `pytest --junitxml=test-results/wave_{X}.xml` and uploaded as GitHub Actions artifacts. Wave F Playwright JUnit XML also captured and uploaded.
+- [ ] **TEST-PROD-09**: Every production E2E test failure fires a `sentry_sdk.capture_message` call from `conftest_prod.py` with tags `{"e2e-failure": "true", "deploy-gate": "<true|false>"}` and `level="error"`. Sentry initialized in the test runner process (separate from the FastAPI app process) using `SENTRY_DSN` env var.
+- [ ] **TEST-PROD-10**: Full test suite (Waves A–G) completes in < 10 minutes. Waves B+C run in parallel via `pytest -n 2`. GitHub Actions `timeout-minutes: 15` hard cap. `PYTEST_RUNNING` is NEVER set in the e2e-prod.yml CI environment (would disable Sentry).
+- [ ] **TEST-PROD-11**: Nightly cron at `0 2 * * *` UTC triggers `e2e-prod.yml` (observability-only mode). Production deploys trigger the same workflow via Vercel deploy hook → GitHub Actions `workflow_dispatch` (blocking mode: failure → Sentry `deploy-gate: true` tag + PR comment if `pr_number` input is provided).
+- [ ] **TEST-PROD-12**: All test writes use `restaurant_id: "e2e-test-restaurant"` (permanent anchor). Records created with deterministic `e2e-*` IDs and Supabase upserts for idempotency. Session teardown deletes all rows matching `restaurant_id = 'e2e-test-restaurant' AND id LIKE 'e2e-%'` (except the anchor record itself). Teardown failures reported to Sentry with tag `e2e-orphan: true` — teardown errors NEVER raise exceptions or fail tests.
+
 **Coverage (v2.0):**
 - Infrastructure (Phase 18): 14 requirements — INFRA-01..08, INFRA-DB-01..06
 - Bug fixes (Phase 19): 12 requirements — BUG-01..12
 - Hardening (Phase 20): 4 requirements — HARD-01..04
 - Golden path E2E (Phase 21): 6 requirements — E2E-v2-01..06
 - Observability + Deployment (Phase 22): 10 requirements — OBS-01..04, DEP-01..06
-- v2.0 total: 46 requirements mapped to 5 phases
+- Production E2E (Phase 25): 12 requirements — TEST-PROD-01..12
+- v2.0 total: 58 requirements mapped to 6 phases
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-09 — v2.0 requirements added (46 new); v1.0 requirements all complete*
+*Last updated: 2026-05-01 — Phase 25 TEST-PROD-01..12 added (12 new requirements)*
