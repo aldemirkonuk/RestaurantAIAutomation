@@ -1,0 +1,295 @@
+# .github/workflows/e2e-prod.yml
+# Production E2E Test Suite — Phase 25
+# =====================================
+# Nightly cron (observability) + deploy-triggered blocking gate.
+#
+# D-12: Nightly 02:00 UTC — observability only
+# D-13: workflow_dispatch from Vercel deploy hook — blocking gate
+# D-15: Continue-all-waves — all 7 waves run regardless of failures
+# D-19: Full suite in < 10 minutes — timeout-minutes: 15 hard cap
+#
+# CRITICAL: PYTEST_RUNNING is NEVER set here.
+# main.py disables Sentry when PYTEST_RUNNING is in the environment.
+# Use TRIGGERED_BY_DEPLOY instead to signal blocking mode.
+
+name: Production E2E Tests
+
+on:
+  schedule:
+    - cron: '0 2 * * *'    # D-12: nightly 02:00 UTC
+  workflow_dispatch:         # D-13: triggered by Vercel deploy hook
+    inputs:
+      triggered_by_deploy:
+        description: 'Set to true when triggered by a production deploy'
+        type: boolean
+        default: false
+      deploy_url:
+        description: 'Production deploy URL (Vercel deployment URL)'
+        type: string
+        default: ''
+      pr_number:
+        description: 'PR number to comment on (deploy-triggered only)'
+        type: string
+        default: ''
+
+jobs:
+  e2e-prod:
+    name: Production E2E Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15    # TEST-PROD-10: hard cap
+
+    env:
+      # Supabase production credentials
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # E2E service account credentials (D-07)
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+      # Production service credentials
+      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+      RAILWAY_ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
+      RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
+      TOAST_WEBHOOK_SECRET: ${{ secrets.TOAST_WEBHOOK_SECRET }}
+      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+      # Sentry (TEST-PROD-09)
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      GITHUB_SHA: ${{ github.sha }}
+      # Playwright (Wave F)
+      E2E_BASE_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
+      # Deploy gate signal (D-14) — NOT PYTEST_RUNNING
+      TRIGGERED_BY_DEPLOY: ${{ inputs.triggered_by_deploy || 'false' }}
+      # CRITICAL: PYTEST_RUNNING is intentionally NOT set here.
+      # Setting PYTEST_RUNNING would disable Sentry in the FastAPI app (main.py:27).
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: |
+            services/agent-orchestrator/requirements.prod.txt
+            services/agent-orchestrator/requirements.test.txt
+
+      # -----------------------------------------------------------------------
+      - name: Install Python dependencies
+        working-directory: services/agent-orchestrator
+        run: |
+          pip install -r requirements.prod.txt
+          pip install -r requirements.test.txt
+
+      # -----------------------------------------------------------------------
+      - name: Set up pnpm + Node.js (Wave F — Playwright)
+        uses: pnpm/action-setup@v2
+        with:
+          version: '8'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium (Wave F — D-09)
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      # -----------------------------------------------------------------------
+      - name: Create test-results directory
+        run: mkdir -p test-results services/agent-orchestrator/test-results
+
+      # -----------------------------------------------------------------------
+      # WAVE A — API contracts (D-17: root wave, all others depend on it logically)
+      # -----------------------------------------------------------------------
+      - name: Wave A — API Contract Tests
+        working-directory: services/agent-orchestrator
+        run: |
+          pytest tests/e2e/wave_a_api_contracts.py \
+            --junitxml=test-results/wave_a.xml \
+            -v --tb=short -q \
+            2>&1 | tee test-results/wave_a.log || true
+
+      # -----------------------------------------------------------------------
+      # WAVES B+C — run concurrently as background processes, separate JUnit XML
+      # M-02 fix: separate XMLs let cascading_report attribute B vs C failures precisely.
+      # Both use '|| true' so failures don't stop the job.
+      # -----------------------------------------------------------------------
+      - name: Waves B+C — Agent Health + RabbitMQ Triggers (concurrent)
+        working-directory: services/agent-orchestrator
+        run: |
+          pytest tests/e2e/wave_b_agent_health.py \
+            --junitxml=test-results/wave_b.xml \
+            -v --tb=short -q \
+            2>&1 | tee test-results/wave_b.log || true &
+          WAVE_B_PID=$!
+          pytest tests/e2e/wave_c_agent_triggers.py \
+            --junitxml=test-results/wave_c.xml \
+            -v --tb=short -q \
+            2>&1 | tee test-results/wave_c.log || true &
+          WAVE_C_PID=$!
+          wait $WAVE_B_PID || true
+          wait $WAVE_C_PID || true
+
+      # -----------------------------------------------------------------------
+      # WAVE D — Toast pipeline (depends on A + B completing)
+      # -----------------------------------------------------------------------
+      - name: Wave D — Toast Pipeline
+        working-directory: services/agent-orchestrator
+        run: |
+          pytest tests/e2e/wave_d_toast_pipeline.py \
+            --junitxml=test-results/wave_d.xml \
+            -v --tb=short -q \
+            2>&1 | tee test-results/wave_d.log || true
+
+      # -----------------------------------------------------------------------
+      # WAVE E — Gmail pipeline (independent)
+      # -----------------------------------------------------------------------
+      - name: Wave E — Gmail Pipeline
+        working-directory: services/agent-orchestrator
+        run: |
+          pytest tests/e2e/wave_e_gmail_pipeline.py \
+            --junitxml=test-results/wave_e.xml \
+            -v --tb=short -q \
+            2>&1 | tee test-results/wave_e.log || true
+
+      # -----------------------------------------------------------------------
+      # WAVE G — Calendar scheduling (D-17: depends on E)
+      # -----------------------------------------------------------------------
+      - name: Wave G — Calendar DB Assertion
+        working-directory: services/agent-orchestrator
+        run: |
+          pytest tests/e2e/wave_g_calendar.py \
+            --junitxml=test-results/wave_g.xml \
+            -v --tb=short -q \
+            2>&1 | tee test-results/wave_g.log || true
+
+      # -----------------------------------------------------------------------
+      # WAVE F — Playwright frontend smoke tests (independent — D-17)
+      # -----------------------------------------------------------------------
+      - name: Wave F — Playwright Frontend Smoke Tests
+        working-directory: apps/web
+        run: |
+          npx playwright test \
+            --config playwright.prod.config.ts \
+            2>&1 | tee ../test-results/wave_f.log || true
+        # JUnit XML written by playwright.prod.config.ts to apps/web/test-results/wave_f.xml
+
+      # Copy Playwright JUnit XML to root test-results
+      # M-03 fix: synthetic failure XML when Playwright crashes before producing output
+      - name: Copy Playwright JUnit XML to root test-results
+        if: always()
+        run: |
+          if [ -f "apps/web/test-results/wave_f.xml" ]; then
+            cp apps/web/test-results/wave_f.xml test-results/wave_f.xml
+          else
+            echo "::warning::Wave F JUnit XML missing — Playwright may have crashed before producing output"
+            cat > test-results/wave_f.xml << 'SYNTHETIC_XML'
+          <?xml version="1.0" encoding="utf-8"?><testsuite name="wave_f" tests="1" failures="1" errors="0" skipped="0"><testcase name="wave_f_setup_failed" classname="wave_f"><failure message="Wave F XML not produced — Playwright process crashed or E2E_BASE_URL was not set">Check the Wave F step logs above for the root cause.</failure></testcase></testsuite>
+          SYNTHETIC_XML
+            echo "Synthetic failure XML written to test-results/wave_f.xml"
+          fi
+
+      # -----------------------------------------------------------------------
+      # CASCADING REPORT — post all waves
+      # -----------------------------------------------------------------------
+      - name: Generate cascading failure report
+        working-directory: services/agent-orchestrator
+        run: |
+          python scripts/cascading_report.py \
+            --results-dir ../../test-results \
+            --output-dir ../../test-results \
+            2>&1 | tee ../../test-results/cascading_report.log || true
+
+      # -----------------------------------------------------------------------
+      # UPLOAD ARTIFACTS
+      # -----------------------------------------------------------------------
+      - name: Upload test results (TEST-PROD-08)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-prod-results-${{ github.run_id }}
+          path: |
+            test-results/
+            apps/web/test-results/
+          retention-days: 30
+
+      # -----------------------------------------------------------------------
+      # DEPLOY GATE — blocking mode only (D-14)
+      # Fire Sentry alert + PR comment on failure when triggered by deploy
+      # -----------------------------------------------------------------------
+      - name: Check for test failures
+        id: check_failures
+        if: always()
+        run: |
+          FAILED=0
+          for xml in test-results/wave_*.xml; do
+            if [ -f "$xml" ]; then
+              FAILURES=$(grep -o 'failures="[^"]*"' "$xml" | grep -v 'failures="0"' | wc -l)
+              ERRORS=$(grep -o 'errors="[^"]*"' "$xml" | grep -v 'errors="0"' | wc -l)
+              if [ "$FAILURES" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
+                FAILED=1
+              fi
+            fi
+          done
+          echo "any_failures=$FAILED" >> $GITHUB_OUTPUT
+
+      - name: Sentry alert — deploy gate failure (D-14)
+        if: |
+          always() &&
+          steps.check_failures.outputs.any_failures == '1' &&
+          inputs.triggered_by_deploy == true
+        run: |
+          python - <<'EOF'
+          import os, sentry_sdk
+          dsn = os.environ.get("SENTRY_DSN")
+          if dsn:
+              sentry_sdk.init(dsn=dsn, traces_sample_rate=0.0)
+              sentry_sdk.capture_message(
+                  "Production E2E Deploy Gate Failed",
+                  level="error",
+                  tags={
+                      "deploy-gate": "true",
+                      "e2e-failure": "true",
+                      "triggered_by": "deploy",
+                      "github_sha": os.environ.get("GITHUB_SHA", "unknown"),
+                      "deploy_url": "${{ inputs.deploy_url }}",
+                  },
+              )
+              sentry_sdk.flush(2)  # L-01: flush before process exits (short-lived process)
+              print("Sentry deploy-gate alert fired")
+          EOF
+
+      - name: Post PR comment — deploy gate failure (D-14)
+        if: |
+          always() &&
+          steps.check_failures.outputs.any_failures == '1' &&
+          inputs.triggered_by_deploy == true &&
+          inputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ inputs.pr_number }},
+              body: [
+                '❌ **Production E2E deploy gate failed** for this deploy.',
+                '',
+                `Deploy URL: ${{ inputs.deploy_url }}`,
+                `GitHub SHA: ${context.sha}`,
+                '',
+                'Check the [E2E test artifacts](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ') for details.',
+                '',
+                'See `test-results/cascading_report.md` artifact for root cause analysis.',
+              ].join('\n')
+            })
