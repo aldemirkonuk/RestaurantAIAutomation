@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Production Kitchen
-status: active
-last_updated: "2026-04-13T21:55:22.783Z"
+milestone: v1.0
+milestone_name: Archive
+status: unknown
+last_updated: "2026-05-02T03:59:11.906Z"
 progress:
-  total_phases: 28
-  completed_phases: 22
-  total_plans: 90
-  completed_plans: 90
-  percent: 100
+  total_phases: 8
+  completed_phases: 5
+  total_plans: 32
+  completed_plans: 25
+  percent: 78
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -46,6 +46,7 @@ Phase: 22 (observability-deployment) — **COMPLETE** (2026-04-13 — live in pr
 | Upstash: Redis TLS connected | ✅ Live |
 
 **Remaining Phase 22 ops checkpoints (non-blocking, user-driven):**
+
 - [ ] Supabase db push (v1.0 + v2.0 migrations on cloud project)
 - [ ] Toast webhook URL pointed at production api-gateway endpoint
 - [ ] JWT_REFRESH_SECRET set on api-gateway Railway service
@@ -143,10 +144,12 @@ v1.0 session history (Sessions 1-11) archived with milestone completion on 2026-
 - **End state**: Login successful on Vercel, `/admin/health` shows 9/9 Active agents (pos integration, buffer manager, inventory engine, inequality detector, state invariant enforcer, notification, procurement, calendar, reporting)
 
 **Key Railway env vars set this session:**
+
 - api-gateway: `JWT_SECRET`, `REDIS_URL` (rediss://), `RABBITMQ_URL` (amqps://), `ADMIN_API_KEY`, `AGENT_ORCHESTRATOR_URL`, `FRONTEND_URL`, `NODE_ENV=production`
 - agent-orchestrator: `ADMIN_API_KEY`, `API_GATEWAY_URL`, `CORS_ORIGINS`
 
 **Files changed this session:**
+
 - `apps/api-gateway/src/common/cache/cache.service.ts` — Redis TLS normalization + retry cap + graceful fallback
 - `apps/api-gateway/src/main.ts` — CORS dynamic Vercel origins
 - `apps/api-gateway/src/common/orchestrator/health-proxy.controller.ts` — remove double `api/` prefix
