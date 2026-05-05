@@ -139,7 +139,7 @@ Plans:
 
 - [ ] **Phase 23: Gmail Integration & Calendar Reminder Emails** — Wire Gmail OAuth2 (api-gateway `GmailService`) with `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` on Railway. Fix orchestrator SMTP path (`GMAIL_USER/PASSWORD` app-password). Activate calendar reminder emails: CalendarAgent sends reminders at T-7, T-1, T-0 via `email_client.py`. Confirm `scheduled-tasks.service.ts` weekly/daily email reports work end-to-end. Test email pipeline with real credentials. *(Research-first — ask user how the flow should work after explaining code design)*
 - [ ] **Phase 24: Provider Communication Pipeline** — Bring `ProviderConversationAgent` (2,519 lines) and `EmailParsingAgent` (664 lines) to Level 4. Full pipeline: inbound email parsed → `order_interactions` saved → `EmailComposerService` generates reply → outbound sent via GmailService. Conversation summarization: LLM-generated highlights saved to `provider_conversation_summaries`. Sentiment analysis per conversation thread. Gap detection: missing confirmations, price discrepancies, unanswered threads. Dashboard card in frontend showing provider relationship health.
-- [ ] **Phase 25: Production E2E Test Suite** — Comprehensive test coverage for the live Vercel + Railway stack. Wave A (API contract tests): every `/api/v1/` endpoint checked against deployed api-gateway with real JWT. Wave B (agent integration): each of the 9 active agents triggered via RabbitMQ publish, response verified. Wave C (cross-service): Toast webhook → POS → Inventory → Notification full pipeline on staging data. Wave D (frontend smoke): Playwright or Puppeteer headless checks — login, `/admin/health`, dashboard load, at least one data-write flow. Failure alerting via Sentry.
+- [x] **Phase 25: Production E2E Test Suite** — Comprehensive test coverage for the live Vercel + Railway stack. Wave A (API contract tests): every `/api/v1/` endpoint checked against deployed api-gateway with real JWT. Wave B (agent integration): each of the 9 active agents triggered via RabbitMQ publish, response verified. Wave C (cross-service): Toast webhook → POS → Inventory → Notification full pipeline on staging data. Wave D (frontend smoke): Playwright or Puppeteer headless checks — login, `/admin/health`, dashboard load, at least one data-write flow. Failure alerting via Sentry. (completed 2026-05-02)
 
 ### Phase 23: Gmail Integration & Calendar Reminder Emails
 **Goal**: Make every email path in the system actually send. Two Gmail subsystems exist (OAuth2 API in api-gateway, SMTP app-password in orchestrator) — both need credentials wired and verified end-to-end.
@@ -194,15 +194,16 @@ Plans:
   9. Failures trigger Sentry alert automatically
   10. Test suite runs in < 10 minutes total
 
-**Plans:** 7 plans across 4 waves
+**Plans:** 8 plans (7 complete + 1 gap closure)
 Plans:
-- [ ] 25-01-PLAN.md — Requirements (TEST-PROD-01..12) + production setup scripts (Wave 1)
-- [ ] 25-02-PLAN.md — conftest_prod.py: JWT session fixture, teardown, Sentry hook, retry (Wave 2)
-- [ ] 25-03-PLAN.md — Wave A (API contracts) + Wave B (agent health) [parallel] (Wave 3)
-- [ ] 25-04-PLAN.md — Wave C (RabbitMQ triggers) + Wave D (Toast pipeline) [parallel] (Wave 3)
-- [ ] 25-05-PLAN.md — Wave E (Gmail pipeline) + Wave G (Calendar DB assertion) [parallel] (Wave 3)
-- [ ] 25-06-PLAN.md — Playwright prod config + Wave F smoke tests (Wave 3)
-- [ ] 25-07-PLAN.md — GitHub Actions e2e-prod.yml + cascading_report.py + report_generator extension (Wave 4)
+- [x] 25-01-PLAN.md — Requirements (TEST-PROD-01..12) + production setup scripts (Wave 1)
+- [x] 25-02-PLAN.md — conftest_prod.py: JWT session fixture, teardown, Sentry hook, retry (Wave 2)
+- [x] 25-03-PLAN.md — Wave A (API contracts) + Wave B (agent health) [parallel] (Wave 3)
+- [x] 25-04-PLAN.md — Wave C (RabbitMQ triggers) + Wave D (Toast pipeline) [parallel] (Wave 3)
+- [x] 25-05-PLAN.md — Wave E (Gmail pipeline) + Wave G (Calendar DB assertion) [parallel] (Wave 3)
+- [x] 25-06-PLAN.md — Playwright prod config + Wave F smoke tests (Wave 3)
+- [x] 25-07-PLAN.md — GitHub Actions e2e-prod.yml + cascading_report.py + report_generator extension (Wave 4)
+- [ ] 25-08-PLAN.md — [GAP CLOSURE] Wave F-4 write-flow: CommandBar ingest → WineRecordsTable verify → teardown (Wave 1)
 
 ---
 
