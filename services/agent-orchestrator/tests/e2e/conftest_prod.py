@@ -147,9 +147,22 @@ async def prod_jwt() -> str:
             },
             timeout=30.0,
         )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        pytest.skip(
+            f"Supabase auth failed ({exc.response.status_code}) for E2E_TEST_EMAIL. "
+            f"Check credentials are correct and account is enabled. "
+            f"Body: {exc.response.text[:200]}"
+        )
     data = resp.json()
-    return data["access_token"]  # Never log this value
+    access_token = data.get("access_token")
+    if not access_token:
+        pytest.skip(
+            f"Supabase auth response missing 'access_token'. "
+            f"Response keys: {list(data.keys())}"
+        )
+    return access_token  # Never log this value
 
 
 @pytest.fixture(scope="session")
