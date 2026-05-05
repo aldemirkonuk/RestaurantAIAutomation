@@ -194,7 +194,7 @@ Plans:
   9. Failures trigger Sentry alert automatically
   10. Test suite runs in < 10 minutes total
 
-**Plans:** 8 plans (7 complete + 1 gap closure)
+**Plans:** 8/8 plans complete
 Plans:
 - [x] 25-01-PLAN.md — Requirements (TEST-PROD-01..12) + production setup scripts (Wave 1)
 - [x] 25-02-PLAN.md — conftest_prod.py: JWT session fixture, teardown, Sentry hook, retry (Wave 2)
@@ -203,7 +203,7 @@ Plans:
 - [x] 25-05-PLAN.md — Wave E (Gmail pipeline) + Wave G (Calendar DB assertion) [parallel] (Wave 3)
 - [x] 25-06-PLAN.md — Playwright prod config + Wave F smoke tests (Wave 3)
 - [x] 25-07-PLAN.md — GitHub Actions e2e-prod.yml + cascading_report.py + report_generator extension (Wave 4)
-- [ ] 25-08-PLAN.md — [GAP CLOSURE] Wave F-4 write-flow: CommandBar ingest → WineRecordsTable verify → teardown (Wave 1)
+- [x] 25-08-PLAN.md — [GAP CLOSURE] Wave F-4 write-flow: CommandBar ingest → WineRecordsTable verify → teardown (Wave 1)
 
 ---
 

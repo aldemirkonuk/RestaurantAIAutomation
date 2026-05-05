@@ -656,22 +656,25 @@ jobs:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Wave G Calendar timing — how to verify a reminder was sent without waiting 7 days?**
    - What we know: `CalendarAgent` fires reminders at T-7, T-2, T-1 relative to event date.
    - What's unclear: Wave G can't wait 7 days in a 10-minute test suite.
    - Recommendation: Create a test event dated `today + 7 days` so a T-7 reminder is due immediately, OR call an internal `CalendarAgent` trigger endpoint if one exists, OR verify the reminder was scheduled (row in `calendar_events` table) rather than actually delivered. Flag this for the planner to resolve via a `GET /api/v1/health/agents/calendar_agent` check with a test event assertion.
+   - **RESOLVED:** Plan 25-05 (`wave_g_calendar.py`) implements the DB assertion workaround — upserts a `calendar_events` row with `event_date = today + 7`, polls `scheduled_reminders` table AND `reminder_sent_7_days` flag for 30 seconds, and skips non-fatally (not fails) if CalendarAgent scan interval exceeds 30s. No email wait required.
 
 2. **Wave D Toast webhook — which TOAST_RESTAURANT_GUID to use?**
    - What we know: The live restaurant GUID belongs to the friend's restaurant (DEP-06 confirmed). A test webhook with the wrong GUID may be rejected.
    - What's unclear: Whether `POSIntegrationAgent` validates the restaurant GUID against the Toast API or just processes the event structure.
    - Recommendation: Use `restaurant_id: "e2e-test-restaurant"` in the webhook payload body and bypass the GUID validation, OR create a test GUID in the Railway env vars. Planner should check `pos_integration_agent.py` to see if GUID validation is structural.
+   - **RESOLVED:** Plan 25-04 (`wave_d_toast_pipeline.py`) uses `os.environ.get("TOAST_RESTAURANT_GUID", "e2e-test-restaurant")` — production GUID if set in CI secrets, otherwise falls back to the permanent e2e anchor. Executor must read `pos_routes.py` and `pos_integration_agent.py` to confirm whether GUID validation is at the HTTP layer or agent layer and adjust accordingly.
 
 3. **TEST-PROD-01..12 not defined in REQUIREMENTS.md**
    - What we know: They're referenced in `ROADMAP.md` but not written out in `REQUIREMENTS.md`.
    - What's unclear: Whether the planner should add them to REQUIREMENTS.md as Plan 25-01 or treat CONTEXT.md success criteria as sufficient.
    - Recommendation: Plan 25-01 should add TEST-PROD-01..12 to REQUIREMENTS.md (copy from ROADMAP + CONTEXT) so traceability is maintained.
+   - **RESOLVED:** Plan 25-01 Task 1 appends the full `### Production E2E (Phase 25)` section with all 12 `TEST-PROD-NN` requirement definitions to `.planning/REQUIREMENTS.md` and updates the coverage count.
 
 ---
 
