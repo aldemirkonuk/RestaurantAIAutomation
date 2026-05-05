@@ -191,8 +191,11 @@ async def check_agent_still_healthy(
                     # crash state from detail endpoint; treat as no crash detected.
                     pass
                 # Any other status code: continue polling
-            except Exception:
-                pass
+            except httpx.HTTPStatusError:
+                pass  # Non-200 from health endpoint — keep polling
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout):
+                pass  # Transient network issue — keep polling
+            # Unexpected exceptions propagate so flaky networks are visible
             await asyncio.sleep(1.0)
     return True  # No crash observed within 5s
 
