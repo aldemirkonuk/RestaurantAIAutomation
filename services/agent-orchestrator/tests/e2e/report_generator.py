@@ -50,12 +50,17 @@ class E2EReportGenerator:
         duration = call.duration if hasattr(call, "duration") else 0.0
 
         if call.excinfo is not None:
-            outcome = "failed"
-            tb = call.excinfo.getrepr(style="short")
-            error = {
-                "message": str(call.excinfo.value),
-                "traceback": str(tb),
-            }
+            import _pytest.outcomes as _outcomes
+            if isinstance(call.excinfo.value, _outcomes.Skipped):
+                outcome = "skipped"
+                error = None
+            else:
+                outcome = "failed"
+                tb = call.excinfo.getrepr(style="short")
+                error = {
+                    "message": str(call.excinfo.value),
+                    "traceback": str(tb),
+                }
         elif hasattr(call, "result") and call.result is None:
             outcome = "skipped"
 
