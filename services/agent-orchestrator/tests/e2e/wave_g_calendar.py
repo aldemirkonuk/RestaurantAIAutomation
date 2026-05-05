@@ -86,7 +86,9 @@ async def upsert_calendar_event(prod_supabase, e2e_created_ids: list) -> None:
     prod_supabase.table(CALENDAR_EVENTS_TABLE).upsert(
         payload, on_conflict="id"
     ).execute()
-    e2e_created_ids.append({"table": CALENDAR_EVENTS_TABLE, "id": E2E_CAL_EVENT_ID})
+    # Guard against duplicate registration when called from multiple tests
+    if not any(r.get("id") == E2E_CAL_EVENT_ID for r in e2e_created_ids):
+        e2e_created_ids.append({"table": CALENDAR_EVENTS_TABLE, "id": E2E_CAL_EVENT_ID})
 
 
 async def poll_for_reminder_scheduled(
