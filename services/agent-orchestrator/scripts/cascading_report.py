@@ -208,15 +208,21 @@ def determine_root_causes(failed_waves: Set[str]) -> List[Dict]:
             root_causes.add(wave)
 
     # Build clusters: root cause → cascaded waves
+    # Use a fixpoint loop so multi-hop chains (A→B→C) are fully captured regardless
+    # of the iteration order of the failed_waves set.
     clusters = []
     assigned: Set[str] = set()
     for root in sorted(root_causes):
         cluster_waves = {root}
-        for wave in failed_waves:
-            if wave != root:
-                deps = WAVE_DEPS.get(wave, [])
-                if root in deps or any(d in cluster_waves for d in deps):
-                    cluster_waves.add(wave)
+        changed = True
+        while changed:
+            changed = False
+            for wave in failed_waves:
+                if wave not in cluster_waves:
+                    deps = WAVE_DEPS.get(wave, [])
+                    if root in deps or any(d in cluster_waves for d in deps):
+                        cluster_waves.add(wave)
+                        changed = True
         assigned.update(cluster_waves)
 
         frozen_key: FrozenSet = frozenset(cluster_waves)
