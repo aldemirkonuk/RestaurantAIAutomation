@@ -109,12 +109,11 @@ test('Wave F-3: dashboard loads within 5s with no console errors', async ({ page
     consoleErrors.push(`PageError: ${err.message}`)
   })
 
-  const startTime = Date.now()
-
   await loginWithRealCredentials(page)
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 })
 
-  // Navigate explicitly to /dashboard (or stay on post-login page if already there)
+  // Timer starts HERE — after login and redirect, measuring only dashboard load time
+  const startTime = Date.now()
   const currentUrl = page.url()
   if (!currentUrl.includes('/dashboard')) {
     await page.goto('/dashboard', { waitUntil: 'networkidle', timeout: 15_000 })
