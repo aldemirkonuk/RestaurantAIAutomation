@@ -85,8 +85,8 @@ test('Wave F-2: /admin/health shows ≥7 active agent cards', async ({ page }) =
 
   // AdminHealth.tsx: status badge renders STATUS_CONFIG[agent.status].label
   // STATUS_CONFIG.active = { label: 'Active', ... } — the text 'Active' appears in each active badge span.
-  // Allow up to 5s for the API call to api-gateway to resolve and render cards.
-  await page.waitForTimeout(5_000)
+  // Wait dynamically for at least 7 Active badges (nth(6) = 7th item), up to 10s.
+  await expect(page.getByText('Active', { exact: true }).nth(6)).toBeVisible({ timeout: 10_000 })
 
   const activeStatusBadges = page.getByText('Active', { exact: true })
   const cardCount = await activeStatusBadges.count()
