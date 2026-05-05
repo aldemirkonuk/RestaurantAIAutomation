@@ -1,0 +1,54 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules
+**/node_modules
+
+# ── Build artifacts (not needed for remote build) ─────────────────────────────
+dist
+**/dist
+.next
+**/.next
+.turbo
+**/.turbo
+
+# ── Python / ML ───────────────────────────────────────────────────────────────
+venv
+.venv
+__pycache__
+*.py[cod]
+*.pt
+*.pth
+*.onnx
+*.bin
+*.egg-info
+
+# ── Local dev / test output ───────────────────────────────────────────────────
+test-results
+playwright-report
+coverage
+*.log
+logs
+
+# ── Datasets / large assets ───────────────────────────────────────────────────
+External_Wine_Datasets
+datasets/annotation_images
+datasets/annotation_inbox
+datasets/wine_menus/images
+datasets/wine_menus/runs
+datasets/wine_menus_2class
+
+# ── Planning / docs (not app source) ─────────────────────────────────────────
+.planning
+md
+md_files
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+.idea
+.cursor
+*.suo
+*.sw?
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
