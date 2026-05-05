@@ -81,6 +81,7 @@ async def poll_notification_delivery(
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
+    last_exc = None
     while loop.time() < deadline:
         try:
             result = (
@@ -96,10 +97,15 @@ async def poll_notification_delivery(
                 row = result.data[0]
                 if row.get("status") in ("sent", "delivered", "queued"):
                     return row
-        except Exception:
-            # Table may not exist or columns may differ — log and continue polling
-            pass
+        except Exception as exc:
+            if last_exc is None:
+                print(f"[poll] Supabase query error (will retry): {exc}", flush=True)
+            last_exc = exc
         await asyncio.sleep(3.0)
+    if last_exc:
+        raise RuntimeError(
+            f"Supabase poll failed after {timeout_seconds}s: {last_exc}"
+        ) from last_exc
     return None
 
 

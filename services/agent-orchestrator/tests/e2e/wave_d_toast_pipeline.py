@@ -137,6 +137,7 @@ async def poll_supabase_for_webhook_record(
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
+    last_exc = None
     while loop.time() < deadline:
         try:
             result = (
@@ -156,9 +157,15 @@ async def poll_supabase_for_webhook_record(
                 )
                 if str(found_guid) == order_guid:
                     return True
-        except Exception:
-            pass
+        except Exception as exc:
+            if last_exc is None:
+                print(f"[poll] Supabase query error (will retry): {exc}", flush=True)
+            last_exc = exc
         await asyncio.sleep(2.0)
+    if last_exc:
+        raise RuntimeError(
+            f"Supabase poll failed after {timeout_seconds}s: {last_exc}"
+        ) from last_exc
     return False
 
 

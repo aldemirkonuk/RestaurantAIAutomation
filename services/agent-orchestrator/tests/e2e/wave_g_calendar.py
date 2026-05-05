@@ -106,8 +106,9 @@ async def poll_for_reminder_scheduled(
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
+    last_exc = None
     while loop.time() < deadline:
-        # Strategy 1: Check scheduled_reminders table (may not exist)
+        # Strategy 1: Check scheduled_reminders table (may not exist — expected failure)
         try:
             result = (
                 prod_supabase.table(SCHEDULED_REMINDERS_TABLE)
@@ -133,10 +134,16 @@ async def poll_for_reminder_scheduled(
             )
             if result.data and len(result.data) > 0:
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            if last_exc is None:
+                print(f"[poll] Supabase query error (will retry): {exc}", flush=True)
+            last_exc = exc
 
         await asyncio.sleep(3.0)
+    if last_exc:
+        raise RuntimeError(
+            f"Supabase poll failed after {timeout_seconds}s: {last_exc}"
+        ) from last_exc
     return False
 
 
