@@ -140,6 +140,7 @@ Plans:
 - [ ] **Phase 23: Gmail Integration & Calendar Reminder Emails** — Wire Gmail OAuth2 (api-gateway `GmailService`) with `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` on Railway. Fix orchestrator SMTP path (`GMAIL_USER/PASSWORD` app-password). Activate calendar reminder emails: CalendarAgent sends reminders at T-7, T-1, T-0 via `email_client.py`. Confirm `scheduled-tasks.service.ts` weekly/daily email reports work end-to-end. Test email pipeline with real credentials. *(Research-first — ask user how the flow should work after explaining code design)*
 - [ ] **Phase 24: Provider Communication Pipeline** — Bring `ProviderConversationAgent` (2,519 lines) and `EmailParsingAgent` (664 lines) to Level 4. Full pipeline: inbound email parsed → `order_interactions` saved → `EmailComposerService` generates reply → outbound sent via GmailService. Conversation summarization: LLM-generated highlights saved to `provider_conversation_summaries`. Sentiment analysis per conversation thread. Gap detection: missing confirmations, price discrepancies, unanswered threads. Dashboard card in frontend showing provider relationship health.
 - [x] **Phase 25: Production E2E Test Suite** — Comprehensive test coverage for the live Vercel + Railway stack. Wave A (API contract tests): every `/api/v1/` endpoint checked against deployed api-gateway with real JWT. Wave B (agent integration): each of the 9 active agents triggered via RabbitMQ publish, response verified. Wave C (cross-service): Toast webhook → POS → Inventory → Notification full pipeline on staging data. Wave D (frontend smoke): Playwright or Puppeteer headless checks — login, `/admin/health`, dashboard load, at least one data-write flow. Failure alerting via Sentry. (completed 2026-05-02)
+- [ ] **Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy** — Fix broken registration (no path to create a restaurant) and introduce multi-tenant hierarchy. Two-path registration: Path A (join via 8-char invite code) and Path B (create new restaurant → auto-creates org). DB: `organizations`, `organization_members`, `organization_invites` tables with RLS. API: invite creation/consumption/preview endpoints + org creation. Frontend: two-path wizard with inline invite validation, Settings → Team invite management, top-nav branch switcher for multi-location owners. Full UX elevation: progressive wizard, real-time code validation, copy-able invite URLs, email verification holding page with resend.
 
 ### Phase 23: Gmail Integration & Calendar Reminder Emails
 **Goal**: Make every email path in the system actually send. Two Gmail subsystems exist (OAuth2 API in api-gateway, SMTP app-password in orchestrator) — both need credentials wired and verified end-to-end.
@@ -177,6 +178,23 @@ Plans:
   14. Expiry tracking: "expiring today" surfaced in digest
   15. Frontend: Provider Comms card (health score, last contact, open threads) + Deals card (active promos count)
   16. 20+ integration tests covering: classify → route → extract → digest → sentiment pipeline
+
+### Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy
+**Goal**: Replace the broken single-form registration with a two-path wizard (create restaurant vs join via invite), introduce an organization/branch hierarchy for multi-location owners, and make every onboarding flow frictionless and self-service.
+**Depends on**: Phase 22 (deployed infrastructure + auth endpoints)
+**Requirements**: ONBOARD-01..08, INVITE-01..04, ORG-01..05
+**Success Criteria** (what must be TRUE):
+  1. Path B — new owner registers, organization + restaurant created, owner role assigned, dashboard accessible
+  2. Path A — staff enters invite code (or pastes invite URL), preview card shown, account created, immediate dashboard access
+  3. Invite code: 8-char alphanumeric, single-use, expires 7 days, generated from Settings → Team
+  4. Copy-able invite URL (`/register?invite=XXXXXXXX`) in invite dialog
+  5. Inline invite code validation: `GET /auth/invite/:code` returns org/restaurant/inviter name within 400ms
+  6. `organizations` + `organization_members` + `organization_invites` tables created with RLS policies
+  7. Top-nav branch switcher visible when user has ≥2 branches; last selected persists in localStorage
+  8. `AuthContext.availableRestaurants` populated from `organization_members` (not hardcoded)
+  9. Email verification holding page with resend button (rate-limited) for Path B
+  10. No "enter restaurant ID manually" field anywhere in registration flow
+**Plans:** TBD (created by `/gsd-plan-phase 26`)
 
 ### Phase 25: Production E2E Test Suite
 **Goal**: Prove every agent and every process works against the live Vercel + Railway production stack. No mocks — real JWT, real RabbitMQ, real Supabase.
@@ -228,29 +246,6 @@ After Phases 23-25 complete, expand to remaining agents:
 
 **Wave 6 — Specialty (3 agents):**
 - InequalityDetector (105 lines), BookScraperAgent (113 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
-
-- [ ] **Phase 26: Manager Operational Intelligence Dashboard** — Elevate the restaurant manager's daily workflow from raw data to decisive action. Unified ops dashboard surfacing live inventory levels, agent health, low-stock alerts with one-click procurement actions, provider relationship health cards, and a daily briefing that tells the manager exactly what needs attention. Mobile-first redesign of key pages so the manager can operate from the floor. Intelligent notification center consolidating agent alerts into prioritized action items. Goal: the manager opens the app once and knows everything they need to act on.
-
-### Phase 26: Manager Operational Intelligence Dashboard
-**Goal**: Give the restaurant manager a command center — not a data dump. Surface the right information at the right time so every visit to the app ends with a clear action taken. No noise, no digging.
-**Depends on**: Phase 22 (deployed infrastructure), Phase 25 (E2E test coverage)
-**Requirements**: MGRDASH-01..12
-**Success Criteria** (what must be TRUE):
-  1. Daily briefing page shows: low-stock items, pending procurement approvals, unread provider messages, agent health anomalies — all in one glance, zero extra clicks
-  2. Inventory page has one-click "Reorder" on any low-stock item that creates a draft procurement message to the provider
-  3. Agent health dashboard auto-refreshes every 30s and shows degraded agents with actionable error context (not just "degraded")
-  4. Notification center consolidates all agent alerts with severity badges, timestamp, and dismiss/act buttons
-  5. All critical pages pass Lighthouse mobile score ≥ 85 (tested against live Vercel URL)
-  6. Provider relationship cards show: last contact date, pending reply, outstanding orders — surfaced from existing agent data
-  7. Low-stock threshold is configurable per wine category from the UI (not hardcoded in agent)
-  8. Dashboard loads in < 2s on mobile (3G simulation) — skeleton screens during data fetch
-  9. All new pages covered by Wave F Playwright smoke tests
-  10. Manager can dismiss/snooze any alert and the state persists across sessions
-
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (run /gsd-plan-phase 26 to break down)
 
 ---
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
