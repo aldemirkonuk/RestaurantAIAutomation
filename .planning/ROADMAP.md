@@ -229,6 +229,29 @@ After Phases 23-25 complete, expand to remaining agents:
 **Wave 6 — Specialty (3 agents):**
 - InequalityDetector (105 lines), BookScraperAgent (113 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
 
+- [ ] **Phase 26: Manager Operational Intelligence Dashboard** — Elevate the restaurant manager's daily workflow from raw data to decisive action. Unified ops dashboard surfacing live inventory levels, agent health, low-stock alerts with one-click procurement actions, provider relationship health cards, and a daily briefing that tells the manager exactly what needs attention. Mobile-first redesign of key pages so the manager can operate from the floor. Intelligent notification center consolidating agent alerts into prioritized action items. Goal: the manager opens the app once and knows everything they need to act on.
+
+### Phase 26: Manager Operational Intelligence Dashboard
+**Goal**: Give the restaurant manager a command center — not a data dump. Surface the right information at the right time so every visit to the app ends with a clear action taken. No noise, no digging.
+**Depends on**: Phase 22 (deployed infrastructure), Phase 25 (E2E test coverage)
+**Requirements**: MGRDASH-01..12
+**Success Criteria** (what must be TRUE):
+  1. Daily briefing page shows: low-stock items, pending procurement approvals, unread provider messages, agent health anomalies — all in one glance, zero extra clicks
+  2. Inventory page has one-click "Reorder" on any low-stock item that creates a draft procurement message to the provider
+  3. Agent health dashboard auto-refreshes every 30s and shows degraded agents with actionable error context (not just "degraded")
+  4. Notification center consolidates all agent alerts with severity badges, timestamp, and dismiss/act buttons
+  5. All critical pages pass Lighthouse mobile score ≥ 85 (tested against live Vercel URL)
+  6. Provider relationship cards show: last contact date, pending reply, outstanding orders — surfaced from existing agent data
+  7. Low-stock threshold is configurable per wine category from the UI (not hardcoded in agent)
+  8. Dashboard loads in < 2s on mobile (3G simulation) — skeleton screens during data fetch
+  9. All new pages covered by Wave F Playwright smoke tests
+  10. Manager can dismiss/snooze any alert and the state persists across sessions
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 26 to break down)
+
 ---
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
 *v1.0 roadmap archived (Phases 1-17, 2026-03-30 to 2026-04-08)*
