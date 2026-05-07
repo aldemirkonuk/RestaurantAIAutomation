@@ -640,22 +640,17 @@ export class OrganizationsModule {}
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Email verification infrastructure**
+1. **Email verification infrastructure** ✅ RESOLVED
    - What we know: Custom auth system, no Supabase Auth SDK signUp()
-   - What's unclear: Does Phase 23 Gmail integration support sending transactional emails programmatically from NestJS? Or does a third-party service (Resend/SendGrid) need to be added?
-   - Recommendation: Check `apps/api-gateway/src/communications/` for existing email-sending capability. If it exists, wire it. If not, add `@sendgrid/mail` or similar as a dependency in the plan.
+   - **Resolution**: Plan 26-02 uses `queueEmailVerification()` with `GmailService.isConfigured()` guard. If GmailService is not wired for transactional sends (Phase 23 Gmail is for inbound parsing, not outbound), the guard will log a warning and continue — email verification will not be sent but the flow won't crash. The executor documents this in the summary and optionally adds `@sendgrid/mail` as a dependency if GmailService.isConfigured() returns false during execution. This is an accepted production trade-off: the Path B email verification is best-effort in dev; in production the owner can configure an SMTP/Resend integration.
 
-2. **`organization_id` on `restaurants` table**
-   - What we know: Current `restaurants` table has no `organization_id` FK
-   - What's unclear: Should `restaurants.organization_id` be added via migration? Or is the join via `organization_members + user_restaurant_access`?
-   - Recommendation: Add `organization_id UUID REFERENCES organizations(id)` to `restaurants` table — this is required for `GET /organizations/branches` to work cleanly.
+2. **`organization_id` on `restaurants` table** ✅ RESOLVED
+   - **Resolution**: Confirmed correct — add `organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL` via migration `20260506000003_restaurants_schema_updates.sql`. This is the clean join path for `GET /organizations/branches`. Plan 26-01 Task 2 implements this. No join table needed.
 
-3. **`AuthContext.register()` method — deprecate or repurpose?**
-   - What we know: `AuthContext.register()` sends to `POST /api/v1/auth/register` which expects `restaurantId`
-   - What's unclear: Are there other callers of `AuthContext.register()` beyond Register.tsx?
-   - Recommendation: Remove `register()` from `AuthContextType`. Add `registerRestaurant(data)` and `joinViaInvite(data)` as the two new methods.
+3. **`AuthContext.register()` method — deprecate or repurpose?** ✅ RESOLVED
+   - **Resolution**: Checked Register.tsx (the only file that calls `register()`). No other callers found. Plan 26-04 Task 1 adds `registerRestaurant()` and `joinViaInvite()` and the existing `register()` method is left in place but unused (deprecated in place — safe to remove in a future cleanup phase). Register.tsx is fully replaced in Plan 26-05.
 
 ---
 
