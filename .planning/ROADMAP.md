@@ -218,14 +218,14 @@ Plans:
   6. `organizations` and `organization_invites` tables exist in Supabase with RLS policies
   7. Register page shows two clear paths: "Create New Restaurant" and "Join Existing"
   8. Email verification required for Path B (new restaurant), skipped for Path A (invite)
-**Plans:** 6 plans
+**Plans:** 6 plans (5 waves)
 Plans:
-- [ ] 26-01-PLAN.md — 4 DB migrations: organizations, org_invites, email_verifications, restaurants schema (Wave 1)
-- [ ] 26-02-PLAN.md — Auth backend: 6 new endpoints incl. register/restaurant, join, invite, verify-email (Wave 2)
-- [ ] 26-03-PLAN.md — OrganizationsModule: GET /organizations/branches + AppModule registration (Wave 2)
-- [ ] 26-04-PLAN.md — AuthContext RestaurantBranch type + Header.tsx branch switcher upgrade (Wave 3)
-- [ ] 26-05-PLAN.md — Register.tsx two-path wizard + VerifyEmail.tsx + ProtectedRoute email gate (Wave 3)
-- [ ] 26-06-PLAN.md — Settings → Team section + InviteTeamDialog with copy-able invite URL (Wave 4)
+- [ ] 26-01-PLAN.md — 5 DB migrations: organizations, org_invites, email_verifications, restaurants schema, restaurant_chains (Wave 1) [ONBOARD-06, ORG-01..03, CHAIN-01..02]
+- [ ] 26-02-PLAN.md — Auth backend: 6 new endpoints incl. register/restaurant, join, invite, verify-email (Wave 2) [ONBOARD-05, 07, INVITE-01..03]
+- [ ] 26-03-PLAN.md — OrganizationsModule: branches+chains+locations endpoints + AppModule (Wave 2) [ORG-04..05, CHAIN-03]
+- [ ] 26-04-PLAN.md — AuthContext RestaurantBranch (chain fields) + Header chain-grouped switcher (Wave 3) [ORG-05, CHAIN-04]
+- [ ] 26-05-PLAN.md — Register.tsx two-path wizard + ?type= routing + VerifyEmail.tsx + ProtectedRoute (Wave 4) [ONBOARD-01..04, 07..08, INVITE-02]
+- [ ] 26-06-PLAN.md — Settings → Team invite + Locations/Chains management tab (Wave 5) [INVITE-01, 04, CHAIN-04]
 
 ---
 
