@@ -140,7 +140,6 @@ Plans:
 - [ ] **Phase 23: Gmail Integration & Calendar Reminder Emails** — Wire Gmail OAuth2 (api-gateway `GmailService`) with `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` on Railway. Fix orchestrator SMTP path (`GMAIL_USER/PASSWORD` app-password). Activate calendar reminder emails: CalendarAgent sends reminders at T-7, T-1, T-0 via `email_client.py`. Confirm `scheduled-tasks.service.ts` weekly/daily email reports work end-to-end. Test email pipeline with real credentials. *(Research-first — ask user how the flow should work after explaining code design)*
 - [ ] **Phase 24: Provider Communication Pipeline** — Bring `ProviderConversationAgent` (2,519 lines) and `EmailParsingAgent` (664 lines) to Level 4. Full pipeline: inbound email parsed → `order_interactions` saved → `EmailComposerService` generates reply → outbound sent via GmailService. Conversation summarization: LLM-generated highlights saved to `provider_conversation_summaries`. Sentiment analysis per conversation thread. Gap detection: missing confirmations, price discrepancies, unanswered threads. Dashboard card in frontend showing provider relationship health.
 - [x] **Phase 25: Production E2E Test Suite** — Comprehensive test coverage for the live Vercel + Railway stack. Wave A (API contract tests): every `/api/v1/` endpoint checked against deployed api-gateway with real JWT. Wave B (agent integration): each of the 9 active agents triggered via RabbitMQ publish, response verified. Wave C (cross-service): Toast webhook → POS → Inventory → Notification full pipeline on staging data. Wave D (frontend smoke): Playwright or Puppeteer headless checks — login, `/admin/health`, dashboard load, at least one data-write flow. Failure alerting via Sentry. (completed 2026-05-02)
-- [ ] **Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy** — Fix broken registration (no path to create a restaurant) and introduce multi-tenant hierarchy. Two-path registration: Path A (join via 8-char invite code) and Path B (create new restaurant → auto-creates org). DB: `organizations`, `organization_members`, `organization_invites` tables with RLS. API: invite creation/consumption/preview endpoints + org creation. Frontend: two-path wizard with inline invite validation, Settings → Team invite management, top-nav branch switcher for multi-location owners. Full UX elevation: progressive wizard, real-time code validation, copy-able invite URLs, email verification holding page with resend.
 
 ### Phase 23: Gmail Integration & Calendar Reminder Emails
 **Goal**: Make every email path in the system actually send. Two Gmail subsystems exist (OAuth2 API in api-gateway, SMTP app-password in orchestrator) — both need credentials wired and verified end-to-end.
@@ -179,23 +178,6 @@ Plans:
   15. Frontend: Provider Comms card (health score, last contact, open threads) + Deals card (active promos count)
   16. 20+ integration tests covering: classify → route → extract → digest → sentiment pipeline
 
-### Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy
-**Goal**: Replace the broken single-form registration with a two-path wizard (create restaurant vs join via invite), introduce an organization/branch hierarchy for multi-location owners, and make every onboarding flow frictionless and self-service.
-**Depends on**: Phase 22 (deployed infrastructure + auth endpoints)
-**Requirements**: ONBOARD-01..08, INVITE-01..04, ORG-01..05
-**Success Criteria** (what must be TRUE):
-  1. Path B — new owner registers, organization + restaurant created, owner role assigned, dashboard accessible
-  2. Path A — staff enters invite code (or pastes invite URL), preview card shown, account created, immediate dashboard access
-  3. Invite code: 8-char alphanumeric, single-use, expires 7 days, generated from Settings → Team
-  4. Copy-able invite URL (`/register?invite=XXXXXXXX`) in invite dialog
-  5. Inline invite code validation: `GET /auth/invite/:code` returns org/restaurant/inviter name within 400ms
-  6. `organizations` + `organization_members` + `organization_invites` tables created with RLS policies
-  7. Top-nav branch switcher visible when user has ≥2 branches; last selected persists in localStorage
-  8. `AuthContext.availableRestaurants` populated from `organization_members` (not hardcoded)
-  9. Email verification holding page with resend button (rate-limited) for Path B
-  10. No "enter restaurant ID manually" field anywhere in registration flow
-**Plans:** TBD (created by `/gsd-plan-phase 26`)
-
 ### Phase 25: Production E2E Test Suite
 **Goal**: Prove every agent and every process works against the live Vercel + Railway production stack. No mocks — real JWT, real RabbitMQ, real Supabase.
 **Depends on**: Phases 22, 23 (all services live)
@@ -222,6 +204,28 @@ Plans:
 - [x] 25-06-PLAN.md — Playwright prod config + Wave F smoke tests (Wave 3)
 - [x] 25-07-PLAN.md — GitHub Actions e2e-prod.yml + cascading_report.py + report_generator extension (Wave 4)
 - [x] 25-08-PLAN.md — [GAP CLOSURE] Wave F-4 write-flow: CommandBar ingest → WineRecordsTable verify → teardown (Wave 1)
+
+### Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy
+**Goal**: Fix broken registration and add multi-location support. New owners can self-register and create a restaurant in one flow. Existing owners can add branches (locations) under one organization and switch between them from the top nav. Staff join via invite code.
+**Depends on**: Phase 22 (auth infrastructure live), Phase 25 (production verified)
+**Requirements**: ONBOARD-01..08
+**Success Criteria** (what must be TRUE):
+  1. New restaurant owner can register and access dashboard without admin involvement
+  2. Staff can join an existing restaurant via 8-char invite code
+  3. Invite codes expire after 7 days and are single-use
+  4. Owner with multiple locations can switch active branch from top nav
+  5. All agent data remains scoped to restaurant_id (no cross-location data leakage)
+  6. `organizations` and `organization_invites` tables exist in Supabase with RLS policies
+  7. Register page shows two clear paths: "Create New Restaurant" and "Join Existing"
+  8. Email verification required for Path B (new restaurant), skipped for Path A (invite)
+**Plans:** 6 plans
+Plans:
+- [ ] 26-01-PLAN.md — 4 DB migrations: organizations, org_invites, email_verifications, restaurants schema (Wave 1)
+- [ ] 26-02-PLAN.md — Auth backend: 6 new endpoints incl. register/restaurant, join, invite, verify-email (Wave 2)
+- [ ] 26-03-PLAN.md — OrganizationsModule: GET /organizations/branches + AppModule registration (Wave 2)
+- [ ] 26-04-PLAN.md — AuthContext RestaurantBranch type + Header.tsx branch switcher upgrade (Wave 3)
+- [ ] 26-05-PLAN.md — Register.tsx two-path wizard + VerifyEmail.tsx + ProtectedRoute email gate (Wave 3)
+- [ ] 26-06-PLAN.md — Settings → Team section + InviteTeamDialog with copy-able invite URL (Wave 4)
 
 ---
 
