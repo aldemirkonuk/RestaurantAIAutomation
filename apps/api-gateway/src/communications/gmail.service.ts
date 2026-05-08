@@ -14,6 +14,7 @@ import {
   inventoryAuditTemplate,
   eventPrepTemplate,
   customReminderTemplate,
+  onboardingEmailTemplate,
   type LowStockAlertData,
   type WeeklyReportData,
   type DailySummaryData,
@@ -547,6 +548,33 @@ This is an automated alert from WineOps AI.
       messageId: mockId,
       threadId: mockThreadId,
     };
+  }
+
+  /**
+   * Send a welcome / onboarding email immediately after first registration
+   */
+  async sendOnboardingEmail(data: {
+    to: string;
+    ownerName: string;
+    restaurantName: string;
+    restaurantCity?: string;
+    frontendBaseUrl?: string;
+  }): Promise<EmailResult> {
+    const base = data.frontendBaseUrl || 'https://restaurant-ai-automation-web.vercel.app';
+    const html = onboardingEmailTemplate({
+      ownerName: data.ownerName,
+      restaurantName: data.restaurantName,
+      restaurantCity: data.restaurantCity || '',
+      dashboardUrl: `${base}/dashboard`,
+      settingsUrl: `${base}/settings`,
+      inviteUrl: `${base}/settings?tab=team`,
+    });
+
+    return this.sendEmail({
+      to: [data.to],
+      subject: `Welcome to WineOps AI — ${data.restaurantName} is ready 🍷`,
+      html,
+    });
   }
 
   /**

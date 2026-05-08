@@ -444,6 +444,15 @@ export class AuthService {
 
       await this.queueEmailVerification(userId, dto.email);
 
+      // Non-blocking: onboarding welcome email — do not let a send failure break registration
+      this.gmailService.sendOnboardingEmail({
+        to: dto.email,
+        ownerName: dto.name,
+        restaurantName: dto.restaurantName,
+        restaurantCity: dto.city,
+        frontendBaseUrl: this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app',
+      }).catch((err) => this.logger.warn(`Onboarding email failed (non-fatal): ${err.message}`));
+
       return this.generateTokens(user);
     } catch (err) {
       if (userId) await this.databaseService.supabase.from('users').delete().eq('user_id', userId);

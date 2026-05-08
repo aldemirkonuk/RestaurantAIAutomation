@@ -7,6 +7,9 @@
 export * from './template-config';
 export * from './base-template';
 
+// Onboarding
+export * from './onboarding.template';
+
 // Individual templates
 export * from './low-stock-alert.template';
 export * from './weekly-report.template';
