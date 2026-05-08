@@ -427,6 +427,53 @@ export function Register() {
   )
 
   // PATH B — Step 2: Restaurant details + submit
+
+  // Country-aware locale helper — single source of truth for all adaptive labels/placeholders
+  const countryLocale = (() => {
+    const c = country.toLowerCase()
+    const isUS  = c.includes('united states') || c === 'us' || c === 'usa'
+    const isUK  = c.includes('united kingdom') || c === 'uk' || c === 'gb'
+    const isTR  = c.includes('turkey') || c === 'tr' || c.includes('türkiye')
+    const isCA  = c.includes('canada') || c === 'ca'
+    const isFR  = c.includes('france') || c === 'fr'
+    const isDE  = c.includes('germany') || c === 'de'
+    if (isUS) return {
+      stateLabel: 'State', statePlaceholder: 'IL',
+      postalLabel: 'ZIP Code', postalPlaceholder: '60601',
+      areaLabel: 'Neighborhood', areaPlaceholder: 'River North, Wicker Park...',
+    }
+    if (isUK) return {
+      stateLabel: 'County', statePlaceholder: 'Greater London',
+      postalLabel: 'Postcode', postalPlaceholder: 'SW1A 1AA',
+      areaLabel: 'Borough / Area', areaPlaceholder: 'Mayfair, Shoreditch, Camden...',
+    }
+    if (isTR) return {
+      stateLabel: 'Province (İl)', statePlaceholder: 'Antalya',
+      postalLabel: 'Posta Kodu', postalPlaceholder: '07050',
+      areaLabel: 'District (İlçe / Mahalle)', areaPlaceholder: 'Konyaaltı, Lara, Muratpaşa...',
+    }
+    if (isCA) return {
+      stateLabel: 'Province', statePlaceholder: 'ON',
+      postalLabel: 'Postal Code', postalPlaceholder: 'M5V 2T6',
+      areaLabel: 'Neighbourhood', areaPlaceholder: 'Downtown Core, Old Town...',
+    }
+    if (isFR) return {
+      stateLabel: 'Région', statePlaceholder: 'Île-de-France',
+      postalLabel: 'Code Postal', postalPlaceholder: '75001',
+      areaLabel: 'Quartier', areaPlaceholder: 'Le Marais, Montmartre...',
+    }
+    if (isDE) return {
+      stateLabel: 'Bundesland', statePlaceholder: 'Bayern',
+      postalLabel: 'Postleitzahl', postalPlaceholder: '10115',
+      areaLabel: 'Stadtteil', areaPlaceholder: 'Mitte, Prenzlauer Berg...',
+    }
+    return {
+      stateLabel: 'State / Province', statePlaceholder: 'e.g. Ontario',
+      postalLabel: 'Postal Code', postalPlaceholder: 'e.g. M5V 2T6',
+      areaLabel: 'Neighborhood / Area', areaPlaceholder: 'e.g. Downtown',
+    }
+  })()
+
   const CUISINE_TYPES = ['Fine Dining', 'Casual', 'Bar & Bistro', 'Hotel', 'Wine Bar', 'Italian', 'French', 'American', 'Other']
 
   const handleCreateSubmit = async () => {
@@ -478,6 +525,8 @@ export function Register() {
         <StepIndicator current={2} total={2} />
         <h2 className="text-xl font-bold text-gray-900 mb-5">Your Restaurant</h2>
         <div className="space-y-4">
+
+          {/* Restaurant Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Restaurant Name *</label>
             <div className="relative">
@@ -491,8 +540,31 @@ export function Register() {
               />
             </div>
           </div>
+
+          {/* Country — full width, first; everything below adapts to this */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                placeholder="United States"
+                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                autoFocus={false}
+              />
+            </div>
+            {country && (
+              <p className="text-xs text-gray-400 mt-1">
+                Address fields below are labelled for <span className="font-medium text-gray-600">{country}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Street address */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
             <input
               type="text"
               value={address}
@@ -501,7 +573,36 @@ export function Register() {
               className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
             />
           </div>
-          {/* Row 1: City + Country */}
+
+          {/* State / Province  +  Postal Code — both labels adapt from countryLocale */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {countryLocale.stateLabel}
+              </label>
+              <input
+                type="text"
+                value={stateProvince}
+                onChange={(e) => setStateProvince(e.target.value)}
+                placeholder={countryLocale.statePlaceholder}
+                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {countryLocale.postalLabel}
+              </label>
+              <input
+                type="text"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                placeholder={countryLocale.postalPlaceholder}
+                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* City  +  Neighborhood — area label adapts from countryLocale */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
@@ -517,95 +618,21 @@ export function Register() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  placeholder="United States"
-                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-          {/* Row 2: State/Province + Postal Code — labels adapt to country in future */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
-                  ? 'State'
-                  : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
-                  ? 'Province (İl)'
-                  : 'State / Province'}
+                {countryLocale.areaLabel}
+                <span className="text-gray-400 font-normal ml-1 text-xs">(optional)</span>
               </label>
               <input
                 type="text"
-                value={stateProvince}
-                onChange={(e) => setStateProvince(e.target.value)}
-                placeholder={
-                  country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
-                    ? 'IL'
-                    : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
-                    ? 'Antalya'
-                    : 'e.g. Ontario'
-                }
-                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
-                  ? 'ZIP Code'
-                  : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
-                  ? 'Postcode'
-                  : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
-                  ? 'Posta Kodu'
-                  : 'Postal Code'}
-              </label>
-              <input
-                type="text"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                placeholder={
-                  country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
-                    ? '60601'
-                    : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
-                    ? 'SW1A 1AA'
-                    : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
-                    ? '07050'
-                    : 'e.g. M5V 2T6'
-                }
+                value={neighborhood}
+                onChange={(e) => setNeighborhood(e.target.value)}
+                placeholder={countryLocale.areaPlaceholder}
                 className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
               />
             </div>
           </div>
-          {/* Row 3: Neighborhood / District — optional, helps disambiguation */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
-                ? 'District (İlçe / Mahalle)'
-                : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
-                ? 'Borough / Area'
-                : 'Neighborhood / Area'}
-              <span className="text-gray-400 font-normal ml-1">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={neighborhood}
-              onChange={(e) => setNeighborhood(e.target.value)}
-              placeholder={
-                country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
-                  ? 'Konyaaltı, Lara, Muratpaşa...'
-                  : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
-                  ? 'Mayfair, Shoreditch, Camden...'
-                  : 'River North, Wicker Park, Downtown...'
-              }
-              className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-            />
-          </div>
-          {/* Row 4: Phone */}
+
+          {/* Phone */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
             <div className="relative">
@@ -619,6 +646,8 @@ export function Register() {
               />
             </div>
           </div>
+
+          {/* Cuisine Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Cuisine Type</label>
             <div className="relative">
@@ -630,13 +659,12 @@ export function Register() {
               >
                 <option value="">Select cuisine type</option>
                 {CUISINE_TYPES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
           </div>
+
         </div>
         {(error || authError) && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
