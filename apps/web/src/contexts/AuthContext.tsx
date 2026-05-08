@@ -14,6 +14,7 @@ interface User {
   name: string
   role: 'owner' | 'manager' | 'staff'
   restaurantId: string
+  emailVerified?: boolean
   studioRoles?: ('developer' | 'certified_contributor' | 'review_admin')[]
 }
 

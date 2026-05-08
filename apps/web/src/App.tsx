@@ -19,6 +19,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { Dashboard } from './pages/dashboard'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
+import { VerifyEmail } from './pages/VerifyEmail'
 import { Inventory } from './pages/inventory'
 import { Orders } from './pages/orders'
 
@@ -76,6 +77,7 @@ function App() {
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/onboarding" element={<Onboarding />} />
 
                 {/* Studio routes — separate layout with StudioLayout, outside DashboardLayout */}

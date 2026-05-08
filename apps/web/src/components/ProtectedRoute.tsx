@@ -38,6 +38,11 @@ export function ProtectedRoute({
     return <Navigate to={redirectTo} state={{ from: location }} replace />
   }
 
+  // Email verification gate — Path B users must verify before accessing dashboard (D-05, T-26-05-02)
+  if (user?.emailVerified === false) {
+    return <Navigate to="/verify-email" replace />
+  }
+
   // Studio role loading guard (Pitfall 6: undefined = still loading, not denied)
   if (requiredStudioRole && user?.studioRoles === undefined) {
     return (
