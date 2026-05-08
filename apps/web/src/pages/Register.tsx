@@ -101,8 +101,8 @@ export function Register() {
     }
   }, [inviteCode])
 
-  // Step indicator for Path B
-  const StepIndicator = ({ current, total }: { current: number; total: number }) => (
+  // Step indicator — called as a function, not a component, to avoid unmount on re-render
+  const stepIndicator = ({ current, total }: { current: number; total: number }) => (
     <div className="flex items-center gap-2 mb-6">
       {Array.from({ length: total }, (_, i) => (
         <div
@@ -116,8 +116,8 @@ export function Register() {
     </div>
   )
 
-  // Invite validation feedback (D-08)
-  const InviteValidationFeedback = () => {
+  // Invite validation feedback — called as a function, not a component
+  const inviteValidationFeedback = () => {
     if (inviteCode.length !== 8) return null
     if (validating)
       return (
@@ -164,8 +164,8 @@ export function Register() {
     )
   }
 
-  // PATH SELECTOR — large card-style buttons (D-01, D-08 mandate: NOT radio buttons)
-  const PathSelector = () => (
+  // PATH SELECTOR — called as a function, not a component
+  const pathSelector = () => (
     <AnimatePresence mode="wait">
       <motion.div
         key="selector"
@@ -223,8 +223,8 @@ export function Register() {
     </AnimatePresence>
   )
 
-  // PATH A — Step 1: Invite code entry
-  const PathAStep1 = () => (
+  // PATH A — Step 1: Invite code entry — called as a function
+  const pathAStep1 = () => (
     <AnimatePresence mode="wait">
       <motion.div
         key="pathA-1"
@@ -253,7 +253,7 @@ export function Register() {
             maxLength={8}
             autoFocus
           />
-          <InviteValidationFeedback />
+          {inviteValidationFeedback()}
         </div>
 
         <Button
@@ -289,7 +289,7 @@ export function Register() {
     }
   }
 
-  const PathAStep2 = () => (
+  const pathAStep2 = () => (
     <AnimatePresence mode="wait">
       <motion.div
         key="pathA-2"
@@ -365,8 +365,8 @@ export function Register() {
     </AnimatePresence>
   )
 
-  // PATH B — Step 1: Account fields
-  const PathBStep1 = () => (
+  // PATH B — Step 1: Account fields — called as a function
+  const pathBStep1 = () => (
     <AnimatePresence mode="wait">
       <motion.div
         key="pathB-1"
@@ -381,7 +381,7 @@ export function Register() {
         >
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <StepIndicator current={1} total={2} />
+        {stepIndicator({ current: 1, total: 2 })}
         <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
         <div className="space-y-4">
           {(
@@ -507,7 +507,7 @@ export function Register() {
     }
   }
 
-  const PathBStep2 = () => (
+  const pathBStep2 = () => (
     <AnimatePresence mode="wait">
       <motion.div
         key="pathB-2"
@@ -522,7 +522,7 @@ export function Register() {
         >
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <StepIndicator current={2} total={2} />
+        {stepIndicator({ current: 2, total: 2 })}
         <h2 className="text-xl font-bold text-gray-900 mb-5">Your Restaurant</h2>
         <div className="space-y-4">
 
@@ -691,9 +691,9 @@ export function Register() {
   )
 
   const content = (() => {
-    if (path === 'selector') return <PathSelector />
-    if (path === 'join') return pathAStep === 1 ? <PathAStep1 /> : <PathAStep2 />
-    if (path === 'create') return pathBStep === 1 ? <PathBStep1 /> : <PathBStep2 />
+    if (path === 'selector') return pathSelector()
+    if (path === 'join') return pathAStep === 1 ? pathAStep1() : pathAStep2()
+    if (path === 'create') return pathBStep === 1 ? pathBStep1() : pathBStep2()
   })()
 
   return (
