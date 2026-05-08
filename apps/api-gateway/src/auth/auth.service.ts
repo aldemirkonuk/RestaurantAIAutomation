@@ -1,10 +1,21 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { TokenBlacklistService } from './services/token-blacklist.service';
+import { GmailService } from '../communications/gmail.service';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import axios from 'axios';
+import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
+import { JoinViaInviteDto } from './dto/join-via-invite.dto';
+import { InviteDto } from './dto/invite.dto';
 
 export interface JwtPayload {
   sub: string; // user_id
@@ -46,6 +57,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly gmailService: GmailService,
   ) {
     this.jwtSecret =
       this.configService.get<string>('JWT_SECRET') ||
@@ -256,6 +268,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       restaurantId: user.restaurant_id,
+      emailVerified: user.email_verified ?? false,
       app_metadata: { roles: studioRoles },
     };
 
@@ -346,6 +359,141 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Path B: Register a new restaurant (creates org + restaurant + user atomically).
+   * User starts with email_verified: false and must verify email.
+   */
+  async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
+    const { data: existing } = await this.databaseService.supabase
+      .from('users')
+      .select('email')
+      .eq('email', dto.email)
+      .maybeSingle();
+    if (existing) throw new BadRequestException('Email already registered');
+
+    let orgId: string | null = null;
+    let restaurantId: string | null = null;
+    let userId: string | null = null;
+
+    try {
+      const { data: org, error: orgErr } = await this.databaseService.supabase
+        .from('organizations')
+        .insert({ name: `${dto.restaurantName} Group`, owner_id: null })
+        .select()
+        .single();
+      if (orgErr || !org) throw new Error(orgErr?.message || 'Org creation failed');
+      orgId = org.id;
+
+      const { data: restaurant, error: restErr } = await this.databaseService.supabase
+        .from('restaurants')
+        .insert({
+          name: dto.restaurantName,
+          address: dto.address,
+          city: dto.city,
+          phone: dto.phone,
+          cuisine_type: dto.cuisineType,
+          timezone: dto.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          organization_id: org.id,
+        })
+        .select()
+        .single();
+      if (restErr || !restaurant) throw new Error(restErr?.message || 'Restaurant creation failed');
+      restaurantId = restaurant.id;
+
+      const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+      const { data: user, error: userErr } = await this.databaseService.supabase
+        .from('users')
+        .insert({
+          email: dto.email,
+          password_hash: passwordHash,
+          name: dto.name,
+          restaurant_id: restaurantId,
+          role: 'owner',
+          email_verified: false,
+        })
+        .select()
+        .single();
+      if (userErr || !user) throw new Error(userErr?.message || 'User creation failed');
+      userId = user.user_id;
+
+      await this.databaseService.supabase
+        .from('organizations')
+        .update({ owner_id: userId })
+        .eq('id', orgId);
+
+      await this.databaseService.supabase.from('organization_members').insert({
+        organization_id: orgId,
+        user_id: userId,
+        role: 'owner',
+      });
+
+      await this.queueEmailVerification(userId, dto.email);
+
+      return this.generateTokens(user);
+    } catch (err) {
+      if (userId) await this.databaseService.supabase.from('users').delete().eq('user_id', userId);
+      if (restaurantId) await this.databaseService.supabase.from('restaurants').delete().eq('id', restaurantId);
+      if (orgId) await this.databaseService.supabase.from('organizations').delete().eq('id', orgId);
+      this.logger.error(`registerRestaurant rollback triggered: ${err.message}`);
+      throw new BadRequestException('Registration failed: ' + err.message);
+    }
+  }
+
+  private async queueEmailVerification(userId: string, email: string): Promise<void> {
+    try {
+      const { data: verif } = await this.databaseService.supabase
+        .from('email_verifications')
+        .insert({ user_id: userId, email })
+        .select('token')
+        .single();
+      if (!verif) return;
+
+      const verifyUrl = `${this.configService.get('FRONTEND_URL') || 'http://localhost:5173'}/verify-email?token=${verif.token}`;
+
+      if (this.gmailService.isReady()) {
+        await this.gmailService.sendEmail({
+          to: [email],
+          subject: 'Verify your WineOps account',
+          html: `<p>Click to verify your email: <a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`,
+        });
+      } else {
+        this.logger.warn(`[DEV] Email verification URL for ${email}: ${verifyUrl}`);
+      }
+    } catch (err) {
+      this.logger.error(`Failed to queue email verification: ${err.message}`);
+    }
+  }
+
+  /**
+   * Preview an invite code — returns invite details or {valid:false, reason}.
+   * @Public() endpoint — no auth required.
+   */
+  async getInvitePreview(code: string): Promise<object> {
+    const { data: invite } = await this.databaseService.supabase
+      .from('organization_invites')
+      .select(`
+        id, role, expires_at, used_at,
+        organizations ( name ),
+        restaurants ( name, city ),
+        users!invited_by ( name )
+      `)
+      .eq('code', code.toUpperCase())
+      .maybeSingle();
+
+    if (!invite) return { valid: false, reason: 'not_found' };
+    if (invite.used_at) return { valid: false, reason: 'used' };
+    if (new Date(invite.expires_at) < new Date()) return { valid: false, reason: 'expired' };
+
+    return {
+      valid: true,
+      organization: (invite.organizations as any)?.name,
+      restaurant: (invite.restaurants as any)?.name,
+      city: (invite.restaurants as any)?.city,
+      inviter: (invite.users as any)?.name,
+      role: invite.role,
+    };
   }
 
   /**

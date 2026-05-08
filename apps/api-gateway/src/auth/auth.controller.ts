@@ -9,9 +9,16 @@ import {
   HttpStatus,
   Logger,
   Headers,
+  Param,
 } from '@nestjs/common';
 import { AuthService, LoginCredentials, RegisterData } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import { Public } from './decorators/public.decorator';
+import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
+import { JoinViaInviteDto } from './dto/join-via-invite.dto';
+import { InviteDto } from './dto/invite.dto';
 import { Request } from 'express';
 
 @Controller('auth')
@@ -139,6 +146,27 @@ export class AuthController {
       success: true,
       message: 'Token is valid',
     };
+  }
+
+  /**
+   * Path B: Register a new restaurant (creates org + restaurant + owner user atomically).
+   * Requires email verification after registration.
+   */
+  @Post('register/restaurant')
+  @Public()
+  async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
+    this.logger.log(`Path B registration attempt: ${dto.email}`);
+    const tokens = await this.authService.registerRestaurant(dto);
+    return { success: true, ...tokens, message: 'Registration successful. Please verify your email.' };
+  }
+
+  /**
+   * Preview an invite code — returns org/restaurant info or {valid:false, reason}.
+   */
+  @Get('invite/:code')
+  @Public()
+  async getInvitePreview(@Param('code') code: string) {
+    return this.authService.getInvitePreview(code);
   }
 }
 
