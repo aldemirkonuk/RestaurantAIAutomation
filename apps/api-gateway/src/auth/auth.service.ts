@@ -497,6 +497,191 @@ export class AuthService {
   }
 
   /**
+   * Generate an invite code for a restaurant (owner/manager only).
+   * Produces 8-char code from unambiguous charset (no 0/O/1/I).
+   */
+  async generateInvite(userId: string, restaurantId: string, dto: InviteDto): Promise<object> {
+    const { data: user } = await this.databaseService.supabase
+      .from('users')
+      .select('restaurant_id, role')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!user || user.restaurant_id !== restaurantId) {
+      throw new ForbiddenException('Access denied to this restaurant');
+    }
+
+    const { data: restaurant } = await this.databaseService.supabase
+      .from('restaurants')
+      .select('organization_id')
+      .eq('id', restaurantId)
+      .maybeSingle();
+    if (!restaurant?.organization_id) {
+      throw new BadRequestException('Restaurant has no organization. Complete registration first.');
+    }
+
+    const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code: string;
+    let attempts = 0;
+    do {
+      const bytes = crypto.randomBytes(8);
+      code = Array.from(bytes).map((b) => CHARSET[(b as number) % CHARSET.length]).join('');
+      const { data: existing } = await this.databaseService.supabase
+        .from('organization_invites')
+        .select('id')
+        .eq('code', code)
+        .maybeSingle();
+      if (!existing) break;
+      attempts++;
+    } while (attempts < 5);
+
+    const { data: invite, error } = await this.databaseService.supabase
+      .from('organization_invites')
+      .insert({
+        organization_id: restaurant.organization_id,
+        restaurant_id: restaurantId,
+        code,
+        invited_by: userId,
+        role: dto.role || 'manager',
+      })
+      .select('id, code, expires_at')
+      .single();
+
+    if (error || !invite) throw new BadRequestException('Failed to generate invite');
+
+    return {
+      code: invite.code,
+      expiresAt: invite.expires_at,
+      inviteUrl: `${this.configService.get('FRONTEND_URL') || 'http://localhost:5173'}/register?invite=${invite.code}`,
+    };
+  }
+
+  /**
+   * Path A: Join via invite code — atomically consumes invite and creates user.
+   * User is email_verified: true because owner vouched for them.
+   */
+  async joinViaInvite(dto: JoinViaInviteDto): Promise<TokenPair> {
+    const { data: existing } = await this.databaseService.supabase
+      .from('users')
+      .select('email')
+      .eq('email', dto.email)
+      .maybeSingle();
+    if (existing) throw new BadRequestException('Email already registered');
+
+    // Atomic UPDATE WHERE used_at IS NULL — prevents TOCTOU race (RESEARCH.md Pitfall 3)
+    const { data: invite, error: inviteErr } = await this.databaseService.supabase
+      .from('organization_invites')
+      .update({ used_at: new Date().toISOString(), used_by_email: dto.email })
+      .eq('code', dto.code.toUpperCase())
+      .is('used_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .select('id, organization_id, restaurant_id, role')
+      .single();
+
+    if (inviteErr || !invite) {
+      throw new BadRequestException('Invite code is invalid, expired, or already used');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+    const { data: user, error: userErr } = await this.databaseService.supabase
+      .from('users')
+      .insert({
+        email: dto.email,
+        password_hash: passwordHash,
+        name: dto.name,
+        restaurant_id: invite.restaurant_id,
+        role: invite.role,
+        email_verified: true,
+      })
+      .select()
+      .single();
+
+    if (userErr || !user) {
+      await this.databaseService.supabase
+        .from('organization_invites')
+        .update({ used_at: null, used_by_email: null })
+        .eq('id', invite.id);
+      throw new BadRequestException('User creation failed: ' + userErr?.message);
+    }
+
+    await this.databaseService.supabase.from('organization_members').insert({
+      organization_id: invite.organization_id,
+      user_id: user.user_id,
+      role: invite.role,
+      invited_via: invite.id,
+    });
+
+    return this.generateTokens(user);
+  }
+
+  /**
+   * Verify email using the token from the verification email.
+   * Returns a new token pair with emailVerified: true in the payload.
+   */
+  async verifyEmail(userId: string, token: string): Promise<TokenPair> {
+    const { data: verif } = await this.databaseService.supabase
+      .from('email_verifications')
+      .select('id, expires_at, verified_at, user_id')
+      .eq('token', token)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!verif) throw new BadRequestException('Invalid verification token');
+    if (verif.verified_at) throw new BadRequestException('Email already verified');
+    if (new Date(verif.expires_at) < new Date()) {
+      throw new BadRequestException('Verification token expired. Please resend.');
+    }
+
+    await this.databaseService.supabase
+      .from('email_verifications')
+      .update({ verified_at: new Date().toISOString() })
+      .eq('id', verif.id);
+
+    const { data: user } = await this.databaseService.supabase
+      .from('users')
+      .update({ email_verified: true })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (!user) throw new BadRequestException('User not found');
+    return this.generateTokens(user);
+  }
+
+  /**
+   * Resend verification email — rate-limited to 1 per minute via resend_count.
+   */
+  async resendVerification(userId: string, email: string): Promise<{ sent: boolean }> {
+    const { data: verif } = await this.databaseService.supabase
+      .from('email_verifications')
+      .select('id, resend_count, last_resent_at, token')
+      .eq('user_id', userId)
+      .is('verified_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!verif) throw new BadRequestException('No pending verification found');
+
+    if (verif.last_resent_at) {
+      const secondsSinceLast = (Date.now() - new Date(verif.last_resent_at).getTime()) / 1000;
+      if (secondsSinceLast < 60) {
+        throw new BadRequestException('Please wait 1 minute before resending');
+      }
+    }
+
+    await this.databaseService.supabase
+      .from('email_verifications')
+      .update({
+        resend_count: verif.resend_count + 1,
+        last_resent_at: new Date().toISOString(),
+      })
+      .eq('id', verif.id);
+
+    await this.queueEmailVerification(userId, email);
+    return { sent: true };
+  }
+
+  /**
    * Find or create OAuth user.
    * If the user doesn't exist, create them and assign to the default restaurant
    * (or leave restaurant_id null for an onboarding flow).
