@@ -31,11 +31,15 @@ import {
   Image,
   CreditCard,
   Phone,
+  Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
 import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../services/api/settings';
 import { useRestaurantSettingsStore } from '../stores';
+import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
+import { AddLocationDialog } from '../components/locations/AddLocationDialog';
+import { useAuth } from '../contexts/AuthContext';
 import {
   COMMON_POUR_SIZES,
   formatVolumeWithBothUnits,
@@ -357,11 +361,22 @@ const categoryLabels = {
 };
 
 export default function Settings() {
+  const { user, activeRestaurantId, availableRestaurants } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [localFlags, setLocalFlags] = useState<FeatureFlags | null>(null);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [newChainName, setNewChainName] = useState('');
+  const [isCreatingChain, setIsCreatingChain] = useState(false);
+  const [locationsList, setLocationsList] = useState(availableRestaurants);
+
+  // Keep locationsList in sync with context
+  useEffect(() => {
+    setLocationsList(availableRestaurants);
+  }, [availableRestaurants]);
 
   useEffect(() => {
     loadFeatureFlags();
@@ -494,6 +509,169 @@ export default function Settings() {
             </div>
           </motion.div>
         )}
+
+        {/* Team Section */}
+        <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-wine-500" />
+                Team Members
+              </h2>
+              <p className="text-sm text-gray-500 mt-0.5">Invite colleagues to join your restaurant on WineOps</p>
+            </div>
+            {(user?.role === 'owner' || user?.role === 'manager') && (
+              <button
+                onClick={() => setShowInviteDialog(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                Invite Member
+              </button>
+            )}
+          </div>
+
+          <div className="px-6 py-5">
+            <div className="text-center py-6 text-gray-400">
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium text-gray-500">Invite your team</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Generate invite codes from the button above and share them with your colleagues.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Invite dialog */}
+        {activeRestaurantId && (
+          <InviteTeamDialog
+            open={showInviteDialog}
+            onClose={() => setShowInviteDialog(false)}
+            restaurantId={activeRestaurantId}
+          />
+        )}
+
+        {/* Locations Section — owner only */}
+        {user?.role === 'owner' && (
+          <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-wine-500" />
+                  Locations &amp; Chains
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">Manage your restaurant locations and group them into chains</p>
+              </div>
+              <button
+                onClick={() => setShowAddLocation(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                <Building2 className="w-4 h-4" />
+                Add Location
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {locationsList.length > 0 ? (
+                <div className="space-y-3">
+                  {/* Grouped by chain */}
+                  {Array.from(new Set(locationsList.map((b) => b.chain_name).filter(Boolean))).map((chainName) => (
+                    <div key={chainName as string} className="border border-gray-100 rounded-xl overflow-hidden">
+                      <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        {chainName}
+                      </div>
+                      {locationsList.filter((b) => b.chain_name === chainName).map((branch) => (
+                        <div key={branch.id} className="px-4 py-3 flex items-center justify-between border-t border-gray-100 first:border-0">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{branch.name}</p>
+                            {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
+                          </div>
+                          {branch.id === activeRestaurantId && (
+                            <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {/* Standalone locations (no chain) */}
+                  {locationsList.filter((b) => !b.chain_name).length > 0 && (
+                    <div className="border border-gray-100 rounded-xl overflow-hidden">
+                      {locationsList.filter((b) => !b.chain_name).length > 1 && (
+                        <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Standalone Locations
+                        </div>
+                      )}
+                      {locationsList.filter((b) => !b.chain_name).map((branch) => (
+                        <div key={branch.id} className="px-4 py-3 flex items-center justify-between border-t border-gray-100 first:border-0">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{branch.name}</p>
+                            {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
+                          </div>
+                          {branch.id === activeRestaurantId && (
+                            <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-4">No locations yet. Add your first location above.</p>
+              )}
+
+              {/* Create Chain inline form */}
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Create a new chain / brand</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={newChainName}
+                    onChange={(e) => setNewChainName(e.target.value)}
+                    placeholder="e.g. Joe's Pizza"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                  />
+                  <button
+                    disabled={!newChainName.trim() || isCreatingChain}
+                    onClick={async () => {
+                      setIsCreatingChain(true);
+                      try {
+                        const token = localStorage.getItem('accessToken');
+                        const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
+                        const resp = await fetch(`${API_URL}/api/v1/organizations/chains`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ name: newChainName.trim() }),
+                        });
+                        if (!resp.ok) throw new Error('Failed to create chain');
+                        toast.success(`Chain "${newChainName}" created!`);
+                        setNewChainName('');
+                      } catch {
+                        toast.error('Failed to create chain. Please try again.');
+                      } finally {
+                        setIsCreatingChain(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingChain ? 'Creating...' : 'Create Chain'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  After creating a chain, new locations added via "Add Location" can be grouped under it.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Location dialog */}
+        <AddLocationDialog
+          open={showAddLocation}
+          onClose={() => setShowAddLocation(false)}
+          onLocationAdded={(location) => {
+            toast.success(`${location.name} added! Refresh to see it in the branch switcher.`);
+            setShowAddLocation(false);
+          }}
+        />
 
         {/* Measurement & Volume */}
         <MeasurementVolumeSection />

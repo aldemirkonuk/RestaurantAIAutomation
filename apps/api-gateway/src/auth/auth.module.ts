@@ -12,12 +12,14 @@ import { CacheModule } from '../common/cache/cache.module';
 import { TokenBlacklistService } from './services/token-blacklist.service';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { MicrosoftStrategy } from './strategies/microsoft.strategy';
+import { CommunicationsModule } from '../communications/communications.module';
 
 @Module({
   imports: [
     DatabaseModule,
     CacheModule,
     ConfigModule,
+    CommunicationsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

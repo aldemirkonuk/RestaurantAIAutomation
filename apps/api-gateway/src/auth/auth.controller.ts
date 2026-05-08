@@ -9,9 +9,16 @@ import {
   HttpStatus,
   Logger,
   Headers,
+  Param,
 } from '@nestjs/common';
 import { AuthService, LoginCredentials, RegisterData } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import { Public } from './decorators/public.decorator';
+import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
+import { JoinViaInviteDto } from './dto/join-via-invite.dto';
+import { InviteDto } from './dto/invite.dto';
 import { Request } from 'express';
 
 @Controller('auth')
@@ -139,6 +146,70 @@ export class AuthController {
       success: true,
       message: 'Token is valid',
     };
+  }
+
+  /**
+   * Path B: Register a new restaurant (creates org + restaurant + owner user atomically).
+   * Requires email verification after registration.
+   */
+  @Post('register/restaurant')
+  @Public()
+  async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
+    this.logger.log(`Path B registration attempt: ${dto.email}`);
+    const tokens = await this.authService.registerRestaurant(dto);
+    return { success: true, ...tokens, message: 'Registration successful. Please verify your email.' };
+  }
+
+  /**
+   * Preview an invite code — returns org/restaurant info or {valid:false, reason}.
+   */
+  @Get('invite/:code')
+  @Public()
+  async getInvitePreview(@Param('code') code: string) {
+    return this.authService.getInvitePreview(code);
+  }
+
+  /**
+   * Generate an invite code for a restaurant (owner/manager only).
+   */
+  @Post('invite')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('owner', 'manager')
+  async generateInvite(@Req() req: Request & { user: any }, @Body() dto: InviteDto) {
+    this.logger.log(`Invite generation by user ${req.user.userId} for restaurant ${dto.restaurantId}`);
+    const result = await this.authService.generateInvite(req.user.userId, dto.restaurantId, dto);
+    return { success: true, ...result };
+  }
+
+  /**
+   * Path A: Join via invite code — creates user linked to restaurant.
+   */
+  @Post('join')
+  @Public()
+  async joinViaInvite(@Body() dto: JoinViaInviteDto) {
+    this.logger.log(`Path A join attempt with code: ${dto.code}`);
+    const tokens = await this.authService.joinViaInvite(dto);
+    return { success: true, ...tokens, message: 'Joined successfully' };
+  }
+
+  /**
+   * Verify email with the token from the verification email.
+   */
+  @Post('verify-email')
+  @UseGuards(JwtAuthGuard)
+  async verifyEmail(@Req() req: Request & { user: any }, @Body() body: { token: string }) {
+    const tokens = await this.authService.verifyEmail(req.user.userId, body.token);
+    return { success: true, ...tokens, message: 'Email verified' };
+  }
+
+  /**
+   * Resend verification email — rate-limited to 1 per minute.
+   */
+  @Post('resend-verification')
+  @UseGuards(JwtAuthGuard)
+  async resendVerification(@Req() req: Request & { user: any }) {
+    const result = await this.authService.resendVerification(req.user.userId, req.user.email);
+    return { success: true, ...result };
   }
 }
 

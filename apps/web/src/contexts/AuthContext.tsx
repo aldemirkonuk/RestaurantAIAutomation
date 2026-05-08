@@ -14,7 +14,35 @@ interface User {
   name: string
   role: 'owner' | 'manager' | 'staff'
   restaurantId: string
+  emailVerified?: boolean
   studioRoles?: ('developer' | 'certified_contributor' | 'review_admin')[]
+}
+
+export interface RestaurantBranch {
+  id: string
+  name: string
+  city: string | null
+  chain_id: string | null    // null = standalone restaurant (D-10)
+  chain_name: string | null  // null = standalone; set = chain label for Header grouping
+}
+
+interface RegisterRestaurantData {
+  name: string
+  email: string
+  password: string
+  restaurantName: string
+  address: string
+  city: string
+  phone?: string
+  cuisineType?: string
+  timezone?: string
+}
+
+interface JoinViaInviteData {
+  code: string
+  name: string
+  email: string
+  password: string
 }
 
 interface AuthContextType {
@@ -22,10 +50,12 @@ interface AuthContextType {
   loading: boolean
   error: string | null
   activeRestaurantId: string | null
-  availableRestaurants: string[]
+  availableRestaurants: RestaurantBranch[]
   setActiveRestaurantId: (restaurantId: string) => void
   login: (email: string, password: string) => Promise<void>
   register: (data: RegisterData) => Promise<void>
+  registerRestaurant: (data: RegisterRestaurantData) => Promise<void>
+  joinViaInvite: (data: JoinViaInviteData) => Promise<void>
   loginWithGoogle: (token: string) => Promise<void>
   loginWithMicrosoft: (token: string) => Promise<void>
   logout: () => Promise<void>
@@ -107,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<string | null>(null)
-  const [availableRestaurants, setAvailableRestaurants] = useState<string[]>([])
+  const [availableRestaurants, setAvailableRestaurants] = useState<RestaurantBranch[]>([])
 
   // Configure axios defaults
   useEffect(() => {
@@ -179,16 +209,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const restaurants = [user.restaurantId]
+    // Fetch branches from organizations API (D-06)
+    // Falls back to single restaurant if API fails (backward compat for pre-org users)
+    const fetchBranches = async () => {
+      try {
+        const response = await api.get('/api/v1/organizations/branches')
+        const branches: RestaurantBranch[] = response.data
+        if (branches.length > 0) {
+          setAvailableRestaurants(branches)
+          localStorage.setItem('availableRestaurants', JSON.stringify(branches))
 
-    setAvailableRestaurants(restaurants)
-    localStorage.setItem('availableRestaurants', JSON.stringify(restaurants))
+          // Restore previously selected branch from localStorage if it's still valid
+          const savedId = localStorage.getItem('activeRestaurantId')
+          const validSaved = savedId && branches.some((b) => b.id === savedId)
+          const resolvedActive = validSaved ? savedId : branches[0].id
 
-    const resolvedActive = user.restaurantId
+          setActiveRestaurantIdState(resolvedActive)
+          localStorage.setItem('activeRestaurantId', resolvedActive)
+          api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
+          return
+        }
+      } catch (err) {
+        console.warn('Failed to fetch branches, falling back to single restaurant:', err)
+      }
 
-    setActiveRestaurantIdState(resolvedActive)
-    localStorage.setItem('activeRestaurantId', resolvedActive)
-    api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
+      // Fallback: pre-org user or API error — use user.restaurantId directly
+      const fallbackBranch: RestaurantBranch = {
+        id: user.restaurantId,
+        name: 'My Restaurant',
+        city: null,
+        chain_id: null,
+        chain_name: null,
+      }
+      setAvailableRestaurants([fallbackBranch])
+      localStorage.setItem('availableRestaurants', JSON.stringify([fallbackBranch]))
+      setActiveRestaurantIdState(user.restaurantId)
+      localStorage.setItem('activeRestaurantId', user.restaurantId)
+      api.defaults.headers.common['X-Restaurant-Id'] = user.restaurantId
+    }
+
+    fetchBranches()
   }, [user])
 
   const setActiveRestaurantId = useCallback((restaurantId: string) => {
@@ -249,6 +309,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userResponse.data.user)
     } catch (err: any) {
       const message = err.response?.data?.message || 'Registration failed'
+      setError(message)
+      throw new Error(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const registerRestaurant = useCallback(async (data: RegisterRestaurantData) => {
+    try {
+      setError(null)
+      setLoading(true)
+      const response = await api.post('/api/v1/auth/register/restaurant', {
+        ...data,
+        timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+      const { accessToken, refreshToken: refresh } = response.data
+      localStorage.setItem('accessToken', accessToken)
+      localStorage.setItem('refreshToken', refresh)
+      api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+      const userResponse = await api.get('/api/v1/auth/me')
+      setUser(userResponse.data.user)
+    } catch (err: any) {
+      const message = err.response?.data?.message || 'Registration failed'
+      setError(message)
+      throw new Error(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const joinViaInvite = useCallback(async (data: JoinViaInviteData) => {
+    try {
+      setError(null)
+      setLoading(true)
+      const response = await api.post('/api/v1/auth/join', data)
+      const { accessToken, refreshToken: refresh } = response.data
+      localStorage.setItem('accessToken', accessToken)
+      localStorage.setItem('refreshToken', refresh)
+      api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+      const userResponse = await api.get('/api/v1/auth/me')
+      setUser(userResponse.data.user)
+    } catch (err: any) {
+      const message = err.response?.data?.message || 'Failed to join restaurant'
       setError(message)
       throw new Error(message)
     } finally {
@@ -354,6 +457,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setActiveRestaurantId,
     login,
     register,
+    registerRestaurant,
+    joinViaInvite,
     loginWithGoogle,
     loginWithMicrosoft,
     logout,
