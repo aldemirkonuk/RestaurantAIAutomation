@@ -36,6 +36,8 @@ import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
 import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../services/api/settings';
 import { useRestaurantSettingsStore } from '../stores';
+import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
+import { useAuth } from '../contexts/AuthContext';
 import {
   COMMON_POUR_SIZES,
   formatVolumeWithBothUnits,
@@ -357,11 +359,13 @@ const categoryLabels = {
 };
 
 export default function Settings() {
+  const { user, activeRestaurantId } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [localFlags, setLocalFlags] = useState<FeatureFlags | null>(null);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
 
   useEffect(() => {
     loadFeatureFlags();
@@ -493,6 +497,47 @@ export default function Settings() {
               </button>
             </div>
           </motion.div>
+        )}
+
+        {/* Team Section */}
+        <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-wine-500" />
+                Team Members
+              </h2>
+              <p className="text-sm text-gray-500 mt-0.5">Invite colleagues to join your restaurant on WineOps</p>
+            </div>
+            {(user?.role === 'owner' || user?.role === 'manager') && (
+              <button
+                onClick={() => setShowInviteDialog(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                Invite Member
+              </button>
+            )}
+          </div>
+
+          <div className="px-6 py-5">
+            <div className="text-center py-6 text-gray-400">
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium text-gray-500">Invite your team</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Generate invite codes from the button above and share them with your colleagues.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Invite dialog */}
+        {activeRestaurantId && (
+          <InviteTeamDialog
+            open={showInviteDialog}
+            onClose={() => setShowInviteDialog(false)}
+            restaurantId={activeRestaurantId}
+          />
         )}
 
         {/* Measurement & Volume */}
