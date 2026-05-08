@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -35,7 +36,13 @@ import { OrchestratorModule } from './common/orchestrator/orchestrator.module';
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      // Load monorepo root .env regardless of cwd (dist/ vs src/). Later entries override earlier.
+      envFilePath: [
+        join(__dirname, '..', '..', '..', '.env'),
+        join(__dirname, '..', '..', '.env'),
+        '.env',
+        '.env.local',
+      ],
     }),
     
     // Scheduling for cron jobs
