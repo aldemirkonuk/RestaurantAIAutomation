@@ -5,7 +5,7 @@
 # Railway injects $PORT at runtime (default 3000).
 
 FROM node:20-alpine AS base
-RUN npm install -g pnpm@8.15.0
+RUN npm install -g pnpm@9.15.9
 
 # ── deps layer: install with frozen lockfile ──────────────────────────────────
 FROM base AS deps
@@ -29,7 +29,7 @@ RUN pnpm --filter @wineops/api-gateway build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-RUN npm install -g pnpm@8.15.0
+RUN npm install -g pnpm@9.15.9
 
 # Copy the entire monorepo workspace (node_modules + built dist)
 COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
