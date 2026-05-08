@@ -1,0 +1,23 @@
+{
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/**": true,
+    "**/dist/**": true,
+    "**/__pycache__/**": true,
+    "**/.pnpm/**": true,
+    "**/runs/**": true,
+    "**/logs/**": true,
+    "**/cursor_chat_backup/**": true
+  },
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/__pycache__": true,
+    "cursor_chat_backup": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/__pycache__": true,
+    "**/cursor_chat_backup": true
+  }
+}
