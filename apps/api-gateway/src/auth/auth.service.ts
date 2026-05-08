@@ -386,16 +386,25 @@ export class AuthService {
       if (orgErr || !org) throw new Error(orgErr?.message || 'Org creation failed');
       orgId = org.id;
 
+      // Generate URL-safe slug: "The Oak Room" → "the-oak-room-a3f2"
+      const baseSlug = dto.restaurantName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      const slug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
+
       const { data: restaurant, error: restErr } = await this.databaseService.supabase
         .from('restaurants')
         .insert({
           name: dto.restaurantName,
-          address: dto.address,
+          slug,
+          email: dto.restaurantEmail || dto.email,  // use dedicated contact email or fall back to owner's
+          address: { street: dto.address },          // restaurants.address is JSONB in the live schema
           city: dto.city,
           country: dto.country,
           phone: dto.phone,
           cuisine_type: dto.cuisineType,
-          timezone: dto.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timezone: dto.timezone || 'America/New_York',
           organization_id: org.id,
         })
         .select()

@@ -8,6 +8,7 @@ export class RegisterRestaurantDto {
   @IsString() address: string;
   @IsString() city: string;
   @IsString() country: string;
+  @IsOptional() @IsEmail() restaurantEmail?: string;  // restaurant contact email; defaults to owner email
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() cuisineType?: string;
   @IsOptional() @IsString() timezone?: string;
