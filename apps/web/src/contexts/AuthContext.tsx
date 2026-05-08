@@ -33,6 +33,7 @@ interface RegisterRestaurantData {
   restaurantName: string
   address: string
   city: string
+  country: string
   phone?: string
   cuisineType?: string
   timezone?: string

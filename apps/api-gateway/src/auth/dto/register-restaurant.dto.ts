@@ -7,6 +7,7 @@ export class RegisterRestaurantDto {
   @IsString() restaurantName: string;
   @IsString() address: string;
   @IsString() city: string;
+  @IsString() country: string;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() cuisineType?: string;
   @IsOptional() @IsString() timezone?: string;

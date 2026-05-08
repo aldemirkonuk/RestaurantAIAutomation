@@ -392,6 +392,7 @@ export class AuthService {
           name: dto.restaurantName,
           address: dto.address,
           city: dto.city,
+          country: dto.country,
           phone: dto.phone,
           cuisine_type: dto.cuisineType,
           timezone: dto.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,

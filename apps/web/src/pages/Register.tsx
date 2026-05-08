@@ -52,6 +52,7 @@ export function Register() {
   const [restaurantName, setRestaurantName] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
+  const [country, setCountry] = useState('')
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
 
@@ -315,11 +316,11 @@ export function Register() {
         <div className="space-y-4">
           {(
             [
-              { label: 'Full Name', value: joinName, setter: setJoinName, type: 'text', icon: User, placeholder: 'Jane Smith' },
-              { label: 'Email', value: joinEmail, setter: setJoinEmail, type: 'email', icon: Mail, placeholder: 'jane@restaurant.com' },
-              { label: 'Password', value: joinPassword, setter: setJoinPassword, type: 'password', icon: Lock, placeholder: '••••••••', hint: 'Min. 8 characters' },
-              { label: 'Confirm Password', value: joinConfirm, setter: setJoinConfirm, type: 'password', icon: Lock, placeholder: '••••••••' },
-            ] as const
+              { label: 'Full Name', value: joinName, setter: setJoinName, type: 'text', icon: User, placeholder: 'Jane Smith', hint: undefined as string | undefined },
+              { label: 'Email', value: joinEmail, setter: setJoinEmail, type: 'email', icon: Mail, placeholder: 'jane@restaurant.com', hint: undefined as string | undefined },
+              { label: 'Password', value: joinPassword, setter: setJoinPassword, type: 'password', icon: Lock, placeholder: '••••••••', hint: 'Min. 8 characters' as string | undefined },
+              { label: 'Confirm Password', value: joinConfirm, setter: setJoinConfirm, type: 'password', icon: Lock, placeholder: '••••••••', hint: undefined as string | undefined },
+            ]
           ).map(({ label, value, setter, type, icon: Icon, placeholder, hint }) => (
             <div key={label}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{label} *</label>
@@ -382,11 +383,11 @@ export function Register() {
         <div className="space-y-4">
           {(
             [
-              { label: 'Full Name', value: createName, setter: setCreateName, type: 'text', icon: User, placeholder: 'John Smith' },
-              { label: 'Email', value: createEmail, setter: setCreateEmail, type: 'email', icon: Mail, placeholder: 'john@myrestaurant.com' },
-              { label: 'Password', value: createPassword, setter: setCreatePassword, type: 'password', icon: Lock, placeholder: '••••••••', hint: 'Min. 8 characters' },
-              { label: 'Confirm Password', value: createConfirm, setter: setCreateConfirm, type: 'password', icon: Lock, placeholder: '••••••••' },
-            ] as const
+              { label: 'Full Name', value: createName, setter: setCreateName, type: 'text', icon: User, placeholder: 'John Smith', hint: undefined as string | undefined },
+              { label: 'Email', value: createEmail, setter: setCreateEmail, type: 'email', icon: Mail, placeholder: 'john@myrestaurant.com', hint: undefined as string | undefined },
+              { label: 'Password', value: createPassword, setter: setCreatePassword, type: 'password', icon: Lock, placeholder: '••••••••', hint: 'Min. 8 characters' as string | undefined },
+              { label: 'Confirm Password', value: createConfirm, setter: setCreateConfirm, type: 'password', icon: Lock, placeholder: '••••••••', hint: undefined as string | undefined },
+            ]
           ).map(({ label, value, setter, type, icon: Icon, placeholder, hint }) => (
             <div key={label}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{label} *</label>
@@ -426,8 +427,8 @@ export function Register() {
   const CUISINE_TYPES = ['Fine Dining', 'Casual', 'Bar & Bistro', 'Hotel', 'Wine Bar', 'Italian', 'French', 'American', 'Other']
 
   const handleCreateSubmit = async () => {
-    if (!restaurantName || !address || !city) {
-      setError('Restaurant name, address, and city are required')
+    if (!restaurantName || !address || !city || !country) {
+      setError('Restaurant name, address, city, and country are required')
       return
     }
     setError(null)
@@ -440,6 +441,7 @@ export function Register() {
         restaurantName,
         address,
         city,
+        country,
         phone: phone || undefined,
         cuisineType: cuisineType || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -508,17 +510,30 @@ export function Register() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="United States"
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
                 />
               </div>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 000-0000"
+                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              />
             </div>
           </div>
           <div>
@@ -548,7 +563,7 @@ export function Register() {
         )}
         <Button
           className="w-full h-12 mt-5"
-          disabled={loading || !restaurantName || !address || !city}
+          disabled={loading || !restaurantName || !address || !city || !country}
           onClick={handleCreateSubmit}
         >
           {loading ? (
