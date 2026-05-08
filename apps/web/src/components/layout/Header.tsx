@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -10,8 +10,9 @@ import {
   User,
   HelpCircle,
   Command,
+  MapPin,
 } from 'lucide-react'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth, RestaurantBranch } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
 import { ThemeToggle } from './ThemeToggle'
 import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead } from '../../hooks/queries'
@@ -23,11 +24,41 @@ interface HeaderProps {
   subtitle?: string
 }
 
+function BranchButton({ branch, activeId, onSwitch }: { branch: RestaurantBranch; activeId: string | null; onSwitch: (id: string) => void }) {
+  return (
+    <button
+      onClick={() => onSwitch(branch.id)}
+      className={cn(
+        'w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+        branch.id === activeId && 'bg-wine-50'
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className={cn('text-sm font-medium', branch.id === activeId && 'text-wine-700')}>
+            {branch.name}
+          </p>
+          {branch.city && (
+            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+              <MapPin className="w-3 h-3" />
+              {branch.city}
+            </p>
+          )}
+        </div>
+        {branch.id === activeId && (
+          <div className="w-2 h-2 rounded-full bg-wine-500" />
+        )}
+      </div>
+    </button>
+  )
+}
+
 export function Header({ title, subtitle }: HeaderProps) {
   const [showSearch, setShowSearch] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showRestaurantMenu, setShowRestaurantMenu] = useState(false)
+  const [isSwitching, setIsSwitching] = useState(false)
   const { user, logout, activeRestaurantId, availableRestaurants, setActiveRestaurantId } = useAuth()
   const navigate = useNavigate()
   const notificationStore = useNotificationStore()
@@ -86,6 +117,28 @@ export function Header({ title, subtitle }: HeaderProps) {
     }
   }
 
+  const branchGroups = useMemo(() => {
+    const chains: Record<string, { chainName: string; branches: RestaurantBranch[] }> = {}
+    const standalone: RestaurantBranch[] = []
+    availableRestaurants.forEach((b) => {
+      if (b.chain_id && b.chain_name) {
+        if (!chains[b.chain_id]) chains[b.chain_id] = { chainName: b.chain_name, branches: [] }
+        chains[b.chain_id].branches.push(b)
+      } else {
+        standalone.push(b)
+      }
+    })
+    return { chains: Object.values(chains), standalone }
+  }, [availableRestaurants])
+
+  const handleSwitch = async (branchId: string) => {
+    setIsSwitching(true)
+    setActiveRestaurantId(branchId)
+    setShowRestaurantMenu(false)
+    await new Promise((r) => setTimeout(r, 300))
+    setIsSwitching(false)
+  }
+
   return (
     <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/80 dark:border-gray-800">
       <div className="flex items-center justify-between h-16 px-6">
@@ -102,14 +155,25 @@ export function Header({ title, subtitle }: HeaderProps) {
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
           {/* Restaurant Switcher */}
-          {activeRestaurantId && (
+          {availableRestaurants.length > 1 && (
             <div className="relative">
               <button
                 onClick={() => setShowRestaurantMenu(!showRestaurantMenu)}
                 className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-700 transition-colors"
               >
-                <span className="text-sm font-medium">Restaurant</span>
-                <span className="text-xs text-gray-500">{activeRestaurantId}</span>
+                {isSwitching ? (
+                  <div className="w-4 h-4 border-2 border-wine-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <MapPin className="w-4 h-4 text-wine-500" />
+                )}
+                <span className="text-sm font-medium max-w-28 truncate">
+                  {availableRestaurants.find((b) => b.id === activeRestaurantId)?.name ?? 'Switch Branch'}
+                </span>
+                {availableRestaurants.find((b) => b.id === activeRestaurantId)?.city && (
+                  <span className="text-xs text-gray-400 hidden lg:block">
+                    {availableRestaurants.find((b) => b.id === activeRestaurantId)?.city}
+                  </span>
+                )}
                 <ChevronDown className="w-4 h-4 text-gray-500" />
               </button>
 
@@ -127,25 +191,32 @@ export function Header({ title, subtitle }: HeaderProps) {
                       className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
                     >
                       <div className="px-4 py-3 border-b border-gray-100">
-                        <p className="text-sm font-semibold text-gray-900">Active Restaurant</p>
-                        <p className="text-xs text-gray-500">Switch tenant context</p>
+                        <p className="text-sm font-semibold text-gray-900">Switch Branch</p>
+                        <p className="text-xs text-gray-500">{availableRestaurants.length} locations</p>
                       </div>
                       <div className="max-h-64 overflow-y-auto">
-                        {availableRestaurants.map((restaurantId) => (
-                          <button
-                            key={restaurantId}
-                            onClick={() => {
-                              setActiveRestaurantId(restaurantId)
-                              setShowRestaurantMenu(false)
-                            }}
-                            className={cn(
-                              'w-full px-4 py-3 text-left text-sm hover:bg-gray-50 transition-colors',
-                              restaurantId === activeRestaurantId && 'bg-wine-50 text-wine-700 font-medium'
-                            )}
-                          >
-                            {restaurantId}
-                          </button>
+                        {branchGroups.chains.map(({ chainName, branches }) => (
+                          <div key={chainName}>
+                            <p className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">{chainName}</p>
+                            {branches.map((branch) => (
+                              <BranchButton key={branch.id} branch={branch} activeId={activeRestaurantId} onSwitch={handleSwitch} />
+                            ))}
+                          </div>
                         ))}
+                        {branchGroups.standalone.length > 0 && branchGroups.chains.length > 0 && (
+                          <p className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Other Locations</p>
+                        )}
+                        {branchGroups.standalone.map((branch) => (
+                          <BranchButton key={branch.id} branch={branch} activeId={activeRestaurantId} onSwitch={handleSwitch} />
+                        ))}
+                      </div>
+                      <div className="px-4 py-2 border-t border-gray-100">
+                        <button
+                          onClick={() => { navigate('/settings'); setShowRestaurantMenu(false); }}
+                          className="text-xs text-wine-600 hover:text-wine-700 font-medium"
+                        >
+                          Manage Locations →
+                        </button>
                       </div>
                     </motion.div>
                   </>
