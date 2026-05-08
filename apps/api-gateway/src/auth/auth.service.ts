@@ -402,6 +402,9 @@ export class AuthService {
           address: { street: dto.address },          // restaurants.address is JSONB in the live schema
           city: dto.city,
           country: dto.country,
+          state_province: dto.stateProvince,
+          postal_code: dto.postalCode,
+          neighborhood: dto.neighborhood,
           phone: dto.phone,
           cuisine_type: dto.cuisineType,
           timezone: dto.timezone || 'America/New_York',

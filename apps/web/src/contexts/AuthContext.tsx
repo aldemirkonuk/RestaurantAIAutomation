@@ -34,6 +34,9 @@ interface RegisterRestaurantData {
   address: string
   city: string
   country: string
+  stateProvince?: string
+  postalCode?: string
+  neighborhood?: string
   phone?: string
   cuisineType?: string
   timezone?: string

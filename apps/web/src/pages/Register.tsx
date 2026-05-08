@@ -53,6 +53,9 @@ export function Register() {
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
+  const [stateProvince, setStateProvince] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [neighborhood, setNeighborhood] = useState('')
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
 
@@ -442,6 +445,9 @@ export function Register() {
         address,
         city,
         country,
+        stateProvince: stateProvince || undefined,
+        postalCode: postalCode || undefined,
+        neighborhood: neighborhood || undefined,
         phone: phone || undefined,
         cuisineType: cuisineType || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -495,6 +501,7 @@ export function Register() {
               className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
             />
           </div>
+          {/* Row 1: City + Country */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
@@ -523,6 +530,82 @@ export function Register() {
               </div>
             </div>
           </div>
+          {/* Row 2: State/Province + Postal Code — labels adapt to country in future */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
+                  ? 'State'
+                  : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
+                  ? 'Province (İl)'
+                  : 'State / Province'}
+              </label>
+              <input
+                type="text"
+                value={stateProvince}
+                onChange={(e) => setStateProvince(e.target.value)}
+                placeholder={
+                  country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
+                    ? 'IL'
+                    : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
+                    ? 'Antalya'
+                    : 'e.g. Ontario'
+                }
+                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
+                  ? 'ZIP Code'
+                  : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
+                  ? 'Postcode'
+                  : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
+                  ? 'Posta Kodu'
+                  : 'Postal Code'}
+              </label>
+              <input
+                type="text"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                placeholder={
+                  country.toLowerCase().includes('united states') || country.toLowerCase() === 'us' || country.toLowerCase() === 'usa'
+                    ? '60601'
+                    : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
+                    ? 'SW1A 1AA'
+                    : country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
+                    ? '07050'
+                    : 'e.g. M5V 2T6'
+                }
+                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          {/* Row 3: Neighborhood / District — optional, helps disambiguation */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
+                ? 'District (İlçe / Mahalle)'
+                : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
+                ? 'Borough / Area'
+                : 'Neighborhood / Area'}
+              <span className="text-gray-400 font-normal ml-1">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={neighborhood}
+              onChange={(e) => setNeighborhood(e.target.value)}
+              placeholder={
+                country.toLowerCase().includes('turkey') || country.toLowerCase() === 'tr'
+                  ? 'Konyaaltı, Lara, Muratpaşa...'
+                  : country.toLowerCase().includes('united kingdom') || country.toLowerCase() === 'uk' || country.toLowerCase() === 'gb'
+                  ? 'Mayfair, Shoreditch, Camden...'
+                  : 'River North, Wicker Park, Downtown...'
+              }
+              className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
+          </div>
+          {/* Row 4: Phone */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
             <div className="relative">
