@@ -1,1 +1,0 @@
-"""POS provider adapter implementations."""
