@@ -164,9 +164,8 @@ export function Register() {
     )
   }
 
-  // PATH SELECTOR — called as a function, not a component
+  // PATH SELECTOR — no AnimatePresence here; single AP wrapper in the render handles transitions
   const pathSelector = () => (
-    <AnimatePresence mode="wait">
       <motion.div
         key="selector"
         initial={{ opacity: 0, x: 20 }}
@@ -178,6 +177,7 @@ export function Register() {
         <p className="text-gray-500 mb-8">How do you want to join WineOps?</p>
         <div className="space-y-4">
           <button
+            type="button"
             onClick={() => setPath('join')}
             className="w-full p-5 border-2 border-gray-200 hover:border-wine-400 rounded-xl text-left transition-all group hover:bg-wine-50"
           >
@@ -196,6 +196,7 @@ export function Register() {
           </button>
 
           <button
+            type="button"
             onClick={() => setPath('create')}
             className="w-full p-5 border-2 border-gray-200 hover:border-wine-400 rounded-xl text-left transition-all group hover:bg-wine-50"
           >
@@ -220,12 +221,10 @@ export function Register() {
           </Link>
         </p>
       </motion.div>
-    </AnimatePresence>
   )
 
   // PATH A — Step 1: Invite code entry — called as a function
   const pathAStep1 = () => (
-    <AnimatePresence mode="wait">
       <motion.div
         key="pathA-1"
         initial={{ opacity: 0, x: 20 }}
@@ -234,6 +233,7 @@ export function Register() {
         transition={{ duration: 0.25 }}
       >
         <button
+          type="button"
           onClick={() => setPath('selector')}
           className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6"
         >
@@ -259,12 +259,12 @@ export function Register() {
         <Button
           className="w-full h-12 mt-6"
           disabled={!invitePreview?.valid || loading}
+          type="button"
           onClick={() => setPathAStep(2)}
         >
           Continue <ArrowRight className="w-4 h-4 ml-1" />
         </Button>
       </motion.div>
-    </AnimatePresence>
   )
 
   // PATH A — Step 2: Account fields + submit
@@ -290,7 +290,6 @@ export function Register() {
   }
 
   const pathAStep2 = () => (
-    <AnimatePresence mode="wait">
       <motion.div
         key="pathA-2"
         initial={{ opacity: 0, x: 20 }}
@@ -299,6 +298,7 @@ export function Register() {
         transition={{ duration: 0.25 }}
       >
         <button
+          type="button"
           onClick={() => setPathAStep(1)}
           className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4"
         >
@@ -362,12 +362,10 @@ export function Register() {
           )}
         </Button>
       </motion.div>
-    </AnimatePresence>
   )
 
   // PATH B — Step 1: Account fields — called as a function
   const pathBStep1 = () => (
-    <AnimatePresence mode="wait">
       <motion.div
         key="pathB-1"
         initial={{ opacity: 0, x: 20 }}
@@ -376,6 +374,7 @@ export function Register() {
         transition={{ duration: 0.25 }}
       >
         <button
+          type="button"
           onClick={() => setPath('selector')}
           className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4"
         >
@@ -409,6 +408,7 @@ export function Register() {
           ))}
         </div>
         <Button
+          type="button"
           className="w-full h-12 mt-5"
           disabled={!createName || !createEmail || createPassword.length < 8 || createPassword !== createConfirm}
           onClick={() => {
@@ -423,7 +423,6 @@ export function Register() {
           Next: Restaurant Details <ArrowRight className="w-4 h-4 ml-1" />
         </Button>
       </motion.div>
-    </AnimatePresence>
   )
 
   // PATH B — Step 2: Restaurant details + submit
@@ -508,7 +507,6 @@ export function Register() {
   }
 
   const pathBStep2 = () => (
-    <AnimatePresence mode="wait">
       <motion.div
         key="pathB-2"
         initial={{ opacity: 0, x: 20 }}
@@ -517,6 +515,7 @@ export function Register() {
         transition={{ duration: 0.25 }}
       >
         <button
+          type="button"
           onClick={() => setPathBStep(1)}
           className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4"
         >
@@ -687,8 +686,10 @@ export function Register() {
           )}
         </Button>
       </motion.div>
-    </AnimatePresence>
   )
+
+  // Single step key — AnimatePresence fires ONLY when the user actually navigates between steps
+  const stepKey = `${path}-${path === 'join' ? pathAStep : pathBStep}`
 
   const content = (() => {
     if (path === 'selector') return pathSelector()
@@ -716,8 +717,13 @@ export function Register() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Join WineOps AI</h1>
           <p className="text-gray-600">Transform your restaurant's wine operations</p>
         </div>
-        <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8">
-          {content}
+        <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8 overflow-hidden">
+          <AnimatePresence mode="wait" initial={false}>
+            {/* stepKey changes only on path/step navigation — never on field keystrokes */}
+            <div key={stepKey}>
+              {content}
+            </div>
+          </AnimatePresence>
         </div>
         <p className="text-center text-sm text-gray-500 mt-8">© 2026 WineOps AI. All rights reserved.</p>
       </motion.div>
