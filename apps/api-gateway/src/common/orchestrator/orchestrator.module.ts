@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { OrchestratorService } from './orchestrator.service';
 import { RabbitMqBridgeService } from './rabbitmq-bridge.service';
 import { WebsocketModule } from '../../websocket/websocket.module';
@@ -6,7 +6,7 @@ import { AuthModule } from '../../auth/auth.module';
 import { HealthProxyController, MetricsProxyController } from './health-proxy.controller';
 
 @Module({
-  imports: [WebsocketModule, AuthModule],
+  imports: [WebsocketModule, forwardRef(() => AuthModule)],
   controllers: [HealthProxyController, MetricsProxyController],
   providers: [OrchestratorService, RabbitMqBridgeService],
   exports: [OrchestratorService, RabbitMqBridgeService],

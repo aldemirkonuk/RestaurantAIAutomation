@@ -1,4 +1,4 @@
-import { Module, Logger, OnModuleInit } from '@nestjs/common';
+import { Module, Logger, OnModuleInit, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -19,7 +19,7 @@ import { CommunicationsModule } from '../communications/communications.module';
     DatabaseModule,
     CacheModule,
     ConfigModule,
-    CommunicationsModule,
+    forwardRef(() => CommunicationsModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
