@@ -83,3 +83,5 @@ md/Agent_Chat_History/
 md_files/Agent_Chat_History/
 md/**/*.png
 md_files/**/*.png
+cursor_chat_backup/
+.planning/.Rhistory

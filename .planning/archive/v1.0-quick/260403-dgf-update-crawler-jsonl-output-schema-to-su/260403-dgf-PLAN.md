@@ -192,7 +192,7 @@ Two changes to this file:
    inside the class namespace consistently.
   </action>
   <verify>
-    <automated>cd "/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation" && python -c "
+    <automated>python -c "
 import sys, json, re
 from pathlib import Path
 from datetime import datetime, timezone
@@ -306,7 +306,7 @@ Note: sub_region and appellation are already in TEXT_FALLBACK_PROMPT — only re
 wine_type and price in that prompt's field list.
   </action>
   <verify>
-    <automated>cd "/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation" && python -c "
+    <automated>python -c "
 import sys
 sys.path.insert(0, 'services/agent-orchestrator')
 from services.vlm_extraction_service import CRAWL_TEXT_PROMPT, TEXT_FALLBACK_PROMPT
@@ -403,7 +403,7 @@ After the main loop, add:
       violations.append("data_enrichment must be a dict")
   </action>
   <verify>
-    <automated>cd "/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation" && python -c "
+    <automated>python -c "
 import sys
 sys.path.insert(0, 'services/agent-orchestrator')
 from scripts.e2e_crawl_harness import SCORED_FIELDS, score_completeness, validate_schema
@@ -453,7 +453,7 @@ print('PASS')
 <verification>
 After all three tasks, run a final integration check:
 
-  cd "/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation"
+  # Run from repository root
   python -c "
 import sys
 sys.path.insert(0, 'services/agent-orchestrator')

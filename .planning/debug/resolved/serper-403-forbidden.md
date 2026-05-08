@@ -18,7 +18,7 @@ expected: Serper API should return search results for "Chateau Margaux 2015 wine
 actual: httpx.HTTPStatusError: Client error '403 Forbidden' for url 'https://google.serper.dev/search'
 errors: 
 ```
-File "/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation/services/agent-orchestrator/services/serper_client.py", line 80, in serper_search
+File "services/agent-orchestrator/services/serper_client.py", line 80, in serper_search
     resp.raise_for_status()
 httpx.HTTPStatusError: Client error '403 Forbidden' for url 'https://google.serper.dev/search'
 ```

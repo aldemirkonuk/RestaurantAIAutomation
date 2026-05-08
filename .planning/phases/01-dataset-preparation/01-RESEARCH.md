@@ -299,7 +299,7 @@ path: datasets/wine_menus
 path: wine_menus
 ```
 
-**Verified:** `DATASETS_DIR = /Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation/datasets` (confirmed via `ultralytics.utils.SETTINGS`). With `path: wine_menus`, ultralytics resolves to `.../datasets/wine_menus` which is correct.
+**Verified:** `DATASETS_DIR = datasets` (confirmed via `ultralytics.utils.SETTINGS`). With `path: wine_menus`, ultralytics resolves to `.../datasets/wine_menus` which is correct.
 
 ### Anti-Patterns to Avoid
 
