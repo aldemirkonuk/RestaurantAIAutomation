@@ -144,7 +144,18 @@ class TokenBucketRateLimiter {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: [
+      // Vercel production + all preview deployments
+      /^https:\/\/.*\.vercel\.app$/,
+      // Explicit production URL as a string fallback
+      'https://restaurant-ai-automation-web.vercel.app',
+      // Allow FRONTEND_URL env var if set (supports custom domains)
+      ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : []),
+      // Local dev
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+    ],
     credentials: true,
   },
   namespace: '/ws',

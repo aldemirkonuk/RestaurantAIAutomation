@@ -53,7 +53,13 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
       this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
       this.oauth2Client.setCredentials({ refresh_token: refreshToken });
 
-      const { token } = await this.oauth2Client.getAccessToken();
+      const tokenTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('getAccessToken timed out after 8s')), 8000),
+      );
+      const { token } = await Promise.race([
+        this.oauth2Client.getAccessToken(),
+        tokenTimeout,
+      ]);
       if (!token) {
         throw new Error('Failed to obtain Gmail access token');
       }

@@ -614,7 +614,7 @@ export class AuthService {
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      inviteUrl: `${this.configService.get('FRONTEND_URL') || 'http://localhost:5173'}/register?invite=${invite.code}`,
+      inviteUrl: `${this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app'}/register?invite=${invite.code}`,
     };
   }
 
