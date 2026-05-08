@@ -8,7 +8,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PLANNING = REPO / ".planning"
 
-# Historical checkout locations → treat as monorepo root
+# Historical checkout locations: treat as monorepo root.
 ROOT_QUOTED = "/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant AI Automation"
 ROOT_ESC = r"/Users/aldemirkonuk/Desktop/UnicornProjects/Restaurant\ AI\ Automation"
 # Same path as bare arg (grep, python -m py_compile, etc.)
@@ -20,7 +20,7 @@ def normalize(content: str) -> str:
     # GSD @-includes: home-relative tilde
     content = content.replace("@/Users/aldemirkonuk/.claude/", "~/.claude/")
 
-    # cd …/services/agent-orchestrator (quoted)
+    # cd into services/agent-orchestrator (quoted).
     content = content.replace(
         f'cd "{ROOT_QUOTED}/services/agent-orchestrator"',
         "cd services/agent-orchestrator",
@@ -39,12 +39,12 @@ def normalize(content: str) -> str:
     content = content.replace(f'cd "{ROOT_QUOTED}"', "# Run from repository root")
     content = content.replace(f"cd {ROOT_ESC}", "# Run from repository root")
 
-    # Any remaining absolute path to repo files → relative from root
+    # Any remaining absolute path to repo files becomes relative from root.
     content = content.replace(f'"{ROOT_QUOTED}/', '"')
     content = content.replace(f"{ROOT_QUOTED}/", "")
     content = content.replace(ROOT_ESC_SLASH, "")
 
-    # Tracebacks / File "…"
+    # Tracebacks / File "..."
     content = content.replace(f'File "{ROOT_QUOTED}/', 'File "')
 
     # Debug doc if home path leaked another way
