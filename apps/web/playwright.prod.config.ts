@@ -67,7 +67,7 @@ export default defineConfig({
   projects: [
     {
       name: 'prod-smoke',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
     },
   ],
 })
