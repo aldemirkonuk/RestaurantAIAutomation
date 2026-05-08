@@ -23,6 +23,7 @@ import { StorageLocationsModule } from './storage-locations/storage-locations.mo
 import { ConversationsModule } from './conversations/conversations.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
 import { RestaurantTemplatesModule } from './restaurant-templates/restaurant-templates.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { ErrorTrackingModule, SentryInterceptor } from './common/error-tracking';
 import { RateLimitModule, RateLimitGuard } from './common/rate-limit';
 import { CacheModule } from './common/cache/cache.module';
@@ -65,6 +66,7 @@ import { OrchestratorModule } from './common/orchestrator/orchestrator.module';
     CommunicationsModule,  // Gmail, SMS, and scheduled communications
     ConversationsModule,   // Procurement conversation history, threads, summaries
     SettingsModule,        // Restaurant settings and feature flags
+    OrganizationsModule,   // Multi-tenant org hierarchy (branches, chains)
     UserPreferencesModule, // User preference storage (JSONB)
     RestaurantTemplatesModule, // Communication templates CRUD
     
