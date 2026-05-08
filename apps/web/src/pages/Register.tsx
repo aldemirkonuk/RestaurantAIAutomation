@@ -540,6 +540,9 @@ export function Register() {
     }
   }
 
+  // Country entered enough to trigger the rest of the form
+  const countryReady = country.trim().length >= 2
+
   const pathBStep2 = () => (
       <motion.div
         key="pathB-2"
@@ -550,7 +553,7 @@ export function Register() {
       >
         <button
           type="button"
-          onClick={() => setPathBStep(1)}
+          onClick={() => { setPathBStep(1); setError(null) }}
           className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4"
         >
           <ArrowLeft className="w-4 h-4" /> Back
@@ -570,143 +573,174 @@ export function Register() {
                 onChange={(e) => setRestaurantName(e.target.value)}
                 placeholder="The Oak Room"
                 className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                autoFocus
               />
             </div>
           </div>
 
-          {/* Street Address — Google Places Autocomplete auto-fills city/state/postal/country */}
+          {/* Country — shown first; unlocks the rest of the form */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Street Address *
-              <span className="text-gray-400 font-normal ml-1 text-xs">— start typing to search</span>
-            </label>
-            <PlacesAutocomplete
-              value={address}
-              onChange={setAddress}
-              onPlaceSelect={(place: PlaceResult) => {
-                setAddress(place.streetAddress)
-                if (place.city) setCity(place.city)
-                if (place.stateProvince) setStateProvince(place.stateProvince)
-                if (place.postalCode) setPostalCode(place.postalCode)
-                if (place.country) setCountry(place.country)
-                if (place.neighborhood) setNeighborhood(place.neighborhood)
-              }}
-              placeholder="123 Wine Street, Chicago"
-              className="py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500"
-            />
-          </div>
-
-          {/* City  +  Country — auto-filled but editable */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="Chicago"
-                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
-              <input
-                type="text"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder="US"
-                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* State / Province  +  Postal Code — labels adapt from countryLocale */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {countryLocale.stateLabel}
-              </label>
-              <input
-                type="text"
-                value={stateProvince}
-                onChange={(e) => setStateProvince(e.target.value)}
-                placeholder={countryLocale.statePlaceholder}
-                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {countryLocale.postalLabel}
-              </label>
-              <input
-                type="text"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                placeholder={countryLocale.postalPlaceholder}
-                className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Neighborhood — label adapts from countryLocale */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {countryLocale.areaLabel}
-              <span className="text-gray-400 font-normal ml-1 text-xs">(optional)</span>
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
             <input
               type="text"
-              value={neighborhood}
-              onChange={(e) => setNeighborhood(e.target.value)}
-              placeholder={countryLocale.areaPlaceholder}
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              placeholder="United States, Turkey, UK…"
               className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
             />
+            {!countryReady && (
+              <p className="text-xs text-gray-400 mt-1">Enter your country to continue filling in the address</p>
+            )}
           </div>
 
-          {/* Phone */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1 (555) 000-0000"
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Cuisine Type — OpenTable-style grouped select */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cuisine Type</label>
-            <div className="relative">
-              <ChefHat className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <select
-                value={cuisineType}
-                onChange={(e) => setCuisineType(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none appearance-none"
+          {/* ── Rest of form unlocks once country has been entered ── */}
+          <AnimatePresence>
+            {countryReady && (
+              <motion.div
+                key="address-fields"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className="overflow-hidden space-y-4"
               >
-                <option value="">Select cuisine type</option>
-                {CUISINE_GROUPS.map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.options.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-          </div>
+                {/* Street Address — Google Places Autocomplete fills city/state/postal/country */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Street Address *
+                    <span className="text-gray-400 font-normal ml-1 text-xs">— start typing to search</span>
+                  </label>
+                  <PlacesAutocomplete
+                    value={address}
+                    onChange={setAddress}
+                    onPlaceSelect={(place: PlaceResult) => {
+                      setAddress(place.streetAddress)
+                      if (place.city) setCity(place.city)
+                      if (place.stateProvince) setStateProvince(place.stateProvince)
+                      if (place.postalCode) setPostalCode(place.postalCode)
+                      if (place.country) setCountry(place.country)
+                      if (place.neighborhood) setNeighborhood(place.neighborhood)
+                    }}
+                    placeholder="Start typing your street address…"
+                    className="py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500"
+                  />
+                </div>
+
+                {/* City + State — auto-filled but editable */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                    <input
+                      type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Chicago"
+                      className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {countryLocale.stateLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={stateProvince}
+                      onChange={(e) => setStateProvince(e.target.value)}
+                      placeholder={countryLocale.statePlaceholder}
+                      className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Postal Code + Neighborhood */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {countryLocale.postalLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={postalCode}
+                      onChange={(e) => setPostalCode(e.target.value)}
+                      placeholder={countryLocale.postalPlaceholder}
+                      className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {countryLocale.areaLabel}
+                      <span className="text-gray-400 font-normal ml-1 text-xs">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={neighborhood}
+                      onChange={(e) => setNeighborhood(e.target.value)}
+                      placeholder={countryLocale.areaPlaceholder}
+                      className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+1 (555) 000-0000"
+                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Cuisine Type — OpenTable-style grouped select */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cuisine Type</label>
+                  <div className="relative">
+                    <ChefHat className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <select
+                      value={cuisineType}
+                      onChange={(e) => setCuisineType(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none appearance-none"
+                    >
+                      <option value="">Select cuisine type</option>
+                      {CUISINE_GROUPS.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
         </div>
-        {(error || authError) && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-            <p className="text-sm text-red-700">{error || authError}</p>
-          </div>
-        )}
+
+        {/* Error banner — dismissible */}
+        <AnimatePresence>
+          {(error || authError) && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+            >
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 flex-1">{error || authError}</p>
+              <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-1">
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <Button
           className="w-full h-12 mt-5"
           disabled={loading || !restaurantName || !address || !city || !country}
@@ -715,7 +749,7 @@ export function Register() {
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              Creating your restaurant...
+              Creating your restaurant…
             </>
           ) : (
             'Create Restaurant'
