@@ -40,7 +40,7 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.0.6",
     "exceljs": "^4.4.0",
-    "framer-motion": "^10.18.0",
+    "framer-motion": "^12.38.0",
     "googleapis": "^170.0.0",
     "jspdf": "^4.0.0",
     "jspdf-autotable": "^5.0.7",
