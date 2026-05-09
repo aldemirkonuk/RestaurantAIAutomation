@@ -1,9 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type RefObject } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { Building2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
+import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
+
+interface AddLocationDialogProps {
+  open: boolean
+  onClose: () => void
+  onLocationAdded?: (location: { id: string; name: string }) => void
+  /** Pin below this element, right-aligned (e.g. Add Location button). */
+  anchorRef?: RefObject<HTMLElement | null>
+}
 
 interface Chain {
   id: string
@@ -11,13 +20,8 @@ interface Chain {
   cuisine_type: string | null
 }
 
-interface AddLocationDialogProps {
-  open: boolean
-  onClose: () => void
-  onLocationAdded?: (location: { id: string; name: string }) => void
-}
-
-export function AddLocationDialog({ open, onClose, onLocationAdded }: AddLocationDialogProps) {
+export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }: AddLocationDialogProps) {
+  const anchorPos = useAnchoredDialogPosition(open, anchorRef)
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
@@ -94,10 +98,15 @@ export function AddLocationDialog({ open, onClose, onLocationAdded }: AddLocatio
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" onClick={handleClose} />
         <Dialog.Content asChild>
           <motion.div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-md"
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            className={
+              anchorPos
+                ? 'fixed z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[min(90vh,calc(100vh-5rem))] overflow-y-auto'
+                : 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[min(90vh,calc(100vh-5rem))] overflow-y-auto'
+            }
+            style={anchorPos ? { top: anchorPos.top, left: anchorPos.left } : undefined}
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -105,7 +114,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded }: AddLocatio
                 <Building2 className="w-5 h-5 text-wine-500" />
                 Add New Location
               </Dialog.Title>
-              <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={handleClose} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>

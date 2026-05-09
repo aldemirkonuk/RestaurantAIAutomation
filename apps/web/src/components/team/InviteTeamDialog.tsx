@@ -1,10 +1,11 @@
-import { useState, useLayoutEffect, type RefObject } from 'react'
+import { useState, type RefObject } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { Check, Copy, X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Button } from '../ui/button'
+import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
 
 interface InviteTeamDialogProps {
   open: boolean
@@ -20,42 +21,13 @@ interface GeneratedInvite {
   inviteUrl: string
 }
 
-const MODAL_MAX_W = 448 // matches max-w-md
-
 export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
   const [role, setRole] = useState<'manager' | 'staff'>('manager')
   const [isGenerating, setIsGenerating] = useState(false)
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
   const [copied, setCopied] = useState(false)
-  const [anchorPos, setAnchorPos] = useState<{ top: number; left: number } | null>(null)
-
-  useLayoutEffect(() => {
-    if (!open || !anchorRef?.current) {
-      setAnchorPos(null)
-      return
-    }
-    const update = () => {
-      const el = anchorRef.current
-      if (!el) return
-      const r = el.getBoundingClientRect()
-      const top = r.bottom + 10
-      // Right-align modal with the Invite button (same right edge)
-      let left = r.right - MODAL_MAX_W
-      left = Math.max(16, left)
-      if (left + MODAL_MAX_W > window.innerWidth - 16) {
-        left = Math.max(16, window.innerWidth - MODAL_MAX_W - 16)
-      }
-      setAnchorPos({ top, left })
-    }
-    update()
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-    return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-    }
-  }, [open, anchorRef])
+  const anchorPos = useAnchoredDialogPosition(open, anchorRef)
 
   const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 

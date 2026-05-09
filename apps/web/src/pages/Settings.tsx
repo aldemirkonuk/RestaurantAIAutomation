@@ -368,8 +368,9 @@ export default function Settings() {
   const [hasChanges, setHasChanges] = useState(false);
   const [localFlags, setLocalFlags] = useState<FeatureFlags | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const teamInviteAnchorRef = useRef<HTMLDivElement>(null);
+  const teamInviteAnchorRef = useRef<HTMLButtonElement>(null);
   const [showAddLocation, setShowAddLocation] = useState(false);
+  const addLocationAnchorRef = useRef<HTMLButtonElement>(null);
   const [newChainName, setNewChainName] = useState('');
   const [isCreatingChain, setIsCreatingChain] = useState(false);
   const [locationsList, setLocationsList] = useState(availableRestaurants);
@@ -567,6 +568,8 @@ export default function Settings() {
                 <p className="text-sm text-gray-500 mt-0.5">Manage your restaurant locations and group them into chains</p>
               </div>
               <button
+                ref={addLocationAnchorRef}
+                type="button"
                 onClick={() => setShowAddLocation(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl transition-colors"
               >
@@ -671,6 +674,7 @@ export default function Settings() {
         <AddLocationDialog
           open={showAddLocation}
           onClose={() => setShowAddLocation(false)}
+          anchorRef={addLocationAnchorRef}
           onLocationAdded={(location) => {
             toast.success(`${location.name} added! Refresh to see it in the branch switcher.`);
             setShowAddLocation(false);
