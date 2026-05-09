@@ -816,6 +816,7 @@ export function Register() {
                   <span className="text-gray-400 font-normal ml-1 text-xs">— start typing to search</span>
                 </label>
                 <PlacesAutocomplete
+                  country={country}
                   value={address}
                   onChange={setAddress}
                   onPlaceSelect={(place: PlaceResult) => {
