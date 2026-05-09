@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, Phone, ChefHat, ChevronRight } from 'lucide-react'
+import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, Phone, ChevronRight } from 'lucide-react'
 import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
+import { CountryCombobox } from '../components/ui/CountryCombobox'
+import { CuisinePicker } from '../components/ui/CuisinePicker'
 
 type Path = 'selector' | 'join' | 'create'
 type PathAStep = 1 | 2
@@ -617,41 +619,6 @@ export function Register() {
     }
   })()
 
-  const CUISINE_GROUPS: { label: string; options: string[] }[] = [
-    {
-      label: 'American',
-      options: ['New American', 'Contemporary American', 'Traditional American', 'Steakhouse', 'Seafood', 'Barbecue', 'Cajun & Creole'],
-    },
-    {
-      label: 'European',
-      options: ['French', 'Italian', 'Spanish', 'Mediterranean', 'Greek', 'German', 'British', 'Modern European', 'Brasserie'],
-    },
-    {
-      label: 'Latin American',
-      options: ['Mexican', 'Latin', 'Brazilian', 'Peruvian', 'Caribbean'],
-    },
-    {
-      label: 'Asian',
-      options: ['Japanese', 'Sushi', 'Chinese', 'Thai', 'Indian', 'Vietnamese', 'Korean', 'Asian Fusion'],
-    },
-    {
-      label: 'Middle East & Africa',
-      options: ['Middle Eastern', 'Turkish', 'Moroccan', 'Israeli'],
-    },
-    {
-      label: 'Dining Style',
-      options: ['Farm-to-Table', 'Gastropub', 'Tapas / Small Plates', 'Pizza', 'Vegetarian / Vegan', 'Café & Bakery', 'Brunch'],
-    },
-    {
-      label: 'Drinks & Nightlife',
-      options: ['Wine Bar', 'Cocktail Bar', 'Lounge', 'Hotel Restaurant'],
-    },
-    {
-      label: 'Other',
-      options: ['Other'],
-    },
-  ]
-
   const handleCreateSubmit = async () => {
     if (!restaurantName || !address || !city || !country) {
       setError('Restaurant name, address, city, and country are required')
@@ -796,23 +763,7 @@ export function Register() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Cuisine Type <span className="text-gray-400 font-normal text-xs">(optional)</span>
                 </label>
-                <div className="relative">
-                  <ChefHat className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  <select
-                    value={cuisineType}
-                    onChange={(e) => setCuisineType(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none appearance-none"
-                  >
-                    <option value="">Select cuisine type</option>
-                    {CUISINE_GROUPS.map((group) => (
-                      <optgroup key={group.label} label={group.label}>
-                        {group.options.map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
+                <CuisinePicker value={cuisineType} onChange={setCuisineType} />
               </div>
 
               {/* Nav */}
@@ -852,13 +803,7 @@ export function Register() {
               {/* Country */}
               <div className="mb-[18px]">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-wine-600">*</span></label>
-                <input
-                  type="text"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  placeholder="United States, Turkey, UK…"
-                  className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-                />
+                <CountryCombobox value={country} onChange={setCountry} />
                 {!countryReady && (
                   <p className="text-xs text-gray-400 mt-1">Enter your country to continue filling in the address</p>
                 )}
@@ -1057,7 +1002,7 @@ export function Register() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className={isRestaurantForm ? 'w-full max-w-3xl' : 'w-full max-w-lg'}
+        className={isRestaurantForm ? 'w-full max-w-4xl' : 'w-full max-w-2xl'}
       >
         <div className="text-center mb-8">
           <motion.div

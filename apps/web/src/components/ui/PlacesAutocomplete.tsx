@@ -99,7 +99,7 @@ export function PlacesAutocomplete({
               get('administrative_area_level_2'),
             stateProvince: get('administrative_area_level_1', true),
             postalCode: get('postal_code'),
-            country: get('country', true),
+            country: get('country'),
             neighborhood:
               get('neighborhood') ||
               get('sublocality_level_1') ||
