@@ -10,7 +10,7 @@ interface InviteTeamDialogProps {
   open: boolean
   onClose: () => void
   restaurantId: string
-  /** When set, the dialog is fixed just under this element (e.g. Team Members header). Otherwise centered in the viewport. */
+  /** When set, the dialog is fixed below this element, right-aligned to it (e.g. Invite Member button). Otherwise centered in the viewport. */
   anchorRef?: RefObject<HTMLElement | null>
 }
 
@@ -39,8 +39,10 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef }: Inv
       const el = anchorRef.current
       if (!el) return
       const r = el.getBoundingClientRect()
-      let left = r.left + 16
       const top = r.bottom + 10
+      // Right-align modal with the Invite button (same right edge)
+      let left = r.right - MODAL_MAX_W
+      left = Math.max(16, left)
       if (left + MODAL_MAX_W > window.innerWidth - 16) {
         left = Math.max(16, window.innerWidth - MODAL_MAX_W - 16)
       }

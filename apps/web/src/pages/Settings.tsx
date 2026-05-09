@@ -513,10 +513,7 @@ export default function Settings() {
 
         {/* Team Section */}
         <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm">
-          <div
-            ref={teamInviteAnchorRef}
-            className="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
-          >
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                 <Users className="w-4 h-4 text-wine-500" />
@@ -526,6 +523,8 @@ export default function Settings() {
             </div>
             {(user?.role === 'owner' || user?.role === 'manager') && (
               <button
+                ref={teamInviteAnchorRef}
+                type="button"
                 onClick={() => setShowInviteDialog(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl transition-colors"
               >
