@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Archive
 status: unknown
-last_updated: "2026-05-05T16:28:20.739Z"
+last_updated: "2026-05-09T11:40:57.399Z"
 progress:
-  total_phases: 27
+  total_phases: 24
   completed_phases: 20
-  total_plans: 98
-  completed_plans: 94
-  percent: 96
+  total_plans: 109
+  completed_plans: 101
+  percent: 93
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -578,6 +578,7 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 | 260408-02o | fix lucide-react TS2786 JSX component errors across codebase — pinned @types/react@18.2.47 + typescript@5.3.3 workspace-wide via pnpm.overrides | 2026-04-08 | — | [260408-02o-fix-lucide-react-ts2786-jsx-component-er](./quick/260408-02o-fix-lucide-react-ts2786-jsx-component-er/) |
 | 260502-00z | analyze phase 25 plans for mistakes and future problems | 2026-05-02 | — | [260502-00z-analyze-phase-25-plans-for-mistakes-and-](./quick/260502-00z-analyze-phase-25-plans-for-mistakes-and-/) |
 | 260502-06m | fix phase 25 execution issues from analysis 260502-00z | 2026-05-02 | — | [260502-06m-fix-phase-25-execution-issues-from-analy](./quick/260502-06m-fix-phase-25-execution-issues-from-analy/) |
+| 260509-ui | Phase 26 UI polish — responsive path selector (feature cards desktop / bold-primary mobile), trust card invite code input, left-rail restaurant form (3 panels), VerifyEmail step list | 2026-05-09 | 06b25e3 | .planning/sketches/004-full-flow-synthesis/ |
 
 ---
 
@@ -672,4 +673,4 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
   - Three-layer architecture: deterministic inference (Phase 9 ontology) → cascade LLM enrichment → deep research with Reflexion
 
 *State initialized: 2026-03-30*
-*Last updated: 2026-04-06 — Phase 12.1 inserted for SOTA research agent redesign. Phase 12 complete but has critical bugs and architectural gaps identified via deep analysis.*
+*Last updated: 2026-05-09 — Phase 26 UI polish committed (06b25e3). 5 Supabase migrations NOT yet applied (no linked project / no local Docker). Must run `supabase db push` in next session before E2E testing Phase 26.*

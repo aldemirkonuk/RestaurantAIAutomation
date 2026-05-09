@@ -1,7 +1,7 @@
 # Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy — CONTEXT
 
 Created: 2026-05-06
-Status: ready-to-plan
+Status: complete (UI polished 2026-05-09)
 
 ---
 
@@ -76,3 +76,16 @@ This phase touches:
 - `apps/web/src/contexts/AuthContext.tsx` — multi-restaurant support from org membership
 - `apps/api-gateway/src/auth/` — register endpoint, invite endpoint
 - New Supabase migration: `organizations`, `organization_members`, `organization_invites` tables
+## Phase 26 UI Polish — 2026-05-09
+
+Designs from sketch session implemented in commit 06b25e3:
+- Register.tsx: responsive path selector, trust card invite input, left-rail restaurant form
+- VerifyEmail.tsx: numbered step instruction list
+
+⚠️ PENDING NEXT SESSION: Run `supabase db push` to apply 5 migrations:
+  - 20260506000000_organizations.sql
+  - 20260506000001_organization_invites.sql
+  - 20260506000002_email_verifications.sql
+  - 20260506000003_restaurants_schema_updates.sql
+  - 20260506000004_restaurant_chains.sql
+Then run E2E walkthrough per 26-HUMAN-UAT.md.
