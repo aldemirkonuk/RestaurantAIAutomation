@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { MapPin, Loader2 } from 'lucide-react';
 import { Input } from './input';
 
@@ -21,18 +21,13 @@ interface PlacesAutocompleteProps {
   disabled?: boolean;
 }
 
-let loaderInstance: Loader | null = null;
-let placesLoaded = false;
+let optionsSet = false;
 
-function getLoader(): Loader {
-  if (!loaderInstance) {
-    loaderInstance = new Loader({
-      apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-      version: 'weekly',
-      libraries: ['places'],
-    });
+function ensureOptions(apiKey: string) {
+  if (!optionsSet) {
+    setOptions({ apiKey, version: 'weekly' });
+    optionsSet = true;
   }
-  return loaderInstance;
 }
 
 export function PlacesAutocomplete({
@@ -58,18 +53,16 @@ export function PlacesAutocomplete({
 
     let cancelled = false;
 
-    async function initAutocomplete() {
+    async function init() {
       if (!inputRef.current) return;
       setLoading(true);
       try {
-        if (!placesLoaded) {
-          await getLoader().load();
-          placesLoaded = true;
-        }
+        ensureOptions(apiKey);
+        const { Autocomplete } = await importLibrary('places') as google.maps.PlacesLibrary;
 
         if (cancelled || !inputRef.current) return;
 
-        const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+        const autocomplete = new Autocomplete(inputRef.current, {
           types: ['address'],
           fields: ['address_components', 'formatted_address'],
         });
@@ -85,13 +78,11 @@ export function PlacesAutocomplete({
             return comp ? (short ? comp.short_name : comp.long_name) : '';
           };
 
-          // Build street address from number + route
-          const streetNumber = get('street_number');
-          const route = get('route');
-          const streetAddress = [streetNumber, route].filter(Boolean).join(' ');
+          const streetAddress = [get('street_number'), get('route')].filter(Boolean).join(' ')
+            || place.formatted_address || '';
 
           const result: PlaceResult = {
-            streetAddress: streetAddress || place.formatted_address || '',
+            streetAddress,
             city:
               get('locality') ||
               get('sublocality_level_1') ||
@@ -119,7 +110,7 @@ export function PlacesAutocomplete({
       }
     }
 
-    initAutocomplete();
+    init();
     return () => {
       cancelled = true;
       if (autocompleteRef.current) {
@@ -129,7 +120,6 @@ export function PlacesAutocomplete({
     };
   }, []);
 
-  // Sync controlled value to the real input when the parent changes it programmatically
   useEffect(() => {
     if (inputRef.current && inputRef.current.value !== value) {
       inputRef.current.value = value;
@@ -175,7 +165,7 @@ export function PlacesAutocomplete({
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
       )}
       {apiError && (
-        <p className="text-xs text-red-500 mt-1">⚠ Maps failed to load: {apiError}</p>
+        <p className="text-xs text-red-500 mt-1">⚠ Maps failed: {apiError}</p>
       )}
     </div>
   );
