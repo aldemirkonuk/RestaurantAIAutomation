@@ -151,8 +151,33 @@ export class OrganizationsService {
       chainId?: string;
     },
   ): Promise<{ id: string; name: string }> {
-    const orgIds = await this.getUserOrgIds(userId);
-    if (orgIds.length === 0) throw new Error('User has no organization');
+    let orgIds = await this.getUserOrgIds(userId);
+
+    // Fallback: derive org from the user's existing restaurant if org_member row is missing
+    if (orgIds.length === 0) {
+      const { data: user } = await this.databaseService.supabase
+        .from('users')
+        .select('restaurant_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (user?.restaurant_id) {
+        const { data: rest } = await this.databaseService.supabase
+          .from('restaurants')
+          .select('organization_id')
+          .eq('id', user.restaurant_id)
+          .maybeSingle();
+        if (rest?.organization_id) {
+          orgIds = [rest.organization_id];
+          // Repair the missing membership row so future calls don't need this fallback
+          await this.databaseService.supabase.from('organization_members').upsert(
+            { organization_id: rest.organization_id, user_id: userId, role: 'owner' },
+            { onConflict: 'organization_id,user_id' },
+          );
+        }
+      }
+    }
+
+    if (orgIds.length === 0) throw new Error('User has no organization — cannot add location');
 
     const { data: ownedOrg } = await this.databaseService.supabase
       .from('organizations')
@@ -165,7 +190,7 @@ export class OrganizationsService {
       .from('restaurants')
       .insert({
         name: dto.name,
-        address: dto.address,
+        address: { street: dto.address },
         city: dto.city,
         phone: dto.phone ?? null,
         cuisine_type: dto.cuisineType ?? null,
