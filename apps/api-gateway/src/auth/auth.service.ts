@@ -680,12 +680,11 @@ export class AuthService {
    * Verify email using the token from the verification email.
    * Returns a new token pair with emailVerified: true in the payload.
    */
-  async verifyEmail(userId: string, token: string): Promise<TokenPair> {
+  async verifyEmail(token: string): Promise<TokenPair> {
     const { data: verif } = await this.databaseService.supabase
       .from('email_verifications')
       .select('id, expires_at, verified_at, user_id')
       .eq('token', token)
-      .eq('user_id', userId)
       .maybeSingle();
 
     if (!verif) throw new BadRequestException('Invalid verification token');
@@ -702,7 +701,7 @@ export class AuthService {
     const { data: user } = await this.databaseService.supabase
       .from('users')
       .update({ email_verified: true })
-      .eq('user_id', userId)
+      .eq('user_id', verif.user_id)
       .select()
       .single();
 

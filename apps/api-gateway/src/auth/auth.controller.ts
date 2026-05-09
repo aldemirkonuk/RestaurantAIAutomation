@@ -196,9 +196,8 @@ export class AuthController {
    * Verify email with the token from the verification email.
    */
   @Post('verify-email')
-  @UseGuards(JwtAuthGuard)
-  async verifyEmail(@Req() req: Request & { user: any }, @Body() body: { token: string }) {
-    const tokens = await this.authService.verifyEmail(req.user.userId, body.token);
+  async verifyEmail(@Body() body: { token: string }) {
+    const tokens = await this.authService.verifyEmail(body.token);
     return { success: true, ...tokens, message: 'Email verified' };
   }
 
