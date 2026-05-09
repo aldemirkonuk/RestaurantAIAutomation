@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -368,6 +368,7 @@ export default function Settings() {
   const [hasChanges, setHasChanges] = useState(false);
   const [localFlags, setLocalFlags] = useState<FeatureFlags | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const teamInviteAnchorRef = useRef<HTMLDivElement>(null);
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newChainName, setNewChainName] = useState('');
   const [isCreatingChain, setIsCreatingChain] = useState(false);
@@ -512,7 +513,10 @@ export default function Settings() {
 
         {/* Team Section */}
         <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div
+            ref={teamInviteAnchorRef}
+            className="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
+          >
             <div>
               <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                 <Users className="w-4 h-4 text-wine-500" />
@@ -548,6 +552,7 @@ export default function Settings() {
             open={showInviteDialog}
             onClose={() => setShowInviteDialog(false)}
             restaurantId={activeRestaurantId}
+            anchorRef={teamInviteAnchorRef}
           />
         )}
 

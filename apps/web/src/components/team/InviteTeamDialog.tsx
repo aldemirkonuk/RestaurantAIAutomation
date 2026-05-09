@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useLayoutEffect, type RefObject } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { Check, Copy, X, Users } from 'lucide-react'
@@ -10,6 +10,8 @@ interface InviteTeamDialogProps {
   open: boolean
   onClose: () => void
   restaurantId: string
+  /** When set, the dialog is fixed just under this element (e.g. Team Members header). Otherwise centered in the viewport. */
+  anchorRef?: RefObject<HTMLElement | null>
 }
 
 interface GeneratedInvite {
@@ -18,12 +20,40 @@ interface GeneratedInvite {
   inviteUrl: string
 }
 
-export function InviteTeamDialog({ open, onClose, restaurantId }: InviteTeamDialogProps) {
+const MODAL_MAX_W = 448 // matches max-w-md
+
+export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
   const [role, setRole] = useState<'manager' | 'staff'>('manager')
   const [isGenerating, setIsGenerating] = useState(false)
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
   const [copied, setCopied] = useState(false)
+  const [anchorPos, setAnchorPos] = useState<{ top: number; left: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef?.current) {
+      setAnchorPos(null)
+      return
+    }
+    const update = () => {
+      const el = anchorRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      let left = r.left + 16
+      const top = r.bottom + 10
+      if (left + MODAL_MAX_W > window.innerWidth - 16) {
+        left = Math.max(16, window.innerWidth - MODAL_MAX_W - 16)
+      }
+      setAnchorPos({ top, left })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open, anchorRef])
 
   const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -80,10 +110,15 @@ export function InviteTeamDialog({ open, onClose, restaurantId }: InviteTeamDial
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" onClick={handleClose} />
         <Dialog.Content asChild>
           <motion.div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-md"
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            className={
+              anchorPos
+                ? 'fixed z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[min(90vh,calc(100vh-5rem))] overflow-y-auto'
+                : 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[min(90vh,calc(100vh-5rem))] overflow-y-auto'
+            }
+            style={anchorPos ? { top: anchorPos.top, left: anchorPos.left } : undefined}
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -91,7 +126,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId }: InviteTeamDial
                 <Users className="w-5 h-5 text-wine-500" />
                 {invite ? 'Invite link generated' : 'Invite a Team Member'}
               </Dialog.Title>
-              <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={handleClose} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
