@@ -47,6 +47,7 @@ export function PlacesAutocomplete({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const [loading, setLoading] = useState(false);
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -109,8 +110,10 @@ export function PlacesAutocomplete({
           onChange(result.streetAddress);
           onPlaceSelect(result);
         });
-      } catch {
-        // Places API unavailable — fall back to plain input silently
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[PlacesAutocomplete] Failed to load Google Maps API:', msg);
+        setApiError(msg);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -135,13 +138,16 @@ export function PlacesAutocomplete({
 
   if (apiKeyMissing) {
     return (
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={className}
-        disabled={disabled}
-      />
+      <div>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={className}
+          disabled={disabled}
+        />
+        <p className="text-xs text-amber-600 mt-1">⚠ VITE_GOOGLE_MAPS_API_KEY not set — address autocomplete disabled</p>
+      </div>
     );
   }
 
@@ -167,6 +173,9 @@ export function PlacesAutocomplete({
       />
       {loading && (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+      )}
+      {apiError && (
+        <p className="text-xs text-red-500 mt-1">⚠ Maps failed to load: {apiError}</p>
       )}
     </div>
   );

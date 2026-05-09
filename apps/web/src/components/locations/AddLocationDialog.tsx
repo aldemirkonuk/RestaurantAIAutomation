@@ -5,12 +5,13 @@ import { Building2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
+import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
+import { CountryCombobox } from '../ui/CountryCombobox'
 
 interface AddLocationDialogProps {
   open: boolean
   onClose: () => void
   onLocationAdded?: (location: { id: string; name: string }) => void
-  /** Pin below this element, right-aligned (e.g. Add Location button). */
   anchorRef?: RefObject<HTMLElement | null>
 }
 
@@ -20,20 +21,26 @@ interface Chain {
   cuisine_type: string | null
 }
 
+const INPUT_CLS =
+  'block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none'
+
 export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }: AddLocationDialogProps) {
   const anchorPos = useAnchoredDialogPosition(open, anchorRef)
+
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
+  const [country, setCountry] = useState('')
+  const [stateProvince, setStateProvince] = useState('')
+  const [postalCode, setPostalCode] = useState('')
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
-  const [chainId, setChainId] = useState<string>('')
+  const [chainId, setChainId] = useState('')
   const [chains, setChains] = useState<Chain[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
-  // Fetch available chains for the dropdown
   useEffect(() => {
     if (!open) return
     const token = localStorage.getItem('accessToken')
@@ -44,6 +51,14 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
       .then((data) => setChains(Array.isArray(data) ? data : []))
       .catch(() => setChains([]))
   }, [open, API_URL])
+
+  const handlePlaceSelect = (place: PlaceResult) => {
+    setAddress(place.streetAddress)
+    if (place.city) setCity(place.city)
+    if (place.stateProvince) setStateProvince(place.stateProvince)
+    if (place.postalCode) setPostalCode(place.postalCode)
+    if (place.country) setCountry(place.country)
+  }
 
   const handleSubmit = async () => {
     if (!name.trim() || !address.trim() || !city.trim()) {
@@ -60,6 +75,9 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
           name: name.trim(),
           address: address.trim(),
           city: city.trim(),
+          country: country.trim() || undefined,
+          stateProvince: stateProvince.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
           phone: phone.trim() || undefined,
           cuisineType: cuisineType.trim() || undefined,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -75,20 +93,16 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
       onLocationAdded?.(location)
       handleClose()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to add location. Please try again.'
-      toast.error(message)
+      toast.error(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleClose = () => {
-    setName('')
-    setAddress('')
-    setCity('')
-    setPhone('')
-    setCuisineType('')
-    setChainId('')
+    setName(''); setAddress(''); setCity(''); setCountry('')
+    setStateProvince(''); setPostalCode(''); setPhone('')
+    setCuisineType(''); setChainId('')
     onClose()
   }
 
@@ -120,83 +134,113 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
             </div>
 
             <Dialog.Description className="text-sm text-gray-500 mb-5">
-              Add a new restaurant location to your organization. You can optionally assign it to an existing chain.
+              Add a new restaurant location to your organization.
             </Dialog.Description>
 
             <div className="space-y-3">
+              {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Restaurant name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Restaurant name <span className="text-wine-600">*</span></label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Joe's Pizza — Uptown"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                  className={INPUT_CLS}
                 />
               </div>
 
+              {/* Chain */}
               {chains.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Chain / Brand (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Chain / Brand <span className="text-gray-400 font-normal">(optional)</span></label>
                   <select
                     value={chainId}
                     onChange={(e) => setChainId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    className={INPUT_CLS}
                   >
                     <option value="">Standalone — no chain</option>
                     {chains.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
+                      <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Groups this location under an existing brand in the branch switcher.
-                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Groups this location under an existing brand in the branch switcher.</p>
                 </div>
               )}
 
+              {/* Address — Places autocomplete */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
-                <input
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Street Address <span className="text-wine-600">*</span>
+                  <span className="text-gray-400 font-normal ml-1 text-xs">— start typing to search</span>
+                </label>
+                <PlacesAutocomplete
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="123 Main St"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                  onChange={setAddress}
+                  onPlaceSelect={handlePlaceSelect}
+                  placeholder="Start typing your street address…"
+                  className="py-2 border-gray-300 bg-white focus:ring-2 focus:ring-wine-500"
                 />
               </div>
 
+              {/* City + State */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City <span className="text-wine-600">*</span></label>
                   <input
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="New York"
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    placeholder="Chicago"
+                    className={INPUT_CLS}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State / Province</label>
                   <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (555) 000-0000"
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    value={stateProvince}
+                    onChange={(e) => setStateProvince(e.target.value)}
+                    placeholder="IL"
+                    className={INPUT_CLS}
                   />
                 </div>
+              </div>
+
+              {/* Country + Postal */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                  <CountryCombobox value={country} onChange={setCountry} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP / Postal</label>
+                  <input
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    placeholder="60601"
+                    className={INPUT_CLS}
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone <span className="text-gray-400 font-normal">(optional)</span></label>
+                <input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 (555) 000-0000"
+                  className={INPUT_CLS}
+                />
               </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 mt-6">
-              <Button variant="ghost" onClick={handleClose}>
-                Cancel
-              </Button>
+              <Button variant="ghost" onClick={handleClose}>Cancel</Button>
               <Button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
                 className="bg-wine-600 text-white hover:bg-wine-700"
               >
-                {isSubmitting ? 'Adding...' : 'Add Location'}
+                {isSubmitting ? 'Adding…' : 'Add Location'}
               </Button>
             </div>
           </motion.div>

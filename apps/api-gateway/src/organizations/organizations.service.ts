@@ -145,6 +145,9 @@ export class OrganizationsService {
       name: string;
       address: string;
       city: string;
+      country?: string;
+      stateProvince?: string;
+      postalCode?: string;
       phone?: string;
       cuisineType?: string;
       timezone?: string;
@@ -192,6 +195,9 @@ export class OrganizationsService {
         name: dto.name,
         address: { street: dto.address },
         city: dto.city,
+        country: dto.country ?? null,
+        state_province: dto.stateProvince ?? null,
+        postal_code: dto.postalCode ?? null,
         phone: dto.phone ?? null,
         cuisine_type: dto.cuisineType ?? null,
         timezone: dto.timezone ?? 'America/New_York',

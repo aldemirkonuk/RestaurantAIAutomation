@@ -57,6 +57,9 @@ export class OrganizationsController {
       name: string;
       address: string;
       city: string;
+      country?: string;
+      stateProvince?: string;
+      postalCode?: string;
       phone?: string;
       cuisineType?: string;
       timezone?: string;
