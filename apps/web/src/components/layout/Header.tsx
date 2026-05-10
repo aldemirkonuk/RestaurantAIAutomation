@@ -154,66 +154,136 @@ export function Header({ title, subtitle }: HeaderProps) {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          {/* Restaurant Switcher */}
+          {/* Restaurant Switcher — Rich card (sketch 005 variant B) */}
           {availableRestaurants.length > 1 && (
             <div className="relative">
-              <button
-                onClick={() => setShowRestaurantMenu(!showRestaurantMenu)}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-700 transition-colors"
-              >
-                {isSwitching ? (
-                  <div className="w-4 h-4 border-2 border-wine-500 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <MapPin className="w-4 h-4 text-wine-500" />
-                )}
-                <span className="text-sm font-medium max-w-28 truncate">
-                  {availableRestaurants.find((b) => b.id === activeRestaurantId)?.name ?? 'Switch Branch'}
-                </span>
-                {availableRestaurants.find((b) => b.id === activeRestaurantId)?.city && (
-                  <span className="text-xs text-gray-400 hidden lg:block">
-                    {availableRestaurants.find((b) => b.id === activeRestaurantId)?.city}
-                  </span>
-                )}
-                <ChevronDown className="w-4 h-4 text-gray-500" />
-              </button>
+              {(() => {
+                const activeBranch = availableRestaurants.find((b) => b.id === activeRestaurantId);
+                const activeChainName = activeBranch?.chain_name;
+                const subtitle = [activeChainName, activeBranch?.city].filter(Boolean).join(' · ');
+                const initial = (activeBranch?.name ?? 'L')[0].toUpperCase();
+                return (
+                  <button
+                    onClick={() => setShowRestaurantMenu(!showRestaurantMenu)}
+                    className="group flex items-center gap-3 pl-3 pr-2.5 py-1.5 bg-white border border-gray-200 hover:border-wine-300 hover:shadow-sm rounded-xl transition-all"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-wine-50 flex items-center justify-center flex-shrink-0">
+                      {isSwitching ? (
+                        <div className="w-3.5 h-3.5 border-2 border-wine-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span className="text-xs font-bold text-wine-600">{initial}</span>
+                      )}
+                    </div>
+                    <div className="text-left hidden sm:block">
+                      <p className="text-sm font-semibold text-gray-900 leading-tight max-w-[120px] truncate">
+                        {activeBranch?.name ?? 'Switch Branch'}
+                      </p>
+                      {subtitle && (
+                        <p className="text-[11px] text-gray-400 leading-tight truncate max-w-[120px]">{subtitle}</p>
+                      )}
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-wine-500 ml-1 transition-colors" />
+                  </button>
+                );
+              })()}
 
               <AnimatePresence>
                 {showRestaurantMenu && (
                   <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowRestaurantMenu(false)}
-                    />
+                    <div className="fixed inset-0 z-40" onClick={() => setShowRestaurantMenu(false)} />
                     <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                      className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-[0_20px_60px_-12px_rgba(0,0,0,0.18),0_4px_16px_-4px_rgba(0,0,0,0.08)] border border-gray-100 overflow-hidden z-50"
                     >
-                      <div className="px-4 py-3 border-b border-gray-100">
-                        <p className="text-sm font-semibold text-gray-900">Switch Branch</p>
-                        <p className="text-xs text-gray-500">{availableRestaurants.length} locations</p>
+                      {/* Dropdown header */}
+                      <div className="px-4 py-3 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">Switch Location</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {availableRestaurants.length} location{availableRestaurants.length !== 1 ? 's' : ''}
+                            {branchGroups.chains.length > 0 ? ` across ${branchGroups.chains.length} chain${branchGroups.chains.length !== 1 ? 's' : ''}` : ''}
+                          </p>
+                        </div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Live sync" />
                       </div>
-                      <div className="max-h-64 overflow-y-auto">
+
+                      <div className="max-h-72 overflow-y-auto py-2">
+                        {/* Chain groups */}
                         {branchGroups.chains.map(({ chainName, branches }) => (
-                          <div key={chainName}>
-                            <p className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">{chainName}</p>
-                            {branches.map((branch) => (
-                              <BranchButton key={branch.id} branch={branch} activeId={activeRestaurantId} onSwitch={handleSwitch} />
-                            ))}
+                          <div key={chainName} className="px-3 pt-2 pb-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">{chainName}</span>
+                              <span className="flex-1 h-px bg-gray-100" />
+                              <span className="text-[10px] text-gray-300">{branches.length} location{branches.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            {branches.map((branch) => {
+                              const isActive = branch.id === activeRestaurantId;
+                              const init = (branch.name ?? 'L')[0].toUpperCase();
+                              return (
+                                <button
+                                  key={branch.id}
+                                  onClick={() => handleSwitch(branch.id)}
+                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5 transition-colors text-left ${isActive ? 'bg-wine-50 border border-wine-100' : 'hover:bg-gray-50'}`}
+                                >
+                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${isActive ? 'bg-wine-600 text-white' : 'bg-gray-200 text-gray-500'}`}>{init}</div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-semibold truncate ${isActive ? 'text-wine-900' : 'text-gray-800'}`}>{branch.name}</p>
+                                    {branch.city && <p className={`text-xs truncate ${isActive ? 'text-wine-500' : 'text-gray-400'}`}>{branch.city}</p>}
+                                  </div>
+                                  {isActive && <span className="text-[10px] font-semibold text-wine-600 bg-wine-100 px-2 py-0.5 rounded-full flex-shrink-0">Active</span>}
+                                </button>
+                              );
+                            })}
                           </div>
                         ))}
-                        {branchGroups.standalone.length > 0 && branchGroups.chains.length > 0 && (
-                          <p className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Other Locations</p>
+
+                        {/* Standalone */}
+                        {branchGroups.standalone.length > 0 && (
+                          <div className="px-3 pb-2">
+                            {branchGroups.chains.length > 0 && (
+                              <div className="flex items-center gap-2 mb-2 mt-1">
+                                <div className="flex-1 h-px bg-gray-100" />
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Other Locations</span>
+                                <div className="flex-1 h-px bg-gray-100" />
+                              </div>
+                            )}
+                            {branchGroups.standalone.map((branch) => {
+                              const isActive = branch.id === activeRestaurantId;
+                              const init = (branch.name ?? 'L')[0].toUpperCase();
+                              return (
+                                <button
+                                  key={branch.id}
+                                  onClick={() => handleSwitch(branch.id)}
+                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5 transition-colors text-left ${isActive ? 'bg-wine-50 border border-wine-100' : 'hover:bg-gray-50'}`}
+                                >
+                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${isActive ? 'bg-wine-600 text-white' : 'bg-gray-200 text-gray-500'}`}>{init}</div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-semibold truncate ${isActive ? 'text-wine-900' : 'text-gray-800'}`}>{branch.name}</p>
+                                    {branch.city && <p className={`text-xs truncate ${isActive ? 'text-wine-500' : 'text-gray-400'}`}>{branch.city}</p>}
+                                  </div>
+                                  {isActive && <span className="text-[10px] font-semibold text-wine-600 bg-wine-100 px-2 py-0.5 rounded-full flex-shrink-0">Active</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
-                        {branchGroups.standalone.map((branch) => (
-                          <BranchButton key={branch.id} branch={branch} activeId={activeRestaurantId} onSwitch={handleSwitch} />
-                        ))}
                       </div>
-                      <div className="px-4 py-2 border-t border-gray-100">
+
+                      {/* Footer */}
+                      <div className="border-t border-gray-100 px-4 py-2.5 flex items-center justify-between bg-gray-50/50">
                         <button
                           onClick={() => { navigate('/settings'); setShowRestaurantMenu(false); }}
-                          className="text-xs text-wine-600 hover:text-wine-700 font-medium"
+                          className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          Add location
+                        </button>
+                        <button
+                          onClick={() => { navigate('/settings'); setShowRestaurantMenu(false); }}
+                          className="text-xs text-wine-600 hover:text-wine-700 font-semibold transition-colors"
                         >
                           Manage Locations →
                         </button>
