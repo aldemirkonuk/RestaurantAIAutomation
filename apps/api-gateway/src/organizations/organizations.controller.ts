@@ -44,7 +44,7 @@ export class OrganizationsController {
   @Post('chains')
   async createChain(
     @Req() req: Request & { user: any },
-    @Body() body: { name: string; cuisine_type?: string; description?: string },
+    @Body() body: { name: string; cuisine_type?: string; description?: string; restaurantId?: string },
   ): Promise<RestaurantChain> {
     this.logger.debug(
       `Creating chain '${body.name}' for user ${req.user.userId}`,
