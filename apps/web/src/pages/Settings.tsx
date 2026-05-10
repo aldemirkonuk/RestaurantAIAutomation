@@ -372,6 +372,20 @@ export default function Settings() {
   const [assignCurrentToChain, setAssignCurrentToChain] = useState(false);
   const [locationsList, setLocationsList] = useState(availableRestaurants);
   const [editingBranch, setEditingBranch] = useState<RestaurantBranch | null>(null);
+  const [chainsList, setChainsList] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch existing chains so they appear even before any location is assigned to them
+  useEffect(() => {
+    if (user?.role !== 'owner') return;
+    const token = localStorage.getItem('accessToken');
+    const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
+    fetch(`${API_URL}/api/v1/organizations/chains`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setChainsList(Array.isArray(data) ? data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })) : []))
+      .catch(() => {});
+  }, [user?.role]);
 
   // Keep locationsList in sync with context
   useEffect(() => {
@@ -577,45 +591,47 @@ export default function Settings() {
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              {locationsList.length > 0 ? (
+              {(locationsList.length > 0 || chainsList.length > 0) ? (
                 <div className="space-y-3">
-                  {/* Grouped by chain */}
-                  {Array.from(new Set(locationsList.map((b) => b.chain_name).filter(Boolean))).map((chainName) => (
-                    <div key={chainName as string} className="border border-gray-100 rounded-xl overflow-hidden">
-                      <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        {chainName}
-                      </div>
-                      {locationsList.filter((b) => b.chain_name === chainName).map((branch) => (
-                        <div key={branch.id} className="px-4 py-3 flex items-center justify-between border-t border-gray-100 first:border-0">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{branch.name}</p>
-                            {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {branch.id === activeRestaurantId && (
-                              <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
-                            )}
-                            <button
-                              onClick={() => setEditingBranch(branch)}
-                              className="text-gray-400 hover:text-wine-500 ml-2"
-                              title="Edit chain assignment"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                  {/* Chains — sourced from chainsList so 0-location chains appear immediately after creation */}
+                  {chainsList.map((chain) => {
+                    const chainLocations = locationsList.filter((b) => b.chain_id === chain.id);
+                    return (
+                      <div key={chain.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                        <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
+                          <span>{chain.name}</span>
+                          <span className="text-gray-300 font-normal normal-case">{chainLocations.length} location{chainLocations.length !== 1 ? 's' : ''}</span>
                         </div>
-                      ))}
-                    </div>
-                  ))}
+                        {chainLocations.length === 0 ? (
+                          <div className="px-4 py-3 text-xs text-gray-400 italic">No locations assigned yet — use "Add Location" or edit an existing location.</div>
+                        ) : chainLocations.map((branch) => (
+                          <div key={branch.id} className="px-4 py-3 flex items-center justify-between border-t border-gray-100 first:border-0">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{branch.name}</p>
+                              {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {branch.id === activeRestaurantId && (
+                                <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                              )}
+                              <button onClick={() => setEditingBranch(branch)} className="text-gray-400 hover:text-wine-500 ml-2" title="Edit chain assignment">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
                   {/* Standalone locations (no chain) */}
-                  {locationsList.filter((b) => !b.chain_name).length > 0 && (
+                  {locationsList.filter((b) => !b.chain_id).length > 0 && (
                     <div className="border border-gray-100 rounded-xl overflow-hidden">
-                      {locationsList.filter((b) => !b.chain_name).length > 1 && (
+                      {(chainsList.length > 0 || locationsList.filter((b) => !b.chain_id).length > 1) && (
                         <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                           Standalone Locations
                         </div>
                       )}
-                      {locationsList.filter((b) => !b.chain_name).map((branch) => (
+                      {locationsList.filter((b) => !b.chain_id).map((branch) => (
                         <div key={branch.id} className="px-4 py-3 flex items-center justify-between border-t border-gray-100 first:border-0">
                           <div>
                             <p className="text-sm font-medium text-gray-900">{branch.name}</p>
@@ -625,11 +641,7 @@ export default function Settings() {
                             {branch.id === activeRestaurantId && (
                               <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
                             )}
-                            <button
-                              onClick={() => setEditingBranch(branch)}
-                              className="text-gray-400 hover:text-wine-500 ml-2"
-                              title="Edit chain assignment"
-                            >
+                            <button onClick={() => setEditingBranch(branch)} className="text-gray-400 hover:text-wine-500 ml-2" title="Edit chain assignment">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -669,7 +681,9 @@ export default function Settings() {
                           body: JSON.stringify(body),
                         });
                         if (!resp.ok) throw new Error('Failed to create chain');
+                        const created = await resp.json();
                         toast.success(`Chain "${newChainName}" created!`);
+                        setChainsList((prev) => [...prev, { id: created.id, name: created.name }]);
                         setNewChainName('');
                         setAssignCurrentToChain(false);
                         await refreshBranches();
@@ -733,10 +747,7 @@ export default function Settings() {
         {editingBranch && (
           <EditLocationChainDialog
             branch={editingBranch}
-            chains={locationsList
-              .filter((b) => b.chain_id !== null)
-              .map((b) => ({ id: b.chain_id!, name: b.chain_name! }))
-              .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)}
+            chains={chainsList}
             open={!!editingBranch}
             onClose={() => setEditingBranch(null)}
             onSaved={async () => {
