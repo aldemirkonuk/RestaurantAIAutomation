@@ -7,6 +7,9 @@ import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 import { CountryCombobox } from '../ui/CountryCombobox'
+import { useAuth } from '../../contexts/AuthContext'
+import { useProviders } from '../../hooks/queries'
+import { BranchProviderTransferModal } from '../providers/BranchProviderTransferModal'
 
 interface AddLocationDialogProps {
   open: boolean
@@ -24,8 +27,15 @@ interface Chain {
 const INPUT_CLS =
   'block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none'
 
+interface TransferModalState {
+  open: boolean
+  newBranchName: string
+  newRestaurantId: string
+}
+
 export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }: AddLocationDialogProps) {
   const anchorPos = useAnchoredDialogPosition(open, anchorRef)
+  const { user } = useAuth()
 
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
@@ -38,6 +48,14 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
   const [chainId, setChainId] = useState('')
   const [chains, setChains] = useState<Chain[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [transferModal, setTransferModal] = useState<TransferModalState>({
+    open: false,
+    newBranchName: '',
+    newRestaurantId: '',
+  })
+
+  // Fetch current restaurant's providers so we can offer to transfer them to a new branch
+  const { data: currentProviders = [] } = useProviders(user?.restaurantId || '')
 
   const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -95,7 +113,14 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
       const location = await resp.json()
       toast.success(`${name} added successfully!`)
       onLocationAdded?.(location)
-      handleClose()
+      // If the current restaurant already has providers, offer to transfer them to the new branch
+      if (currentProviders.length > 0 && location?.id) {
+        setTransferModal({ open: true, newBranchName: name.trim(), newRestaurantId: location.id })
+        // Close the location form but keep the transfer modal open — reset form fields now
+        resetFormFields()
+      } else {
+        handleClose()
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
     } finally {
@@ -103,14 +128,29 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
     }
   }
 
-  const handleClose = () => {
+  const resetFormFields = () => {
     setName(''); setAddress(''); setCity(''); setCountry('')
     setStateProvince(''); setPostalCode(''); setPhone('')
     setCuisineType(''); setChainId('')
+  }
+
+  const handleClose = () => {
+    resetFormFields()
     onClose()
   }
 
   return (
+    <>
+    <BranchProviderTransferModal
+      open={transferModal.open}
+      onClose={() => {
+        setTransferModal((s) => ({ ...s, open: false }))
+        onClose()
+      }}
+      newBranchName={transferModal.newBranchName}
+      newRestaurantId={transferModal.newRestaurantId}
+      currentProviders={currentProviders}
+    />
     <Dialog.Root open={open} onOpenChange={(o) => !o && handleClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" onClick={handleClose} />
@@ -273,5 +313,6 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    </>
   )
 }
