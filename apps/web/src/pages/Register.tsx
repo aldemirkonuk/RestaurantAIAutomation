@@ -809,13 +809,18 @@ export function Register() {
                 )}
               </div>
 
-              {/* Street Address */}
+              {/* Street Address — plain input (PlacesAutocomplete disabled: Maps billing inactive) */}
               <div className="mb-[18px]">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Street Address <span className="text-wine-600">*</span>
-                  <span className="text-gray-400 font-normal ml-1 text-xs">— start typing to search</span>
                 </label>
-                <PlacesAutocomplete
+                <input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. 126 E Pointe Ln"
+                  className="block w-full px-3 py-3 border border-gray-300 rounded-lg text-sm bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                />
+                {/* <PlacesAutocomplete
                   country={country}
                   value={address}
                   onChange={setAddress}
@@ -829,7 +834,7 @@ export function Register() {
                   }}
                   placeholder="Start typing your street address…"
                   className="py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500"
-                />
+                /> */}
               </div>
 
               {/* City + State */}

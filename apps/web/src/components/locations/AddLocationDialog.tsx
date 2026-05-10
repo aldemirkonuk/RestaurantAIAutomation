@@ -167,20 +167,25 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                 </div>
               )}
 
-              {/* Address — Places autocomplete */}
+              {/* Address — plain input (PlacesAutocomplete disabled: Maps billing inactive) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Street Address <span className="text-wine-600">*</span>
-                  <span className="text-gray-400 font-normal ml-1 text-xs">— start typing to search</span>
                 </label>
-                <PlacesAutocomplete
+                <input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. 126 E Pointe Ln"
+                  className={INPUT_CLS}
+                />
+                {/* <PlacesAutocomplete
                   country={country}
                   value={address}
                   onChange={setAddress}
                   onPlaceSelect={handlePlaceSelect}
                   placeholder="Start typing your street address…"
                   className="py-2 border-gray-300 bg-white focus:ring-2 focus:ring-wine-500"
-                />
+                /> */}
               </div>
 
               {/* City + State */}
