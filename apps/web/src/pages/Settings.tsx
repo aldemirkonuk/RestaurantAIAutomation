@@ -4,11 +4,8 @@ import {
   Settings as SettingsIcon,
   Save,
   RefreshCw,
-  Check,
-  X,
   Package,
   Ruler,
-  Zap,
   Eye,
   Brain,
   MessageSquare,
@@ -22,16 +19,14 @@ import {
   GraduationCap,
   Calculator,
   ShoppingCart,
-  Camera,
   Receipt,
   Gavel,
-  BarChart3,
   Sparkles,
   Mic,
   Image,
   CreditCard,
-  Phone,
   Building2,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
@@ -39,7 +34,8 @@ import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../service
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
-import { useAuth } from '../contexts/AuthContext';
+import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
+import { useAuth, type RestaurantBranch } from '../contexts/AuthContext';
 import {
   COMMON_POUR_SIZES,
   formatVolumeWithBothUnits,
@@ -361,7 +357,7 @@ const categoryLabels = {
 };
 
 export default function Settings() {
-  const { user, activeRestaurantId, availableRestaurants } = useAuth();
+  const { user, activeRestaurantId, availableRestaurants, refreshBranches } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -374,6 +370,7 @@ export default function Settings() {
   const [newChainName, setNewChainName] = useState('');
   const [isCreatingChain, setIsCreatingChain] = useState(false);
   const [locationsList, setLocationsList] = useState(availableRestaurants);
+  const [editingBranch, setEditingBranch] = useState<RestaurantBranch | null>(null);
 
   // Keep locationsList in sync with context
   useEffect(() => {
@@ -593,9 +590,18 @@ export default function Settings() {
                             <p className="text-sm font-medium text-gray-900">{branch.name}</p>
                             {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
                           </div>
-                          {branch.id === activeRestaurantId && (
-                            <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {branch.id === activeRestaurantId && (
+                              <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                            )}
+                            <button
+                              onClick={() => setEditingBranch(branch)}
+                              className="text-gray-400 hover:text-wine-500 ml-2"
+                              title="Edit chain assignment"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -614,9 +620,18 @@ export default function Settings() {
                             <p className="text-sm font-medium text-gray-900">{branch.name}</p>
                             {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
                           </div>
-                          {branch.id === activeRestaurantId && (
-                            <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {branch.id === activeRestaurantId && (
+                              <span className="text-xs bg-wine-50 text-wine-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                            )}
+                            <button
+                              onClick={() => setEditingBranch(branch)}
+                              className="text-gray-400 hover:text-wine-500 ml-2"
+                              title="Edit chain assignment"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -675,11 +690,29 @@ export default function Settings() {
           open={showAddLocation}
           onClose={() => setShowAddLocation(false)}
           anchorRef={addLocationAnchorRef}
-          onLocationAdded={(location) => {
-            toast.success(`${location.name} added! Refresh to see it in the branch switcher.`);
+          onLocationAdded={async (location) => {
+            toast.success(`${location.name} added!`);
+            await refreshBranches();
             setShowAddLocation(false);
           }}
         />
+
+        {/* Edit Location chain assignment dialog */}
+        {editingBranch && (
+          <EditLocationChainDialog
+            branch={editingBranch}
+            chains={locationsList
+              .filter((b) => b.chain_id !== null)
+              .map((b) => ({ id: b.chain_id!, name: b.chain_name! }))
+              .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)}
+            open={!!editingBranch}
+            onClose={() => setEditingBranch(null)}
+            onSaved={async () => {
+              await refreshBranches();
+              setEditingBranch(null);
+            }}
+          />
+        )}
 
         {/* Measurement & Volume */}
         <MeasurementVolumeSection />
