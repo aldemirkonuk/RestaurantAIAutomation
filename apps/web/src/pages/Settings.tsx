@@ -41,6 +41,7 @@ import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
 import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
+import { AssignToChainDialog } from '../components/locations/AssignToChainDialog';
 import { useAuth, type RestaurantBranch } from '../contexts/AuthContext';
 import {
   COMMON_POUR_SIZES,
@@ -427,6 +428,7 @@ export default function Settings() {
   const [locationsList, setLocationsList] = useState(availableRestaurants);
   const [editingBranch, setEditingBranch] = useState<RestaurantBranch | null>(null);
   const [chainsList, setChainsList] = useState<{ id: string; name: string }[]>([]);
+  const [assigningToChain, setAssigningToChain] = useState<{ id: string; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
   const [activeSection, setActiveSection] = useState<SectionId>('team');
 
@@ -716,7 +718,7 @@ export default function Settings() {
                               <div className="w-5 border-t border-gray-200 shrink-0" />
                               <span className="text-xs text-gray-400 italic ml-2">No locations yet.</span>
                               <button
-                                onClick={() => setShowAddLocation(true)}
+                                onClick={() => setAssigningToChain({ id: chain.id, name: chain.name })}
                                 className="text-xs text-wine-500 font-medium ml-1.5 hover:text-wine-700 transition-colors"
                               >
                                 Add one →
@@ -804,6 +806,18 @@ export default function Settings() {
           }}
           standaloneLocations={standaloneLocations.map((b) => ({ id: b.id, name: b.name, city: b.city ?? null }))}
         />
+
+        {assigningToChain && (
+          <AssignToChainDialog
+            open={!!assigningToChain}
+            chainId={assigningToChain.id}
+            chainName={assigningToChain.name}
+            standaloneLocations={standaloneLocations.map((b) => ({ id: b.id, name: b.name, city: b.city ?? null }))}
+            onClose={() => setAssigningToChain(null)}
+            onSaved={async () => { await refreshBranches(); setAssigningToChain(null); }}
+            onCreateNew={() => { setAssigningToChain(null); setShowAddLocation(true); }}
+          />
+        )}
 
         {editingBranch && (
           <EditLocationChainDialog
