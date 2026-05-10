@@ -109,28 +109,31 @@ export function EditLocationChainDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/20 z-50 backdrop-blur-[1px]" />
         <Dialog.Content asChild>
           <motion.div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-lg p-6 w-full max-w-sm border border-gray-100"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-lg w-full max-w-sm border border-gray-100 flex flex-col max-h-[min(90vh,560px)]"
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
           >
-            <div className="flex items-center justify-between mb-1">
-              <Dialog.Title className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-wine-500" />
-                Edit location
-              </Dialog.Title>
-              <button type="button" onClick={handleClose} className="text-gray-300 hover:text-gray-500 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
+            {/* ── Fixed header ── */}
+            <div className="px-6 pt-6 pb-1 shrink-0">
+              <div className="flex items-center justify-between mb-1">
+                <Dialog.Title className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-wine-500" />
+                  Edit location
+                </Dialog.Title>
+                <button type="button" onClick={handleClose} className="text-gray-300 hover:text-gray-500 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <Dialog.Description className="text-sm text-gray-400">
+                Update name, city, or chain assignment.
+              </Dialog.Description>
             </div>
 
-            <Dialog.Description className="text-sm text-gray-400 mb-5">
-              Update name, city, or chain assignment.
-            </Dialog.Description>
-
-            <div className="space-y-4">
-              {/* Name + City row */}
+            {/* ── Scrollable body ── */}
+            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 space-y-4">
+              {/* Name + City */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Name</label>
@@ -197,7 +200,8 @@ export function EditLocationChainDialog({
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 mt-6">
+            {/* ── Fixed footer ── */}
+            <div className="px-6 py-4 border-t border-gray-100 shrink-0 flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
                 Cancel
               </Button>
