@@ -46,7 +46,7 @@ export class VendorCatalogueService {
       .eq('country', country);
 
     if (q) {
-      query = query.ilike('name', `%${q}%`);
+      query = query.or(`name.ilike.%${q}%,wine_specialties.ilike.%${q}%`);
     }
 
     if (dto.type) {
