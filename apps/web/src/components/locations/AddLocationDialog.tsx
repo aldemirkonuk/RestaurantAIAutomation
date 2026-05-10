@@ -10,6 +10,7 @@ import { CountryCombobox } from '../ui/CountryCombobox'
 import { useAuth } from '../../contexts/AuthContext'
 import { useProviders } from '../../hooks/queries'
 import { BranchProviderTransferModal } from '../providers/BranchProviderTransferModal'
+import { apiClient } from '../../services/api/client'
 
 interface AddLocationDialogProps {
   open: boolean
@@ -57,18 +58,12 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
   // Fetch current restaurant's providers so we can offer to transfer them to a new branch
   const { data: currentProviders = [] } = useProviders(user?.restaurantId || '')
 
-  const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
   useEffect(() => {
     if (!open) return
-    const token = localStorage.getItem('accessToken')
-    fetch(`${API_URL}/api/v1/organizations/chains`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data) => setChains(Array.isArray(data) ? data : []))
+    apiClient.get<Chain[]>('/organizations/chains')
+      .then((r) => setChains(Array.isArray(r.data) ? r.data : []))
       .catch(() => setChains([]))
-  }, [open, API_URL])
+  }, [open])
 
   const handlePlaceSelect = (place: PlaceResult) => {
     setAddress(place.streetAddress)
@@ -89,28 +84,18 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
     }
     setIsSubmitting(true)
     try {
-      const token = localStorage.getItem('accessToken')
-      const resp = await fetch(`${API_URL}/api/v1/organizations/locations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          name: name.trim(),
-          address: address.trim(),
-          city: city.trim(),
-          country: country.trim() || undefined,
-          stateProvince: stateProvince.trim() || undefined,
-          postalCode: postalCode.trim() || undefined,
-          phone: phone.trim() || undefined,
-          cuisineType: cuisineType.trim() || undefined,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          chainId: chainId || undefined,
-        }),
+      const { data: location } = await apiClient.post('/organizations/locations', {
+        name: name.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        country: country.trim() || undefined,
+        stateProvince: stateProvince.trim() || undefined,
+        postalCode: postalCode.trim() || undefined,
+        phone: phone.trim() || undefined,
+        cuisineType: cuisineType.trim() || undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        chainId: chainId || undefined,
       })
-      if (!resp.ok) {
-        const data = await resp.json()
-        throw new Error(data.message || 'Failed to add location')
-      }
-      const location = await resp.json()
       toast.success(`${name} added successfully!`)
       onLocationAdded?.(location)
       // If the current restaurant already has providers, offer to transfer them to the new branch
