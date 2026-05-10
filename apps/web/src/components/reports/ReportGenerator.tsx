@@ -3,29 +3,20 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
   Download,
-  Calendar,
   Clock,
   ChevronDown,
   ChevronUp,
   Check,
-  X,
   BarChart3,
-  PieChart,
   TrendingUp,
   DollarSign,
   Package,
   Users,
   Sparkles,
   Wand2,
-  FileSpreadsheet,
   Printer,
   Mail,
-  Settings,
   Eye,
-  Palette,
-  Layout,
-  Image,
-  Table,
   List,
   AlertCircle,
   Loader2,
@@ -127,7 +118,7 @@ interface ReportOptions {
   pageSize: 'letter' | 'a4'
 }
 
-export function ReportGenerator({ onGenerate, salesData, metrics }: ReportGeneratorProps) {
+export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _metrics }: ReportGeneratorProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])

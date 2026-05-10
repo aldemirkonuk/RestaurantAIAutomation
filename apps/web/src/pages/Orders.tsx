@@ -17,7 +17,6 @@ import {
   X,
   Minus,
   ShoppingCart,
-  Phone,
   Check,
   ChevronRight,
   Building2,
@@ -25,8 +24,6 @@ import {
   ChevronUp,
   ChevronDown,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   Trash2,
   Zap,
   Pause,
@@ -41,10 +38,9 @@ import type { Provider } from '../services/api/providers'
 import { apiClient } from '../services/api/client'
 import { inventoryApi } from '../services/api'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
-import { useProviders, useWines, useWinesByIds, useCreateCalendarEvent } from '../hooks/queries'
-import { useInventoryData } from '../hooks/useInventoryData'
+import { useWinesByIds, useCreateCalendarEvent } from '../hooks/queries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
-import { formatVolume, bottlesToVolume } from '../utils/volumeUtils'
+import { formatVolume } from '../utils/volumeUtils'
 import { useOrders } from '../hooks/queries/useOrderQueries'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
@@ -92,9 +88,6 @@ const mapApiOrderToUi = (order: any): Order => ({
   approved_at: order.approvedAt ?? order.approved_at,
   delivered_at: order.deliveredAt ?? order.delivered_at,
 })
-
-const isPlaceholderName = (value?: string) =>
-  !value || value.trim().length === 0 || value.trim().toLowerCase() === 'unknown wine'
 
 interface Order {
   order_id: string
@@ -191,12 +184,12 @@ export function Orders() {
     toggleGroup,
     selectedOrders,
     setSelectedOrders,
-    filteredOrders: hookFilteredOrders,
+    filteredOrders: _hookFilteredOrders,
     searchFilteredOrders,
-    sortedOrders,
-    groupedOrders,
+    sortedOrders: _sortedOrders,
+    groupedOrders: _groupedOrders,
     orderAnalytics,
-    loadOrders,
+    loadOrders: _loadOrders,
     setError,
     setOrders,
     resolveOrderWineName,
@@ -206,15 +199,6 @@ export function Orders() {
   const providersLoading = false
   const providersError = false
   
-  const providerNameById = useMemo(() => {
-    const map = new Map<string, string>()
-    providers.forEach((provider) => {
-      if (provider?.id && provider?.name) {
-        map.set(provider.id, provider.name)
-      }
-    })
-    return map
-  }, [providers])
   const inventoryById = useMemo(() => {
     const map = new Map<string, any>()
     inventory.forEach((item: any) => {
@@ -245,15 +229,6 @@ export function Orders() {
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
   const [createOrderItems, setCreateOrderItems] = useState<CreateOrderItem[]>([])
   const [wineSearch, setWineSearch] = useState('')
-  // apiWines comes from the hook, but we need filtered wines for create modal
-  const filteredWinesForCreate = useMemo(() => {
-    const query = wineSearch.toLowerCase()
-    if (!query) return apiWines.slice(0, 20)
-    return apiWines.filter(w => 
-      w.name?.toLowerCase().includes(query) ||
-      w.producer?.toLowerCase().includes(query)
-    ).slice(0, 20)
-  }, [apiWines, wineSearch])
   const createCalendarEvent = useCreateCalendarEvent()
   const inventoryMasterIds = useMemo(() => {
     const ids = inventory
@@ -1421,13 +1396,6 @@ Shadow stock has been moved to Live Stock.`)
       newSelected.add(orderId)
     }
     setSelectedOrders(newSelected)
-  }
-
-  const selectAllPending = () => {
-    const pendingIds = orders
-      .filter(o => o.status === 'pending_approval' && !o.isRecurring)
-      .map(o => o.order_id)
-    setSelectedOrders(new Set(pendingIds))
   }
 
   // Filter orders with search

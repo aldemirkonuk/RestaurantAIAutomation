@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { KPICard } from './KPICard'
-import { DollarSign, ShoppingCart, Package, TrendingUp } from 'lucide-react'
+import { DollarSign, ShoppingCart, Package } from 'lucide-react'
 
 const meta: Meta<typeof KPICard> = {
   title: 'Reports/Molecules/KPICard',

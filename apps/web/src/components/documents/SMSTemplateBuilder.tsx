@@ -8,7 +8,6 @@ import {
   Copy,
   Check,
   Smartphone,
-  Clock,
   Zap,
   Sparkles,
   Wine,
@@ -18,24 +17,11 @@ import {
   Calendar,
   User,
   Building,
-  Hash,
   AlertCircle,
   ChevronDown,
   RotateCcw,
-  Eye,
-  Settings,
-  Palette,
-  Type,
   Image,
-  Link,
-  Bell,
   FileText,
-  Target,
-  TrendingUp,
-  Phone,
-  Mail,
-  Globe,
-  MapPin,
 } from 'lucide-react'
 
 // SMS Template Types
@@ -255,7 +241,7 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
         
         // Calculate position
         if (textareaRef.current) {
-          const rect = textareaRef.current.getBoundingClientRect()
+          textareaRef.current.getBoundingClientRect()
           setAutocompletePosition({
             top: 60, // Fixed position below textarea start
             left: 20
@@ -300,23 +286,6 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
 
     setIsSaving(true)
     setIsDraft(true)
-
-    const draft = {
-      id: editingTemplate?.id || `sms-draft-${Date.now()}`,
-      name: templateName,
-      category,
-      message,
-      variables: uniqueVariables,
-      characterCount,
-      segmentCount,
-      created_at: editingTemplate?.created_at || new Date(),
-      last_modified: new Date(),
-      used_count: 0,
-      tags,
-      isDraft: true,
-      mmsEnabled,
-      mmsImageUrl,
-    }
 
     await new Promise(resolve => setTimeout(resolve, 500))
 
@@ -422,18 +391,6 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
     }, 1500)
   }
 
-  // Get category config
-  const getCategoryConfig = (cat: SMSTemplate['category']) => {
-    const configs = {
-      order: { icon: Package, color: 'blue', label: 'Order' },
-      delivery: { icon: Truck, color: 'emerald', label: 'Delivery' },
-      alert: { icon: AlertCircle, color: 'amber', label: 'Alert' },
-      promotion: { icon: Sparkles, color: 'purple', label: 'Promotion' },
-      reminder: { icon: Bell, color: 'rose', label: 'Reminder' },
-      custom: { icon: MessageSquare, color: 'gray', label: 'Custom' },
-    }
-    return configs[cat]
-  }
 
   return (
     <AnimatePresence>

@@ -1,27 +1,20 @@
 import { useState, useCallback } from 'react'
-import { motion } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import { Card, Button } from '../components/ui'
 import {
   FileText,
   Mail,
   MessageSquare,
-  Download,
   Eye,
-  Edit,
-  Copy,
-  Trash2,
   Plus,
   Calendar,
   Clock,
-  Send,
   Save,
   Sparkles,
   Zap,
   LayoutTemplate,
   Upload,
   ChevronDown,
-  FileInput,
   Wand2,
   Library,
   Search,
@@ -36,18 +29,6 @@ import {
   useConversationStats,
   type ConversationFilters,
 } from '../hooks/queries/useConversationQueries'
-
-type DocumentType = 'email' | 'sms' | 'report' | 'notification'
-
-interface Document {
-  id: string
-  name: string
-  type: DocumentType
-  description: string
-  lastModified: Date
-  createdAt: Date
-  category: 'communication' | 'report' | 'notification'
-}
 
 // Quick template presets for common use cases
 const QUICK_TEMPLATES = [
@@ -203,11 +184,11 @@ function ApiCommunicationHistory() {
 
 export function Communications() {
   const [selectedTab, setSelectedTab] = useState<'templates' | 'history' | 'scheduled-reports'>('templates')
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'communication' | 'report' | 'notification'>('communication')
+  const [_selectedCategory, _setSelectedCategory] = useState<'all' | 'communication' | 'report' | 'notification'>('communication')
   const [showGmailBuilder, setShowGmailBuilder] = useState(false)
   const [showSMSBuilder, setShowSMSBuilder] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<SavedTemplate | null>(null)
-  const [editingSMSTemplate, setEditingSMSTemplate] = useState<SavedSMSTemplate | null>(null)
+  const [_editingSMSTemplate, setEditingSMSTemplate] = useState<SavedSMSTemplate | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [smsRefreshKey, setSmsRefreshKey] = useState(0)
   const [showQuickTemplatesMenu, setShowQuickTemplatesMenu] = useState(false)
@@ -219,15 +200,15 @@ export function Communications() {
     setShowGmailBuilder(true)
   }, [])
 
-  const handleDuplicateTemplate = useCallback((template: SavedTemplate) => {
+  const handleDuplicateTemplate = useCallback((_template: SavedTemplate) => {
     setRefreshKey(prev => prev + 1)
   }, [])
 
-  const handleDeleteTemplate = useCallback((templateId: string) => {
+  const handleDeleteTemplate = useCallback((_templateId: string) => {
     setRefreshKey(prev => prev + 1)
   }, [])
 
-  const handleUseTemplate = useCallback((template: SavedTemplate) => {
+  const handleUseTemplate = useCallback((_template: SavedTemplate) => {
     console.log('Using template:', template.name)
   }, [])
 
@@ -236,7 +217,7 @@ export function Communications() {
     setShowGmailBuilder(true)
   }, [])
 
-  const handleSaveTemplate = useCallback((template: SavedTemplate) => {
+  const handleSaveTemplate = useCallback((_template: SavedTemplate) => {
     setRefreshKey(prev => prev + 1)
   }, [])
 
@@ -306,15 +287,15 @@ export function Communications() {
     setShowSMSBuilder(true)
   }, [])
 
-  const handleDuplicateSMSTemplate = useCallback((template: SavedSMSTemplate) => {
+  const handleDuplicateSMSTemplate = useCallback((_template: SavedSMSTemplate) => {
     setSmsRefreshKey(prev => prev + 1)
   }, [])
 
-  const handleDeleteSMSTemplate = useCallback((templateId: string) => {
+  const handleDeleteSMSTemplate = useCallback((_templateId: string) => {
     setSmsRefreshKey(prev => prev + 1)
   }, [])
 
-  const handleUseSMSTemplate = useCallback((template: SavedSMSTemplate) => {
+  const handleUseSMSTemplate = useCallback((_template: SavedSMSTemplate) => {
     console.log('Using SMS template:', template.name)
   }, [])
 
@@ -328,24 +309,6 @@ export function Communications() {
     setEditingSMSTemplate(null)
     setSmsRefreshKey(prev => prev + 1)
   }, [])
-
-  const getTypeIcon = (type: DocumentType) => {
-    switch (type) {
-      case 'email': return Mail
-      case 'sms': return MessageSquare
-      case 'report': return FileText
-      case 'notification': return Send
-    }
-  }
-
-  const getTypeColor = (type: DocumentType) => {
-    switch (type) {
-      case 'email': return 'bg-blue-100 text-blue-600'
-      case 'sms': return 'bg-green-100 text-green-600'
-      case 'report': return 'bg-purple-100 text-purple-600'
-      case 'notification': return 'bg-orange-100 text-orange-600'
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">

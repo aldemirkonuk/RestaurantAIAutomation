@@ -15,11 +15,9 @@ import {
   Star,
   Crown,
   Phone,
-  Smartphone,
   Bell,
   Tag,
   Calendar,
-  Package,
 } from 'lucide-react'
 import { useTemplates } from '../../hooks/useTemplates'
 import { useUserPreferences } from '../../hooks/useUserPreferences'

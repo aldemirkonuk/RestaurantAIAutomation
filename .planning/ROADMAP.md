@@ -226,6 +226,53 @@ Plans:
 - [ ] 26-04-PLAN.md — AuthContext RestaurantBranch (chain fields) + Header chain-grouped switcher (Wave 3) [ORG-05, CHAIN-04]
 - [ ] 26-05-PLAN.md — Register.tsx two-path wizard + ?type= routing + VerifyEmail.tsx + ProtectedRoute (Wave 4) [ONBOARD-01..04, 07..08, INVITE-02]
 - [ ] 26-06-PLAN.md — Settings → Team invite + Locations/Chains management tab (Wave 5) [INVITE-01, 04, CHAIN-04]
+- [ ] 26-07-PLAN.md — Backend: PATCH locations/:id + createChain auto-assign + getUserOrgIdsWithFallback DRY (Wave 7) [CHAIN-05]
+- [ ] 26-08-PLAN.md — Frontend: AuthContext refreshBranches + EditLocationChainDialog + Create Chain checkbox (Wave 8, depends on 26-07) [CHAIN-06]
+
+### Phase 27: Vendor Search & Discovery
+**Goal**: New users can discover, search, and add wine vendors to their restaurant from an admin-curated global catalogue (or add custom vendors). Providers page shows a search-first empty state. Order creation is gated behind having at least one vendor (free tier: hard block; paid tier: LLM-powered vendor suggestions stub).
+**Depends on**: Phase 26 (restaurant + organization model live)
+**Requirements**: VENDOR-01..10
+**Success Criteria** (what must be TRUE):
+  1. `vendor_catalogue` table exists (admin-curated, not restaurant-scoped) seeded with 20+ US distributors
+  2. `providers` table has `catalogue_vendor_id` (nullable FK) and `is_custom BOOLEAN DEFAULT TRUE`
+  3. `GET /api/v1/vendor-catalogue/search?q=&country=` returns fuzzy-matched results
+  4. `POST /api/v1/providers` accepts both catalogue selection and fully custom vendor creation
+  5. Providers page empty state: search bar + "Browse Catalogue" + "Add Custom" options visible immediately
+  6. VendorSearchModal: search → results list with vendor details → "Add to my Providers" → row created in `providers`
+  7. When a new branch location is added in Settings, a modal asks: "Transfer vendors to [Branch Name]?" with pre-selected checkboxes (user unchecks to exclude)
+  8. Order creation: if `providers` is empty → hard block modal "Add a vendor to place orders" with link to /providers
+  9. Custom vendors stored with `is_custom = true`, `catalogue_vendor_id = null` (admin can promote later)
+  10. All new DB tables have RLS policies scoped to `restaurant_id`
+**Plans:** 4 plans (4 waves)
+Plans:
+- [ ] 27-01-PLAN.md — DB: `vendor_catalogue` table + `providers` schema update + seed data migration (Wave 1) [VENDOR-01..03]
+- [ ] 27-02-PLAN.md — Backend: vendor catalogue search API + providers CRUD + order guard endpoint (Wave 2) [VENDOR-04..06]
+- [ ] 27-03-PLAN.md — Frontend: Providers empty state + VendorSearchModal + catalogue browsing UI (Wave 3) [VENDOR-07..09]
+- [ ] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
+
+### Phase 28: Onboarding Reform + Menu Import
+**Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
+**Depends on**: Phase 26 (registration flow complete), Phase 27 (vendors discoverable)
+**Requirements**: MENU-01..08, ACTIVATION-01..05
+**Success Criteria** (what must be TRUE):
+  1. After email verification, user is redirected to `/get-started` (new page) instead of `/onboarding`
+  2. `/get-started` offers 3 menu import methods: photo scan (camera/file), CSV/Excel upload, manual entry
+  3. "Skip for now" link is present and frictionless — no guilt-trip copy
+  4. Each wine item extracted from a menu upload is submitted to `master_wine_library_submissions` via the existing LLM enrichment pipeline
+  5. Extracted wines are simultaneously added to the restaurant's `inventory` table (source = 'menu_import')
+  6. Dashboard shows a persistent "Setup Checklist" card: ① Upload menu ② Add a vendor ③ Invite your team — disappears when all 3 are complete
+  7. `user_onboarding_progress` table tracks per-user completion of all 3 activation tasks
+  8. The old `/onboarding` 9-step wizard is replaced: wizard steps that duplicate Registration (restaurant profile, manager profile, review) are removed; remaining useful steps (POS connection) are preserved as optional deep-settings links
+  9. Menu import accepts beverage menus today; schema is extensible to food menus in future phases
+  10. All 3 upload methods funnel into the same extraction + submission pipeline
+**Plans:** 5 plans (5 waves)
+Plans:
+- [ ] 28-01-PLAN.md — DB: `user_onboarding_progress` + `restaurant_menus` + `menu_items` tables (Wave 1) [ACTIVATION-01, MENU-01]
+- [ ] 28-02-PLAN.md — Backend: menu import API (scan/CSV/manual) + master_wine_library_submissions bridge (Wave 2) [MENU-02..05]
+- [ ] 28-03-PLAN.md — Frontend: `/get-started` MenuImportOnboarding page — 3 methods, frictionless skip (Wave 3) [MENU-06..07]
+- [ ] 28-04-PLAN.md — Frontend: Dashboard ActivationChecklist component + progress tracking (Wave 4) [ACTIVATION-02..05]
+- [ ] 28-05-PLAN.md — Frontend: Retire 9-step wizard → preserve POS step as optional deep-link; fix post-verify redirect (Wave 5) [MENU-08]
 
 ---
 

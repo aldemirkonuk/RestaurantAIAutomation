@@ -91,8 +91,8 @@ export function WineLibrary() {
     filters, updateFilter, clearAllFilters: hookClearAllFilters,
     sortField, sortOrder, handleSort,
     wines: libraryWines,
-    isLoading: winesLoading,
-    error: winesError,
+    isLoading: _winesLoading,
+    error: _winesError,
     providers,
     filteredWines: hookFilteredWines,
     stats: statusCounts,
@@ -125,7 +125,7 @@ export function WineLibrary() {
   
   const [showAddToInventoryModal, setShowAddToInventoryModal] = useState(false)
   const [selectedWineForInventory, setSelectedWineForInventory] = useState<WineType | null>(null)
-  const [bulkSelectedWines, setBulkSelectedWines] = useState<Set<string>>(new Set())
+  const [_bulkSelectedWines, _setBulkSelectedWines] = useState<Set<string>>(new Set())
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
 
   // Apply removed-wines filter on top of hook's filtered wines
@@ -150,7 +150,7 @@ export function WineLibrary() {
   const providerLabel = wineProviders.length > 1 ? 'Providers' : 'Provider'
 
   // Track wine stock updates from Inventory page
-  const [wineStockUpdates, setWineStockUpdates] = useState<Map<string, { liveStock: number; shadowStock: number; isActive: boolean }>>(new Map())
+  const [_wineStockUpdates, setWineStockUpdates] = useState<Map<string, { liveStock: number; shadowStock: number; isActive: boolean }>>(new Map())
 
   useWineSubscription((payload: WineUpdatePayload) => {
     if (payload.source === 'inventory' && payload.data) {

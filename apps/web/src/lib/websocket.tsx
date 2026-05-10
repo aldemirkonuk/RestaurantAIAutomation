@@ -217,12 +217,6 @@ export interface WebSocketConfig {
 /** Event handler type */
 type EventHandler<T> = (data: T) => void
 
-/** Event subscription */
-interface EventSubscription {
-  event: keyof ServerEvents
-  handler: EventHandler<any>
-}
-
 // =============================================================================
 // DEFAULT CONFIGURATION
 // =============================================================================
@@ -900,8 +894,5 @@ export function WebSocketProvider({
 export {
   WebSocketContext,
   ConnectionState,
-  type ServerEvents,
-  type ClientEvents,
-  type WebSocketConfig,
   type ConnectionStats,
 }

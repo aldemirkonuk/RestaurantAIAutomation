@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sketch 001 — Path Selector</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: var(--color-bg-gradient);
+      min-height: 100vh;
+      padding-top: 52px;
+    }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    /* ── Variant Nav ── */
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-border);
+      padding: 8px 16px; display: flex; gap: 8px; align-items: center;
+      font-family: system-ui, sans-serif; font-size: 13px;
+    }
+    #variant-nav span { color: #888; font-size: 12px; margin-right: 4px; }
+    .variant-tab {
+      padding: 5px 14px; border-radius: 6px; border: 1px solid transparent;
+      background: transparent; cursor: pointer; font-size: 13px; font-family: inherit;
+      color: #555; transition: all 0.15s;
+    }
+    .variant-tab:hover { background: #f3f4f6; color: #111; }
+    .variant-tab.active {
+      background: var(--color-primary); color: #fff;
+      border-color: var(--color-primary);
+    }
+
+    /* ── Shared Layout ── */
+    .page {
+      min-height: calc(100vh - 52px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 32px 16px;
+    }
+    .logo-mark {
+      width: 56px; height: 56px; border-radius: 16px;
+      background: var(--color-primary);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px; box-shadow: var(--shadow-wine);
+    }
+    .logo-mark svg { width: 28px; height: 28px; color: white; }
+
+    /* ── VARIANT A: Bold Primary ── */
+    .va-header { text-align: center; margin-bottom: 40px; }
+    .va-header h1 {
+      font-family: var(--font-display); font-size: 2rem; font-weight: 800;
+      color: var(--color-text); letter-spacing: -0.03em; margin-bottom: 8px;
+    }
+    .va-header p { color: var(--color-text-secondary); font-size: 1rem; font-weight: 400; }
+
+    .va-cards { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 460px; }
+
+    .va-card-primary {
+      background: var(--color-primary);
+      border-radius: var(--radius-xl);
+      padding: 28px 28px 24px;
+      cursor: pointer; transition: var(--transition-base);
+      border: 2px solid transparent;
+      position: relative; overflow: hidden;
+      box-shadow: var(--shadow-wine);
+    }
+    .va-card-primary::before {
+      content: '';
+      position: absolute; top: -40px; right: -40px;
+      width: 120px; height: 120px; border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+    }
+    .va-card-primary::after {
+      content: '';
+      position: absolute; bottom: -30px; left: 20px;
+      width: 80px; height: 80px; border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+    }
+    .va-card-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(205,45,91,0.4);
+    }
+    .va-card-primary .card-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,0.2);
+      color: white; font-size: 0.7rem; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: var(--radius-full);
+      margin-bottom: 14px;
+    }
+    .va-card-primary .card-title {
+      font-family: var(--font-display); font-size: 1.25rem; font-weight: 700;
+      color: white; margin-bottom: 6px; position: relative; z-index: 1;
+    }
+    .va-card-primary .card-desc {
+      font-size: 0.875rem; color: rgba(255,255,255,0.8); line-height: 1.5;
+      position: relative; z-index: 1;
+    }
+    .va-card-primary .card-arrow {
+      position: absolute; right: 24px; top: 50%; transform: translateY(-50%);
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1;
+    }
+
+    .va-card-secondary {
+      background: rgba(255,255,255,0.7); backdrop-filter: blur(12px);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 24px 28px;
+      cursor: pointer; transition: var(--transition-base);
+      display: flex; align-items: center; gap: 16px;
+    }
+    .va-card-secondary:hover {
+      border-color: var(--color-primary);
+      background: rgba(255,255,255,0.9);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+    .va-card-secondary .card-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: var(--color-primary-light);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .va-card-secondary .card-body { flex: 1; }
+    .va-card-secondary .card-title {
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+      color: var(--color-text); margin-bottom: 3px;
+    }
+    .va-card-secondary .card-desc {
+      font-size: 0.8125rem; color: var(--color-text-secondary);
+    }
+    .va-card-secondary .card-chevron { color: var(--color-text-muted); }
+
+    .va-divider {
+      display: flex; align-items: center; gap: 12px;
+      color: var(--color-text-muted); font-size: 0.75rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .va-divider::before, .va-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--color-border);
+    }
+
+    .va-footer { text-align: center; margin-top: 28px; }
+    .va-footer a { color: var(--color-primary); font-size: 0.875rem; font-weight: 500; text-decoration: none; }
+    .va-footer a:hover { text-decoration: underline; }
+    .va-footer p { color: var(--color-text-muted); font-size: 0.8125rem; margin-top: 6px; }
+
+    /* ── VARIANT B: Split Canvas ── */
+    .vb-page {
+      min-height: calc(100vh - 52px);
+      display: grid; grid-template-columns: 1fr 1fr;
+    }
+
+    .vb-left {
+      background: #1a0a10;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 48px 40px; position: relative; overflow: hidden;
+    }
+    .vb-left::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 30% 40%, rgba(205,45,91,0.35) 0%, transparent 65%);
+    }
+    .vb-left-content { position: relative; z-index: 1; text-align: center; max-width: 320px; }
+    .vb-left .path-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid rgba(205,45,91,0.4);
+      color: rgba(205,45,91,0.9); font-size: 0.7rem; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 5px 12px; border-radius: var(--radius-full);
+      margin-bottom: 24px; background: rgba(205,45,91,0.08);
+    }
+    .vb-left h2 {
+      font-family: var(--font-display); font-size: 1.875rem; font-weight: 800;
+      color: white; letter-spacing: -0.03em; margin-bottom: 12px; line-height: 1.15;
+    }
+    .vb-left p { color: rgba(255,255,255,0.55); font-size: 0.9rem; line-height: 1.6; margin-bottom: 32px; }
+    .vb-left .feature-list { list-style: none; margin-bottom: 36px; text-align: left; }
+    .vb-left .feature-list li {
+      display: flex; align-items: center; gap: 10px;
+      color: rgba(255,255,255,0.7); font-size: 0.875rem; margin-bottom: 10px;
+    }
+    .vb-left .feature-list .check {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(205,45,91,0.3); border: 1px solid rgba(205,45,91,0.5);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .vb-cta-primary {
+      width: 100%; padding: 14px 24px;
+      background: var(--color-primary); color: white;
+      border: none; border-radius: var(--radius-lg); cursor: pointer;
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+      letter-spacing: -0.01em; transition: var(--transition-base);
+      box-shadow: var(--shadow-wine);
+    }
+    .vb-cta-primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); }
+
+    .vb-right {
+      background: #f9fafb;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 48px 40px;
+    }
+    .vb-right-content { text-align: center; max-width: 320px; }
+    .vb-right .path-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-secondary); font-size: 0.7rem; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 5px 12px; border-radius: var(--radius-full);
+      margin-bottom: 24px; background: white;
+    }
+    .vb-right h2 {
+      font-family: var(--font-display); font-size: 1.875rem; font-weight: 800;
+      color: var(--color-text); letter-spacing: -0.03em; margin-bottom: 12px; line-height: 1.15;
+    }
+    .vb-right p { color: var(--color-text-secondary); font-size: 0.9rem; line-height: 1.6; margin-bottom: 32px; }
+    .vb-right .invite-preview {
+      background: white; border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg); padding: 16px 20px;
+      margin-bottom: 28px; text-align: left;
+    }
+    .vb-right .invite-label { font-size: 0.7rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+    .vb-right .invite-code-display {
+      font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700;
+      color: var(--color-text); letter-spacing: 0.15em;
+    }
+    .vb-cta-secondary {
+      width: 100%; padding: 14px 24px;
+      background: white; color: var(--color-text);
+      border: 1.5px solid var(--color-border); border-radius: var(--radius-lg); cursor: pointer;
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+      letter-spacing: -0.01em; transition: var(--transition-base);
+    }
+    .vb-cta-secondary:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+    .vb-divider {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 10; width: 40px; height: 40px; border-radius: 50%;
+      background: white; border: 1px solid var(--color-border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 600; color: var(--color-text-muted);
+      box-shadow: var(--shadow-sm);
+    }
+    .vb-logo {
+      position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: flex; align-items: center; gap: 10px;
+    }
+    .vb-logo .mark {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--color-primary); display: flex; align-items: center; justify-content: center;
+      box-shadow: var(--shadow-wine);
+    }
+    .vb-logo .wordmark { font-family: var(--font-display); font-weight: 800; font-size: 0.9rem; color: white; }
+
+    /* ── VARIANT C: Feature Cards ── */
+    .vc-page { padding: 48px 16px; min-height: calc(100vh - 52px); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .vc-header { text-align: center; margin-bottom: 44px; }
+    .vc-header h1 {
+      font-family: var(--font-display); font-size: 2.125rem; font-weight: 800;
+      color: var(--color-text); letter-spacing: -0.035em; margin-bottom: 10px;
+    }
+    .vc-header p { color: var(--color-text-secondary); font-size: 1rem; }
+    .vc-header .trust-row {
+      display: flex; align-items: center; justify-content: center; gap: 20px;
+      margin-top: 16px;
+    }
+    .vc-header .trust-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.8rem; color: var(--color-text-muted);
+    }
+
+    .vc-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; max-width: 680px; }
+    .vc-card {
+      border-radius: var(--radius-xl);
+      padding: 32px 28px;
+      cursor: pointer; transition: var(--transition-base);
+      position: relative; overflow: hidden;
+    }
+    .vc-card:hover { transform: translateY(-3px); }
+    .vc-card-wine {
+      background: var(--color-primary);
+      box-shadow: var(--shadow-wine);
+    }
+    .vc-card-wine:hover { box-shadow: 0 12px 32px rgba(205,45,91,0.4); }
+    .vc-card-slate {
+      background: white;
+      border: 1.5px solid var(--color-border);
+      box-shadow: var(--shadow-card);
+    }
+    .vc-card-slate:hover { border-color: #9ca3af; box-shadow: var(--shadow-lg); }
+
+    .vc-card-icon {
+      width: 52px; height: 52px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .vc-card-wine .vc-card-icon { background: rgba(255,255,255,0.2); }
+    .vc-card-slate .vc-card-icon { background: var(--color-primary-light); }
+
+    .vc-card-title {
+      font-family: var(--font-display); font-size: 1.125rem; font-weight: 700;
+      margin-bottom: 8px; line-height: 1.25;
+    }
+    .vc-card-wine .vc-card-title { color: white; }
+    .vc-card-slate .vc-card-title { color: var(--color-text); }
+
+    .vc-card-desc { font-size: 0.8125rem; line-height: 1.55; margin-bottom: 24px; }
+    .vc-card-wine .vc-card-desc { color: rgba(255,255,255,0.75); }
+    .vc-card-slate .vc-card-desc { color: var(--color-text-secondary); }
+
+    .vc-feature-list { list-style: none; margin-bottom: 28px; }
+    .vc-feature-list li { font-size: 0.8125rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .vc-card-wine .vc-feature-list li { color: rgba(255,255,255,0.85); }
+    .vc-card-slate .vc-feature-list li { color: var(--color-text-secondary); }
+    .vc-check-wine { color: rgba(255,255,255,0.9); }
+    .vc-check-slate { color: var(--color-primary); }
+
+    .vc-card-btn {
+      width: 100%; padding: 12px 20px; border-radius: var(--radius-md);
+      font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700;
+      border: none; cursor: pointer; transition: var(--transition-base);
+      letter-spacing: -0.01em;
+    }
+    .vc-card-wine .vc-card-btn { background: rgba(255,255,255,0.2); color: white; }
+    .vc-card-wine .vc-card-btn:hover { background: rgba(255,255,255,0.3); }
+    .vc-card-slate .vc-card-btn { background: var(--color-primary); color: white; }
+    .vc-card-slate .vc-card-btn:hover { background: var(--color-primary-hover); }
+
+    .vc-footer { text-align: center; margin-top: 28px; }
+    .vc-footer a { color: var(--color-primary); font-size: 0.875rem; font-weight: 500; text-decoration: none; }
+    .vc-footer p { color: var(--color-text-muted); font-size: 0.8rem; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Variant Nav ── -->
+<div id="variant-nav">
+  <span>Sketch 001 — Path Selector:</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Bold Primary</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Split Canvas</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Feature Cards</button>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT A: Bold Primary
+     One card dominates (Create = primary, Join = secondary)
+     ══════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="page">
+    <div style="width: 100%; max-width: 460px;">
+      <!-- Logo -->
+      <div class="va-header">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/>
+          </svg>
+        </div>
+        <h1>Join WineOps AI</h1>
+        <p>Premium wine operations for modern restaurants</p>
+      </div>
+
+      <!-- Cards -->
+      <div class="va-cards">
+        <!-- Primary: Create New -->
+        <div class="va-card-primary" onclick="cardClick(this, 'Creating your restaurant…')">
+          <span class="card-badge">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg>
+            Most Popular
+          </span>
+          <div class="card-title">Create a New Restaurant</div>
+          <div class="card-desc">Set up your restaurant in under 3 minutes. Full AI-powered wine inventory from day one.</div>
+          <div class="card-arrow">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="va-divider">or</div>
+
+        <!-- Secondary: Join Existing -->
+        <div class="va-card-secondary" onclick="cardClick(this, 'Opening join flow…')">
+          <div class="card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="card-body">
+            <div class="card-title">Join an Existing Restaurant</div>
+            <div class="card-desc">I have an invite code from my manager</div>
+          </div>
+          <div class="card-chevron">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="va-footer">
+        <a href="#">Already have an account? Sign in</a>
+        <p>© 2026 WineOps AI · All rights reserved</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT B: Split Canvas
+     Left = dark wine panel (Create), Right = light panel (Join)
+     ══════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="vb-page" style="position: relative; min-height: calc(100vh - 52px);">
+
+    <!-- Logo centered top -->
+    <div class="vb-logo">
+      <div class="mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+      </div>
+      <span class="wordmark" style="color: #7c1d3c;">WineOps AI</span>
+    </div>
+
+    <!-- OR divider -->
+    <div class="vb-divider">or</div>
+
+    <!-- Left: Create -->
+    <div class="vb-left">
+      <div class="vb-left-content">
+        <span class="path-badge">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg>
+          New Restaurant
+        </span>
+        <h2>Start from scratch</h2>
+        <p>Set up your restaurant and get AI-powered wine operations in minutes.</p>
+        <ul class="feature-list">
+          <li><span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> AI inventory management</li>
+          <li><span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> POS integration ready</li>
+          <li><span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> Invite your team</li>
+        </ul>
+        <button class="vb-cta-primary" onclick="cardClick(this, 'Starting restaurant setup…')">Create New Restaurant →</button>
+      </div>
+    </div>
+
+    <!-- Right: Join -->
+    <div class="vb-right">
+      <div class="vb-right-content">
+        <span class="path-badge">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Join Existing
+        </span>
+        <h2 style="color: var(--color-text);">Already on a team?</h2>
+        <p>Enter the invite code your manager shared with you.</p>
+        <div class="vb-right invite-preview">
+          <div class="invite-label">Your Invite Code</div>
+          <div class="invite-code-display" style="letter-spacing: 0.2em; font-size: 1.75rem;">AX7M·K3PQ</div>
+        </div>
+        <button class="vb-cta-secondary" onclick="cardClick(this, 'Opening invite flow…')">Join with Invite Code →</button>
+        <p style="margin-top: 14px; font-size: 0.8rem; color: var(--color-text-muted);">Don't have a code? Ask your restaurant owner.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT C: Feature Cards (equal weight, side-by-side)
+     ══════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="vc-page">
+    <div class="vc-header">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+      </div>
+      <h1>Welcome to WineOps AI</h1>
+      <p>How would you like to get started?</p>
+      <div class="trust-row">
+        <span class="trust-item">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+          No credit card required
+        </span>
+        <span class="trust-item">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+          Setup in 3 minutes
+        </span>
+        <span class="trust-item">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+          Cancel anytime
+        </span>
+      </div>
+    </div>
+
+    <div class="vc-cards">
+      <!-- Card: Join (left, secondary-ish) -->
+      <div class="vc-card vc-card-slate" onclick="cardClick(this, 'Opening invite flow…')">
+        <div class="vc-card-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="vc-card-title">Join Your Team</div>
+        <div class="vc-card-desc">Your manager sent you an invite. Enter the 8-character code to join their restaurant.</div>
+        <ul class="vc-feature-list">
+          <li><svg class="vc-check-slate" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> Instant access</li>
+          <li><svg class="vc-check-slate" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> Role assigned by owner</li>
+          <li><svg class="vc-check-slate" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> No email verify needed</li>
+        </ul>
+        <button class="vc-card-btn">Enter Invite Code →</button>
+      </div>
+
+      <!-- Card: Create (right, primary) -->
+      <div class="vc-card vc-card-wine" onclick="cardClick(this, 'Starting restaurant setup…')">
+        <div class="vc-card-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+        </div>
+        <div class="vc-card-title">Open a Restaurant</div>
+        <div class="vc-card-desc">Register your restaurant and start managing wine inventory with AI in minutes.</div>
+        <ul class="vc-feature-list">
+          <li><svg class="vc-check-wine" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> AI inventory agents</li>
+          <li><svg class="vc-check-wine" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> POS + supplier sync</li>
+          <li><svg class="vc-check-wine" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> Multi-location support</li>
+        </ul>
+        <button class="vc-card-btn">Get Started Free →</button>
+      </div>
+    </div>
+
+    <div class="vc-footer">
+      <a href="#">Already have an account? Sign in</a>
+      <p>© 2026 WineOps AI · All rights reserved</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sketch Toolbar ── -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:8px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-size:11px;font-weight:600;color:#aaa;letter-spacing:0.06em;text-transform:uppercase;">Sketch Tools</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:#333;color:white;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(375)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📱</button>
+    <button onclick="setViewport(768)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📟</button>
+    <button onclick="setViewport(null)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">🖥</button>
+  </div>
+</div>
+
+<!-- ── Toast Notification ── -->
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#111;color:white;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all 0.25s;z-index:10000;pointer-events:none;white-space:nowrap;"></div>
+
+<script>
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+    document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).style.display = 'block';
+    btn.classList.add('active');
+  }
+
+  function cardClick(el, msg) {
+    showToast(msg);
+    el.style.transform = 'scale(0.98)';
+    setTimeout(() => el.style.transform = '', 150);
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => {
+      t.style.opacity = '0';
+      t.style.transform = 'translateX(-50%) translateY(20px)';
+    }, 2000);
+  }
+
+  function setViewport(w) {
+    const variants = document.querySelectorAll('.variant');
+    variants.forEach(v => {
+      if (w) { v.style.maxWidth = w + 'px'; v.style.margin = '0 auto'; }
+      else { v.style.maxWidth = ''; v.style.margin = ''; }
+    });
+  }
+
+  // Init: show first variant
+  document.getElementById('variant-a').style.display = 'block';
+</script>
+
+</body>
+</html>

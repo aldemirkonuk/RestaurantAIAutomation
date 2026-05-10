@@ -16,14 +16,11 @@ import {
   TrendingUp,
   Users,
   Clock,
-  Search,
 } from 'lucide-react'
-import { getWineTypeColor } from '../data/wineData'
 import { useWines } from '../hooks/queries'
 import {
   useSommelierConversations,
   useUpsertSommelierConversation,
-  useDeleteSommelierConversation,
 } from '../hooks/queries/useSommelierQueries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
 import { formatVolume } from '../utils/volumeUtils'
@@ -75,8 +72,6 @@ export function SommelierAI() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const { data: savedConversations = [] } = useSommelierConversations()
   const upsertConversation = useUpsertSommelierConversation()
-  const _deleteConversation = useDeleteSommelierConversation()
-
   const conversations: Conversation[] = useMemo(
     () =>
       savedConversations.map((c) => ({

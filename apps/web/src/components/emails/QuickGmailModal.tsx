@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Loader2,
   FileText,
-  Plus,
   Sparkles,
 } from 'lucide-react'
 import { SavedTemplate } from '../documents/GmailTemplateBuilder'
@@ -37,8 +36,8 @@ export function QuickGmailModal({
   const [recipients, setRecipients] = useState<string[]>(prefilledRecipient ? [prefilledRecipient] : [])
   const [recipientInput, setRecipientInput] = useState('')
   const [subject, setSubject] = useState(prefilledSubject || '')
-  const [cc, setCc] = useState<string[]>([])
-  const [bcc, setBcc] = useState<string[]>([])
+  const [cc] = useState<string[]>([])
+  const [bcc] = useState<string[]>([])
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
   const [sending, setSending] = useState(false)

@@ -15,12 +15,10 @@ import {
   Bell,
   HelpCircle,
   Truck,
-  FileText,
   Shield,
   Sparkles,
   Bot,
   MessageSquare,
-  RefreshCw,
   Calendar,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'

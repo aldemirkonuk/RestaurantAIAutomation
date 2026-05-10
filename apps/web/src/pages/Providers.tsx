@@ -1,16 +1,14 @@
 import { useState, useMemo, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
   Search,
-  Filter,
   Building2,
   MapPin,
   Phone,
   Mail,
   Globe,
   Users,
-  CheckCircle,
   X,
   Trash2,
   Truck,
@@ -18,13 +16,9 @@ import {
   Download,
   Plus,
   Star,
-  MessageSquare,
-  Calendar,
   ExternalLink,
   LayoutGrid,
   List,
-  ChevronDown,
-  ChevronUp,
   StickyNote,
   Clock,
   Heart,
@@ -103,9 +97,9 @@ export function Providers() {
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailRecipient, setEmailRecipient] = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
-  const [editingNote, setEditingNote] = useState<string | null>(null)
-  const [noteText, setNoteText] = useState('')
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
+  const [_editingNote] = useState<string | null>(null)
+  const [_noteText] = useState('')
+  const [_expandedCards] = useState<Set<string>>(new Set())
 
   const favorites: string[] = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote> = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
@@ -253,27 +247,6 @@ export function Providers() {
   const setProviderRating = useCallback((providerId: string, rating: number) => {
     setRatings(prev => ({ ...prev, [providerId]: rating }))
   }, [setRatings])
-
-  const saveProviderNote = useCallback((providerId: string, note: string) => {
-    setNotes(prev => ({
-      ...prev,
-      [providerId]: { note, updatedAt: new Date().toISOString() }
-    }))
-    setEditingNote(null)
-    setNoteText('')
-  }, [setNotes])
-
-  const toggleCardExpanded = (providerId: string) => {
-    setExpandedCards(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(providerId)) {
-        newSet.delete(providerId)
-      } else {
-        newSet.add(providerId)
-      }
-      return newSet
-    })
-  }
 
   // Show loading state (only on initial load)
   if (isLoading && !providers.length) {

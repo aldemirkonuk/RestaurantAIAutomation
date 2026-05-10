@@ -14,18 +14,14 @@ import {
   X,
   Upload,
   Camera,
-  Search,
   Loader2,
   Check,
-  AlertCircle,
   Wine,
   MapPin,
-  Calendar,
   Grape,
   Sparkles,
   Edit3,
   Save,
-  Image as ImageIcon,
   Scan,
 } from 'lucide-react'
 

@@ -19,11 +19,10 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { 
-  REPORT_TYPES, 
-  getReportDefaults, 
+  REPORT_TYPES,
+  getReportDefaults,
   setReportDefault,
   getDefaultTemplateForReport,
-  ReportTypeConfig 
 } from '../../data/reportDefaults'
 
 interface SavedTemplate {

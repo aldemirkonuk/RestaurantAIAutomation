@@ -19,7 +19,6 @@ import { mapApiWinesToUiWines } from '../../lib/wine-library'
 import { AddWineModal } from '../wines/AddWineModal'
 import { MenuScannerFlow } from '../scanner/MenuScannerFlow'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
-import type { StorageLocation } from '../../hooks/useStorageLocations'
 import {
   COMMON_BOTTLE_SIZES,
   COMMON_POUR_SIZES,

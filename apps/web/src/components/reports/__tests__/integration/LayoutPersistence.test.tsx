@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { loadLayout, saveLayout, clearLayout, exportLayout, importLayout } from '../../../lib/reports/layoutEngine'
-import { LayoutConfig } from '../../../lib/reports/types'
+import { loadLayout, saveLayout, clearLayout, exportLayout, importLayout } from '../../../../lib/reports/layoutEngine'
+import { LayoutConfig } from '../../../../lib/reports/types'
 import { DollarSign, Package } from 'lucide-react'
 
 describe('Layout Persistence', () => {

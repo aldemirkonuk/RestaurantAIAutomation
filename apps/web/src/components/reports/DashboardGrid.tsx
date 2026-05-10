@@ -7,25 +7,15 @@
 import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence, Reorder } from 'framer-motion'
 import {
-  GripVertical,
   X,
   Plus,
-  Settings,
   Check,
   Pencil,
   Maximize2,
-  Minimize2,
-  MoreVertical,
   TrendingUp,
-  TrendingDown,
-  DollarSign,
   Package,
-  ShoppingCart,
   BarChart3,
-  Wine,
-  Users,
   Activity,
-  Percent,
   PieChart,
   LineChart,
   Calendar,
@@ -166,11 +156,7 @@ export function DashboardGrid({ renderWidget, onWidgetChange }: DashboardGridPro
     setWidgets(newOrder)
   }, [])
 
-  const toggleWidgetVisibility = useCallback((id: string) => {
-    setWidgets(prev => prev.map(w => 
-      w.id === id ? { ...w, visible: !w.visible } : w
-    ))
-  }, [])
+
 
   const changeWidgetSize = useCallback((id: string, size: WidgetSize) => {
     setWidgets(prev => prev.map(w => 
@@ -260,7 +246,7 @@ export function DashboardGrid({ renderWidget, onWidgetChange }: DashboardGridPro
         onReorder={handleReorder}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-min"
       >
-        {visibleWidgets.map((widget, index) => (
+        {visibleWidgets.map((widget, _index) => (
           <Reorder.Item
             key={widget.id}
             value={widget}

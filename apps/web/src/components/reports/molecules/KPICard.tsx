@@ -3,7 +3,6 @@
  * Combines MetricDisplay + TrendIndicator + DragHandle
  */
 
-import { Reorder } from 'framer-motion'
 import { X, Pencil, LucideIcon } from 'lucide-react'
 import { MetricDisplay, TrendIndicator, DragHandle } from '../atoms'
 

@@ -11,7 +11,6 @@ import type {
   Wine,
   WineSearchParams,
   PaginationParams,
-  PaginatedResponse,
 } from './types';
 
 const WINES_PATH = '/wines';

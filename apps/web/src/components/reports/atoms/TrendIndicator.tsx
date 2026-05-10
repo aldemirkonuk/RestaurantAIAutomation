@@ -13,7 +13,6 @@ interface TrendIndicatorProps {
 
 export function TrendIndicator({ change, changeType, className = '' }: TrendIndicatorProps) {
   const isIncrease = changeType === 'increase' || (changeType === undefined && change >= 0)
-  const isDecrease = changeType === 'decrease' || (changeType === undefined && change < 0)
 
   return (
     <div className={`flex items-center gap-1 ${className}`}>

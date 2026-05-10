@@ -67,10 +67,10 @@ export function OrderApprovalModal({
   const canGoNext = currentIndex < totalResponses - 1
   
   // Counter-offer state
-  const [finalQuantity, setFinalQuantity] = useState(orderData.counterOffer?.offeredQuantity || orderData.quantity)
-  const [finalPrice, setFinalPrice] = useState(orderData.counterOffer?.offeredPrice || orderData.finalPrice)
-  const [acceptVintageSubstitution, setAcceptVintageSubstitution] = useState(false)
-  const [managerNotes, setManagerNotes] = useState('')
+  const [_finalQuantity, _setFinalQuantity] = useState(orderData.counterOffer?.offeredQuantity || orderData.quantity)
+  const [_finalPrice, _setFinalPrice] = useState(orderData.counterOffer?.offeredPrice || orderData.finalPrice)
+  const [_acceptVintageSubstitution, _setAcceptVintageSubstitution] = useState(false)
+  const [_managerNotes, _setManagerNotes] = useState('')
   
   // Debug logging
   console.log('OrderApprovalModal render:', {

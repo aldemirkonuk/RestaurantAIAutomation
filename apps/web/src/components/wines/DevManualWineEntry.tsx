@@ -5,7 +5,6 @@ import {
   Save,
   RotateCcw,
   Plus,
-  Minus,
   Sparkles,
   Wine,
   AlertCircle,
@@ -13,7 +12,6 @@ import {
   Zap,
 } from 'lucide-react'
 import { Wine as WineType } from '../../data/wineData'
-import wineDataJson from '../../data/wineops_basic_v1.json'
 import {
   COMMON_BOTTLE_SIZES,
   parseVolumeInput,

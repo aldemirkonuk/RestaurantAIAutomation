@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { 
-  CompanyClass, 
-  CompanyClassConfig, 
+import {
+  CompanyClass,
   COMPANY_CLASS_CONFIG,
   getClassConfig,
   isValidClass,
@@ -168,10 +167,6 @@ export function EntityAutocomplete({
     const colors = option.companyClass 
       ? getClassColors(option.companyClass)
       : getKindColors(option.kind)
-
-    const classConfig = option.companyClass 
-      ? COMPANY_CLASS_CONFIG[option.companyClass]
-      : null
 
     // Icon for entity type
     const entityIcon = option.kind === 'provider' ? '🚚' 

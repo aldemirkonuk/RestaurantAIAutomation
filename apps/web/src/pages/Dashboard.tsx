@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -38,7 +38,7 @@ import { useRealtimeDispatch, CalendarEventPayload } from '../contexts/RealtimeC
 import { storeAIDateContext, importantDateToAIContext } from '../utils/aiDateContext'
 import { formatMoney, formatNumber as fmtNumber } from '../lib/utils'
 import { formatVolume } from '../utils/volumeUtils'
-import { useAuthStore, useRestaurantSettingsStore } from '../stores'
+import { useRestaurantSettingsStore } from '../stores'
 import { useInventoryData } from '../hooks/useInventoryData'
 import { useDashboardPage } from './dashboard/index'
 
@@ -68,36 +68,7 @@ const itemVariants = {
 }
 
 
-// One-tap reminders (Apple Reminders style)
-interface Reminder {
-  id: string
-  title: string
-  subtitle: string
-  priority: 'high' | 'medium' | 'low'
-  completed: boolean
-  dueTime?: string
-  type: 'reorder' | 'delivery' | 'price' | 'action'
-  wineId?: string
-}
-
-// Calendar Event Types
-interface CalendarEvent {
-  id: string
-  type: 'important_date' | 'vendor_deadline' | 'recurring_order' | 'report_schedule' | 'delivery' | 'birthday' | 'tasting'
-  title: string
-  time?: string
-  priority?: 'low' | 'medium' | 'high'
-}
-
 type CalendarFilterType = 'all' | 'delivery' | 'order' | 'meeting' | 'inventory' | 'tasting' | 'reminder' | 'recurring' | 'custom'
-
-const formatEventTime = (time: string) => {
-  const [hours = '0', minutes = '00'] = time.split(':')
-  const hour = parseInt(hours, 10)
-  const ampm = hour >= 12 ? 'PM' : 'AM'
-  const hour12 = hour % 12 || 12
-  return `${hour12}:${minutes.padStart(2, '0')} ${ampm}`
-}
 
 const toNumericId = (value: string) => {
   return value.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
@@ -124,73 +95,11 @@ const getImportantDateConfig = (type?: string) => {
   }
 }
 
-// Calendar sales data interface
-interface DayData {
-  revenue: number
-  bottles: number
-  avgPrice: number
-  byType: { red: number; white: number; sparkling: number; rose: number; dessert: number }
-  topSeller: string
-  orders: number
-  events: CalendarEvent[] // Calendar events for this day
-}
-
-// Generate calendar sales data - uses ONLY real order data, no mock/fake data
-const generateCalendarSalesData = (
-  baseDate: Date, 
-  eventsByDate: Record<string, CalendarEvent[]>,
-  orderDailyData?: Array<{ date: string; orders: number; bottles: number; revenue: number }>
-) => {
-  const data: { [key: string]: DayData } = {}
-  const currentMonth = baseDate.getMonth()
-  const currentYear = baseDate.getFullYear()
-  
-  // Create a map of real order data by date
-  const realDataByDate = new Map<string, { orders: number; bottles: number; revenue: number }>()
-  if (orderDailyData) {
-    orderDailyData.forEach(d => realDataByDate.set(d.date, d))
-  }
-  
-  for (let day = 1; day <= 31; day++) {
-    const date = new Date(currentYear, currentMonth, day)
-    if (date.getMonth() !== currentMonth) break
-    
-    const dateStr = date.toISOString().split('T')[0]
-    const realData = realDataByDate.get(dateStr)
-    
-    // Only populate with real data - no mock estimates
-    const revenue = realData?.revenue ?? 0
-    const bottles = realData?.bottles ?? 0
-    const orders = realData?.orders ?? 0
-    const avgPrice = bottles > 0 ? Math.round(revenue / bottles) : 0
-    
-    data[dateStr] = {
-      revenue,
-      bottles,
-      avgPrice,
-      byType: {
-        red: 0,
-        white: 0,
-        sparkling: 0,
-        rose: 0,
-        dessert: 0,
-      },
-      topSeller: '',
-      orders,
-      events: eventsByDate[dateStr] || [],
-    }
-  }
-  
-  return data
-}
-
 type ModalType = 'revenue' | 'inventory' | 'orders' | 'lowStock' | null
 
 export function Dashboard() {
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const { measurementUnit } = useRestaurantSettingsStore()
-  const restaurantId = useAuthStore(state => state.activeRestaurantId)
-  
   // Use the extracted dashboard page hook
   const dashboardData = useDashboardPage()
   const {
@@ -199,36 +108,35 @@ export function Dashboard() {
     inventorySummary,
     lowStockItems: apiLowStock,
     pendingOrders: apiPendingOrders,
-    orderMetrics,
+    orderMetrics: _orderMetrics,
     libraryWines,
-    dashboardLoading,
-    dashboardError,
+    dashboardLoading: _dashboardLoading,
+    dashboardError: _dashboardError,
     calendarMonth,
     calendarFilterType,
     calendarSearchQuery,
     selectedDay,
     calendarEvents: filteredCalendarEvents,
     calendarSalesData,
-    eventsByDate,
-    reminders,
+    eventsByDate: _eventsByDate,
+    reminders: _reminders,
     lowStockBuckets,
     recentOrderRows,
     greeting,
-    refreshDashboard: refetchDashboard,
-    refreshReminders,
+    refreshDashboard: _refetchDashboard,
+    refreshReminders: _refreshReminders,
     handleDayClick,
     setCalendarFilterType,
     setCalendarSearchQuery,
     setSelectedDay,
-    setReminders,
   } = dashboardData
 
   // Get inventory data for shadow stock reconciliation reminders (still needed for manualImportantDates)
-  const { inventory } = useInventoryData()
+  const { inventory: _inventory } = useInventoryData()
 
   // Create One-Tap Action Modal State
   const [showCreateActionModal, setShowCreateActionModal] = useState(false)
-  const [customActions, setCustomActions] = useState<CustomOneTapAction[]>([])
+  const [_customActions, setCustomActions] = useState<CustomOneTapAction[]>([])
   const [newAction, setNewAction] = useState({
     title: '',
     description: '',
@@ -310,20 +218,6 @@ export function Dashboard() {
       case 'high': return 'bg-amber-500'
       case 'medium': return 'bg-yellow-400'
       default: return 'bg-gray-400'
-    }
-  }
-
-  const toggleReminder = (id: string) => {
-    setReminders(prev => prev.map(r => 
-      r.id === id ? { ...r, completed: !r.completed } : r
-    ))
-  }
-
-  const getPriorityColor = (priority: Reminder['priority']) => {
-    switch (priority) {
-      case 'high': return 'text-orange-500'
-      case 'medium': return 'text-blue-500'
-      case 'low': return 'text-gray-400'
     }
   }
 

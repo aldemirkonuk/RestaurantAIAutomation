@@ -7,7 +7,6 @@
 import { apiClient, getActiveRestaurantId } from './client';
 import type {
   ToastMenu,
-  ToastSalesData,
   ToastSalesResponse,
 } from './types';
 

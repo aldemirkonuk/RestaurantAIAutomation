@@ -113,7 +113,7 @@ export function AddToInventoryFromLibraryModal({
   const [successMessage, setSuccessMessage] = useState('')
   const [undoState, setUndoState] = useState<UndoState | null>(null)
   const [undoCountdown, setUndoCountdown] = useState(5)
-  const [quickAddMode, setQuickAddMode] = useState(false)
+  const [_quickAddMode, _setQuickAddMode] = useState(false)
 
   const [bottleSizeMl, setBottleSizeMl] = useState<number>(750)
   const [customBottleSizeInput, setCustomBottleSizeInput] = useState('')

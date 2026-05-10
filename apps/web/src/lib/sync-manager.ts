@@ -108,8 +108,6 @@ class SyncManagerService {
   
   // Retry configuration
   private readonly MAX_RETRIES = 5
-  private readonly BASE_RETRY_DELAY = 1000 // 1 second
-  private readonly MAX_RETRY_DELAY = 60000 // 1 minute
   private readonly SYNC_INTERVAL = 30000 // 30 seconds
 
   constructor() {

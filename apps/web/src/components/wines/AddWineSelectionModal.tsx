@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Wine as WineIcon, FileText, Camera, ScanText, ArrowRight } from 'lucide-react'
+import { X, Wine as WineIcon, Camera, ScanText, ArrowRight } from 'lucide-react'
 
 interface AddWineSelectionModalProps {
   isOpen: boolean

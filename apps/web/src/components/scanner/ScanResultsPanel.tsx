@@ -13,10 +13,6 @@ import {
   ChevronUp,
   MapPin,
   Grape,
-  Tag,
-  Info,
-  X,
-  Check,
   Save,
   Sparkles,
 } from 'lucide-react'
@@ -42,8 +38,6 @@ function FieldSourceBadge({ source }: { source?: string }) {
     </span>
   )
 }
-
-type WineAction = 'accept' | 'reject' | 'edit'
 
 interface EditableFields {
   name: string

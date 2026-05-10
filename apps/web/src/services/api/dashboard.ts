@@ -7,8 +7,7 @@
 import { apiClient, getActiveRestaurantId } from './client';
 import { inventoryApi } from './inventory';
 import { ordersApi } from './orders';
-import { toastApi } from './toast';
-import type { DashboardStats, DashboardWidget } from './types';
+import type { DashboardStats } from './types';
 
 const DASHBOARD_PATH = '/dashboard';
 
@@ -35,6 +34,8 @@ export async function getDashboardStats(restaurantId?: string): Promise<Dashboar
       totalBottles: summary.totalBottles,
       lowStockItems: summary.lowStockCount,
       pendingOrders,
+      totalVolumeMl: 0,
+      totalVolumeOz: 0,
     };
   }
 }

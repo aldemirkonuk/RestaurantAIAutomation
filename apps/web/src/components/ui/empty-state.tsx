@@ -2,7 +2,6 @@ import { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 import {
   Wine,
-  Package,
   ShoppingCart,
   Bell,
   FileText,

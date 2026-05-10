@@ -33,7 +33,6 @@ interface ErrorTrackingConfig {
 
 class ErrorTrackingService {
   private initialized = false
-  private config: ErrorTrackingConfig | null = null
 
   /**
    * Initialize error tracking
@@ -43,8 +42,6 @@ class ErrorTrackingService {
       console.warn('Error tracking already initialized')
       return
     }
-
-    this.config = config
 
     if (!config.dsn) {
       console.warn('[ErrorTracking] No DSN provided - error tracking disabled')

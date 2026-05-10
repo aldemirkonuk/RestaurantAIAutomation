@@ -15,7 +15,7 @@ import type {
 } from './types';
 
 const ORDERS_PATH = '/orders';
-const PROCUREMENT_PATH = '/procurement';
+// const PROCUREMENT_PATH = '/procurement'; // reserved for future use
 
 /**
  * Get all orders for the active restaurant

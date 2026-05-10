@@ -4,11 +4,8 @@ import {
   Camera,
   CameraOff,
   Upload,
-  Maximize2,
-  RotateCcw,
   Zap,
   ZapOff,
-  Loader2,
   Image as ImageIcon,
   SwitchCamera,
 } from 'lucide-react'

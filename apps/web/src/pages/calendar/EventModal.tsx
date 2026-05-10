@@ -53,10 +53,7 @@ const TIME_OPTIONS = (() => {
   const times: string[] = []
   for (let hour = 0; hour < 24; hour++) {
     for (let minute = 0; minute < 60; minute += 15) {
-      const h12 = hour % 12 || 12
-      const ampm = hour >= 12 ? 'PM' : 'AM'
       const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-      const displayStr = `${h12}:${minute.toString().padStart(2, '0')} ${ampm}`
       times.push(timeStr)
     }
   }
@@ -99,11 +96,6 @@ function formatDateForInput(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function formatTimeForInput(time: string): string {
-  // Convert HH:MM to HH:MM format (already correct)
-  return time
 }
 
 function formatTimeForDisplay(time: string): string {

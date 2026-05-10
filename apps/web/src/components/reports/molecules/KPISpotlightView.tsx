@@ -241,13 +241,13 @@ function WineTypeDonut({ totals, mode }: { totals: Record<string, number>; mode:
 export function KPISpotlightView({
   kpiKey,
   title,
-  currentValue,
+  currentValue: _currentValue,
   isOpen,
   onClose,
   salesData,
   wineTypeTotals,
   topWines,
-  metrics,
+  metrics: _metrics,
 }: KPISpotlightViewProps) {
   const tabs = KPI_TAB_CONFIGS[kpiKey] || KPI_TAB_CONFIGS.revenue
   const [activeTab, setActiveTab] = useState(tabs[0].id)
@@ -375,12 +375,6 @@ export function KPISpotlightView({
 
   const renderStatus = () => {
     if (!hasData) return <EmptyStateCard title="No Order Data" description="Order status breakdown will appear when you have active orders." />
-    const statusData = [
-      { name: 'Pending', value: 3 },
-      { name: 'Approved', value: 8 },
-      { name: 'Delivered', value: 15 },
-      { name: 'Cancelled', value: 1 },
-    ]
     return (
       <EmptyStateCard title="Status Breakdown" description="Order status distribution will populate from real order data once POS is connected." />
     )

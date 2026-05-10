@@ -12,7 +12,6 @@ import {
   CheckSquare,
   Square,
   Sparkles,
-  Globe,
   MapPin,
   Grape,
   Tag,
@@ -25,7 +24,6 @@ import { WineValidationModal } from './WineValidationModal'
 import {
   scanMenuImage,
   DetectedWine as ServiceDetectedWine,
-  batchDetectWines,
 } from '../../services/wineDetection'
 
 type DetectedWine = ServiceDetectedWine
@@ -158,7 +156,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
     }
   }
 
-  const handleValidationApprove = (validatedData: any) => {
+  const handleValidationApprove = (_validatedData: any) => {
     setDetectedWines(prev => prev.filter(w => w.id !== validationWine?.id))
     setSelectedWines(prev => {
       const newSet = new Set(prev)

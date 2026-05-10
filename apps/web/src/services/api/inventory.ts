@@ -4,14 +4,13 @@
  * Handles all inventory-related API calls to the NestJS backend.
  */
 
-import { apiClient, getActiveRestaurantId, getErrorMessage } from './client';
+import { apiClient, getActiveRestaurantId } from './client';
 import type {
   InventoryItem,
   InventorySummary,
   CreateInventoryItemRequest,
   UpdateInventoryItemRequest,
   ToastMappingRequest,
-  BulkToastMappingRequest,
   BulkMappingResult,
 } from './types';
 

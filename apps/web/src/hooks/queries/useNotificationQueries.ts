@@ -196,7 +196,7 @@ export function useMarkAllNotificationsAsRead() {
   
   return useMutation({
     mutationFn: (userId: string) => markAllNotificationsAsRead(userId),
-    onSuccess: (_, userId) => {
+    onSuccess: (_, _userId) => {
       // Invalidate notification queries
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all })
       

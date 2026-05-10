@@ -10,27 +10,21 @@ import {
   ShoppingCart,
   AlertTriangle,
   CheckCircle,
-  XCircle,
   Eye,
   EyeOff,
   RefreshCw,
-  MoreVertical,
   ArrowUpDown,
-  Camera,
   X,
   Trash2,
   QrCode,
   MapPin,
   TrendingUp,
-  TrendingDown,
   Activity,
   ChevronDown,
   ChevronUp,
-  Package,
   BarChart3,
   FolderTree,
   RotateCcw,
-  Loader2,
 } from 'lucide-react'
 import { getWineTypeColor, Wine } from '../data/wineData'
 import { AddWineToInventoryModal } from '../components/inventory/AddWineToInventoryModal'
@@ -38,20 +32,16 @@ import { ManualOverrideModal, ManualOverrideData } from '../components/inventory
 import { StorageLocationManager } from '../components/inventory/StorageLocationManager'
 import { LocationPickerCell } from '../components/inventory/LocationPickerCell'
 import { useStorageLocations } from '../hooks/useStorageLocations'
-import type { StorageLocation } from '../hooks/useStorageLocations'
 import { exportInventory, ExportFormat } from '../lib/exportHelpers'
 import { formatVolume } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
-import { useTypedInventorySubscription, InventoryUpdatePayload, useRealtimeDispatch, WineUpdatePayload } from '../contexts/RealtimeContext'
+import { useTypedInventorySubscription, InventoryUpdatePayload, useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useInventoryPage, InventoryItem } from './inventory/index'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { computeAutoLocatePlan, AutoLocateResult, WineLocationScore } from '../lib/autoLocateEngine'
 import { AutoLocatePreviewModal } from '../components/inventory/AutoLocatePreviewModal'
 
-type ViewMode = 'all' | 'live' | 'shadow'
-type SortField = 'name' | 'liveStock' | 'shadowStock' | 'price' | 'menuPrice' | 'margin' | 'threshold' | 'bottleSizeMl'
-type SortOrder = 'asc' | 'desc'
 
 function calculateMargin(costPrice: number, menuPrice?: number): number {
   if (!menuPrice || menuPrice === 0) return 0
@@ -79,11 +69,11 @@ export function Inventory() {
     viewMode, setViewMode,
     selectedLocationFilter, setSelectedLocationFilter,
     clearFilters,
-    sortField, sortOrder, toggleSort,
+    sortField: _sortField, sortOrder: _sortOrder, toggleSort,
     selectedItems, toggleSelection, setSelectedItems,
     inventory,
-    isLoading: inventoryLoading,
-    error: inventoryError,
+    isLoading: _inventoryLoading,
+    error: _inventoryError,
     updateInventoryItem,
     filteredInventory,
     stats,
@@ -137,15 +127,15 @@ export function Inventory() {
   const [reconcileModal, setReconcileModal] = useState<InventoryItem | null>(null)
   const [actualCount, setActualCount] = useState('')
   const [showAddWineModal, setShowAddWineModal] = useState(false)
-  const [showInvoiceScannerModal, setShowInvoiceScannerModal] = useState(false)
+  const [_showInvoiceScannerModal, _setShowInvoiceScannerModal] = useState(false)
   const [manualOverrideModal, setManualOverrideModal] = useState<InventoryItem | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('csv')
   const [includeMetrics, setIncludeMetrics] = useState(false)
   const [showInventoryInsights, setShowInventoryInsights] = useState(true)
   const [showStorageManager, setShowStorageManager] = useState(false)
-  const [realtimeUpdates, setRealtimeUpdates] = useState<InventoryUpdatePayload[]>([])
-  const [showRealtimeToast, setShowRealtimeToast] = useState(false)
+  const [_realtimeUpdates, setRealtimeUpdates] = useState<InventoryUpdatePayload[]>([])
+  const [_showRealtimeToast, setShowRealtimeToast] = useState(false)
   const [showResetStockModal, setShowResetStockModal] = useState(false)
   const [resetStockConfirmText, setResetStockConfirmText] = useState('')
   const [showAutoLocateModal, setShowAutoLocateModal] = useState(false)

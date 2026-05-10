@@ -5,7 +5,6 @@
 
 import {
   TrendingUp,
-  TrendingDown,
   DollarSign,
   Package,
   ShoppingCart,

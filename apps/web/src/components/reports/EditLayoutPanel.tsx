@@ -22,15 +22,12 @@ import {
   RotateCcw,
   Sparkles,
   Check,
-  ChevronRight,
   BarChart3,
   LineChart,
   PieChart,
   AreaChart,
   Layers,
   Save,
-  Trash2,
-  Plus,
   Zap,
   Grid3X3,
   Rows,
@@ -143,8 +140,8 @@ export function EditLayoutPanel({
   charts,
   onChartsChange,
   onChartsReset,
-  kpiCards = [],
-  onKPICardsChange,
+  kpiCards: _kpiCards = [],
+  onKPICardsChange: _onKPICardsChange,
 }: EditLayoutPanelProps) {
   const [localCharts, setLocalCharts] = useState<ChartConfig[]>(charts)
   const [activeSection, setActiveSection] = useState<'charts' | 'kpis' | 'presets'>('charts')

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { diffLayouts, hasLayoutChanges, getChangeSummary } from '../../../lib/reports/layoutDiffer'
-import { LayoutConfig } from '../../../lib/reports/types'
+import { diffLayouts, hasLayoutChanges, getChangeSummary } from '../../../../lib/reports/layoutDiffer'
+import { LayoutConfig } from '../../../../lib/reports/types'
 import { DollarSign, Package, ShoppingCart } from 'lucide-react'
 
 describe('Layout Differ', () => {

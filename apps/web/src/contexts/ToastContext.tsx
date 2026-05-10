@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react'
 import {
   ToastProvider as RadixToastProvider,
   ToastViewport,
@@ -6,7 +6,6 @@ import {
   ToastTitle,
   ToastDescription,
   ToastClose,
-  ToastAction,
   type ToastActionElement,
 } from '@wineops/ui'
 import { CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react'

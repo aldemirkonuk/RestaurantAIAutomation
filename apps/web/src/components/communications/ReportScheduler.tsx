@@ -24,7 +24,7 @@ import {
 import { Card, Button } from '../ui'
 import { ReportTypeModal } from './ReportTypeModal'
 import { REPORT_TYPES, getDefaultTemplateForReport } from '../../data/reportDefaults'
-import { useRealtimeDispatch, CalendarEventPayload } from '../../contexts/RealtimeContext'
+import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
 
 interface ReportSchedulerProps {
   onSchedule?: (config: ReportConfig) => void

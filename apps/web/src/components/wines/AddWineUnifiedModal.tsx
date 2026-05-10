@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Wine as WineIcon, FileText } from 'lucide-react'
 import { Wine as WineType } from '../../data/wineData'
-import { AddWineModal } from './AddWineModal'
 import { MenuScannerTab } from './MenuScannerTab'
 
 interface AddWineUnifiedModalProps {
@@ -14,9 +13,9 @@ interface AddWineUnifiedModalProps {
 
 type TabType = 'single' | 'menu'
 
-export function AddWineUnifiedModal({ isOpen, onClose, onSave, existingWines }: AddWineUnifiedModalProps) {
+export function AddWineUnifiedModal({ isOpen, onClose, onSave: _onSave, existingWines }: AddWineUnifiedModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('single')
-  const [showSingleModal, setShowSingleModal] = useState(false)
+  const [_showSingleModal, setShowSingleModal] = useState(false)
 
   // When tab changes to single, show the AddWineModal, close unified modal
   useEffect(() => {
@@ -42,23 +41,6 @@ export function AddWineUnifiedModal({ isOpen, onClose, onSave, existingWines }: 
         console.warn(`Duplicate detected: ${detected.name} (${detected.vintage})`)
       }
     })
-  }
-
-  const handleSaveWithDuplicateCheck = (wine: Partial<WineType>) => {
-    // Check for duplicates before saving
-    const isDuplicate = existingWines.some(existing => 
-      existing.name.toLowerCase() === wine.name?.toLowerCase() &&
-      existing.vintage === wine.vintage
-    )
-    
-    if (isDuplicate) {
-      const confirmOverwrite = window.confirm(
-        `A wine named "${wine.name}" (${wine.vintage || 'NV'}) already exists in your library.\n\nDo you want to add it anyway?`
-      )
-      if (!confirmOverwrite) return
-    }
-    
-    onSave(wine)
   }
 
   return (

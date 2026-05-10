@@ -1,0 +1,91 @@
+/* WineOps AI — Sketch Theme */
+/* Brand: Premium B2B SaaS, Stripe/Toast-inspired, elegant burgundy */
+
+:root {
+  /* Brand Colors */
+  --color-primary: #CD2D5B;
+  --color-primary-hover: #AC204A;
+  --color-primary-light: #fdf2f4;
+  --color-primary-medium: #f4a9ba;
+  --color-primary-dark: #7c1d3c;
+
+  /* Surface Colors */
+  --color-bg: #f7f8f9;
+  --color-bg-gradient: linear-gradient(135deg, #f9fafb 0%, #fdf2f4 50%, #f9fafb 100%);
+  --color-surface: #ffffff;
+  --color-surface-glass: rgba(255, 255, 255, 0.6);
+  --color-surface-elevated: #ffffff;
+  --color-surface-secondary: #f3f4f6;
+
+  /* Border */
+  --color-border: #e5e7eb;
+  --color-border-glass: rgba(255, 255, 255, 0.2);
+  --color-border-focus: #CD2D5B;
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+
+  /* Text */
+  --color-text: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+  --color-text-inverse: #ffffff;
+
+  /* Semantic */
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
+  --color-danger: #DC2626;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-warning: #D97706;
+  --color-warning-bg: #fffbeb;
+
+  /* Typography */
+  --font-display: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+  --font-body: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, monospace;
+
+  /* Font Sizes */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Shapes */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 20px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.04);
+  --shadow-xl: 0 20px 40px rgba(0,0,0,0.08), 0 8px 16px rgba(0,0,0,0.04);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+  --shadow-glass: 0 25px 50px rgba(0,0,0,0.12);
+  --shadow-wine: 0 4px 14px rgba(205,45,91,0.25);
+
+  /* Transitions */
+  --transition-fast: all 0.1s ease;
+  --transition-base: all 0.2s ease;
+  --transition-slow: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}

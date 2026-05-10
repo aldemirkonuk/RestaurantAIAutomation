@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence, Reorder } from 'framer-motion'
-import { Plus, Check, Pencil, EyeOff, X, RotateCcw, LucideIcon } from 'lucide-react'
+import { Plus, Check, EyeOff, LucideIcon } from 'lucide-react'
 import { KPICard, KPICardData, KPIValue } from '../molecules'
 
 interface KPIOption {

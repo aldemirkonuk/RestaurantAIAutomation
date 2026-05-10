@@ -16,12 +16,12 @@ import { DashboardLayout } from './components/layout/DashboardLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 // Critical pages (loaded immediately)
-import { Dashboard } from './pages/dashboard'
+import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
 import { VerifyEmail } from './pages/VerifyEmail'
-import { Inventory } from './pages/inventory'
-import { Orders } from './pages/orders'
+import { Inventory } from './pages/Inventory'
+import { Orders } from './pages/Orders'
 
 // Heavy pages (lazy loaded)
 const Reports = lazy(() => import('./pages/Reports'))
@@ -35,7 +35,7 @@ const Providers = lazy(() => import('./pages/Providers'))
 const Communications = lazy(() => import('./pages/Communications'))
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
 const Notifications = lazy(() => import('./pages/Notifications'))
-const Calendar = lazy(() => import('./pages/calendar'))
+const Calendar = lazy(() => import('./pages/Calendar'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 const Settings = lazy(() => import('./pages/Settings'))
 

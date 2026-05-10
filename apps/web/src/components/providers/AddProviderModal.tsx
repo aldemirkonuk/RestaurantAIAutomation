@@ -9,7 +9,6 @@ import {
   Globe,
   MapPin,
   DollarSign,
-  Calendar,
   Truck,
   Package,
   Download,
@@ -18,14 +17,12 @@ import {
   AlertCircle,
   CheckCircle,
   Plus,
-  Minus,
   Store,
   Warehouse,
   Factory,
   ShoppingBag,
   Wine,
   Grape,
-  Trash2,
 } from 'lucide-react'
 
 interface AddProviderModalProps {
@@ -190,12 +187,6 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
       setFormData(prev => ({ ...prev, primaryBusinessType: 'Distributor' }))
     }
   }
-
-  // Get all available business types (default + custom)
-  const allBusinessTypes = [
-    ...DEFAULT_BUSINESS_TYPES.map(name => ({ name, isCustom: false, id: name })),
-    ...customTypes.map(t => ({ name: t.name, isCustom: true, id: t.id, icon: t.icon })),
-  ]
 
   const handleClose = () => {
     // Reset form

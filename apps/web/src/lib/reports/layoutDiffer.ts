@@ -3,7 +3,7 @@
  * Compare layouts and highlight changes
  */
 
-import type { LayoutConfig, LayoutDiff, KPICard, ChartConfig, SectionConfig } from './types'
+import type { LayoutConfig, LayoutDiff } from './types'
 
 /**
  * Compare two layouts and return the differences

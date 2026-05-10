@@ -46,14 +46,14 @@ import {
   Edit3,
   GripVertical,
 } from 'lucide-react'
-import { templateCategories, defaultTemplates } from '../../data/emailTemplateCategories'
+import { templateCategories } from '../../data/emailTemplateCategories'
 import { getUserCategories } from '../../data/userTemplateCategories'
 import { NewCategoryModal } from './NewCategoryModal'
 import { VariationSelectorModal } from './VariationSelectorModal'
 import { getCombinedSuggestions, searchRecipients, addEmailRecipient } from '../../data/emailRecipients'
 import { PreviewOverlay } from '../reports/preview'
 
-type PanelType = 'text' | 'image' | 'chart-bar' | 'chart-pie' | 'table' | 'financial' | 'metric' | 'header' | 'divider' | 'spacer' | 'button'
+type PanelType = 'text' | 'image' | 'chart-bar' | 'chart-pie' | 'chart-line' | 'table' | 'financial' | 'metric' | 'header' | 'divider' | 'spacer' | 'button'
 
 interface TemplatePanel {
   id: string

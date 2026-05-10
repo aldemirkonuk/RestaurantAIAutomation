@@ -12,7 +12,6 @@ import {
   PieChart,
   AreaChart,
   Layers,
-  Settings,
 } from 'lucide-react'
 import { ChartConfig, DataSource, ChartType, ChartSize } from './ChartConfigModal'
 

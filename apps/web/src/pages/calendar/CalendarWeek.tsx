@@ -102,7 +102,7 @@ function getEventDuration(start: string, end?: string): number {
 }
 
 /** Lay out overlapping events into columns */
-function layoutEvents(events: CalendarEvent[], colors: Record<string, string>): PositionedEvent[] {
+function layoutEvents(events: CalendarEvent[], _colors: Record<string, string>): PositionedEvent[] {
   const timed = events
     .filter((e) => e.startTime && !e.allDay)
     .sort((a, b) => parseTimeToMinutes(a.startTime!) - parseTimeToMinutes(b.startTime!))

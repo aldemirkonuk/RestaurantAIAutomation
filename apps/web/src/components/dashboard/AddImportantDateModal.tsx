@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
   Calendar,
-  Clock,
-  FileText,
   PartyPopper,
   Truck,
   Cake,

@@ -5,8 +5,6 @@ import {
   Sparkles,
   Calendar,
   Check,
-  AlertCircle,
-  ChevronRight,
 } from 'lucide-react'
 import { ExtractedDateMention } from '../../utils/aiDateContext'
 

@@ -26,18 +26,17 @@ import {
   Star,
   Filter,
 } from 'lucide-react'
-import { useCalendarEvents, useCreateCalendarEvent, useUpdateCalendarEvent, useDeleteCalendarEvent, useEventTypes, useProviders } from '../hooks/queries'
+import { useCalendarEvents, useCreateCalendarEvent, useUpdateCalendarEvent, useDeleteCalendarEvent, useProviders } from '../hooks/queries'
 import { PageSkeleton, ErrorState } from '../components/ui'
 import { getCustomEventTypes, deleteCustomEventType, isCustomEventType } from '../data/customEventTypes'
 import { NewEventTypeModal } from '../components/calendar/NewEventTypeModal'
-import { useCalendarEventsSubscription, CalendarEventPayload } from '../contexts/RealtimeContext'
+import { useCalendarEventsSubscription } from '../contexts/RealtimeContext'
 import { scheduleReminder } from '../lib/reminder-scheduler'
 import { expandAllRecurringEvents } from '../lib/calendar/recurrence'
 import { EntityAutocomplete, EntityOption } from '../components/shared/EntityAutocomplete'
-import { 
-  CompanyClass, 
+import {
+  CompanyClass,
   providerTypeToClass,
-  COMPANY_CLASS_CONFIG,
   getClassConfig,
 } from '../types/companyClass'
 import { createNotification } from '../services/api/notifications'
@@ -214,7 +213,7 @@ function TitleWithEntityTags({
   placeholder = 'Enter event title...',
 }: TitleWithEntityTagsProps) {
   const [isSuggestionFocused, setIsSuggestionFocused] = useState(false)
-  const [cursorPosition, setCursorPosition] = useState(0)
+  const [_cursorPosition, setCursorPosition] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   
   // Find matching entities based on what user is typing
@@ -286,7 +285,7 @@ function TitleWithEntityTags({
     inputRef.current?.focus()
   }
   
-  const getTagColors = (type: string, companyClass?: CompanyClass) => {
+  const getTagColors = (type: string, _companyClass?: CompanyClass) => {
     if (type === 'provider') return 'bg-emerald-100 text-emerald-800 border-emerald-300'
     if (type === 'wine_type') return 'bg-purple-100 text-purple-800 border-purple-300'
     return 'bg-blue-100 text-blue-800 border-blue-300'
@@ -364,7 +363,6 @@ function TitleWithEntityTags({
             </div>
             <div className="max-h-48 overflow-y-auto">
               {matchingEntities.map((entity) => {
-                const classConfig = entity.companyClass ? getClassConfig(entity.companyClass) : null
                 return (
                   <button
                     key={entity.id}
@@ -708,7 +706,7 @@ export function Calendar() {
   }, [])
 
   // Handle realtime calendar events - MUST BE BEFORE CONDITIONAL RETURNS
-  const handleCalendarEventUpdate = useCallback((payload: any) => {
+  const handleCalendarEventUpdate = useCallback((_payload: any) => {
     // Refetch to get latest data from server instead of manually updating state
     console.log('Calendar received event update, refetching...')
     refetch()

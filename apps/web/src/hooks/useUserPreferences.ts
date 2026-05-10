@@ -24,11 +24,6 @@ export interface UserPreferences {
   [key: string]: unknown
 }
 
-function getUserId(): string | null {
-  const user = useAuthStore.getState().user
-  return user?.userId ?? null
-}
-
 async function fetchPreferences(userId: string): Promise<UserPreferences> {
   const { data } = await apiClient.get<{ preferences: UserPreferences }>(
     `/users/${userId}/preferences`,

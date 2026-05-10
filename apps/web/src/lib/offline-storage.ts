@@ -37,12 +37,6 @@ export interface SyncStatus {
 // STORAGE KEYS
 // =============================================================================
 
-const STORAGE_KEYS = {
-  PENDING_MUTATIONS: 'wineops_pending_mutations',
-  ENTITY_CACHE: 'wineops_entity_cache',
-  SYNC_STATUS: 'wineops_sync_status',
-} as const
-
 // =============================================================================
 // INDEXEDDB SETUP
 // =============================================================================

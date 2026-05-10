@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sketch 004 — Full Registration Flow</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--color-bg-gradient);
+      min-height: 100vh;
+      padding-top: 44px;
+    }
+
+    /* ── Dev Nav ── */
+    #dev-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: rgba(17,24,39,0.95); backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 6px 14px; display: flex; gap: 6px; align-items: center;
+      font-family: system-ui; font-size: 12px;
+    }
+    #dev-nav span { color: #6b7280; font-size: 11px; margin-right: 4px; }
+    .dev-tab {
+      padding: 4px 12px; border-radius: 5px; border: 1px solid transparent;
+      background: transparent; cursor: pointer; font-size: 11px; font-family: inherit;
+      color: #9ca3af; transition: all 0.15s;
+    }
+    .dev-tab:hover { background: rgba(255,255,255,0.08); color: #e5e7eb; }
+    .dev-tab.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .dev-sep { color: #374151; font-size: 14px; }
+
+    /* ── Screen system ── */
+    .screen { display: none; min-height: calc(100vh - 44px); }
+    .screen.active { display: block; }
+
+    /* ── Shared page centering ── */
+    .page-center {
+      min-height: calc(100vh - 44px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 32px 16px;
+    }
+    .page-top {
+      min-height: calc(100vh - 44px);
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 40px 16px;
+    }
+
+    /* ── Logo ── */
+    .logo-block { text-align: center; margin-bottom: 32px; }
+    .logo-mark {
+      width: 52px; height: 52px; border-radius: 14px;
+      background: var(--color-primary);
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 14px; box-shadow: var(--shadow-wine);
+    }
+    .logo-title {
+      font-family: var(--font-display); font-size: 1.875rem; font-weight: 800;
+      color: var(--color-text); letter-spacing: -0.03em; margin-bottom: 6px;
+    }
+    .logo-sub { color: var(--color-text-secondary); font-size: 0.9rem; }
+
+    /* ── Glass card ── */
+    .glass { background: rgba(255,255,255,0.72); backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,0.5); border-radius: 22px; box-shadow: 0 25px 50px rgba(0,0,0,0.1); }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      width: 100%; padding: 14px 24px; border: none; border-radius: 12px; cursor: pointer;
+      background: var(--color-primary); color: white;
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700; letter-spacing: -0.01em;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-wine); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-outline {
+      width: 100%; padding: 13px 24px; border: 1.5px solid var(--color-border); border-radius: 12px; cursor: pointer;
+      background: white; color: var(--color-text);
+      font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700; letter-spacing: -0.01em;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-outline:hover { border-color: #9ca3af; }
+
+    /* ── Back link ── */
+    .back-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--color-text-muted); font-size: 0.8125rem; cursor: pointer;
+      margin-bottom: 22px; transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--color-text); }
+
+    /* ── Step dots ── */
+    .step-bar { display: flex; align-items: flex-start; gap: 0; margin-bottom: 28px; }
+    .step-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .step-circle { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; transition: all 0.2s; }
+    .step-circle.done { background: var(--color-success); color: white; }
+    .step-circle.active { background: var(--color-primary); color: white; box-shadow: 0 2px 8px rgba(205,45,91,0.3); }
+    .step-circle.pending { background: #f3f4f6; color: #9ca3af; border: 2px solid #e5e7eb; }
+    .step-name { font-size: 0.68rem; font-weight: 600; }
+    .step-name.done { color: var(--color-success); }
+    .step-name.active { color: var(--color-primary); }
+    .step-name.pending { color: var(--color-text-muted); }
+    .step-line { height: 2px; flex: 1; margin: 13px 4px 0; }
+    .step-line.done { background: var(--color-success); }
+    .step-line.pending { background: #e5e7eb; }
+
+    /* ── Field styles ── */
+    .field-group { margin-bottom: 18px; }
+    .field-label { font-size: 0.8rem; font-weight: 600; color: var(--color-text); margin-bottom: 6px; display: block; }
+    .field-label .opt { font-weight: 400; color: var(--color-text-muted); font-size: 0.74rem; }
+    .field-req { color: var(--color-primary); }
+    .field-input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--color-border); border-radius: 10px;
+      background: white; font-size: 0.9375rem; color: var(--color-text);
+      font-family: var(--font-body); outline: none; transition: all 0.15s;
+    }
+    .field-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.08); }
+    .field-input.filled { border-color: #d1d5db; background: #fafafa; }
+    .field-input::placeholder { color: #d1d5db; }
+    .field-select {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--color-border); border-radius: 10px;
+      background: white; font-size: 0.9375rem; color: var(--color-text);
+      font-family: var(--font-body); outline: none; transition: all 0.15s; cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+    }
+    .field-select:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.08); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field-hint { font-size: 0.74rem; color: var(--color-text-muted); margin-top: 5px; }
+
+    /* ────────────────────────────────────────────────
+       SCREEN 1 — PATH SELECTOR
+       Responsive: column on mobile, 2-col on desktop
+    ──────────────────────────────────────────────── */
+    .selector-wrap { width: 100%; max-width: 680px; }
+
+    /* Desktop: feature cards side-by-side */
+    .feature-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .fc {
+      border-radius: 20px; padding: 30px 26px; cursor: pointer;
+      transition: all 0.2s; position: relative; overflow: hidden;
+    }
+    .fc:hover { transform: translateY(-3px); }
+    .fc-wine { background: var(--color-primary); box-shadow: var(--shadow-wine); }
+    .fc-wine:hover { box-shadow: 0 12px 32px rgba(205,45,91,0.4); }
+    .fc-slate { background: white; border: 1.5px solid var(--color-border); box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); }
+    .fc-slate:hover { border-color: #9ca3af; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+    .fc-icon { width: 50px; height: 50px; border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+    .fc-wine .fc-icon { background: rgba(255,255,255,0.2); }
+    .fc-slate .fc-icon { background: var(--color-primary-light); }
+    .fc-title { font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; line-height: 1.25; }
+    .fc-wine .fc-title { color: white; }
+    .fc-slate .fc-title { color: var(--color-text); }
+    .fc-desc { font-size: 0.8rem; line-height: 1.55; margin-bottom: 20px; }
+    .fc-wine .fc-desc { color: rgba(255,255,255,0.75); }
+    .fc-slate .fc-desc { color: var(--color-text-secondary); }
+    .fc-features { list-style: none; margin-bottom: 24px; }
+    .fc-features li { font-size: 0.8rem; margin-bottom: 7px; display: flex; align-items: center; gap: 7px; }
+    .fc-wine .fc-features li { color: rgba(255,255,255,0.85); }
+    .fc-slate .fc-features li { color: var(--color-text-secondary); }
+    .fc-btn { width: 100%; padding: 11px 18px; border-radius: 9px; font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; border: none; cursor: pointer; transition: all 0.15s; }
+    .fc-wine .fc-btn { background: rgba(255,255,255,0.2); color: white; }
+    .fc-wine .fc-btn:hover { background: rgba(255,255,255,0.3); }
+    .fc-slate .fc-btn { background: var(--color-primary); color: white; }
+    .fc-slate .fc-btn:hover { background: var(--color-primary-hover); }
+
+    /* Mobile: stacked bold-primary */
+    .mobile-cards { display: none; flex-direction: column; gap: 14px; }
+    .mc-primary {
+      background: var(--color-primary); border-radius: 20px; padding: 26px;
+      cursor: pointer; transition: all 0.2s; box-shadow: var(--shadow-wine); position: relative; overflow: hidden;
+    }
+    .mc-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(205,45,91,0.4); }
+    .mc-primary::before { content: ''; position: absolute; top: -30px; right: -30px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.07); }
+    .mc-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(255,255,255,0.2); color: white;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 999px; margin-bottom: 12px;
+    }
+    .mc-primary-title { font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: white; margin-bottom: 5px; }
+    .mc-primary-sub { font-size: 0.8125rem; color: rgba(255,255,255,0.8); }
+    .mc-arrow { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; }
+    .mc-secondary {
+      background: rgba(255,255,255,0.7); backdrop-filter: blur(12px);
+      border: 1.5px solid var(--color-border); border-radius: 18px; padding: 20px 22px;
+      cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 14px;
+    }
+    .mc-secondary:hover { border-color: var(--color-primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    .mc-sec-icon { width: 40px; height: 40px; border-radius: 11px; background: var(--color-primary-light); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .mc-sec-title { font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700; color: var(--color-text); margin-bottom: 2px; }
+    .mc-sec-sub { font-size: 0.78rem; color: var(--color-text-secondary); }
+    .mc-chevron { margin-left: auto; color: var(--color-text-muted); }
+
+    .trust-row { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 14px; }
+    .trust-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--color-text-muted); }
+    .selector-footer { text-align: center; margin-top: 24px; }
+    .selector-footer a { color: var(--color-primary); font-size: 0.875rem; font-weight: 500; text-decoration: none; cursor: pointer; }
+    .selector-footer p { color: var(--color-text-muted); font-size: 0.78rem; margin-top: 5px; }
+
+    /* ────────────────────────────────────────────────
+       SCREEN 2 — PATH A: INVITE CODE (Step 1)
+    ──────────────────────────────────────────────── */
+    .invite-container { width: 100%; max-width: 480px; }
+    .code-label { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--color-text); margin-bottom: 7px; }
+    .code-label-hint { font-weight: 400; color: var(--color-text-muted); font-size: 0.74rem; }
+    .code-input-wrap { position: relative; margin-bottom: 14px; }
+    .code-input {
+      width: 100%; padding: 15px 50px 15px 18px;
+      font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700;
+      letter-spacing: 0.2em; text-transform: uppercase; text-align: center;
+      border: 2px solid var(--color-border); border-radius: 12px;
+      background: white; outline: none; color: var(--color-text); transition: all 0.2s;
+    }
+    .code-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.08); }
+    .code-input.valid { border-color: var(--color-success); box-shadow: 0 0 0 3px rgba(5,150,105,0.08); }
+    .code-input.invalid { border-color: var(--color-danger); box-shadow: 0 0 0 3px rgba(220,38,38,0.08); }
+    .code-status { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .code-status.valid { background: var(--color-success); }
+    .code-status.invalid { background: var(--color-danger); }
+
+    /* Trust card */
+    .trust-card {
+      border-radius: 14px; border: 1.5px solid var(--color-success-border);
+      background: white; overflow: hidden;
+      transform: translateY(-6px); opacity: 0;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      max-height: 0; margin-bottom: 0;
+    }
+    .trust-card.visible { transform: translateY(0); opacity: 1; max-height: 200px; margin-bottom: 16px; }
+    .trust-card-top { background: #ecfdf5; padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+    .trust-rest-icon { width: 38px; height: 38px; border-radius: 10px; background: white; border: 1px solid #a7f3d0; display: flex; align-items: center; justify-content: center; }
+    .trust-rest-name { font-family: var(--font-display); font-weight: 700; color: #065F46; font-size: 0.9375rem; }
+    .trust-rest-loc { font-size: 0.78rem; color: #059669; margin-top: 1px; }
+    .trust-check-icon { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; background: var(--color-success); display: flex; align-items: center; justify-content: center; }
+    .trust-card-bottom { padding: 10px 16px; display: flex; gap: 0; justify-content: space-between; }
+    .trust-detail { display: flex; flex-direction: column; gap: 2px; }
+    .trust-detail-label { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-text-muted); font-weight: 600; }
+    .trust-detail-value { font-size: 0.8rem; font-weight: 700; color: var(--color-text); }
+    .trust-role { color: var(--color-primary); }
+    .trust-divider { width: 1px; background: #f3f4f6; }
+
+    .invalid-card { border-radius: 10px; padding: 11px 14px; background: #fef2f2; border: 1.5px solid #fecaca; display: none; align-items: center; gap: 9px; margin-bottom: 14px; }
+    .invalid-card.visible { display: flex; }
+
+    /* ────────────────────────────────────────────────
+       SCREEN 3 — PATH A: ACCOUNT FORM (Step 2 of Join)
+    ──────────────────────────────────────────────── */
+    .account-container { width: 100%; max-width: 480px; }
+    .password-wrap { position: relative; }
+    .password-toggle { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--color-text-muted); padding: 0; }
+    .strength-bar { height: 3px; border-radius: 2px; background: #f3f4f6; margin-top: 6px; overflow: hidden; }
+    .strength-fill { height: 100%; border-radius: 2px; transition: all 0.3s; }
+
+    /* ────────────────────────────────────────────────
+       SCREEN 4 — PATH B: ACCOUNT FORM (Step 1 of Create)
+    ──────────────────────────────────────────────── */
+
+    /* ────────────────────────────────────────────────
+       SCREEN 5 — PATH B: RESTAURANT FORM (Step 2 of Create)
+       Left-Rail Progress (Sketch 003 winner)
+    ──────────────────────────────────────────────── */
+    .rail-layout { display: grid; grid-template-columns: 196px 1fr; gap: 22px; width: 100%; max-width: 800px; }
+    .rail {
+      background: rgba(255,255,255,0.55); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.45); border-radius: 18px;
+      padding: 22px 16px; height: fit-content; position: sticky; top: 60px;
+    }
+    .rail-title { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 14px; }
+    .rail-item { display: flex; align-items: flex-start; gap: 9px; padding: 7px 0; cursor: pointer; transition: all 0.15s; position: relative; }
+    .rail-item + .rail-item::before { content: ''; position: absolute; left: 10px; top: -7px; width: 2px; height: 7px; background: #e5e7eb; }
+    .rail-dot { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 700; flex-shrink: 0; transition: all 0.2s; }
+    .rail-dot.active { background: var(--color-primary); color: white; box-shadow: 0 2px 6px rgba(205,45,91,0.35); }
+    .rail-dot.done { background: var(--color-success); color: white; }
+    .rail-dot.pending { background: #f3f4f6; color: #9ca3af; border: 1.5px solid #e5e7eb; }
+    .rail-item-name { font-size: 0.8rem; font-weight: 600; }
+    .rail-item-name.active { color: var(--color-primary); }
+    .rail-item-name.done { color: var(--color-text-secondary); }
+    .rail-item-name.pending { color: var(--color-text-muted); }
+    .rail-item-fields { font-size: 0.68rem; color: var(--color-text-muted); margin-top: 1px; }
+    .rail-progress-track { height: 5px; background: #f3f4f6; border-radius: 3px; margin: 18px 0 6px; overflow: hidden; }
+    .rail-progress-fill { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
+    .rail-progress-label { font-size: 0.75rem; color: var(--color-text-secondary); }
+
+    /* Restaurant form panels */
+    .form-panel { display: none; }
+    .form-panel.active { display: block; }
+    .panel-tag { display: inline-flex; align-items: center; gap: 5px; background: var(--color-primary-light); color: var(--color-primary); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 3px 9px; border-radius: 999px; margin-bottom: 10px; }
+    .panel-title { font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; color: var(--color-text); letter-spacing: -0.02em; margin-bottom: 3px; }
+    .panel-desc { font-size: 0.84rem; color: var(--color-text-secondary); margin-bottom: 22px; }
+    .panel-nav { display: flex; gap: 10px; margin-top: 20px; }
+    .pnav-back { flex: 1; padding: 12px; border: 1.5px solid var(--color-border); border-radius: 10px; background: white; color: var(--color-text); font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+    .pnav-back:hover { border-color: #9ca3af; }
+    .pnav-next { flex: 2; padding: 12px; border: none; border-radius: 10px; background: var(--color-primary); color: white; font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 7px; }
+    .pnav-next:hover { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-wine); }
+
+    /* ────────────────────────────────────────────────
+       SCREEN 6 — EMAIL VERIFICATION
+    ──────────────────────────────────────────────── */
+    .verify-container { width: 100%; max-width: 420px; text-align: center; }
+    .verify-icon { width: 80px; height: 80px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+    .verify-steps { display: flex; flex-direction: column; gap: 12px; margin: 24px 0; text-align: left; }
+    .verify-step { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; background: #f9fafb; }
+    .verify-step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); color: white; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .verify-step-text { font-size: 0.8125rem; color: var(--color-text-secondary); line-height: 1.5; }
+
+    /* ────────────────────────────────────────────────
+       SCREEN 7 — WELCOME (Join success)
+    ──────────────────────────────────────────────── */
+    .welcome-container { width: 100%; max-width: 440px; text-align: center; }
+    .welcome-icon { width: 80px; height: 80px; border-radius: 50%; background: var(--color-primary-light); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; border: 3px solid rgba(205,45,91,0.2); }
+    .welcome-card-top { background: var(--color-primary); border-radius: 16px 16px 0 0; padding: 20px; margin: -28px -28px 0; }
+    .welcome-rest-name { font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; color: white; }
+    .welcome-rest-sub { font-size: 0.8125rem; color: rgba(255,255,255,0.75); margin-top: 3px; }
+    .welcome-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: #f3f4f6; border-radius: 10px; overflow: hidden; margin: 20px 0; }
+    .welcome-stat { background: white; padding: 14px 10px; text-align: center; }
+    .welcome-stat-val { font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; color: var(--color-text); }
+    .welcome-stat-label { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 2px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .feature-cards { display: none !important; }
+      .mobile-cards { display: flex !important; }
+      .trust-row { display: none; }
+      .rail-layout { grid-template-columns: 1fr; }
+      .rail { display: none; }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 641px) {
+      .feature-cards { display: grid; }
+      .mobile-cards { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Dev Jump Nav ── -->
+<div id="dev-nav">
+  <span>Jump to:</span>
+  <button class="dev-tab active" onclick="goScreen('s-selector', this)">① Selector</button>
+  <span class="dev-sep">·</span>
+  <span style="color:#6b7280;font-size:11px;">Path A (Join):</span>
+  <button class="dev-tab" onclick="goScreen('s-join-code', this)">② Code</button>
+  <button class="dev-tab" onclick="goScreen('s-join-account', this)">③ Account</button>
+  <button class="dev-tab" onclick="goScreen('s-welcome', this)">④ Welcome</button>
+  <span class="dev-sep">·</span>
+  <span style="color:#6b7280;font-size:11px;">Path B (Create):</span>
+  <button class="dev-tab" onclick="goScreen('s-create-account', this)">⑤ Account</button>
+  <button class="dev-tab" onclick="goScreen('s-create-restaurant', this)">⑥ Restaurant</button>
+  <button class="dev-tab" onclick="goScreen('s-verify-email', this)">⑦ Verify</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 1 — PATH SELECTOR
+══════════════════════════════════════════════════ -->
+<div id="s-selector" class="screen active">
+  <div class="page-center">
+    <div class="selector-wrap">
+      <div class="logo-block">
+        <div class="logo-mark">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+        </div>
+        <div class="logo-title">WineOps AI</div>
+        <div class="logo-sub">Premium wine operations for modern restaurants</div>
+      </div>
+
+      <!-- DESKTOP: Feature Cards (C) -->
+      <div class="feature-cards">
+        <!-- Join -->
+        <div class="fc fc-slate" onclick="goScreen('s-join-code', null)">
+          <div class="fc-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="fc-title">Join Your Team</div>
+          <div class="fc-desc">Your manager sent you an invite. Enter the 8-character code to join their restaurant.</div>
+          <ul class="fc-features">
+            <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Instant dashboard access</li>
+            <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Role assigned by owner</li>
+            <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> No email verification needed</li>
+          </ul>
+          <button class="fc-btn">Enter Invite Code →</button>
+        </div>
+
+        <!-- Create -->
+        <div class="fc fc-wine" onclick="goScreen('s-create-account', null)">
+          <div class="fc-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+          </div>
+          <div class="fc-title">Open a Restaurant</div>
+          <div class="fc-desc">Register your restaurant and start managing wine inventory with AI in minutes.</div>
+          <ul class="fc-features">
+            <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> AI inventory agents</li>
+            <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> POS + supplier sync</li>
+            <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Multi-location ready</li>
+          </ul>
+          <button class="fc-btn">Get Started Free →</button>
+        </div>
+      </div>
+
+      <!-- MOBILE: Bold Primary (A) -->
+      <div class="mobile-cards">
+        <div class="mc-primary" onclick="goScreen('s-create-account', null)">
+          <span class="mc-badge"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg> Most Popular</span>
+          <div class="mc-primary-title">Create a New Restaurant</div>
+          <div class="mc-primary-sub">Set up your restaurant in under 3 minutes</div>
+          <div class="mc-arrow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;color:var(--color-text-muted);font-size:0.75rem;">
+          <div style="flex:1;height:1px;background:var(--color-border);"></div> or <div style="flex:1;height:1px;background:var(--color-border);"></div>
+        </div>
+        <div class="mc-secondary" onclick="goScreen('s-join-code', null)">
+          <div class="mc-sec-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          </div>
+          <div>
+            <div class="mc-sec-title">Join an Existing Restaurant</div>
+            <div class="mc-sec-sub">I have an invite code from my manager</div>
+          </div>
+          <div class="mc-chevron"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        </div>
+      </div>
+
+      <div class="trust-row">
+        <span class="trust-item"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> No credit card</span>
+        <span class="trust-item"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 3-minute setup</span>
+        <span class="trust-item"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Cancel anytime</span>
+      </div>
+      <div class="selector-footer">
+        <a onclick="showToast('Redirecting to sign in…')">Already have an account? Sign in</a>
+        <p>© 2026 WineOps AI</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 2 — PATH A: INVITE CODE (Step 1 of Join)
+══════════════════════════════════════════════════ -->
+<div id="s-join-code" class="screen">
+  <div class="page-center">
+    <div class="invite-container">
+      <div class="back-link" onclick="goScreen('s-selector', null)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </div>
+      <div class="step-bar">
+        <div class="step-item">
+          <div class="step-circle active">1</div>
+          <span class="step-name active">Code</span>
+        </div>
+        <div class="step-line pending"></div>
+        <div class="step-item">
+          <div class="step-circle pending">2</div>
+          <span class="step-name pending">Account</span>
+        </div>
+      </div>
+
+      <div class="glass" style="padding: 32px;">
+        <div style="margin-bottom: 22px;">
+          <h2 style="font-family:var(--font-display);font-size:1.4rem;font-weight:800;color:var(--color-text);letter-spacing:-0.025em;margin-bottom:5px;">Enter your invite code</h2>
+          <p style="font-size:0.875rem;color:var(--color-text-secondary);">8-character code — check your email or Slack</p>
+        </div>
+
+        <div class="field-group">
+          <div class="code-label">
+            Invite Code
+            <span class="code-label-hint">Auto-validates when complete</span>
+          </div>
+          <div class="code-input-wrap">
+            <input id="join-code-input" class="code-input" type="text" maxlength="8" placeholder="········" autocomplete="off" spellcheck="false" oninput="handleCodeInput(this)">
+            <div class="code-status" id="join-code-status" style="display:none;"></div>
+          </div>
+
+          <div id="join-trust-card" class="trust-card">
+            <div class="trust-card-top">
+              <div class="trust-rest-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+              </div>
+              <div>
+                <div class="trust-rest-name">Le Bernardin — New York</div>
+                <div class="trust-rest-loc">Grant Achatz Group · Midtown</div>
+              </div>
+              <div class="trust-check-icon">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+            </div>
+            <div class="trust-card-bottom">
+              <div class="trust-detail">
+                <span class="trust-detail-label">Invited by</span>
+                <span class="trust-detail-value">Eric Ripert</span>
+              </div>
+              <div class="trust-divider"></div>
+              <div class="trust-detail">
+                <span class="trust-detail-label">Your Role</span>
+                <span class="trust-detail-value trust-role">Manager</span>
+              </div>
+              <div class="trust-divider"></div>
+              <div class="trust-detail">
+                <span class="trust-detail-label">Expires</span>
+                <span class="trust-detail-value">5 days</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="join-invalid-card" class="invalid-card">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+            <span style="font-size:0.8125rem;color:var(--color-danger);font-weight:500;">Code not found, expired, or already used</span>
+          </div>
+        </div>
+
+        <button id="join-code-btn" class="btn-primary" disabled onclick="goScreen('s-join-account', null)">
+          Continue
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:center;">
+        <button onclick="simulateCode('valid')" style="padding:5px 12px;border-radius:6px;border:1px solid var(--color-border);background:white;cursor:pointer;font-size:11px;color:var(--color-text-secondary);">▶ Simulate valid code</button>
+        <button onclick="simulateCode('invalid')" style="padding:5px 12px;border-radius:6px;border:1px solid var(--color-border);background:white;cursor:pointer;font-size:11px;color:var(--color-text-secondary);">▶ Simulate invalid</button>
+        <button onclick="clearCode()" style="padding:5px 12px;border-radius:6px;border:1px solid var(--color-border);background:white;cursor:pointer;font-size:11px;color:var(--color-text-secondary);">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 3 — PATH A: ACCOUNT FORM (Step 2 of Join)
+══════════════════════════════════════════════════ -->
+<div id="s-join-account" class="screen">
+  <div class="page-center">
+    <div class="account-container">
+      <div class="back-link" onclick="goScreen('s-join-code', null)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </div>
+      <div class="step-bar">
+        <div class="step-item">
+          <div class="step-circle done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <span class="step-name done">Code</span>
+        </div>
+        <div class="step-line done"></div>
+        <div class="step-item">
+          <div class="step-circle active">2</div>
+          <span class="step-name active">Account</span>
+        </div>
+      </div>
+
+      <div class="glass" style="padding: 32px;">
+        <!-- Joining banner -->
+        <div style="background:#ecfdf5;border:1.5px solid #a7f3d0;border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:10px;margin-bottom:22px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          <span style="font-size:0.8rem;font-weight:600;color:#065F46;">Joining <strong>Le Bernardin</strong> as <strong>Manager</strong></span>
+        </div>
+
+        <div style="margin-bottom:22px;">
+          <h2 style="font-family:var(--font-display);font-size:1.4rem;font-weight:800;color:var(--color-text);letter-spacing:-0.025em;margin-bottom:5px;">Create your account</h2>
+          <p style="font-size:0.875rem;color:var(--color-text-secondary);">You'll use these to sign in every time</p>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Full Name <span class="field-req">*</span></label>
+          <input class="field-input" type="text" placeholder="Marcus Chen" oninput="this.classList.toggle('filled', this.value.length>0)">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Email Address <span class="field-req">*</span></label>
+          <input class="field-input" type="email" placeholder="marcus@lebernadin.com" oninput="this.classList.toggle('filled', this.value.length>0)">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Password <span class="field-req">*</span></label>
+          <div class="password-wrap">
+            <input id="join-pw" class="field-input" type="password" placeholder="Min. 8 characters" oninput="updateStrength(this, 'join-strength')">
+            <button class="password-toggle" type="button" onclick="togglePw('join-pw')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="strength-bar"><div class="strength-fill" id="join-strength" style="width:0;background:var(--color-danger);"></div></div>
+        </div>
+        <div class="field-group" style="margin-bottom:0;">
+          <label class="field-label">Confirm Password <span class="field-req">*</span></label>
+          <input class="field-input" type="password" placeholder="Repeat password" oninput="this.classList.toggle('filled', this.value.length>0)">
+        </div>
+
+        <button class="btn-primary" style="margin-top:22px;" onclick="goScreen('s-welcome', null)">
+          Join Le Bernardin →
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 4 — PATH B: ACCOUNT FORM (Step 1 of Create)
+══════════════════════════════════════════════════ -->
+<div id="s-create-account" class="screen">
+  <div class="page-center">
+    <div class="account-container">
+      <div class="back-link" onclick="goScreen('s-selector', null)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </div>
+      <div class="step-bar">
+        <div class="step-item">
+          <div class="step-circle active">1</div>
+          <span class="step-name active">Account</span>
+        </div>
+        <div class="step-line pending"></div>
+        <div class="step-item">
+          <div class="step-circle pending">2</div>
+          <span class="step-name pending">Restaurant</span>
+        </div>
+      </div>
+
+      <div class="glass" style="padding: 32px;">
+        <div style="margin-bottom:22px;">
+          <h2 style="font-family:var(--font-display);font-size:1.4rem;font-weight:800;color:var(--color-text);letter-spacing:-0.025em;margin-bottom:5px;">Create your account</h2>
+          <p style="font-size:0.875rem;color:var(--color-text-secondary);">You'll be the owner of your restaurant</p>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Full Name <span class="field-req">*</span></label>
+          <input class="field-input filled" type="text" value="Eric Ripert" oninput="this.classList.toggle('filled', this.value.length>0)">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Email Address <span class="field-req">*</span></label>
+          <input class="field-input filled" type="email" value="eric@lebernadin.com" oninput="this.classList.toggle('filled', this.value.length>0)">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Password <span class="field-req">*</span></label>
+          <div class="password-wrap">
+            <input id="create-pw" class="field-input filled" type="password" value="••••••••••" oninput="updateStrength(this, 'create-strength')">
+            <button class="password-toggle" type="button" onclick="togglePw('create-pw')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="strength-bar"><div class="strength-fill" id="create-strength" style="width:75%;background:#059669;"></div></div>
+        </div>
+        <div class="field-group" style="margin-bottom:0;">
+          <label class="field-label">Confirm Password <span class="field-req">*</span></label>
+          <input class="field-input filled" type="password" value="••••••••••" oninput="this.classList.toggle('filled', this.value.length>0)">
+        </div>
+
+        <button class="btn-primary" style="margin-top:22px;" onclick="goScreen('s-create-restaurant', null)">
+          Continue to Restaurant Setup
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 5 — PATH B: RESTAURANT FORM (Step 2 of Create)
+     Left-Rail Progress
+══════════════════════════════════════════════════ -->
+<div id="s-create-restaurant" class="screen">
+  <div class="page-top">
+    <div class="rail-layout">
+
+      <!-- Left Rail -->
+      <div class="rail">
+        <div class="rail-title">Step 2 of 2 — Restaurant</div>
+
+        <div class="rail-item" onclick="goPanel(1)">
+          <div class="rail-dot done"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div>
+            <div class="rail-item-name done">Your Account</div>
+            <div class="rail-item-fields">Name, email, password</div>
+          </div>
+        </div>
+        <div class="rail-item" id="rail-1" onclick="goPanel(1)">
+          <div class="rail-dot active" id="rdot-1">1</div>
+          <div>
+            <div class="rail-item-name active" id="rname-1">Identity</div>
+            <div class="rail-item-fields">Name, cuisine</div>
+          </div>
+        </div>
+        <div class="rail-item" id="rail-2" onclick="goPanel(2)">
+          <div class="rail-dot pending" id="rdot-2">2</div>
+          <div>
+            <div class="rail-item-name pending" id="rname-2">Location</div>
+            <div class="rail-item-fields">Address, city, ZIP</div>
+          </div>
+        </div>
+        <div class="rail-item" id="rail-3" onclick="goPanel(3)">
+          <div class="rail-dot pending" id="rdot-3">3</div>
+          <div>
+            <div class="rail-item-name pending" id="rname-3">Contact</div>
+            <div class="rail-item-fields">Phone (optional)</div>
+          </div>
+        </div>
+
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--color-border);">
+          <div style="font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-text-muted);margin-bottom:7px;">Progress</div>
+          <div class="rail-progress-track"><div class="rail-progress-fill" id="rail-pbar" style="width:33%;"></div></div>
+          <div class="rail-progress-label" id="rail-plabel">Section 1 of 3</div>
+        </div>
+      </div>
+
+      <!-- Main panels -->
+      <div>
+        <!-- Panel 1: Identity -->
+        <div id="panel-1" class="form-panel active glass" style="padding:30px;">
+          <div class="panel-tag">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+            Section 1 of 3
+          </div>
+          <div class="panel-title">Restaurant Identity</div>
+          <div class="panel-desc">What's the name and type of your restaurant?</div>
+
+          <div class="field-group">
+            <label class="field-label">Restaurant Name <span class="field-req">*</span></label>
+            <input class="field-input filled" type="text" value="Le Bernardin" oninput="this.classList.toggle('filled', this.value.length>0)">
+          </div>
+          <div class="field-group" style="margin-bottom:0;">
+            <label class="field-label">Cuisine Type <span class="field-label"><span class="opt">(optional)</span></span></label>
+            <select class="field-select">
+              <option>Select cuisine type</option>
+              <optgroup label="Fine Dining"><option selected>French</option><option>Japanese</option><option>Italian</option><option>Contemporary American</option></optgroup>
+              <optgroup label="Casual"><option>Wine Bar</option><option>Bistro</option><option>Farm-to-Table</option></optgroup>
+            </select>
+          </div>
+          <div class="panel-nav">
+            <button class="pnav-back" onclick="goScreen('s-create-account', null)">← Back</button>
+            <button class="pnav-next" onclick="goPanel(2)">
+              Next: Location
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Panel 2: Location -->
+        <div id="panel-2" class="form-panel glass" style="padding:30px;">
+          <div class="panel-tag">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/></svg>
+            Section 2 of 3
+          </div>
+          <div class="panel-title">Location</div>
+          <div class="panel-desc">Where is your restaurant located?</div>
+
+          <div class="field-group">
+            <label class="field-label">Country <span class="field-req">*</span></label>
+            <select class="field-select">
+              <option>🇺🇸 United States</option>
+              <option>🇬🇧 United Kingdom</option>
+              <option>🇨🇦 Canada</option>
+              <option>🇫🇷 France</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label">
+              Street Address <span class="field-req">*</span>
+              <span style="font-weight:400;color:var(--color-text-muted);font-size:0.72rem;"> — start typing to autocomplete</span>
+            </label>
+            <input class="field-input filled" type="text" value="155 W 51st St">
+          </div>
+          <div class="grid-2">
+            <div class="field-group" style="margin-bottom:0;">
+              <label class="field-label">City <span class="field-req">*</span></label>
+              <input class="field-input filled" type="text" value="New York">
+            </div>
+            <div class="field-group" style="margin-bottom:0;">
+              <label class="field-label">State</label>
+              <input class="field-input filled" type="text" value="NY">
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top:12px;">
+            <div class="field-group" style="margin-bottom:0;">
+              <label class="field-label">ZIP Code</label>
+              <input class="field-input filled" type="text" value="10019">
+            </div>
+            <div class="field-group" style="margin-bottom:0;">
+              <label class="field-label">Neighborhood <span class="opt">(opt.)</span></label>
+              <input class="field-input" type="text" placeholder="Midtown">
+            </div>
+          </div>
+          <div class="panel-nav">
+            <button class="pnav-back" onclick="goPanel(1)">← Identity</button>
+            <button class="pnav-next" onclick="goPanel(3)">
+              Next: Contact
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Panel 3: Contact -->
+        <div id="panel-3" class="form-panel glass" style="padding:30px;">
+          <div class="panel-tag">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2"/></svg>
+            Section 3 of 3
+          </div>
+          <div class="panel-title">Contact Details</div>
+          <div class="panel-desc">Optional. Helps with reservations and guest communication.</div>
+
+          <div class="field-group" style="margin-bottom:0;">
+            <label class="field-label">Phone Number <span class="opt">(optional)</span></label>
+            <input class="field-input" type="tel" placeholder="+1 (212) 554-1515">
+            <div class="field-hint">You can add this any time from Settings.</div>
+          </div>
+          <div class="panel-nav">
+            <button class="pnav-back" onclick="goPanel(2)">← Location</button>
+            <button class="pnav-next" onclick="goScreen('s-verify-email', null)">
+              Create Restaurant →
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 6 — EMAIL VERIFICATION
+══════════════════════════════════════════════════ -->
+<div id="s-verify-email" class="screen">
+  <div class="page-center">
+    <div class="verify-container">
+      <div class="glass" style="padding:36px 32px;text-align:center;">
+        <div class="verify-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+
+        <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--color-text);letter-spacing:-0.025em;margin-bottom:6px;">Check your email</h2>
+        <p style="font-size:0.875rem;color:var(--color-text-secondary);margin-bottom:4px;">We sent a verification link to</p>
+        <p style="font-size:0.875rem;font-weight:700;color:var(--color-text);">eric@lebernadin.com</p>
+
+        <div class="verify-steps">
+          <div class="verify-step">
+            <div class="verify-step-num">1</div>
+            <div class="verify-step-text">Open the email from <strong>WineOps AI</strong></div>
+          </div>
+          <div class="verify-step">
+            <div class="verify-step-num">2</div>
+            <div class="verify-step-text">Click <strong>"Verify My Email"</strong></div>
+          </div>
+          <div class="verify-step">
+            <div class="verify-step-num">3</div>
+            <div class="verify-step-text">You'll land on your dashboard — <strong>Le Bernardin</strong> is ready</div>
+          </div>
+        </div>
+
+        <button class="btn-outline" onclick="showToast('Verification email resent!')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.66"/></svg>
+          Resend verification email
+        </button>
+        <div style="margin-top:16px;">
+          <a onclick="goScreen('s-selector',null)" style="font-size:0.8125rem;color:var(--color-primary);font-weight:500;cursor:pointer;text-decoration:none;">← Back to sign in</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCREEN 7 — WELCOME (Path A success)
+══════════════════════════════════════════════════ -->
+<div id="s-welcome" class="screen">
+  <div class="page-center">
+    <div class="welcome-container">
+      <div class="glass" style="padding:28px;overflow:hidden;">
+        <!-- Top banner -->
+        <div style="background:var(--color-primary);border-radius:14px;padding:22px;margin:-28px -28px 0;text-align:center;">
+          <div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.2);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div style="font-family:var(--font-display);font-size:1.2rem;font-weight:800;color:white;margin-bottom:3px;">Welcome to Le Bernardin</div>
+          <div style="font-size:0.8125rem;color:rgba(255,255,255,0.75);">You've joined as Manager</div>
+        </div>
+
+        <div style="padding-top:24px;">
+          <div class="welcome-stats">
+            <div class="welcome-stat">
+              <div class="welcome-stat-val">847</div>
+              <div class="welcome-stat-label">Wine SKUs</div>
+            </div>
+            <div class="welcome-stat">
+              <div class="welcome-stat-val">23</div>
+              <div class="welcome-stat-label">Low stock</div>
+            </div>
+            <div class="welcome-stat">
+              <div class="welcome-stat-val">4</div>
+              <div class="welcome-stat-label">AI agents</div>
+            </div>
+          </div>
+
+          <button class="btn-primary" onclick="showToast('Opening your dashboard…')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Go to Dashboard
+          </button>
+          <div style="text-align:center;margin-top:12px;font-size:0.78rem;color:var(--color-text-muted);">You're all set. Your restaurant data is already loading.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sketch Toolbar ── -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.78);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:7px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-size:10px;font-weight:600;color:#6b7280;letter-spacing:0.07em;text-transform:uppercase;">Sketch Tools</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:#333;color:white;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(375)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 7px;cursor:pointer;font-size:11px;" title="Mobile">📱</button>
+    <button onclick="setViewport(768)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 7px;cursor:pointer;font-size:11px;" title="Tablet">📟</button>
+    <button onclick="setViewport(null)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 7px;cursor:pointer;font-size:11px;" title="Desktop">🖥</button>
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#111;color:white;padding:10px 20px;border-radius:9px;font-size:13px;font-family:system-ui;opacity:0;transition:all 0.25s;z-index:10000;pointer-events:none;white-space:nowrap;"></div>
+
+<script>
+  // ── Screen Navigation ──
+  const devTabs = document.querySelectorAll('.dev-tab');
+
+  function goScreen(id, clickedBtn) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    devTabs.forEach(t => t.classList.remove('active'));
+    if (clickedBtn) { clickedBtn.classList.add('active'); return; }
+    // sync dev nav
+    devTabs.forEach(t => {
+      if (t.getAttribute('onclick') && t.getAttribute('onclick').includes(id)) t.classList.add('active');
+    });
+  }
+
+  // ── Rail Panel Navigation ──
+  let currentPanel = 1;
+  function goPanel(n) {
+    [1,2,3].forEach(i => {
+      document.getElementById('panel-' + i).classList.remove('active');
+      const dot = document.getElementById('rdot-' + i);
+      const name = document.getElementById('rname-' + i);
+      if (i < n) {
+        dot.className = 'rail-dot done';
+        dot.innerHTML = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+        name.className = 'rail-item-name done';
+      } else if (i === n) {
+        dot.className = 'rail-dot active';
+        dot.textContent = i;
+        name.className = 'rail-item-name active';
+      } else {
+        dot.className = 'rail-dot pending';
+        dot.textContent = i;
+        name.className = 'rail-item-name pending';
+      }
+    });
+    document.getElementById('panel-' + n).classList.add('active');
+    document.getElementById('rail-pbar').style.width = (n / 3 * 100) + '%';
+    document.getElementById('rail-plabel').textContent = 'Section ' + n + ' of 3';
+    currentPanel = n;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ── Invite Code ──
+  function handleCodeInput(input) {
+    const val = input.value.replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
+    input.value = val;
+    input.classList.remove('valid','invalid');
+    document.getElementById('join-code-status').style.display = 'none';
+    document.getElementById('join-trust-card').classList.remove('visible');
+    document.getElementById('join-invalid-card').classList.remove('visible');
+    document.getElementById('join-code-btn').disabled = true;
+  }
+
+  function simulateCode(state) {
+    const input = document.getElementById('join-code-input');
+    const status = document.getElementById('join-code-status');
+    input.value = state === 'valid' ? 'AX7MK3PQ' : 'BADCODE1';
+    input.classList.remove('valid','invalid');
+    status.style.display = 'flex';
+    if (state === 'valid') {
+      status.className = 'code-status';
+      status.style.background = '#f3f4f6';
+      status.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+      setTimeout(() => {
+        status.className = 'code-status valid';
+        status.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+        input.classList.add('valid');
+        const card = document.getElementById('join-trust-card');
+        card.classList.add('visible');
+        document.getElementById('join-code-btn').disabled = false;
+      }, 650);
+    } else {
+      status.className = 'code-status invalid';
+      status.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+      input.classList.add('invalid');
+      document.getElementById('join-invalid-card').classList.add('visible');
+      document.getElementById('join-code-btn').disabled = true;
+    }
+  }
+
+  function clearCode() {
+    const input = document.getElementById('join-code-input');
+    input.value = ''; input.classList.remove('valid','invalid');
+    document.getElementById('join-code-status').style.display = 'none';
+    document.getElementById('join-trust-card').classList.remove('visible');
+    document.getElementById('join-invalid-card').classList.remove('visible');
+    document.getElementById('join-code-btn').disabled = true;
+  }
+
+  // ── Password helpers ──
+  function togglePw(id) {
+    const el = document.getElementById(id);
+    el.type = el.type === 'password' ? 'text' : 'password';
+  }
+  function updateStrength(input, barId) {
+    const v = input.value;
+    const bar = document.getElementById(barId);
+    let score = 0;
+    if (v.length >= 8) score++;
+    if (/[A-Z]/.test(v)) score++;
+    if (/[0-9]/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    const colors = ['#ef4444','#f59e0b','#10b981','#059669'];
+    bar.style.width = (score * 25) + '%';
+    bar.style.background = colors[score - 1] || '#f3f4f6';
+  }
+
+  // ── Toast ──
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(20px)'; }, 2200);
+  }
+
+  // ── Viewport ──
+  function setViewport(w) {
+    document.querySelectorAll('.screen').forEach(s => {
+      s.style.maxWidth = w ? w + 'px' : '';
+      s.style.margin = w ? '0 auto' : '';
+      s.style.overflowX = w ? 'hidden' : '';
+    });
+  }
+</script>
+</body>
+</html>

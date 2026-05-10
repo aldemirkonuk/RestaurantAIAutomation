@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchSentimentTrend, type SentimentTrend } from '../../services/api/provider-intelligence'
+import { fetchSentimentTrend } from '../../services/api/provider-intelligence'
 
 interface Props {
   providerId: string

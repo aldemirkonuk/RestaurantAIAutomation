@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sketch 002 — Invite Code Entry</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: var(--color-bg-gradient);
+      min-height: 100vh;
+      padding-top: 52px;
+    }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    /* ── Variant Nav ── */
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-border);
+      padding: 8px 16px; display: flex; gap: 8px; align-items: center;
+      font-family: system-ui, sans-serif; font-size: 13px;
+    }
+    #variant-nav span { color: #888; font-size: 12px; margin-right: 4px; }
+    .variant-tab {
+      padding: 5px 14px; border-radius: 6px; border: 1px solid transparent;
+      background: transparent; cursor: pointer; font-size: 13px; font-family: inherit;
+      color: #555; transition: all 0.15s;
+    }
+    .variant-tab:hover { background: #f3f4f6; color: #111; }
+    .variant-tab.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+    /* ── Shared Page Layout ── */
+    .page {
+      min-height: calc(100vh - 52px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 32px 16px;
+    }
+    .card-container { width: 100%; max-width: 480px; }
+    .page-header { text-align: center; margin-bottom: 32px; }
+    .logo-mark {
+      width: 52px; height: 52px; border-radius: 14px;
+      background: var(--color-primary);
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 18px; box-shadow: var(--shadow-wine);
+    }
+    .back-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--color-text-muted); font-size: 0.8125rem;
+      text-decoration: none; margin-bottom: 24px;
+      transition: color 0.15s; cursor: pointer;
+    }
+    .back-link:hover { color: var(--color-text); }
+    .step-header h2 {
+      font-family: var(--font-display); font-size: 1.5rem; font-weight: 800;
+      color: var(--color-text); letter-spacing: -0.025em; margin-bottom: 6px;
+    }
+    .step-header p { color: var(--color-text-secondary); font-size: 0.9rem; }
+
+    /* ── Shared Step Indicator ── */
+    .step-indicator {
+      display: flex; align-items: center; gap: 0; margin-bottom: 28px;
+    }
+    .step-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .step-dot.active { background: var(--color-primary); color: white; box-shadow: 0 2px 8px rgba(205,45,91,0.3); }
+    .step-dot.done { background: var(--color-success); color: white; }
+    .step-dot.pending { background: #f3f4f6; color: var(--color-text-muted); border: 1.5px solid var(--color-border); }
+    .step-label { font-size: 0.7rem; font-weight: 600; margin-top: 4px; }
+    .step-label.active { color: var(--color-primary); }
+    .step-label.pending { color: var(--color-text-muted); }
+    .step-connector { flex: 1; height: 2px; background: var(--color-border); margin: 0 4px; margin-bottom: 18px; }
+    .step-connector.done { background: var(--color-success); }
+
+    /* ── Glass Card ── */
+    .glass-card {
+      background: rgba(255,255,255,0.7); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-glass);
+      padding: 36px 36px 32px;
+    }
+
+    /* ──────────────────────────────────────
+       VARIANT A: OTP-Style 8 Individual Boxes
+       ────────────────────────────────────── */
+    .otp-group {
+      display: flex; gap: 10px; justify-content: center;
+      margin: 28px 0 12px;
+    }
+    .otp-box {
+      width: 48px; height: 56px; border-radius: 10px;
+      border: 2px solid var(--color-border);
+      background: white;
+      font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700;
+      color: var(--color-text); text-align: center;
+      transition: all 0.15s; outline: none;
+      caret-color: var(--color-primary);
+    }
+    .otp-box:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(205,45,91,0.12);
+    }
+    .otp-box.filled { border-color: var(--color-primary); background: var(--color-primary-light); }
+    .otp-separator {
+      display: flex; align-items: center;
+      color: var(--color-text-muted); font-size: 1.25rem; font-weight: 300;
+      padding-top: 4px;
+    }
+    .otp-hint { text-align: center; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 20px; }
+
+    /* ── Validation Feedback (shared) ── */
+    .validation-idle {
+      border-radius: var(--radius-lg); padding: 14px 16px;
+      background: #f9fafb; border: 1.5px dashed var(--color-border);
+      display: flex; align-items: center; gap: 12px;
+      color: var(--color-text-muted); font-size: 0.8125rem;
+    }
+    .trust-badge {
+      border-radius: var(--radius-lg); padding: 16px 18px;
+      background: white; border: 1.5px solid var(--color-success-border);
+      box-shadow: 0 2px 8px rgba(5,150,105,0.08);
+      display: none; /* shown by JS */
+    }
+    .trust-badge.visible { display: flex; flex-direction: column; gap: 10px; }
+    .trust-badge-header {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .trust-badge-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--color-success-bg);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .trust-badge-title { font-family: var(--font-display); font-weight: 700; color: var(--color-text); font-size: 0.9375rem; }
+    .trust-badge-sub { font-size: 0.8rem; color: var(--color-text-secondary); margin-top: 2px; }
+    .trust-badge-meta {
+      display: flex; gap: 16px; padding-top: 10px;
+      border-top: 1px solid #f3f4f6;
+    }
+    .trust-meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .trust-meta-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); font-weight: 600; }
+    .trust-meta-value { font-size: 0.8125rem; font-weight: 600; color: var(--color-text); }
+    .trust-badge-role {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--color-primary-light); color: var(--color-primary);
+      padding: 3px 10px; border-radius: var(--radius-full);
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+
+    .invalid-badge {
+      border-radius: var(--radius-lg); padding: 12px 16px;
+      background: var(--color-danger-bg); border: 1.5px solid var(--color-danger-border);
+      display: none; align-items: center; gap: 10px;
+    }
+    .invalid-badge.visible { display: flex; }
+    .invalid-badge-text { font-size: 0.8125rem; color: var(--color-danger); font-weight: 500; }
+
+    /* ──────────────────────────────────────
+       VARIANT B: Monospace Slot Field
+       ────────────────────────────────────── */
+    .slot-input-wrap { margin: 24px 0; }
+    .slot-input-label {
+      font-size: 0.8125rem; font-weight: 600; color: var(--color-text);
+      margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .slot-input-label .badge {
+      background: var(--color-primary-light); color: var(--color-primary);
+      font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: var(--radius-full);
+    }
+    .slot-input-field {
+      width: 100%;
+      font-family: var(--font-mono); font-size: 1.75rem; font-weight: 700;
+      letter-spacing: 0.22em; text-transform: uppercase; text-align: center;
+      padding: 18px 20px;
+      background: #0d0d0d; color: #f3f3f3;
+      border: 2px solid #1f1f1f; border-radius: var(--radius-lg);
+      outline: none; transition: border-color 0.15s;
+    }
+    .slot-input-field:focus { border-color: var(--color-primary); }
+    .slot-input-field::placeholder { color: #444; letter-spacing: 0.2em; }
+    .slot-counter {
+      display: flex; gap: 6px; justify-content: center; margin-top: 10px;
+    }
+    .slot-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      transition: all 0.15s;
+    }
+    .slot-dot.filled { background: var(--color-primary); }
+    .slot-dot.empty { background: #e5e7eb; }
+
+    /* ──────────────────────────────────────
+       VARIANT C: Clean Input + Animated Trust Badge
+       ────────────────────────────────────── */
+    .c-input-group { margin: 24px 0; }
+    .c-label {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.8rem; font-weight: 600; color: var(--color-text);
+      margin-bottom: 8px;
+    }
+    .c-label-hint { font-weight: 400; color: var(--color-text-muted); font-size: 0.75rem; }
+    .c-input-wrapper { position: relative; }
+    .c-input {
+      width: 100%; padding: 14px 48px 14px 16px;
+      font-family: var(--font-mono); font-size: 1.375rem; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase; text-align: center;
+      border: 2px solid var(--color-border); border-radius: var(--radius-lg);
+      background: white; outline: none;
+      color: var(--color-text); transition: all 0.2s;
+    }
+    .c-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.1); }
+    .c-input.valid { border-color: var(--color-success); box-shadow: 0 0 0 3px rgba(5,150,105,0.1); }
+    .c-input.invalid { border-color: var(--color-danger); box-shadow: 0 0 0 3px rgba(220,38,38,0.1); }
+    .c-input-status {
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .c-input-status.valid { background: var(--color-success); }
+    .c-input-status.invalid { background: var(--color-danger); }
+    .c-input-status.loading { background: #f3f4f6; }
+
+    .c-trust-card {
+      margin-top: 14px; border-radius: var(--radius-xl);
+      border: 1.5px solid var(--color-success-border);
+      background: white; overflow: hidden;
+      transform: translateY(-8px); opacity: 0;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: none;
+    }
+    .c-trust-card.visible { display: block; transform: translateY(0); opacity: 1; }
+    .c-trust-card-top {
+      background: var(--color-success-bg); padding: 14px 18px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .c-trust-restaurant-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: white; border: 1px solid var(--color-success-border);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .c-trust-restaurant-name {
+      font-family: var(--font-display); font-weight: 700;
+      color: #065F46; font-size: 1rem;
+    }
+    .c-trust-restaurant-location {
+      font-size: 0.8rem; color: #059669; margin-top: 2px;
+    }
+    .c-trust-check {
+      margin-left: auto; width: 24px; height: 24px; border-radius: 50%;
+      background: var(--color-success); display: flex; align-items: center; justify-content: center;
+    }
+    .c-trust-card-bottom {
+      padding: 12px 18px; display: flex; gap: 0; justify-content: space-between;
+    }
+    .c-trust-detail { display: flex; flex-direction: column; gap: 2px; }
+    .c-trust-detail-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); font-weight: 600; }
+    .c-trust-detail-value { font-size: 0.875rem; font-weight: 600; color: var(--color-text); }
+    .c-trust-divider-v { width: 1px; background: var(--color-border); }
+
+    .c-invalid-card {
+      margin-top: 12px; border-radius: var(--radius-lg); padding: 12px 16px;
+      background: var(--color-danger-bg); border: 1.5px solid var(--color-danger-border);
+      display: none; align-items: center; gap: 10px;
+    }
+    .c-invalid-card.visible { display: flex; }
+
+    /* ── Shared Button ── */
+    .submit-btn {
+      width: 100%; padding: 15px 24px; margin-top: 20px;
+      background: var(--color-primary); color: white;
+      border: none; border-radius: var(--radius-lg); cursor: pointer;
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+      letter-spacing: -0.01em; transition: all 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .submit-btn:hover:not(:disabled) { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-wine); }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Variant Nav ── -->
+<div id="variant-nav">
+  <span>Sketch 002 — Invite Code Entry:</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: OTP Boxes</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Terminal Slot Field</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Clean Input + Trust Card</button>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT A: OTP-Style 8 Boxes
+     ══════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="page">
+    <div class="card-container">
+      <a class="back-link" onclick="showToast('Going back to selector…')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </a>
+
+      <!-- Step Indicator -->
+      <div style="display: flex; align-items: flex-start; margin-bottom: 28px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div class="step-dot active">1</div>
+          <span class="step-label active">Code</span>
+        </div>
+        <div class="step-connector"></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div class="step-dot pending">2</div>
+          <span class="step-label pending">Account</span>
+        </div>
+      </div>
+
+      <div class="step-header" style="margin-bottom: 8px;">
+        <h2>Enter your invite code</h2>
+        <p>Your manager sent you an 8-character code</p>
+      </div>
+
+      <!-- OTP boxes -->
+      <div class="otp-group" id="otp-boxes-a">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <span class="otp-separator">·</span>
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+        <input class="otp-box" maxlength="1" type="text" autocomplete="off" oninput="handleOtpA(this)">
+      </div>
+      <div class="otp-hint">Type or paste your code · Letters and numbers only, no spaces</div>
+
+      <!-- Validation -->
+      <div id="a-idle" class="validation-idle">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        Enter all 8 characters to validate your invite
+      </div>
+
+      <div id="a-trust" class="trust-badge">
+        <div class="trust-badge-header">
+          <div class="trust-badge-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <div>
+            <div class="trust-badge-title">Le Bernardin — New York</div>
+            <div class="trust-badge-sub">Invite verified · Expires in 3 days</div>
+          </div>
+        </div>
+        <div class="trust-badge-meta">
+          <div class="trust-meta-item">
+            <span class="trust-meta-label">Invited By</span>
+            <span class="trust-meta-value">Marcus Chen</span>
+          </div>
+          <div class="trust-meta-item">
+            <span class="trust-meta-label">Your Role</span>
+            <span class="trust-badge-role">
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="#CD2D5B"><circle cx="12" cy="12" r="10"/></svg>
+              Manager
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div id="a-invalid" class="invalid-badge">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        <span class="invalid-badge-text">This code is invalid, expired, or already used</span>
+      </div>
+
+      <button class="submit-btn" id="a-submit-btn" onclick="showToast('Proceeding to account setup…')" disabled>
+        Continue
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+
+      <!-- Demo controls -->
+      <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: center;">
+        <button onclick="simulateOtpA('valid')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Simulate valid code</button>
+        <button onclick="simulateOtpA('invalid')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Simulate invalid</button>
+        <button onclick="clearOtpA()" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT B: Terminal Slot Field
+     ══════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="page">
+    <div class="card-container">
+      <a class="back-link" onclick="showToast('Going back…')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </a>
+
+      <div style="display: flex; align-items: flex-start; margin-bottom: 28px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div class="step-dot active">1</div>
+          <span class="step-label active">Code</span>
+        </div>
+        <div class="step-connector"></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div class="step-dot pending">2</div>
+          <span class="step-label pending">Account</span>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div class="step-header" style="margin-bottom: 6px;">
+          <h2>Enter your invite code</h2>
+          <p>8-character code from your restaurant owner</p>
+        </div>
+
+        <div class="slot-input-wrap">
+          <div class="slot-input-label">
+            Invite Code
+            <span class="badge">8 Characters</span>
+          </div>
+          <input
+            id="b-input"
+            class="slot-input-field"
+            type="text" maxlength="8"
+            placeholder="XXXXXXXX"
+            autocomplete="off" spellcheck="false"
+            oninput="handleSlotB(this)"
+          >
+          <div class="slot-counter" id="b-dots">
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+            <div class="slot-dot empty"></div>
+          </div>
+        </div>
+
+        <!-- Validation -->
+        <div id="b-idle" class="validation-idle" style="margin-bottom: 0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          Enter all 8 characters to validate
+        </div>
+
+        <div id="b-trust" class="trust-badge">
+          <div class="trust-badge-header">
+            <div class="trust-badge-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div>
+              <div class="trust-badge-title">The French Laundry — Yountville</div>
+              <div class="trust-badge-sub">Invite verified · 2 days remaining</div>
+            </div>
+          </div>
+          <div class="trust-badge-meta">
+            <div class="trust-meta-item">
+              <span class="trust-meta-label">From</span>
+              <span class="trust-meta-value">Thomas K.</span>
+            </div>
+            <div class="trust-meta-item">
+              <span class="trust-meta-label">Role</span>
+              <span class="trust-badge-role">Manager</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="b-invalid" class="invalid-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <span class="invalid-badge-text">Code not found, expired, or already used</span>
+        </div>
+
+        <button class="submit-btn" id="b-submit-btn" onclick="showToast('Proceeding to account setup…')" disabled>
+          Continue to Account Setup
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: center;">
+        <button onclick="simulateB('valid')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Simulate valid</button>
+        <button onclick="simulateB('invalid')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Simulate invalid</button>
+        <button onclick="clearB()" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT C: Clean Input + Animated Trust Card
+     ══════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="page">
+    <div class="card-container">
+      <a class="back-link" onclick="showToast('Going back…')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </a>
+
+      <div style="display: flex; align-items: flex-start; margin-bottom: 28px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div class="step-dot active">1</div>
+          <span class="step-label active">Code</span>
+        </div>
+        <div class="step-connector"></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <div class="step-dot pending">2</div>
+          <span class="step-label pending">Account</span>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div class="step-header">
+          <h2>Enter your invite code</h2>
+          <p>8-character code — check your email or Slack</p>
+        </div>
+
+        <div class="c-input-group">
+          <label class="c-label">
+            Invite Code
+            <span class="c-label-hint">Auto-validates when complete</span>
+          </label>
+          <div class="c-input-wrapper">
+            <input
+              id="c-input"
+              class="c-input"
+              type="text" maxlength="8"
+              placeholder="AX7M·K3PQ"
+              autocomplete="off" spellcheck="false"
+              oninput="handleC(this)"
+            >
+            <div class="c-input-status" id="c-status" style="display:none;"></div>
+          </div>
+
+          <!-- Trust card -->
+          <div class="c-trust-card" id="c-trust-card">
+            <div class="c-trust-card-top">
+              <div class="c-trust-restaurant-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+              </div>
+              <div>
+                <div class="c-trust-restaurant-name">Alinea — Chicago</div>
+                <div class="c-trust-restaurant-location">Grant Achatz Group · Gold Coast</div>
+              </div>
+              <div class="c-trust-check">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+            </div>
+            <div class="c-trust-card-bottom">
+              <div class="c-trust-detail">
+                <span class="c-trust-detail-label">Invited by</span>
+                <span class="c-trust-detail-value">Grant A.</span>
+              </div>
+              <div class="c-trust-divider-v"></div>
+              <div class="c-trust-detail">
+                <span class="c-trust-detail-label">Your Role</span>
+                <span class="c-trust-detail-value" style="color: var(--color-primary);">Manager</span>
+              </div>
+              <div class="c-trust-divider-v"></div>
+              <div class="c-trust-detail">
+                <span class="c-trust-detail-label">Expires</span>
+                <span class="c-trust-detail-value">4 days</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="c-invalid-card" id="c-invalid-card">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+            <span style="font-size: 0.8125rem; color: var(--color-danger); font-weight: 500;">Code not found, expired, or already used</span>
+          </div>
+        </div>
+
+        <button class="submit-btn" id="c-submit-btn" onclick="showToast('Proceeding to account setup…')" disabled>
+          Continue to Account Setup
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: center;">
+        <button onclick="simulateC('valid')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Simulate valid</button>
+        <button onclick="simulateC('invalid')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Simulate invalid</button>
+        <button onclick="clearC()" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sketch Toolbar ── -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:8px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-size:11px;font-weight:600;color:#aaa;letter-spacing:0.06em;text-transform:uppercase;">Tools</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:#333;color:white;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(375)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📱</button>
+    <button onclick="setViewport(768)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📟</button>
+    <button onclick="setViewport(null)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">🖥</button>
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#111;color:white;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all 0.25s;z-index:10000;pointer-events:none;white-space:nowrap;"></div>
+
+<script>
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+    document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).style.display = 'block';
+    btn.classList.add('active');
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(20px)'; }, 2000);
+  }
+
+  function setViewport(w) {
+    document.querySelectorAll('.variant').forEach(v => {
+      v.style.maxWidth = w ? w + 'px' : '';
+      v.style.margin = w ? '0 auto' : '';
+    });
+  }
+
+  // ── VARIANT A: OTP Boxes ──
+  function handleOtpA(box) {
+    const val = box.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    box.value = val;
+    box.classList.toggle('filled', val.length > 0);
+    // Auto advance
+    if (val.length === 1) {
+      const boxes = [...document.querySelectorAll('#otp-boxes-a .otp-box')];
+      const idx = boxes.indexOf(box);
+      if (idx < boxes.length - 1) boxes[idx + 1].focus();
+    }
+    // Check if all filled
+    const boxes = [...document.querySelectorAll('#otp-boxes-a .otp-box')];
+    const filled = boxes.filter(b => b.value.length === 1).length;
+    if (filled === 8) triggerValidationA();
+    else { hideValidationA(); }
+  }
+
+  function triggerValidationA() { /* demo handled by simulate buttons */ }
+  function hideValidationA() {
+    document.getElementById('a-idle').style.display = 'flex';
+    document.getElementById('a-trust').classList.remove('visible');
+    document.getElementById('a-invalid').classList.remove('visible');
+    document.getElementById('a-submit-btn').disabled = true;
+  }
+
+  function simulateOtpA(state) {
+    const boxes = [...document.querySelectorAll('#otp-boxes-a .otp-box')];
+    const code = state === 'valid' ? ['A','X','7','M','K','3','P','Q'] : ['B','A','D','C','O','D','E','!'];
+    boxes.forEach((b, i) => { b.value = code[i]; b.classList.add('filled'); });
+    if (state === 'valid') {
+      document.getElementById('a-idle').style.display = 'none';
+      document.getElementById('a-trust').classList.add('visible');
+      document.getElementById('a-invalid').classList.remove('visible');
+      document.getElementById('a-submit-btn').disabled = false;
+    } else {
+      document.getElementById('a-idle').style.display = 'none';
+      document.getElementById('a-trust').classList.remove('visible');
+      document.getElementById('a-invalid').classList.add('visible');
+      document.getElementById('a-submit-btn').disabled = true;
+    }
+  }
+
+  function clearOtpA() {
+    document.querySelectorAll('#otp-boxes-a .otp-box').forEach(b => { b.value = ''; b.classList.remove('filled'); });
+    hideValidationA();
+  }
+
+  // ── VARIANT B: Terminal Slot ──
+  function handleSlotB(input) {
+    const val = input.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    input.value = val;
+    const dots = document.querySelectorAll('#b-dots .slot-dot');
+    dots.forEach((d, i) => d.classList.toggle('filled', i < val.length));
+    document.getElementById('b-idle').style.display = val.length === 8 ? 'none' : 'flex';
+    if (val.length === 8) { /* wait for simulate */ }
+    else { document.getElementById('b-trust').classList.remove('visible'); document.getElementById('b-invalid').classList.remove('visible'); document.getElementById('b-submit-btn').disabled = true; }
+  }
+
+  function simulateB(state) {
+    const input = document.getElementById('b-input');
+    input.value = state === 'valid' ? 'AX7MK3PQ' : 'BADCODE1';
+    handleSlotB(input);
+    document.getElementById('b-idle').style.display = 'none';
+    if (state === 'valid') {
+      document.getElementById('b-trust').classList.add('visible');
+      document.getElementById('b-invalid').classList.remove('visible');
+      document.getElementById('b-submit-btn').disabled = false;
+    } else {
+      document.getElementById('b-trust').classList.remove('visible');
+      document.getElementById('b-invalid').classList.add('visible');
+      document.getElementById('b-submit-btn').disabled = true;
+    }
+  }
+  function clearB() { document.getElementById('b-input').value = ''; handleSlotB(document.getElementById('b-input')); document.getElementById('b-idle').style.display = 'flex'; }
+
+  // ── VARIANT C: Clean Input ──
+  function handleC(input) {
+    const val = input.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    input.value = val;
+    const status = document.getElementById('c-status');
+    input.classList.remove('valid', 'invalid');
+    status.style.display = 'none';
+    document.getElementById('c-trust-card').classList.remove('visible');
+    document.getElementById('c-invalid-card').classList.remove('visible');
+    document.getElementById('c-submit-btn').disabled = true;
+    if (val.length < 8) return;
+    // wait for simulate
+  }
+
+  function simulateC(state) {
+    const input = document.getElementById('c-input');
+    input.value = state === 'valid' ? 'AX7MK3PQ' : 'BADCODE1';
+    const status = document.getElementById('c-status');
+    input.classList.remove('valid', 'invalid');
+    status.style.display = 'none';
+    if (state === 'valid') {
+      // Show loading briefly
+      status.style.display = 'flex';
+      status.classList.add('loading');
+      status.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+      setTimeout(() => {
+        status.classList.remove('loading');
+        status.classList.add('valid');
+        status.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+        input.classList.add('valid');
+        const card = document.getElementById('c-trust-card');
+        card.style.display = 'block';
+        setTimeout(() => card.classList.add('visible'), 10);
+        document.getElementById('c-submit-btn').disabled = false;
+      }, 700);
+    } else {
+      status.style.display = 'flex';
+      status.classList.add('invalid');
+      status.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+      input.classList.add('invalid');
+      document.getElementById('c-invalid-card').classList.add('visible');
+    }
+  }
+
+  function clearC() {
+    const input = document.getElementById('c-input');
+    input.value = '';
+    input.classList.remove('valid', 'invalid');
+    document.getElementById('c-status').style.display = 'none';
+    document.getElementById('c-trust-card').classList.remove('visible');
+    document.getElementById('c-invalid-card').classList.remove('visible');
+    document.getElementById('c-submit-btn').disabled = true;
+  }
+
+  document.getElementById('variant-a').style.display = 'block';
+</script>
+</body>
+</html>

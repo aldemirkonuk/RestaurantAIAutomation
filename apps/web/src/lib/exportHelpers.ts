@@ -238,7 +238,7 @@ export async function exportToGoogleSheets(data: any[], _metrics?: InventoryMetr
   try {
     // This requires Google Sheets API integration
     // For MVP, redirect to Google Sheets with CSV data
-    const csvContent = exportToCSV(data, metrics)
+    exportToCSV(data, metrics)
     
     alert('Google Sheets integration requires OAuth setup. For now, use CSV export and import to Sheets manually.')
     

@@ -19,7 +19,6 @@ import {
   Truck,
   Wine,
   Plus,
-  Minus,
   Clock,
   ChevronRight,
   Bell,
@@ -254,7 +253,7 @@ export function OneTapActionCenter() {
   const [actions, setActions] = useState<ActionItem[]>(initialActions)
   const [expandedAction, setExpandedAction] = useState<string | null>(null)
   const [processingAction, setProcessingAction] = useState<string | null>(null)
-  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [_ordersLoading, setOrdersLoading] = useState(false)
   
   // Get restaurant ID from auth store
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
@@ -549,7 +548,7 @@ export function OneTapActionCenter() {
     }
   }
 
-  const handleStockCorrection = async (action: ActionItem, correction: number) => {
+  const handleStockCorrection = async (action: ActionItem, _correction: number) => {
     setProcessingAction(action.id)
     await new Promise(resolve => setTimeout(resolve, 800))
     setActions(prev => prev.filter(a => a.id !== action.id))

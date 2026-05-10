@@ -13,7 +13,6 @@
 import { useState } from 'react'
 import { Header } from '../components/layout/Header'
 import {
-  Beaker,
   Bell,
   CheckCircle,
   AlertCircle,
@@ -22,7 +21,6 @@ import {
   Package,
   TrendingUp,
   TrendingDown,
-  Wine,
   DollarSign,
   ShoppingCart,
   Truck,
@@ -86,7 +84,7 @@ function TestButton({
 
 export default function DevSandbox() {
   const toast = useToast()
-  const { dispatchInventoryUpdate, dispatchOrderUpdate, dispatchCalendarEvent } = useRealtimeDispatch()
+  const { dispatchInventoryUpdate, dispatchOrderUpdate: _dispatchOrderUpdate, dispatchCalendarEvent } = useRealtimeDispatch()
   
   // State for POS simulation
   const [selectedWine, setSelectedWine] = useState(wineLibrary[0])

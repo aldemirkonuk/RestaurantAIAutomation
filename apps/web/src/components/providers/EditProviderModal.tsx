@@ -12,8 +12,6 @@ import {
   FileText,
   Star,
   AlertCircle,
-  CheckCircle,
-  Plus,
   Trash2,
   Truck,
   Download,
@@ -24,7 +22,7 @@ import {
   Save,
   Edit,
 } from 'lucide-react'
-import type { Provider, ProviderContact } from '../../services/api/providers'
+import type { Provider } from '../../services/api/providers'
 
 export interface EditProviderData {
   id: string

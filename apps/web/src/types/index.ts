@@ -12,6 +12,8 @@
  * ```
  */
 
+import type { Order, InventoryItem, Wine } from '../services/api/types'
+
 // ==================== Re-export API Types ====================
 // These are the primary types for API communication
 export type {
@@ -110,29 +112,7 @@ export type {
   InvoiceOCRStatus,
   InvoiceScan,
   ExtractedInvoiceData,
-  MenuScan,
-  MenuScanStatus,
-  ExtractedMenuData,
-  ExtractedMenuItem,
-  WineResearchQueue,
-  ResearchStatus,
-  ResearchSource,
-  WineResearchResult,
-  CommunicationTemplate,
-  CommunicationChannel,
-  ScheduledReport,
-  ReportFrequency,
-  ReportFormat,
-  ReportDeliveryMethod,
-  NotificationPreference,
-  NotificationChannel,
-  UserRole,
-  User,
-  Restaurant,
-  ProviderContact,
-  OneTapAction,
-  OneTapActionStatus,
-  OneTapActionPriority,
+  ExtractedWineItem,
 } from './database'
 
 // ==================== Domain Types ====================

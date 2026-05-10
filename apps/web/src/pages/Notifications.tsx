@@ -84,7 +84,7 @@ export function Notifications() {
   const [detailRequestStatus, setDetailRequestStatus] = useState<Record<string, 'idle' | 'sending' | 'sent'>>({})
   
   // Fetch notifications from API
-  const { data: notifications = [], isLoading, error, refetch } = useNotifications(user?.userId || '', {
+  const { data: notifications = [], isLoading: _isLoading, error: _error, refetch } = useNotifications(user?.userId || '', {
     status: filter === 'all' ? undefined : filter,
   })
   const markAsRead = useMarkNotificationAsRead()

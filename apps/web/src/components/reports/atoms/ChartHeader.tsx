@@ -4,7 +4,6 @@
  */
 
 import { Pencil } from 'lucide-react'
-import { Badge } from '../../ui'
 
 interface ChartHeaderProps {
   title: string

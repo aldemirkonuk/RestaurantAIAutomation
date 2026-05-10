@@ -21,7 +21,6 @@ import {
   type CalendarEvent,
   type CreateEventInput,
   type UpdateEventInput,
-  type EventType,
 } from '../../services/api/calendar'
 import { useNotificationStore } from '../../stores'
 import { offlineStorage } from '../../lib/offline-storage'
@@ -182,7 +181,7 @@ export function useCreateCalendarEvent() {
         } as CalendarEvent & { _pending: boolean }
       }
     },
-    onMutate: async (newEvent) => {
+    onMutate: async (_newEvent) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: queryKeys.calendar.all })
       
@@ -191,7 +190,7 @@ export function useCreateCalendarEvent() {
       
       return { previousEvents }
     },
-    onSuccess: (newEvent, variables, context) => {
+    onSuccess: (newEvent, variables, _context) => {
       // Invalidate calendar queries to refetch
       queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
       
@@ -207,7 +206,7 @@ export function useCreateCalendarEvent() {
         })
       }
     },
-    onError: (error: any, newEvent, context) => {
+    onError: (error: any, _newEvent, context) => {
       // Rollback on error
       if (context?.previousEvents) {
         queryClient.setQueryData(queryKeys.calendar.all, context.previousEvents)

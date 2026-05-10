@@ -52,8 +52,8 @@ tailwind.config = {
   <span class="text-gray-300">Branch Selector</span>
   <span class="text-gray-500 ml-auto">Pick the variant that feels right</span>
   <div class="flex gap-1 ml-4">
-    <button onclick="setTab('A')" id="tab-A" class="tab-btn active px-3 py-1 rounded text-xs font-medium">A — Compact pill</button>
-    <button onclick="setTab('B')" id="tab-B" class="tab-btn px-3 py-1 rounded text-xs font-medium">B — Rich card ★</button>
+    <button onclick="setTab('A')" id="tab-A" class="tab-btn px-3 py-1 rounded text-xs font-medium">A — Compact pill</button>
+    <button onclick="setTab('B')" id="tab-B" class="tab-btn active px-3 py-1 rounded text-xs font-medium">B — Rich card ★</button>
     <button onclick="setTab('C')" id="tab-C" class="tab-btn px-3 py-1 rounded text-xs font-medium">C — Command-style</button>
   </div>
 </div>
@@ -61,7 +61,7 @@ tailwind.config = {
 <div class="pt-10">
 
 <!-- ═══════════════════════════════ VARIANT A — Compact Pill ═══════════════════════════════ -->
-<div id="variant-A" class="variant active">
+<div id="variant-A" class="variant">
   <div class="p-6">
     <p class="text-xs text-gray-400 mb-3 font-medium uppercase tracking-widest">Variant A — Compact pill trigger, flat grouped list</p>
     <!-- Simulated header -->
@@ -138,7 +138,7 @@ tailwind.config = {
 </div>
 
 <!-- ═══════════════════════════════ VARIANT B — Rich Card ★ ═══════════════════════════════ -->
-<div id="variant-B" class="variant">
+<div id="variant-B" class="variant active">
   <div class="p-6">
     <p class="text-xs text-gray-400 mb-3 font-medium uppercase tracking-widest">Variant B — Rich card trigger with chain badge, avatar-style location rows ★ Recommended</p>
     <div class="bg-white border-b border-gray-200 rounded-t-2xl shadow-sm">

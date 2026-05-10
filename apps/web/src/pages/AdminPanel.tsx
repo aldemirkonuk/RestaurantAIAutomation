@@ -8,14 +8,11 @@ import {
   Save, 
   RefreshCw,
   ArrowLeft,
-  Check,
-  X,
   Activity,
   Server,
   Cpu,
   Clock,
   ChevronRight,
-  ExternalLink,
   Wine,
   AlertCircle
 } from 'lucide-react'

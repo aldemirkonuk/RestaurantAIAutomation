@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, Mail, ChevronDown, ChevronRight, Calendar, Search, Download, Filter, Eye, User, Wine, Building2, Clock, Check, X, MessageSquare } from 'lucide-react'
+import { Phone, Mail, ChevronDown, ChevronRight, Calendar, Search, Download, Wine, Building2, Clock, Check, X, MessageSquare } from 'lucide-react'
 import { Card, Button } from '../ui'
 
 type CommunicationType = 'phone' | 'email'

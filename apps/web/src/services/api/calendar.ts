@@ -203,7 +203,7 @@ export interface UpdateEventInput extends Partial<CreateEventInput> {
  * Fetch calendar events for a restaurant within a date range
  */
 export async function fetchCalendarEvents(
-  restaurantId: string,
+  _restaurantId: string,
   filters: CalendarFilters
 ): Promise<CalendarEvent[]> {
   const params = new URLSearchParams()
@@ -269,7 +269,7 @@ export async function deleteCalendarEvent(id: string): Promise<void> {
  * Fetch upcoming events for a restaurant
  */
 export async function fetchUpcomingEvents(
-  restaurantId: string,
+  _restaurantId: string,
   days: number = 7
 ): Promise<CalendarEvent[]> {
   const response = await apiClient.get<CalendarEventsListResponse>(

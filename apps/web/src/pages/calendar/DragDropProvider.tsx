@@ -59,8 +59,6 @@ export function DragDropProvider({
 
   const dragStartRef = useRef<Date | null>(null)
   const isPointerDownRef = useRef(false)
-  const minDragDistanceRef = useRef(5) // Minimum pixels to start drag
-
   // Calculate preview dates based on drag state
   const dragPreview = dragState.isDragging && dragState.startDate && dragState.endDate
     ? { startDate: dragState.startDate, endDate: dragState.endDate }

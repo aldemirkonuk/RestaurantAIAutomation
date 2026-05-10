@@ -1,5 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react'
-import { AlertTriangle, RefreshCw, Home, Copy, CheckCircle, Wifi, WifiOff, Lock, Server } from 'lucide-react'
+import { Component, ErrorInfo, ReactNode } from 'react'
+import { AlertTriangle, RefreshCw, Home, Copy, CheckCircle, WifiOff, Lock, Server } from 'lucide-react'
 import { errorTracking } from '../lib/error-tracking'
 
 type ErrorCategory = 'network' | 'auth' | 'server' | 'unknown'

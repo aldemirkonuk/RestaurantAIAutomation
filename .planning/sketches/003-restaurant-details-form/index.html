@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sketch 003 — Restaurant Details Form</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: var(--color-bg-gradient); min-height: 100vh; padding-top: 52px; }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-border);
+      padding: 8px 16px; display: flex; gap: 8px; align-items: center;
+      font-family: system-ui, sans-serif; font-size: 13px;
+    }
+    #variant-nav span { color: #888; font-size: 12px; margin-right: 4px; }
+    .variant-tab {
+      padding: 5px 14px; border-radius: 6px; border: 1px solid transparent;
+      background: transparent; cursor: pointer; font-size: 13px; font-family: inherit;
+      color: #555; transition: all 0.15s;
+    }
+    .variant-tab:hover { background: #f3f4f6; color: #111; }
+    .variant-tab.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+    /* ── Shared ── */
+    .page { min-height: calc(100vh - 52px); display: flex; align-items: flex-start; justify-content: center; padding: 32px 16px; }
+    .back-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--color-text-muted); font-size: 0.8125rem; text-decoration: none; cursor: pointer;
+      margin-bottom: 20px; transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--color-text); }
+
+    /* Step indicator (premium) */
+    .step-bar { display: flex; align-items: flex-start; gap: 0; margin-bottom: 28px; }
+    .step-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .step-circle {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; transition: all 0.2s;
+    }
+    .step-circle.done { background: var(--color-success); color: white; }
+    .step-circle.active { background: var(--color-primary); color: white; box-shadow: 0 2px 8px rgba(205,45,91,0.3); }
+    .step-circle.pending { background: #f3f4f6; color: #9ca3af; border: 2px solid #e5e7eb; }
+    .step-name { font-size: 0.7rem; font-weight: 600; }
+    .step-name.done { color: var(--color-success); }
+    .step-name.active { color: var(--color-primary); }
+    .step-name.pending { color: var(--color-text-muted); }
+    .step-line { height: 2px; flex: 1; margin: 14px 4px 0; }
+    .step-line.done { background: var(--color-success); }
+    .step-line.pending { background: #e5e7eb; }
+
+    /* Form field shared */
+    .field-group { margin-bottom: 18px; }
+    .field-label { font-size: 0.8rem; font-weight: 600; color: var(--color-text); margin-bottom: 6px; display: block; }
+    .field-label .optional { font-weight: 400; color: var(--color-text-muted); margin-left: 4px; font-size: 0.75rem; }
+    .field-input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--color-border); border-radius: var(--radius-lg);
+      background: white; font-size: 0.9375rem; color: var(--color-text);
+      font-family: var(--font-body); outline: none; transition: all 0.15s;
+    }
+    .field-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.08); }
+    .field-input.filled { border-color: #d1d5db; background: #fafafa; }
+    .field-input::placeholder { color: #d1d5db; }
+    .field-select {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--color-border); border-radius: var(--radius-lg);
+      background: white; font-size: 0.9375rem; color: var(--color-text);
+      font-family: var(--font-body); outline: none; transition: all 0.15s; cursor: pointer;
+      appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+    }
+    .field-select:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.08); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .submit-btn {
+      width: 100%; padding: 15px 24px; margin-top: 8px;
+      background: var(--color-primary); color: white;
+      border: none; border-radius: var(--radius-lg); cursor: pointer;
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+      letter-spacing: -0.01em; transition: all 0.15s;
+    }
+    .submit-btn:hover { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-wine); }
+
+    /* ─────────────────────────────────────
+       VARIANT A: Section-Grouped Form
+       ───────────────────────────────────── */
+    .va-container { width: 100%; max-width: 560px; }
+    .glass-card { background: rgba(255,255,255,0.7); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.5); border-radius: var(--radius-2xl); box-shadow: var(--shadow-glass); padding: 36px; }
+    .form-section { margin-bottom: 28px; padding-bottom: 28px; border-bottom: 1px solid #f3f4f6; }
+    .form-section:last-of-type { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .section-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--color-primary-light);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .section-title { font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; color: var(--color-text); }
+    .section-subtitle { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 1px; }
+
+    /* ─────────────────────────────────────
+       VARIANT B: Progressive Reveal
+       ───────────────────────────────────── */
+    .vb-container { width: 100%; max-width: 520px; }
+    .progress-ring { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+    .ring-track { flex: 1; height: 4px; background: #f3f4f6; border-radius: 2px; overflow: hidden; }
+    .ring-fill { height: 100%; background: var(--color-primary); border-radius: 2px; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ring-label { font-size: 0.8rem; font-weight: 600; color: var(--color-primary); white-space: nowrap; }
+
+    .reveal-field { overflow: hidden; transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+    .reveal-field.hidden { max-height: 0; opacity: 0; margin-bottom: 0; }
+    .reveal-field.visible { max-height: 200px; opacity: 1; }
+
+    .autocomplete-preview {
+      background: white; border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg); padding: 12px 14px; margin-top: 6px;
+      display: none;
+    }
+    .autocomplete-preview.visible { display: block; }
+    .autocomplete-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;
+      transition: background 0.1s;
+    }
+    .autocomplete-item:hover { background: var(--color-primary-light); }
+    .autocomplete-item .ac-icon { color: var(--color-text-muted); }
+    .autocomplete-item .ac-main { font-size: 0.875rem; font-weight: 600; color: var(--color-text); }
+    .autocomplete-item .ac-sub { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 1px; }
+
+    .field-hint { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 5px; }
+
+    /* ─────────────────────────────────────
+       VARIANT C: Left-Rail Progress Nav
+       ───────────────────────────────────── */
+    .vc-layout { display: grid; grid-template-columns: 200px 1fr; gap: 24px; width: 100%; max-width: 780px; }
+    .vc-rail {
+      background: rgba(255,255,255,0.5); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.4); border-radius: var(--radius-xl);
+      padding: 24px 18px; height: fit-content; position: sticky; top: 72px;
+    }
+    .vc-rail-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 16px; }
+    .vc-rail-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; cursor: pointer; border-radius: var(--radius-md);
+      transition: all 0.15s; position: relative;
+    }
+    .vc-rail-item + .vc-rail-item::before {
+      content: ''; position: absolute; left: 11px; top: -8px;
+      width: 2px; height: 8px; background: #e5e7eb;
+    }
+    .vc-rail-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 700; flex-shrink: 0; transition: all 0.2s;
+    }
+    .vc-rail-dot.active { background: var(--color-primary); color: white; box-shadow: 0 2px 6px rgba(205,45,91,0.3); }
+    .vc-rail-dot.done { background: var(--color-success); color: white; }
+    .vc-rail-dot.pending { background: #f3f4f6; color: #9ca3af; border: 1.5px solid #e5e7eb; }
+    .vc-rail-text { flex: 1; }
+    .vc-rail-section-name { font-size: 0.8125rem; font-weight: 600; color: var(--color-text); }
+    .vc-rail-section-name.active { color: var(--color-primary); }
+    .vc-rail-section-name.done { color: var(--color-text-secondary); }
+    .vc-rail-section-name.pending { color: var(--color-text-muted); }
+    .vc-rail-fields { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 2px; }
+
+    .vc-main .glass-card { padding: 32px; }
+    .vc-section-header { margin-bottom: 24px; }
+    .vc-section-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--color-primary-light); color: var(--color-primary);
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 4px 10px; border-radius: var(--radius-full); margin-bottom: 10px;
+    }
+    .vc-section-title { font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; color: var(--color-text); letter-spacing: -0.02em; margin-bottom: 4px; }
+    .vc-section-desc { font-size: 0.875rem; color: var(--color-text-secondary); }
+
+    .vc-nav-btns { display: flex; gap: 10px; margin-top: 24px; }
+    .btn-secondary {
+      flex: 1; padding: 13px 20px;
+      background: white; color: var(--color-text);
+      border: 1.5px solid var(--color-border); border-radius: var(--radius-lg); cursor: pointer;
+      font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700;
+      transition: all 0.15s;
+    }
+    .btn-secondary:hover { border-color: #9ca3af; }
+    .btn-primary {
+      flex: 2; padding: 13px 20px;
+      background: var(--color-primary); color: white;
+      border: none; border-radius: var(--radius-lg); cursor: pointer;
+      font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-wine); }
+  </style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span>Sketch 003 — Restaurant Details Form:</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Section Groups</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Progressive Reveal</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Left-Rail Progress</button>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT A: Section-Grouped Form
+     Clear visual sections with icons
+     ══════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="page">
+    <div class="va-container">
+      <a class="back-link" onclick="showToast('Going back…')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </a>
+
+      <!-- Step Bar -->
+      <div class="step-bar">
+        <div class="step-item">
+          <div class="step-circle done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <span class="step-name done">Account</span>
+        </div>
+        <div class="step-line done"></div>
+        <div class="step-item">
+          <div class="step-circle active">2</div>
+          <span class="step-name active">Restaurant</span>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div style="margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #f3f4f6;">
+          <h2 style="font-family: var(--font-display); font-size: 1.375rem; font-weight: 800; color: var(--color-text); letter-spacing: -0.02em; margin-bottom: 4px;">Tell us about your restaurant</h2>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary);">This information helps us configure your AI wine operations</p>
+        </div>
+
+        <!-- Section 1: Basic Info -->
+        <div class="form-section">
+          <div class="section-header">
+            <div class="section-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+            </div>
+            <div>
+              <div class="section-title">Restaurant Identity</div>
+              <div class="section-subtitle">Name and category</div>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Restaurant Name <span style="color: var(--color-primary);">*</span></label>
+            <input class="field-input" type="text" placeholder="The Oak Room" value="Le Bernardin" oninput="this.classList.toggle('filled', this.value.length>0)">
+          </div>
+
+          <div class="field-group" style="margin-bottom: 0;">
+            <label class="field-label">Cuisine Type <span class="optional">(optional)</span></label>
+            <select class="field-select">
+              <option value="">Select cuisine type</option>
+              <optgroup label="Fine Dining">
+                <option selected>French</option>
+                <option>Contemporary American</option>
+                <option>Italian</option>
+                <option>Japanese</option>
+              </optgroup>
+              <optgroup label="Casual">
+                <option>Bistro</option>
+                <option>Wine Bar</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        <!-- Section 2: Location -->
+        <div class="form-section">
+          <div class="section-header">
+            <div class="section-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div>
+              <div class="section-title">Location</div>
+              <div class="section-subtitle">Address and city</div>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Country <span style="color: var(--color-primary);">*</span></label>
+            <select class="field-select">
+              <option>United States</option>
+              <option>United Kingdom</option>
+              <option>Canada</option>
+              <option>France</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">
+              Street Address <span style="color: var(--color-primary);">*</span>
+              <span class="optional">— start typing to search</span>
+            </label>
+            <input class="field-input filled" type="text" value="155 W 51st St" placeholder="Start typing your address…">
+          </div>
+
+          <div class="grid-2">
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">City <span style="color: var(--color-primary);">*</span></label>
+              <input class="field-input filled" type="text" value="New York">
+            </div>
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">State</label>
+              <input class="field-input filled" type="text" value="NY">
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top: 14px;">
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">ZIP Code</label>
+              <input class="field-input filled" type="text" value="10019">
+            </div>
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">Neighborhood <span class="optional">(optional)</span></label>
+              <input class="field-input" type="text" placeholder="Midtown">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Contact -->
+        <div class="form-section" style="border-bottom: none; padding-bottom: 0; margin-bottom: 24px;">
+          <div class="section-header">
+            <div class="section-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#CD2D5B" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </div>
+            <div>
+              <div class="section-title">Contact</div>
+              <div class="section-subtitle">Optional — helps with reservations</div>
+            </div>
+          </div>
+          <div class="field-group" style="margin-bottom: 0;">
+            <label class="field-label">Phone Number <span class="optional">(optional)</span></label>
+            <input class="field-input" type="tel" placeholder="+1 (555) 000-0000">
+          </div>
+        </div>
+
+        <button class="submit-btn" onclick="showToast('Creating your restaurant…')">
+          Create Restaurant →
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT B: Progressive Reveal
+     Fields appear as previous are filled
+     ══════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="page">
+    <div class="vb-container">
+      <a class="back-link" onclick="showToast('Going back…')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back
+      </a>
+
+      <div class="step-bar">
+        <div class="step-item">
+          <div class="step-circle done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <span class="step-name done">Account</span>
+        </div>
+        <div class="step-line done"></div>
+        <div class="step-item">
+          <div class="step-circle active">2</div>
+          <span class="step-name active">Restaurant</span>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <!-- Progress bar -->
+        <div class="progress-ring" style="margin-bottom: 24px;">
+          <div class="ring-track"><div class="ring-fill" id="b-progress" style="width: 20%;"></div></div>
+          <span class="ring-label" id="b-progress-label">1 of 5</span>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <h2 style="font-family: var(--font-display); font-size: 1.375rem; font-weight: 800; color: var(--color-text); letter-spacing: -0.02em; margin-bottom: 4px;">Your Restaurant</h2>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary);">Fields unlock as you complete each one</p>
+        </div>
+
+        <!-- Field 1: Restaurant Name (always visible) -->
+        <div class="field-group reveal-field visible" id="b-f1">
+          <label class="field-label">Restaurant Name <span style="color: var(--color-primary);">*</span></label>
+          <input id="b-name" class="field-input" type="text" placeholder="The Oak Room" oninput="updateProgressB()">
+          <div class="field-hint">What do guests call your restaurant?</div>
+        </div>
+
+        <!-- Field 2: Country (unlocks when name has ≥2 chars) -->
+        <div class="field-group reveal-field hidden" id="b-f2">
+          <label class="field-label">Country <span style="color: var(--color-primary);">*</span></label>
+          <select id="b-country" class="field-select" onchange="updateProgressB()">
+            <option value="">Select your country</option>
+            <option value="us">🇺🇸 United States</option>
+            <option value="uk">🇬🇧 United Kingdom</option>
+            <option value="ca">🇨🇦 Canada</option>
+            <option value="fr">🇫🇷 France</option>
+            <option value="de">🇩🇪 Germany</option>
+          </select>
+        </div>
+
+        <!-- Field 3: Address (unlocks when country selected) -->
+        <div class="field-group reveal-field hidden" id="b-f3">
+          <label class="field-label">Street Address <span style="color: var(--color-primary);">*</span>
+            <span class="optional">— start typing to autocomplete</span>
+          </label>
+          <input id="b-address" class="field-input" type="text" placeholder="Start typing…" oninput="showAutocompleteB(this)">
+          <div class="autocomplete-preview" id="b-ac">
+            <div class="autocomplete-item" onclick="fillAddressB('155 W 51st St, New York, NY 10019')">
+              <svg class="ac-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <div>
+                <div class="ac-main">155 W 51st St</div>
+                <div class="ac-sub">New York, NY 10019</div>
+              </div>
+            </div>
+            <div class="autocomplete-item" onclick="fillAddressB('155 W 51st St, Suite 200, New York, NY')">
+              <svg class="ac-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <div>
+                <div class="ac-main">155 W 51st St, Suite 200</div>
+                <div class="ac-sub">New York, NY</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fields 4+5: City/State (unlocks when address filled) -->
+        <div class="reveal-field hidden" id="b-f4" style="margin-bottom: 18px;">
+          <div class="grid-2">
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">City <span style="color: var(--color-primary);">*</span></label>
+              <input id="b-city" class="field-input filled" type="text" value="" placeholder="Chicago" oninput="updateProgressB()">
+            </div>
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">State / Province</label>
+              <input class="field-input filled" type="text" value="" placeholder="IL">
+            </div>
+          </div>
+        </div>
+
+        <!-- Field 6: Phone optional (visible after city) -->
+        <div class="reveal-field hidden" id="b-f5" style="margin-bottom: 0;">
+          <div class="grid-2">
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">ZIP Code <span class="optional">(optional)</span></label>
+              <input class="field-input" type="text" placeholder="60601">
+            </div>
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">Phone <span class="optional">(optional)</span></label>
+              <input class="field-input" type="tel" placeholder="+1 (555) 000-0000">
+            </div>
+          </div>
+        </div>
+
+        <button id="b-submit" class="submit-btn" style="margin-top: 24px; opacity: 0.5; cursor: not-allowed;" disabled onclick="showToast('Creating your restaurant…')">
+          Create Restaurant →
+        </button>
+
+        <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: center;">
+          <button onclick="fillDemoB()" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">▶ Fill demo data</button>
+          <button onclick="resetB()" style="padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: white; cursor: pointer; font-size: 12px; color: var(--color-text-secondary);">✕ Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT C: Left-Rail Progress Navigator
+     Stripe Atlas / Linear-inspired
+     ══════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="page" style="align-items: flex-start; padding-top: 40px;">
+    <div class="vc-layout">
+
+      <!-- Left Rail -->
+      <div class="vc-rail">
+        <div class="vc-rail-title">Step 2 of 2</div>
+        <div class="vc-rail-item" onclick="switchSectionC(0, this)">
+          <div class="vc-rail-dot done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="vc-rail-text">
+            <div class="vc-rail-section-name done">Account Info</div>
+            <div class="vc-rail-fields">Name, email, password</div>
+          </div>
+        </div>
+        <div class="vc-rail-item" onclick="switchSectionC(1, this)">
+          <div class="vc-rail-dot active">1</div>
+          <div class="vc-rail-text">
+            <div class="vc-rail-section-name active">Identity</div>
+            <div class="vc-rail-fields">Name, cuisine</div>
+          </div>
+        </div>
+        <div class="vc-rail-item" onclick="switchSectionC(2, this)">
+          <div class="vc-rail-dot pending">2</div>
+          <div class="vc-rail-text">
+            <div class="vc-rail-section-name pending">Location</div>
+            <div class="vc-rail-fields">Address, city, ZIP</div>
+          </div>
+        </div>
+        <div class="vc-rail-item" onclick="switchSectionC(3, this)">
+          <div class="vc-rail-dot pending">3</div>
+          <div class="vc-rail-text">
+            <div class="vc-rail-section-name pending">Contact</div>
+            <div class="vc-rail-fields">Phone (optional)</div>
+          </div>
+        </div>
+
+        <!-- Progress summary -->
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+          <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); margin-bottom: 8px;">Progress</div>
+          <div style="height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; margin-bottom: 6px;">
+            <div id="c-rail-progress" style="height: 100%; width: 33%; background: var(--color-primary); border-radius: 3px; transition: width 0.4s;"></div>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--color-text-secondary);" id="c-rail-label">Section 1 of 3</div>
+        </div>
+      </div>
+
+      <!-- Main Form -->
+      <div class="vc-main">
+        <!-- Section 1: Identity -->
+        <div id="c-section-1" class="glass-card" style="display: block;">
+          <div class="vc-section-header">
+            <div class="vc-section-tag">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 22h8M12 11v11M20 2H4l2 9c0 2.2 2.7 4 6 4s6-1.8 6-4l2-9z"/></svg>
+              Section 1 of 3
+            </div>
+            <div class="vc-section-title">Restaurant Identity</div>
+            <div class="vc-section-desc">What's the name and type of your restaurant?</div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Restaurant Name <span style="color: var(--color-primary);">*</span></label>
+            <input class="field-input" type="text" placeholder="The Oak Room" value="Le Bernardin" oninput="this.classList.toggle('filled', this.value.length>0)">
+          </div>
+          <div class="field-group" style="margin-bottom: 0;">
+            <label class="field-label">Cuisine Type <span class="optional">(optional)</span></label>
+            <select class="field-select">
+              <option value="">Select cuisine type</option>
+              <optgroup label="Fine Dining"><option selected>French</option><option>Japanese</option><option>Italian</option></optgroup>
+              <optgroup label="Casual"><option>Wine Bar</option><option>Bistro</option></optgroup>
+            </select>
+          </div>
+          <div class="vc-nav-btns">
+            <button class="btn-primary" onclick="switchSectionC(2); showToast('Section saved')">
+              Next: Location
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 2: Location -->
+        <div id="c-section-2" class="glass-card" style="display: none;">
+          <div class="vc-section-header">
+            <div class="vc-section-tag">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/></svg>
+              Section 2 of 3
+            </div>
+            <div class="vc-section-title">Location</div>
+            <div class="vc-section-desc">Where is your restaurant located?</div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Country <span style="color: var(--color-primary);">*</span></label>
+            <select class="field-select">
+              <option>🇺🇸 United States</option>
+              <option>🇬🇧 United Kingdom</option>
+              <option>🇨🇦 Canada</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Street Address <span style="color: var(--color-primary);">*</span></label>
+            <input class="field-input filled" type="text" value="155 W 51st St" placeholder="Start typing…">
+          </div>
+          <div class="grid-2">
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">City <span style="color: var(--color-primary);">*</span></label>
+              <input class="field-input filled" type="text" value="New York">
+            </div>
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">State</label>
+              <input class="field-input filled" type="text" value="NY">
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top: 14px;">
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">ZIP Code</label>
+              <input class="field-input filled" type="text" value="10019">
+            </div>
+            <div class="field-group" style="margin-bottom: 0;">
+              <label class="field-label">Neighborhood <span class="optional">(opt.)</span></label>
+              <input class="field-input" type="text" placeholder="Midtown">
+            </div>
+          </div>
+          <div class="vc-nav-btns">
+            <button class="btn-secondary" onclick="switchSectionC(1); showToast('Back to Identity')">← Back</button>
+            <button class="btn-primary" onclick="switchSectionC(3); showToast('Location saved')">
+              Next: Contact
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 3: Contact -->
+        <div id="c-section-3" class="glass-card" style="display: none;">
+          <div class="vc-section-header">
+            <div class="vc-section-tag">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07"/></svg>
+              Section 3 of 3
+            </div>
+            <div class="vc-section-title">Contact Details</div>
+            <div class="vc-section-desc">Optional — helps with reservations and guest communication.</div>
+          </div>
+          <div class="field-group" style="margin-bottom: 0;">
+            <label class="field-label">Phone Number <span class="optional">(optional)</span></label>
+            <input class="field-input" type="tel" placeholder="+1 (212) 554-1515">
+            <div class="field-hint">Used for reservation confirmations. You can add this later.</div>
+          </div>
+          <div class="vc-nav-btns">
+            <button class="btn-secondary" onclick="switchSectionC(2); showToast('Back to Location')">← Back</button>
+            <button class="btn-primary" onclick="showToast('Creating Le Bernardin…')">
+              Create Restaurant →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sketch Toolbar ── -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:8px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-size:11px;font-weight:600;color:#aaa;letter-spacing:0.06em;text-transform:uppercase;">Tools</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:#333;color:white;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(375)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📱</button>
+    <button onclick="setViewport(768)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📟</button>
+    <button onclick="setViewport(null)" style="background:#444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">🖥</button>
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#111;color:white;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all 0.25s;z-index:10000;pointer-events:none;white-space:nowrap;"></div>
+
+<script>
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+    document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).style.display = 'block';
+    btn.classList.add('active');
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(20px)'; }, 2000);
+  }
+
+  function setViewport(w) {
+    document.querySelectorAll('.variant').forEach(v => {
+      v.style.maxWidth = w ? w + 'px' : '';
+      v.style.margin = w ? '0 auto' : '';
+    });
+  }
+
+  // ── VARIANT B: Progressive Reveal ──
+  let bStep = 0;
+  function updateProgressB() {
+    const name = document.getElementById('b-name').value;
+    const country = document.getElementById('b-country').value;
+    const address = document.getElementById('b-address').value;
+    const city = document.getElementById('b-city').value;
+
+    const f2 = document.getElementById('b-f2');
+    const f3 = document.getElementById('b-f3');
+    const f4 = document.getElementById('b-f4');
+    const f5 = document.getElementById('b-f5');
+    const submit = document.getElementById('b-submit');
+
+    let progress = 1, label = '1 of 5';
+    if (name.length >= 2) { f2.classList.replace('hidden','visible'); progress = 2; label = '2 of 5'; }
+    if (name.length >= 2 && country) { f3.classList.replace('hidden','visible'); progress = 3; label = '3 of 5'; }
+    if (address.length >= 4) { f4.classList.replace('hidden','visible'); progress = 4; label = '4 of 5'; }
+    if (city.length >= 2) { f5.classList.replace('hidden','visible'); progress = 5; label = '5 of 5'; submit.disabled = false; submit.style.opacity = '1'; submit.style.cursor = 'pointer'; }
+
+    document.getElementById('b-progress').style.width = (progress / 5 * 100) + '%';
+    document.getElementById('b-progress-label').textContent = label;
+  }
+
+  function showAutocompleteB(input) {
+    const ac = document.getElementById('b-ac');
+    ac.classList.toggle('visible', input.value.length >= 2);
+    updateProgressB();
+  }
+
+  function fillAddressB(addr) {
+    document.getElementById('b-address').value = addr.split(',')[0];
+    document.getElementById('b-city').value = 'New York';
+    document.getElementById('b-ac').classList.remove('visible');
+    updateProgressB();
+    document.getElementById('b-f4').classList.replace('hidden','visible');
+    document.getElementById('b-f4').querySelector('input[placeholder=Chicago]').value = 'New York';
+    document.getElementById('b-f4').querySelector('input[placeholder=IL]').value = 'NY';
+    document.getElementById('b-progress').style.width = '80%';
+    document.getElementById('b-progress-label').textContent = '4 of 5';
+    document.getElementById('b-f5').classList.replace('hidden','visible');
+  }
+
+  function fillDemoB() {
+    document.getElementById('b-name').value = 'The French Laundry';
+    updateProgressB();
+    setTimeout(() => {
+      document.getElementById('b-country').value = 'us';
+      updateProgressB();
+      setTimeout(() => {
+        document.getElementById('b-address').value = '6640 Washington St';
+        updateProgressB();
+        document.getElementById('b-f4').classList.replace('hidden','visible');
+        document.getElementById('b-f4').querySelectorAll('input')[0].value = 'Yountville';
+        document.getElementById('b-f4').querySelectorAll('input')[1].value = 'CA';
+        document.getElementById('b-city').value = 'Yountville';
+        updateProgressB();
+        document.getElementById('b-f5').classList.replace('hidden','visible');
+        document.getElementById('b-progress').style.width = '100%';
+        document.getElementById('b-progress-label').textContent = '5 of 5';
+        document.getElementById('b-submit').disabled = false;
+        document.getElementById('b-submit').style.opacity = '1';
+        document.getElementById('b-submit').style.cursor = 'pointer';
+      }, 300);
+    }, 200);
+  }
+
+  function resetB() {
+    document.getElementById('b-name').value = '';
+    document.getElementById('b-country').value = '';
+    document.getElementById('b-address').value = '';
+    document.getElementById('b-city').value = '';
+    ['b-f2','b-f3','b-f4','b-f5'].forEach(id => document.getElementById(id).classList.replace('visible','hidden'));
+    document.getElementById('b-progress').style.width = '20%';
+    document.getElementById('b-progress-label').textContent = '1 of 5';
+    document.getElementById('b-submit').disabled = true;
+    document.getElementById('b-submit').style.opacity = '0.5';
+  }
+
+  // ── VARIANT C: Left-Rail Sections ──
+  const cSections = ['c-section-1', 'c-section-2', 'c-section-3'];
+  const cRailItems = [null, 1, 2, 3]; // maps to rail items by section number
+  let cCurrentSection = 1;
+
+  function switchSectionC(sectionNum, railEl) {
+    cSections.forEach(id => document.getElementById(id).style.display = 'none');
+    if (sectionNum >= 1 && sectionNum <= 3) {
+      document.getElementById('c-section-' + sectionNum).style.display = 'block';
+      cCurrentSection = sectionNum;
+    }
+
+    // Update rail dots
+    const dots = document.querySelectorAll('.vc-rail-dot');
+    const names = document.querySelectorAll('.vc-rail-section-name');
+    // dots[0] = "Account Info" (always done), dots[1..3] = sections 1-3
+    for (let i = 1; i < dots.length; i++) {
+      const sec = i; // 1-indexed section
+      if (sec < sectionNum) {
+        dots[i].className = 'vc-rail-dot done';
+        dots[i].innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+        names[i].className = 'vc-rail-section-name done';
+      } else if (sec === sectionNum) {
+        dots[i].className = 'vc-rail-dot active';
+        dots[i].innerHTML = sec;
+        names[i].className = 'vc-rail-section-name active';
+      } else {
+        dots[i].className = 'vc-rail-dot pending';
+        dots[i].innerHTML = sec;
+        names[i].className = 'vc-rail-section-name pending';
+      }
+    }
+
+    // Update progress
+    const pct = ((sectionNum - 1) / 2 * 100) || 33;
+    document.getElementById('c-rail-progress').style.width = Math.max(33, pct) + '%';
+    document.getElementById('c-rail-label').textContent = 'Section ' + sectionNum + ' of 3';
+  }
+
+  document.getElementById('variant-a').style.display = 'block';
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
  * Multi-step wizard for new customer setup
  */
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -17,16 +17,12 @@ import {
   CheckCircle,
   ChevronRight,
   ChevronLeft,
-  Upload,
   Camera,
   FileSpreadsheet,
   Plus,
   X,
-  Search,
   AlertTriangle,
   Sparkles,
-  Globe,
-  Clock,
   Mail,
   Phone,
   Bell,
@@ -39,8 +35,6 @@ import {
   OnboardingProvider,
   ONBOARDING_STEPS,
   WineImportItem,
-  TeamMember,
-  ProviderSetup,
 } from '../contexts/OnboardingContext'
 import { useRestaurantSettingsStore } from '../stores'
 import { MenuScannerFlow } from '../components/scanner/MenuScannerFlow'
@@ -566,7 +560,7 @@ function TeamStep() {
 function InventoryStep() {
   const { data, bulkAddWines, removeWine, nextStep, prevStep, markStepComplete } = useOnboarding()
   const [importMethod, setImportMethod] = useState<'menu' | 'csv' | 'manual' | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [_isProcessing, _setIsProcessing] = useState(false)
   const [showScannerFlow, setShowScannerFlow] = useState(false)
 
   const handleMenuScan = () => {

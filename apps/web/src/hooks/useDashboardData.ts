@@ -36,6 +36,8 @@ const EMPTY_STATS: DashboardStats = {
   todaySales: 0,
   weekSales: 0,
   monthSales: 0,
+  totalVolumeMl: 0,
+  totalVolumeOz: 0,
 };
 
 export function useDashboardData(): DashboardData {

@@ -284,7 +284,7 @@ export const getProvidersByRating = (): Provider[] => {
   return [...providers]
 }
 
-export const getProvidersByPriceLevel = (level: 'budget' | 'standard' | 'premium'): Provider[] => {
+export const getProvidersByPriceLevel = (_level: 'budget' | 'standard' | 'premium'): Provider[] => {
   // No price levels in new format, return all
   return providers
 }

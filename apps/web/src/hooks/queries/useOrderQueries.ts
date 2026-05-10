@@ -8,9 +8,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
-import type { OrderFilters } from '../../lib/query-keys'
 import { ordersApi } from '../../services/api'
-import type { Order, OrderStatus, CreateOrderRequest, UpdateOrderRequest } from '../../services/api/types'
+import type { Order, OrderStatus, CreateOrderRequest } from '../../services/api/types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOrdersSubscription } from '../../contexts/RealtimeContext'
 import { useCallback } from 'react'

@@ -9,13 +9,10 @@ import {
   DollarSign,
   BarChart3,
   TrendingUp,
-  Edit3,
   Trash2,
-  Eye,
   CheckSquare,
   Square,
   X,
-  FileSpreadsheet,
   File,
   Clock,
   User,
@@ -27,20 +24,17 @@ import {
   MessageSquare,
   Send,
   LayoutGrid,
-  List,
   Home,
   Phone,
   ArrowUpRight,
   ArrowDownLeft,
   AlertCircle,
-  CheckCircle,
-  Tag,
   ExternalLink,
   RefreshCw,
   Sparkles,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
-import { useCalendarEventsSubscription, useReportSubscription, CalendarEventPayload, ReportEventPayload } from '../contexts/RealtimeContext'
+import { useCalendarEventsSubscription, useReportSubscription, ReportEventPayload } from '../contexts/RealtimeContext'
 import {
   useConversations,
   useConversationThread,
@@ -554,7 +548,7 @@ export function DocumentsPage() {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['2026', '2026-January']))
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'reports' | 'history'>('reports')
-  const [scheduledReports, setScheduledReports] = useState<string[]>([])
+  const [_scheduledReports, setScheduledReports] = useState<string[]>([])
   const [realtimeNotifications, setRealtimeNotifications] = useState<string[]>([])
 
   const { data: generatedReports = [] } = useGeneratedReports()

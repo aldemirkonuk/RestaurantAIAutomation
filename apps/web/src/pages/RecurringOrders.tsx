@@ -447,7 +447,6 @@ interface RecurringOrderModalProps {
   onSuccess: () => void
 }
 
-const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function RecurringOrderModal({ isOpen, onClose, editingOrder, restaurantId, onSuccess }: RecurringOrderModalProps) {

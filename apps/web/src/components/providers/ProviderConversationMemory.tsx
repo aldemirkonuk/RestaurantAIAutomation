@@ -14,12 +14,6 @@ const ROLE_STYLES: Record<string, string> = {
   system: 'bg-gray-50 border-gray-200',
 }
 
-const CHANNEL_ICONS: Record<string, string> = {
-  email: 'envelope',
-  sms: 'chat-bubble',
-  whatsapp: 'phone',
-  voice: 'microphone',
-}
 
 const SESSION_STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
