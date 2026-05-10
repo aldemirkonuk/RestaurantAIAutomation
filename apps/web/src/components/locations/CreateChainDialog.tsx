@@ -1,17 +1,22 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
-import { Link2, X } from 'lucide-react'
+import { Link2, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
+import { cn } from '../../lib/utils'
+
+interface StandaloneLocation {
+  id: string
+  name: string
+  city: string | null
+}
 
 interface CreateChainDialogProps {
   open: boolean
   onClose: () => void
   onCreated: (chain: { id: string; name: string }) => void
-  currentLocationId?: string | null
-  currentLocationName?: string | null
-  currentLocationHasChain?: boolean
+  standaloneLocations: StandaloneLocation[]
 }
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
@@ -20,17 +25,24 @@ export function CreateChainDialog({
   open,
   onClose,
   onCreated,
-  currentLocationId,
-  currentLocationName,
-  currentLocationHasChain,
+  standaloneLocations,
 }: CreateChainDialogProps) {
   const [name, setName] = useState('')
-  const [assign, setAssign] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const toggleLocation = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const handleClose = () => {
     setName('')
-    setAssign(false)
+    setSelectedIds(new Set())
     onClose()
   }
 
@@ -39,16 +51,33 @@ export function CreateChainDialog({
     setIsSubmitting(true)
     try {
       const token = localStorage.getItem('accessToken')
-      const body: Record<string, unknown> = { name: name.trim() }
-      if (assign && currentLocationId) body.restaurantId = currentLocationId
+
+      // Create the chain
       const resp = await fetch(`${API_URL}/api/v1/organizations/chains`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ name: name.trim() }),
       })
       if (!resp.ok) throw new Error('Failed to create chain')
       const created = await resp.json()
-      toast.success(`"${name.trim()}" created`)
+
+      // Assign selected locations
+      const ids = Array.from(selectedIds)
+      await Promise.all(
+        ids.map((locationId) =>
+          fetch(`${API_URL}/api/v1/organizations/locations/${locationId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ chainId: created.id }),
+          }),
+        ),
+      )
+
+      toast.success(
+        ids.length > 0
+          ? `"${name.trim()}" created with ${ids.length} location${ids.length !== 1 ? 's' : ''}`
+          : `"${name.trim()}" created`,
+      )
       onCreated({ id: created.id, name: created.name })
       handleClose()
     } catch {
@@ -58,35 +87,37 @@ export function CreateChainDialog({
     }
   }
 
-  const canAssign = !!currentLocationId && !currentLocationHasChain
-
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && handleClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/20 z-50 backdrop-blur-[1px]" />
         <Dialog.Content asChild>
           <motion.div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-lg p-6 w-full max-w-sm border border-gray-100"
-            initial={{ opacity: 0, y: 8, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            className="fixed left-1/2 top-1/2 z-50 bg-white rounded-2xl shadow-lg w-full max-w-sm border border-gray-100 flex flex-col max-h-[min(90vh,520px)]"
+            style={{ x: '-50%', y: '-50%' }}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
           >
-            <div className="flex items-center justify-between mb-1">
-              <Dialog.Title className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-wine-500" />
-                New chain
-              </Dialog.Title>
-              <button type="button" onClick={handleClose} className="text-gray-300 hover:text-gray-500 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
+            {/* Fixed header */}
+            <div className="px-6 pt-6 pb-1 shrink-0">
+              <div className="flex items-center justify-between mb-1">
+                <Dialog.Title className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-wine-500" />
+                  New chain
+                </Dialog.Title>
+                <button type="button" onClick={handleClose} className="text-gray-300 hover:text-gray-500 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <Dialog.Description className="text-sm text-gray-400">
+                Group locations under a shared brand.
+              </Dialog.Description>
             </div>
 
-            <Dialog.Description className="text-sm text-gray-400 mb-5">
-              Group locations under a shared brand.
-            </Dialog.Description>
-
-            <div className="space-y-4">
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
                   Chain name
@@ -101,33 +132,68 @@ export function CreateChainDialog({
                 />
               </div>
 
-              {canAssign && (
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={assign}
-                    onChange={(e) => setAssign(e.target.checked)}
-                    className="mt-0.5 rounded border-gray-300 text-wine-600 focus:ring-wine-500"
-                  />
-                  <span className="text-sm text-gray-600 group-hover:text-gray-800 transition-colors">
-                    Add <span className="font-medium text-gray-800">{currentLocationName}</span> to this chain
-                  </span>
-                </label>
+              {standaloneLocations.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                    Add locations to this chain
+                    <span className="ml-1.5 normal-case font-normal text-gray-400">(optional)</span>
+                  </label>
+                  <div className="space-y-1.5">
+                    {standaloneLocations.map((loc) => {
+                      const selected = selectedIds.has(loc.id)
+                      return (
+                        <button
+                          key={loc.id}
+                          type="button"
+                          onClick={() => toggleLocation(loc.id)}
+                          className={cn(
+                            'w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-150 flex items-center justify-between',
+                            selected
+                              ? 'border-wine-400 bg-wine-50'
+                              : 'border-gray-100 bg-gray-50 hover:border-gray-200 hover:bg-gray-100',
+                          )}
+                        >
+                          <div>
+                            <p className={cn('text-sm font-medium', selected ? 'text-wine-800' : 'text-gray-800')}>
+                              {loc.name}
+                            </p>
+                            {loc.city && (
+                              <p className={cn('text-xs mt-0.5', selected ? 'text-wine-500' : 'text-gray-400')}>
+                                {loc.city}
+                              </p>
+                            )}
+                          </div>
+                          {selected && <Check className="w-4 h-4 text-wine-500 shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 mt-6">
-              <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSubmit}
-                disabled={isSubmitting || !name.trim()}
-                className="bg-wine-600 text-white hover:bg-wine-700"
-              >
-                {isSubmitting ? 'Creating…' : 'Create chain'}
-              </Button>
+            {/* Fixed footer */}
+            <div className="px-6 py-4 border-t border-gray-100 shrink-0 flex items-center justify-between gap-2">
+              <span className="text-xs text-gray-400">
+                {selectedIds.size > 0
+                  ? `${selectedIds.size} location${selectedIds.size !== 1 ? 's' : ''} selected`
+                  : standaloneLocations.length > 0
+                  ? 'No locations selected'
+                  : ''}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !name.trim()}
+                  className="bg-wine-600 text-white hover:bg-wine-700"
+                >
+                  {isSubmitting ? 'Creating…' : 'Create chain'}
+                </Button>
+              </div>
             </div>
           </motion.div>
         </Dialog.Content>

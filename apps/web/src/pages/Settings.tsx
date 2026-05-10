@@ -802,9 +802,7 @@ export default function Settings() {
             setChainsList((prev) => [...prev, chain]);
             refreshBranches();
           }}
-          currentLocationId={activeRestaurantId}
-          currentLocationName={currentLocation?.name}
-          currentLocationHasChain={!!currentLocation?.chain_id}
+          standaloneLocations={standaloneLocations.map((b) => ({ id: b.id, name: b.name, city: b.city ?? null }))}
         />
 
         {editingBranch && (
