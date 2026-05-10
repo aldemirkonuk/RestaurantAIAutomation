@@ -462,7 +462,12 @@ export class ProvidersService {
     }
 
     if (params.q) {
-      query = query.or(`name.ilike.%${params.q}%,company_name.ilike.%${params.q}%,contact_name.ilike.%${params.q}%`);
+      // Sanitize user input: strip characters meaningful to PostgREST filter syntax
+      // (comma, parentheses, period) to prevent filter-injection via the .or() string.
+      const safeQ = params.q.replace(/[,().]/g, '');
+      query = query.or(
+        `name.ilike.%${safeQ}%,company_name.ilike.%${safeQ}%,contact_name.ilike.%${safeQ}%`,
+      );
     }
 
     if (params.specialties?.length) {
