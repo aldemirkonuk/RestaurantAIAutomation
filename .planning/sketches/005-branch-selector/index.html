@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 005 — Branch Selector</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        wine: {
+          50:  '#fdf2f3',
+          100: '#fce7e9',
+          200: '#f9d2d6',
+          300: '#f4adb4',
+          400: '#ec7f8a',
+          500: '#7C2D36',
+          600: '#6b2630',
+          700: '#5a1f28',
+          800: '#4a1921',
+          900: '#3b141a',
+        }
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .tab-btn { transition: all 0.15s; }
+  .tab-btn.active { background: #7C2D36; color: white; }
+  .tab-btn:not(.active) { background: #f3f4f6; color: #374151; }
+  .tab-btn:not(.active):hover { background: #e5e7eb; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .dropdown-enter { animation: dropIn 0.18s cubic-bezier(0.4,0,0.2,1) forwards; }
+  @keyframes dropIn {
+    from { opacity:0; transform: translateY(8px) scale(0.98); }
+    to   { opacity:1; transform: translateY(0) scale(1); }
+  }
+  .branch-row { transition: background 0.08s; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<!-- Toolbar -->
+<div class="fixed top-0 left-0 right-0 z-[100] bg-gray-900 text-white text-xs flex items-center gap-3 px-4 py-2">
+  <span class="font-bold text-gray-300">SKETCH 005</span>
+  <span class="text-gray-500">—</span>
+  <span class="text-gray-300">Branch Selector</span>
+  <span class="text-gray-500 ml-auto">Pick the variant that feels right</span>
+  <div class="flex gap-1 ml-4">
+    <button onclick="setTab('A')" id="tab-A" class="tab-btn active px-3 py-1 rounded text-xs font-medium">A — Compact pill</button>
+    <button onclick="setTab('B')" id="tab-B" class="tab-btn px-3 py-1 rounded text-xs font-medium">B — Rich card ★</button>
+    <button onclick="setTab('C')" id="tab-C" class="tab-btn px-3 py-1 rounded text-xs font-medium">C — Command-style</button>
+  </div>
+</div>
+
+<div class="pt-10">
+
+<!-- ═══════════════════════════════ VARIANT A — Compact Pill ═══════════════════════════════ -->
+<div id="variant-A" class="variant active">
+  <div class="p-6">
+    <p class="text-xs text-gray-400 mb-3 font-medium uppercase tracking-widest">Variant A — Compact pill trigger, flat grouped list</p>
+    <!-- Simulated header -->
+    <div class="bg-white border-b border-gray-200 rounded-t-2xl shadow-sm">
+      <div class="flex items-center justify-between h-16 px-6">
+        <h1 class="text-xl font-bold text-gray-900">Inventory</h1>
+        <div class="flex items-center gap-3">
+          <!-- Branch trigger A -->
+          <div class="relative" id="wrapA">
+            <button onclick="toggleA()" class="flex items-center gap-2 px-3 py-1.5 bg-wine-50 border border-wine-200 hover:border-wine-400 rounded-full text-sm font-medium text-wine-700 transition-all">
+              <svg class="w-3.5 h-3.5 text-wine-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              <span class="max-w-[120px] truncate">The Grand Cellar</span>
+              <span class="text-wine-400 text-xs hidden sm:block">· Chicago</span>
+              <svg class="w-3.5 h-3.5 text-wine-400 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <!-- Dropdown A -->
+            <div id="dropA" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 dropdown-enter">
+              <!-- Chain group -->
+              <div class="pt-3 pb-1">
+                <p class="px-4 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Grand Cellar Group</p>
+                <!-- Active -->
+                <div class="branch-row mx-2 px-3 py-2.5 rounded-xl bg-wine-50 flex items-center justify-between cursor-pointer hover:bg-wine-100">
+                  <div>
+                    <p class="text-sm font-semibold text-wine-800">The Grand Cellar</p>
+                    <p class="text-xs text-wine-500 flex items-center gap-1 mt-0.5">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                      Chicago, IL
+                    </p>
+                  </div>
+                  <div class="w-2 h-2 rounded-full bg-wine-500 flex-shrink-0"></div>
+                </div>
+                <div class="branch-row mx-2 px-3 py-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-50">
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">Grand Cellar — River North</p>
+                    <p class="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                      Chicago, IL
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <!-- Divider + standalone -->
+              <div class="mx-4 border-t border-gray-100 my-1"></div>
+              <div class="pb-2">
+                <p class="px-4 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Standalone</p>
+                <div class="branch-row mx-2 px-3 py-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-50">
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">Bistro Milano</p>
+                    <p class="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                      New York, NY
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <!-- Footer -->
+              <div class="border-t border-gray-100 px-4 py-2.5 flex items-center justify-between">
+                <span class="text-xs text-gray-400">3 locations</span>
+                <button class="text-xs text-wine-600 hover:text-wine-700 font-semibold">Manage Locations →</button>
+              </div>
+            </div>
+          </div>
+          <!-- Fake search + avatar -->
+          <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl text-gray-400 text-sm">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+            <span class="hidden md:block">Search...</span>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-wine-400 to-wine-600 flex items-center justify-center text-white font-semibold text-sm">A</div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-gray-50 rounded-b-2xl h-40 border border-t-0 border-gray-200 flex items-center justify-center text-gray-300 text-sm">page content</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ VARIANT B — Rich Card ★ ═══════════════════════════════ -->
+<div id="variant-B" class="variant">
+  <div class="p-6">
+    <p class="text-xs text-gray-400 mb-3 font-medium uppercase tracking-widest">Variant B — Rich card trigger with chain badge, avatar-style location rows ★ Recommended</p>
+    <div class="bg-white border-b border-gray-200 rounded-t-2xl shadow-sm">
+      <div class="flex items-center justify-between h-16 px-6">
+        <h1 class="text-xl font-bold text-gray-900">Inventory</h1>
+        <div class="flex items-center gap-3">
+          <!-- Branch trigger B — richer card style -->
+          <div class="relative" id="wrapB">
+            <button onclick="toggleB()" class="group flex items-center gap-3 pl-3 pr-2.5 py-1.5 bg-white border border-gray-200 hover:border-wine-300 hover:shadow-sm rounded-xl transition-all">
+              <!-- Icon -->
+              <div class="w-7 h-7 rounded-lg bg-wine-50 flex items-center justify-center flex-shrink-0">
+                <svg class="w-3.5 h-3.5 text-wine-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              </div>
+              <!-- Text -->
+              <div class="text-left">
+                <p class="text-sm font-semibold text-gray-900 leading-tight">The Grand Cellar</p>
+                <p class="text-[11px] text-gray-400 leading-tight">Grand Cellar Group · Chicago</p>
+              </div>
+              <svg class="w-4 h-4 text-gray-400 group-hover:text-wine-500 ml-1 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+
+            <!-- Dropdown B -->
+            <div id="dropB" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-[0_20px_60px_-12px_rgba(0,0,0,0.18),0_4px_16px_-4px_rgba(0,0,0,0.08)] border border-gray-100 overflow-hidden z-50 dropdown-enter">
+              <!-- Header -->
+              <div class="px-4 py-3 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-bold text-gray-900">Switch Location</p>
+                  <p class="text-xs text-gray-400 mt-0.5">3 locations across 1 chain</p>
+                </div>
+                <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Live sync"></div>
+              </div>
+
+              <div class="max-h-72 overflow-y-auto py-2">
+                <!-- Chain section -->
+                <div class="px-3 pt-2 pb-1">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Grand Cellar Group</span>
+                    <span class="flex-1 h-px bg-gray-100"></span>
+                    <span class="text-[10px] text-gray-300">2 locations</span>
+                  </div>
+
+                  <!-- Active location row -->
+                  <div class="branch-row flex items-center gap-3 px-3 py-2.5 rounded-xl bg-wine-50 border border-wine-100 mb-1.5 cursor-pointer hover:bg-wine-100 transition-colors">
+                    <div class="w-8 h-8 rounded-xl bg-wine-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">G</div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-semibold text-wine-900 truncate">The Grand Cellar</p>
+                      <p class="text-xs text-wine-500 truncate">Chicago, IL · Flagship</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                      <span class="text-[10px] font-semibold text-wine-600 bg-wine-100 px-2 py-0.5 rounded-full">Active</span>
+                    </div>
+                  </div>
+
+                  <!-- Inactive chain location -->
+                  <div class="branch-row flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 mb-1.5 cursor-pointer transition-colors">
+                    <div class="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-sm flex-shrink-0">G</div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-gray-800 truncate">Grand Cellar — River North</p>
+                      <p class="text-xs text-gray-400 truncate">Chicago, IL</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Divider -->
+                <div class="mx-4 border-t border-gray-100 my-2"></div>
+
+                <!-- Standalone section -->
+                <div class="px-3 pb-2">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Other Locations</span>
+                    <span class="flex-1 h-px bg-gray-100"></span>
+                  </div>
+                  <div class="branch-row flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
+                    <div class="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-sm flex-shrink-0">B</div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-gray-800 truncate">Bistro Milano</p>
+                      <p class="text-xs text-gray-400 truncate">New York, NY</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer -->
+              <div class="border-t border-gray-100 px-4 py-2.5 flex items-center justify-between bg-gray-50/50">
+                <button class="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                  Add location
+                </button>
+                <button class="text-xs text-wine-600 hover:text-wine-700 font-semibold transition-colors">Manage Locations →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fake controls -->
+          <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl text-gray-400 text-sm">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+            <span class="hidden md:block">Search...</span>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-wine-400 to-wine-600 flex items-center justify-center text-white font-semibold text-sm">A</div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-gray-50 rounded-b-2xl h-40 border border-t-0 border-gray-200 flex items-center justify-center text-gray-300 text-sm">page content</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ VARIANT C — Command-style ═══════════════════════════════ -->
+<div id="variant-C" class="variant">
+  <div class="p-6">
+    <p class="text-xs text-gray-400 mb-3 font-medium uppercase tracking-widest">Variant C — Minimal trigger, command-palette-style dropdown with keyboard hint</p>
+    <div class="bg-white border-b border-gray-200 rounded-t-2xl shadow-sm">
+      <div class="flex items-center justify-between h-16 px-6">
+        <h1 class="text-xl font-bold text-gray-900">Inventory</h1>
+        <div class="flex items-center gap-3">
+          <!-- Branch trigger C — minimal -->
+          <div class="relative" id="wrapC">
+            <button onclick="toggleC()" class="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-xl text-sm text-gray-700 font-medium transition-colors group">
+              <svg class="w-4 h-4 text-wine-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              The Grand Cellar
+              <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+
+            <!-- Dropdown C — command palette feel -->
+            <div id="dropC" class="hidden absolute right-0 mt-2 w-76 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50 dropdown-enter" style="width:304px">
+              <!-- Search inside dropdown -->
+              <div class="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
+                <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+                <input type="text" placeholder="Search locations..." class="flex-1 text-sm outline-none placeholder-gray-300 bg-transparent">
+                <kbd class="text-[10px] text-gray-300 border border-gray-200 rounded px-1.5 py-0.5 font-mono">↵</kbd>
+              </div>
+
+              <div class="py-1.5">
+                <!-- Chain label -->
+                <p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Grand Cellar Group</p>
+
+                <!-- Location rows — command style -->
+                <div class="branch-row px-3 py-2 mx-1.5 rounded-lg bg-wine-50 flex items-center gap-2.5 cursor-pointer mb-0.5">
+                  <div class="w-6 h-6 rounded-md bg-wine-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">G</div>
+                  <div class="flex-1">
+                    <span class="text-sm font-medium text-wine-900">The Grand Cellar</span>
+                    <span class="text-xs text-wine-400 ml-1.5">Chicago</span>
+                  </div>
+                  <svg class="w-3.5 h-3.5 text-wine-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                </div>
+
+                <div class="branch-row px-3 py-2 mx-1.5 rounded-lg hover:bg-gray-50 flex items-center gap-2.5 cursor-pointer mb-0.5 transition-colors">
+                  <div class="w-6 h-6 rounded-md bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-bold flex-shrink-0">R</div>
+                  <div class="flex-1">
+                    <span class="text-sm font-medium text-gray-700">River North</span>
+                    <span class="text-xs text-gray-400 ml-1.5">Chicago</span>
+                  </div>
+                </div>
+
+                <!-- Separator -->
+                <div class="mx-3 border-t border-gray-100 my-1.5"></div>
+
+                <p class="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">Other</p>
+
+                <div class="branch-row px-3 py-2 mx-1.5 rounded-lg hover:bg-gray-50 flex items-center gap-2.5 cursor-pointer transition-colors">
+                  <div class="w-6 h-6 rounded-md bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-bold flex-shrink-0">B</div>
+                  <div class="flex-1">
+                    <span class="text-sm font-medium text-gray-700">Bistro Milano</span>
+                    <span class="text-xs text-gray-400 ml-1.5">New York</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 px-3 py-2 flex items-center justify-between">
+                <span class="text-[10px] text-gray-300 flex items-center gap-1"><kbd class="border border-gray-200 rounded px-1 font-mono">↑↓</kbd> navigate</span>
+                <button class="text-xs text-wine-600 hover:text-wine-700 font-semibold">Manage →</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl text-gray-400 text-sm">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+            <span class="hidden md:block">Search...</span>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-wine-400 to-wine-600 flex items-center justify-center text-white font-semibold text-sm">A</div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-gray-50 rounded-b-2xl h-40 border border-t-0 border-gray-200 flex items-center justify-center text-gray-300 text-sm">page content</div>
+  </div>
+</div>
+
+</div><!-- end pt-10 -->
+
+<script>
+function setTab(v) {
+  ['A','B','C'].forEach(t => {
+    document.getElementById('variant-'+t).classList.toggle('active', t===v);
+    document.getElementById('tab-'+t).classList.toggle('active', t===v);
+  });
+  closeAll();
+}
+
+function closeAll() {
+  ['dropA','dropB','dropC'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) { el.classList.add('hidden'); el.classList.remove('dropdown-enter'); }
+  });
+}
+
+function toggle(id) {
+  const el = document.getElementById(id);
+  const wasHidden = el.classList.contains('hidden');
+  closeAll();
+  if(wasHidden) { el.classList.remove('hidden'); el.classList.add('dropdown-enter'); }
+}
+
+function toggleA() { toggle('dropA'); }
+function toggleB() { toggle('dropB'); }
+function toggleC() { toggle('dropC'); }
+
+document.addEventListener('click', e => {
+  if(!e.target.closest('#wrapA') && !e.target.closest('#wrapB') && !e.target.closest('#wrapC')) closeAll();
+});
+</script>
+</body>
+</html>
