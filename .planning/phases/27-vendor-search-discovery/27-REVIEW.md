@@ -30,7 +30,29 @@ findings:
   warning: 7
   info: 4
   total: 15
-status: issues_found
+fixed:
+  critical: 4
+  warning: 3
+  info: 0
+status: partially_resolved
+fixed_at: 2026-05-10T00:00:00Z
+fixed_findings:
+  - CR-01
+  - CR-02
+  - CR-03
+  - CR-04
+  - WR-01
+  - WR-02
+  - WR-06
+  - WR-07
+remaining_findings:
+  - WR-03
+  - WR-04
+  - WR-05
+  - IN-01
+  - IN-02
+  - IN-03
+  - IN-04
 ---
 
 # Phase 27: Code Review Report
