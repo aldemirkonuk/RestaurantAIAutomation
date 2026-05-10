@@ -369,6 +369,7 @@ export default function Settings() {
   const addLocationAnchorRef = useRef<HTMLButtonElement>(null);
   const [newChainName, setNewChainName] = useState('');
   const [isCreatingChain, setIsCreatingChain] = useState(false);
+  const [assignCurrentToChain, setAssignCurrentToChain] = useState(false);
   const [locationsList, setLocationsList] = useState(availableRestaurants);
   const [editingBranch, setEditingBranch] = useState<RestaurantBranch | null>(null);
 
@@ -658,14 +659,20 @@ export default function Settings() {
                       try {
                         const token = localStorage.getItem('accessToken');
                         const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
+                        const body: Record<string, unknown> = { name: newChainName.trim() };
+                        if (assignCurrentToChain && activeRestaurantId) {
+                          body.restaurantId = activeRestaurantId;
+                        }
                         const resp = await fetch(`${API_URL}/api/v1/organizations/chains`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({ name: newChainName.trim() }),
+                          body: JSON.stringify(body),
                         });
                         if (!resp.ok) throw new Error('Failed to create chain');
                         toast.success(`Chain "${newChainName}" created!`);
                         setNewChainName('');
+                        setAssignCurrentToChain(false);
+                        await refreshBranches();
                       } catch {
                         toast.error('Failed to create chain. Please try again.');
                       } finally {
@@ -677,6 +684,31 @@ export default function Settings() {
                     {isCreatingChain ? 'Creating...' : 'Create Chain'}
                   </button>
                 </div>
+
+                {/* "Assign current restaurant" checkbox — only shown when active restaurant is standalone */}
+                {(() => {
+                  const currentRestaurant = availableRestaurants.find((b) => b.id === activeRestaurantId);
+                  if (!currentRestaurant || currentRestaurant.chain_id !== null) return null;
+                  return (
+                    <div className="mt-2">
+                      <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={assignCurrentToChain}
+                          onChange={(e) => setAssignCurrentToChain(e.target.checked)}
+                          className="rounded border-gray-300 text-wine-600"
+                        />
+                        Move <strong>{currentRestaurant.name}</strong> into this chain
+                      </label>
+                      {currentRestaurant.chain_name && assignCurrentToChain && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Warning: this will move it from &ldquo;{currentRestaurant.chain_name}&rdquo; to the new chain.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <p className="text-xs text-gray-400 mt-1">
                   After creating a chain, new locations added via "Add Location" can be grouped under it.
                 </p>
