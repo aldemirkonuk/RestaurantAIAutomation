@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -313,10 +314,17 @@ export class OrganizationsService {
       if (!chain) throw new NotFoundException('Chain not found or access denied');
     }
 
+    const slugBase = dto.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const slug = `${slugBase}-${randomUUID().slice(0, 8)}`;
+
     const { data: restaurant, error } = await this.databaseService.supabase
       .from('restaurants')
       .insert({
         name: dto.name,
+        slug,
         address: { street: dto.address },
         city: dto.city,
         country: dto.country ?? null,
