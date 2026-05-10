@@ -532,27 +532,6 @@ Accepted the offer at $${(order.suggested_price || 0).toLocaleString()} for ${or
           action: 'order_placed',
         }
       })
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H3',
-          location: 'Orders.tsx:handleMarkAsOrdered',
-          message: 'dispatch_shadow_stock',
-          data: {
-            orderId,
-            wineId: targetWineId,
-            inventoryId: createdInventoryId || order.wine_id,
-            quantity: order.quantity,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      
       const inventoryIdToUpdate = createdInventoryId || inventoryMatch?.id || order.wine_id
       if (inventoryIdToUpdate && user?.restaurantId) {
         const currentShadow = inventoryMatch?.shadowStock || 0
@@ -563,57 +542,13 @@ Accepted the offer at $${(order.suggested_price || 0).toLocaleString()} for ${or
             { shadowStock: nextShadow },
             user.restaurantId
           )
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'pre-fix',
-              hypothesisId: 'H3',
-              location: 'Orders.tsx:handleMarkAsOrdered',
-              message: 'persist_shadow_stock_success',
-              data: { orderId, inventoryId: inventoryIdToUpdate, nextShadow },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-          // #endregion
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'pre-fix',
-              hypothesisId: 'H3',
-              location: 'Orders.tsx:handleMarkAsOrdered',
-              message: 'persist_shadow_stock_failed',
-              data: { orderId, inventoryId: inventoryIdToUpdate },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-          // #endregion
+          // Shadow stock update failed — non-fatal
         }
       }
       
       alert('✅ Order marked as ordered!\n\nThe order has been placed with the provider.')
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H3',
-          location: 'Orders.tsx:handleMarkAsOrdered',
-          message: 'mark_order_failed',
-          data: { orderId },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
       console.error('Failed to mark as ordered:', error)
       alert('Failed to mark order as ordered. Please try again.')
     }
@@ -630,48 +565,12 @@ Accepted the offer at $${(order.suggested_price || 0).toLocaleString()} for ${or
       const inventoryMatch = inventoryById.get(order.wine_id)
       const targetWineId = inventoryMatch?.wineId || order.wine_id
       const resolvedName = resolveOrderWineName(order)
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H6',
-          location: 'Orders.tsx:handleMarkAsDelivered',
-          message: 'deliver_attempt',
-          data: {
-            orderId,
-            isUuid: isUuid(orderId),
-            quantity: order.quantity,
-            inventoryMatch: !!inventoryMatch,
-            targetWineId,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
 
       // Try API call when this is a real backend order
       if (isUuid(orderId)) {
         await apiClient.post(`/procurement/orders/${orderId}/deliver`, {}, {
           params: { quantityReceived: order.quantity },
         })
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'pre-fix',
-            hypothesisId: 'H6',
-            location: 'Orders.tsx:handleMarkAsDelivered',
-            message: 'deliver_api_success',
-            data: { orderId },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {})
-        // #endregion
       }
       
       const deliveredAt = new Date().toISOString()
@@ -699,47 +598,7 @@ Accepted the offer at $${(order.suggested_price || 0).toLocaleString()} for ${or
           inventoryId: order.wine_id,
         }
       })
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H9',
-          location: 'Orders.tsx:handleMarkAsDelivered',
-          message: 'deliver_order_update_payload',
-          data: {
-            orderId,
-            wineId: targetWineId,
-            quantity: order.quantity,
-            metadata: {
-              action: 'shadow_to_live',
-              transferFrom: 'shadow',
-              transferTo: 'live',
-              inventoryId: order.wine_id,
-            },
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H6',
-          location: 'Orders.tsx:handleMarkAsDelivered',
-          message: 'deliver_dispatch_order_update',
-          data: { orderId, targetWineId },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      
+
       // Also try API call for persistence
       try {
         await axios.post(`${API_URL}/api/v1/inventory/add-from-order`, {
@@ -754,21 +613,6 @@ Accepted the offer at $${(order.suggested_price || 0).toLocaleString()} for ${or
           transferTo: 'live',
         }).catch(err => {
           console.log('Inventory API endpoint not ready yet:', err.message)
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'pre-fix',
-              hypothesisId: 'H6',
-              location: 'Orders.tsx:handleMarkAsDelivered',
-              message: 'deliver_inventory_api_failed',
-              data: { message: err?.message || 'unknown' },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-          // #endregion
         })
 
         // Create notification in One-Tap Action Center
@@ -789,25 +633,6 @@ Shadow stock has been moved to Live Stock.`)
         alert('⚠️ Order marked as delivered, but failed to add to inventory. Please check inventory manually.')
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H6',
-          location: 'Orders.tsx:handleMarkAsDelivered',
-          message: 'deliver_failed',
-          data: {
-            message: (error as any)?.message || 'unknown',
-            status: (error as any)?.response?.status || null,
-            response: (error as any)?.response?.data || null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
       console.error('Failed to mark as delivered:', error)
       alert('Failed to mark order as delivered. Please try again.')
     }
@@ -1032,27 +857,6 @@ Shadow stock has been moved to Live Stock.`)
               },
             })
           } catch (error) {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sessionId: 'debug-session',
-                runId: 'pre-fix',
-                hypothesisId: 'H4',
-                location: 'Orders.tsx:handleContactProviders',
-                message: 'inventory_create_failed',
-                data: {
-                  wineId: item.wineId,
-                  wineName: item.wineName,
-                  status: (error as any)?.response?.status || null,
-                  response: (error as any)?.response?.data || null,
-                  message: (error as any)?.message || 'unknown',
-                },
-                timestamp: Date.now(),
-              }),
-            }).catch(() => {})
-            // #endregion
             failures.push(`Failed to add ${item.wineName} to inventory`)
             continue
           }
