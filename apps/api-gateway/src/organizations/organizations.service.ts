@@ -79,7 +79,7 @@ export class OrganizationsService {
     chainId: string | null,
   ): Promise<void> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0) throw new Error('User has no organization');
+    if (orgIds.length === 0) throw new ForbiddenException('User has no organization');
 
     // Verify restaurant belongs to user's org
     const { data: rest } = await this.databaseService.supabase
@@ -106,7 +106,7 @@ export class OrganizationsService {
       .update({ chain_id: chainId })
       .eq('id', restaurantId)
       .in('organization_id', orgIds); // org-scoped write guard — prevents TOCTOU cross-org write
-    if (error) throw new Error(`Failed to update location: ${error.message}`);
+    if (error) throw new InternalServerErrorException('Failed to update location');
   }
 
   async getBranchesForUser(userId: string): Promise<RestaurantBranch[]> {
@@ -166,7 +166,7 @@ export class OrganizationsService {
     dto: { name: string; cuisine_type?: string; description?: string; restaurantId?: string },
   ): Promise<RestaurantChain> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0) throw new Error('User has no organization');
+    if (orgIds.length === 0) throw new ForbiddenException('User has no organization');
 
     const { data: ownedOrg } = await this.databaseService.supabase
       .from('organizations')
@@ -192,7 +192,7 @@ export class OrganizationsService {
       .single();
 
     if (error || !chain)
-      throw new Error(`Failed to create chain: ${error?.message}`);
+      throw new InternalServerErrorException('Failed to create chain');
 
     if (dto.restaurantId) {
       try {
@@ -226,7 +226,7 @@ export class OrganizationsService {
   ): Promise<{ id: string; name: string }> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
 
-    if (orgIds.length === 0) throw new Error('User has no organization — cannot add location');
+    if (orgIds.length === 0) throw new ForbiddenException('User has no organization');
 
     const { data: ownedOrg } = await this.databaseService.supabase
       .from('organizations')
@@ -259,7 +259,7 @@ export class OrganizationsService {
       .single();
 
     if (error || !restaurant)
-      throw new Error(`Failed to create location: ${error?.message}`);
+      throw new InternalServerErrorException('Failed to create location');
     return { id: restaurant.id, name: restaurant.name };
   }
 }
