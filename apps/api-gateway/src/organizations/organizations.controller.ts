@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Param,
   Body,
   Req,
   UseGuards,
@@ -12,6 +14,7 @@ import {
   RestaurantBranch,
   RestaurantChain,
 } from './organizations.service';
+import { UpdateLocationDto } from './dto/update-location.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Request } from 'express';
 
@@ -47,6 +50,19 @@ export class OrganizationsController {
       `Creating chain '${body.name}' for user ${req.user.userId}`,
     );
     return this.organizationsService.createChain(req.user.userId, body);
+  }
+
+  @Patch('locations/:id')
+  async updateLocation(
+    @Req() req: Request & { user: any },
+    @Param('id') id: string,
+    @Body() body: UpdateLocationDto,
+  ): Promise<void> {
+    return this.organizationsService.updateLocationChain(
+      req.user.userId,
+      id,
+      body.chainId ?? null,
+    );
   }
 
   @Post('locations')
