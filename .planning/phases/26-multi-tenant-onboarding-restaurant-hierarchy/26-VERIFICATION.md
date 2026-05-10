@@ -1,32 +1,17 @@
 ---
 phase: 26-multi-tenant-onboarding-restaurant-hierarchy
 verified: 2026-05-07T22:05:00-05:00
-status: human_needed
-score: 19/21 must-haves verified (2 require human confirmation)
+human_uat_completed: 2026-05-10T00:00:00Z
+status: passed
+score: 21/21 must-haves verified (all human tests passed 2026-05-10)
 overrides_applied: 0
-human_verification:
-  - test: "Apply Supabase migrations to a running DB instance"
-    expected: "All 5 Phase 26 migrations apply cleanly; organizations, organization_members, organization_invites, email_verifications, restaurant_chains tables exist with correct columns, indexes, and RLS policies"
-    why_human: "supabase db push failed during execution (project not linked + no local Docker). Migrations are syntactically correct SQL but have not been applied to any running database. Phase goal cannot be observed until schema exists."
-  - test: "End-to-end registration flow walkthrough"
-    expected: "Path A: enter invite code → inline validation shows preview card → account form → join and land on dashboard. Path B: path selector card → account form → restaurant form → /verify-email holding page → email arrives → click link → dashboard. ProtectedRoute blocks unverified users."
-    why_human: "Full registration flow requires running backend + DB; cannot verify visually from code alone. Covers ONBOARD-01..08, INVITE-02, INVITE-03."
-  - test: "Branch switcher with real multi-location data"
-    expected: "User with 2+ restaurants sees branch switcher in top nav. Branches grouped by chain_name where set; standalone branches below. Switching branch updates active context."
-    why_human: "Requires authenticated session + org with multiple restaurants populated in DB."
-  - test: "Settings → Team: invite generation"
-    expected: "Owner/manager sees 'Invite Member' button. Clicking opens InviteTeamDialog. Generating creates invite, shows 8-char code in monospace + copy-able /register?invite=CODE URL. Staff role does NOT see the button."
-    why_human: "Requires live backend with authenticated session."
-  - test: "Settings → Locations: Create Chain + Add Location"
-    expected: "Owner sees Locations & Chains section. Create Chain form submits to POST /organizations/chains. Add Location dialog fetches chains for dropdown. New location appears in branch switcher after login refresh."
-    why_human: "Requires live backend + DB to verify round-trip create/read."
 ---
 
 # Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy — Verification Report
 
 **Phase Goal:** Fix broken registration and add multi-location support. New owners can self-register and create a restaurant in one flow. Existing owners can add branches (locations) under one organization and switch between them from the top nav. Staff join via invite code.
 **Verified:** 2026-05-07T22:05:00-05:00
-**Status:** HUMAN_NEEDED — automated checks pass (19/21 must-haves verified in code); DB migration application and full E2E flow require human testing
+**Status:** PASSED — all 8 human UAT tests passed 2026-05-10. All 21 must-haves confirmed in live environment.
 **Re-verification:** No — initial verification
 
 ---

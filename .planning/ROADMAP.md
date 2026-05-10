@@ -205,7 +205,7 @@ Plans:
 - [x] 25-07-PLAN.md — GitHub Actions e2e-prod.yml + cascading_report.py + report_generator extension (Wave 4)
 - [x] 25-08-PLAN.md — [GAP CLOSURE] Wave F-4 write-flow: CommandBar ingest → WineRecordsTable verify → teardown (Wave 1)
 
-### Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy
+### Phase 26: Multi-Tenant Onboarding & Restaurant Hierarchy ✓ COMPLETE (2026-05-10)
 **Goal**: Fix broken registration and add multi-location support. New owners can self-register and create a restaurant in one flow. Existing owners can add branches (locations) under one organization and switch between them from the top nav. Staff join via invite code.
 **Depends on**: Phase 22 (auth infrastructure live), Phase 25 (production verified)
 **Requirements**: ONBOARD-01..08
@@ -218,16 +218,17 @@ Plans:
   6. `organizations` and `organization_invites` tables exist in Supabase with RLS policies
   7. Register page shows two clear paths: "Create New Restaurant" and "Join Existing"
   8. Email verification required for Path B (new restaurant), skipped for Path A (invite)
-**Plans:** 6 plans (5 waves)
+**Plans:** 9 plans (9 waves) — all complete
 Plans:
-- [ ] 26-01-PLAN.md — 5 DB migrations: organizations, org_invites, email_verifications, restaurants schema, restaurant_chains (Wave 1) [ONBOARD-06, ORG-01..03, CHAIN-01..02]
-- [ ] 26-02-PLAN.md — Auth backend: 6 new endpoints incl. register/restaurant, join, invite, verify-email (Wave 2) [ONBOARD-05, 07, INVITE-01..03]
-- [ ] 26-03-PLAN.md — OrganizationsModule: branches+chains+locations endpoints + AppModule (Wave 2) [ORG-04..05, CHAIN-03]
-- [ ] 26-04-PLAN.md — AuthContext RestaurantBranch (chain fields) + Header chain-grouped switcher (Wave 3) [ORG-05, CHAIN-04]
-- [ ] 26-05-PLAN.md — Register.tsx two-path wizard + ?type= routing + VerifyEmail.tsx + ProtectedRoute (Wave 4) [ONBOARD-01..04, 07..08, INVITE-02]
-- [ ] 26-06-PLAN.md — Settings → Team invite + Locations/Chains management tab (Wave 5) [INVITE-01, 04, CHAIN-04]
-- [ ] 26-07-PLAN.md — Backend: PATCH locations/:id + createChain auto-assign + getUserOrgIdsWithFallback DRY (Wave 7) [CHAIN-05]
-- [ ] 26-08-PLAN.md — Frontend: AuthContext refreshBranches + EditLocationChainDialog + Create Chain checkbox (Wave 8, depends on 26-07) [CHAIN-06]
+- [x] 26-01-PLAN.md — 5 DB migrations: organizations, org_invites, email_verifications, restaurants schema, restaurant_chains (Wave 1) [ONBOARD-06, ORG-01..03, CHAIN-01..02]
+- [x] 26-02-PLAN.md — Auth backend: 6 new endpoints incl. register/restaurant, join, invite, verify-email (Wave 2) [ONBOARD-05, 07, INVITE-01..03]
+- [x] 26-03-PLAN.md — OrganizationsModule: branches+chains+locations endpoints + AppModule (Wave 2) [ORG-04..05, CHAIN-03]
+- [x] 26-04-PLAN.md — AuthContext RestaurantBranch (chain fields) + Header chain-grouped switcher (Wave 3) [ORG-05, CHAIN-04]
+- [x] 26-05-PLAN.md — Register.tsx two-path wizard + ?type= routing + VerifyEmail.tsx + ProtectedRoute (Wave 4) [ONBOARD-01..04, 07..08, INVITE-02]
+- [x] 26-06-PLAN.md — Settings → Team invite + Locations/Chains management tab (Wave 5) [INVITE-01, 04, CHAIN-04]
+- [x] 26-07-PLAN.md — Backend: PATCH locations/:id + createChain auto-assign + getUserOrgIdsWithFallback DRY (Wave 7) [CHAIN-05]
+- [x] 26-08-PLAN.md — Frontend: AuthContext refreshBranches + EditLocationChainDialog + Create Chain checkbox (Wave 8, depends on 26-07) [CHAIN-06]
+- [x] 26-09-PLAN.md — Settings UX overhaul: chain rename/delete API + tree-view Locations + sticky nav (Wave 9)
 
 ### Phase 27: Vendor Search & Discovery
 **Goal**: New users can discover, search, and add wine vendors to their restaurant from an admin-curated global catalogue (or add custom vendors). Providers page shows a search-first empty state. Order creation is gated behind having at least one vendor (free tier: hard block; paid tier: LLM-powered vendor suggestions stub).
