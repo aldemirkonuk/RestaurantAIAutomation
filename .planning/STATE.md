@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Archive
-status: unknown
-last_updated: "2026-05-09T11:40:57.399Z"
+milestone: v2.0
+milestone_name: Multi-Tenant Platform
+status: active
+last_updated: "2026-05-10T00:00:00.000Z"
 progress:
-  total_phases: 24
-  completed_phases: 20
-  total_plans: 109
-  completed_plans: 101
-  percent: 93
+  total_phases: 26
+  completed_phases: 26
+  total_plans: 118
+  completed_plans: 118
+  percent: 100
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,17 +19,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 25 — production-e2e-test-suite
+**Current focus:** Phase 27 — Vendor Search & Discovery (next to plan)
 
 ---
 
 ## Current Position
 
-Phase: 25 (production-e2e-test-suite) — EXECUTING
-Plan: 1 of 1
-**Last completed:** Phase 22 — 9/9 agents healthy on Railway, Admin Health UI live on Vercel, all services connected
-**Phases complete (v2.0):** 18, 19, 20, 21, 22
-**Next:** Phase 23 — Gmail Integration & Calendar Reminders
+Phase: 26 (multi-tenant-onboarding-restaurant-hierarchy) — COMPLETE ✓
+**Last completed:** Phase 26 — Multi-tenant onboarding, restaurant hierarchy, branch switcher, chain/location management all live. All 8 UAT tests passed 2026-05-10.
+**Phases complete (v2.0):** 18, 19, 20, 21, 22, 23, 24, 25, 26
+**Next:** Phase 27 — Vendor Search & Discovery
 
 ### Phase 22 — COMPLETE (Deployed to Production 2026-04-13)
 
@@ -672,5 +671,44 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
   - Addresses 10 critical bugs in Phase 12 code, 4 unimplemented features, 9 SOTA architectural gaps
   - Three-layer architecture: deterministic inference (Phase 9 ontology) → cascade LLM enrichment → deep research with Reflexion
 
+---
+
+### Session 14 — 2026-05-10 (Phase 26: Human UAT — All 8 Tests Passed)
+
+**Completed this session:**
+
+- Ran all 8 Phase 26 human UAT tests on https://restaurant-ai-automation-web.vercel.app — all passed
+- Fixed `restaurants.slug NOT NULL` constraint crashing `POST /organizations/locations` (400): auto-generate `{name-kebab}-{8-char-uuid}` in `createLocation()`
+- Applied DB migration: `restaurants.email` → nullable (legacy single-restaurant field, not needed for sub-locations)
+- Fixed `EditLocationChainDialog` appearing in lower-right corner: Framer Motion `animate={{ y:0 }}` sets `style="transform:none"` which overrides Tailwind `-translate-x/y-1/2` classes. Fixed by moving centering into `style={{ x:'-50%', y:'-50%' }}` on the motion element
+- Applied same Framer Motion centering fix to `CreateChainDialog` and new `AssignToChainDialog`
+- Replaced `CreateChainDialog` single-checkbox with full standalone-locations checklist (multi-select, assigns all selected via parallel PATCH)
+- Added `AssignToChainDialog`: "Add one →" under empty chain now shows standalones picker + "Create brand-new location" escape hatch
+- Added `max-h + flex-col + overflow-y-auto` structure to `EditLocationChainDialog` and `CreateChainDialog` so footer Save/Cancel buttons are always pinned visible
+- Finalized all Phase 26 planning artifacts: 26-HUMAN-UAT.md (status: passed 8/8), 26-VERIFICATION.md (status: passed 21/21), ROADMAP.md (all 9 plans [x], phase complete)
+
+**Key commits:**
+- `ae8f506` — fix: slug auto-generate + email nullable migration
+- `663453a` — fix: EditLocationChainDialog scrollable body + pinned footer
+- `b81f526` — fix: Framer Motion centering (x/y style props)
+- `5682030` — feat: CreateChainDialog shows all standalones as checklist
+- `fcf5ede` — feat: Add one → opens AssignToChainDialog
+- `1e52f77` — chore: finalize Phase 26 planning artifacts
+
+**Files changed this session:**
+- `apps/api-gateway/src/organizations/organizations.service.ts` — slug auto-gen + `randomUUID` import
+- `apps/web/src/components/locations/EditLocationChainDialog.tsx` — flex-col layout + Framer Motion centering
+- `apps/web/src/components/locations/CreateChainDialog.tsx` — full standalone checklist
+- `apps/web/src/components/locations/AssignToChainDialog.tsx` — NEW: chain assignment picker
+- `apps/web/src/pages/Settings.tsx` — wire AssignToChainDialog + pass standaloneLocations
+- `.planning/phases/26-*/26-HUMAN-UAT.md` — status: passed, 8/8
+- `.planning/phases/26-*/26-VERIFICATION.md` — status: passed, 21/21
+- `.planning/ROADMAP.md` — Phase 26 all plans [x]
+- `supabase` migration — `make_restaurants_email_slug_nullable` applied via MCP
+
+**Ready for next session:** Phase 27 — Vendor Search & Discovery. See ROADMAP.md for goal and success criteria.
+
+---
+
 *State initialized: 2026-03-30*
-*Last updated: 2026-05-09 — Phase 26 UI polish committed (06b25e3). 5 Supabase migrations NOT yet applied (no linked project / no local Docker). Must run `supabase db push` in next session before E2E testing Phase 26.*
+*Last updated: 2026-05-10 — Phase 26 fully complete. All 8 UAT tests passed. Phase 27 (Vendor Search & Discovery) is next.*

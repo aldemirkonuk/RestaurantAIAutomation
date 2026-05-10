@@ -82,10 +82,15 @@ Designs from sketch session implemented in commit 06b25e3:
 - Register.tsx: responsive path selector, trust card invite input, left-rail restaurant form
 - VerifyEmail.tsx: numbered step instruction list
 
-⚠️ PENDING NEXT SESSION: Run `supabase db push` to apply 5 migrations:
-  - 20260506000000_organizations.sql
-  - 20260506000001_organization_invites.sql
-  - 20260506000002_email_verifications.sql
-  - 20260506000003_restaurants_schema_updates.sql
-  - 20260506000004_restaurant_chains.sql
-Then run E2E walkthrough per 26-HUMAN-UAT.md.
+## Phase 26 UAT Complete — 2026-05-10 ✓
+
+All 5 Supabase migrations applied (project: exzueerziesmczwlhomd). All 8 human UAT tests passed.
+
+**UAT fixes shipped:**
+- `restaurants.slug NOT NULL` → auto-generate slug in `createLocation()` (commit ae8f506)
+- `restaurants.email NOT NULL` → nullable via migration `make_restaurants_email_slug_nullable`
+- `EditLocationChainDialog` bottom-right positioning → Framer Motion centering fixed (commit b81f526)
+- `CreateChainDialog` single-checkbox → full standalone checklist (commit 5682030)
+- `Add one →` → `AssignToChainDialog` with standalones picker (commit fcf5ede)
+
+**Status: CLOSED. Phase 27 is next.**
