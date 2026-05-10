@@ -240,6 +240,17 @@ export class OrganizationsService {
     }
     const organizationId = ownedOrg.id;
 
+    // Verify that the supplied chainId belongs to one of the user's orgs
+    if (dto.chainId) {
+      const { data: chain } = await this.databaseService.supabase
+        .from('restaurant_chains')
+        .select('organization_id')
+        .eq('id', dto.chainId)
+        .in('organization_id', orgIds)
+        .maybeSingle();
+      if (!chain) throw new NotFoundException('Chain not found or access denied');
+    }
+
     const { data: restaurant, error } = await this.databaseService.supabase
       .from('restaurants')
       .insert({
