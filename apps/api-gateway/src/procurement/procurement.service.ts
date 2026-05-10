@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { ForbiddenException, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
@@ -95,7 +95,11 @@ export class ProcurementService {
       .eq('restaurant_id', restaurantId)
       .eq('is_active', true);
 
-    if (!countError && providerCount === 0) {
+    if (countError) {
+      this.logger.error('Failed to count active providers', { restaurantId, error: countError.message });
+      throw new InternalServerErrorException('Could not verify vendor availability. Please try again.');
+    }
+    if (providerCount === 0) {
       throw new ForbiddenException({
         reason: 'no_vendors',
         message: 'You must add at least one vendor before placing orders.',
