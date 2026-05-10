@@ -186,8 +186,9 @@ export class OrganizationsService {
       try {
         await this.updateLocationChain(userId, dto.restaurantId, chain.id);
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
         this.logger.error(
-          `Chain created but failed to assign restaurant ${dto.restaurantId}: ${e.message}`,
+          `Chain created but failed to assign restaurant ${dto.restaurantId}: ${msg}`,
         );
         // Do NOT rethrow — chain is valid, partial assignment is recoverable via Edit Location
       }
