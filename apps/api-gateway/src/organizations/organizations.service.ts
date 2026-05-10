@@ -154,7 +154,7 @@ export class OrganizationsService {
 
   async createChain(
     userId: string,
-    dto: { name: string; cuisine_type?: string; description?: string },
+    dto: { name: string; cuisine_type?: string; description?: string; restaurantId?: string },
   ): Promise<RestaurantChain> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0) throw new Error('User has no organization');
@@ -179,6 +179,18 @@ export class OrganizationsService {
 
     if (error || !chain)
       throw new Error(`Failed to create chain: ${error?.message}`);
+
+    if (dto.restaurantId) {
+      try {
+        await this.updateLocationChain(userId, dto.restaurantId, chain.id);
+      } catch (e) {
+        this.logger.error(
+          `Chain created but failed to assign restaurant ${dto.restaurantId}: ${e.message}`,
+        );
+        // Do NOT rethrow — chain is valid, partial assignment is recoverable via Edit Location
+      }
+    }
+
     return { id: chain.id, name: chain.name, cuisine_type: chain.cuisine_type ?? null };
   }
 
