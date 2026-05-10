@@ -1,6 +1,6 @@
 import { useState, useEffect, type RefObject } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Building2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
@@ -61,8 +61,12 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
   }
 
   const handleSubmit = async () => {
-    if (!name.trim() || !address.trim() || !city.trim()) {
-      toast.error('Name, address, and city are required')
+    if (!name.trim() || !country.trim()) {
+      toast.error('Location name and country are required')
+      return
+    }
+    if (!address.trim() || !city.trim()) {
+      toast.error('Street address and city are required')
       return
     }
     setIsSubmitting(true)
@@ -140,11 +144,14 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
             <div className="space-y-3">
               {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Restaurant name <span className="text-wine-600">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location name <span className="text-wine-600">*</span>
+                </label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Joe's Pizza — Uptown"
+                  autoFocus
                   className={INPUT_CLS}
                 />
               </div>
@@ -152,7 +159,9 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
               {/* Chain */}
               {chains.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Chain / Brand <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Chain / Brand <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
                   <select
                     value={chainId}
                     onChange={(e) => setChainId(e.target.value)}
@@ -167,78 +176,95 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                 </div>
               )}
 
-              {/* Street Address — Google Places Autocomplete */}
+              {/* Country — FIRST so autocomplete can bias results */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Street Address <span className="text-wine-600">*</span>
-                </label>
-                <PlacesAutocomplete
-                  country={country}
-                  value={address}
-                  onChange={setAddress}
-                  onPlaceSelect={handlePlaceSelect}
-                  placeholder="Start typing your street address…"
-                  className="py-2 border-gray-300 bg-white focus:ring-2 focus:ring-wine-500"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-wine-600">*</span></label>
+                <CountryCombobox value={country} onChange={setCountry} />
+                {!country && (
+                  <p className="text-xs text-gray-400 mt-1">Select a country to enable address search</p>
+                )}
               </div>
 
-              {/* City + State */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City <span className="text-wine-600">*</span></label>
-                  <input
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Chicago"
-                    className={INPUT_CLS}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">State / Province</label>
-                  <input
-                    value={stateProvince}
-                    onChange={(e) => setStateProvince(e.target.value)}
-                    placeholder="IL"
-                    className={INPUT_CLS}
-                  />
-                </div>
-              </div>
+              {/* Address fields — revealed after country selected */}
+              <AnimatePresence>
+                {country.trim().length >= 2 && (
+                  <motion.div
+                    key="address-fields"
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                    className="space-y-3"
+                  >
+                    {/* Street Address — Google Places Autocomplete */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Street Address <span className="text-wine-600">*</span>
+                      </label>
+                      <PlacesAutocomplete
+                        country={country}
+                        value={address}
+                        onChange={setAddress}
+                        onPlaceSelect={handlePlaceSelect}
+                        placeholder="Start typing your street address…"
+                        className="py-2 border-gray-300 bg-white"
+                      />
+                    </div>
 
-              {/* Country + Postal */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                  <CountryCombobox value={country} onChange={setCountry} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP / Postal</label>
-                  <input
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="60601"
-                    className={INPUT_CLS}
-                  />
-                </div>
-              </div>
+                    {/* City + State */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">City <span className="text-wine-600">*</span></label>
+                        <input
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          placeholder="Chicago"
+                          className={INPUT_CLS}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">State / Province</label>
+                        <input
+                          value={stateProvince}
+                          onChange={(e) => setStateProvince(e.target.value)}
+                          placeholder="IL"
+                          className={INPUT_CLS}
+                        />
+                      </div>
+                    </div>
 
-              {/* Phone */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone <span className="text-gray-400 font-normal">(optional)</span></label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
-                  className={INPUT_CLS}
-                />
-              </div>
+                    {/* Postal + Phone */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ZIP / Postal</label>
+                        <input
+                          value={postalCode}
+                          onChange={(e) => setPostalCode(e.target.value)}
+                          placeholder="60601"
+                          className={INPUT_CLS}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                        <input
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="+1 (555) 000-0000"
+                          className={INPUT_CLS}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="flex items-center justify-end gap-3 mt-6">
               <Button variant="ghost" onClick={handleClose}>Cancel</Button>
               <Button
                 onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="bg-wine-600 text-white hover:bg-wine-700"
+                disabled={isSubmitting || !name.trim() || !country.trim() || !address.trim() || !city.trim()}
+                className="bg-wine-600 text-white hover:bg-wine-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? 'Adding…' : 'Add Location'}
               </Button>
