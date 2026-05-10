@@ -167,25 +167,19 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                 </div>
               )}
 
-              {/* Address — plain input (PlacesAutocomplete disabled: Maps billing inactive) */}
+              {/* Street Address — Google Places Autocomplete */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Street Address <span className="text-wine-600">*</span>
                 </label>
-                <input
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. 126 E Pointe Ln"
-                  className={INPUT_CLS}
-                />
-                {/* <PlacesAutocomplete
+                <PlacesAutocomplete
                   country={country}
                   value={address}
                   onChange={setAddress}
                   onPlaceSelect={handlePlaceSelect}
                   placeholder="Start typing your street address…"
                   className="py-2 border-gray-300 bg-white focus:ring-2 focus:ring-wine-500"
-                /> */}
+                />
               </div>
 
               {/* City + State */}
