@@ -172,7 +172,8 @@ export function PlacesAutocomplete({
 
         const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
           input: trimmed,
-          includedPrimaryTypes: ['address'],
+          // 'address' is a legacy type — not valid in the new Places API.
+          // Country filter already scopes results; omitting primaryTypes gives street + premise results.
           ...(iso ? { includedRegionCodes: [iso] } : {}),
         });
 
