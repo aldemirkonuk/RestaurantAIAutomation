@@ -1,6 +1,6 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, Loader2, MapPin, Search } from 'lucide-react';
+import { AlertCircle, Building2, Loader2, MapPin, Search } from 'lucide-react';
 
 export interface PlaceResult {
   streetAddress: string;
@@ -121,6 +121,7 @@ export function PlacesAutocomplete({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const isFocused = useRef(false);
   const prevCountry = useRef(country);
@@ -165,6 +166,7 @@ export function PlacesAutocomplete({
     timerRef.current = setTimeout(async () => {
       setLoading(true);
       try {
+        setApiError(null);
         const lib = await ensurePlaces();
         const iso = countryName ? COUNTRY_ISO[countryName] : undefined;
 
@@ -185,7 +187,20 @@ export function PlacesAutocomplete({
         setOpen(next.length > 0);
         setActiveIndex(-1);
       } catch (err) {
-        console.warn('[PlacesAutocomplete]', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[PlacesAutocomplete]', msg);
+        // Surface actionable errors — billing / API-not-enabled are the most common
+        if (msg.includes('BillingNotEnabled') || msg.includes('billing')) {
+          setApiError('Google Maps billing not enabled — enable it in Google Cloud Console');
+        } else if (msg.includes('ApiNotActivated') || msg.includes('not activated') || msg.includes('places')) {
+          setApiError('Places API (New) not enabled in Google Cloud Console');
+        } else if (msg.includes('RefererNotAllowed') || msg.includes('referer')) {
+          setApiError('API key not allowed for this domain — check Google Cloud key restrictions');
+        } else if (msg.includes('VITE_GOOGLE_MAPS_API_KEY')) {
+          setApiError('VITE_GOOGLE_MAPS_API_KEY is not set in this environment');
+        } else {
+          setApiError(`Maps error: ${msg.slice(0, 80)}`);
+        }
       } finally {
         setLoading(false);
       }
@@ -264,6 +279,13 @@ export function PlacesAutocomplete({
 
   return (
     <div ref={wrapperRef} className="relative">
+      {apiError && (
+        <div className="flex items-start gap-1.5 mb-1.5 text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+          <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+          <span>{apiError}</span>
+        </div>
+      )}
+      <div className="relative">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10" />
 
       <input
@@ -408,6 +430,7 @@ export function PlacesAutocomplete({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
