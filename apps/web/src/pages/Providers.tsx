@@ -23,6 +23,7 @@ import {
   Clock,
   Heart,
   Edit,
+  BookOpen,
 } from 'lucide-react'
 import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider, useOrders } from '../hooks/queries'
 import { useAuthStore } from '../stores'
@@ -30,6 +31,7 @@ import { useUserPreferences } from '../hooks/useUserPreferences'
 import type { Provider } from '../services/api/providers'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
 import { EditProviderModal, EditProviderData } from '../components/providers/EditProviderModal'
+import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
 import { PageSkeleton, ErrorState } from '../components/ui'
 import { QuickGmailModal } from '../components/emails/QuickGmailModal'
@@ -37,6 +39,54 @@ import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 
 type BusinessTypeFilter = 'All' | 'Distributor' | 'Importer' | 'Wholesaler'
 type ViewMode = 'grid' | 'list' | 'compact'
+
+// ──────────────────────────────────────────────────────────────
+// Empty state
+// ──────────────────────────────────────────────────────────────
+
+interface EmptyProvidersStateProps {
+  onBrowseCatalogue: () => void
+  onAddCustom: () => void
+}
+
+function EmptyProvidersState({ onBrowseCatalogue, onAddCustom }: EmptyProvidersStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
+      {/* Icon composition */}
+      <div className="relative mb-6">
+        <div className="w-20 h-20 bg-wine-50 rounded-2xl flex items-center justify-center">
+          <BookOpen className="w-10 h-10 text-wine-400" />
+        </div>
+        <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center border-2 border-white">
+          <Truck className="w-4 h-4 text-emerald-600" />
+        </div>
+      </div>
+
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">No vendors yet</h2>
+      <p className="text-gray-500 max-w-md mb-8 leading-relaxed">
+        Add wine distributors and suppliers to enable ordering and track relationships.
+        Start by browsing our curated catalogue of US distributors, importers, and wholesalers.
+      </p>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <button
+          onClick={onBrowseCatalogue}
+          className="flex items-center gap-2 px-6 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/25 transition-all"
+        >
+          <Search className="w-4 h-4" />
+          Browse Vendor Catalogue
+        </button>
+        <button
+          onClick={onAddCustom}
+          className="flex items-center gap-2 px-6 py-3 bg-white text-gray-700 font-medium rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          Add Custom Vendor
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function getBusinessTypeColor(type: string | undefined): string {
   switch (type?.toLowerCase()) {
@@ -93,6 +143,7 @@ export function Providers() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
   const [showAddProviderModal, setShowAddProviderModal] = useState(false)
+  const [showVendorSearch, setShowVendorSearch] = useState(false)
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailRecipient, setEmailRecipient] = useState('')
@@ -331,12 +382,23 @@ export function Providers() {
 
   return (
     <div className="min-h-screen">
-      <Header 
-        title="Wine Providers" 
-        subtitle={`${providers.length} verified U.S.-based distributors, importers, and wholesalers`} 
+      <Header
+        title="Wine Providers"
+        subtitle={providers.length > 0 ? `${providers.length} verified U.S.-based distributors, importers, and wholesalers` : 'Manage your supplier relationships'}
       />
 
       <div className="p-6">
+        {/* Empty state — shown when restaurant has zero providers */}
+        {providers.length === 0 && !isLoading && (
+          <EmptyProvidersState
+            onBrowseCatalogue={() => setShowVendorSearch(true)}
+            onAddCustom={() => setShowAddProviderModal(true)}
+          />
+        )}
+
+        {/* Normal view — shown when providers exist */}
+        {providers.length > 0 && (
+          <>
         {/* Toolbar */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           {/* Search */}
@@ -349,9 +411,16 @@ export function Providers() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
             />
-
-            {/* Add Provider Button */}
           </div>
+
+          {/* Add Vendor button — opens VendorSearchModal */}
+          <button
+            onClick={() => setShowVendorSearch(true)}
+            className="px-6 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center gap-2 whitespace-nowrap"
+          >
+            <Search className="w-5 h-5" />
+            Add Vendor
+          </button>
 
           <button
             onClick={() => setShowAddProviderModal(true)}
@@ -1028,6 +1097,7 @@ export function Providers() {
             </motion.div>
           </motion.div>
         )}
+          </>) /* end providers.length > 0 */}
       </div>
       {/* Add Provider Modal */}
       <AddProviderModal
@@ -1042,6 +1112,14 @@ export function Providers() {
         onClose={() => setEditingProvider(null)}
         onSave={handleEditProvider}
         provider={editingProvider}
+      />
+
+      {/* Vendor Search Modal — browse catalogue */}
+      <VendorSearchModal
+        open={showVendorSearch}
+        onClose={() => setShowVendorSearch(false)}
+        onProviderAdded={() => refetch()}
+        onAddCustom={() => setShowAddProviderModal(true)}
       />
 
       {/* In-House Email Modal */}
