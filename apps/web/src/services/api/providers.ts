@@ -18,6 +18,10 @@ export interface Provider {
   restaurantId: string
   createdAt?: string
   updatedAt?: string
+  /** UUID of the linked vendor_catalogue entry, null for custom vendors */
+  catalogueVendorId?: string | null
+  /** True if this provider was manually created; false if sourced from catalogue */
+  isCustom?: boolean
 }
 
 export interface ProviderContact {
@@ -250,6 +254,46 @@ export async function getRecommendedProviders(
     `/providers/recommendations?restaurantId=${restaurantId}&wineId=${wineId}`
   )
   return response.data
+}
+
+/**
+ * Create providers for a new branch by copying a list of providers from the current restaurant.
+ * Uses catalogue mode (Mode A) when the source provider has a catalogueVendorId,
+ * or custom mode (Mode B) otherwise. The X-Restaurant-Id header is overridden per call
+ * so each provider is created in the new branch's restaurant scope.
+ *
+ * Returns the number of successfully transferred providers.
+ */
+export async function bulkCreateProvidersForBranch(
+  providers: Provider[],
+  newRestaurantId: string,
+): Promise<number> {
+  let succeeded = 0
+  for (const provider of providers) {
+    try {
+      if (provider.catalogueVendorId) {
+        await apiClient.post(
+          '/providers',
+          { catalogue_vendor_id: provider.catalogueVendorId },
+          { headers: { 'X-Restaurant-Id': newRestaurantId } },
+        )
+      } else {
+        await apiClient.post(
+          '/providers',
+          {
+            name: provider.name,
+            phone: provider.phone ?? undefined,
+            email: provider.email ?? undefined,
+          },
+          { headers: { 'X-Restaurant-Id': newRestaurantId } },
+        )
+      }
+      succeeded++
+    } catch {
+      // Individual provider failure — skip and continue
+    }
+  }
+  return succeeded
 }
 
 /**
