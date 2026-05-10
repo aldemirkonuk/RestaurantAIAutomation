@@ -97,7 +97,8 @@ export class OrganizationsService {
     const { error } = await this.databaseService.supabase
       .from('restaurants')
       .update({ chain_id: chainId })
-      .eq('id', restaurantId);
+      .eq('id', restaurantId)
+      .in('organization_id', orgIds); // org-scoped write guard — prevents TOCTOU cross-org write
     if (error) throw new Error(`Failed to update location: ${error.message}`);
   }
 
