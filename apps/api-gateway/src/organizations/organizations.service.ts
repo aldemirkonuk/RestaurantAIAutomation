@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 export interface RestaurantBranch {
@@ -166,7 +173,12 @@ export class OrganizationsService {
       .select('id')
       .eq('owner_id', userId)
       .maybeSingle();
-    const organizationId = ownedOrg?.id ?? orgIds[0];
+    if (!ownedOrg) {
+      throw new BadRequestException(
+        'Cannot determine target organization — please specify organizationId',
+      );
+    }
+    const organizationId = ownedOrg.id;
 
     const { data: chain, error } = await this.databaseService.supabase
       .from('restaurant_chains')
@@ -221,7 +233,12 @@ export class OrganizationsService {
       .select('id')
       .eq('owner_id', userId)
       .maybeSingle();
-    const organizationId = ownedOrg?.id ?? orgIds[0];
+    if (!ownedOrg) {
+      throw new BadRequestException(
+        'Cannot determine target organization — please specify organizationId',
+      );
+    }
+    const organizationId = ownedOrg.id;
 
     const { data: restaurant, error } = await this.databaseService.supabase
       .from('restaurants')
