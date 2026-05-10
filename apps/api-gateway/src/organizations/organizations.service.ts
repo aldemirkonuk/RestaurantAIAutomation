@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 export interface RestaurantBranch {
@@ -30,37 +30,80 @@ export class OrganizationsService {
     return memberships.map((m) => m.organization_id);
   }
 
-  async getBranchesForUser(userId: string): Promise<RestaurantBranch[]> {
-    const orgIds = await this.getUserOrgIds(userId);
+  /**
+   * Returns the org IDs for a user. If no org membership row exists (legacy users
+   * who registered before the org system), derives org from the user's restaurant_id
+   * and repairs the missing membership row.
+   */
+  private async getUserOrgIdsWithFallback(userId: string): Promise<string[]> {
+    let orgIds = await this.getUserOrgIds(userId);
+    if (orgIds.length > 0) return orgIds;
 
-    if (orgIds.length === 0) {
-      this.logger.debug(
-        `No org memberships found for user ${userId} — returning single restaurant fallback`,
-      );
-      // Fallback: return user's direct restaurant (for users who registered before org system)
-      const { data: user } = await this.databaseService.supabase
-        .from('users')
-        .select('restaurant_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (!user?.restaurant_id) return [];
-      const { data: restaurant } = await this.databaseService.supabase
+    this.logger.debug(
+      `No org memberships found for user ${userId} — trying restaurant_id fallback`,
+    );
+    const { data: user } = await this.databaseService.supabase
+      .from('users')
+      .select('restaurant_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (user?.restaurant_id) {
+      const { data: rest } = await this.databaseService.supabase
         .from('restaurants')
-        .select('id, name, city, chain_id')
+        .select('organization_id')
         .eq('id', user.restaurant_id)
         .maybeSingle();
-      return restaurant
-        ? [
-            {
-              id: restaurant.id,
-              name: restaurant.name,
-              city: restaurant.city ?? null,
-              chain_id: null,
-              chain_name: null,
-            },
-          ]
-        : [];
+      if (rest?.organization_id) {
+        orgIds = [rest.organization_id];
+        // Repair missing membership so future calls skip this fallback
+        await this.databaseService.supabase.from('organization_members').upsert(
+          { organization_id: rest.organization_id, user_id: userId, role: 'owner' },
+          { onConflict: 'organization_id,user_id' },
+        );
+      }
     }
+    return orgIds;
+  }
+
+  async updateLocationChain(
+    userId: string,
+    restaurantId: string,
+    chainId: string | null,
+  ): Promise<void> {
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    if (orgIds.length === 0) throw new Error('User has no organization');
+
+    // Verify restaurant belongs to user's org
+    const { data: rest } = await this.databaseService.supabase
+      .from('restaurants')
+      .select('organization_id')
+      .eq('id', restaurantId)
+      .in('organization_id', orgIds)
+      .maybeSingle();
+    if (!rest) throw new NotFoundException('Restaurant not found or access denied');
+
+    // If assigning a chain, verify chain belongs to same org
+    if (chainId) {
+      const { data: chain } = await this.databaseService.supabase
+        .from('restaurant_chains')
+        .select('organization_id')
+        .eq('id', chainId)
+        .in('organization_id', orgIds)
+        .maybeSingle();
+      if (!chain) throw new NotFoundException('Chain not found or access denied');
+    }
+
+    const { error } = await this.databaseService.supabase
+      .from('restaurants')
+      .update({ chain_id: chainId })
+      .eq('id', restaurantId);
+    if (error) throw new Error(`Failed to update location: ${error.message}`);
+  }
+
+  async getBranchesForUser(userId: string): Promise<RestaurantBranch[]> {
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+
+    if (orgIds.length === 0) return [];
 
     // Fetch all restaurants belonging to these organizations, with chain info via LEFT JOIN
     const { data: restaurants, error: restErr } =
@@ -86,7 +129,7 @@ export class OrganizationsService {
   }
 
   async getChainsForUser(userId: string): Promise<RestaurantChain[]> {
-    const orgIds = await this.getUserOrgIds(userId);
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0) return [];
 
     const { data: chains, error } = await this.databaseService.supabase
@@ -113,7 +156,7 @@ export class OrganizationsService {
     userId: string,
     dto: { name: string; cuisine_type?: string; description?: string },
   ): Promise<RestaurantChain> {
-    const orgIds = await this.getUserOrgIds(userId);
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0) throw new Error('User has no organization');
 
     const { data: ownedOrg } = await this.databaseService.supabase
@@ -154,31 +197,7 @@ export class OrganizationsService {
       chainId?: string;
     },
   ): Promise<{ id: string; name: string }> {
-    let orgIds = await this.getUserOrgIds(userId);
-
-    // Fallback: derive org from the user's existing restaurant if org_member row is missing
-    if (orgIds.length === 0) {
-      const { data: user } = await this.databaseService.supabase
-        .from('users')
-        .select('restaurant_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (user?.restaurant_id) {
-        const { data: rest } = await this.databaseService.supabase
-          .from('restaurants')
-          .select('organization_id')
-          .eq('id', user.restaurant_id)
-          .maybeSingle();
-        if (rest?.organization_id) {
-          orgIds = [rest.organization_id];
-          // Repair the missing membership row so future calls don't need this fallback
-          await this.databaseService.supabase.from('organization_members').upsert(
-            { organization_id: rest.organization_id, user_id: userId, role: 'owner' },
-            { onConflict: 'organization_id,user_id' },
-          );
-        }
-      }
-    }
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
 
     if (orgIds.length === 0) throw new Error('User has no organization — cannot add location');
 
