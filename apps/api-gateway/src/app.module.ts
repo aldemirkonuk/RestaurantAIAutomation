@@ -25,6 +25,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
 import { RestaurantTemplatesModule } from './restaurant-templates/restaurant-templates.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { VendorCatalogueModule } from './vendor-catalogue/vendor-catalogue.module';
 import { ErrorTrackingModule, SentryInterceptor } from './common/error-tracking';
 import { RateLimitModule, RateLimitGuard } from './common/rate-limit';
 import { CacheModule } from './common/cache/cache.module';
@@ -74,6 +75,7 @@ import { OrchestratorModule } from './common/orchestrator/orchestrator.module';
     ConversationsModule,   // Procurement conversation history, threads, summaries
     SettingsModule,        // Restaurant settings and feature flags
     OrganizationsModule,   // Multi-tenant org hierarchy (branches, chains)
+    VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
     UserPreferencesModule, // User preference storage (JSONB)
     RestaurantTemplatesModule, // Communication templates CRUD
     
