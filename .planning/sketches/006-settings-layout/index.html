@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 006 — Settings Layout</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: #f8f9fa; color: #111827; }
+
+/* ── Variant nav ── */
+#variant-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+  padding: 10px 20px; display: flex; gap: 8px; align-items: center;
+  font-size: 13px; font-family: system-ui;
+}
+#variant-nav span { color: #9ca3af; margin-right: 8px; font-weight: 500; }
+.vtab {
+  padding: 5px 14px; border-radius: 8px; border: 1.5px solid #e5e7eb;
+  background: #fff; color: #6b7280; cursor: pointer; font-size: 13px;
+  font-weight: 500; transition: all 0.15s; font-family: system-ui;
+}
+.vtab:hover { background: #f9fafb; border-color: #d1d5db; color: #374151; }
+.vtab.active { background: #8b1a2e; border-color: #8b1a2e; color: #fff; }
+.variant { display: none; }
+.variant.active { display: block; }
+body { padding-top: 52px; }
+
+/* ── Shared tokens ── */
+:root {
+  --wine: #8b1a2e;
+  --wine-hover: #731624;
+  --wine-light: #fdf2f4;
+  --wine-muted: #c4607a;
+  --wine-50: #fef2f4;
+  --wine-100: #fce4e9;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --radius-card: 18px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── App header ── */
+.app-header {
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 0 32px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-logo {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700; font-size: 17px; color: var(--wine);
+}
+.app-logo svg { width: 22px; height: 22px; }
+.breadcrumb { font-size: 13px; color: #9ca3af; display: flex; align-items: center; gap: 6px; margin-left: 16px; }
+.breadcrumb span { color: #374151; font-weight: 500; }
+
+/* ── Section card ── */
+.card {
+  background: #fff;
+  border-radius: var(--radius-card);
+  border: 1px solid #f0f0f0;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.card-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #f5f5f5;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-header-left { display: flex; align-items: center; gap: 10px; }
+.section-icon {
+  width: 32px; height: 32px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--wine-50);
+}
+.section-icon svg { width: 16px; height: 16px; color: var(--wine); stroke: var(--wine); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.section-title { font-size: 14px; font-weight: 600; color: #111827; font-family: 'Plus Jakarta Sans', sans-serif; }
+.section-sub { font-size: 12px; color: #9ca3af; margin-top: 1px; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 12px; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s; font-family: inherit;
+}
+.btn-wine { background: var(--wine); color: #fff; }
+.btn-wine:hover { background: var(--wine-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(139,26,46,0.3); }
+.btn-ghost { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+.btn-ghost:hover { background: #e9eaec; }
+.btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 10px; }
+
+/* ── Toggle ── */
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px; cursor: pointer; transition: background 0.12s;
+}
+.toggle-row:hover { background: #fafafa; }
+.toggle-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+.toggle-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
+}
+.toggle-icon.on { background: var(--wine-50); }
+.toggle-icon.off { background: #f3f4f6; }
+.toggle-icon svg { width: 15px; height: 15px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.toggle-icon.on svg { stroke: var(--wine); }
+.toggle-icon.off svg { stroke: #d1d5db; }
+.toggle-label { font-size: 13.5px; font-weight: 500; color: #1f2937; }
+.toggle-desc { font-size: 12px; color: #9ca3af; margin-top: 1px; }
+.switch {
+  position: relative; width: 38px; height: 22px; border-radius: 11px;
+  cursor: pointer; transition: background 0.2s; border: none; outline: none;
+  flex-shrink: 0;
+}
+.switch.on { background: var(--wine); }
+.switch.off { background: #d1d5db; }
+.switch::after {
+  content: ''; position: absolute; top: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.switch.on::after { transform: translateX(19px); }
+.switch.off::after { transform: translateX(3px); }
+
+/* ── Feature category badge ── */
+.cat-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 20px;
+}
+.cat-badge.has-on { background: var(--wine-50); color: var(--wine); }
+.cat-badge.all-off { background: #f3f4f6; color: #9ca3af; }
+
+/* ── Search ── */
+.search-wrap {
+  position: relative;
+}
+.search-wrap svg {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; stroke: #9ca3af; fill: none;
+  stroke-width: 2; stroke-linecap: round; pointer-events: none;
+}
+.search-input {
+  width: 100%; padding: 10px 16px 10px 40px;
+  border: 1px solid #e5e7eb; border-radius: 14px;
+  font-size: 13.5px; color: #374151; background: #fff;
+  box-shadow: var(--shadow-card);
+  outline: none; transition: all 0.15s; font-family: inherit;
+}
+.search-input:focus { border-color: #c4607a; box-shadow: 0 0 0 3px rgba(139,26,46,0.08); }
+.search-input::placeholder { color: #c4c9d4; }
+
+/* ── Measurement ── */
+.unit-btn {
+  padding: 7px 16px; border-radius: 10px; border: 1.5px solid #e5e7eb;
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s;
+  font-family: inherit; background: #fff; color: #6b7280;
+}
+.unit-btn.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+.unit-btn:not(.active):hover { background: #f9fafb; border-color: #d1d5db; }
+
+/* ━━━━━━━━━━━━━━━ VARIANT A — Single Column ━━━━━━━━━━━━━━━ */
+#variant-a .settings-page { max-width: 720px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* ━━━━━━━━━━━━━━━ VARIANT B — Left Rail ━━━━━━━━━━━━━━━ */
+#variant-b .settings-shell {
+  display: flex; min-height: calc(100vh - 112px);
+}
+#variant-b .settings-rail {
+  width: 220px; flex-shrink: 0; padding: 24px 16px;
+  position: sticky; top: 112px; height: fit-content;
+}
+#variant-b .rail-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 11px; font-size: 13.5px; font-weight: 500;
+  color: #6b7280; cursor: pointer; transition: all 0.15s; margin-bottom: 2px;
+}
+#variant-b .rail-item:hover { background: #f3f4f6; color: #374151; }
+#variant-b .rail-item.active { background: var(--wine-50); color: var(--wine); }
+#variant-b .rail-item svg { width: 15px; height: 15px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke: currentColor; }
+#variant-b .settings-content { flex: 1; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; max-width: 680px; }
+
+/* ━━━━━━━━━━━━━━━ VARIANT C — Top Tabs ━━━━━━━━━━━━━━━ */
+#variant-c .settings-tabs-bar {
+  background: #fff; border-bottom: 1px solid #f0f0f0;
+  padding: 0 32px; display: flex; gap: 0;
+}
+#variant-c .stab {
+  padding: 14px 20px; font-size: 13.5px; font-weight: 500; color: #9ca3af;
+  cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s;
+  display: flex; align-items: center; gap: 7px;
+}
+#variant-c .stab svg { width: 14px; height: 14px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke: currentColor; }
+#variant-c .stab:hover { color: #4b5563; }
+#variant-c .stab.active { color: var(--wine); border-bottom-color: var(--wine); }
+#variant-c .settings-content { max-width: 720px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; }
+#variant-c .tab-panel { display: none; }
+#variant-c .tab-panel.active { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Dividers in cards ── */
+.divide > * + * { border-top: 1px solid #f5f5f5; }
+</style>
+</head>
+<body>
+
+<!-- ══ VARIANT NAV ══ -->
+<div id="variant-nav">
+  <span>006 — Settings Layout</span>
+  <button class="vtab active" onclick="showVariant('a', this)">A: Single Column</button>
+  <button class="vtab" onclick="showVariant('b', this)">B: Left Rail</button>
+  <button class="vtab" onclick="showVariant('c', this)">C: Top Tabs</button>
+  <button class="vtab" onclick="showVariant('synth', this)" style="border-color:#8b1a2e;color:#8b1a2e;">★ Synthesis</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     VARIANT A — Single column, full-scroll
+     The "effortless scroll" approach. Everything in one flow.
+     ══════════════════════════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <!-- App Header -->
+  <div class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2"/><path d="M12 8v4l3 3"/></svg>
+      WineOps
+    </div>
+    <div class="breadcrumb">/ <span>Settings</span></div>
+  </div>
+
+  <div class="settings-page">
+    <!-- Page title -->
+    <div style="padding: 4px 0 12px;">
+      <h1 style="font-size:22px;font-weight:700;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;">Settings</h1>
+      <p style="font-size:13px;color:#9ca3af;margin-top:3px;">Manage features and preferences</p>
+    </div>
+
+    <!-- Team -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-left">
+          <div class="section-icon">
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div>
+            <div class="section-title">Team</div>
+            <div class="section-sub">Invite colleagues to your restaurant</div>
+          </div>
+        </div>
+        <button class="btn btn-wine btn-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Invite
+        </button>
+      </div>
+      <div style="padding:40px 24px;text-align:center;">
+        <div style="width:44px;height:44px;border-radius:14px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        </div>
+        <p style="font-size:13.5px;font-weight:500;color:#6b7280;">No team members yet</p>
+        <p style="font-size:12px;color:#c4c9d4;margin-top:4px;">Generate an invite code to bring your team in.</p>
+      </div>
+    </div>
+
+    <!-- Locations -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-left">
+          <div class="section-icon">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div>
+            <div class="section-title">Locations &amp; Chains</div>
+            <div class="section-sub">Manage locations and group them into brands</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="toast('New chain dialog opens')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            New chain
+          </button>
+          <button class="btn btn-wine btn-sm" onclick="toast('Add location dialog opens')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Add location
+          </button>
+        </div>
+      </div>
+      <!-- Chain: Joe's Bistro -->
+      <div style="border-top:1px solid #f5f5f5;">
+        <div style="padding:9px 20px;background:#fafafa;display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;">Joe's Bistro</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;color:#d1d5db;">2 locations</span>
+            <button onclick="toggleMenu(this)" style="width:24px;height:24px;border-radius:7px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9ca3af;transition:all 0.12s;" onmouseenter="this.style.background='#f0f0f0'" onmouseleave="this.style.background='transparent'" class="menu-trigger">⋯</button>
+          </div>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f9f9f9;" class="loc-row" onmouseenter="this.querySelector('.edit-btn').style.opacity='1'" onmouseleave="this.querySelector('.edit-btn').style.opacity='0'">
+          <div>
+            <p style="font-size:13.5px;font-weight:500;color:#1f2937;">Downtown</p>
+            <p style="font-size:12px;color:#9ca3af;margin-top:1px;">Chicago, IL</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;background:var(--wine-50);color:var(--wine);padding:3px 9px;border-radius:20px;font-weight:600;display:flex;align-items:center;gap:4px;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Active
+            </span>
+            <button class="edit-btn" style="border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity 0.15s;" title="Edit location">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f9f9f9;" class="loc-row" onmouseenter="this.querySelector('.edit-btn').style.opacity='1'" onmouseleave="this.querySelector('.edit-btn').style.opacity='0'">
+          <div>
+            <p style="font-size:13.5px;font-weight:500;color:#1f2937;">Lincoln Park</p>
+            <p style="font-size:12px;color:#9ca3af;margin-top:1px;">Chicago, IL</p>
+          </div>
+          <button class="edit-btn" style="border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity 0.15s;" title="Edit location">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- Standalone -->
+      <div style="border-top:1px solid #f5f5f5;">
+        <div style="padding:9px 20px;background:#fafafa;">
+          <span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;">Standalone</span>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f9f9f9;" class="loc-row" onmouseenter="this.querySelector('.edit-btn').style.opacity='1'" onmouseleave="this.querySelector('.edit-btn').style.opacity='0'">
+          <div>
+            <p style="font-size:13.5px;font-weight:500;color:#1f2937;">The Cellar Room</p>
+            <p style="font-size:12px;color:#9ca3af;margin-top:1px;">New York, NY</p>
+          </div>
+          <button class="edit-btn" style="border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity 0.15s;" title="Edit location">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Measurement -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-left">
+          <div class="section-icon">
+            <svg viewBox="0 0 24 24"><path d="M2 12h20M12 2v20"/><path d="M18 6l-6 6-6-6"/></svg>
+          </div>
+          <div>
+            <div class="section-title">Measurement &amp; Volume</div>
+            <div class="section-sub">Volume display and default pour preferences</div>
+          </div>
+        </div>
+      </div>
+      <div class="divide">
+        <div style="padding:14px 24px;">
+          <p style="font-size:13px;font-weight:500;color:#374151;margin-bottom:8px;">Display unit</p>
+          <div style="display:flex;gap:6px;">
+            <button class="unit-btn active" id="unit-ml" onclick="setUnit('ml')">Metric (ml / L)</button>
+            <button class="unit-btn" id="unit-oz" onclick="setUnit('oz')">US (oz)</button>
+          </div>
+        </div>
+        <div style="padding:14px 24px;">
+          <p style="font-size:13px;font-weight:500;color:#374151;margin-bottom:2px;">Default glass pour</p>
+          <p style="font-size:12px;color:#9ca3af;margin-bottom:8px;">Can be overridden per wine</p>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <select style="padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;color:#374151;background:#fff;outline:none;cursor:pointer;">
+              <option>150 ml — Standard (5 oz)</option>
+              <option>120 ml — Smaller (4 oz)</option>
+              <option>180 ml — Large (6 oz)</option>
+            </select>
+            <span style="font-size:12.5px;color:#9ca3af;">≈ 5.07 oz</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature Flags search -->
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="search-input" id="flag-search-a" placeholder="Search features…" oninput="filterFlags('a', this.value)">
+    </div>
+
+    <!-- Feature Flags Category: AI -->
+    <div class="card" id="cat-ai-a">
+      <div class="card-header">
+        <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">AI Features</div>
+        <span class="cat-badge has-on" id="badge-ai-a">3/5 on</span>
+      </div>
+      <div class="divide" id="flags-ai-a">
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-ai-a', 5)">
+          <div class="toggle-left">
+            <div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            <div>
+              <div class="toggle-label">AI Negotiation</div>
+              <div class="toggle-desc">AI-powered supplier negotiation</div>
+            </div>
+          </div>
+          <button class="switch on" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-ai-a', 5)"></button>
+        </div>
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-ai-a', 5)">
+          <div class="toggle-left">
+            <div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 14 8 14s8-8.75 8-14a8 8 0 0 0-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg></div>
+            <div>
+              <div class="toggle-label">Sommelier AI</div>
+              <div class="toggle-desc">AI sommelier for wine recommendations</div>
+            </div>
+          </div>
+          <button class="switch on" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-ai-a', 5)"></button>
+        </div>
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-ai-a', 5)">
+          <div class="toggle-left">
+            <div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
+            <div>
+              <div class="toggle-label">Voice Agent</div>
+              <div class="toggle-desc">Hands-free voice commands for inventory updates</div>
+            </div>
+          </div>
+          <button class="switch on" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-ai-a', 5)"></button>
+        </div>
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-ai-a', 5)">
+          <div class="toggle-left">
+            <div class="toggle-icon off"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>
+            <div>
+              <div class="toggle-label">Menu Analyzer</div>
+              <div class="toggle-desc">Analyze menu photos to add wines to inventory</div>
+            </div>
+          </div>
+          <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-ai-a', 5)"></button>
+        </div>
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-ai-a', 5)">
+          <div class="toggle-left">
+            <div class="toggle-icon off"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+            <div>
+              <div class="toggle-label">Wine Pairing AI</div>
+              <div class="toggle-desc">AI-powered food and wine pairing recommendations</div>
+            </div>
+          </div>
+          <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-ai-a', 5)"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature Flags Category: Inventory -->
+    <div class="card" id="cat-inv-a">
+      <div class="card-header">
+        <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">Inventory</div>
+        <span class="cat-badge all-off" id="badge-inv-a">0/3 on</span>
+      </div>
+      <div class="divide" id="flags-inv-a">
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-inv-a', 3)">
+          <div class="toggle-left">
+            <div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+            <div>
+              <div class="toggle-label">Inventory Storage Locations</div>
+              <div class="toggle-desc">Track and manage wine storage locations</div>
+            </div>
+          </div>
+          <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-inv-a', 3)"></button>
+        </div>
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-inv-a', 3)">
+          <div class="toggle-left">
+            <div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+            <div>
+              <div class="toggle-label">Invoice Scanning</div>
+              <div class="toggle-desc">Scan invoices with OCR to automatically update inventory</div>
+            </div>
+          </div>
+          <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-inv-a', 3)"></button>
+        </div>
+        <div class="toggle-row" onclick="toggleFlag(this, 'badge-inv-a', 3)">
+          <div class="toggle-left">
+            <div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg></div>
+            <div>
+              <div class="toggle-label">Check Scanning</div>
+              <div class="toggle-desc">Scan digital checks for profit margin analysis</div>
+            </div>
+          </div>
+          <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'), 'badge-inv-a', 3)"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unsaved bar -->
+    <div id="save-bar-a" style="display:none;background:#fff;border-radius:16px;border:1px solid #f0f0f0;box-shadow:var(--shadow-card);padding:12px 20px;display:none;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:7px;height:7px;border-radius:50%;background:var(--wine);animation:pulse 1.5s infinite;"></div>
+        <span style="font-size:13.5px;font-weight:500;color:#374151;">Unsaved changes</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="hideSaveBar('a')">Reset</button>
+        <button class="btn btn-wine btn-sm" onclick="saveChanges('a')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     VARIANT B — Left sticky rail navigation
+     Power user layout: jump to any section without scrolling
+     ══════════════════════════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2"/><path d="M12 8v4l3 3"/></svg>
+      WineOps
+    </div>
+    <div class="breadcrumb">/ <span>Settings</span></div>
+  </div>
+
+  <div class="settings-shell">
+    <!-- Left rail -->
+    <div class="settings-rail">
+      <p style="font-size:10.5px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:0.08em;padding:0 12px;margin-bottom:8px;">Settings</p>
+      <div class="rail-item active" onclick="scrollToSection('b-team', this)">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Team
+      </div>
+      <div class="rail-item" onclick="scrollToSection('b-locations', this)">
+        <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Locations
+      </div>
+      <div class="rail-item" onclick="scrollToSection('b-measurement', this)">
+        <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Measurement
+      </div>
+      <div class="rail-item" onclick="scrollToSection('b-features', this)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Features
+        <span style="margin-left:auto;font-size:10.5px;background:#f3f4f6;color:#9ca3af;padding:1px 6px;border-radius:10px;font-weight:600;">3 on</span>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="settings-content">
+      <!-- Team -->
+      <div id="b-team">
+        <p style="font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Team</p>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="section-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+              <div><div class="section-title">Team Members</div><div class="section-sub">Invite colleagues to your restaurant</div></div>
+            </div>
+            <button class="btn btn-wine btn-sm" onclick="toast('Invite dialog opens')">Invite</button>
+          </div>
+          <div style="padding:32px 24px;text-align:center;">
+            <p style="font-size:13px;color:#9ca3af;">No team members yet. Generate an invite code to bring your team in.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Locations -->
+      <div id="b-locations" style="margin-top:24px;">
+        <p style="font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Locations &amp; Chains</p>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="section-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+              <div><div class="section-title">Locations &amp; Chains</div><div class="section-sub">Manage locations and group them into brands</div></div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-ghost btn-sm">New chain</button>
+              <button class="btn btn-wine btn-sm">Add location</button>
+            </div>
+          </div>
+          <div style="padding:16px 20px;border-top:1px solid #f5f5f5;background:#fafafa;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;">Joe's Bistro</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:11px;color:#d1d5db;">2 locations</span>
+              <span style="font-size:14px;color:#9ca3af;cursor:pointer;" onclick="toast('Rename / Delete options appear')">⋯</span>
+            </div>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid #f9f9f9;display:flex;align-items:center;justify-content:space-between;">
+            <div><p style="font-size:13.5px;font-weight:500;color:#1f2937;">Downtown</p><p style="font-size:12px;color:#9ca3af;">Chicago, IL</p></div>
+            <span style="font-size:11px;background:var(--wine-50);color:var(--wine);padding:3px 9px;border-radius:20px;font-weight:600;">Active</span>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid #f9f9f9;display:flex;align-items:center;justify-content:space-between;">
+            <div><p style="font-size:13.5px;font-weight:500;color:#1f2937;">Lincoln Park</p><p style="font-size:12px;color:#9ca3af;">Chicago, IL</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Measurement -->
+      <div id="b-measurement" style="margin-top:24px;">
+        <p style="font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Measurement</p>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="section-icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg></div>
+              <div><div class="section-title">Measurement &amp; Volume</div></div>
+            </div>
+          </div>
+          <div style="padding:14px 24px;">
+            <p style="font-size:13px;font-weight:500;color:#374151;margin-bottom:8px;">Display unit</p>
+            <div style="display:flex;gap:6px;">
+              <button class="unit-btn active">Metric (ml / L)</button>
+              <button class="unit-btn">US (oz)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Features -->
+      <div id="b-features" style="margin-top:24px;">
+        <p style="font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Features</p>
+        <div class="search-wrap" style="margin-bottom:12px;">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="search-input" placeholder="Search features…">
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">AI Features</div>
+            <span class="cat-badge has-on">3/5 on</span>
+          </div>
+          <div class="divide">
+            <div class="toggle-row" onclick="toggleFlag(this)">
+              <div class="toggle-left"><div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+              <div><div class="toggle-label">AI Negotiation</div><div class="toggle-desc">AI-powered supplier negotiation</div></div></div>
+              <button class="switch on" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'))"></button>
+            </div>
+            <div class="toggle-row" onclick="toggleFlag(this)">
+              <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/></svg></div>
+              <div><div class="toggle-label">Menu Analyzer</div><div class="toggle-desc">Analyze menu photos to add wines</div></div></div>
+              <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'))"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     VARIANT C — Top tab bar per section
+     Section isolation: one thing at a time, less overwhelm
+     ══════════════════════════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2"/><path d="M12 8v4l3 3"/></svg>
+      WineOps
+    </div>
+    <div class="breadcrumb">/ <span>Settings</span></div>
+  </div>
+
+  <!-- Section tab bar -->
+  <div class="settings-tabs-bar">
+    <div class="stab active" onclick="showSettingsTab('c-team', this)">
+      <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      Team
+    </div>
+    <div class="stab" onclick="showSettingsTab('c-locations', this)">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Locations
+    </div>
+    <div class="stab" onclick="showSettingsTab('c-measurement', this)">
+      <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/></svg>
+      Measurement
+    </div>
+    <div class="stab" onclick="showSettingsTab('c-features', this)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      Features
+      <span style="font-size:10.5px;background:var(--wine-50);color:var(--wine);padding:1px 7px;border-radius:10px;font-weight:700;margin-left:4px;">3</span>
+    </div>
+  </div>
+
+  <div class="settings-content">
+    <!-- Team tab -->
+    <div class="tab-panel active" id="c-team">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-left">
+            <div class="section-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+            <div><div class="section-title">Team Members</div><div class="section-sub">Invite colleagues to your restaurant</div></div>
+          </div>
+          <button class="btn btn-wine btn-sm" onclick="toast('Invite dialog opens')">Invite</button>
+        </div>
+        <div style="padding:48px 24px;text-align:center;">
+          <div style="width:52px;height:52px;border-radius:16px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          </div>
+          <p style="font-size:14px;font-weight:500;color:#6b7280;">No team members yet</p>
+          <p style="font-size:12.5px;color:#c4c9d4;margin-top:5px;max-width:280px;margin-inline:auto;">Generate an invite code from the button above and share it with your colleagues.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Locations tab -->
+    <div class="tab-panel" id="c-locations">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-left">
+            <div class="section-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+            <div><div class="section-title">Locations &amp; Chains</div></div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm">New chain</button>
+            <button class="btn btn-wine btn-sm">Add location</button>
+          </div>
+        </div>
+        <div style="border-top:1px solid #f5f5f5;">
+          <div style="padding:9px 20px;background:#fafafa;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;">Joe's Bistro</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:11px;color:#d1d5db;">2 locations</span>
+              <span style="cursor:pointer;color:#9ca3af;font-size:14px;" onclick="toast('Rename / Delete')">⋯</span>
+            </div>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid #f9f9f9;display:flex;align-items:center;justify-content:space-between;">
+            <div><p style="font-size:13.5px;font-weight:500;color:#1f2937;">Downtown</p><p style="font-size:12px;color:#9ca3af;">Chicago, IL</p></div>
+            <span style="font-size:11px;background:var(--wine-50);color:var(--wine);padding:3px 9px;border-radius:20px;font-weight:600;">Active</span>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid #f9f9f9;"><p style="font-size:13.5px;font-weight:500;color:#1f2937;">Lincoln Park</p><p style="font-size:12px;color:#9ca3af;">Chicago, IL</p></div>
+        </div>
+        <div style="border-top:1px solid #f5f5f5;">
+          <div style="padding:9px 20px;background:#fafafa;"><span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;">Standalone</span></div>
+          <div style="padding:12px 20px;border-top:1px solid #f9f9f9;"><p style="font-size:13.5px;font-weight:500;color:#1f2937;">The Cellar Room</p><p style="font-size:12px;color:#9ca3af;">New York, NY</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Measurement tab -->
+    <div class="tab-panel" id="c-measurement">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-left">
+            <div class="section-icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg></div>
+            <div><div class="section-title">Measurement &amp; Volume</div></div>
+          </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid #f5f5f5;">
+          <p style="font-size:13px;font-weight:500;color:#374151;margin-bottom:8px;">Display unit</p>
+          <div style="display:flex;gap:6px;">
+            <button class="unit-btn active" onclick="this.classList.add('active');this.nextElementSibling.classList.remove('active')">Metric (ml / L)</button>
+            <button class="unit-btn" onclick="this.classList.add('active');this.previousElementSibling.classList.remove('active')">US (oz)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features tab -->
+    <div class="tab-panel" id="c-features">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="search-input" placeholder="Search features…">
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <div class="card-header">
+          <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">AI Features</div>
+          <span class="cat-badge has-on">3/5 on</span>
+        </div>
+        <div class="divide">
+          <div class="toggle-row" onclick="toggleFlag(this)">
+            <div class="toggle-left"><div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            <div><div class="toggle-label">AI Negotiation</div><div class="toggle-desc">AI-powered supplier negotiation</div></div></div>
+            <button class="switch on" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'))"></button>
+          </div>
+          <div class="toggle-row" onclick="toggleFlag(this)">
+            <div class="toggle-left"><div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 14 8 14s8-8.75 8-14a8 8 0 0 0-8-8z"/></svg></div>
+            <div><div class="toggle-label">Sommelier AI</div><div class="toggle-desc">AI sommelier for wine recommendations</div></div></div>
+            <button class="switch on" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'))"></button>
+          </div>
+          <div class="toggle-row" onclick="toggleFlag(this)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
+            <div><div class="toggle-label">Menu Analyzer</div><div class="toggle-desc">Analyze menu photos to add wines</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();toggleFlag(this.closest('.toggle-row'))"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     VARIANT SYNTH ★ — Single column + sticky section tabs
+     Top anchors act as a scrollspy map. Content stays one
+     continuous scroll — no isolation, no context loss.
+     ══════════════════════════════════════════════════════ -->
+<div id="variant-synth" class="variant">
+
+  <!-- App header -->
+  <div class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2"/><path d="M12 8v4l3 3"/></svg>
+      WineOps
+    </div>
+    <div class="breadcrumb">/ <span>Settings</span></div>
+  </div>
+
+  <!-- Sticky section anchor tabs — single bar, no content isolation -->
+  <div id="synth-anchors" style="
+    position:sticky; top:52px; z-index:100;
+    background:rgba(255,255,255,0.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid #f0f0f0;
+    padding:0 32px;
+    display:flex; gap:0; max-width:100%;
+    overflow-x:auto;
+  ">
+    <button class="sanch active" onclick="synthScrollTo('s-team',this)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      Team
+    </button>
+    <button class="sanch" onclick="synthScrollTo('s-locations',this)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Locations
+    </button>
+    <button class="sanch" onclick="synthScrollTo('s-measurement',this)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+      Measurement
+    </button>
+    <button class="sanch" onclick="synthScrollTo('s-features',this)" id="sanch-features">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Features
+      <span id="s-feat-badge" style="font-size:10.5px;background:#fef2f4;color:#8b1a2e;padding:1px 7px;border-radius:10px;font-weight:700;margin-left:4px;">3 on</span>
+    </button>
+  </div>
+
+  <style>
+    .sanch {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:13px 18px; font-size:13px; font-weight:500;
+      color:#9ca3af; cursor:pointer; border:none; background:none;
+      border-bottom:2px solid transparent;
+      transition:all 0.15s; font-family:'DM Sans',system-ui,sans-serif;
+      white-space:nowrap;
+    }
+    .sanch:hover { color:#4b5563; }
+    .sanch.active { color:#8b1a2e; border-bottom-color:#8b1a2e; }
+    .sanch svg { stroke:currentColor; }
+  </style>
+
+  <!-- Single-column content — everything scrolls naturally -->
+  <div style="max-width:720px; margin:0 auto; padding:28px 24px; display:flex; flex-direction:column; gap:16px;">
+
+    <!-- Unsaved bar (hidden until a toggle fires) -->
+    <div id="synth-savebar" style="
+      display:none; background:#fff; border-radius:16px;
+      border:1px solid #f0f0f0; box-shadow:0 1px 3px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.05);
+      padding:12px 20px; align-items:center; justify-content:space-between;
+    ">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:7px;height:7px;border-radius:50%;background:#8b1a2e;animation:pulse 1.5s infinite;"></div>
+        <span style="font-size:13.5px;font-weight:500;color:#374151;">Unsaved changes</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="synthReset()">Reset</button>
+        <button class="btn btn-wine btn-sm" onclick="synthSave()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Save
+        </button>
+      </div>
+    </div>
+
+    <!-- ① Team -->
+    <div id="s-team" class="synth-section">
+      <p class="synth-section-label">Team</p>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-left">
+            <div class="section-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+            <div><div class="section-title">Team Members</div><div class="section-sub">Invite colleagues to your restaurant</div></div>
+          </div>
+          <button class="btn btn-wine btn-sm" onclick="toast('Invite dialog opens')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+            Invite
+          </button>
+        </div>
+        <div style="padding:40px 24px; text-align:center;">
+          <div style="width:44px;height:44px;border-radius:14px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          </div>
+          <p style="font-size:13.5px;font-weight:500;color:#6b7280;">No team members yet</p>
+          <p style="font-size:12px;color:#c4c9d4;margin-top:4px;">Generate an invite code to bring your team in.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② Locations & Chains -->
+    <div id="s-locations" class="synth-section">
+      <p class="synth-section-label">Locations &amp; Chains</p>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-left">
+            <div class="section-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+            <div><div class="section-title">Locations &amp; Chains</div><div class="section-sub">Manage locations and group them into brands</div></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="toast('Create chain dialog')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              New chain
+            </button>
+            <button class="btn btn-wine btn-sm" onclick="toast('Add location dialog')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              Add location
+            </button>
+          </div>
+        </div>
+        <!-- Chain: Joe's Bistro -->
+        <div style="padding:9px 20px;background:#fafafa;border-top:1px solid #f5f5f5;display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.07em;">Joe's Bistro</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;color:#d1d5db;">2 locations</span>
+            <button onclick="toast('Rename / Delete')" style="width:24px;height:24px;border-radius:7px;border:none;background:transparent;cursor:pointer;color:#c4c9d4;font-size:14px;font-weight:700;transition:all .12s;" onmouseenter="this.style.background='#f0f0f0';this.style.color='#6b7280'" onmouseleave="this.style.background='transparent';this.style.color='#c4c9d4'">⋯</button>
+          </div>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f9f9f9;" onmouseenter="this.querySelector('.sloc-edit').style.opacity='1'" onmouseleave="this.querySelector('.sloc-edit').style.opacity='0'">
+          <div><p style="font-size:13.5px;font-weight:500;color:#1f2937;">Downtown</p><p style="font-size:12px;color:#9ca3af;margin-top:1px;">Chicago, IL</p></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;background:#fef2f4;color:#8b1a2e;padding:3px 9px;border-radius:20px;font-weight:600;display:flex;align-items:center;gap:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Active</span>
+            <button class="sloc-edit" style="border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity .15s;" onclick="toast('Edit Downtown')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+          </div>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f9f9f9;" onmouseenter="this.querySelector('.sloc-edit').style.opacity='1'" onmouseleave="this.querySelector('.sloc-edit').style.opacity='0'">
+          <div><p style="font-size:13.5px;font-weight:500;color:#1f2937;">Lincoln Park</p><p style="font-size:12px;color:#9ca3af;margin-top:1px;">Chicago, IL</p></div>
+          <button class="sloc-edit" style="border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity .15s;" onclick="toast('Edit Lincoln Park')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        </div>
+        <!-- Standalone -->
+        <div style="padding:9px 20px;background:#fafafa;border-top:1.5px solid #f0f0f0;">
+          <span style="font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:.07em;">Standalone</span>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f9f9f9;" onmouseenter="this.querySelector('.sloc-edit').style.opacity='1'" onmouseleave="this.querySelector('.sloc-edit').style.opacity='0'">
+          <div><p style="font-size:13.5px;font-weight:500;color:#1f2937;">The Cellar Room</p><p style="font-size:12px;color:#9ca3af;margin-top:1px;">New York, NY</p></div>
+          <button class="sloc-edit" style="border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity .15s;" onclick="toast('Edit The Cellar Room')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ Measurement -->
+    <div id="s-measurement" class="synth-section">
+      <p class="synth-section-label">Measurement</p>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-left">
+            <div class="section-icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg></div>
+            <div><div class="section-title">Measurement &amp; Volume</div><div class="section-sub">Volume display and default pour preferences</div></div>
+          </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid #f5f5f5;">
+          <p style="font-size:13px;font-weight:500;color:#374151;margin-bottom:8px;">Display unit</p>
+          <div style="display:flex;gap:6px;">
+            <button class="unit-btn active" id="su-ml" onclick="this.classList.add('active');document.getElementById('su-oz').classList.remove('active')">Metric (ml / L)</button>
+            <button class="unit-btn" id="su-oz" onclick="this.classList.add('active');document.getElementById('su-ml').classList.remove('active')">US (oz)</button>
+          </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid #f5f5f5;">
+          <p style="font-size:13px;font-weight:500;color:#374151;margin-bottom:2px;">Default glass pour</p>
+          <p style="font-size:12px;color:#9ca3af;margin-bottom:8px;">Can be overridden per wine</p>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <select style="padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;color:#374151;background:#fff;outline:none;">
+              <option>150 ml — Standard (5 oz)</option>
+              <option>120 ml — Smaller (4 oz)</option>
+              <option>180 ml — Large (6 oz)</option>
+            </select>
+            <span style="font-size:12px;color:#9ca3af;">≈ 5.07 oz</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ Features -->
+    <div id="s-features" class="synth-section">
+      <p class="synth-section-label">Features</p>
+
+      <!-- Search -->
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="search-input" placeholder="Search features…" oninput="synthFilterFlags(this.value)">
+      </div>
+
+      <!-- AI flags -->
+      <div class="card" id="sf-ai">
+        <div class="card-header" style="padding:12px 24px;">
+          <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">AI Features</div>
+          <span class="cat-badge has-on" id="sf-badge-ai">3/5 on</span>
+        </div>
+        <div class="divide" id="sf-flags-ai">
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ai',5)">
+            <div class="toggle-left"><div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div><div class="toggle-label">AI Negotiation</div><div class="toggle-desc">AI-powered supplier negotiation</div></div></div>
+            <button class="switch on" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ai',5)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ai',5)">
+            <div class="toggle-left"><div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 14 8 14s8-8.75 8-14a8 8 0 0 0-8-8z"/></svg></div><div><div class="toggle-label">Sommelier AI</div><div class="toggle-desc">AI sommelier for wine recommendations</div></div></div>
+            <button class="switch on" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ai',5)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ai',5)">
+            <div class="toggle-left"><div class="toggle-icon on"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div><div><div class="toggle-label">Voice Agent</div><div class="toggle-desc">Hands-free voice commands</div></div></div>
+            <button class="switch on" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ai',5)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ai',5)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/></svg></div><div><div class="toggle-label">Menu Analyzer</div><div class="toggle-desc">Analyze menu photos to add wines</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ai',5)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ai',5)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div><div><div class="toggle-label">Wine Pairing AI</div><div class="toggle-desc">AI-powered food and wine pairing</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ai',5)"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inventory flags -->
+      <div class="card" id="sf-inv">
+        <div class="card-header" style="padding:12px 24px;">
+          <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">Inventory</div>
+          <span class="cat-badge all-off" id="sf-badge-inv">0/3 on</span>
+        </div>
+        <div class="divide" id="sf-flags-inv">
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-inv',3)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div><div><div class="toggle-label">Inventory Storage Locations</div><div class="toggle-desc">Track and manage wine storage locations</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-inv',3)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-inv',3)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div><div class="toggle-label">Invoice Scanning</div><div class="toggle-desc">Scan invoices with OCR</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-inv',3)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-inv',3)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg></div><div><div class="toggle-label">Check Scanning</div><div class="toggle-desc">Scan digital checks for margin analysis</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-inv',3)"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Operations flags -->
+      <div class="card" id="sf-ops">
+        <div class="card-header" style="padding:12px 24px;">
+          <div style="font-size:13.5px;font-weight:600;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;">Operations</div>
+          <span class="cat-badge all-off" id="sf-badge-ops">0/4 on</span>
+        </div>
+        <div class="divide" id="sf-flags-ops">
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ops',4)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div><div><div class="toggle-label">Visual Verification</div><div class="toggle-desc">YOLOv8 label recognition and invoice OCR</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ops',4)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ops',4)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div><div class="toggle-label">Guest CRM</div><div class="toggle-desc">Track guest preferences and wine history</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ops',4)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ops',4)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div><div class="toggle-label">Compliance Autopilot</div><div class="toggle-desc">Automatic regulatory compliance tracking</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ops',4)"></button>
+          </div>
+          <div class="toggle-row" onclick="synthToggle(this,'sf-badge-ops',4)">
+            <div class="toggle-left"><div class="toggle-icon off"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div><div class="toggle-label">Shrinkage Detective</div><div class="toggle-desc">AI-powered loss prevention</div></div></div>
+            <button class="switch off" onclick="event.stopPropagation();synthToggle(this.closest('.toggle-row'),'sf-badge-ops',4)"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info note -->
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:14px 18px;background:#eff6ff;border-radius:14px;border:1px solid #dbeafe;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p style="font-size:12px;color:#2563eb;line-height:1.5;">Feature flags take effect immediately after saving. Disabled features are hidden from the UI.</p>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <style>
+    .synth-section-label {
+      font-size:11px; font-weight:700; color:#c4c9d4;
+      text-transform:uppercase; letter-spacing:0.08em;
+      margin-bottom:10px; padding:0 2px;
+    }
+    .synth-section { scroll-margin-top:110px; }
+  </style>
+
+  <script>
+    // Scrollspy: highlight anchor tab as user scrolls
+    (function() {
+      const sections = ['s-team','s-locations','s-measurement','s-features'];
+      const sanchBtns = document.querySelectorAll('#synth-anchors .sanch');
+      let ticking = false;
+
+      function updateAnchors() {
+        let current = 0;
+        sections.forEach((id, i) => {
+          const el = document.getElementById(id);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            if (rect.top <= 130) current = i;
+          }
+        });
+        sanchBtns.forEach((b, i) => b.classList.toggle('active', i === current));
+      }
+
+      window.addEventListener('scroll', () => {
+        if (!ticking) { requestAnimationFrame(() => { updateAnchors(); ticking = false; }); ticking = true; }
+      }, { passive: true });
+    })();
+
+    function synthScrollTo(id, btn) {
+      document.getElementById(id)?.scrollIntoView({ behavior:'smooth', block:'start' });
+      document.querySelectorAll('#synth-anchors .sanch').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    let synthDirty = false;
+    function synthToggle(row, badgeId, total) {
+      const sw = row.querySelector('.switch');
+      const icon = row.querySelector('.toggle-icon');
+      const on = sw.classList.contains('on');
+      sw.classList.toggle('on', !on); sw.classList.toggle('off', on);
+      icon.classList.toggle('on', !on); icon.classList.toggle('off', on);
+      if (!synthDirty) {
+        synthDirty = true;
+        const bar = document.getElementById('synth-savebar');
+        bar.style.display = 'flex'; bar.style.opacity='0'; bar.style.transform='translateY(8px)';
+        setTimeout(() => { bar.style.transition='all .2s'; bar.style.opacity='1'; bar.style.transform='translateY(0)'; }, 10);
+      }
+      if (badgeId) {
+        const card = row.closest('.card');
+        const onCount = card.querySelectorAll('.switch.on').length;
+        const badge = document.getElementById(badgeId);
+        if (badge) { badge.textContent = `${onCount}/${total} on`; badge.className='cat-badge '+(onCount>0?'has-on':'all-off'); }
+        // Update the anchor tab badge total
+        const allOn = document.querySelectorAll('#variant-synth .switch.on').length;
+        document.getElementById('s-feat-badge').textContent = allOn + ' on';
+        document.getElementById('s-feat-badge').style.background = allOn > 0 ? '#fef2f4' : '#f3f4f6';
+        document.getElementById('s-feat-badge').style.color = allOn > 0 ? '#8b1a2e' : '#9ca3af';
+      }
+    }
+
+    function synthReset() { synthDirty=false; document.getElementById('synth-savebar').style.display='none'; toast('Changes reset'); }
+    function synthSave() { synthDirty=false; document.getElementById('synth-savebar').style.display='none'; toast('Settings saved ✓'); }
+
+    function synthFilterFlags(q) {
+      const term = q.toLowerCase();
+      ['sf-flags-ai','sf-flags-inv','sf-flags-ops'].forEach(id => {
+        const container = document.getElementById(id);
+        if (!container) return;
+        let visible = 0;
+        container.querySelectorAll('.toggle-row').forEach(row => {
+          const label = row.querySelector('.toggle-label')?.textContent?.toLowerCase()||'';
+          const desc = row.querySelector('.toggle-desc')?.textContent?.toLowerCase()||'';
+          const show = !term || label.includes(term) || desc.includes(term);
+          row.style.display = show ? '' : 'none';
+          if (show) visible++;
+        });
+        const card = container.closest('.card');
+        if (card) card.style.display = visible === 0 ? 'none' : '';
+      });
+    }
+  </script>
+</div>
+
+<!-- Toast -->
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#1f2937;color:#fff;padding:10px 20px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:all 0.2s;z-index:9999;"></div>
+
+<!-- Sketch Toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:8px 12px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;cursor:default;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="opacity:0.6;">006 · Layout</span>
+    <button onclick="setViewport(375)" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">📱 375</button>
+    <button onclick="setViewport(768)" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">📟 768</button>
+    <button onclick="setViewport(0)" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🖥 Full</button>
+  </div>
+</div>
+
+<style>
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style>
+
+<script>
+// Variant switching
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.vtab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// Toggle feature flags
+function toggleFlag(row, badgeId, total) {
+  const sw = row.querySelector('.switch');
+  const icon = row.querySelector('.toggle-icon');
+  const isOn = sw.classList.contains('on');
+  sw.classList.toggle('on', !isOn);
+  sw.classList.toggle('off', isOn);
+  icon.classList.toggle('on', !isOn);
+  icon.classList.toggle('off', isOn);
+  showSaveBar();
+  if (badgeId && total) {
+    const card = row.closest('.card');
+    const onCount = card.querySelectorAll('.switch.on').length;
+    const badge = document.getElementById(badgeId);
+    if (badge) {
+      badge.textContent = `${onCount}/${total} on`;
+      badge.className = 'cat-badge ' + (onCount > 0 ? 'has-on' : 'all-off');
+    }
+  }
+}
+
+let saveBarVisible = false;
+function showSaveBar() {
+  if (!saveBarVisible) {
+    saveBarVisible = true;
+    const bar = document.getElementById('save-bar-a');
+    if (bar) { bar.style.display = 'flex'; bar.style.opacity = '0'; bar.style.transform = 'translateY(8px)'; setTimeout(() => { bar.style.transition = 'all 0.2s'; bar.style.opacity = '1'; bar.style.transform = 'translateY(0)'; }, 10); }
+  }
+}
+function hideSaveBar(v) { saveBarVisible = false; const bar = document.getElementById('save-bar-'+v); if (bar) { bar.style.display = 'none'; } }
+function saveChanges(v) {
+  toast('Settings saved ✓');
+  hideSaveBar(v);
+}
+
+// Unit toggle
+function setUnit(u) {
+  document.getElementById('unit-ml').classList.toggle('active', u === 'ml');
+  document.getElementById('unit-oz').classList.toggle('active', u === 'oz');
+}
+
+// Settings tabs (Variant C)
+function showSettingsTab(id, el) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+}
+
+// Rail navigation (Variant B)
+function scrollToSection(id, el) {
+  document.querySelectorAll('.rail-item').forEach(r => r.classList.remove('active'));
+  el.classList.add('active');
+  const target = document.getElementById(id);
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Chain menu
+function toggleMenu(btn) { toast('Menu: Rename · Delete chain'); }
+
+// Viewport
+function setViewport(w) {
+  document.body.style.maxWidth = w ? w + 'px' : '';
+  document.body.style.margin = w ? '0 auto' : '';
+}
+
+// Toast
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  el.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 2200);
+}
+
+// Filter flags
+function filterFlags(v, q) {
+  const term = q.toLowerCase();
+  document.querySelectorAll(`#variant-${v} .toggle-row`).forEach(row => {
+    const label = row.querySelector('.toggle-label')?.textContent?.toLowerCase() || '';
+    const desc = row.querySelector('.toggle-desc')?.textContent?.toLowerCase() || '';
+    row.style.display = (label.includes(term) || desc.includes(term)) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

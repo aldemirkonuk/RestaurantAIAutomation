@@ -17,3 +17,5 @@ Premium B2B SaaS onboarding for restaurant operators. The visual language is Str
 | 002 | invite-code-entry | How should the 8-char invite code input feel intentional and trustworthy? | C — Clean Input + Trust Card | onboarding, invite-code, trust, validation |
 | 003 | restaurant-details-form | How do we make the dense 10-field restaurant form feel manageable, not overwhelming? | C — Left-Rail Progress | onboarding, form, restaurant-setup, progressive-disclosure |
 | 004 | full-flow-synthesis | Does the full registration flow feel cohesive and premium end-to-end? | synthesis | onboarding, full-flow, wired, synthesis |
+| 006 | settings-layout | Single scroll vs. left rail vs. top tabs — which structure reduces cognitive load? | null | settings, layout, navigation, feature-flags |
+| 007 | locations-chains | How do chains and locations nest visually without feeling bureaucratic? | null | locations, chains, crud, interactive |

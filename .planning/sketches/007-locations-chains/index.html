@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 007 — Locations &amp; Chains</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: #f8f9fa; color: #111827; }
+
+/* Variant nav */
+#variant-nav { position:fixed;top:0;left:0;right:0;z-index:9998;background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 20px;display:flex;gap:8px;align-items:center;font-size:13px;font-family:system-ui; }
+#variant-nav span { color:#9ca3af;margin-right:8px;font-weight:500; }
+.vtab { padding:5px 14px;border-radius:8px;border:1.5px solid #e5e7eb;background:#fff;color:#6b7280;cursor:pointer;font-size:13px;font-weight:500;transition:all 0.15s;font-family:system-ui; }
+.vtab:hover { background:#f9fafb;border-color:#d1d5db;color:#374151; }
+.vtab.active { background:#8b1a2e;border-color:#8b1a2e;color:#fff; }
+.variant { display:none; }
+.variant.active { display:block; }
+body { padding-top:52px; }
+
+/* Design tokens */
+:root {
+  --wine: #8b1a2e;
+  --wine-hover: #731624;
+  --wine-50: #fef2f4;
+  --wine-100: #fce4e9;
+  --wine-muted: #c4607a;
+  --radius-card: 18px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* Shared: card */
+.card { background:#fff;border-radius:var(--radius-card);border:1px solid #f0f0f0;box-shadow:var(--shadow-card);overflow:hidden; }
+.card-header { padding:16px 24px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;justify-content:space-between; }
+.section-icon { width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--wine-50); }
+.section-icon svg { width:16px;height:16px;fill:none;stroke:var(--wine);stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
+.section-title { font-size:14px;font-weight:600;color:#111827;font-family:'Plus Jakarta Sans',sans-serif; }
+.section-sub { font-size:12px;color:#9ca3af;margin-top:1px; }
+.btn { display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:11px;border:none;font-size:12.5px;font-weight:600;cursor:pointer;transition:all 0.15s;font-family:inherit; }
+.btn-wine { background:var(--wine);color:#fff; }
+.btn-wine:hover { background:var(--wine-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(139,26,46,0.3); }
+.btn-ghost { background:#f3f4f6;color:#374151;border:1px solid #e5e7eb; }
+.btn-ghost:hover { background:#e9eaec; }
+
+/* ─── Chain row header ─── */
+.chain-header {
+  padding: 9px 20px;
+  background: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #f5f5f5;
+  position: relative;
+}
+.chain-name-text { font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.07em; }
+.chain-meta { display:flex;align-items:center;gap:10px; }
+.chain-count { font-size:11px;color:#d1d5db; }
+
+/* ─── ⋯ menu trigger ─── */
+.menu-btn {
+  width:26px;height:26px;border-radius:8px;border:none;
+  background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:#c4c9d4;font-size:15px;font-weight:700;transition:all 0.12s;
+  position:relative;
+}
+.menu-btn:hover { background:#f0f0f0;color:#6b7280; }
+.menu-btn.active { background:#f0f0f0;color:#374151; }
+
+/* ─── Dropdown menu ─── */
+.dropdown-menu {
+  position:absolute;right:0;top:32px;z-index:100;
+  background:#fff;border:1px solid #f0f0f0;border-radius:14px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.1),0 2px 6px rgba(0,0,0,0.06);
+  padding:6px;min-width:168px;
+  animation:menuIn 0.14s ease forwards;
+}
+@keyframes menuIn { from{opacity:0;transform:scale(0.96) translateY(-4px)} to{opacity:1;transform:scale(1) translateY(0)} }
+.menu-item {
+  display:flex;align-items:center;gap:9px;padding:9px 12px;
+  border-radius:9px;font-size:13px;cursor:pointer;transition:background 0.1s;
+  font-weight:500;color:#374151;white-space:nowrap;
+}
+.menu-item:hover { background:#f9fafb; }
+.menu-item.danger { color:#dc2626; }
+.menu-item.danger:hover { background:#fef2f2; }
+.menu-item svg { width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
+.menu-divider { height:1px;background:#f5f5f5;margin:4px 0; }
+
+/* Inline rename input */
+.rename-input {
+  font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.07em;
+  border:1.5px solid var(--wine-muted);border-radius:8px;padding:3px 8px;outline:none;
+  font-family:inherit;background:#fff;width:160px;
+}
+.rename-input:focus { border-color:var(--wine);box-shadow:0 0 0 3px rgba(139,26,46,0.1); }
+
+/* ─── Location rows ─── */
+.loc-row {
+  padding:12px 20px;display:flex;align-items:center;justify-content:space-between;
+  border-top:1px solid #f9f9f9;transition:background 0.12s;cursor:pointer;
+}
+.loc-row:hover { background:#fafafa; }
+.loc-name { font-size:13.5px;font-weight:500;color:#1f2937; }
+.loc-city { font-size:12px;color:#9ca3af;margin-top:1px; }
+.loc-actions { display:flex;align-items:center;gap:8px; }
+.active-badge { font-size:11px;background:var(--wine-50);color:var(--wine);padding:3px 9px;border-radius:20px;font-weight:600;display:flex;align-items:center;gap:4px; }
+.edit-btn-loc { border:none;background:none;cursor:pointer;color:#d1d5db;opacity:0;transition:opacity 0.15s; }
+.loc-row:hover .edit-btn-loc { opacity:1; }
+.edit-btn-loc:hover { color:var(--wine); }
+.edit-btn-loc svg { width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round; }
+
+/* Empty chain state */
+.empty-chain { padding:12px 20px;font-size:12px;color:#c4c9d4;font-style:italic;display:flex;align-items:center;gap:8px; }
+.empty-chain a { color:var(--wine);text-decoration:none;font-style:normal;font-weight:600; }
+.empty-chain a:hover { text-decoration:underline; }
+
+/* ─── Delete confirm inline ─── */
+.confirm-delete-panel {
+  padding:12px 14px;background:#fff8f8;border-top:1px solid #fde8e8;
+}
+.confirm-delete-panel p { font-size:12px;color:#6b7280;margin-bottom:8px; }
+.confirm-btns { display:flex;gap:6px; }
+.confirm-btn-yes { padding:6px 12px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit; }
+.confirm-btn-yes:hover { background:#b91c1c; }
+.confirm-btn-cancel { padding:6px 10px;background:transparent;color:#9ca3af;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit; }
+.confirm-btn-cancel:hover { color:#374151; }
+
+/* ══ VARIANT B: Bucket cards ══ */
+.chain-bucket {
+  background:#fff;border-radius:16px;border:1px solid #f0f0f0;
+  box-shadow:var(--shadow-card);overflow:hidden;
+}
+.chain-bucket-header {
+  padding:14px 18px;background:linear-gradient(135deg,var(--wine-50) 0%,#fff8f8 100%);
+  border-bottom:1px solid #fce4e9;display:flex;align-items:center;justify-content:space-between;
+}
+.chain-bucket-name { font-size:13px;font-weight:700;color:var(--wine);font-family:'Plus Jakarta Sans',sans-serif; }
+.chain-loc-count { font-size:11px;background:var(--wine-100);color:var(--wine);padding:2px 8px;border-radius:20px;font-weight:600; }
+
+/* ══ VARIANT C: Tree / connectors ══ */
+.tree-chain {
+  display:flex;flex-direction:column;gap:0;
+  position:relative;padding-left:0;
+}
+.tree-chain-header {
+  display:flex;align-items:center;gap:10px;padding:12px 0;
+  position:relative;
+}
+.tree-chain-dot {
+  width:10px;height:10px;border-radius:50%;background:var(--wine);
+  flex-shrink:0;position:relative;z-index:1;
+  box-shadow:0 0 0 3px var(--wine-50);
+}
+.tree-chain-label { font-size:13.5px;font-weight:700;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif; }
+.tree-chain-count { font-size:11px;color:#9ca3af;font-weight:500; }
+.tree-loc {
+  display:flex;align-items:center;gap:10px;padding:9px 0;
+  position:relative;margin-left:4px;
+}
+.tree-connector {
+  width:24px;flex-shrink:0;height:100%;
+  display:flex;align-items:center;justify-content:center;position:relative;
+}
+.tree-connector::before { content:'';position:absolute;left:4px;top:-50%;bottom:-50%;width:1.5px;background:#e5e7eb; }
+.tree-connector::after { content:'';position:absolute;left:4px;top:50%;width:16px;height:1.5px;background:#e5e7eb; }
+.tree-last .tree-connector::before { top:-50%;bottom:50%; }
+.tree-loc-dot { width:7px;height:7px;border-radius:50%;background:#d1d5db;flex-shrink:0;margin-left:0; }
+.tree-loc-text { flex:1; }
+.tree-section-label { font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:0.08em;padding:16px 0 6px; }
+
+/* Page layout wrappers */
+.page { max-width:720px;margin:0 auto;padding:28px 24px; }
+.page-title { font-size:22px;font-weight:700;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;margin-bottom:4px; }
+.page-sub { font-size:13px;color:#9ca3af;margin-bottom:24px; }
+</style>
+</head>
+<body>
+
+<!-- Variant nav -->
+<div id="variant-nav">
+  <span>007 — Locations &amp; Chains</span>
+  <button class="vtab active" onclick="showVariant('a', this)">A: Nested Rows</button>
+  <button class="vtab" onclick="showVariant('b', this)">B: Chain Buckets</button>
+  <button class="vtab" onclick="showVariant('c', this)">C: Tree View</button>
+  <button class="vtab" onclick="showVariant('synth', this)" style="border-color:#8b1a2e;color:#8b1a2e;">★ Synthesis</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     VARIANT A — Nested rows inside a single card
+     Classic B2B SaaS: chain header → indented locations
+     ⋯ menu is FULLY INTERACTIVE in this variant
+     ════════════════════════════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="page">
+    <div class="page-title">Locations &amp; Chains</div>
+    <div class="page-sub">Manage locations and group them into brands</div>
+
+    <!-- Action bar -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button class="btn btn-ghost" onclick="openCreateChain()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        New chain
+      </button>
+      <button class="btn btn-wine" onclick="toast('Add location dialog opens')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Add location
+      </button>
+    </div>
+
+    <div class="card">
+
+      <!-- ── Chain: Joe's Bistro (⋯ menu open by default to show the design) ── -->
+      <div class="chain-header" id="chain-joes-header">
+        <!-- Chain name — can switch to rename mode -->
+        <div id="joes-name-view" style="display:flex;align-items:center;gap:8px;">
+          <span class="chain-name-text" id="joes-name-label">Joe's Bistro</span>
+        </div>
+        <div id="joes-rename-view" style="display:none;align-items:center;gap:8px;">
+          <input class="rename-input" id="joes-rename-input" value="Joe's Bistro" onblur="finishRename('joes')" onkeydown="if(event.key==='Enter')finishRename('joes');if(event.key==='Escape')cancelRename('joes')">
+          <span style="font-size:11px;color:#9ca3af;">↵ to save</span>
+        </div>
+
+        <div class="chain-meta">
+          <span class="chain-count" id="joes-count">2 locations</span>
+          <div style="position:relative;">
+            <button class="menu-btn active" id="menu-btn-joes" onclick="toggleMenu('joes')">⋯</button>
+            <!-- Menu is pre-open to show the design -->
+            <div class="dropdown-menu" id="menu-joes">
+              <div class="menu-item" onclick="startRename('joes')">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Rename chain
+              </div>
+              <div class="menu-divider"></div>
+              <div class="menu-item danger" onclick="startDelete('joes')">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete chain
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Joe's: Delete confirm panel (hidden until delete clicked) -->
+      <div class="confirm-delete-panel" id="confirm-joes" style="display:none;">
+        <p>2 locations will become standalone. This cannot be undone.</p>
+        <div class="confirm-btns">
+          <button class="confirm-btn-yes" onclick="confirmDelete('joes')">Yes, delete chain</button>
+          <button class="confirm-btn-cancel" onclick="cancelDelete('joes')">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Joe's locations -->
+      <div class="loc-row" onclick="openEditLocation('Downtown')">
+        <div>
+          <div class="loc-name">Downtown</div>
+          <div class="loc-city">Chicago, IL</div>
+        </div>
+        <div class="loc-actions">
+          <span class="active-badge">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Active
+          </span>
+          <button class="edit-btn-loc" title="Edit location">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="loc-row" onclick="openEditLocation('Lincoln Park')">
+        <div>
+          <div class="loc-name">Lincoln Park</div>
+          <div class="loc-city">Chicago, IL</div>
+        </div>
+        <div class="loc-actions">
+          <button class="edit-btn-loc" title="Edit location">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Chain: Sunset Group -->
+      <div class="chain-header">
+        <span class="chain-name-text">Sunset Group</span>
+        <div class="chain-meta">
+          <span class="chain-count">0 locations</span>
+          <div style="position:relative;">
+            <button class="menu-btn" onclick="toggleMenu('sunset')">⋯</button>
+            <div class="dropdown-menu" id="menu-sunset" style="display:none;">
+              <div class="menu-item" onclick="toast('Rename Sunset Group')">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Rename chain
+              </div>
+              <div class="menu-divider"></div>
+              <div class="menu-item danger" onclick="toast('Delete Sunset Group')">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete chain
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Empty chain state -->
+      <div class="empty-chain">
+        No locations in this chain yet. &nbsp;
+        <a href="#" onclick="event.preventDefault();toast('Add location dialog opens')">Add one →</a>
+      </div>
+
+      <!-- Standalone section -->
+      <div class="chain-header" style="border-top:1.5px solid #f0f0f0;">
+        <span class="chain-name-text" style="color:#c4c9d4;">Standalone</span>
+      </div>
+      <div class="loc-row" onclick="openEditLocation('The Cellar Room')">
+        <div>
+          <div class="loc-name">The Cellar Room</div>
+          <div class="loc-city">New York, NY</div>
+        </div>
+        <div class="loc-actions">
+          <button class="edit-btn-loc" title="Edit location">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Location Dialog (simulated) -->
+    <div id="edit-dialog" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.2);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:20px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.15);border:1px solid #f0f0f0;animation:menuIn 0.15s ease;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <span style="font-size:14px;font-weight:700;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;">Edit location</span>
+          <button onclick="closeEditDialog()" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:18px;line-height:1;">×</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Name</label>
+            <input id="edit-name" value="" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:13.5px;font-family:inherit;outline:none;transition:border-color 0.15s;" onfocus="this.style.borderColor='var(--wine)'" onblur="this.style.borderColor='#e5e7eb'">
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">City</label>
+            <input value="Chicago, IL" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:13.5px;font-family:inherit;outline:none;transition:border-color 0.15s;" onfocus="this.style.borderColor='var(--wine)'" onblur="this.style.borderColor='#e5e7eb'">
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Chain</label>
+            <!-- Radio cards -->
+            <div style="display:flex;flex-direction:column;gap:6px;" id="chain-radio-group">
+              <div class="chain-radio-card selected" onclick="selectChainCard(this)" data-value="">
+                <div class="crc-name">Standalone</div>
+                <div class="crc-sub">No chain grouping</div>
+              </div>
+              <div class="chain-radio-card" onclick="selectChainCard(this)" data-value="joes">
+                <div class="crc-name">Joe's Bistro</div>
+                <div class="crc-sub">2 locations</div>
+              </div>
+              <div class="chain-radio-card" onclick="selectChainCard(this)" data-value="sunset">
+                <div class="crc-name">Sunset Group</div>
+                <div class="crc-sub">0 locations</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+          <button onclick="closeEditDialog()" style="padding:8px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Cancel</button>
+          <button onclick="saveLocation()" style="padding:8px 16px;border-radius:10px;background:var(--wine);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create chain dialog (simulated) -->
+    <div id="create-chain-dialog" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.2);backdrop-filter:blur(2px);align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:20px;padding:24px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.15);border:1px solid #f0f0f0;animation:menuIn 0.15s ease;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-size:14px;font-weight:700;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;">New chain</span>
+          <button onclick="document.getElementById('create-chain-dialog').style.display='none'" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:18px;">×</button>
+        </div>
+        <p style="font-size:12px;color:#9ca3af;margin-bottom:16px;">Group locations under a shared brand.</p>
+        <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Chain name</label>
+        <input id="new-chain-name" placeholder="e.g. The Grill Co." style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:13.5px;font-family:inherit;outline:none;" onfocus="this.style.borderColor='var(--wine)'" onblur="this.style.borderColor='#e5e7eb'">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#6b7280;cursor:pointer;">
+          <input type="checkbox" style="accent-color:var(--wine);">
+          Add <strong style="color:#374151;">Downtown</strong> to this chain
+        </label>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+          <button onclick="document.getElementById('create-chain-dialog').style.display='none'" style="padding:8px 14px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Cancel</button>
+          <button onclick="createChain()" style="padding:8px 16px;border-radius:10px;background:var(--wine);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Create chain</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     VARIANT B — Chain Buckets (visual cards per chain)
+     Each chain is its own distinct card. More airy, more spatial.
+     ════════════════════════════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="page">
+    <div class="page-title">Locations &amp; Chains</div>
+    <div class="page-sub">Manage locations and group them into brands</div>
+
+    <div style="display:flex;gap:8px;margin-bottom:24px;">
+      <button class="btn btn-ghost" onclick="toast('New chain dialog')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        New chain
+      </button>
+      <button class="btn btn-wine" onclick="toast('Add location dialog')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add location
+      </button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+
+      <!-- Chain bucket: Joe's Bistro -->
+      <div class="chain-bucket">
+        <div class="chain-bucket-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:28px;height:28px;border-radius:9px;background:var(--wine-100);display:flex;align-items:center;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wine)" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+            <span class="chain-bucket-name">Joe's Bistro</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="chain-loc-count">2 locations</span>
+            <button class="menu-btn" onclick="toast('Rename / Delete Joe\'s Bistro')" style="color:var(--wine-muted);">⋯</button>
+          </div>
+        </div>
+        <div>
+          <div class="loc-row" onclick="toast('Edit Downtown')">
+            <div><div class="loc-name">Downtown</div><div class="loc-city">Chicago, IL</div></div>
+            <div class="loc-actions">
+              <span class="active-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Active</span>
+              <button class="edit-btn-loc"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+            </div>
+          </div>
+          <div class="loc-row" onclick="toast('Edit Lincoln Park')">
+            <div><div class="loc-name">Lincoln Park</div><div class="loc-city">Chicago, IL</div></div>
+            <div class="loc-actions"><button class="edit-btn-loc"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chain bucket: Sunset Group (empty) -->
+      <div class="chain-bucket">
+        <div class="chain-bucket-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:28px;height:28px;border-radius:9px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+            <span style="font-size:13px;font-weight:700;color:#374151;font-family:'Plus Jakarta Sans',sans-serif;">Sunset Group</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;background:#f3f4f6;color:#9ca3af;padding:2px 8px;border-radius:20px;font-weight:600;">0 locations</span>
+            <button class="menu-btn" onclick="toast('Rename / Delete Sunset Group')">⋯</button>
+          </div>
+        </div>
+        <div class="empty-chain" style="padding:16px 20px;">
+          No locations yet. &nbsp;<a href="#" onclick="event.preventDefault();toast('Add location →')">Add one →</a>
+        </div>
+      </div>
+
+      <!-- Standalone bucket -->
+      <div class="chain-bucket" style="border-style:dashed;border-color:#e5e7eb;box-shadow:none;">
+        <div style="padding:12px 18px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span style="font-size:12px;font-weight:600;color:#9ca3af;">Standalone locations</span>
+        </div>
+        <div class="loc-row" onclick="toast('Edit The Cellar Room')">
+          <div><div class="loc-name">The Cellar Room</div><div class="loc-city">New York, NY</div></div>
+          <div class="loc-actions"><button class="edit-btn-loc"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     VARIANT C — Tree / connector view
+     Dot-and-line hierarchy. Elegant, shows relationship clearly.
+     ════════════════════════════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="page">
+    <div class="page-title">Locations &amp; Chains</div>
+    <div class="page-sub">Manage locations and group them into brands</div>
+
+    <div style="display:flex;gap:8px;margin-bottom:28px;">
+      <button class="btn btn-ghost" onclick="toast('New chain')">New chain</button>
+      <button class="btn btn-wine" onclick="toast('Add location')">Add location</button>
+    </div>
+
+    <div class="card" style="padding:20px 24px;">
+
+      <!-- Chain: Joe's Bistro -->
+      <div class="tree-chain">
+        <div class="tree-chain-header">
+          <div class="tree-chain-dot"></div>
+          <div style="flex:1;">
+            <span class="tree-chain-label">Joe's Bistro</span>
+            <span class="tree-chain-count" style="margin-left:8px;">2 locations</span>
+          </div>
+          <div style="position:relative;">
+            <button class="menu-btn" onclick="toggleMenu('c-joes')" style="color:var(--wine-muted);">⋯</button>
+            <div class="dropdown-menu" id="menu-c-joes" style="display:none;">
+              <div class="menu-item" onclick="toast('Rename Joe\'s Bistro');closeAllMenus()">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Rename chain
+              </div>
+              <div class="menu-divider"></div>
+              <div class="menu-item danger" onclick="toast('Delete Joe\'s Bistro');closeAllMenus()">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete chain
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tree-loc" onclick="toast('Edit Downtown')">
+          <div class="tree-connector"></div>
+          <div class="tree-loc-dot"></div>
+          <div class="tree-loc-text">
+            <span style="font-size:13.5px;font-weight:500;color:#1f2937;">Downtown</span>
+            <span style="font-size:12px;color:#9ca3af;margin-left:8px;">Chicago, IL</span>
+          </div>
+          <span class="active-badge" style="font-size:10px;padding:2px 8px;">Active</span>
+        </div>
+        <div class="tree-loc tree-last" onclick="toast('Edit Lincoln Park')">
+          <div class="tree-connector"></div>
+          <div class="tree-loc-dot"></div>
+          <div class="tree-loc-text">
+            <span style="font-size:13.5px;font-weight:500;color:#1f2937;">Lincoln Park</span>
+            <span style="font-size:12px;color:#9ca3af;margin-left:8px;">Chicago, IL</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:#f0f0f0;margin:8px 0;"></div>
+
+      <!-- Chain: Sunset Group (empty) -->
+      <div class="tree-chain">
+        <div class="tree-chain-header">
+          <div class="tree-chain-dot" style="background:#d1d5db;box-shadow:0 0 0 3px #f3f4f6;"></div>
+          <div style="flex:1;">
+            <span class="tree-chain-label" style="color:#6b7280;">Sunset Group</span>
+            <span class="tree-chain-count" style="margin-left:8px;color:#c4c9d4;">no locations</span>
+          </div>
+          <div style="position:relative;">
+            <button class="menu-btn" onclick="toast('Rename / Delete Sunset Group')">⋯</button>
+          </div>
+        </div>
+        <div style="padding:6px 0 6px 34px;">
+          <a href="#" onclick="event.preventDefault();toast('Add location')" style="font-size:12px;color:var(--wine);text-decoration:none;font-weight:600;">+ Add location to this chain</a>
+        </div>
+      </div>
+
+      <div style="height:1px;background:#f0f0f0;margin:8px 0;"></div>
+
+      <!-- Standalone -->
+      <div>
+        <div class="tree-section-label">Standalone</div>
+        <div class="tree-loc tree-last" onclick="toast('Edit The Cellar Room')">
+          <div class="tree-connector" style=""></div>
+          <div class="tree-loc-dot" style="background:#e5e7eb;"></div>
+          <div class="tree-loc-text">
+            <span style="font-size:13.5px;font-weight:500;color:#1f2937;">The Cellar Room</span>
+            <span style="font-size:12px;color:#9ca3af;margin-left:8px;">New York, NY</span>
+          </div>
+          <button class="edit-btn-loc" style="opacity:0.4;"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ★ SYNTHESIS — Tree view (C) + A's full interactivity -->
+<div id="variant-synth" class="variant">
+<div class="page">
+  <div class="page-title">Locations &amp; Chains</div>
+  <div class="page-sub">Manage locations and group them into brands</div>
+  <div style="display:flex;gap:8px;margin-bottom:28px;">
+    <button class="btn btn-ghost" onclick="document.getElementById('sy-create').style.display='flex'">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      New chain
+    </button>
+    <button class="btn btn-wine" onclick="toast('Add location dialog')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add location
+    </button>
+  </div>
+
+  <div class="card" style="padding:20px 24px;">
+
+    <!-- Chain: Joe's Bistro — tree + full A interactions -->
+    <div style="display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;">
+        <div style="width:10px;height:10px;border-radius:50%;background:var(--wine);box-shadow:0 0 0 3px var(--wine-50);flex-shrink:0;z-index:1;"></div>
+        <span id="sy-joes-label" style="font-size:13.5px;font-weight:700;color:#1f2937;font-family:'Plus Jakarta Sans',sans-serif;flex:1;">Joe's Bistro</span>
+        <input id="sy-joes-input" value="Joe's Bistro" style="display:none;font-size:13px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;border:1.5px solid var(--wine-muted);border-radius:8px;padding:3px 10px;outline:none;flex:1;color:#1f2937;" onblur="syFinishRename('joes')" onkeydown="if(event.key==='Enter')syFinishRename('joes');if(event.key==='Escape')syCancelRename('joes')">
+        <span style="font-size:11px;color:#d1d5db;margin-right:4px;">2 locations</span>
+        <div style="position:relative;">
+          <button id="sy-mbtn-joes" class="menu-btn" onclick="syToggleMenu('joes')" style="color:var(--wine-muted);">⋯</button>
+          <div class="dropdown-menu" id="sy-menu-joes">
+            <div class="menu-item" onclick="syStartRename('joes')"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Rename chain</div>
+            <div class="menu-divider"></div>
+            <div class="menu-item danger" onclick="syStartDelete('joes')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Delete chain</div>
+          </div>
+        </div>
+      </div>
+      <!-- Delete confirm -->
+      <div id="sy-del-joes" style="display:none;margin-left:20px;background:#fff8f8;border:1px solid #fde8e8;border-radius:10px;padding:10px 14px;margin-bottom:6px;">
+        <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">2 locations will become standalone.</p>
+        <div style="display:flex;gap:6px;">
+          <button onclick="toast('Chain deleted');document.getElementById('sy-del-joes').style.display='none'" style="padding:5px 12px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Yes, delete</button>
+          <button onclick="document.getElementById('sy-del-joes').style.display='none'" style="padding:5px 10px;background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>
+        </div>
+      </div>
+      <!-- Locations -->
+      <div class="tree-loc" onclick="syOpenEdit('Downtown','Chicago, IL','joes')" style="cursor:pointer;">
+        <div class="tree-connector"></div>
+        <div class="tree-loc-dot"></div>
+        <div class="tree-loc-text"><span style="font-size:13.5px;font-weight:500;color:#1f2937;">Downtown</span><span style="font-size:12px;color:#9ca3af;margin-left:8px;">Chicago, IL</span></div>
+        <span class="active-badge" style="font-size:10px;padding:2px 8px;">Active</span>
+      </div>
+      <div class="tree-loc tree-last" onclick="syOpenEdit('Lincoln Park','Chicago, IL','joes')" style="cursor:pointer;">
+        <div class="tree-connector"></div>
+        <div class="tree-loc-dot"></div>
+        <div class="tree-loc-text"><span style="font-size:13.5px;font-weight:500;color:#1f2937;">Lincoln Park</span><span style="font-size:12px;color:#9ca3af;margin-left:8px;">Chicago, IL</span></div>
+      </div>
+    </div>
+
+    <div style="height:1px;background:#f0f0f0;margin:6px 0;"></div>
+
+    <!-- Chain: Sunset Group (empty) -->
+    <div style="display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;">
+        <div style="width:10px;height:10px;border-radius:50%;background:#d1d5db;box-shadow:0 0 0 3px #f3f4f6;flex-shrink:0;z-index:1;"></div>
+        <span style="font-size:13.5px;font-weight:700;color:#6b7280;font-family:'Plus Jakarta Sans',sans-serif;flex:1;">Sunset Group</span>
+        <span style="font-size:11px;color:#e5e7eb;margin-right:4px;">0 locations</span>
+        <button class="menu-btn" onclick="toast('Rename / Delete Sunset Group')">⋯</button>
+      </div>
+      <div style="padding:4px 0 8px 34px;">
+        <a href="#" onclick="event.preventDefault();toast('Add location dialog')" style="font-size:12px;color:var(--wine);text-decoration:none;font-weight:600;">+ Add a location to this chain</a>
+      </div>
+    </div>
+
+    <div style="height:1px;background:#f0f0f0;margin:6px 0;"></div>
+
+    <!-- Standalone -->
+    <div>
+      <p style="font-size:11px;font-weight:700;color:#c4c9d4;text-transform:uppercase;letter-spacing:.08em;padding:12px 0 6px;">Standalone</p>
+      <div class="tree-loc tree-last" onclick="syOpenEdit('The Cellar Room','New York, NY','')" style="cursor:pointer;">
+        <div class="tree-connector" style=""></div>
+        <div class="tree-loc-dot" style="background:#e5e7eb;"></div>
+        <div class="tree-loc-text"><span style="font-size:13.5px;font-weight:500;color:#1f2937;">The Cellar Room</span><span style="font-size:12px;color:#9ca3af;margin-left:8px;">New York, NY</span></div>
+      </div>
+    </div>
+  </div><!-- /card -->
+</div><!-- /page -->
+
+<!-- Edit location dialog (from A — radio cards) -->
+<div id="sy-edit" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.2);backdrop-filter:blur(2px);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.15);border:1px solid #f0f0f0;animation:menuIn .15s ease;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <span style="font-size:14px;font-weight:700;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;">Edit location</span>
+      <button onclick="document.getElementById('sy-edit').style.display='none'" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:18px;line-height:1;">×</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Name</label>
+        <input id="sy-edit-name" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:13.5px;font-family:inherit;outline:none;" onfocus="this.style.borderColor='var(--wine)'" onblur="this.style.borderColor='#e5e7eb'">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">City</label>
+        <input id="sy-edit-city" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:13.5px;font-family:inherit;outline:none;" onfocus="this.style.borderColor='var(--wine)'" onblur="this.style.borderColor='#e5e7eb'">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Chain</label>
+        <div style="display:flex;flex-direction:column;gap:5px;" id="sy-chain-radios">
+          <div class="chain-radio-card selected" onclick="sySelectChain(this)"><div class="crc-name">Standalone</div><div class="crc-sub">No chain grouping</div></div>
+          <div class="chain-radio-card" onclick="sySelectChain(this)"><div class="crc-name">Joe's Bistro</div><div class="crc-sub">2 locations</div></div>
+          <div class="chain-radio-card" onclick="sySelectChain(this)"><div class="crc-name">Sunset Group</div><div class="crc-sub">0 locations</div></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+      <button onclick="document.getElementById('sy-edit').style.display='none'" style="padding:8px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Cancel</button>
+      <button onclick="toast('Location saved ✓');document.getElementById('sy-edit').style.display='none'" style="padding:8px 16px;border-radius:10px;background:var(--wine);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create chain dialog -->
+<div id="sy-create" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.2);backdrop-filter:blur(2px);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:24px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.15);border:1px solid #f0f0f0;animation:menuIn .15s ease;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <span style="font-size:14px;font-weight:700;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;">New chain</span>
+      <button onclick="document.getElementById('sy-create').style.display='none'" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:18px;">×</button>
+    </div>
+    <p style="font-size:12px;color:#9ca3af;margin-bottom:16px;">Group locations under a shared brand.</p>
+    <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Chain name</label>
+    <input id="sy-chain-name" placeholder="e.g. The Grill Co." style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:13.5px;font-family:inherit;outline:none;" onfocus="this.style.borderColor='var(--wine)'" onblur="this.style.borderColor='#e5e7eb'" onkeydown="if(event.key==='Enter')syCreateChain()">
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#6b7280;cursor:pointer;">
+      <input type="checkbox" style="accent-color:var(--wine);">
+      Add <strong style="color:#374151;margin:0 3px;">Downtown</strong> to this chain
+    </label>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+      <button onclick="document.getElementById('sy-create').style.display='none'" style="padding:8px 14px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Cancel</button>
+      <button onclick="syCreateChain()" style="padding:8px 16px;border-radius:10px;background:var(--wine);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Create chain</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function syToggleMenu(id) {
+  const m = document.getElementById('sy-menu-'+id);
+  const open = m.style.display === 'block';
+  document.querySelectorAll('[id^="sy-menu-"]').forEach(x => x.style.display='none');
+  m.style.display = open ? 'none' : 'block';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.menu-btn') && !e.target.closest('.dropdown-menu'))
+    document.querySelectorAll('[id^="sy-menu-"]').forEach(x => x.style.display='none');
+});
+function syStartRename(id) {
+  document.querySelectorAll('[id^="sy-menu-"]').forEach(x => x.style.display='none');
+  const label = document.getElementById('sy-'+id+'-label');
+  const input = document.getElementById('sy-'+id+'-input');
+  label.style.display='none'; input.style.display=''; input.focus(); input.select();
+}
+function syFinishRename(id) {
+  const label = document.getElementById('sy-'+id+'-label');
+  const input = document.getElementById('sy-'+id+'-input');
+  if (input.value.trim()) { label.textContent = input.value.trim(); toast('Renamed to "'+input.value.trim()+'"'); }
+  input.style.display='none'; label.style.display='';
+}
+function syCancelRename(id) {
+  const label = document.getElementById('sy-'+id+'-label');
+  const input = document.getElementById('sy-'+id+'-input');
+  input.value = label.textContent;
+  input.style.display='none'; label.style.display='';
+}
+function syStartDelete(id) {
+  document.querySelectorAll('[id^="sy-menu-"]').forEach(x => x.style.display='none');
+  document.getElementById('sy-del-'+id).style.display='block';
+}
+function syOpenEdit(name, city, chainId) {
+  document.getElementById('sy-edit-name').value = name;
+  document.getElementById('sy-edit-city').value = city;
+  document.querySelectorAll('#sy-chain-radios .chain-radio-card').forEach((c,i) => {
+    c.classList.toggle('selected', i === (chainId==='joes'?1:chainId===''?0:2));
+  });
+  document.getElementById('sy-edit').style.display='flex';
+}
+function sySelectChain(card) {
+  document.querySelectorAll('#sy-chain-radios .chain-radio-card').forEach(c=>c.classList.remove('selected'));
+  card.classList.add('selected');
+}
+function syCreateChain() {
+  const n = document.getElementById('sy-chain-name').value.trim();
+  if (n) toast('"'+n+'" created ✓');
+  document.getElementById('sy-create').style.display='none';
+  document.getElementById('sy-chain-name').value='';
+}
+</script>
+</div>
+
+<!-- Radio card styles -->
+
+<style>
+.chain-radio-card {
+  padding:10px 14px;border-radius:12px;border:1.5px solid #f0f0f0;
+  cursor:pointer;transition:all 0.15s;background:#fafafa;
+  display:flex;flex-direction:column;gap:2px;
+}
+.chain-radio-card:hover { border-color:#d1d5db;background:#fff; }
+.chain-radio-card.selected { border-color:var(--wine-muted);background:var(--wine-50); }
+.crc-name { font-size:13px;font-weight:600;color:#374151; }
+.chain-radio-card.selected .crc-name { color:var(--wine); }
+.crc-sub { font-size:11px;color:#9ca3af; }
+.chain-radio-card.selected .crc-sub { color:var(--wine-muted); }
+</style>
+
+<!-- Toast -->
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#1f2937;color:#fff;padding:10px 20px;border-radius:12px;font-size:13px;font-family:system-ui;opacity:0;pointer-events:none;transition:all 0.2s;z-index:9999;white-space:nowrap;"></div>
+
+<!-- Sketch toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:8px 12px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="opacity:0.6;">007 · Locations</span>
+    <button onclick="setViewport(375)" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">📱</button>
+    <button onclick="setViewport(768)" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">📟</button>
+    <button onclick="setViewport(0)" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🖥</button>
+  </div>
+</div>
+
+<script>
+// ── Variant switching ──
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.vtab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  btn.classList.add('active');
+  closeAllMenus();
+}
+
+// ── Toast ──
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  el.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 2200);
+}
+
+// ── Menu toggle ──
+function toggleMenu(id) {
+  const menu = document.getElementById('menu-' + id);
+  if (!menu) return;
+  const isOpen = menu.style.display !== 'none' && menu.style.display !== '';
+  closeAllMenus();
+  if (!isOpen) {
+    menu.style.display = 'block';
+    document.getElementById('menu-btn-' + id)?.classList.add('active');
+  }
+}
+function closeAllMenus() {
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.style.display = 'none');
+  document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.menu-btn') && !e.target.closest('.dropdown-menu')) closeAllMenus();
+});
+
+// ── Rename ──
+function startRename(chainId) {
+  closeAllMenus();
+  document.getElementById(chainId + '-name-view').style.display = 'none';
+  const rv = document.getElementById(chainId + '-rename-view');
+  rv.style.display = 'flex';
+  document.getElementById(chainId + '-rename-input').focus();
+  document.getElementById(chainId + '-rename-input').select();
+}
+function finishRename(chainId) {
+  const input = document.getElementById(chainId + '-rename-input');
+  const newName = input.value.trim();
+  if (newName) {
+    document.getElementById(chainId + '-name-label').textContent = newName;
+    toast('Chain renamed to "' + newName + '"');
+  }
+  document.getElementById(chainId + '-rename-view').style.display = 'none';
+  document.getElementById(chainId + '-name-view').style.display = 'flex';
+}
+function cancelRename(chainId) {
+  document.getElementById(chainId + '-rename-input').value = document.getElementById(chainId + '-name-label').textContent;
+  document.getElementById(chainId + '-rename-view').style.display = 'none';
+  document.getElementById(chainId + '-name-view').style.display = 'flex';
+}
+
+// ── Delete ──
+function startDelete(chainId) {
+  closeAllMenus();
+  const panel = document.getElementById('confirm-' + chainId);
+  if (panel) { panel.style.display = 'block'; }
+}
+function confirmDelete(chainId) {
+  document.getElementById('confirm-' + chainId).style.display = 'none';
+  toast('Chain deleted — locations are now standalone');
+}
+function cancelDelete(chainId) {
+  document.getElementById('confirm-' + chainId).style.display = 'none';
+}
+
+// ── Edit location dialog ──
+function openEditLocation(name) {
+  document.getElementById('edit-name').value = name;
+  const d = document.getElementById('edit-dialog');
+  d.style.display = 'flex';
+  d.style.animation = 'none';
+  setTimeout(() => d.querySelector('div').style.animation = 'menuIn 0.15s ease', 0);
+}
+function closeEditDialog() { document.getElementById('edit-dialog').style.display = 'none'; }
+function saveLocation() { toast('Location updated ✓'); closeEditDialog(); }
+
+// ── Chain radio cards ──
+function selectChainCard(card) {
+  document.querySelectorAll('.chain-radio-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+}
+
+// ── Create chain dialog ──
+function openCreateChain() {
+  const d = document.getElementById('create-chain-dialog');
+  d.style.display = 'flex';
+}
+function createChain() {
+  const name = document.getElementById('new-chain-name').value.trim();
+  if (name) { toast(`"${name}" created ✓`); }
+  document.getElementById('create-chain-dialog').style.display = 'none';
+}
+
+// ── Viewport ──
+function setViewport(w) {
+  document.body.style.maxWidth = w ? w + 'px' : '';
+  document.body.style.margin = w ? '0 auto' : '';
+}
+</script>
+</body>
+</html>

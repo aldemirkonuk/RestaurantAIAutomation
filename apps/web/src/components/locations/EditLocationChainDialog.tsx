@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
-import { Building2, X } from 'lucide-react'
+import { MapPin, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
+import { cn } from '../../lib/utils'
 import type { RestaurantBranch } from '../../contexts/AuthContext'
 
 export interface Chain {
   id: string
   name: string
+  locationCount?: number
 }
 
 interface EditLocationChainDialogProps {
@@ -19,8 +21,7 @@ interface EditLocationChainDialogProps {
   onSaved: () => void
 }
 
-const INPUT_CLS =
-  'block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none'
+const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 export function EditLocationChainDialog({
   branch,
@@ -30,41 +31,55 @@ export function EditLocationChainDialog({
   onSaved,
 }: EditLocationChainDialogProps) {
   const [selectedChainId, setSelectedChainId] = useState<string>(branch.chain_id ?? '')
+  const [locationName, setLocationName] = useState(branch.name)
+  const [city, setCity] = useState(branch.city ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Sync selected chain when branch prop changes (e.g. dialog re-opened for different branch)
   useEffect(() => {
     setSelectedChainId(branch.chain_id ?? '')
-  }, [branch.id, branch.chain_id])
+    setLocationName(branch.name)
+    setCity(branch.city ?? '')
+  }, [branch.id, branch.chain_id, branch.name, branch.city])
 
-  const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+  const isDirty =
+    selectedChainId !== (branch.chain_id ?? '') ||
+    locationName.trim() !== branch.name ||
+    city.trim() !== (branch.city ?? '')
 
-  // Derive the display name for the newly selected chain (for the warning message)
-  const selectedChain = chains.find((c) => c.id === selectedChainId)
-
-  // Show amber warning when user is switching from one chain to a different chain
   const isSwitchingChain =
     branch.chain_name !== null &&
     selectedChainId !== '' &&
     selectedChainId !== branch.chain_id
 
+  const isRemovingFromChain = branch.chain_id !== null && selectedChainId === ''
+
+  const selectedChain = chains.find((c) => c.id === selectedChainId)
+
   const handleSubmit = async () => {
+    if (!locationName.trim()) {
+      toast.error('Location name cannot be empty')
+      return
+    }
     setIsSubmitting(true)
     try {
       const token = localStorage.getItem('accessToken')
       const resp = await fetch(`${API_URL}/api/v1/organizations/locations/${branch.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ chainId: selectedChainId || null }),
+        body: JSON.stringify({
+          chainId: selectedChainId || null,
+          name: locationName.trim() !== branch.name ? locationName.trim() : undefined,
+          city: city.trim() !== (branch.city ?? '') ? (city.trim() || null) : undefined,
+        }),
       })
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}))
         throw new Error((data as { message?: string }).message || 'Failed to update location')
       }
-      toast.success(`${branch.name} updated!`)
+      toast.success(`${locationName.trim()} updated`)
       onSaved()
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update location. Please try again.')
+      toast.error(err instanceof Error ? err.message : 'Failed to update — please try again')
     } finally {
       setIsSubmitting(false)
     }
@@ -72,77 +87,127 @@ export function EditLocationChainDialog({
 
   const handleClose = () => {
     setSelectedChainId(branch.chain_id ?? '')
+    setLocationName(branch.name)
+    setCity(branch.city ?? '')
     onClose()
   }
+
+  const chainOptions: Array<{ id: string; label: string; sub: string }> = [
+    { id: '', label: 'Standalone', sub: 'No chain grouping' },
+    ...chains.map((c) => ({
+      id: c.id,
+      label: c.name,
+      sub: c.locationCount !== undefined
+        ? `${c.locationCount} location${c.locationCount !== 1 ? 's' : ''}`
+        : 'Chain',
+    })),
+  ]
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && handleClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" onClick={handleClose} />
+        <Dialog.Overlay className="fixed inset-0 bg-black/20 z-50 backdrop-blur-[1px]" />
         <Dialog.Content asChild>
           <motion.div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm"
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-lg p-6 w-full max-w-sm border border-gray-100"
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
           >
-            <div className="flex items-center justify-between mb-4">
-              <Dialog.Title className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-wine-500" />
-                Edit Chain Assignment
+            <div className="flex items-center justify-between mb-1">
+              <Dialog.Title className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-wine-500" />
+                Edit location
               </Dialog.Title>
-              <button type="button" onClick={handleClose} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
+              <button type="button" onClick={handleClose} className="text-gray-300 hover:text-gray-500 transition-colors">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <Dialog.Description className="text-sm text-gray-500 mb-5">
-              Reassign this location to a different chain or make it standalone.
+            <Dialog.Description className="text-sm text-gray-400 mb-5">
+              Update name, city, or chain assignment.
             </Dialog.Description>
 
-            {/* Read-only location header */}
-            <div className="mb-4 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
-              <p className="text-sm font-semibold text-gray-900">{branch.name}</p>
-              {branch.city && <p className="text-xs text-gray-400">{branch.city}</p>}
+            <div className="space-y-4">
+              {/* Name + City row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Name</label>
+                  <input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">City</label>
+                  <input
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Optional"
+                    className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Chain radio cards */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Chain</label>
+                <div className="space-y-1.5">
+                  {chainOptions.map((opt) => {
+                    const selected = selectedChainId === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setSelectedChainId(opt.id)}
+                        className={cn(
+                          'w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-150 flex items-center justify-between',
+                          selected
+                            ? 'border-wine-400 bg-wine-50 text-wine-900'
+                            : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-200 hover:bg-gray-100',
+                        )}
+                      >
+                        <div>
+                          <p className={cn('text-sm font-medium', selected ? 'text-wine-800' : 'text-gray-800')}>
+                            {opt.label}
+                          </p>
+                          <p className={cn('text-xs mt-0.5', selected ? 'text-wine-500' : 'text-gray-400')}>
+                            {opt.sub}
+                          </p>
+                        </div>
+                        {selected && <Check className="w-4 h-4 text-wine-500 shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Contextual warnings */}
+              {isSwitchingChain && selectedChain && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  Moving from <strong>{branch.chain_name}</strong> → <strong>{selectedChain.name}</strong>
+                </p>
+              )}
+              {isRemovingFromChain && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  This will remove <strong>{branch.name}</strong> from <strong>{branch.chain_name}</strong>.
+                </p>
+              )}
             </div>
 
-            {/* Chain selector */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Chain / Brand
-              </label>
-              <select
-                value={selectedChainId}
-                onChange={(e) => setSelectedChainId(e.target.value)}
-                className={INPUT_CLS}
-              >
-                <option value="">Standalone (no chain)</option>
-                {chains.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Amber warning when switching chains */}
-            {isSwitchingChain && selectedChain && (
-              <p className="text-xs text-amber-600 mb-4 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                This will move <strong>{branch.name}</strong> from &ldquo;{branch.chain_name}&rdquo; to &ldquo;{selectedChain.name}&rdquo;.
-              </p>
-            )}
-
-            <div className="flex items-center justify-end gap-3 mt-6">
-              <Button variant="ghost" onClick={handleClose} disabled={isSubmitting}>
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button
+                size="sm"
                 onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="bg-wine-600 text-white hover:bg-wine-700"
+                disabled={isSubmitting || !isDirty}
+                className="bg-wine-600 text-white hover:bg-wine-700 disabled:opacity-40"
               >
-                {isSubmitting ? 'Saving...' : 'Save'}
+                {isSubmitting ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </motion.div>

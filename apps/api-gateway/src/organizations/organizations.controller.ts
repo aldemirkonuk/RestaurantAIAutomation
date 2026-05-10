@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Req,
@@ -19,6 +20,7 @@ import {
 } from './organizations.service';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CreateChainDto } from './dto/create-chain.dto';
+import { RenameChainDto } from './dto/rename-chain.dto';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Request } from 'express';
@@ -66,6 +68,27 @@ export class OrganizationsController {
     return this.organizationsService.createChain(userId, body);
   }
 
+  @Patch('chains/:id')
+  async renameChain(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Param('id') id: string,
+    @Body() body: RenameChainDto,
+  ): Promise<void> {
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
+    return this.organizationsService.renameChain(userId, id, body.name);
+  }
+
+  @Delete('chains/:id')
+  async deleteChain(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Param('id') id: string,
+  ): Promise<void> {
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
+    return this.organizationsService.deleteChain(userId, id);
+  }
+
   @Patch('locations/:id')
   async updateLocation(
     @Req() req: Request & { user: AuthenticatedUser },
@@ -74,11 +97,11 @@ export class OrganizationsController {
   ): Promise<void> {
     const userId: string = (req.user as AuthenticatedUser)?.userId;
     if (!userId) throw new UnauthorizedException('Missing user identity');
-    return this.organizationsService.updateLocationChain(
-      userId,
-      id,
-      body.chainId ?? null,
-    );
+    return this.organizationsService.updateLocation(userId, id, {
+      chainId: body.chainId,
+      name: body.name,
+      city: body.city,
+    });
   }
 
   @Post('locations')

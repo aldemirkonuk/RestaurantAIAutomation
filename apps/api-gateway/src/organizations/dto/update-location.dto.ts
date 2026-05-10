@@ -1,7 +1,15 @@
-import { IsOptional, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class UpdateLocationDto {
   @IsOptional()
   @IsUUID()
-  chainId?: string | null; // null = remove from chain (make standalone)
+  chainId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
 }

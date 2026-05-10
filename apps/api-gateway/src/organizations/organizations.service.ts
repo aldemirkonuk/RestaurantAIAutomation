@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
@@ -78,10 +79,17 @@ export class OrganizationsService {
     restaurantId: string,
     chainId: string | null,
   ): Promise<void> {
+    await this.updateLocation(userId, restaurantId, { chainId });
+  }
+
+  async updateLocation(
+    userId: string,
+    restaurantId: string,
+    dto: { chainId?: string | null; name?: string; city?: string },
+  ): Promise<void> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0) throw new ForbiddenException('User has no organization');
 
-    // Verify restaurant belongs to user's org
     const { data: rest } = await this.databaseService.supabase
       .from('restaurants')
       .select('organization_id')
@@ -90,23 +98,76 @@ export class OrganizationsService {
       .maybeSingle();
     if (!rest) throw new NotFoundException('Restaurant not found or access denied');
 
-    // If assigning a chain, verify chain belongs to same org
-    if (chainId) {
+    if (dto.chainId !== undefined && dto.chainId !== null) {
       const { data: chain } = await this.databaseService.supabase
         .from('restaurant_chains')
         .select('organization_id')
-        .eq('id', chainId)
+        .eq('id', dto.chainId)
         .in('organization_id', orgIds)
         .maybeSingle();
       if (!chain) throw new NotFoundException('Chain not found or access denied');
     }
 
+    const patch: Record<string, unknown> = {};
+    if (dto.chainId !== undefined) patch.chain_id = dto.chainId;
+    if (dto.name?.trim()) patch.name = dto.name.trim();
+    if (dto.city !== undefined) patch.city = dto.city?.trim() || null;
+
+    if (Object.keys(patch).length === 0) return;
+
     const { error } = await this.databaseService.supabase
       .from('restaurants')
-      .update({ chain_id: chainId })
+      .update(patch)
       .eq('id', restaurantId)
-      .in('organization_id', orgIds); // org-scoped write guard — prevents TOCTOU cross-org write
+      .in('organization_id', orgIds);
     if (error) throw new InternalServerErrorException('Failed to update location');
+  }
+
+  async renameChain(userId: string, chainId: string, name: string): Promise<void> {
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    if (orgIds.length === 0) throw new ForbiddenException('User has no organization');
+
+    const { data: existing } = await this.databaseService.supabase
+      .from('restaurant_chains')
+      .select('id')
+      .eq('id', chainId)
+      .in('organization_id', orgIds)
+      .maybeSingle();
+    if (!existing) throw new NotFoundException('Chain not found or access denied');
+
+    const { error } = await this.databaseService.supabase
+      .from('restaurant_chains')
+      .update({ name: name.trim() })
+      .eq('id', chainId)
+      .in('organization_id', orgIds);
+    if (error) throw new InternalServerErrorException('Failed to rename chain');
+  }
+
+  async deleteChain(userId: string, chainId: string): Promise<void> {
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    if (orgIds.length === 0) throw new ForbiddenException('User has no organization');
+
+    const { data: existing } = await this.databaseService.supabase
+      .from('restaurant_chains')
+      .select('id')
+      .eq('id', chainId)
+      .in('organization_id', orgIds)
+      .maybeSingle();
+    if (!existing) throw new NotFoundException('Chain not found or access denied');
+
+    // Detach all locations first so the delete doesn't fail on FK
+    await this.databaseService.supabase
+      .from('restaurants')
+      .update({ chain_id: null })
+      .eq('chain_id', chainId)
+      .in('organization_id', orgIds);
+
+    const { error } = await this.databaseService.supabase
+      .from('restaurant_chains')
+      .delete()
+      .eq('id', chainId)
+      .in('organization_id', orgIds);
+    if (error) throw new InternalServerErrorException('Failed to delete chain');
   }
 
   async getBranchesForUser(userId: string): Promise<RestaurantBranch[]> {
