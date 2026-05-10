@@ -55,9 +55,10 @@ export class OrganizationsService {
         .maybeSingle();
       if (rest?.organization_id) {
         orgIds = [rest.organization_id];
-        // Repair missing membership so future calls skip this fallback
+        // Repair missing membership so future calls skip this fallback.
+        // Default to 'member' — never silently escalate a legacy user to 'owner'.
         await this.databaseService.supabase.from('organization_members').upsert(
-          { organization_id: rest.organization_id, user_id: userId, role: 'owner' },
+          { organization_id: rest.organization_id, user_id: userId, role: 'member' },
           { onConflict: 'organization_id,user_id' },
         );
       }
