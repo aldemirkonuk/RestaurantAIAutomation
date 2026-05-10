@@ -55,6 +55,7 @@ export function BranchProviderTransferModal({
     setIsTransferring(true)
     setTransferProgress(0)
     let succeeded = 0
+    let attempted = 0
 
     try {
       for (const provider of selectedProviders) {
@@ -83,7 +84,8 @@ export function BranchProviderTransferModal({
         } catch {
           // Individual provider failure — skip and continue with the rest
         }
-        setTransferProgress(succeeded)
+        attempted++
+        setTransferProgress(attempted)
       }
 
       const skipped = selectedCount - succeeded
