@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -32,6 +33,7 @@ export class ProcurementController {
   @Post('orders')
   @ApiOperation({ summary: 'Create procurement order' })
   @ApiResponse({ status: 201, type: OrderResponseDto })
+  @ApiResponse({ status: 403, description: 'No active vendors — cannot place orders (reason: no_vendors)' })
   async createOrder(
     @Body() dto: CreateOrderDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
@@ -43,6 +45,10 @@ export class ProcurementController {
         dto,
       );
     } catch (error) {
+      // Re-throw ForbiddenException (no_vendors guard) as-is with 403
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
       throw new HttpException(
         error.message || 'Failed to create procurement order',
         HttpStatus.INTERNAL_SERVER_ERROR,

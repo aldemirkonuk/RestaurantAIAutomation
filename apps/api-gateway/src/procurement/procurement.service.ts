@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
@@ -88,6 +88,21 @@ export class ProcurementService {
     userId: string,
     dto: CreateOrderDto,
   ): Promise<OrderResponseDto> {
+    // Guard: restaurant must have at least one active provider before placing orders
+    const { count: providerCount, error: countError } = await this.databaseService.supabase
+      .from('providers')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true);
+
+    if (!countError && providerCount === 0) {
+      throw new ForbiddenException({
+        reason: 'no_vendors',
+        message: 'You must add at least one vendor before placing orders.',
+        redirect: '/providers',
+      });
+    }
+
     const orderNumber = this.generateOrderNumber();
     const finalPrice = dto.finalPrice ?? dto.quotedPrice ?? 0;
     const totalCost = dto.totalCost ?? finalPrice * dto.quantity;
