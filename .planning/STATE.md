@@ -28,8 +28,10 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 Phase: 26 (multi-tenant-onboarding-restaurant-hierarchy) — COMPLETE ✓
 **Last completed:** Phase 26 — Multi-tenant onboarding, restaurant hierarchy, branch switcher, chain/location management all live. All 8 UAT tests passed 2026-05-10.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26
-**Phases skipped / not yet started:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, never executed
-**Next:** Phase 27 — Vendor Search & Discovery (or revisit 23/24 first — user's call)
+**Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
+- Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
+- Phase 24: ~20% done (test stubs + model_clients.py only); plans 24-01, 24-04, 24-05 not executed. Blocked on Phase 23 being live.
+**Next:** Phase 27 — Vendor Search & Discovery
 
 ### Phase 22 — COMPLETE (Deployed to Production 2026-04-13)
 

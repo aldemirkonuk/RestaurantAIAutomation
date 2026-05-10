@@ -1,7 +1,7 @@
 # Phase 23: Gmail Integration & Calendar Reminder Emails — Context
 
 **Gathered:** 2026-04-13
-**Status:** Ready for planning
+**Status:** DEFERRED — revisit later. Plans 01, 02, 04 complete. Blocked at plan 23-03 (user must set Railway OAuth2 env vars: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN). Plans 23-03 + 23-06 remain to resume.
 
 <domain>
 ## Phase Boundary
