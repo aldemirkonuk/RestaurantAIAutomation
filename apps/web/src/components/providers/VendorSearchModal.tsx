@@ -115,10 +115,15 @@ export function VendorSearchModal({
 
   // ── Add vendor ────────────────────────────────────────────
   const handleAdd = async (vendor: VendorCatalogueEntry) => {
-    await addProviderFromCatalogue(vendor.id)
-    toast.success(`Added ${vendor.name} to your providers`)
-    onProviderAdded()
-    onClose()
+    try {
+      await addProviderFromCatalogue(vendor.id)
+      toast.success(`Added ${vendor.name} to your providers`)
+      onProviderAdded()
+      onClose()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to add vendor'
+      toast.error(`Could not add ${vendor.name}`, { description: message })
+    }
   }
 
   // ── Add custom (close modal, open AddProviderModal) ───────
