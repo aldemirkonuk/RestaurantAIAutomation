@@ -1,5 +1,6 @@
+import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MapPin, Loader2 } from 'lucide-react';
+import { Building2, Loader2, MapPin, Search } from 'lucide-react';
 
 export interface PlaceResult {
   streetAddress: string;
@@ -10,40 +11,11 @@ export interface PlaceResult {
   neighborhood: string;
 }
 
-// ── Photon (search phase) ──────────────────────────────────────────────────
-interface PhotonFeature {
-  type: 'Feature';
-  geometry: { type: 'Point'; coordinates: [number, number] };
-  properties: {
-    osm_id: number;
-    osm_type: 'N' | 'W' | 'R';
-    country?: string;
-    state?: string;
-    county?: string;
-    city?: string;
-    postcode?: string;
-    street?: string;
-    housenumber?: string;
-    name?: string;
-    district?: string;
-    suburb?: string;
-  };
-}
-
-// ── Nominatim (resolution phase) ──────────────────────────────────────────
-interface NominatimAddress {
-  house_number?: string;
-  road?: string;
-  neighbourhood?: string;
-  suburb?: string;
-  city?: string;
-  town?: string;
-  village?: string;
-  municipality?: string;
-  county?: string;
-  state?: string;
-  postcode?: string;
-  country?: string;
+interface SuggestionRow {
+  prediction: google.maps.places.PlacePrediction;
+  main: string;
+  secondary: string;
+  types: string[];
 }
 
 interface PlacesAutocompleteProps {
@@ -56,71 +28,116 @@ interface PlacesAutocompleteProps {
   country?: string;
 }
 
-const searchCache = new Map<string, PhotonFeature[]>();
+// country display name → ISO 3166-1 alpha-2
+const COUNTRY_ISO: Record<string, string> = {
+  'Afghanistan':'af','Albania':'al','Algeria':'dz','Argentina':'ar','Armenia':'am',
+  'Australia':'au','Austria':'at','Azerbaijan':'az','Bahrain':'bh','Bangladesh':'bd',
+  'Belarus':'by','Belgium':'be','Bolivia':'bo','Bosnia and Herzegovina':'ba',
+  'Brazil':'br','Bulgaria':'bg','Cambodia':'kh','Canada':'ca','Chile':'cl',
+  'China':'cn','Colombia':'co','Croatia':'hr','Cuba':'cu','Cyprus':'cy',
+  'Czech Republic':'cz','Denmark':'dk','Dominican Republic':'do','Ecuador':'ec',
+  'Egypt':'eg','Estonia':'ee','Ethiopia':'et','Finland':'fi','France':'fr',
+  'Georgia':'ge','Germany':'de','Ghana':'gh','Greece':'gr','Guatemala':'gt',
+  'Honduras':'hn','Hungary':'hu','Iceland':'is','India':'in','Indonesia':'id',
+  'Iran':'ir','Iraq':'iq','Ireland':'ie','Israel':'il','Italy':'it',
+  'Jamaica':'jm','Japan':'jp','Jordan':'jo','Kazakhstan':'kz','Kenya':'ke',
+  'Kuwait':'kw','Latvia':'lv','Lebanon':'lb','Libya':'ly','Lithuania':'lt',
+  'Luxembourg':'lu','Malaysia':'my','Malta':'mt','Mexico':'mx','Moldova':'md',
+  'Morocco':'ma','Myanmar':'mm','Nepal':'np','Netherlands':'nl','New Zealand':'nz',
+  'Nicaragua':'ni','Nigeria':'ng','North Macedonia':'mk','Norway':'no','Oman':'om',
+  'Pakistan':'pk','Panama':'pa','Paraguay':'py','Peru':'pe','Philippines':'ph',
+  'Poland':'pl','Portugal':'pt','Qatar':'qa','Romania':'ro','Russia':'ru',
+  'Saudi Arabia':'sa','Senegal':'sn','Serbia':'rs','Singapore':'sg','Slovakia':'sk',
+  'Slovenia':'si','South Africa':'za','South Korea':'kr','Spain':'es','Sri Lanka':'lk',
+  'Sudan':'sd','Sweden':'se','Switzerland':'ch','Syria':'sy','Taiwan':'tw',
+  'Tanzania':'tz','Thailand':'th','Tunisia':'tn','Turkey':'tr','Uganda':'ug',
+  'Ukraine':'ua','United Arab Emirates':'ae','United Kingdom':'gb',
+  'United States':'us','Uruguay':'uy','Uzbekistan':'uz','Venezuela':'ve',
+  'Vietnam':'vn','Yemen':'ye','Zimbabwe':'zw',
+};
 
-function photonLabel(f: PhotonFeature): string {
-  const p = f.properties;
-  return [p.housenumber, p.street].filter(Boolean).join(' ') || p.name || p.city || p.county || '';
+const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+
+// ── singleton: load the new Places library once ───────────────────────────────
+type NewPlacesLib = typeof google.maps.places;
+let placesLib: NewPlacesLib | null = null;
+let loadPromise: Promise<void> | null = null;
+
+async function ensurePlaces(): Promise<NewPlacesLib> {
+  if (!MAPS_API_KEY) throw new Error('VITE_GOOGLE_MAPS_API_KEY not set');
+  if (placesLib) return placesLib;
+  if (!loadPromise) {
+    setOptions({ key: MAPS_API_KEY, language: 'en' });
+    loadPromise = (importLibrary('places') as Promise<NewPlacesLib>).then((lib) => {
+      placesLib = lib;
+    });
+  }
+  await loadPromise;
+  return placesLib!;
 }
 
-function parseNominatim(addr: NominatimAddress, fallback: string): PlaceResult {
+function parseAddressComponents(
+  components: google.maps.places.AddressComponent[],
+): PlaceResult {
+  const get = (type: string) =>
+    components.find((c) => c.types.includes(type))?.longText ?? '';
+
+  const streetNumber = get('street_number');
+  const route = get('route');
+
   return {
-    streetAddress: [addr.house_number, addr.road].filter(Boolean).join(' ') || fallback,
-    city: addr.city || addr.town || addr.village || addr.municipality || addr.county || '',
-    stateProvince: addr.state || '',
-    postalCode: addr.postcode || '',
-    country: addr.country || '',
-    neighborhood: addr.neighbourhood || addr.suburb || '',
+    streetAddress: [streetNumber, route].filter(Boolean).join(' '),
+    city:
+      get('locality') ||
+      get('sublocality') ||
+      get('administrative_area_level_3') ||
+      get('postal_town') ||
+      '',
+    stateProvince: get('administrative_area_level_1'),
+    postalCode: get('postal_code'),
+    country: get('country'),
+    neighborhood: get('neighborhood') || get('sublocality_level_1') || '',
   };
 }
 
-function parsePhotonFallback(f: PhotonFeature): PlaceResult {
-  const p = f.properties;
-  return {
-    streetAddress: [p.housenumber, p.street].filter(Boolean).join(' ') || p.name || '',
-    city: p.city || p.county || '',
-    stateProvince: p.state || '',
-    postalCode: p.postcode || '',
-    country: p.country || '',
-    neighborhood: p.district || p.suburb || '',
-  };
+function isEstablishment(types: string[]) {
+  return types.some((t) =>
+    ['establishment', 'restaurant', 'food', 'lodging', 'store'].includes(t),
+  );
 }
 
+// ── component ────────────────────────────────────────────────────────────────
 export function PlacesAutocomplete({
   value,
   onChange,
   onPlaceSelect,
-  placeholder = 'Start typing an address...',
+  placeholder = 'Start typing an address…',
   className,
   disabled,
   country,
 }: PlacesAutocompleteProps) {
   const [query, setQuery] = useState(value);
-  const [results, setResults] = useState<PhotonFeature[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [resolving, setResolving] = useState(false);
+  const [rows, setRows] = useState<SuggestionRow[]>([]);
+  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  // track focus so parent value changes never overwrite what the user is typing
   const isFocused = useRef(false);
   const prevCountry = useRef(country);
-  const abortSearch = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // sync parent → internal ONLY when the field is not focused
   useEffect(() => {
     if (!isFocused.current) setQuery(value);
   }, [value]);
 
-  // when country changes: clear stale results and re-search immediately
   useEffect(() => {
     if (country === prevCountry.current) return;
     prevCountry.current = country;
-    setResults([]);
+    setRows([]);
     setOpen(false);
-    if (query.length >= 2) search(query, country);
+    if (isFocused.current && query.trim().length >= 2) search(query, country);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country]);
 
@@ -135,88 +152,45 @@ export function PlacesAutocomplete({
     return () => document.removeEventListener('mousedown', onOutside);
   }, []);
 
-  // ── Search phase: Photon — typo-tolerant, Elasticsearch-backed ───────────
   const search = useCallback((q: string, countryName?: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (abortSearch.current) abortSearch.current.abort();
 
-    if (q.length < 2) {
-      setResults([]);
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setRows([]);
       setOpen(false);
       return;
     }
 
     timerRef.current = setTimeout(async () => {
-      const cacheKey = countryName ? `${q}__${countryName}` : q;
-      if (searchCache.has(cacheKey)) {
-        setResults(searchCache.get(cacheKey)!);
-        setOpen(true);
-        return;
-      }
-
-      const ctrl = new AbortController();
-      abortSearch.current = ctrl;
-      setSearching(true);
-
+      setLoading(true);
       try {
-        const res = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8&lang=en`,
-          { signal: ctrl.signal },
-        );
-        const data: { features: PhotonFeature[] } = await res.json();
-        let features = data.features;
+        const lib = await ensurePlaces();
+        const iso = countryName ? COUNTRY_ISO[countryName] : undefined;
 
-        if (countryName) {
-          const scoped = features.filter(
-            (f) => f.properties.country?.toLowerCase() === countryName.toLowerCase(),
-          );
-          // keep scoped results; fall back to global if nothing matched
-          if (scoped.length > 0) features = scoped;
-        }
+        const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: trimmed,
+          includedPrimaryTypes: ['address'],
+          ...(iso ? { includedRegionCodes: [iso] } : {}),
+        });
 
-        const trimmed = features.slice(0, 5);
-        searchCache.set(cacheKey, trimmed);
-        setResults(trimmed);
-        setOpen(trimmed.length > 0);
+        const next: SuggestionRow[] = suggestions.slice(0, 5).map((s) => ({
+          prediction: s.placePrediction,
+          main: s.placePrediction.mainText.text,
+          secondary: s.placePrediction.secondaryText?.text ?? '',
+          types: s.placePrediction.types,
+        }));
+
+        setRows(next);
+        setOpen(next.length > 0);
         setActiveIndex(-1);
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') console.warn('[PlacesAutocomplete] Photon:', err);
+        console.warn('[PlacesAutocomplete]', err);
       } finally {
-        setSearching(false);
+        setLoading(false);
       }
-    }, 250);
+    }, 220);
   }, []);
-
-  // ── Resolution phase: single Nominatim lookup by OSM ID ──────────────────
-  async function handleSelect(feature: PhotonFeature) {
-    const label = photonLabel(feature);
-    // fill instantly from Photon data — input stays enabled
-    setQuery(label);
-    onChange(label);
-    setOpen(false);
-    setResults([]);
-    setResolving(true);
-
-    try {
-      const { osm_type, osm_id } = feature.properties;
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/lookup?osm_ids=${osm_type}${osm_id}&format=json&addressdetails=1`,
-        { headers: { 'Accept-Language': 'en' } },
-      );
-      const data: Array<{ address: NominatimAddress }> = await res.json();
-      const result = data[0]?.address
-        ? parseNominatim(data[0].address, label)
-        : parsePhotonFallback(feature);
-
-      setQuery(result.streetAddress);
-      onChange(result.streetAddress);
-      onPlaceSelect(result);
-    } catch {
-      onPlaceSelect(parsePhotonFallback(feature));
-    } finally {
-      setResolving(false);
-    }
-  }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const q = e.target.value;
@@ -225,111 +199,212 @@ export function PlacesAutocomplete({
     search(q, country);
   }
 
+  async function handleSelect(row: SuggestionRow) {
+    setQuery(row.main);
+    onChange(row.main);
+    setOpen(false);
+    setRows([]);
+
+    try {
+      const place = row.prediction.toPlace();
+      await place.fetchFields({ fields: ['addressComponents', 'formattedAddress'] });
+
+      if (!place.addressComponents) return;
+
+      const result = parseAddressComponents(place.addressComponents);
+      if (!result.streetAddress && place.formattedAddress) {
+        result.streetAddress = place.formattedAddress.split(',')[0].trim();
+      }
+      onPlaceSelect(result);
+    } catch (err) {
+      console.warn('[PlacesAutocomplete] getDetails failed', err);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex((i) => Math.min(i + 1, results.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex((i) => Math.max(i - 1, -1)); }
-    else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); handleSelect(results[activeIndex]); }
-    else if (e.key === 'Escape') setOpen(false);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, rows.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, -1));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      handleSelect(rows[activeIndex]);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+      inputRef.current?.blur();
+    }
+  }
+
+  if (!MAPS_API_KEY) {
+    return (
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoComplete="off"
+        className={[
+          'flex h-10 w-full rounded-lg border border-input bg-background',
+          'px-3 py-2 text-sm text-gray-900',
+          'placeholder:text-gray-400',
+          'transition-[border-color,box-shadow] duration-150',
+          'focus-visible:outline-none focus-visible:ring-2',
+          'focus-visible:ring-wine-500/25 focus-visible:border-wine-400',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          className,
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      />
+    );
   }
 
   return (
     <div ref={wrapperRef} className="relative">
-      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-wine-500 pointer-events-none z-10" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10" />
 
-      {/* input — NEVER disabled during resolving; always accepts keystrokes */}
       <input
+        ref={inputRef}
         value={query}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onFocus={() => {
           isFocused.current = true;
-          if (results.length > 0) setOpen(true);
+          if (rows.length > 0) setOpen(true);
         }}
-        onBlur={() => { isFocused.current = false; }}
+        onBlur={() => {
+          isFocused.current = false;
+        }}
         placeholder={placeholder}
         disabled={disabled}
         autoComplete="off"
+        autoCorrect="off"
         spellCheck={false}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-autocomplete="list"
         className={[
-          'flex h-10 w-full border border-input bg-background pl-9 pr-9 py-2 text-sm',
-          'placeholder:text-muted-foreground transition-shadow',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-500/40 focus-visible:border-wine-400',
+          'flex h-10 w-full rounded-lg border border-input bg-background',
+          'pl-9 pr-9 py-2 text-sm text-gray-900',
+          'placeholder:text-gray-400',
+          'transition-[border-color,box-shadow] duration-150',
+          'focus-visible:outline-none focus-visible:ring-2',
+          'focus-visible:ring-wine-500/25 focus-visible:border-wine-400',
           'disabled:cursor-not-allowed disabled:opacity-50',
           className,
-        ].filter(Boolean).join(' ')}
+        ]
+          .filter(Boolean)
+          .join(' ')}
       />
 
-      {/* right-side indicator: spinner during search/resolve */}
-      {(searching || resolving) && (
+      {loading && (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-wine-400 animate-spin" />
       )}
 
-      {/* dropdown */}
-      {open && results.length > 0 && (
+      {open && rows.length > 0 && (
         <div
           role="listbox"
           className={[
-            'absolute z-50 w-full mt-1.5 bg-white overflow-hidden',
-            'rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.10),0_1px_3px_rgba(0,0,0,0.06)]',
+            'absolute z-50 w-full mt-2 overflow-hidden',
+            'bg-white border border-gray-100',
+            'rounded-2xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.12),0_2px_8px_-2px_rgba(0,0,0,0.06)]',
             'animate-in fade-in-0 slide-in-from-top-2 duration-150',
           ].join(' ')}
         >
-          {/* country filter badge */}
           {country && (
-            <div className="px-4 pt-3 pb-1.5 flex items-center gap-1.5">
-              <span className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">
+            <div className="flex items-center gap-2.5 px-4 pt-3 pb-2">
+              <MapPin className="h-3 w-3 text-wine-400 flex-shrink-0" />
+              <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-gray-400">
                 {country}
               </span>
               <span className="flex-1 h-px bg-gray-100" />
             </div>
           )}
 
-          <ul>
-            {results.map((f, i) => {
-              const p = f.properties;
+          <ul className="py-1">
+            {rows.map((row, i) => {
               const isActive = i === activeIndex;
-              const mainLine = photonLabel(f);
-              const secondLine = [p.city || p.county, p.state, p.postcode]
-                .filter(Boolean).join(', ');
-
+              const isPlace = isEstablishment(row.types);
               return (
                 <li
-                  key={`${p.osm_id}-${i}`}
+                  key={row.prediction.placeId}
                   role="option"
                   aria-selected={isActive}
-                  onMouseDown={(e) => { e.preventDefault(); handleSelect(f); }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelect(row);
+                  }}
                   onMouseEnter={() => setActiveIndex(i)}
                   className={[
-                    'flex items-center gap-3 px-4 py-3 cursor-pointer select-none',
-                    'transition-colors duration-75',
-                    i < results.length - 1 ? 'border-b border-gray-50' : '',
-                    isActive ? 'bg-wine-50' : 'hover:bg-gray-50',
+                    'flex items-center gap-3 px-3 mx-2 py-2.5 cursor-pointer select-none',
+                    'rounded-xl transition-all duration-75',
+                    isActive
+                      ? 'bg-wine-50 shadow-[inset_0_0_0_1px_rgba(127,29,29,0.06)]'
+                      : 'hover:bg-gray-50',
                   ].join(' ')}
                 >
-                  <div className={[
-                    'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center',
-                    isActive ? 'bg-wine-100' : 'bg-gray-100',
-                  ].join(' ')}>
-                    <MapPin className={`h-3.5 w-3.5 ${isActive ? 'text-wine-600' : 'text-gray-400'}`} />
+                  <div
+                    className={[
+                      'flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-colors duration-75',
+                      isActive ? 'bg-wine-100' : 'bg-gray-100',
+                    ].join(' ')}
+                  >
+                    {isPlace ? (
+                      <Building2
+                        className={`h-3.5 w-3.5 ${isActive ? 'text-wine-600' : 'text-gray-400'}`}
+                      />
+                    ) : (
+                      <MapPin
+                        className={`h-3.5 w-3.5 ${isActive ? 'text-wine-600' : 'text-gray-400'}`}
+                      />
+                    )}
                   </div>
+
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold text-gray-900 truncate leading-tight">
-                      {mainLine}
+                    <p
+                      className={[
+                        'text-[13px] font-medium leading-tight truncate',
+                        isActive ? 'text-wine-900' : 'text-gray-800',
+                      ].join(' ')}
+                    >
+                      {row.main}
                     </p>
-                    {secondLine && (
+                    {row.secondary && (
                       <p className="text-[11px] text-gray-400 truncate mt-0.5 leading-tight">
-                        {secondLine}
+                        {row.secondary}
                       </p>
                     )}
                   </div>
+
+                  {isActive && (
+                    <svg
+                      className="flex-shrink-0 h-3 w-3 text-wine-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
                 </li>
               );
             })}
           </ul>
 
-          <div className="px-4 py-2 border-t border-gray-50 flex items-center justify-end gap-1">
-            <span className="text-[9px] text-gray-300 font-mono tracking-wide">© OpenStreetMap · Photon · Nominatim</span>
+          <div className="flex items-center justify-end gap-1.5 px-4 py-2 border-t border-gray-50">
+            <span className="text-[9px] text-gray-300 tracking-wide">powered by</span>
+            <svg viewBox="0 0 54 18" className="h-2.5 opacity-30" aria-label="Google">
+              <text y="14" fontSize="14" fontFamily="Arial, sans-serif" fontWeight="700" fill="#4285F4">G</text>
+              <text x="10" y="14" fontSize="14" fontFamily="Arial, sans-serif" fontWeight="700" fill="#EA4335">o</text>
+              <text x="19" y="14" fontSize="14" fontFamily="Arial, sans-serif" fontWeight="700" fill="#FBBC05">o</text>
+              <text x="28" y="14" fontSize="14" fontFamily="Arial, sans-serif" fontWeight="700" fill="#4285F4">g</text>
+              <text x="37" y="14" fontSize="14" fontFamily="Arial, sans-serif" fontWeight="700" fill="#34A853">l</text>
+              <text x="43" y="14" fontSize="14" fontFamily="Arial, sans-serif" fontWeight="700" fill="#EA4335">e</text>
+            </svg>
           </div>
         </div>
       )}
