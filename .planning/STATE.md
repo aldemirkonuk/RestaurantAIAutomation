@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: Multi-Tenant Platform
+milestone_name: Phases
 status: active
-last_updated: "2026-05-10T00:00:00.000Z"
+last_updated: "2026-05-10T20:36:38.599Z"
 progress:
-  total_phases: 26
-  completed_phases: 26
-  total_plans: 118
-  completed_plans: 118
-  percent: 100
+  total_phases: 11
+  completed_phases: 7
+  total_plans: 59
+  completed_plans: 46
+  percent: 78
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -27,8 +27,9 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 Phase: 26 (multi-tenant-onboarding-restaurant-hierarchy) — COMPLETE ✓
 **Last completed:** Phase 26 — Multi-tenant onboarding, restaurant hierarchy, branch switcher, chain/location management all live. All 8 UAT tests passed 2026-05-10.
-**Phases complete (v2.0):** 18, 19, 20, 21, 22, 23, 24, 25, 26
-**Next:** Phase 27 — Vendor Search & Discovery
+**Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26
+**Phases skipped / not yet started:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, never executed
+**Next:** Phase 27 — Vendor Search & Discovery (or revisit 23/24 first — user's call)
 
 ### Phase 22 — COMPLETE (Deployed to Production 2026-04-13)
 
@@ -688,6 +689,7 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 - Finalized all Phase 26 planning artifacts: 26-HUMAN-UAT.md (status: passed 8/8), 26-VERIFICATION.md (status: passed 21/21), ROADMAP.md (all 9 plans [x], phase complete)
 
 **Key commits:**
+
 - `ae8f506` — fix: slug auto-generate + email nullable migration
 - `663453a` — fix: EditLocationChainDialog scrollable body + pinned footer
 - `b81f526` — fix: Framer Motion centering (x/y style props)
@@ -696,6 +698,7 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 - `1e52f77` — chore: finalize Phase 26 planning artifacts
 
 **Files changed this session:**
+
 - `apps/api-gateway/src/organizations/organizations.service.ts` — slug auto-gen + `randomUUID` import
 - `apps/web/src/components/locations/EditLocationChainDialog.tsx` — flex-col layout + Framer Motion centering
 - `apps/web/src/components/locations/CreateChainDialog.tsx` — full standalone checklist
