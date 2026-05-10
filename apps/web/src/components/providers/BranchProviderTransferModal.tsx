@@ -4,7 +4,6 @@ import { motion } from 'framer-motion'
 import { X, Loader2, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
-import { addProviderFromCatalogue } from '../../services/api/vendors'
 import { apiClient } from '../../services/api/client'
 import type { Provider } from '../../services/api/providers'
 

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
 import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
+import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import {
   Package,
   Clock,
@@ -227,6 +228,7 @@ export function Orders() {
   const [showOrderApprovalModal, setShowOrderApprovalModal] = useState(false)
   const [orderApprovalData, setOrderApprovalData] = useState<OrderApprovalData | null>(null)
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
+  const [showOrderGuard, setShowOrderGuard] = useState(false)
   const [createOrderItems, setCreateOrderItems] = useState<CreateOrderItem[]>([])
   const [wineSearch, setWineSearch] = useState('')
   const createCalendarEvent = useCreateCalendarEvent()
@@ -956,6 +958,12 @@ Shadow stock has been moved to Live Stock.`)
       return
     }
 
+    // Pre-flight guard: block order creation when no vendors are configured
+    if (!providers || providers.length === 0) {
+      setShowOrderGuard(true)
+      return
+    }
+
     if (createOrderItems.length === 0) {
       alert('Add at least one wine to create an order.')
       return
@@ -1108,6 +1116,16 @@ Shadow stock has been moved to Live Stock.`)
             } else {
             }
           } catch (error: any) {
+            // 403 no_vendors safety net: backend guard triggered
+            if (
+              error?.response?.status === 403 &&
+              error?.response?.data?.reason === 'no_vendors'
+            ) {
+              setShowOrderGuard(true)
+              setShowCreateOrderModal(false)
+              setActionLoading(null)
+              return
+            }
             const message = error?.response?.data?.message || error?.message || 'Failed to create order'
             failures.push(`${item.wineName}: ${message}`)
           }
@@ -2728,6 +2746,12 @@ Shadow stock has been moved to Live Stock.`)
         onEditItem={editItem}
         onContactProviders={handleContactProviders}
         totalOrderValue={totalOrderValue}
+      />
+
+      {/* Order Guard Modal — shown when no vendors are configured */}
+      <OrderGuardModal
+        open={showOrderGuard}
+        onClose={() => setShowOrderGuard(false)}
       />
 
       {/* Wine Config Modal */}
