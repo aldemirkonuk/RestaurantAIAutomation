@@ -113,13 +113,6 @@ export function VendorSearchModal({
     }
   }, [open])
 
-  // ── Initial load: show default US results on open ─────────
-  useEffect(() => {
-    if (open) {
-      runSearch('', 'US')
-    }
-  }, [open, runSearch])
-
   // ── Add vendor ────────────────────────────────────────────
   const handleAdd = async (vendor: VendorCatalogueEntry) => {
     await addProviderFromCatalogue(vendor.id)
