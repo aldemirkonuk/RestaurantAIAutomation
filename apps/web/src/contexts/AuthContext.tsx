@@ -64,6 +64,7 @@ interface AuthContextType {
   loginWithMicrosoft: (token: string) => Promise<void>
   logout: () => Promise<void>
   refreshToken: () => Promise<void>
+  refreshBranches: () => Promise<void>
   isAuthenticated: boolean
 }
 
@@ -205,6 +206,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUser()
   }, [])
 
+  // Centralized branch fetch — reused by initial load and refreshBranches()
+  // IMPORTANT: preserves activeRestaurantId via the validSaved check below.
+  // Do NOT reset activeRestaurantId on refresh — the validSaved check handles it correctly.
+  const fetchAndSetBranches = useCallback(async (userId: string) => {
+    try {
+      const response = await api.get('/api/v1/organizations/branches')
+      const branches: RestaurantBranch[] = response.data
+      if (branches.length > 0) {
+        setAvailableRestaurants(branches)
+        localStorage.setItem('availableRestaurants', JSON.stringify(branches))
+
+        // Restore previously selected branch from localStorage if it's still valid
+        const savedId = localStorage.getItem('activeRestaurantId')
+        const validSaved = savedId && branches.some((b) => b.id === savedId)
+        const resolvedActive = validSaved ? savedId : branches[0].id
+
+        setActiveRestaurantIdState(resolvedActive)
+        localStorage.setItem('activeRestaurantId', resolvedActive)
+        api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
+        return
+      }
+    } catch (err) {
+      console.warn('Failed to fetch branches, falling back to single restaurant:', err)
+    }
+
+    // Fallback: pre-org user or API error — use userId's restaurant directly
+    const fallbackBranch: RestaurantBranch = {
+      id: userId,
+      name: 'My Restaurant',
+      city: null,
+      chain_id: null,
+      chain_name: null,
+    }
+    setAvailableRestaurants([fallbackBranch])
+    localStorage.setItem('availableRestaurants', JSON.stringify([fallbackBranch]))
+    setActiveRestaurantIdState(userId)
+    localStorage.setItem('activeRestaurantId', userId)
+    api.defaults.headers.common['X-Restaurant-Id'] = userId
+  }, [])
+
+  // Public refresh — can be called after chain/location changes to update the branch switcher
+  const refreshBranches = useCallback(async () => {
+    if (!user?.userId) return
+    await fetchAndSetBranches(user.userId)
+  }, [user, fetchAndSetBranches])
+
   // Sync restaurant context when user changes
   useEffect(() => {
     if (!user) {
@@ -213,47 +260,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // Fetch branches from organizations API (D-06)
-    // Falls back to single restaurant if API fails (backward compat for pre-org users)
-    const fetchBranches = async () => {
-      try {
-        const response = await api.get('/api/v1/organizations/branches')
-        const branches: RestaurantBranch[] = response.data
-        if (branches.length > 0) {
-          setAvailableRestaurants(branches)
-          localStorage.setItem('availableRestaurants', JSON.stringify(branches))
-
-          // Restore previously selected branch from localStorage if it's still valid
-          const savedId = localStorage.getItem('activeRestaurantId')
-          const validSaved = savedId && branches.some((b) => b.id === savedId)
-          const resolvedActive = validSaved ? savedId : branches[0].id
-
-          setActiveRestaurantIdState(resolvedActive)
-          localStorage.setItem('activeRestaurantId', resolvedActive)
-          api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
-          return
-        }
-      } catch (err) {
-        console.warn('Failed to fetch branches, falling back to single restaurant:', err)
-      }
-
-      // Fallback: pre-org user or API error — use user.restaurantId directly
-      const fallbackBranch: RestaurantBranch = {
-        id: user.restaurantId,
-        name: 'My Restaurant',
-        city: null,
-        chain_id: null,
-        chain_name: null,
-      }
-      setAvailableRestaurants([fallbackBranch])
-      localStorage.setItem('availableRestaurants', JSON.stringify([fallbackBranch]))
-      setActiveRestaurantIdState(user.restaurantId)
-      localStorage.setItem('activeRestaurantId', user.restaurantId)
-      api.defaults.headers.common['X-Restaurant-Id'] = user.restaurantId
-    }
-
-    fetchBranches()
-  }, [user])
+    fetchAndSetBranches(user.restaurantId)
+  }, [user, fetchAndSetBranches])
 
   const setActiveRestaurantId = useCallback((restaurantId: string) => {
     if (!isUuid(restaurantId)) {
@@ -467,6 +475,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginWithMicrosoft,
     logout,
     refreshToken: refreshTokenFn,
+    refreshBranches,
     isAuthenticated: !!user,
   }
 
