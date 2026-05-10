@@ -173,12 +173,13 @@ export class OrganizationsService {
       .select('id')
       .eq('owner_id', userId)
       .maybeSingle();
-    if (!ownedOrg) {
+    // Fall back to the single org the user belongs to (member/manager); only throw when truly ambiguous
+    const organizationId = ownedOrg?.id ?? (orgIds.length === 1 ? orgIds[0] : null);
+    if (!organizationId) {
       throw new BadRequestException(
         'Cannot determine target organization — please specify organizationId',
       );
     }
-    const organizationId = ownedOrg.id;
 
     const { data: chain, error } = await this.databaseService.supabase
       .from('restaurant_chains')
@@ -233,12 +234,12 @@ export class OrganizationsService {
       .select('id')
       .eq('owner_id', userId)
       .maybeSingle();
-    if (!ownedOrg) {
+    const organizationId = ownedOrg?.id ?? (orgIds.length === 1 ? orgIds[0] : null);
+    if (!organizationId) {
       throw new BadRequestException(
         'Cannot determine target organization — please specify organizationId',
       );
     }
-    const organizationId = ownedOrg.id;
 
     // Verify that the supplied chainId belongs to one of the user's orgs
     if (dto.chainId) {
