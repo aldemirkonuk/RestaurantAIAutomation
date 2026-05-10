@@ -7,6 +7,9 @@ import {
   Body,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import {
@@ -15,11 +18,18 @@ import {
   RestaurantChain,
 } from './organizations.service';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { CreateChainDto } from './dto/create-chain.dto';
+import { CreateLocationDto } from './dto/create-location.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Request } from 'express';
 
+interface AuthenticatedUser {
+  userId: string;
+}
+
 @Controller('organizations')
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ whitelist: true }))
 export class OrganizationsController {
   private readonly logger = new Logger(OrganizationsController.name);
 
@@ -27,39 +37,45 @@ export class OrganizationsController {
 
   @Get('branches')
   async getBranches(
-    @Req() req: Request & { user: any },
+    @Req() req: Request & { user: AuthenticatedUser },
   ): Promise<RestaurantBranch[]> {
-    this.logger.debug(`Fetching branches for user ${req.user.userId}`);
-    return this.organizationsService.getBranchesForUser(req.user.userId);
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
+    this.logger.debug(`Fetching branches for user ${userId}`);
+    return this.organizationsService.getBranchesForUser(userId);
   }
 
   @Get('chains')
   async getChains(
-    @Req() req: Request & { user: any },
+    @Req() req: Request & { user: AuthenticatedUser },
   ): Promise<RestaurantChain[]> {
-    this.logger.debug(`Fetching chains for user ${req.user.userId}`);
-    return this.organizationsService.getChainsForUser(req.user.userId);
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
+    this.logger.debug(`Fetching chains for user ${userId}`);
+    return this.organizationsService.getChainsForUser(userId);
   }
 
   @Post('chains')
   async createChain(
-    @Req() req: Request & { user: any },
-    @Body() body: { name: string; cuisine_type?: string; description?: string; restaurantId?: string },
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Body() body: CreateChainDto,
   ): Promise<RestaurantChain> {
-    this.logger.debug(
-      `Creating chain '${body.name}' for user ${req.user.userId}`,
-    );
-    return this.organizationsService.createChain(req.user.userId, body);
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
+    this.logger.debug(`Creating chain '${body.name}' for user ${userId}`);
+    return this.organizationsService.createChain(userId, body);
   }
 
   @Patch('locations/:id')
   async updateLocation(
-    @Req() req: Request & { user: any },
+    @Req() req: Request & { user: AuthenticatedUser },
     @Param('id') id: string,
     @Body() body: UpdateLocationDto,
   ): Promise<void> {
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
     return this.organizationsService.updateLocationChain(
-      req.user.userId,
+      userId,
       id,
       body.chainId ?? null,
     );
@@ -67,24 +83,12 @@ export class OrganizationsController {
 
   @Post('locations')
   async createLocation(
-    @Req() req: Request & { user: any },
-    @Body()
-    body: {
-      name: string;
-      address: string;
-      city: string;
-      country?: string;
-      stateProvince?: string;
-      postalCode?: string;
-      phone?: string;
-      cuisineType?: string;
-      timezone?: string;
-      chainId?: string;
-    },
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Body() body: CreateLocationDto,
   ): Promise<{ id: string; name: string }> {
-    this.logger.debug(
-      `Creating location '${body.name}' for user ${req.user.userId}`,
-    );
-    return this.organizationsService.createLocation(req.user.userId, body);
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException('Missing user identity');
+    this.logger.debug(`Creating location '${body.name}' for user ${userId}`);
+    return this.organizationsService.createLocation(userId, body);
   }
 }
