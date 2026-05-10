@@ -1,10 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class CreateProviderDto {
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'UUID of a vendor_catalogue entry. When provided, provider details are auto-filled from the catalogue.',
+  })
+  @IsUUID()
+  @IsOptional()
+  catalogue_vendor_id?: string;
+
+  @ApiPropertyOptional({
+    description: 'Required when catalogue_vendor_id is not provided.',
+  })
   @IsString()
-  name: string;
+  @IsOptional()
+  name?: string;
 
   @ApiPropertyOptional()
   @IsString()
@@ -53,6 +63,31 @@ export class CreateProviderDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)' })
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @ApiPropertyOptional({ description: 'Vendor phone number' })
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @ApiPropertyOptional({ description: 'Vendor email address' })
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'Vendor website URL' })
+  @IsString()
+  @IsOptional()
+  website?: string;
+
+  @ApiPropertyOptional({ description: 'Primary contact name at the vendor' })
+  @IsString()
+  @IsOptional()
+  contactName?: string;
 }
 
 export class UpdateProviderDto {
@@ -176,6 +211,12 @@ export class ProviderResponseDto {
 
   @ApiPropertyOptional()
   lastContactNotes?: string;
+
+  @ApiPropertyOptional({ description: 'UUID of the linked vendor_catalogue entry, null for custom vendors' })
+  catalogueVendorId?: string | null;
+
+  @ApiPropertyOptional({ description: 'True if this provider was manually created; false if sourced from catalogue' })
+  isCustom?: boolean;
 }
 
 // --- Provider Contacts DTOs ---

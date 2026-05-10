@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { EventType, SourcePage } from '../events/dto/event.dto';
@@ -44,19 +44,64 @@ export class ProvidersService {
     restaurantId?: string,
     userId?: string,
   ): Promise<ProviderResponseDto> {
-    const payload = {
-      name: dto.name,
-      company_name: dto.companyName ?? null,
-      primary_contact: dto.primaryContact ?? null,
-      alternative_contacts: dto.alternativeContacts ?? null,
-      address: dto.address ?? null,
-      specialties: dto.specialties ?? null,
-      regions_covered: dto.regionsCovered ?? null,
-      minimum_order: dto.minimumOrder ?? null,
-      lead_time_days: dto.leadTimeDays ?? null,
-      tier: dto.tier ?? null,
-      notes: dto.notes ?? null,
-    };
+    let payload: Record<string, any>;
+
+    if (dto.catalogue_vendor_id) {
+      // Mode A: from catalogue — fetch vendor details and auto-fill
+      const { data: vendor, error: vendorError } = await this.databaseService.supabase
+        .from('vendor_catalogue')
+        .select('*')
+        .eq('id', dto.catalogue_vendor_id)
+        .eq('is_active', true)
+        .single();
+
+      if (vendorError || !vendor) {
+        throw new NotFoundException(`Vendor catalogue entry not found: ${dto.catalogue_vendor_id}`);
+      }
+
+      // Build notes from catalogue type + website + specialties
+      const noteParts: string[] = [];
+      if (vendor.type) noteParts.push(`Type: ${vendor.type}`);
+      if (vendor.website) noteParts.push(`Website: ${vendor.website}`);
+      if (vendor.wine_specialties) noteParts.push(`Specialties: ${vendor.wine_specialties}`);
+      const catalogueNotes = noteParts.length > 0 ? noteParts.join(' | ') : null;
+
+      payload = {
+        name: vendor.name,
+        contact_phone: vendor.phone ?? null,
+        contact_email: vendor.email ?? null,
+        address: vendor.address ?? null,
+        ai_personality_notes: catalogueNotes,
+        catalogue_vendor_id: dto.catalogue_vendor_id,
+        is_custom: false,
+        restaurant_id: restaurantId ?? null,
+      };
+    } else {
+      // Mode B: custom provider — requires name
+      if (!dto.name) {
+        throw new BadRequestException('name is required when catalogue_vendor_id is not provided');
+      }
+
+      payload = {
+        name: dto.name,
+        company_name: dto.companyName ?? null,
+        primary_contact: dto.primaryContact ?? null,
+        alternative_contacts: dto.alternativeContacts ?? null,
+        address: dto.address ?? null,
+        specialties: dto.specialties ?? null,
+        regions_covered: dto.regionsCovered ?? null,
+        minimum_order: dto.minimumOrder ?? null,
+        lead_time_days: dto.leadTimeDays ?? null,
+        tier: dto.tier ?? null,
+        ai_personality_notes: dto.notes ?? null,
+        contact_phone: dto.phone ?? null,
+        contact_email: dto.email ?? null,
+        contact_name: dto.contactName ?? null,
+        catalogue_vendor_id: null,
+        is_custom: true,
+        restaurant_id: restaurantId ?? null,
+      };
+    }
 
     const { data, error } = await this.databaseService.supabase
       .from('providers')
@@ -552,6 +597,8 @@ export class ProvidersService {
       isActive: row.is_active ?? undefined,
       lastContactDate: (row as any).last_contact_date ?? undefined,
       lastContactNotes: (row as any).last_contact_notes ?? undefined,
+      catalogueVendorId: (row as any).catalogue_vendor_id ?? null,
+      isCustom: (row as any).is_custom ?? true,
     };
   }
 }
