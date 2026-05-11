@@ -229,6 +229,17 @@ export function Orders() {
   const [orderApprovalData, setOrderApprovalData] = useState<OrderApprovalData | null>(null)
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
   const [showOrderGuard, setShowOrderGuard] = useState(false)
+
+  // Single entry-point guard. Pre-empts the wine picker when no vendors exist
+  // so the user gets the actionable OrderGuardModal instead of a dead-end
+  // "Add to Order" disabled button inside the picker.
+  const openCreateOrderFlow = useCallback(() => {
+    if (!providers || providers.length === 0) {
+      setShowOrderGuard(true)
+      return
+    }
+    setShowCreateOrderModal(true)
+  }, [providers])
   const [createOrderItems, setCreateOrderItems] = useState<CreateOrderItem[]>([])
   const [wineSearch, setWineSearch] = useState('')
   const createCalendarEvent = useCreateCalendarEvent()
@@ -1085,7 +1096,7 @@ Shadow stock has been moved to Live Stock.`)
       // Cmd/Ctrl + N to create new order
       if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         e.preventDefault()
-        setShowCreateOrderModal(true)
+        openCreateOrderFlow()
       }
       // Cmd/Ctrl + A to select all visible orders
       if ((e.metaKey || e.ctrlKey) && e.key === 'a' && !showCreateOrderModal) {
@@ -1301,7 +1312,7 @@ Shadow stock has been moved to Live Stock.`)
             </div>
             <Button
               variant="default"
-              onClick={() => setShowCreateOrderModal(true)}
+              onClick={openCreateOrderFlow}
               className="bg-wine-600 hover:bg-wine-700 shadow-lg shadow-wine-600/30"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -2511,7 +2522,7 @@ Shadow stock has been moved to Live Stock.`)
               </p>
               <Button
                 variant="default"
-                onClick={() => setShowCreateOrderModal(true)}
+                onClick={openCreateOrderFlow}
                 className="bg-wine-600 hover:bg-wine-700"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -3052,7 +3063,7 @@ Shadow stock has been moved to Live Stock.`)
           onEdit={() => {
             // Open edit modal - for now just close approval and navigate to create order
             setShowOrderApprovalModal(false)
-            setShowCreateOrderModal(true)
+            openCreateOrderFlow()
             // In real app, would pre-fill with existing data
           }}
           onRequestMoreInfo={async () => {
