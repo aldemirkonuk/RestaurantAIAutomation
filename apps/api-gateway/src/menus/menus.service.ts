@@ -169,6 +169,25 @@ export class MenusService {
 
     if (error) {
       this.logger.warn(`Failed to mark menu_uploaded for user ${userId}: ${error.message}`);
+      return;
+    }
+
+    // Check if all tasks done → set completed_at
+    const { data: row } = await this.dbService.supabase
+      .from('user_onboarding_progress')
+      .select('menu_uploaded, vendor_added, team_member_invited, completed_at')
+      .eq('user_id', userId)
+      .single();
+
+    if (row?.menu_uploaded && row?.vendor_added && row?.team_member_invited && !row?.completed_at) {
+      const { error: completedErr } = await this.dbService.supabase
+        .from('user_onboarding_progress')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('user_id', userId);
+
+      if (completedErr) {
+        this.logger.warn(`Failed to set completed_at for user ${userId}: ${completedErr.message}`);
+      }
     }
   }
 
