@@ -675,6 +675,18 @@ export class AuthService {
 
     if (error || !invite) throw new BadRequestException('Failed to generate invite');
 
+    // Mark team_member_invited=true in onboarding progress (fire-and-forget)
+    this.databaseService.supabase
+      .from('user_onboarding_progress')
+      .update({ team_member_invited: true })
+      .eq('restaurant_id', restaurantId)
+      .then(({ error: onboardingErr }) => {
+        if (onboardingErr)
+          this.logger.warn(
+            `onboarding progress team_member_invited update failed (non-fatal): ${onboardingErr.message}`,
+          );
+      });
+
     return {
       code: invite.code,
       expiresAt: invite.expires_at,

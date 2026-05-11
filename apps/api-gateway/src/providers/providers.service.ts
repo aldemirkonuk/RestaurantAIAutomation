@@ -116,6 +116,20 @@ export class ProvidersService {
 
     const provider = this.mapProviderRow(data as ProviderRow);
 
+    // Mark vendor_added=true in onboarding progress (fire-and-forget)
+    if (restaurantId) {
+      this.databaseService.supabase
+        .from('user_onboarding_progress')
+        .update({ vendor_added: true })
+        .eq('restaurant_id', restaurantId)
+        .then(({ error: onboardingErr }) => {
+          if (onboardingErr)
+            this.logger.warn(
+              `onboarding progress vendor_added update failed (non-fatal): ${onboardingErr.message}`,
+            );
+        });
+    }
+
     // Emit provider_change event for cross-page sync
     if (restaurantId && userId) {
       try {
