@@ -14,8 +14,7 @@ import type {
   PaginatedResponse,
 } from './types';
 
-const ORDERS_PATH = '/orders';
-// const PROCUREMENT_PATH = '/procurement'; // reserved for future use
+const ORDERS_PATH = '/procurement/orders';
 
 /**
  * Get all orders for the active restaurant

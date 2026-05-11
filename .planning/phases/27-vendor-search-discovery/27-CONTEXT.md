@@ -21,8 +21,13 @@ trusted a caller-supplied `restaurantId` query param now derive it from `@Curren
 - Controller: `GET /`, `GET /:id`, `GET /search`, `GET /search/wine-type`, `PATCH /:id/contact-date` — now all derive `restaurantId` from `@CurrentUser()` instead of trusting query params
 
 **What to do next:**
-1. Deploy to Vercel (auto-deploy from git push) or test locally
-2. Run 5 human UAT tests in `27-HUMAN-UAT.md`
+1. Run 5 human UAT tests in `27-HUMAN-UAT.md` — Test 1 in progress
+
+## Bug Fixes Post-Deploy (2026-05-11)
+
+**BUG-01 (FIXED):** `vendor_catalogue` table did not exist — migrations 20260509000001 and 20260509000002 were never applied to production Supabase. Applied via MCP. 20 vendors seeded.
+
+**BUG-02 (FIXED):** `GET /orders` returning 404 — frontend `ORDERS_PATH` was `/orders` but backend route is `/procurement/orders`. Fixed in `apps/web/src/services/api/orders.ts`.
 
 ---
 
