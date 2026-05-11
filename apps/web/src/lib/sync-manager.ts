@@ -237,31 +237,7 @@ class SyncManagerService {
           result.synced++
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          const mutationData = (mutation.data ?? {}) as Record<string, unknown>
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'pre-fix',
-              hypothesisId: 'H8',
-              location: 'sync-manager.ts:syncNow',
-              message: 'mutation_failed',
-              data: {
-                mutationId: mutation.id,
-                mutationType: mutation.type,
-                retryCount: mutation.retryCount,
-                mutationEventType: (mutationData as any)?.eventType ?? (mutationData as any)?.type ?? null,
-                errorMessage,
-                status: (error as any)?.response?.status || null,
-                response: (error as any)?.response?.data || null,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-          // #endregion
-          result.failed++
+          const mutationData = (mutation.data ?? {}) as Record<string, unknown>          result.failed++
           result.errors.push({ mutationId: mutation.id, error: errorMessage })
           // Update retry count
           const newRetryCount = mutation.retryCount + 1

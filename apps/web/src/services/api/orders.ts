@@ -27,10 +27,7 @@ export async function getOrders(
   if (!id) throw new Error('No restaurant ID available');
 
   const response = await apiClient.get<Order[]>(`${ORDERS_PATH}`, {
-    params: {
-      restaurantId: id,
-      ...params,
-    },
+    params,
   });
   return response.data;
 }
@@ -45,9 +42,7 @@ export async function getOrder(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.get<Order>(`${ORDERS_PATH}/${orderId}`, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.get<Order>(`${ORDERS_PATH}/${orderId}`);
   return response.data;
 }
 
@@ -61,10 +56,7 @@ export async function createOrder(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}`, {
-    ...data,
-    restaurantId: id,
-  });
+  const response = await apiClient.post<Order>(`${ORDERS_PATH}`, data);
   return response.data;
 }
 
@@ -79,9 +71,7 @@ export async function updateOrder(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.patch<Order>(`${ORDERS_PATH}/${orderId}`, data, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.patch<Order>(`${ORDERS_PATH}/${orderId}`, data);
   return response.data;
 }
 
@@ -106,9 +96,7 @@ export async function approveOrder(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/approve`, {}, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/approve`, {});
   return response.data;
 }
 
@@ -123,11 +111,7 @@ export async function cancelOrder(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/cancel`, {
-    reason,
-  }, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/cancel`, { reason });
   return response.data;
 }
 
@@ -142,11 +126,7 @@ export async function markOrderDelivered(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/deliver`, {
-    notes,
-  }, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/deliver`, { notes });
   return response.data;
 }
 
@@ -157,9 +137,7 @@ export async function getPendingOrdersCount(restaurantId?: string): Promise<numb
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.get<{ count: number }>(`${ORDERS_PATH}/pending/count`, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.get<{ count: number }>(`${ORDERS_PATH}/pending/count`);
   return response.data.count;
 }
 
@@ -170,9 +148,7 @@ export async function getOrdersNeedingApproval(restaurantId?: string): Promise<O
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.get<Order[]>(`${ORDERS_PATH}/pending`, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.get<Order[]>(`${ORDERS_PATH}/pending`);
   return response.data;
 }
 
@@ -192,10 +168,7 @@ export async function getOrderHistory(
   if (!id) throw new Error('No restaurant ID available');
 
   const response = await apiClient.get<PaginatedResponse<Order>>(`${ORDERS_PATH}/history`, {
-    params: {
-      restaurantId: id,
-      ...params,
-    },
+    params,
   });
   return response.data;
 }

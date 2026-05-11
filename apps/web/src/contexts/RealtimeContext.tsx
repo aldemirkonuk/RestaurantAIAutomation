@@ -410,28 +410,7 @@ export function RealtimeProvider({ children, restaurantId = null }: RealtimeProv
       payload.wineId &&
       payload.quantity &&
       !payload.metadata?.skipInventoryUpdate
-    ) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H9',
-          location: 'RealtimeContext.tsx:dispatchOrderUpdate',
-          message: 'dispatch_inventory_from_delivery',
-          data: {
-            orderId: payload.orderId,
-            wineId: payload.wineId,
-            quantity: payload.quantity,
-            metadata: payload.metadata || null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      await dispatchInventoryUpdate({
+    ) {      await dispatchInventoryUpdate({
         type: 'stock_change',
         wineId: payload.wineId,
         quantity: payload.quantity,

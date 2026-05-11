@@ -551,31 +551,7 @@ export function Calendar() {
     }))
   }, [apiEvents, providerNameById, startDate, endDate])
   
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'H1',
-        location: 'Calendar.tsx:eventsMapping',
-        message: 'calendar_event_mapping',
-        data: {
-          startDate,
-          endDate,
-          apiEventsCount: apiEvents.length,
-          eventsCount: events.length,
-          currentMonth: currentDate.getMonth() + 1,
-          currentYear: currentDate.getFullYear(),
-          firstEventDate: events[0]?.date ? new Date(events[0].date).toISOString().split('T')[0] : null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
-  }, [apiEvents.length, events.length, startDate, endDate, currentDate])
+  useEffect(() => {  }, [apiEvents.length, events.length, startDate, endDate, currentDate])
   
   const createEvent = useCreateCalendarEvent()
   const updateEvent = useUpdateCalendarEvent()
@@ -736,27 +712,7 @@ export function Calendar() {
     return filtered
   }, [events, filterType, searchQuery])
   
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'H1',
-        location: 'Calendar.tsx:filteredEvents',
-        message: 'calendar_filtered_events',
-        data: {
-          filterType,
-          searchQuery: searchQuery || null,
-          filteredCount: filteredEvents.length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
-  }, [filteredEvents.length, filterType, searchQuery])
+  useEffect(() => {  }, [filteredEvents.length, filterType, searchQuery])
 
   // Generate calendar grid - MUST BE BEFORE CONDITIONAL RETURNS
   const calendarDays = useMemo(() => {
@@ -893,107 +849,19 @@ export function Calendar() {
   }
 
   const handleCreateEvent = async () => {
-    if (isCreatingEvent || createEvent.isPending) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H3',
-          location: 'Calendar.tsx:handleCreateEvent',
-          message: 'calendar_create_ignored_duplicate',
-          data: { isCreatingEvent, isPending: createEvent.isPending },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      return
+    if (isCreatingEvent || createEvent.isPending) {      return
     }
-    setIsCreatingEvent(true)
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'H1',
-        location: 'Calendar.tsx:handleCreateEvent',
-        message: 'calendar_create_attempt',
-        data: {
-          titlePresent: !!newEvent.title?.trim(),
-          restaurantIdPresent: !!restaurantId,
-          timeErrorMessage: timeErrorMessage || null,
-          allDay: !!newEvent.allDay,
-          startTime: newEvent.startTime || null,
-          endTime: newEvent.endTime || null,
-          eventType: newEvent.type || 'meeting',
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
-    // Validate required fields with explicit feedback
-    if (!newEvent.title?.trim()) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H1',
-          location: 'Calendar.tsx:handleCreateEvent',
-          message: 'calendar_create_blocked',
-          data: { reason: 'missing_title' },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      console.warn('[Calendar] Event creation blocked: Missing title')
+    setIsCreatingEvent(true)    // Validate required fields with explicit feedback
+    if (!newEvent.title?.trim()) {      console.warn('[Calendar] Event creation blocked: Missing title')
       return
     }
     
-    if (!restaurantId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H1',
-          location: 'Calendar.tsx:handleCreateEvent',
-          message: 'calendar_create_blocked',
-          data: { reason: 'missing_restaurant_id' },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      console.error('[Calendar] Event creation blocked: Missing restaurantId - user may not be authenticated')
+    if (!restaurantId) {      console.error('[Calendar] Event creation blocked: Missing restaurantId - user may not be authenticated')
       alert('Unable to create event. Please ensure you are logged in and try again.')
       return
     }
     
-    if (timeErrorMessage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H1',
-          location: 'Calendar.tsx:handleCreateEvent',
-          message: 'calendar_create_blocked',
-          data: { reason: 'time_validation_error', timeErrorMessage },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      console.warn('[Calendar] Event creation blocked: Time validation error -', timeErrorMessage)
+    if (timeErrorMessage) {      console.warn('[Calendar] Event creation blocked: Time validation error -', timeErrorMessage)
       return
     }
 
@@ -1048,22 +916,6 @@ export function Calendar() {
       const created = await createEvent.mutateAsync(eventData)
 
       console.log('[Calendar] Event created successfully:', created.id)
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H2',
-          location: 'Calendar.tsx:handleCreateEvent',
-          message: 'calendar_create_success',
-          data: { eventId: created?.id || null },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-
       // Send push notification for calendar event
       if (user?.userId && restaurantId) {
         try {
@@ -1125,26 +977,7 @@ export function Calendar() {
         },
         relatedEntity: undefined,
       })
-    } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H2',
-          location: 'Calendar.tsx:handleCreateEvent',
-          message: 'calendar_create_error',
-          data: {
-            message: error?.message || 'Unknown error',
-            status: error?.response?.status || null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      // Enhanced error logging
+    } catch (error: any) {      // Enhanced error logging
       console.error('[Calendar] Failed to create event:', {
         error,
         message: error?.message || 'Unknown error',

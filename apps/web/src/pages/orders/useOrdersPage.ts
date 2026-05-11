@@ -44,8 +44,8 @@ const mapApiOrderToUi = (o: any): Order => ({
 const isPlaceholderName = (v?: string) => !v || v.trim().length === 0 || v.trim().toLowerCase() === 'unknown wine'
 
 export function useOrdersPage() {
-  const { user } = useAuth()
-  const { data: apiProviders = [] } = useProviders(user?.restaurantId || '')
+  const { user, activeRestaurantId } = useAuth()
+  const { data: apiProviders = [] } = useProviders(activeRestaurantId || user?.restaurantId || '')
   const { inventory } = useInventoryData()
   const { data: apiWines = [] } = useWines({ limit: 200 })
 

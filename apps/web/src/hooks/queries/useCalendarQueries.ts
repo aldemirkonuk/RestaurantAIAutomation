@@ -141,26 +141,7 @@ export function useCreateCalendarEvent() {
       try {
         const result = await createCalendarEvent(data)
         return result
-      } catch (error) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'pre-fix',
-            hypothesisId: 'H2',
-            location: 'useCalendarQueries.ts:useCreateCalendarEvent',
-            message: 'calendar_create_failed_queueing',
-            data: {
-              message: (error as any)?.message || 'Unknown error',
-              status: (error as any)?.response?.status || null,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {})
-        // #endregion
-        // Queue for offline sync
+      } catch (error) {        // Queue for offline sync
         await syncManager.queueMutation({
           type: 'calendar.create',
           data,

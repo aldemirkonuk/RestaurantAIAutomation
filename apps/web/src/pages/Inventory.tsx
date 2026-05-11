@@ -150,30 +150,7 @@ export function Inventory() {
 
   // Handle realtime inventory updates from other pages (Wine Library, Orders)
   const handleInventoryUpdate = useCallback((payload: InventoryUpdatePayload) => {
-    console.log('Inventory received realtime update:', payload)
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'H3',
-        location: 'Inventory.tsx:handleInventoryUpdate',
-        message: 'inventory_update_received',
-        data: {
-          type: payload.type,
-          wineId: payload.wineId,
-          quantity: payload.quantity,
-          stockType: payload.metadata?.stockType || null,
-          action: payload.metadata?.action || null,
-          viewMode,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
-    
+    console.log('Inventory received realtime update:', payload)    
     setInventory(prev => {
       let existingIndex = prev.findIndex(item => item.id === payload.wineId)
       if (existingIndex === -1 && payload.metadata?.inventoryId) {
@@ -226,77 +203,14 @@ export function Inventory() {
             lastCounted: new Date().toISOString(),
             isActive: true,
             inventoryId: payload.metadata?.inventoryId,
-          }
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'pre-fix',
-              hypothesisId: 'H3',
-              location: 'Inventory.tsx:handleInventoryUpdate',
-              message: 'created_inventory_from_stock_change',
-              data: {
-                wineId: payload.wineId,
-                inventoryId: payload.metadata?.inventoryId,
-                qty,
-                transferToLive,
-                isShadow,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-          // #endregion
-          return [...prev, newItem]
-        }
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'pre-fix',
-            hypothesisId: 'H3',
-            location: 'Inventory.tsx:handleInventoryUpdate',
-            message: 'stock_change_missing_wine',
-            data: { wineId: payload.wineId },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {})
-        // #endregion
-      } else if (payload.type === 'stock_change' && existingIndex !== -1) {
+          }          return [...prev, newItem]
+        }      } else if (payload.type === 'stock_change' && existingIndex !== -1) {
         // Stock change from order delivery
         const updated = [...prev]
         const transferToLive =
           payload.metadata?.action === 'shadow_to_live' ||
           (payload.metadata?.transferFrom === 'shadow' && payload.metadata?.transferTo === 'live')
-        const isShadow = payload.metadata?.stockType === 'shadow'
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/626cdea4-d9db-4e9f-b37f-f410baa5330f', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'pre-fix',
-            hypothesisId: 'H9',
-            location: 'Inventory.tsx:handleInventoryUpdate',
-            message: 'stock_change_apply',
-            data: {
-              wineId: payload.wineId,
-              inventoryId: updated[existingIndex].inventoryId,
-              qty: payload.quantity ?? 0,
-              transferToLive,
-              isShadow,
-              currentLive: updated[existingIndex].liveStock || 0,
-              currentShadow: updated[existingIndex].shadowStock || 0,
-              metadata: payload.metadata || null,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {})
-        // #endregion
-        if (transferToLive) {
+        const isShadow = payload.metadata?.stockType === 'shadow'        if (transferToLive) {
           const qty = payload.quantity ?? 0
           const currentShadow = updated[existingIndex].shadowStock || 0
           updated[existingIndex] = {
