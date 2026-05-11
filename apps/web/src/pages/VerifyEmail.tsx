@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Wine, Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
+import { getOnboardingProgress } from '../services/api/menus'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -44,8 +45,11 @@ export function VerifyEmail() {
       localStorage.setItem('refreshToken', data.refreshToken)
       setVerified(true)
       toast.success('Email verified! Redirecting...')
+      // Check if menu already uploaded (re-verification flows) → skip /get-started
+      const progress = await getOnboardingProgress().catch(() => null)
+      const destination = progress?.menu_uploaded ? '/' : '/get-started'
       setTimeout(() => {
-        window.location.href = '/'
+        window.location.href = destination
       }, 1500)
     } catch (err: unknown) {
       setError(
@@ -138,7 +142,7 @@ export function VerifyEmail() {
             {[
               'Open the email from WineOps AI',
               'Click "Verify My Email"',
-              `You'll land on your dashboard — your restaurant is ready`,
+              `You'll be guided through setting up your wine list`,
             ].map((text, i) => (
               <div key={i} className="flex items-start gap-3 bg-gray-50 rounded-lg p-3">
                 <div className="w-5 h-5 rounded-full bg-wine-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
