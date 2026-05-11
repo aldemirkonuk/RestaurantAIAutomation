@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
 status: active
-last_updated: "2026-05-10T21:00:00.000Z"
+last_updated: "2026-05-11T00:00:00.000Z"
 progress:
   total_phases: 11
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 63
-  completed_plans: 46
-  percent: 78
+  completed_plans: 50
+  percent: 79
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,30 +19,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 27 — Vendor Search & Discovery (gap closure needed before UAT approval)
+**Current focus:** Phase 28 — Onboarding Reform + Menu Import (next planned phase)
 
 ---
 
 ## Current Position
 
-Phase: 27 (vendor-search-discovery) — EXECUTED, GAP CLOSURE PENDING
-**Last completed:** Phase 26 — Multi-tenant onboarding, restaurant hierarchy, branch switcher, chain/location management all live. All 8 UAT tests passed 2026-05-10.
-**Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26
+**Last completed:** Phase 27 — Vendor Search & Discovery. All 5 UAT tests passed 2026-05-11. Phase complete.
+**Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27
 **Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
 - Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
 - Phase 24: ~20% done (test stubs + model_clients.py only); plans 24-01, 24-04, 24-05 not executed. Blocked on Phase 23 being live.
 
-### Phase 27 — EXECUTED (2026-05-10), gap closure required before complete
+**Next phase:** Phase 28 — Onboarding Reform + Menu Import (5 plans, see ROADMAP.md)
+
+### Phase 27 — COMPLETE (2026-05-11)
 
 **Plans done:** 27-01 (DB schema + seed), 27-02 (NestJS API), 27-03 (Frontend search modal), 27-04 (Branch transfer + order guard)
-**Code review:** 4 criticals fixed (telemetry leak, SQL injection, order guard inversion, localStorage JWT), 4 warnings fixed. REVIEW.md committed.
-**Verification:** 36/36 must-haves passed. Status: human_needed.
-**Blocking gap (GAP-01):** `ProvidersService.listProviders()` has no `restaurant_id` filter — all tenants see each other's providers. Must fix before UAT approval.
-
-**Next action:**
-1. `/gsd-plan-phase 27 --gaps` — plan the provider scoping fix
-2. `/gsd-execute-phase 27 --gaps-only` — execute the fix
-3. Run human UAT (5 tests in 27-HUMAN-UAT.md) — then mark phase complete
+**Code review:** 4 criticals fixed (telemetry leak, SQL injection, order guard inversion, localStorage JWT), 4 warnings fixed.
+**Verification:** 36/36 must-haves passed.
+**UAT:** All 5 tests passed 2026-05-11. Provider scoping fix applied (restaurant_id filter on listProviders).
 
 ### Phase 22 — COMPLETE (Deployed to Production 2026-04-13)
 
@@ -592,6 +588,7 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 | 260502-00z | analyze phase 25 plans for mistakes and future problems | 2026-05-02 | — | [260502-00z-analyze-phase-25-plans-for-mistakes-and-](./quick/260502-00z-analyze-phase-25-plans-for-mistakes-and-/) |
 | 260502-06m | fix phase 25 execution issues from analysis 260502-00z | 2026-05-02 | — | [260502-06m-fix-phase-25-execution-issues-from-analy](./quick/260502-06m-fix-phase-25-execution-issues-from-analy/) |
 | 260509-ui | Phase 26 UI polish — responsive path selector (feature cards desktop / bold-primary mobile), trust card invite code input, left-rail restaurant form (3 panels), VerifyEmail step list | 2026-05-09 | 06b25e3 | .planning/sketches/004-full-flow-synthesis/ |
+| 260511-pvr | Providers page full redesign from winning sketches 008/009/010-A — TypeBadge dots, white pinned cards, red hearts, action-first grid cards, centered-sheet spring modal | 2026-05-11 | 9740c8b | apps/web/src/pages/Providers.tsx |
 
 ---
 
@@ -687,6 +684,42 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 
 ---
 
+### Session 15 — 2026-05-11 (Phase 27 UAT Complete + Providers Page UI Redesign)
+
+**Completed this session:**
+
+- Passed all 5 Phase 27 human UAT tests → Phase 27 marked COMPLETE
+- Built and evaluated 3 sketch series for the Providers page (sketches 008, 009, 010) — winners locked: all A
+  - 008-A: Editorial Grid (two-row toolbar, pinned strip, flat 3-col grid)
+  - 009-A: Action-First cards (Call/Email/Web always visible)
+  - 010-A: Centered Sheet modal (spring animation, prominent CTA row in header)
+- Implemented all three winning designs into production `apps/web/src/pages/Providers.tsx`:
+  - `TypeBadge` component: colored dot + text replaces Lucide icon badges — more compact and minimal
+  - Grid cards: `border-radius 18px`, `#ebebed` border, `translateY(-2px) + 0 8px 28px shadow` on hover
+  - Pinned strip: white background + wine-tinted `#f0e0e3` border (no amber gradient)
+  - Action chips (Call/Email/Web) always visible on every card — no hover-reveal
+  - Hearts changed to red (`text-red-500 fill-red-500`) everywhere
+  - Detail modal: `border-radius 28px`, `backdrop-blur-[4px]`, spring scale-in animation, prominent green Call + blue Email CTAs in the header (not body)
+  - Modal section labels: `10px` uppercase `tracking-[0.08em]` — matches sketch 010-A exactly
+- Pushed to Vercel — commit `9740c8b` deployed
+
+**Key design decisions:**
+
+- Dot-badge style: more information-dense than icon badges; colored dot immediately signals type without reading label
+- Pinned cards white (not amber gradient): cleaner against the page background; wine-tinted border provides sufficient visual connection to the favorites concept
+- Red hearts (not amber): matches the sketch's heart color; red is universally associated with "favorited/loved"
+- CTA row in modal header (not body): sketch 010-A decision — actions should be above the fold; user shouldn't need to scroll to Call or Email
+
+**Files changed this session:**
+
+- `apps/web/src/pages/Providers.tsx` — full redesign (TypeBadge, card layout, pinned strip, modal)
+- `.planning/sketches/MANIFEST.md` — winners locked: 008→A, 009→A, 010→A
+- `.planning/sketches/008-providers-page-layout/` — README winner + HTML ★ marker
+- `.planning/sketches/009-provider-card-design/` — README winner + HTML ★ marker
+- `.planning/sketches/010-provider-detail-modal/` — README winner + HTML ★ marker
+
+---
+
 ### Session 14 — 2026-05-10 (Phase 26: Human UAT — All 8 Tests Passed)
 
 **Completed this session:**
@@ -727,4 +760,4 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 ---
 
 *State initialized: 2026-03-30*
-*Last updated: 2026-05-10 — Phase 26 fully complete. All 8 UAT tests passed. Phase 27 (Vendor Search & Discovery) is next.*
+*Last updated: 2026-05-11 — Phase 27 fully complete. All 5 UAT tests passed. Providers page redesigned from sketches 008/009/010-A and deployed. Phase 28 (Onboarding Reform + Menu Import) is next.*

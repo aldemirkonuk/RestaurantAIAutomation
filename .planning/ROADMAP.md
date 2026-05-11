@@ -230,7 +230,7 @@ Plans:
 - [x] 26-08-PLAN.md — Frontend: AuthContext refreshBranches + EditLocationChainDialog + Create Chain checkbox (Wave 8, depends on 26-07) [CHAIN-06]
 - [x] 26-09-PLAN.md — Settings UX overhaul: chain rename/delete API + tree-view Locations + sticky nav (Wave 9)
 
-### Phase 27: Vendor Search & Discovery
+### Phase 27: Vendor Search & Discovery ✓ COMPLETE (2026-05-11)
 **Goal**: New users can discover, search, and add wine vendors to their restaurant from an admin-curated global catalogue (or add custom vendors). Providers page shows a search-first empty state. Order creation is gated behind having at least one vendor (free tier: hard block; paid tier: LLM-powered vendor suggestions stub).
 **Depends on**: Phase 26 (restaurant + organization model live)
 **Requirements**: VENDOR-01..10
@@ -247,10 +247,25 @@ Plans:
   10. All new DB tables have RLS policies scoped to `restaurant_id`
 **Plans:** 4 plans (4 waves)
 Plans:
-- [ ] 27-01-PLAN.md — DB: `vendor_catalogue` table + `providers` schema update + seed data migration (Wave 1) [VENDOR-01..03]
-- [ ] 27-02-PLAN.md — Backend: vendor catalogue search API + providers CRUD + order guard endpoint (Wave 2) [VENDOR-04..06]
-- [ ] 27-03-PLAN.md — Frontend: Providers empty state + VendorSearchModal + catalogue browsing UI (Wave 3) [VENDOR-07..09]
-- [ ] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
+- [x] 27-01-PLAN.md — DB: `vendor_catalogue` table + `providers` schema update + seed data migration (Wave 1) [VENDOR-01..03]
+- [x] 27-02-PLAN.md — Backend: vendor catalogue search API + providers CRUD + order guard endpoint (Wave 2) [VENDOR-04..06]
+- [x] 27-03-PLAN.md — Frontend: Providers empty state + VendorSearchModal + catalogue browsing UI (Wave 3) [VENDOR-07..09]
+- [x] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
+**UAT**: All 5 tests passed 2026-05-11. Phase complete.
+
+### Phase 29: Autonomous Vendor Discovery (Paid Tier)
+**Goal**: Paid-tier restaurants can place orders even with zero pre-configured vendors. On order creation with no providers, instead of a hard block, the LLM autonomously web-searches for matching wine distributors — finds contact info, operating region, specialties — and presents a ranked shortlist the manager can approve. Approved vendors are auto-created in `providers` and the order proceeds.
+**Depends on**: Phase 27 (provider model + order guard in place), Phase 28 (activation checklist)
+**Requirements**: AUTOPROCURE-01..08
+**Success Criteria** (what must be TRUE):
+  1. Paid tier flag (`restaurant_feature_flags.autonomous_vendor_discovery = true`) gates the feature; free tier still sees the hard block modal
+  2. Order creation with 0 providers on paid tier opens `AutonomousVendorSearchModal` instead of `OrderGuardModal`
+  3. LLM (Claude) web-searches for US wine distributors matching the wine type, vintage region, and restaurant location
+  4. Returns a ranked list of ≤5 candidates with: name, website, estimated contact email, phone, distribution region
+  5. Manager can approve 1+ candidates → auto-created in `providers` table with `is_custom = true`, `ai_discovered = true`
+  6. Order proceeds immediately after at least one vendor is approved
+  7. Fallback to manual entry form if LLM search returns 0 results
+  8. Discovery action logged to `agent_activity_logs` with cost estimate for the Claude call
 
 ### Phase 28: Onboarding Reform + Menu Import
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
