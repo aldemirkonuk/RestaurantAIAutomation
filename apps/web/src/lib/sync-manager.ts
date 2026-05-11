@@ -237,7 +237,8 @@ class SyncManagerService {
           result.synced++
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          const mutationData = (mutation.data ?? {}) as Record<string, unknown>          result.failed++
+          const mutationData = (mutation.data ?? {}) as Record<string, unknown>
+          result.failed++
           result.errors.push({ mutationId: mutation.id, error: errorMessage })
           // Update retry count
           const newRetryCount = mutation.retryCount + 1

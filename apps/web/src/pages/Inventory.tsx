@@ -203,14 +203,17 @@ export function Inventory() {
             lastCounted: new Date().toISOString(),
             isActive: true,
             inventoryId: payload.metadata?.inventoryId,
-          }          return [...prev, newItem]
-        }      } else if (payload.type === 'stock_change' && existingIndex !== -1) {
+          }
+          return [...prev, newItem]
+        }
+      } else if (payload.type === 'stock_change' && existingIndex !== -1) {
         // Stock change from order delivery
         const updated = [...prev]
         const transferToLive =
           payload.metadata?.action === 'shadow_to_live' ||
           (payload.metadata?.transferFrom === 'shadow' && payload.metadata?.transferTo === 'live')
-        const isShadow = payload.metadata?.stockType === 'shadow'        if (transferToLive) {
+        const isShadow = payload.metadata?.stockType === 'shadow'
+        if (transferToLive) {
           const qty = payload.quantity ?? 0
           const currentShadow = updated[existingIndex].shadowStock || 0
           updated[existingIndex] = {
