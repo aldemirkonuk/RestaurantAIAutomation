@@ -20,9 +20,12 @@ import {
   Bot,
   MessageSquare,
   Calendar,
+  Rocket,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
+import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress'
+import { GettingStartedPanel } from '../onboarding/GettingStartedPanel'
 
 interface NavItem {
   name: string
@@ -68,8 +71,17 @@ const bottomNavItems: NavItem[] = [
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  const [showChecklist, setShowChecklist] = useState(false)
   const location = useLocation()
   const { user, logout } = useAuth()
+  const { progress, update } = useOnboardingProgress()
+
+  const completedCount = progress
+    ? [true, progress.menu_uploaded, progress.vendor_added, progress.team_member_invited].filter(
+        Boolean,
+      ).length
+    : 0
+  const showChecklistItem = progress && !progress.checklist_dismissed && !progress.completed_at
 
   const NavItemComponent = ({ item, collapsed }: { item: NavItem; collapsed: boolean }) => {
     const isActive = location.pathname === item.href
@@ -250,6 +262,48 @@ export function Sidebar() {
               item={{ name: 'Admin Panel', href: '/admin', icon: Shield }}
               collapsed={collapsed}
             />
+          </div>
+        )}
+
+        {/* Getting Started checklist item */}
+        {showChecklistItem && (
+          <div className="relative mt-4">
+            <button
+              onClick={() => setShowChecklist(!showChecklist)}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left',
+                showChecklist
+                  ? 'bg-[#722F37]/10 text-[#722F37]'
+                  : 'text-gray-600 hover:bg-gray-100',
+              )}
+            >
+              <div className="relative">
+                <Rocket className="w-5 h-5 flex-shrink-0" />
+                {completedCount < 4 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#722F37] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {completedCount}
+                  </span>
+                )}
+              </div>
+              {!collapsed && (
+                <span className="font-medium text-sm whitespace-nowrap overflow-hidden flex-1">
+                  Get started
+                </span>
+              )}
+            </button>
+
+            <AnimatePresence>
+              {showChecklist && progress && (
+                <GettingStartedPanel
+                  progress={progress}
+                  onClose={() => setShowChecklist(false)}
+                  onDismiss={() => {
+                    update({ checklist_dismissed: true })
+                    setShowChecklist(false)
+                  }}
+                />
+              )}
+            </AnimatePresence>
           </div>
         )}
       </nav>
