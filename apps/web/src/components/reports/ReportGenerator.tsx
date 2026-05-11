@@ -20,6 +20,7 @@ import {
   List,
   AlertCircle,
   Loader2,
+  Settings,
 } from 'lucide-react'
 
 interface ReportTemplate {
