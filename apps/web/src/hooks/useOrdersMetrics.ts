@@ -125,8 +125,8 @@ export function useOrdersMetrics() {
       const [historyResult, approvedOrders] = await Promise.all([
         ordersApi.getOrderHistory(
           {
-            limit: 500,
-            startDate: startDate.toISOString().split('T')[0],
+            limit: 100,
+            dateFrom: startDate.toISOString().split('T')[0],
           },
           activeRestaurantId
         ),
