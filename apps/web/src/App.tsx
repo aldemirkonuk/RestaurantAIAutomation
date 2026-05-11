@@ -23,6 +23,9 @@ import { VerifyEmail } from './pages/VerifyEmail'
 import { Inventory } from './pages/Inventory'
 import { Orders } from './pages/Orders'
 
+// Onboarding pages (lazy loaded)
+const GetStarted = lazy(() => import('./pages/GetStarted'))
+
 // Heavy pages (lazy loaded)
 const Reports = lazy(() => import('./pages/Reports'))
 const WineLibrary = lazy(() => import('./pages/wine-library'))
@@ -78,6 +81,7 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/get-started" element={<GetStarted />} />
                 <Route path="/onboarding" element={<Onboarding />} />
 
                 {/* Studio routes — separate layout with StudioLayout, outside DashboardLayout */}
