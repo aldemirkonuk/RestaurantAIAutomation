@@ -26,6 +26,7 @@ import { UserPreferencesModule } from './user-preferences/user-preferences.modul
 import { RestaurantTemplatesModule } from './restaurant-templates/restaurant-templates.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { VendorCatalogueModule } from './vendor-catalogue/vendor-catalogue.module';
+import { MenusModule } from './menus/menus.module';
 import { ErrorTrackingModule, SentryInterceptor } from './common/error-tracking';
 import { RateLimitModule, RateLimitGuard } from './common/rate-limit';
 import { CacheModule } from './common/cache/cache.module';
@@ -76,6 +77,7 @@ import { OrchestratorModule } from './common/orchestrator/orchestrator.module';
     SettingsModule,        // Restaurant settings and feature flags
     OrganizationsModule,   // Multi-tenant org hierarchy (branches, chains)
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
+    MenusModule,           // Menu import (scan/CSV/manual) + onboarding progress
     UserPreferencesModule, // User preference storage (JSONB)
     RestaurantTemplatesModule, // Communication templates CRUD
     
