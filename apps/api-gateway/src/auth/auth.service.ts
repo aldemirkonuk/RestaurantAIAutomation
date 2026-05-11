@@ -498,6 +498,14 @@ export class AuthService {
         role: 'owner',
       });
 
+      // Seed onboarding progress row (fire-and-forget — never block registration)
+      this.databaseService.supabase
+        .from('user_onboarding_progress')
+        .insert({ user_id: userId, restaurant_id: restaurantId })
+        .then(({ error }) => {
+          if (error) this.logger.warn(`Failed to seed onboarding_progress (non-fatal): ${error.message}`);
+        });
+
       // Both emails are fire-and-forget — Gmail latency must never delay the registration response
       this.queueEmailVerification(userId, dto.email)
         .catch((err) => this.logger.warn(`queueEmailVerification failed (non-fatal): ${err.message}`));
