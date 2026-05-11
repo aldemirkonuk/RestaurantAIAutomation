@@ -19,19 +19,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 27 — Vendor Search & Discovery (executing)
+**Current focus:** Phase 27 — Vendor Search & Discovery (gap closure needed before UAT approval)
 
 ---
 
 ## Current Position
 
-Phase: 27 (vendor-search-discovery) — IN PROGRESS
+Phase: 27 (vendor-search-discovery) — EXECUTED, GAP CLOSURE PENDING
 **Last completed:** Phase 26 — Multi-tenant onboarding, restaurant hierarchy, branch switcher, chain/location management all live. All 8 UAT tests passed 2026-05-10.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26
 **Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
 - Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
 - Phase 24: ~20% done (test stubs + model_clients.py only); plans 24-01, 24-04, 24-05 not executed. Blocked on Phase 23 being live.
-**Next:** Phase 27 — Vendor Search & Discovery
+
+### Phase 27 — EXECUTED (2026-05-10), gap closure required before complete
+
+**Plans done:** 27-01 (DB schema + seed), 27-02 (NestJS API), 27-03 (Frontend search modal), 27-04 (Branch transfer + order guard)
+**Code review:** 4 criticals fixed (telemetry leak, SQL injection, order guard inversion, localStorage JWT), 4 warnings fixed. REVIEW.md committed.
+**Verification:** 36/36 must-haves passed. Status: human_needed.
+**Blocking gap (GAP-01):** `ProvidersService.listProviders()` has no `restaurant_id` filter — all tenants see each other's providers. Must fix before UAT approval.
+
+**Next action:**
+1. `/gsd-plan-phase 27 --gaps` — plan the provider scoping fix
+2. `/gsd-execute-phase 27 --gaps-only` — execute the fix
+3. Run human UAT (5 tests in 27-HUMAN-UAT.md) — then mark phase complete
 
 ### Phase 22 — COMPLETE (Deployed to Production 2026-04-13)
 

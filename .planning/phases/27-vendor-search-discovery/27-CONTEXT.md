@@ -1,7 +1,26 @@
 # Phase 27: Vendor Search & Discovery — CONTEXT
 
 Created: 2026-05-09
-Status: planning
+Status: EXECUTED 2026-05-10 — gap closure required before UAT approval
+
+## Execution Summary (2026-05-10)
+
+All 4 plans executed and code review fixes applied. One blocking gap found post-execution:
+
+**GAP-01 (blocking):** `ProvidersService.listProviders()` returns providers from ALL restaurants —
+no `restaurant_id` filter. Each restaurant (including different branches of the same owner) must
+only see its own providers. The `vendor_catalogue` table is intentionally global (browse/discover),
+but `providers` (the restaurant's actual vendor relationships) must be strictly tenant-scoped.
+
+**What to do next:**
+1. `/gsd-plan-phase 27 --gaps` — creates a gap closure plan targeting providers.service.ts + controller
+2. `/gsd-execute-phase 27 --gaps-only` — executes the fix
+3. Run 5 human UAT tests in `27-HUMAN-UAT.md` — approve to mark phase complete
+
+**Where the fix goes:**
+- `apps/api-gateway/src/providers/providers.service.ts` — `listProviders()` line 146: add `.eq('restaurant_id', restaurantId)`, extract `restaurantId` from call signature
+- `apps/api-gateway/src/providers/providers.controller.ts` — pass `restaurant_id` from `@CurrentUser()` decorator into service call
+- Audit all other queries in `providers.service.ts` that touch the `providers` table for the same gap
 
 ---
 
