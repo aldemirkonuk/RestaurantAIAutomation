@@ -41,13 +41,12 @@ export class ProvidersController {
   @Get('search')
   @ApiOperation({ summary: 'Search providers' })
   @ApiQuery({ name: 'q', required: false })
-  @ApiQuery({ name: 'restaurantId', required: false })
   @ApiQuery({ name: 'specialties', required: false, type: [String] })
   @ApiQuery({ name: 'isActive', required: false })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async searchProviders(
+    @CurrentUser() user: { id: string; restaurantId: string },
     @Query('q') q?: string,
-    @Query('restaurantId') restaurantId?: string,
     @Query('specialties') specialties?: string | string[],
     @Query('isActive') isActive?: string,
   ): Promise<ProviderResponseDto[]> {
@@ -58,7 +57,7 @@ export class ProvidersController {
 
       return await this.providersService.searchProviders({
         q,
-        restaurantId,
+        restaurantId: user.restaurantId,
         specialties: specialtiesArr,
         isActive: isActive !== undefined ? isActive === 'true' : undefined,
       });
@@ -72,16 +71,15 @@ export class ProvidersController {
 
   @Get('search/wine-type')
   @ApiOperation({ summary: 'Search providers by wine type' })
-  @ApiQuery({ name: 'restaurantId', required: true })
   @ApiQuery({ name: 'wineType', required: true })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async searchByWineType(
-    @Query('restaurantId') restaurantId: string,
+    @CurrentUser() user: { id: string; restaurantId: string },
     @Query('wineType') wineType: string,
   ): Promise<ProviderResponseDto[]> {
     try {
       return await this.providersService.searchProviders({
-        restaurantId,
+        restaurantId: user.restaurantId,
         wineType,
         isActive: true,
       });
@@ -157,9 +155,11 @@ export class ProvidersController {
   @Get()
   @ApiOperation({ summary: 'List providers' })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
-  async listProviders(): Promise<ProviderResponseDto[]> {
+  async listProviders(
+    @CurrentUser() user: { id: string; restaurantId: string },
+  ): Promise<ProviderResponseDto[]> {
     try {
-      return await this.providersService.listProviders();
+      return await this.providersService.listProviders(user.restaurantId);
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to fetch providers',
@@ -171,9 +171,12 @@ export class ProvidersController {
   @Get(':id')
   @ApiOperation({ summary: 'Get provider details' })
   @ApiResponse({ status: 200, type: ProviderResponseDto })
-  async getProvider(@Param('id') providerId: string): Promise<ProviderResponseDto> {
+  async getProvider(
+    @Param('id') providerId: string,
+    @CurrentUser() user: { id: string; restaurantId: string },
+  ): Promise<ProviderResponseDto> {
     try {
-      return await this.providersService.getProvider(providerId);
+      return await this.providersService.getProvider(providerId, user.restaurantId);
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to fetch provider',
@@ -352,9 +355,10 @@ export class ProvidersController {
   async updateContactDate(
     @Param('id') providerId: string,
     @Body() dto: UpdateContactDateDto,
+    @CurrentUser() user: { id: string; restaurantId: string },
   ): Promise<ProviderResponseDto> {
     try {
-      return await this.providersService.updateLastContactDate(providerId, dto);
+      return await this.providersService.updateLastContactDate(providerId, dto, user.restaurantId);
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to update contact date',

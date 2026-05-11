@@ -245,6 +245,62 @@ export class AuthService {
   }
 
   /**
+   * Re-issue tokens scoped to a different restaurant the user has access to.
+   * Validates that targetRestaurantId belongs to the same organisation(s) as the user.
+   */
+  async switchRestaurant(userId: string, targetRestaurantId: string): Promise<TokenPair> {
+    // Load the user record from DB
+    const { data: user, error: userErr } = await this.databaseService.supabase
+      .from('users')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (userErr || !user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Verify the target restaurant belongs to an organisation the user is a member of.
+    // Also handles legacy users (no org row) by checking via restaurant → org path.
+    const { data: orgMemberships } = await this.databaseService.supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId);
+
+    let orgIds: string[] = (orgMemberships ?? []).map((m: any) => m.organization_id);
+
+    if (orgIds.length === 0) {
+      // Legacy fallback: derive org from the user's own restaurant
+      const { data: ownRestaurant } = await this.databaseService.supabase
+        .from('restaurants')
+        .select('organization_id')
+        .eq('id', user.restaurant_id)
+        .maybeSingle();
+      if (ownRestaurant?.organization_id) {
+        orgIds = [ownRestaurant.organization_id];
+      }
+    }
+
+    if (orgIds.length === 0) {
+      throw new ForbiddenException('No organisation membership found');
+    }
+
+    const { data: targetRestaurant } = await this.databaseService.supabase
+      .from('restaurants')
+      .select('id, organization_id')
+      .eq('id', targetRestaurantId)
+      .in('organization_id', orgIds)
+      .maybeSingle();
+
+    if (!targetRestaurant) {
+      throw new ForbiddenException('Access denied to requested restaurant');
+    }
+
+    // Issue new tokens with the switched restaurant_id
+    return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+  }
+
+  /**
    * Generate access and refresh tokens using ConfigService-managed secrets.
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.

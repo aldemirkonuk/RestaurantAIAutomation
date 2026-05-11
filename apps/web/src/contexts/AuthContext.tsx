@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorTracking } from '../lib/error-tracking'
+import { useAuthStore } from '../stores'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const api = axios.create({
@@ -55,7 +56,7 @@ interface AuthContextType {
   error: string | null
   activeRestaurantId: string | null
   availableRestaurants: RestaurantBranch[]
-  setActiveRestaurantId: (restaurantId: string) => void
+  setActiveRestaurantId: (restaurantId: string) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   register: (data: RegisterData) => Promise<void>
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>
@@ -263,13 +264,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchAndSetBranches(user.restaurantId)
   }, [user, fetchAndSetBranches])
 
-  const setActiveRestaurantId = useCallback((restaurantId: string) => {
+  const setActiveRestaurantId = useCallback(async (restaurantId: string) => {
     if (!isUuid(restaurantId)) {
       return
     }
+
+    try {
+      // Re-issue JWT scoped to the new restaurant so backend API calls use the correct tenant.
+      const response = await api.post('/api/v1/auth/switch-restaurant', { restaurantId })
+      const { accessToken, refreshToken } = response.data
+
+      localStorage.setItem('accessToken', accessToken)
+      localStorage.setItem('refreshToken', refreshToken)
+      api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+    } catch (err) {
+      console.warn('switch-restaurant failed, proceeding with X-Restaurant-Id header only', err)
+    }
+
     setActiveRestaurantIdState(restaurantId)
     localStorage.setItem('activeRestaurantId', restaurantId)
     api.defaults.headers.common['X-Restaurant-Id'] = restaurantId
+    // Sync Zustand store so all consumers (Providers, Dashboard, etc.) re-render immediately
+    useAuthStore.getState().setActiveRestaurantId(restaurantId)
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {

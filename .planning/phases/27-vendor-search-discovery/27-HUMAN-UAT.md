@@ -43,23 +43,11 @@ blocked: 1
 
 ## Gaps
 
-### GAP-01: Provider list not scoped by restaurant_id — cross-tenant data leak
-status: failed
-severity: blocking
+### GAP-01: Provider list not scoped by restaurant_id — FIXED 2026-05-10
+status: resolved
+severity: was blocking
 source: code-review WR-03 + user confirmation 2026-05-10
 
-`ProvidersService.listProviders()` (providers.service.ts line 146) runs `SELECT * FROM providers` with no
-`.eq('restaurant_id', ...)` filter. Every restaurant, including different branches of the same owner,
-sees all providers from all tenants.
-
-**Correct behaviour:** Each restaurant (identified by `restaurant_id` from the JWT/request context) must
-only see its own providers. The `vendor_catalogue` table remains globally readable (that's intentional —
-it's the browse-to-discover catalogue). But `providers` (the restaurant's own added vendors) must be
-strictly scoped per `restaurant_id`.
-
-**Where to fix:**
-- `apps/api-gateway/src/providers/providers.service.ts` — `listProviders()` must accept and apply `restaurantId`
-- `apps/api-gateway/src/providers/providers.controller.ts` — extract `restaurant_id` from JWT and pass to service
-- Check all other `providers` table reads in the service for the same gap (search, getProvider, etc.)
-
-**Fix:** `/gsd-plan-phase 27 --gaps` then `/gsd-execute-phase 27 --gaps-only`
+Full tenant-isolation audit applied. All `providers` table queries in `providers.service.ts` now
+filter by `restaurant_id`. Controller endpoints now derive `restaurantId` from `@CurrentUser()` (JWT)
+instead of trusting caller-supplied query params. TypeScript compile: clean (0 errors).

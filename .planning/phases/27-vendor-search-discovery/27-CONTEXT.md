@@ -1,26 +1,28 @@
 # Phase 27: Vendor Search & Discovery — CONTEXT
 
 Created: 2026-05-09
-Status: EXECUTED 2026-05-10 — gap closure required before UAT approval
+Status: EXECUTED 2026-05-10 — gap closed 2026-05-10 — ready for UAT
 
 ## Execution Summary (2026-05-10)
 
-All 4 plans executed and code review fixes applied. One blocking gap found post-execution:
+All 4 plans executed, code review fixes applied, and GAP-01 closed.
 
-**GAP-01 (blocking):** `ProvidersService.listProviders()` returns providers from ALL restaurants —
-no `restaurant_id` filter. Each restaurant (including different branches of the same owner) must
-only see its own providers. The `vendor_catalogue` table is intentionally global (browse/discover),
-but `providers` (the restaurant's actual vendor relationships) must be strictly tenant-scoped.
+**GAP-01 (FIXED 2026-05-10):** Full tenant-isolation audit of `providers.service.ts` — all 6 unscoped
+`providers` table queries now include `.eq('restaurant_id', ...)`. Controller endpoints that previously
+trusted a caller-supplied `restaurantId` query param now derive it from `@CurrentUser()` (JWT).
+
+**Fixes applied:**
+- `listProviders()` — added `restaurantId` param + `.eq('restaurant_id', restaurantId)` filter
+- `getProvider()` — added `restaurantId` param + `.eq('restaurant_id', restaurantId)` filter
+- `updateProvider()` — added `.eq('restaurant_id', restaurantId)` to DB query (was in sig, missing from query)
+- `softDeleteProvider()` — added `.eq('restaurant_id', restaurantId)` to both select + update queries
+- `updateLastContactDate()` — added `restaurantId` param + `.eq('restaurant_id', restaurantId)` filter
+- `searchProviders()` — made `restaurantId` required (removed conditional branch)
+- Controller: `GET /`, `GET /:id`, `GET /search`, `GET /search/wine-type`, `PATCH /:id/contact-date` — now all derive `restaurantId` from `@CurrentUser()` instead of trusting query params
 
 **What to do next:**
-1. `/gsd-plan-phase 27 --gaps` — creates a gap closure plan targeting providers.service.ts + controller
-2. `/gsd-execute-phase 27 --gaps-only` — executes the fix
-3. Run 5 human UAT tests in `27-HUMAN-UAT.md` — approve to mark phase complete
-
-**Where the fix goes:**
-- `apps/api-gateway/src/providers/providers.service.ts` — `listProviders()` line 146: add `.eq('restaurant_id', restaurantId)`, extract `restaurantId` from call signature
-- `apps/api-gateway/src/providers/providers.controller.ts` — pass `restaurant_id` from `@CurrentUser()` decorator into service call
-- Audit all other queries in `providers.service.ts` that touch the `providers` table for the same gap
+1. Deploy to Vercel (auto-deploy from git push) or test locally
+2. Run 5 human UAT tests in `27-HUMAN-UAT.md`
 
 ---
 

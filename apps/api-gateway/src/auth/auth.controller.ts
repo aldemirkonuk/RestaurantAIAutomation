@@ -210,5 +210,19 @@ export class AuthController {
     const result = await this.authService.resendVerification(req.user.userId, req.user.email);
     return { success: true, ...result };
   }
+
+  /**
+   * Switch active restaurant context — re-issues JWT with the new restaurantId.
+   * Validates the requesting user belongs to the target restaurant's organisation.
+   */
+  @Post('switch-restaurant')
+  @UseGuards(JwtAuthGuard)
+  async switchRestaurant(
+    @Req() req: Request & { user: any },
+    @Body() body: { restaurantId: string },
+  ) {
+    const tokens = await this.authService.switchRestaurant(req.user.userId, body.restaurantId);
+    return { success: true, ...tokens };
+  }
 }
 

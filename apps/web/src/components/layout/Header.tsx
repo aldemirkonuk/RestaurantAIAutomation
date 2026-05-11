@@ -133,9 +133,8 @@ export function Header({ title, subtitle }: HeaderProps) {
 
   const handleSwitch = async (branchId: string) => {
     setIsSwitching(true)
-    setActiveRestaurantId(branchId)
     setShowRestaurantMenu(false)
-    await new Promise((r) => setTimeout(r, 300))
+    await setActiveRestaurantId(branchId)
     setIsSwitching(false)
   }
 

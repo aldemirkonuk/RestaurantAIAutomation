@@ -143,10 +143,11 @@ export class ProvidersService {
     return provider;
   }
 
-  async listProviders(): Promise<ProviderResponseDto[]> {
+  async listProviders(restaurantId: string): Promise<ProviderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from('providers')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -158,11 +159,12 @@ export class ProvidersService {
     return (data || []).map((row) => this.mapProviderRow(row as ProviderRow));
   }
 
-  async getProvider(providerId: string): Promise<ProviderResponseDto> {
+  async getProvider(providerId: string, restaurantId: string): Promise<ProviderResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from('providers')
       .select('*')
       .eq('id', providerId)
+      .eq('restaurant_id', restaurantId)
       .single();
 
     if (error) {
@@ -201,6 +203,7 @@ export class ProvidersService {
       .from('providers')
       .update(updatePayload)
       .eq('id', providerId)
+      .eq('restaurant_id', restaurantId ?? '')
       .select('*')
       .single();
 
@@ -251,6 +254,7 @@ export class ProvidersService {
       .from('providers')
       .select('name')
       .eq('id', providerId)
+      .eq('restaurant_id', restaurantId ?? '')
       .single();
 
     const { error } = await this.databaseService.supabase
@@ -259,7 +263,8 @@ export class ProvidersService {
         is_active: false,
         deleted_at: new Date().toISOString(),
       })
-      .eq('id', providerId);
+      .eq('id', providerId)
+      .eq('restaurant_id', restaurantId ?? '');
 
     if (error) {
       this.logger.error('Failed to delete provider', {
@@ -443,7 +448,7 @@ export class ProvidersService {
 
   async searchProviders(params: {
     q?: string;
-    restaurantId?: string;
+    restaurantId: string;
     specialties?: string[];
     isActive?: boolean;
     wineType?: string;
@@ -451,11 +456,8 @@ export class ProvidersService {
     let query = this.databaseService.supabase
       .from('providers')
       .select('*')
+      .eq('restaurant_id', params.restaurantId)
       .is('deleted_at', null);
-
-    if (params.restaurantId) {
-      query = query.eq('restaurant_id', params.restaurantId);
-    }
 
     if (params.isActive !== undefined) {
       query = query.eq('is_active', params.isActive);
@@ -529,6 +531,7 @@ export class ProvidersService {
   async updateLastContactDate(
     providerId: string,
     dto: UpdateContactDateDto,
+    restaurantId: string,
   ): Promise<ProviderResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from('providers')
@@ -537,6 +540,7 @@ export class ProvidersService {
         last_contact_notes: dto.notes ?? null,
       })
       .eq('id', providerId)
+      .eq('restaurant_id', restaurantId)
       .select('*')
       .single();
 

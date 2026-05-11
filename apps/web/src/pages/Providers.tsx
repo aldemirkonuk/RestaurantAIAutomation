@@ -299,8 +299,8 @@ export function Providers() {
     setRatings(prev => ({ ...prev, [providerId]: rating }))
   }, [setRatings])
 
-  // Show loading state (only on initial load)
-  if (isLoading && !providers.length) {
+  // Show loading state while auth store hydrates (restaurantId null) or query is in-flight
+  if (!restaurantId || (isLoading && !providers.length)) {
     return (
       <div className="min-h-screen">
         <Header title="Wine Providers" subtitle="Manage your supplier relationships" />
