@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 008 — Providers Page Layout</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-body); background: #f7f8fa; color: var(--color-text); padding-top: 44px; }
+
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: #fff; border-bottom: 1px solid #e9eaec;
+    padding: 6px 16px; display: flex; gap: 6px; align-items: center;
+    font-family: system-ui; font-size: 12px;
+  }
+  .variant-tab { padding:5px 14px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:12px; font-family:system-ui; color:#555; transition:all 0.15s; }
+  .variant-tab.active { background:#7c1d2f; color:#fff; border-color:#7c1d2f; }
+  .variant { display:none; }
+  .variant.active { display:block; }
+  .variant-label { font-size:11px; color:#9ca3af; margin-left:8px; }
+
+  /* ── SVG icon helper ── */
+  .ic { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+  /* ── App header ── */
+  .app-header {
+    background: #fff; border-bottom: 1px solid #e9eaec;
+    padding: 22px 28px 18px;
+  }
+  .app-header h1 {
+    font-family: var(--font-display); font-size: 21px; font-weight: 700;
+    color: #0f172a; letter-spacing: -0.3px;
+  }
+  .app-header p { font-size: 13px; color: #8b92a0; margin-top: 3px; font-weight: 400; }
+
+  .page-body { padding: 22px 28px; }
+
+  /* ── Toolbar ── */
+  .toolbar { margin-bottom: 18px; }
+  .toolbar-row1 { display:flex; gap:10px; margin-bottom:10px; }
+  .toolbar-row2 { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .filter-group { display:flex; align-items:center; gap:5px; }
+
+  .search-wrap { flex:1; position:relative; }
+  .search-wrap input {
+    width:100%; padding:9px 12px 9px 38px; border:1px solid #e5e7eb; border-radius:12px;
+    font-size:13px; font-family:var(--font-body); background:#fff; outline:none;
+    transition:all 0.15s; color:#0f172a;
+  }
+  .search-wrap input::placeholder { color:#b0b8c4; }
+  .search-wrap input:focus { border-color:#7c1d2f; box-shadow:0 0 0 3px rgba(124,29,47,0.07); }
+  .search-wrap .search-icon { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#b0b8c4; pointer-events:none; }
+
+  .btn-primary {
+    padding:9px 18px; background:#7c1d2f; color:#fff; border:none; border-radius:12px;
+    font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:7px;
+    transition:all 0.15s; white-space:nowrap; box-shadow:0 1px 8px rgba(124,29,47,0.22);
+    font-family:var(--font-body); letter-spacing:-0.1px;
+  }
+  .btn-primary:hover { background:#6b1828; transform:translateY(-1px); box-shadow:0 4px 14px rgba(124,29,47,0.28); }
+  .btn-primary:active { transform:translateY(0); }
+
+  .chip {
+    padding:6px 13px; border-radius:99px; border:1px solid #e5e7eb;
+    background:#fff; color:#6b7280; font-size:12px; font-weight:500;
+    cursor:pointer; transition:all 0.15s; white-space:nowrap; font-family:var(--font-body);
+  }
+  .chip:hover { border-color:#c4b0b4; color:#4b2d35; }
+  .chip.active { background:#7c1d2f; color:#fff; border-color:#7c1d2f; }
+  .chip.fav { display:flex; align-items:center; gap:5px; }
+  .chip.fav.active { background:#fff8f0; color:#92400e; border-color:#f3b97b; }
+
+  .sep { width:1px; height:16px; background:#e5e7eb; margin:0 3px; }
+
+  .view-toggle { display:flex; background:#f3f4f6; border-radius:8px; padding:2px; gap:1px; }
+  .view-btn { padding:5px 7px; border-radius:6px; border:none; background:none; cursor:pointer; color:#9ca3af; transition:all 0.15s; display:flex; align-items:center; }
+  .view-btn:hover { color:#374151; }
+  .view-btn.active { background:#fff; color:#111827; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+
+  /* Results bar */
+  .results-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .results-bar span { font-size:13px; color:#8b92a0; }
+  .results-bar strong { color:#374151; }
+  .clear-link { font-size:12px; color:#7c1d2f; cursor:pointer; display:flex; align-items:center; gap:3px; font-weight:500; }
+  .clear-link:hover { color:#6b1828; }
+
+  /* ── Pinned strip ── */
+  .pinned-section { margin-bottom:22px; }
+  .pinned-header { display:flex; align-items:center; gap:7px; margin-bottom:11px; }
+  .pinned-header-label { font-size:12px; font-weight:600; color:#374151; }
+  .pinned-header-sub { font-size:12px; color:#b0b8c4; }
+  .pinned-strip { display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; -ms-overflow-style:none; }
+  .pinned-strip::-webkit-scrollbar { display:none; }
+
+  .pinned-card {
+    flex-shrink:0; width:196px; background:#fff;
+    border:1px solid #f0e8ea; border-radius:14px; padding:13px 14px;
+    cursor:pointer; transition:all 0.18s;
+    box-shadow:0 1px 4px rgba(124,29,47,0.05);
+  }
+  .pinned-card:hover { box-shadow:0 6px 18px rgba(0,0,0,0.09); transform:translateY(-2px); border-color:#e8d0d4; }
+  .pinned-name { font-size:12px; font-weight:600; color:#0f172a; line-height:1.35; margin-bottom:6px; }
+  .pinned-meta { margin-bottom:8px; }
+  .pinned-stars { display:flex; gap:2px; margin-bottom:9px; }
+  .pinned-actions { display:flex; gap:4px; }
+  .icon-btn {
+    width:28px; height:28px; border-radius:8px; border:1px solid #f0f0f0;
+    background:#fafafa; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.15s; color:#6b7280;
+  }
+  .icon-btn:hover { background:#f0e8ea; color:#7c1d2f; border-color:#e8d0d4; transform:scale(1.08); }
+  .pinned-date { display:flex; align-items:center; gap:4px; margin-top:8px; font-size:11px; color:#b0b8c4; }
+
+  /* ── Provider cards ── */
+  .card-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+
+  .provider-card {
+    background:#fff; border:1px solid #ebebed; border-radius:18px; padding:18px;
+    cursor:pointer; transition:all 0.18s; position:relative;
+  }
+  .provider-card:hover { box-shadow:0 8px 28px rgba(0,0,0,0.07); transform:translateY(-2px); border-color:#e0e2e6; }
+  .provider-card.favorited { border-color:#f0e0e3; box-shadow:0 0 0 1px #f0e0e3; }
+
+  .card-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; }
+  .card-name { font-size:13.5px; font-weight:600; color:#0f172a; line-height:1.3; letter-spacing:-0.1px; }
+  .heart-btn { padding:3px; border:none; background:none; cursor:pointer; color:#d1d5db; transition:all 0.15s; margin-left:6px; flex-shrink:0; }
+  .heart-btn:hover { color:#f87171; transform:scale(1.15); }
+  .heart-btn.on { color:#ef4444; }
+
+  .type-badge {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 9px; border-radius:99px; font-size:11px; font-weight:600; margin-bottom:8px;
+  }
+  .type-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+  .type-dist { background:#eff6ff; color:#2563eb; }
+  .type-dist .type-dot { background:#3b82f6; }
+  .type-imp  { background:#f5f3ff; color:#7c3aed; }
+  .type-imp  .type-dot { background:#8b5cf6; }
+  .type-who  { background:#f0fdf4; color:#16a34a; }
+  .type-who  .type-dot { background:#22c55e; }
+
+  .stars { display:flex; gap:2px; margin-bottom:10px; }
+  .star { cursor:pointer; transition:transform 0.1s; color:#e5e7eb; }
+  .star:hover { transform:scale(1.2); }
+  .star.lit { color:#f59e0b; }
+
+  .card-portfolio {
+    font-size:12px; color:#6b7280; line-height:1.55; margin-bottom:12px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+
+  .card-actions { display:flex; gap:5px; margin-bottom:12px; flex-wrap:wrap; }
+  .action-chip {
+    display:flex; align-items:center; gap:4px; padding:5px 10px;
+    border-radius:8px; border:none; font-size:11px; font-weight:600;
+    cursor:pointer; transition:all 0.15s; font-family:var(--font-body);
+  }
+  .ac-call  { background:#f0fdf4; color:#15803d; }
+  .ac-call:hover  { background:#dcfce7; }
+  .ac-email { background:#eff6ff; color:#1d4ed8; }
+  .ac-email:hover { background:#dbeafe; }
+  .ac-web   { background:#f5f3ff; color:#6d28d9; }
+  .ac-web:hover   { background:#ede9fe; }
+
+  .card-footer {
+    display:flex; align-items:center; justify-content:space-between;
+    padding-top:10px; border-top:1px solid #f5f5f7;
+    font-size:11px; color:#b0b8c4;
+  }
+  .card-addr { display:flex; align-items:center; gap:4px; min-width:0; flex:1; }
+  .card-addr span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card-last { display:flex; align-items:center; gap:3px; color:#10b981; white-space:nowrap; margin-left:8px; }
+
+  /* Variant B & C placeholders */
+  .placeholder-note {
+    display:flex; align-items:center; justify-content:center;
+    min-height:400px; font-size:14px; color:#9ca3af; font-style:italic;
+    border:2px dashed #e5e7eb; border-radius:16px; margin-top:20px;
+  }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab active" onclick="showVariant('a',this)">A: Editorial Grid ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('b',this)">B: Type-Organized</button>
+  <button class="variant-tab" onclick="showVariant('c',this)">C: Split-Panel</button>
+  <span class="variant-label">Sketch 008 — Providers Page Layout</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- VARIANT A: Editorial Grid (Winner — Refined)       -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="app-header">
+    <h1>Wine Providers</h1>
+    <p>47 verified U.S.-based distributors, importers, and wholesalers</p>
+  </div>
+  <div class="page-body">
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-row1">
+        <div class="search-wrap">
+          <span class="search-icon ic">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </span>
+          <input type="text" id="search-a" placeholder="Search providers, portfolios, regions…" oninput="filterCards(this.value)">
+        </div>
+        <button class="btn-primary" onclick="toast('Opening vendor catalogue…')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add Vendor
+        </button>
+      </div>
+      <div class="toolbar-row2">
+        <div class="filter-group">
+          <button class="chip active" id="chip-all" onclick="setType('All',this)">All</button>
+          <button class="chip" id="chip-dist" onclick="setType('Distributor',this)">Distributor</button>
+          <button class="chip" id="chip-imp"  onclick="setType('Importer',this)">Importer</button>
+          <button class="chip" id="chip-who"  onclick="setType('Wholesaler',this)">Wholesaler</button>
+          <div class="sep"></div>
+          <button class="chip fav" id="chip-fav" onclick="toggleFav(this)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            Favorites
+            <span id="fav-badge" style="background:#f3f4f6;color:#6b7280;padding:1px 7px;border-radius:99px;font-size:11px;line-height:1.6">3</span>
+          </button>
+        </div>
+        <div class="view-toggle">
+          <button class="view-btn active" title="Grid">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          </button>
+          <button class="view-btn" title="Compact">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="4"/><rect x="3" y="10" width="18" height="4"/><rect x="3" y="17" width="18" height="4"/></svg>
+          </button>
+          <button class="view-btn" title="List">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results bar -->
+    <div class="results-bar">
+      <span><strong id="count-a">47</strong> providers</span>
+    </div>
+
+    <!-- Pinned strip -->
+    <div class="pinned-section">
+      <div class="pinned-header">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <span class="pinned-header-label">Pinned</span>
+        <span class="pinned-header-sub">— your go-to vendors</span>
+      </div>
+      <div class="pinned-strip">
+
+        <div class="pinned-card">
+          <div class="pinned-name">Southern Glazer's Wine & Spirits</div>
+          <div class="pinned-meta">
+            <span class="type-badge type-dist"><span class="type-dot"></span>Distributor</span>
+          </div>
+          <div class="pinned-stars">
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="pinned-actions">
+            <button class="icon-btn" title="Call" onclick="toast('Calling…')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.68 3.44 2 2 0 0 1 3.67 1.25h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6.22 6.22l1.95-1.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <button class="icon-btn" title="Email" onclick="toast('Opening email…')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </button>
+            <button class="icon-btn" title="Edit" onclick="toast('Edit…')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          </div>
+          <div class="pinned-date">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            May 8, 2026
+          </div>
+        </div>
+
+        <div class="pinned-card">
+          <div class="pinned-name">Winebow Group</div>
+          <div class="pinned-meta">
+            <span class="type-badge type-imp"><span class="type-dot"></span>Importer</span>
+          </div>
+          <div class="pinned-stars">
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="pinned-actions">
+            <button class="icon-btn" onclick="toast('Calling…')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.68 3.44 2 2 0 0 1 3.67 1.25h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6.22 6.22l1.95-1.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
+            <button class="icon-btn" onclick="toast('Email…')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></button>
+          </div>
+          <div class="pinned-date">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Apr 22, 2026
+          </div>
+        </div>
+
+        <div class="pinned-card">
+          <div class="pinned-name">Young's Market Company</div>
+          <div class="pinned-meta">
+            <span class="type-badge type-who"><span class="type-dot"></span>Wholesaler</span>
+          </div>
+          <div class="pinned-stars">
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star lit" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg class="star" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="pinned-actions">
+            <button class="icon-btn" onclick="toast('Calling…')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.68 3.44 2 2 0 0 1 3.67 1.25h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6.22 6.22l1.95-1.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
+            <button class="icon-btn" onclick="toast('Email…')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></button>
+          </div>
+          <div class="pinned-date">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Apr 22, 2026
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Provider grid -->
+    <div class="card-grid" id="grid-a"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- VARIANT B (reference only)                         -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="page-body">
+    <div class="placeholder-note">Variant B: Type-Organized — reference, not selected</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- VARIANT C (reference only)                         -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="page-body">
+    <div class="placeholder-note">Variant C: Split-Panel — reference, not selected</div>
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-family:system-ui;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:9999"></div>
+
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:8px 12px;border-radius:8px;opacity:0.35;transition:opacity 0.2s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="margin-bottom:4px;font-weight:600;opacity:0.7">Sketch 008 · Winner: A</div>
+  <div style="display:flex;gap:6px">
+    <button onclick="setVp(375)" style="border:none;background:rgba(255,255,255,0.15);color:white;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px">📱</button>
+    <button onclick="setVp(768)" style="border:none;background:rgba(255,255,255,0.15);color:white;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px">💻</button>
+    <button onclick="setVp(0)"   style="border:none;background:rgba(255,255,255,0.15);color:white;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px">🖥</button>
+  </div>
+</div>
+
+<script>
+const starSVG = (lit) => `<svg class="star${lit?' lit':''}" width="13" height="13" viewBox="0 0 24 24" fill="${lit?'#f59e0b':'#e5e7eb'}" style="cursor:pointer;transition:transform 0.1s" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform=''"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+const phoneSVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.68 3.44 2 2 0 0 1 3.67 1.25h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6.22 6.22l1.95-1.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+const mailSVG  = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
+const globeSVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+const pinSVG   = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const clockSVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+const heartSVG = (on) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="${on?'#ef4444':'none'}" stroke="${on?'#ef4444':'#d1d5db'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+
+const typeCls = { Distributor:'type-dist', Importer:'type-imp', Wholesaler:'type-who' };
+const typeDot = { Distributor:'<span class="type-dot"></span>', Importer:'<span class="type-dot"></span>', Wholesaler:'<span class="type-dot"></span>' };
+
+const vendors = [
+  { id:1, name:"Southern Glazer's Wine & Spirits", type:"Distributor", portfolio:"One of the largest wine and spirits distributors in the US, representing over 1,500 brands from world-class producers.", addr:"Miami, FL",      fav:true,  rating:5, lastOrder:"May 8, 2026" },
+  { id:2, name:"Republic National Distributing",   type:"Distributor", portfolio:"Premium wine and spirits portfolio spanning domestic and international producers across the Southeast.", addr:"Atlanta, GA",    fav:false, rating:4, lastOrder:"Apr 15, 2026" },
+  { id:3, name:"Breakthru Beverage Group",         type:"Distributor", portfolio:"Multi-state distributor with deep on-premise focus and dedicated sommelier support teams nationwide.", addr:"Chicago, IL",    fav:false, rating:4, lastOrder:null },
+  { id:4, name:"Winebow Group",                    type:"Importer",    portfolio:"Portfolio of artisan and estate wines from Italy, Spain, France, and the Americas — terroir-driven producers.", addr:"New York, NY",   fav:true,  rating:4, lastOrder:"Apr 22, 2026" },
+  { id:5, name:"Skurnik Wines & Spirits",          type:"Importer",    portfolio:"Curated selection of artisan wines from Europe with a focus on natural and biodynamic producers.", addr:"New York, NY",   fav:false, rating:3, lastOrder:null },
+  { id:6, name:"Kysela Pere et Fils",              type:"Importer",    portfolio:"European and New World portfolio with deep roots in Burgundy, Bordeaux, and the Rhône Valley.", addr:"Winchester, VA", fav:false, rating:4, lastOrder:null },
+  { id:7, name:"Young's Market Company",           type:"Wholesaler",  portfolio:"West Coast focus with broad California, Oregon, and Washington state coverage for on-premise accounts.", addr:"Los Angeles, CA", fav:true, rating:4, lastOrder:"Apr 22, 2026" },
+  { id:8, name:"National Wine & Spirits",          type:"Wholesaler",  portfolio:"Midwest and Southeast presence with dedicated on-premise sales force and custom beverage programming.", addr:"Indianapolis, IN", fav:false, rating:3, lastOrder:null },
+  { id:9, name:"Deutsch Family Wine & Spirits",    type:"Distributor", portfolio:"Family-owned representing iconic brands including Josh Cellars, Layer Cake, and Joseph Carr wines.", addr:"Stamford, CT",   fav:false, rating:3, lastOrder:"Mar 10, 2026" },
+];
+
+let state = { type:'All', favOnly:false, query:'' };
+
+function render() {
+  let data = vendors.filter(v => {
+    if (state.type !== 'All' && v.type !== state.type) return false;
+    if (state.favOnly && !v.fav) return false;
+    if (state.query) {
+      const q = state.query.toLowerCase();
+      return v.name.toLowerCase().includes(q) || v.portfolio.toLowerCase().includes(q) || v.addr.toLowerCase().includes(q);
+    }
+    return true;
+  }).sort((a,b) => {
+    if (a.fav !== b.fav) return a.fav ? -1 : 1;
+    if (a.rating !== b.rating) return b.rating - a.rating;
+    return a.name.localeCompare(b.name);
+  });
+
+  document.getElementById('count-a').textContent = data.length;
+  document.getElementById('grid-a').innerHTML = data.map(v => `
+    <div class="provider-card${v.fav?' favorited':''}" onclick="toast('Opening ${v.name}…')">
+      <div class="card-top">
+        <div>
+          <div class="card-name">${v.name}</div>
+          <span class="type-badge ${typeCls[v.type]}">${typeDot[v.type]}${v.type}</span>
+        </div>
+        <button class="heart-btn${v.fav?' on':''}" onclick="event.stopPropagation();toggleVendorFav(${v.id})">${heartSVG(v.fav)}</button>
+      </div>
+      <div class="stars">${[1,2,3,4,5].map(s=>starSVG(s<=v.rating)).join('')}</div>
+      <p class="card-portfolio">${v.portfolio}</p>
+      <div class="card-actions">
+        <button class="action-chip ac-call" onclick="event.stopPropagation();toast('Calling…')">${phoneSVG} Call</button>
+        <button class="action-chip ac-email" onclick="event.stopPropagation();toast('Email…')">${mailSVG} Email</button>
+        <button class="action-chip ac-web" onclick="event.stopPropagation();toast('Website…')">${globeSVG} Web</button>
+      </div>
+      <div class="card-footer">
+        <div class="card-addr">${pinSVG}<span>${v.addr}</span></div>
+        ${v.lastOrder ? `<div class="card-last">${clockSVG}${v.lastOrder}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+render();
+
+function setType(type, el) {
+  state.type = type;
+  document.querySelectorAll('.chip:not(.fav)').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+function toggleFav(el) {
+  state.favOnly = !state.favOnly;
+  el.classList.toggle('active');
+  const badge = document.getElementById('fav-badge');
+  if (state.favOnly) { badge.style.background='#fde68a'; badge.style.color='#92400e'; }
+  else { badge.style.background='#f3f4f6'; badge.style.color='#6b7280'; }
+  render();
+}
+function filterCards(q) { state.query = q; render(); }
+function toggleVendorFav(id) {
+  const v = vendors.find(v=>v.id===id);
+  if (v) { v.fav = !v.fav; render(); }
+}
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v=>v.style.display='none');
+  document.getElementById('variant-'+id).style.display='block';
+  document.querySelectorAll('.variant-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.style.opacity='1';
+  setTimeout(()=>t.style.opacity='0',1600);
+}
+function setVp(w) {
+  document.body.style.maxWidth = w?w+'px':'';
+  document.body.style.margin   = w?'0 auto':'';
+}
+</script>
+</body>
+</html>

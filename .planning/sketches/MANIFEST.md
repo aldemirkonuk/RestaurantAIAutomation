@@ -19,3 +19,6 @@ Premium B2B SaaS onboarding for restaurant operators. The visual language is Str
 | 004 | full-flow-synthesis | Does the full registration flow feel cohesive and premium end-to-end? | synthesis | onboarding, full-flow, wired, synthesis |
 | 006 | settings-layout | Single scroll vs. left rail vs. top tabs — which structure reduces cognitive load? | null | settings, layout, navigation, feature-flags |
 | 007 | locations-chains | How do chains and locations nest visually without feeling bureaucratic? | null | locations, chains, crud, interactive |
+| 008 | providers-page-layout | How should the overall page hierarchy feel — flat grid, type-organized, or split-panel sidebar? | A — Editorial Grid (refined) | providers, layout, toolbar, grid, filters |
+| 009 | provider-card-design | How much should a card surface at rest — actions, portfolio info, or relationship status? | A — Action-First | providers, card, grid, actions, ux |
+| 010 | provider-detail-modal | What's the right modal anatomy — centered sheet, right drawer, or bottom 2-col sheet? | A — Centered Sheet | providers, modal, detail, ux, interaction |

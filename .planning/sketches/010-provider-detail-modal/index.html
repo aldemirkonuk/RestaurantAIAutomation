@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 010 — Provider Detail Modal</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-body); background: #f3f4f6; color: var(--color-text); padding-top: 44px; }
+
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: #fff; border-bottom: 1px solid #e5e7eb;
+    padding: 6px 16px; display: flex; gap: 6px; align-items: center; font-family: system-ui; font-size: 12px;
+  }
+  .variant-tab { padding:5px 14px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:12px; font-family:system-ui; color:#555; transition:all 0.15s; }
+  .variant-tab.active { background:#7c1d2f; color:#fff; border-color:#7c1d2f; }
+  .variant { display:none; }
+  .variant.active { display:block; }
+  .variant-label { font-size:11px; color:#9ca3af; margin-left:8px; }
+
+  .page-wrap { padding: 24px; }
+  .trigger-note { font-size:12px; color:#6b7280; margin-bottom:20px; text-align:center; }
+
+  /* ── SHARED fake page backdrop ── */
+  .fake-page {
+    background: #f3f4f6; border-radius: 16px; padding: 20px;
+    min-height: 400px; position: relative; overflow: hidden;
+  }
+  .fake-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; opacity:0.35; pointer-events:none; }
+  .fake-card { background:#fff; border-radius:12px; height:140px; border:1px solid #e5e7eb; }
+
+  /* Trigger button */
+  .open-btn {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: #7c1d2f; color: #fff; border: none; border-radius: 12px;
+    padding: 12px 28px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: var(--font-body); transition: all 0.15s;
+    box-shadow: 0 4px 16px rgba(124,29,47,0.35);
+  }
+  .open-btn:hover { background:#6b1828; transform:translate(-50%,-53%); box-shadow:0 8px 20px rgba(124,29,47,0.4); }
+
+  /* ── VARIANT A: Centered Sheet ── */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(4px); z-index: 1000;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal-sheet {
+    background: #fff; border-radius: 28px; width: 100%; max-width: 640px;
+    max-height: 88vh; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.18);
+    transform: scale(0.96) translateY(12px); transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .overlay.open .modal-sheet { transform: scale(1) translateY(0); }
+
+  .modal-head {
+    padding: 20px 24px 0; background: linear-gradient(to bottom, #f9fafb, #fff);
+    border-bottom: 1px solid #f0f0f0; flex-shrink: 0;
+  }
+  .modal-head-row1 { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; }
+  .modal-name { font-size:18px; font-weight:700; color:#111827; font-family:var(--font-display); line-height:1.2; }
+  .modal-sub  { font-size:12px; color:#6b7280; margin-top:4px; display:flex; align-items:center; gap:8px; }
+  .modal-icon-btns { display:flex; gap:6px; }
+  .mib { width:34px; height:34px; border-radius:10px; border:none; background:#f3f4f6; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; transition:all 0.15s; }
+  .mib:hover { background:#e5e7eb; transform:scale(1.08); }
+  .mib.danger:hover { background:#fee2e2; }
+
+  .modal-cta-row { display:flex; gap:8px; padding-bottom:16px; flex-wrap:wrap; }
+  .cta-btn { display:flex; align-items:center; gap:6px; padding:9px 16px; border:none; border-radius:12px; font-size:13px; font-weight:600; cursor:pointer; font-family:var(--font-body); transition:all 0.15s; white-space:nowrap; }
+  .cta-btn:hover { transform:translateY(-1px); }
+  .cta-call  { background:#059669; color:#fff; box-shadow:0 2px 8px rgba(5,150,105,0.3); }
+  .cta-call:hover  { background:#047857; box-shadow:0 4px 12px rgba(5,150,105,0.35); }
+  .cta-email { background:#2563eb; color:#fff; box-shadow:0 2px 8px rgba(37,99,235,0.3); }
+  .cta-email:hover { background:#1d4ed8; box-shadow:0 4px 12px rgba(37,99,235,0.35); }
+  .cta-web   { background:#fff; color:#374151; border:1px solid #e5e7eb; }
+  .cta-web:hover   { background:#f9fafb; border-color:#d1d5db; }
+
+  .modal-body { padding:20px 24px; overflow-y:auto; flex:1; }
+  .modal-section { margin-bottom:20px; }
+  .modal-section-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#9ca3af; margin-bottom:8px; }
+  .modal-section p { font-size:13px; color:#374151; line-height:1.6; }
+  .info-row { display:flex; align-items:flex-start; gap:8px; font-size:13px; color:#374151; }
+  .info-row span.ico { font-size:14px; flex-shrink:0; margin-top:1px; }
+  .region-chip { display:inline-block; padding:4px 10px; background:#fdf2f4; color:#7c1d2f; border-radius:8px; font-size:11px; font-weight:600; margin:2px; }
+  .contact-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#f3f4f6; border-radius:12px; font-size:12px; color:#374151; margin:2px; }
+  .last-order-banner { background:#ecfdf5; border:1px solid #a7f3d0; border-radius:12px; padding:10px 14px; display:flex; align-items:center; gap:8px; font-size:13px; color:#065f46; }
+
+  /* ── VARIANT B: Right Drawer ── */
+  .drawer-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+    backdrop-filter: blur(2px); z-index: 1000;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .drawer-overlay.open { opacity: 1; pointer-events: all; }
+
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw;
+    background: #fff; box-shadow: -8px 0 40px rgba(0,0,0,0.12);
+    z-index: 1001; display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.34,1.1,0.64,1);
+  }
+  .drawer-overlay.open .drawer { transform: translateX(0); }
+
+  .drawer-head {
+    padding: 20px 20px 0; border-bottom: 1px solid #f0f0f0; flex-shrink: 0;
+  }
+  .drawer-type-bar {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+  }
+  .drawer-body { padding: 18px 20px; overflow-y: auto; flex: 1; }
+
+  /* ── VARIANT C: Two-Column Fullscreen ── */
+  .modal-full-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(6px); z-index: 1000;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    display: flex; align-items: flex-end;
+  }
+  .modal-full-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal-full {
+    background: #fff; width: 100%; max-height: 90vh; border-radius: 24px 24px 0 0;
+    display: flex; flex-direction: column;
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.34,1.1,0.64,1);
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.15);
+  }
+  .modal-full-overlay.open .modal-full { transform: translateY(0); }
+
+  .modal-full-handle { width:40px; height:4px; background:#e5e7eb; border-radius:99px; margin:12px auto 0; flex-shrink:0; }
+  .modal-full-head { padding:16px 24px; border-bottom:1px solid #f0f0f0; flex-shrink:0; }
+  .modal-full-cols { display:flex; flex:1; overflow:hidden; }
+  .modal-full-left { width:280px; flex-shrink:0; border-right:1px solid #f0f0f0; padding:20px; background:#fafafa; overflow-y:auto; }
+  .modal-full-right { flex:1; padding:20px 24px; overflow-y:auto; }
+
+  .big-cta { display:flex; align-items:center; gap:8px; padding:12px 16px; border:none; border-radius:14px; font-size:14px; font-weight:600; cursor:pointer; font-family:var(--font-body); transition:all 0.15s; width:100%; margin-bottom:8px; }
+  .big-cta:hover { transform:translateX(2px); }
+  .big-cta.call  { background:#ecfdf5; color:#065f46; }
+  .big-cta.email { background:#eff6ff; color:#1d4ed8; }
+  .big-cta.web   { background:#f5f3ff; color:#5b21b6; }
+
+  /* Shared */
+  .type-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; }
+  .type-dist { background:#dbeafe; color:#1d4ed8; }
+  .type-imp  { background:#ede9fe; color:#7c3aed; }
+  .type-who  { background:#d1fae5; color:#065f46; }
+  .stars { display:flex; gap:2px; }
+  .star { font-size:13px; color:#f59e0b; }
+  .star.dim { color:#e5e7eb; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab active" onclick="showVariant('a',this)">A: Centered Sheet ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('b',this)">B: Right Drawer</button>
+  <button class="variant-tab" onclick="showVariant('c',this)">C: Bottom Sheet (2-col)</button>
+  <span class="variant-label">Sketch 010 — Provider Detail Modal</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- VARIANT A: Centered Sheet Modal                   -->
+<!-- ══════════════════════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="page-wrap">
+    <p class="trigger-note">Click a card below to open the modal</p>
+    <div class="fake-page">
+      <div class="fake-cards">
+        <div class="fake-card"></div><div class="fake-card"></div><div class="fake-card"></div>
+        <div class="fake-card"></div><div class="fake-card"></div><div class="fake-card"></div>
+      </div>
+      <button class="open-btn" onclick="openA()">Open Provider Detail →</button>
+    </div>
+  </div>
+
+  <!-- Modal A -->
+  <div class="overlay" id="ov-a" onclick="closeA(event)">
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div class="modal-head-row1">
+          <div>
+            <div class="modal-name">Southern Glazer's Wine & Spirits</div>
+            <div class="modal-sub">
+              <span class="type-badge type-dist">🚛 Distributor</span>
+              <div class="stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span></div>
+            </div>
+          </div>
+          <div class="modal-icon-btns">
+            <button class="mib" title="Favourite" onclick="toast('Toggled favourite')">❤️</button>
+            <button class="mib" title="Edit" onclick="toast('Opening edit…')">✏️</button>
+            <button class="mib danger" title="Remove" onclick="toast('Remove pressed')">🗑️</button>
+            <button class="mib" onclick="closeA()" title="Close">✕</button>
+          </div>
+        </div>
+        <div class="modal-cta-row">
+          <button class="cta-btn cta-call" onclick="toast('Calling +1 (305) 555-0191…')">📞 +1 (305) 555-0191</button>
+          <button class="cta-btn cta-email" onclick="toast('Opening email…')">✉️ Email</button>
+          <button class="cta-btn cta-web" onclick="toast('Opening website…')">🌐 Website ↗</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-label">Portfolio</div>
+          <p>One of the largest wine and spirits distributors in the US, representing over 1,500 brands from world-class producers in Napa Valley, Bordeaux, Tuscany, and beyond. Deep on-premise sales force with dedicated sommelier support and custom beverage programming for restaurant partners.</p>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">Address</div>
+          <div class="info-row"><span class="ico">📍</span><span>1600 NW 163rd Street, Miami, FL 33169</span></div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">Contacts</div>
+          <span class="contact-chip">👤 Maria Gonzalez — Sales Rep</span>
+          <span class="contact-chip">👤 James Park — Account Manager</span>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">Regions Served</div>
+          <div>
+            <span class="region-chip">Florida</span><span class="region-chip">Georgia</span><span class="region-chip">Texas</span>
+            <span class="region-chip">North Carolina</span><span class="region-chip">Tennessee</span>
+            <span class="region-chip">+ 12 more</span>
+          </div>
+        </div>
+        <div class="last-order-banner">
+          🕐 Last order placed <strong style="margin-left:4px">May 8, 2026</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- VARIANT B: Right Drawer                           -->
+<!-- ══════════════════════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="page-wrap">
+    <p class="trigger-note">Drawer slides in from the right — page stays visible on the left</p>
+    <div class="fake-page" style="min-height:500px">
+      <div class="fake-cards">
+        <div class="fake-card"></div><div class="fake-card"></div><div class="fake-card"></div>
+        <div class="fake-card"></div><div class="fake-card"></div><div class="fake-card"></div>
+      </div>
+      <button class="open-btn" onclick="openB()">Open Provider Detail →</button>
+    </div>
+  </div>
+
+  <!-- Drawer B -->
+  <div class="drawer-overlay" id="ov-b" onclick="closeB(event)">
+    <div class="drawer" onclick="event.stopPropagation()">
+      <div class="drawer-head">
+        <div class="drawer-type-bar">
+          <span class="type-badge type-dist">🚛 Distributor</span>
+          <div style="display:flex;gap:5px">
+            <button class="mib" onclick="toast('Favourite toggled')">❤️</button>
+            <button class="mib" onclick="toast('Edit…')">✏️</button>
+            <button class="mib danger" onclick="toast('Remove…')">🗑️</button>
+            <button class="mib" onclick="closeB()">✕</button>
+          </div>
+        </div>
+        <div style="font-size:17px;font-weight:700;color:#111827;margin-bottom:4px;font-family:var(--font-display);line-height:1.3">Southern Glazer's<br>Wine & Spirits</div>
+        <div class="stars" style="margin-bottom:14px"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span></div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;padding-bottom:16px">
+          <button class="cta-btn cta-call" style="font-size:12px;padding:8px 12px" onclick="toast('Calling…')">📞 Call</button>
+          <button class="cta-btn cta-email" style="font-size:12px;padding:8px 12px" onclick="toast('Email…')">✉️ Email</button>
+          <button class="cta-btn cta-web" style="font-size:12px;padding:8px 12px" onclick="toast('Website…')">🌐 Web</button>
+        </div>
+      </div>
+      <div class="drawer-body">
+        <div class="modal-section">
+          <div class="modal-section-label">Portfolio</div>
+          <p style="font-size:13px;color:#374151;line-height:1.6">One of the largest wine and spirits distributors in the US, representing over 1,500 brands from world-class producers in Napa, Bordeaux, Tuscany, and beyond.</p>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">Address</div>
+          <div class="info-row"><span class="ico">📍</span><span style="font-size:13px">1600 NW 163rd St, Miami, FL 33169</span></div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">Contacts</div>
+          <span class="contact-chip">👤 Maria Gonzalez</span>
+          <span class="contact-chip">👤 James Park</span>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">Regions Served</div>
+          <div>
+            <span class="region-chip">Florida</span><span class="region-chip">Georgia</span><span class="region-chip">Texas</span>
+            <span class="region-chip">N. Carolina</span><span class="region-chip">+12 more</span>
+          </div>
+        </div>
+        <div class="last-order-banner" style="font-size:12px">
+          🕐 Last order: <strong style="margin-left:4px">May 8, 2026</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- VARIANT C: Bottom Sheet, Two-Column               -->
+<!-- ══════════════════════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="page-wrap">
+    <p class="trigger-note">Bottom sheet with two-column layout — actions left, details right</p>
+    <div class="fake-page" style="min-height:500px">
+      <div class="fake-cards">
+        <div class="fake-card"></div><div class="fake-card"></div><div class="fake-card"></div>
+        <div class="fake-card"></div><div class="fake-card"></div><div class="fake-card"></div>
+      </div>
+      <button class="open-btn" onclick="openC()">Open Provider Detail →</button>
+    </div>
+  </div>
+
+  <!-- Full modal C -->
+  <div class="modal-full-overlay" id="ov-c" onclick="closeC(event)">
+    <div class="modal-full" onclick="event.stopPropagation()">
+      <div class="modal-full-handle"></div>
+
+      <!-- Top bar -->
+      <div class="modal-full-head">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div>
+              <div style="font-size:17px;font-weight:700;color:#111827;font-family:var(--font-display)">Southern Glazer's Wine & Spirits</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+                <span class="type-badge type-dist">🚛 Distributor</span>
+                <div class="stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span></div>
+                <span style="font-size:12px;color:#059669;font-weight:500">🕐 Active · May 8</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:5px">
+            <button class="mib" onclick="toast('Favourite')">❤️</button>
+            <button class="mib danger" onclick="toast('Remove')">🗑️</button>
+            <button class="mib" onclick="closeC()">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two columns -->
+      <div class="modal-full-cols" style="max-height:calc(90vh - 110px)">
+        <!-- Left: actions + key info -->
+        <div class="modal-full-left">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#9ca3af;margin-bottom:12px">Actions</div>
+          <button class="big-cta call" onclick="toast('Calling +1 (305) 555-0191…')">📞 <span>+1 (305) 555-0191</span></button>
+          <button class="big-cta email" onclick="toast('Opening email…')">✉️ <span>Send email</span></button>
+          <button class="big-cta web" onclick="toast('Opening website…')">🌐 <span>Visit website</span></button>
+
+          <div style="height:1px;background:#f0f0f0;margin:16px 0"></div>
+
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#9ca3af;margin-bottom:10px">Key Info</div>
+
+          <div style="font-size:12px;color:#374151;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:flex-start;gap:6px">
+              <span>📍</span>
+              <span>1600 NW 163rd St,<br>Miami, FL 33169</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span>👤</span>
+              <span>Maria Gonzalez</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span>👤</span>
+              <span>James Park</span>
+            </div>
+          </div>
+
+          <div style="height:1px;background:#f0f0f0;margin:16px 0"></div>
+          <button class="cta-btn" style="background:#fff7ed;color:#c2410c;border:none;font-size:12px;padding:8px 14px;border-radius:10px;cursor:pointer;font-family:var(--font-body);width:100%;justify-content:center;display:flex;gap:6px" onclick="toast('Opening edit…')">✏️ Edit provider</button>
+        </div>
+
+        <!-- Right: portfolio + regions -->
+        <div class="modal-full-right">
+          <div class="modal-section">
+            <div class="modal-section-label">Portfolio</div>
+            <p style="font-size:13px;color:#374151;line-height:1.7">One of the largest wine and spirits distributors in the US, representing over 1,500 brands from world-class producers in Napa Valley, Bordeaux, Tuscany, Rioja, and beyond. Deep on-premise sales force with dedicated sommelier support and custom beverage programming for restaurant partners.</p>
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-label">Regions Served</div>
+            <div>
+              <span class="region-chip">Florida</span><span class="region-chip">Georgia</span><span class="region-chip">Texas</span>
+              <span class="region-chip">North Carolina</span><span class="region-chip">Tennessee</span><span class="region-chip">Louisiana</span>
+              <span class="region-chip">Alabama</span><span class="region-chip">Mississippi</span><span class="region-chip">Arkansas</span>
+              <span class="region-chip">Oklahoma</span><span class="region-chip">South Carolina</span><span class="region-chip">Virginia</span>
+              <span class="region-chip">+ 5 more</span>
+            </div>
+          </div>
+          <div class="last-order-banner" style="font-size:13px">
+            🕐 Last order placed <strong style="margin-left:4px">May 8, 2026</strong> — 3 days ago
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-family:system-ui;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:9999"></div>
+
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:8px 12px;border-radius:8px;opacity:0.35;transition:opacity 0.2s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="margin-bottom:4px;font-weight:600;opacity:0.7">Sketch 010</div>
+  <div style="display:flex;gap:6px">
+    <button onclick="setVp(375)" style="border:none;background:rgba(255,255,255,0.15);color:white;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px">📱</button>
+    <button onclick="setVp(768)" style="border:none;background:rgba(255,255,255,0.15);color:white;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px">💻</button>
+    <button onclick="setVp(0)"   style="border:none;background:rgba(255,255,255,0.15);color:white;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px">🖥</button>
+  </div>
+</div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.style.display='none');
+  document.getElementById('variant-'+id).style.display='block';
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+function openA()  { document.getElementById('ov-a').classList.add('open'); }
+function closeA(e){ if (!e || e.target===document.getElementById('ov-a')) document.getElementById('ov-a').classList.remove('open'); }
+function openB()  { document.getElementById('ov-b').classList.add('open'); }
+function closeB(e){ if (!e || e.target===document.getElementById('ov-b')) document.getElementById('ov-b').classList.remove('open'); }
+function openC()  { document.getElementById('ov-c').classList.add('open'); }
+function closeC(e){ if (!e || e.target===document.getElementById('ov-c')) document.getElementById('ov-c').classList.remove('open'); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeA(); closeB(); closeC(); }
+});
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.style.opacity='1';
+  setTimeout(()=>t.style.opacity='0',1600);
+}
+function setVp(w) {
+  document.body.style.maxWidth = w ? w+'px' : '';
+  document.body.style.margin = w ? '0 auto' : '';
+}
+</script>
+</body>
+</html>
