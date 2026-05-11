@@ -267,7 +267,7 @@ Plans:
   7. Fallback to manual entry form if LLM search returns 0 results
   8. Discovery action logged to `agent_activity_logs` with cost estimate for the Claude call
 
-### Phase 28: Onboarding Reform + Menu Import
+### Phase 28: Onboarding Reform + Menu Import ✓ COMPLETE (2026-05-11)
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
 **Depends on**: Phase 26 (registration flow complete), Phase 27 (vendors discoverable)
 **Requirements**: MENU-01..08, ACTIVATION-01..05
@@ -284,11 +284,11 @@ Plans:
   10. All 3 upload methods funnel into the same extraction + submission pipeline
 **Plans:** 5 plans (5 waves)
 Plans:
-- [ ] 28-01-PLAN.md — DB: `user_onboarding_progress` + `restaurant_menus` + `menu_items` tables (Wave 1) [ACTIVATION-01, MENU-01]
-- [ ] 28-02-PLAN.md — Backend: menu import API (scan/CSV/manual) + master_wine_library_submissions bridge (Wave 2) [MENU-02..05]
-- [ ] 28-03-PLAN.md — Frontend: `/get-started` MenuImportOnboarding page — 3 methods, frictionless skip (Wave 3) [MENU-06..07]
-- [ ] 28-04-PLAN.md — Frontend: Dashboard ActivationChecklist component + progress tracking (Wave 4) [ACTIVATION-02..05]
-- [ ] 28-05-PLAN.md — Frontend: Retire 9-step wizard → preserve POS step as optional deep-link; fix post-verify redirect (Wave 5) [MENU-08]
+- [x] 28-01-PLAN.md — DB: `user_onboarding_progress` + `restaurant_menus` + `menu_items` tables (Wave 1) [ACTIVATION-01, MENU-01]
+- [x] 28-02-PLAN.md — Backend: menu import API (scan/CSV/manual) + master_wine_library_submissions bridge (Wave 2) [MENU-02..05]
+- [x] 28-03-PLAN.md — Frontend: `/get-started` MenuImportOnboarding page — 3 methods, frictionless skip (Wave 3) [MENU-06..07]
+- [x] 28-04-PLAN.md — Frontend: Sidebar Variant B checklist (badge + slide-in panel) + backend auto-triggers (Wave 4) [ACTIVATION-02..05]
+- [x] 28-05-PLAN.md — Frontend: Retire 9-step wizard → slim redirect; fix post-verify redirect to /get-started (Wave 5) [MENU-08]
 
 ---
 

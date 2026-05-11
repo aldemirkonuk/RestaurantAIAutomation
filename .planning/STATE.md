@@ -6,10 +6,10 @@ status: active
 last_updated: "2026-05-11T00:00:00.000Z"
 progress:
   total_phases: 11
-  completed_phases: 8
-  total_plans: 63
-  completed_plans: 50
-  percent: 79
+  completed_phases: 9
+  total_plans: 68
+  completed_plans: 55
+  percent: 81
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,19 +19,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 28 — Onboarding Reform + Menu Import (next planned phase)
+**Current focus:** Phase 28 — COMPLETE. Phase 29 (Autonomous Vendor Discovery) is next.
 
 ---
 
 ## Current Position
 
-**Last completed:** Phase 27 — Vendor Search & Discovery. All 5 UAT tests passed 2026-05-11. Phase complete.
-**Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27
+**Last completed:** Phase 28 — Onboarding Reform + Menu Import. All 5 plans executed 2026-05-11. Phase complete.
+**Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27, 28
 **Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
 - Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
 - Phase 24: ~20% done (test stubs + model_clients.py only); plans 24-01, 24-04, 24-05 not executed. Blocked on Phase 23 being live.
 
-**Next phase:** Phase 28 — Onboarding Reform + Menu Import (5 plans, see ROADMAP.md)
+**Next phase:** Phase 29 — Autonomous Vendor Discovery (paid-tier LLM vendor search)
 
 ### Phase 27 — COMPLETE (2026-05-11)
 
