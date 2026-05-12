@@ -270,7 +270,7 @@ Plans:
   10. "this_and_future" recurring update scope is implemented (splits recurrence rule at given date)
 **Plans:** 6 plans
 Plans:
-- [ ] 30-01-PLAN.md — Comprehensive DB schema migration (calendar_events + recurrence tables + generate_recurring_events RPC + restaurants.calendar_ical_token)
+- [x] 30-01-PLAN.md — Comprehensive DB schema migration (calendar_events + recurrence tables + generate_recurring_events RPC + restaurants.calendar_ical_token)
 - [ ] 30-02-PLAN.md — Backend service column alignment (D-01), color persistence (D-03), endTime wiring (D-04)
 - [ ] 30-03-PLAN.md — iCal feed backend: ical-generator install, feed endpoint (@Public), token generation/regeneration endpoints
 - [ ] 30-04-PLAN.md — Frontend bug fixes: status enum (D-02), endTime payload (D-04), Dashboard Add Event modal navigation (D-06), CalendarPage openModal param

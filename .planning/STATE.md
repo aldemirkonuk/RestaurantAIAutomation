@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 28 — COMPLETE. Phase 29 (Autonomous Vendor Discovery) is next.
+**Current focus:** Phase 30 — Calendar Operations Hub. Plan 30-01 complete (schema migrations applied).
 
 ---
 
