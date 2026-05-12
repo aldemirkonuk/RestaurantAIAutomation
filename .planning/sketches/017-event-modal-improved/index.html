@@ -1,570 +1,271 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sketch 017 — Event Modal (Improved)</title>
-<link rel="stylesheet" href="../themes/default.css">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif); background: #f3f4f6; color: #111827; padding-top: 44px; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>D-13 Sketch: Improved Event Modal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f8f7f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
 
-  #variant-nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
-    background: #fff; border-bottom: 1px solid #e5e7eb;
-    padding: 6px 16px; display: flex; gap: 6px; align-items: center; font-family: system-ui; font-size: 12px;
-  }
-  .variant-tab { padding:5px 14px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:12px; color:#555; transition:all 0.15s; }
-  .variant-tab.active, .variant-tab:hover { background:#7c1d2f; color:#fff; border-color:#7c1d2f; }
-  .variant { display:none; }
-  .variant.active { display:block; }
+    /* ── Modal backdrop ── */
+    .backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+    }
 
-  .page-wrap { padding: 24px; max-width: 1100px; margin: 0 auto; }
-  h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: #111827; }
-  .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
+    /* ── Modal card ── */
+    .modal {
+      background: #fff;
+      border-radius: 20px;
+      width: 480px;
+      max-width: 95vw;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.18);
+    }
 
-  /* ── Overlay backdrop ── */
-  .modal-wrap {
-    display: flex; align-items: flex-start; justify-content: center;
-    padding: 20px 0;
-  }
+    /* ── Header ── */
+    .modal-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid #f0eeec;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-header h2 { font-size: 15px; font-weight: 700; color: #111; }
+    .close-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%; border: none;
+      background: #f2f2f2; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: #666;
+    }
+    .close-btn:hover { background: #e5e5e5; }
 
-  /* ── Modal shell ── */
-  .modal {
-    background: #fff; border-radius: 20px; width: 560px;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08);
-    overflow: hidden;
-  }
+    /* ── Scrollable body ── */
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
 
-  /* ── Header ── */
-  .modal-header {
-    display: flex; align-items: center; gap: 12px;
-    padding: 20px 24px 16px;
-    border-bottom: 1px solid #f3f4f6;
-  }
-  .modal-header-icon {
-    width: 40px; height: 40px; border-radius: 12px;
-    background: linear-gradient(135deg, #fef3c7, #fde68a);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px; flex-shrink: 0;
-  }
-  .modal-header-text h2 { font-size: 17px; font-weight: 700; color: #111827; }
-  .modal-header-text p { font-size: 12px; color: #9ca3af; margin-top: 1px; }
-  .modal-close {
-    margin-left: auto; width: 32px; height: 32px; border-radius: 8px;
-    border: 1px solid #e5e7eb; background: #f9fafb; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; color: #6b7280; flex-shrink: 0;
-  }
-  .modal-close:hover { background: #f3f4f6; }
+    /* ── Field group ── */
+    .field-group { display: flex; flex-direction: column; gap: 6px; }
+    .field-label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.06em; }
+    .field-input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1.5px solid #e5e3e0;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #111;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field-input:focus { border-color: #8b1a2f; }
 
-  /* ── Body ── */
-  .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+    /* ── Two-column row ── */
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
-  /* ── Form elements ── */
-  .form-row { display: flex; flex-direction: column; gap: 6px; }
-  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-  label { font-size: 12px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.04em; }
-  input[type="text"], input[type="date"], select, textarea {
-    width: 100%; padding: 9px 12px; border: 1.5px solid #e5e7eb; border-radius: 10px;
-    font-size: 14px; font-family: inherit; color: #111827; background: #fafafa;
-    outline: none; transition: border-color 0.15s, background 0.15s;
-  }
-  input[type="text"]:focus, input[type="date"]:focus, select:focus, textarea:focus {
-    border-color: #7c1d2f; background: #fff; box-shadow: 0 0 0 3px rgba(124,29,47,0.08);
-  }
-  textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+    /* ── Color swatch picker ── */
+    .color-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .swatch {
+      width: 28px; height: 28px;
+      border-radius: 50%; cursor: pointer;
+      border: 2.5px solid transparent;
+      transition: transform 0.12s;
+    }
+    .swatch:hover { transform: scale(1.1); }
+    .swatch.selected { border-color: #111; }
 
-  /* Event title — large */
-  .title-input {
-    padding: 12px 14px !important; font-size: 16px !important; font-weight: 600 !important;
-    border-radius: 12px !important;
-  }
+    /* ── Status dropdown ── */
+    .status-select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1.5px solid #e5e3e0;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #111;
+      background: #fff;
+      cursor: pointer;
+      outline: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 32px;
+    }
 
-  /* ── Event type pill picker ── */
-  .type-pills { display: flex; gap: 6px; flex-wrap: wrap; }
-  .type-pill {
-    padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
-    border: 1.5px solid transparent; cursor: pointer; transition: all 0.15s;
-  }
-  .type-pill.wine_tasting  { background:#fef3c7; color:#92400e; border-color:#fde68a; }
-  .type-pill.supplier_visit { background:#dbeafe; color:#1d4ed8; border-color:#bfdbfe; }
-  .type-pill.private_dinner { background:#fce7f3; color:#9d174d; border-color:#fbcfe8; }
-  .type-pill.inventory_check { background:#d1fae5; color:#065f46; border-color:#a7f3d0; }
-  .type-pill.other { background:#f3f4f6; color:#4b5563; border-color:#e5e7eb; }
-  .type-pill.active { border-color: currentColor; box-shadow: 0 0 0 2px rgba(0,0,0,0.1); }
+    /* ── Status badge ── */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+    }
+    .status-badge.approved  { background: #dbeafe; color: #1d4ed8; }
+    .status-badge.pending   { background: #fef3c7; color: #b45309; }
+    .status-badge.recurring { background: #ede9fe; color: #7c3aed; }
 
-  /* ── Color picker ── */
-  .color-swatch-row { display: flex; gap: 8px; align-items: center; }
-  .color-swatch {
-    width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
-    border: 2px solid transparent; transition: all 0.15s;
-  }
-  .color-swatch:hover, .color-swatch.active { border-color: #111827; transform: scale(1.15); }
-  .color-swatch.none { background: #f3f4f6; border-color: #d1d5db; }
+    /* ── Recurrence ── */
+    .recurrence-options { display: flex; gap: 6px; flex-wrap: wrap; }
+    .recurrence-chip {
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1.5px solid #e5e3e0;
+      font-size: 12px; font-weight: 500; color: #555;
+      cursor: pointer;
+      background: #fff;
+    }
+    .recurrence-chip.active {
+      background: #8b1a2f; color: #fff; border-color: #8b1a2f;
+    }
 
-  /* ── All-day toggle ── */
-  .toggle-row { display: flex; align-items: center; gap: 10px; }
-  .toggle-row label { margin: 0; text-transform: none; font-size: 14px; font-weight: 500; color: #374151; letter-spacing: 0; }
-  .toggle {
-    width: 36px; height: 20px; border-radius: 10px; background: #e5e7eb;
-    position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0;
-  }
-  .toggle.on { background: #7c1d2f; }
-  .toggle::after {
-    content: ''; position: absolute; top: 2px; left: 2px;
-    width: 16px; height: 16px; border-radius: 8px; background: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s;
-  }
-  .toggle.on::after { transform: translateX(16px); }
+    /* ── Footer ── */
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #f0eeec;
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+    .btn-cancel {
+      padding: 9px 18px; border-radius: 10px;
+      border: 1.5px solid #e5e3e0; background: #fff;
+      font-size: 13px; font-weight: 500; color: #555; cursor: pointer;
+    }
+    .btn-cancel:hover { background: #f5f5f5; }
+    .btn-save {
+      padding: 9px 20px; border-radius: 10px;
+      border: none; background: #8b1a2f; color: #fff;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-save:hover { background: #701526; }
 
-  /* ── Status badge ── */
-  .status-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-  .status-btn {
-    padding: 6px 4px; border-radius: 8px; font-size: 11px; font-weight: 600;
-    border: 1.5px solid #e5e7eb; background: #f9fafb; cursor: pointer;
-    text-align: center; transition: all 0.15s; color: #6b7280;
-  }
-  .status-btn.pending.active  { background:#fef9ee; border-color:#f59e0b; color:#92400e; }
-  .status-btn.approved.active { background:#f0fdf4; border-color:#22c55e; color:#15803d; }
-  .status-btn.completed.active{ background:#eff6ff; border-color:#3b82f6; color:#1d4ed8; }
-  .status-btn.dismissed.active{ background:#fff1f2; border-color:#f43f5e; color:#be123c; }
-  .status-btn.cancelled.active{ background:#f9fafb; border-color:#9ca3af; color:#4b5563; }
+    /* ── Annotation ── */
+    .annotation {
+      position: absolute;
+      font-size: 11px; color: #8b1a2f; font-weight: 600;
+      background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px;
+      pointer-events: none;
+    }
 
-  /* ── Recurrence ── */
-  .recurrence-select-wrap { position: relative; }
-  .recurrence-select-wrap::after {
-    content: '↻'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-    font-size: 14px; color: #9ca3af; pointer-events: none;
-  }
-
-  /* ── Provider chip ── */
-  .provider-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #fef3c7; border: 1px solid #fde68a; border-radius: 20px;
-    padding: 4px 10px; font-size: 12px; font-weight: 600; color: #92400e;
-  }
-  .provider-chip .remove { cursor: pointer; color: #b45309; font-size: 14px; line-height: 1; }
-
-  /* ── Reminder row ── */
-  .reminder-row { display: flex; align-items: center; gap: 8px; }
-  .bell-icon { font-size: 14px; color: #7c1d2f; }
-
-  /* ── Divider ── */
-  .divider { height: 1px; background: #f3f4f6; margin: 2px 0; }
-
-  /* ── Section heading (expandable "More options") ── */
-  .more-options-btn {
-    display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
-    color: #7c1d2f; background: none; border: none; cursor: pointer; padding: 0;
-    text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px;
-  }
-  .more-options-panel { display: flex; flex-direction: column; gap: 14px; }
-
-  /* ── Footer ── */
-  .modal-footer {
-    padding: 14px 24px 20px;
-    display: flex; align-items: center; justify-content: space-between;
-    border-top: 1px solid #f3f4f6;
-    gap: 10px;
-  }
-  .btn-delete {
-    padding: 9px 14px; border-radius: 10px; font-size: 13px; font-weight: 600;
-    border: 1.5px solid #fecaca; background: #fff; color: #ef4444; cursor: pointer;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .btn-delete:hover { background: #fff1f2; }
-  .btn-ghost {
-    padding: 9px 18px; border-radius: 10px; font-size: 13px; font-weight: 600;
-    border: 1.5px solid #e5e7eb; background: #fff; color: #374151; cursor: pointer;
-  }
-  .btn-ghost:hover { background: #f3f4f6; }
-  .btn-primary {
-    padding: 9px 22px; border-radius: 10px; font-size: 13px; font-weight: 700;
-    border: none; background: #7c1d2f; color: #fff; cursor: pointer;
-    box-shadow: 0 2px 8px rgba(124,29,47,0.25);
-  }
-  .btn-primary:hover { background: #6b1728; }
-  .footer-right { display: flex; gap: 8px; align-items: center; }
-
-  /* ── Info callout (new!) ── */
-  .info-callout {
-    background: #fef3c7; border: 1px solid #fde68a; border-radius: 10px;
-    padding: 10px 14px; display: flex; align-items: flex-start; gap: 8px;
-    font-size: 12px; color: #92400e; line-height: 1.5;
-  }
-  .info-callout .icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-
-  /* ── Empty overlay ── */
-  .fake-bg {
-    position: relative; background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='40' height='40' fill='%23f9fafb'/%3E%3Crect x='0' y='0' width='40' height='1' fill='%23e5e7eb'/%3E%3Crect x='0' y='0' width='1' height='40' fill='%23e5e7eb'/%3E%3C/svg%3E");
-    border-radius: 16px; padding: 40px 20px 20px; margin-bottom: 24px;
-    min-height: 80px; overflow: visible;
-  }
-  .fake-bg::before {
-    content: 'Calendar'; position: absolute; top: 14px; left: 20px;
-    font-size: 12px; font-weight: 600; color: #9ca3af; opacity: 0.6;
-  }
-</style>
+    /* ── Info note ── */
+    .note {
+      position: fixed; bottom: 20px; right: 20px;
+      background: #8b1a2f; color: #fff;
+      padding: 10px 16px; border-radius: 12px;
+      font-size: 12px; max-width: 260px; line-height: 1.5;
+    }
+  </style>
 </head>
 <body>
 
-<nav id="variant-nav">
-  <button class="variant-tab active" onclick="show('create')">Create Event</button>
-  <button class="variant-tab" onclick="show('edit')">Edit Event (with status)</button>
-  <button class="variant-tab" onclick="show('recurring')">Recurring Event</button>
-  <button class="variant-tab" onclick="show('inventory-alert')">Inventory Alert (Phase 31 preview)</button>
-</nav>
+<div class="backdrop">
+  <div class="modal">
+    <!-- Header -->
+    <div class="modal-header">
+      <h2>New Calendar Event</h2>
+      <button class="close-btn">×</button>
+    </div>
 
-<div class="page-wrap">
-  <h1>Sketch 017 — Event Modal (Improved)</h1>
-  <p class="subtitle">Phase 30 Calendar Operations Hub · All fields functional, correct status values, color + end-time persistence</p>
+    <!-- Body -->
+    <div class="modal-body">
 
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT A: Create Event -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant active" id="v-create">
-    <div class="fake-bg"></div>
-    <div class="modal-wrap">
-      <div class="modal">
-        <div class="modal-header">
-          <div class="modal-header-icon">📅</div>
-          <div class="modal-header-text">
-            <h2>Create Event</h2>
-            <p>Add a new event to your calendar</p>
-          </div>
-          <button class="modal-close">✕</button>
-        </div>
-        <div class="modal-body">
-          <!-- Title -->
-          <div class="form-row">
-            <label>Event Title</label>
-            <input type="text" class="title-input" placeholder="e.g. Monthly Wine Club Night" value="">
-          </div>
+      <!-- Title -->
+      <div class="field-group">
+        <label class="field-label">Event Title</label>
+        <input class="field-input" type="text" placeholder="e.g. Wine Tasting — Burgundy Reds" value="Burgundy Region Wine Tasting" />
+      </div>
 
-          <!-- Event Type -->
-          <div class="form-row">
-            <label>Event Type</label>
-            <div class="type-pills">
-              <div class="type-pill wine_tasting active">🍷 Wine Tasting</div>
-              <div class="type-pill supplier_visit">🚚 Supplier Visit</div>
-              <div class="type-pill private_dinner">🍽 Private Dinner</div>
-              <div class="type-pill inventory_check">📦 Inventory</div>
-              <div class="type-pill other">• Other</div>
-            </div>
-          </div>
-
-          <!-- Date + Time row -->
-          <div class="form-row">
-            <div class="toggle-row" style="margin-bottom:8px">
-              <div class="toggle on"></div>
-              <label>All day</label>
-            </div>
-            <div class="form-row-2">
-              <div class="form-row" style="gap:4px">
-                <label>Date</label>
-                <input type="date" value="2026-05-20">
-              </div>
-              <div class="form-row" style="gap:4px">
-                <label>End Date (optional)</label>
-                <input type="date" value="">
-              </div>
-            </div>
-          </div>
-
-          <!-- Start + End Time (all-day off) -->
-          <div class="form-row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="form-row" style="gap:4px">
-              <label>Start Time</label>
-              <select><option>7:00 PM</option><option>7:30 PM</option><option>8:00 PM</option></select>
-            </div>
-            <div class="form-row" style="gap:4px">
-              <label>End Time ✓ (fixed)</label>
-              <select style="border-color:#22c55e;background:#f0fdf4"><option>9:00 PM</option><option>9:30 PM</option><option>10:00 PM</option></select>
-            </div>
-          </div>
-
-          <!-- Color -->
-          <div class="form-row">
-            <label>Color ✓ (persisted)</label>
-            <div class="color-swatch-row">
-              <div class="color-swatch none active" title="None">–</div>
-              <div class="color-swatch active" style="background:#ef4444" title="Red"></div>
-              <div class="color-swatch" style="background:#f97316" title="Orange"></div>
-              <div class="color-swatch" style="background:#eab308" title="Yellow"></div>
-              <div class="color-swatch" style="background:#22c55e" title="Green"></div>
-              <div class="color-swatch" style="background:#3b82f6" title="Blue"></div>
-              <div class="color-swatch" style="background:#8b5cf6" title="Purple"></div>
-              <div class="color-swatch" style="background:#7c1d2f" title="Wine"></div>
-            </div>
-          </div>
-
-          <div class="divider"></div>
-
-          <!-- Description -->
-          <div class="form-row">
-            <label>Description</label>
-            <textarea placeholder="Add notes, agenda, or special instructions…"></textarea>
-          </div>
-
-          <!-- Provider -->
-          <div class="form-row">
-            <label>Linked Provider (optional)</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <div class="provider-chip">🍷 Burgundy Fine Wines <span class="remove">✕</span></div>
-              <input type="text" placeholder="Search providers…" style="flex:1">
-            </div>
-          </div>
-
-          <!-- Reminder -->
-          <div class="reminder-row">
-            <span class="bell-icon">🔔</span>
-            <select style="flex:1">
-              <option>Remind me 1 day before</option>
-              <option>Remind me 30 minutes before</option>
-              <option>No reminder</option>
-            </select>
+      <!-- Color swatch + Status row -->
+      <div class="row-2">
+        <div class="field-group">
+          <label class="field-label">Color</label>
+          <div class="color-row">
+            <div class="swatch selected" style="background:#8b1a2f;" title="Wine"></div>
+            <div class="swatch" style="background:#2563eb;" title="Blue"></div>
+            <div class="swatch" style="background:#059669;" title="Green"></div>
+            <div class="swatch" style="background:#d97706;" title="Amber"></div>
+            <div class="swatch" style="background:#7c3aed;" title="Purple"></div>
+            <div class="swatch" style="background:#db2777;" title="Pink"></div>
+            <div class="swatch" style="background:#6b7280;" title="Gray"></div>
           </div>
         </div>
-
-        <div class="modal-footer">
-          <div></div>
-          <div class="footer-right">
-            <button class="btn-ghost">Cancel</button>
-            <button class="btn-primary">Create Event</button>
-          </div>
+        <div class="field-group">
+          <label class="field-label">Status</label>
+          <select class="status-select">
+            <option value="approved" selected>✓ Approved</option>
+            <option value="pending">⏳ Pending</option>
+            <option value="cancelled">✗ Cancelled</option>
+          </select>
         </div>
       </div>
-    </div>
-  </div><!-- /v-create -->
 
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT B: Edit Event with Status -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant" id="v-edit">
-    <div class="fake-bg"></div>
-    <div class="modal-wrap">
-      <div class="modal">
-        <div class="modal-header">
-          <div class="modal-header-icon">✏️</div>
-          <div class="modal-header-text">
-            <h2>Edit Event</h2>
-            <p>Monthly Wine Club Night · May 20</p>
-          </div>
-          <button class="modal-close">✕</button>
+      <!-- Date + Start time + End time -->
+      <div class="field-group">
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" value="2026-05-20" />
+      </div>
+
+      <div class="row-2">
+        <div class="field-group">
+          <label class="field-label">Start Time</label>
+          <input class="field-input" type="time" value="18:00" />
         </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <label>Event Title</label>
-            <input type="text" class="title-input" value="Monthly Wine Club Night">
-          </div>
-
-          <!-- Status — corrected values -->
-          <div class="form-row">
-            <label>Status ✓ (fixed — no 400 errors)</label>
-            <div class="status-grid">
-              <button class="status-btn pending">Pending</button>
-              <button class="status-btn approved active">Confirmed</button>
-              <button class="status-btn completed">Completed</button>
-              <button class="status-btn dismissed">Declined</button>
-              <button class="status-btn cancelled">Cancelled</button>
-            </div>
-            <p style="font-size:11px;color:#9ca3af;margin-top:4px">"Confirmed" stores as <code style="background:#f3f4f6;padding:1px 4px;border-radius:4px">approved</code> — maps to backend enum</p>
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-row" style="gap:4px">
-              <label>Start Date</label>
-              <input type="date" value="2026-05-20">
-            </div>
-            <div class="form-row" style="gap:4px">
-              <label>Start Time</label>
-              <select><option>7:00 PM</option></select>
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-row" style="gap:4px">
-              <label>End Date</label>
-              <input type="date" value="2026-05-20">
-            </div>
-            <div class="form-row" style="gap:4px">
-              <label>End Time ✓ (persisted)</label>
-              <select style="border-color:#22c55e;background:#f0fdf4"><option>9:30 PM</option></select>
-            </div>
-          </div>
-
-          <!-- Color -->
-          <div class="form-row">
-            <label>Color ✓ (persisted after reload)</label>
-            <div class="color-swatch-row">
-              <div class="color-swatch none" title="None">–</div>
-              <div class="color-swatch" style="background:#ef4444"></div>
-              <div class="color-swatch active" style="background:#8b5cf6"></div>
-              <div class="color-swatch" style="background:#3b82f6"></div>
-              <div class="color-swatch" style="background:#22c55e"></div>
-              <div class="color-swatch" style="background:#eab308"></div>
-              <div class="color-swatch" style="background:#f97316"></div>
-              <div class="color-swatch" style="background:#7c1d2f"></div>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <label>Description</label>
-            <textarea>Burgundy focus this month. 40 guests confirmed. Need 12 bottles Chambolle-Musigny.</textarea>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn-delete">🗑 Delete Event</button>
-          <div class="footer-right">
-            <button class="btn-ghost">Cancel</button>
-            <button class="btn-primary">Save Changes</button>
-          </div>
+        <div class="field-group">
+          <label class="field-label">End Time</label>
+          <input class="field-input" type="time" value="21:00" />
         </div>
       </div>
-    </div>
-  </div><!-- /v-edit -->
 
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT C: Recurring Event -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant" id="v-recurring">
-    <div class="fake-bg"></div>
-    <div class="modal-wrap">
-      <div class="modal">
-        <div class="modal-header">
-          <div class="modal-header-icon">🔁</div>
-          <div class="modal-header-text">
-            <h2>Edit Recurring Event</h2>
-            <p>Weekly Inventory Check · Series started Jan 6</p>
-          </div>
-          <button class="modal-close">✕</button>
-        </div>
-        <div class="modal-body">
-          <!-- Scope selector -->
-          <div class="form-row">
-            <label>Edit scope</label>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="radio" name="scope"> <strong>This event only</strong> — change just this occurrence
-              </label>
-              <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="radio" name="scope" checked> <strong>This and future events</strong> — split series here ✓ (fixed)
-              </label>
-              <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="radio" name="scope"> <strong>All events</strong> — change entire series
-              </label>
-            </div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div class="form-row">
-            <label>Recurrence</label>
-            <select>
-              <option>Every week</option>
-              <option>Every 2 weeks</option>
-              <option>Every month</option>
-            </select>
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-row" style="gap:4px">
-              <label>Time</label>
-              <select><option>9:00 AM</option><option>10:00 AM</option></select>
-            </div>
-            <div class="form-row" style="gap:4px">
-              <label>End Time</label>
-              <select><option>10:30 AM</option><option>11:00 AM</option></select>
-            </div>
-          </div>
-
-          <div class="info-callout">
-            <span class="icon">📎</span>
-            <span>This series is subscribed in Outlook. Editing "this and future" will split the series — subscribers will see updated occurrences automatically.</span>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-delete">🗑 Delete</button>
-          <div class="footer-right">
-            <button class="btn-ghost">Cancel</button>
-            <button class="btn-primary">Save Changes</button>
-          </div>
+      <!-- Recurrence -->
+      <div class="field-group">
+        <label class="field-label">Recurrence</label>
+        <div class="recurrence-options">
+          <button class="recurrence-chip active">None</button>
+          <button class="recurrence-chip">Daily</button>
+          <button class="recurrence-chip">Weekly</button>
+          <button class="recurrence-chip">Monthly</button>
+          <button class="recurrence-chip">Custom…</button>
         </div>
       </div>
-    </div>
-  </div><!-- /v-recurring -->
 
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT D: Inventory Alert (Phase 31 preview) -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant" id="v-inventory-alert">
-    <div class="fake-bg"></div>
-    <div class="modal-wrap">
-      <div class="modal">
-        <div class="modal-header">
-          <div class="modal-header-icon">🍷</div>
-          <div class="modal-header-text">
-            <h2>Create Event</h2>
-            <p>Wine Tasting · May 20</p>
-          </div>
-          <button class="modal-close">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <label>Event Title</label>
-            <input type="text" class="title-input" value="Private Wine Tasting — 30 Guests">
-          </div>
-          <div class="form-row-2">
-            <div class="form-row" style="gap:4px"><label>Date</label><input type="date" value="2026-05-20"></div>
-            <div class="form-row" style="gap:4px"><label>Type</label><select><option>🍷 Wine Tasting</option></select></div>
-          </div>
-
-          <!-- Phase 31 procurement signal -->
-          <div style="background:#fff7ed;border:1.5px solid#fed7aa;border-radius:12px;padding:14px 16px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-              <span style="font-size:18px">⚠️</span>
-              <span style="font-size:13px;font-weight:700;color:#9a3412">Stock may run low for this event</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
-              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-                <span>🍷 Chambolle-Musigny 2019</span>
-                <span style="background:#fef2f2;color:#dc2626;border-radius:6px;padding:2px 8px;font-weight:700">2 bottles (need ~8)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-                <span>🍷 Burgundy Blanc 2021</span>
-                <span style="background:#fef9ee;color:#d97706;border-radius:6px;padding:2px 8px;font-weight:700">5 bottles (need ~6)</span>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;background:#7c1d2f;color:#fff;border:none;cursor:pointer">📦 Create Procurement Order</button>
-              <button style="padding:8px 14px;border-radius:8px;font-size:12px;color:#9a3412;background:#fff;border:1px solid#fed7aa;cursor:pointer">Dismiss</button>
-            </div>
-          </div>
-
-        </div>
-        <div class="modal-footer">
-          <div></div>
-          <div class="footer-right">
-            <button class="btn-ghost">Cancel</button>
-            <button class="btn-primary">Create Event</button>
-          </div>
-        </div>
+      <!-- Notes -->
+      <div class="field-group">
+        <label class="field-label">Notes</label>
+        <textarea class="field-input" rows="2" placeholder="Optional details, guest count, special instructions…">Private tasting for 12 guests. Reserve Pinot Noir and Chardonnay from cellar.</textarea>
       </div>
+
+    </div><!-- end body -->
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button class="btn-cancel">Cancel</button>
+      <button class="btn-save">Save Event</button>
     </div>
-  </div><!-- /v-inventory-alert -->
+  </div>
+</div>
 
-</div><!-- /page-wrap -->
+<div class="note">
+  D-13 sketch 017: Improved EventModal<br>
+  Shows: color swatch, status (Approved/Pending only — "confirmed" removed), end time, recurrence chips
+</div>
 
-<script>
-function show(id) {
-  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('v-' + id).classList.add('active');
-  event.currentTarget.classList.add('active');
-}
-</script>
 </body>
 </html>

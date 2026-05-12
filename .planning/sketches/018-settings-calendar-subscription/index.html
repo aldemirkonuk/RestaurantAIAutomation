@@ -1,354 +1,232 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sketch 018 — Settings: Calendar Subscription</title>
-<link rel="stylesheet" href="../themes/default.css">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif); background: #f3f4f6; color: #111827; padding-top: 44px; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>D-13 Sketch: Settings Calendar Subscription Section</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f8f7f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px;
+      gap: 32px;
+    }
 
-  #variant-nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
-    background: #fff; border-bottom: 1px solid #e5e7eb;
-    padding: 6px 16px; display: flex; gap: 6px; align-items: center; font-family: system-ui; font-size: 12px;
-  }
-  .variant-tab { padding:5px 14px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:12px; color:#555; transition:all 0.15s; }
-  .variant-tab.active, .variant-tab:hover { background:#7c1d2f; color:#fff; border-color:#7c1d2f; }
-  .variant { display:none; }
-  .variant.active { display:block; }
+    h1 { font-size: 13px; font-weight: 600; color: #8b1a2f; letter-spacing: 0.08em; text-transform: uppercase; }
 
-  .page-wrap { padding: 24px; max-width: 1200px; margin: 0 auto; }
-  h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: #111827; }
-  .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
+    /* ── Scrollspy nav ── */
+    .nav-bar {
+      width: 672px; max-width: 100%;
+      background: rgba(255,255,255,0.92);
+      border-bottom: 1px solid #f0eeec;
+      padding: 8px 16px;
+      display: flex; gap: 4px;
+      border-radius: 12px;
+    }
+    .nav-tab {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; border: none;
+      background: transparent; color: #999;
+    }
+    .nav-tab:hover { background: #f2f2f2; color: #333; }
+    .nav-tab.active { background: #8b1a2f; color: #fff; }
 
-  /* ── Settings page shell ── */
-  .settings-shell {
-    display: grid; grid-template-columns: 220px 1fr; gap: 0;
-    background: #fff; border-radius: 20px; overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-    min-height: 700px;
-  }
+    /* ── Card ── */
+    .card {
+      width: 672px; max-width: 100%;
+      background: #fff;
+      border-radius: 20px;
+      border: 1px solid #f0eeec;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+      overflow: hidden;
+    }
 
-  /* ── Sidebar ── */
-  .settings-sidebar {
-    background: #fafafa; border-right: 1px solid #e5e7eb;
-    padding: 24px 0;
-  }
-  .settings-sidebar h3 {
-    font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase;
-    letter-spacing: 0.08em; padding: 0 20px 8px;
-  }
-  .nav-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 20px; font-size: 13px; font-weight: 500; color: #374151;
-    cursor: pointer; transition: all 0.12s; border-left: 3px solid transparent;
-  }
-  .nav-item:hover { background: #f0f0f0; color: #111827; }
-  .nav-item.active { background: #fef7f7; color: #7c1d2f; border-left-color: #7c1d2f; font-weight: 700; }
-  .nav-item .icon { font-size: 14px; width: 18px; text-align: center; }
+    .card-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #f5f3f0;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .header-icon {
+      width: 32px; height: 32px;
+      background: #fdf0f2; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .header-icon svg { color: #8b1a2f; }
+    .card-header h2 { font-size: 13px; font-weight: 700; color: #111; }
+    .card-header p  { font-size: 11px; color: #999; margin-top: 1px; }
 
-  /* ── Main content ── */
-  .settings-content { padding: 32px 36px; overflow-y: auto; }
-  .settings-content h2 { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 4px; }
-  .settings-content .section-desc { font-size: 13px; color: #6b7280; margin-bottom: 28px; }
+    .card-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
 
-  /* ── Section card ── */
-  .section-card {
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 16px;
-    padding: 24px 28px; margin-bottom: 20px;
-  }
-  .section-card h3 {
-    font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 4px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .section-card .card-desc { font-size: 13px; color: #6b7280; margin-bottom: 18px; line-height: 1.5; }
-  .section-divider { height: 1px; background: #f3f4f6; margin: 20px 0; }
+    /* ── Description ── */
+    .description { font-size: 13px; color: #555; line-height: 1.55; }
 
-  /* ── iCal URL box ── */
-  .url-row { display: flex; gap: 8px; align-items: center; }
-  .url-box {
-    flex: 1; background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 10px;
-    padding: 10px 14px; font-size: 12px; font-family: 'DM Mono', monospace, monospace;
-    color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .url-box.highlight { border-color: #7c1d2f; background: #fff8f8; }
+    /* ── URL row ── */
+    .url-row { display: flex; align-items: center; gap: 8px; }
+    .url-box {
+      flex: 1;
+      padding: 9px 12px;
+      background: #f8f7f5;
+      border: 1.5px solid #e8e5e2;
+      border-radius: 10px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px; color: #444;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .btn-copy {
+      display: flex; align-items: center; gap-6px; gap: 6px;
+      padding: 9px 16px;
+      background: #8b1a2f; color: #fff;
+      border: none; border-radius: 10px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-copy:hover { background: #701526; }
+    .btn-copy svg { width: 13px; height: 13px; }
 
-  .btn-copy {
-    padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 700;
-    background: #7c1d2f; color: #fff; border: none; cursor: pointer;
-    display: flex; align-items: center; gap: 6px; white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(124,29,47,0.25);
-  }
-  .btn-copy:hover { background: #6b1728; }
+    /* ── Instructions ── */
+    .instructions { display: flex; flex-direction: column; gap: 6px; }
+    .instruction-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+    .app-name { font-weight: 700; color: #333; min-width: 110px; }
+    .app-steps { color: #777; }
 
-  /* ── Platform instructions ── */
-  .platform-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 16px; }
-  .platform-card {
-    background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px;
-    padding: 14px 16px;
-  }
-  .platform-card .platform-name {
-    font-size: 12px; font-weight: 700; color: #374151;
-    display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
-  }
-  .platform-logo { font-size: 18px; }
-  .platform-steps { font-size: 11px; color: #6b7280; line-height: 1.7; }
-  .platform-step { display: flex; gap: 6px; }
-  .step-num { font-weight: 700; color: #9ca3af; width: 14px; flex-shrink: 0; }
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid #f0eeec; }
 
-  /* ── Danger zone (regenerate) ── */
-  .danger-zone {
-    background: #fff9f9; border: 1px solid #fecaca; border-radius: 12px;
-    padding: 16px 20px;
-  }
-  .danger-zone h4 { font-size: 13px; font-weight: 700; color: #991b1b; margin-bottom: 4px; }
-  .danger-zone p { font-size: 12px; color: #9ca3af; margin-bottom: 12px; line-height: 1.5; }
-  .btn-regenerate {
-    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700;
-    color: #dc2626; background: #fff; border: 1.5px solid #fca5a5; cursor: pointer;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .btn-regenerate:hover { background: #fff1f2; }
+    /* ── Regenerate row ── */
+    .regen-row { display: flex; flex-direction: column; gap: 6px; }
+    .btn-regen {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: #fff;
+      border: 1.5px solid #fcd5d5;
+      border-radius: 10px;
+      font-size: 12px; font-weight: 600; color: #dc2626; cursor: pointer;
+      width: fit-content;
+    }
+    .btn-regen:hover { background: #fef2f2; }
+    .btn-regen svg { width: 13px; height: 13px; }
+    .regen-warn { font-size: 11px; color: #bbb; }
 
-  /* ── Success toast preview ── */
-  .toast {
-    position: fixed; bottom: 24px; right: 24px;
-    background: #111827; color: #fff; border-radius: 12px;
-    padding: 12px 18px; font-size: 13px; font-weight: 600;
-    display: flex; align-items: center; gap: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2); z-index: 9999;
-    opacity: 0; transition: opacity 0.3s; pointer-events: none;
-  }
-  .toast.show { opacity: 1; }
+    /* ── Toast (demo) ── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #111; color: #fff;
+      padding: 10px 18px; border-radius: 10px;
+      font-size: 13px; display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+    .toast .check { width: 18px; height: 18px; background: #22c55e; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; }
 
-  /* ── Badge ── */
-  .badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    background: #d1fae5; color: #065f46; border-radius: 6px;
-    padding: 2px 8px; font-size: 11px; font-weight: 700;
-  }
+    /* ── Note ── */
+    .note {
+      position: fixed; bottom: 20px; right: 20px;
+      background: #8b1a2f; color: #fff;
+      padding: 10px 16px; border-radius: 12px;
+      font-size: 12px; max-width: 260px; line-height: 1.5;
+    }
 
-  /* ── Dashboard widget preview ── */
-  .dashboard-card {
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  }
-  .dashboard-card-header {
-    display: flex; align-items: center; padding: 14px 18px 12px;
-    border-bottom: 1px solid #f3f4f6;
-  }
-  .dashboard-card-title { font-size: 14px; font-weight: 700; color: #111827; flex: 1; display: flex; align-items: center; gap: 8px; }
-  .dashboard-card-title .icon { font-size: 16px; }
-  .btn-icon {
-    width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e5e7eb;
-    background: #f9fafb; cursor: pointer; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; color: #6b7280; transition: all 0.15s;
-  }
-  .btn-icon:hover { background: #f3f4f6; color: #7c1d2f; border-color: #fecdd3; }
-  .event-list { padding: 12px 18px; display: flex; flex-direction: column; gap: 8px; }
-  .event-item {
-    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
-    background: #f9fafb; border-radius: 10px; font-size: 12px;
-  }
-  .event-dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; }
-  .event-name { font-weight: 600; color: #111827; flex: 1; }
-  .event-date { font-size: 11px; color: #9ca3af; }
-  .add-btn {
-    margin: 0 18px 14px; padding: 8px; border-radius: 10px;
-    border: 1.5px dashed #d1d5db; background: none; font-size: 12px;
-    color: #9ca3af; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
-    transition: all 0.15s; width: calc(100% - 36px);
-  }
-  .add-btn:hover { border-color: #7c1d2f; color: #7c1d2f; background: #fff8f8; }
-</style>
+    /* SVG icons inline */
+    .icon { display: inline-block; vertical-align: middle; }
+  </style>
 </head>
 <body>
 
-<nav id="variant-nav">
-  <button class="variant-tab active" onclick="show('settings')">Settings — Calendar Section</button>
-  <button class="variant-tab" onclick="show('dashboard')">Dashboard Calendar Widget</button>
-  <button class="variant-tab" onclick="show('copy-flow')">Copy URL Flow (toast)</button>
+<h1>D-13 Sketch 018 — Settings: Calendar Subscription Section</h1>
+
+<!-- Scrollspy nav showing Calendar tab active -->
+<nav class="nav-bar">
+  <button class="nav-tab">Team</button>
+  <button class="nav-tab">Locations</button>
+  <button class="nav-tab">Measurement</button>
+  <button class="nav-tab">Features</button>
+  <button class="nav-tab active">Calendar</button>
 </nav>
 
-<div class="page-wrap">
-  <h1>Sketch 018 — Calendar Subscription UI</h1>
-  <p class="subtitle">Phase 30 — iCal feed settings panel + dashboard subscribe shortcut · Gem #1 from Creative Thinker</p>
+<!-- Calendar section card -->
+<div class="card">
+  <div class="card-header">
+    <div class="header-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" color="#8b1a2f">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="16" y1="2" x2="16" y2="6"></line>
+        <line x1="8" y1="2" x2="8" y2="6"></line>
+        <line x1="3" y1="10" x2="21" y2="10"></line>
+      </svg>
+    </div>
+    <div>
+      <h2>Calendar</h2>
+      <p>Subscribe to your restaurant calendar from Outlook, Apple, or Google Calendar.</p>
+    </div>
+  </div>
 
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT A: Settings Page with Calendar Section -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant active" id="v-settings">
-    <div class="settings-shell">
-      <!-- Sidebar nav -->
-      <div class="settings-sidebar">
-        <h3>Settings</h3>
-        <div class="nav-item"><span class="icon">👥</span> Team & Access</div>
-        <div class="nav-item"><span class="icon">📍</span> Locations</div>
-        <div class="nav-item"><span class="icon">📐</span> Measurements</div>
-        <div class="nav-item"><span class="icon">⚙️</span> Features</div>
-        <div class="nav-item active"><span class="icon">📅</span> Calendar</div>
+  <div class="card-body">
+    <p class="description">
+      Subscribe to your WineOps calendar in Outlook, Apple Calendar, or Google Calendar using the URL below.
+      No login required — the URL includes a secure token.
+    </p>
+
+    <!-- URL + Copy button -->
+    <div class="url-row">
+      <div class="url-box">https://restaurant-ai-automation-web.vercel.app/api/v1/calendar/feed/eyJhbGciOiJIUzI1NiJ9.abc123.ics</div>
+      <button class="btn-copy">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Copy
+      </button>
+    </div>
+
+    <!-- Step instructions -->
+    <div class="instructions">
+      <div class="instruction-row">
+        <span class="app-name">Outlook</span>
+        <span class="app-steps">Add Calendar → Subscribe from web → paste URL</span>
       </div>
-
-      <!-- Content -->
-      <div class="settings-content">
-        <h2>📅 Calendar</h2>
-        <p class="section-desc">Subscribe to your restaurant calendar from any calendar app, or fix calendar event behaviour.</p>
-
-        <!-- iCal subscription card -->
-        <div class="section-card">
-          <h3>🔗 Subscribe in Outlook / Apple / Google <span class="badge">✓ Free</span></h3>
-          <p class="card-desc">
-            Copy the URL below and paste it into your calendar app's "Subscribe from web" or "Add Calendar from URL" option.
-            Events stay in sync automatically — no login required. The URL contains a secure token unique to your restaurant.
-          </p>
-
-          <div class="url-row">
-            <div class="url-box highlight">https://yourapp.vercel.app/api/v1/calendar/feed/a3f9c1e8b2d7044f6a1230987654321abcdef012345678901234567890abcd.ics</div>
-            <button class="btn-copy" onclick="showToast()">📋 Copy URL</button>
-          </div>
-
-          <div class="platform-grid">
-            <div class="platform-card">
-              <div class="platform-name"><span class="platform-logo">📧</span> Outlook</div>
-              <div class="platform-steps">
-                <div class="platform-step"><span class="step-num">1.</span>Open Outlook → Add Calendar</div>
-                <div class="platform-step"><span class="step-num">2.</span>Subscribe from web</div>
-                <div class="platform-step"><span class="step-num">3.</span>Paste the URL above</div>
-              </div>
-            </div>
-            <div class="platform-card">
-              <div class="platform-name"><span class="platform-logo">🍎</span> Apple Calendar</div>
-              <div class="platform-steps">
-                <div class="platform-step"><span class="step-num">1.</span>File → New Calendar Subscription</div>
-                <div class="platform-step"><span class="step-num">2.</span>Paste the URL above</div>
-                <div class="platform-step"><span class="step-num">3.</span>Choose refresh interval</div>
-              </div>
-            </div>
-            <div class="platform-card">
-              <div class="platform-name"><span class="platform-logo">🗓</span> Google Calendar</div>
-              <div class="platform-steps">
-                <div class="platform-step"><span class="step-num">1.</span>Other Calendars → (+)</div>
-                <div class="platform-step"><span class="step-num">2.</span>From URL → paste above</div>
-                <div class="platform-step"><span class="step-num">3.</span>Add Calendar</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-divider"></div>
-
-          <div class="danger-zone">
-            <h4>⚠️ Regenerate Token</h4>
-            <p>Generating a new token will permanently break any existing calendar subscriptions. Anyone who subscribed using the old URL will stop receiving updates until they subscribe again with the new URL.</p>
-            <button class="btn-regenerate">↻ Regenerate Token</button>
-          </div>
-        </div>
-
+      <div class="instruction-row">
+        <span class="app-name">Apple Calendar</span>
+        <span class="app-steps">File → New Calendar Subscription → paste URL</span>
+      </div>
+      <div class="instruction-row">
+        <span class="app-name">Google Calendar</span>
+        <span class="app-steps">Other Calendars (+) → From URL → paste URL</span>
       </div>
     </div>
-  </div><!-- /v-settings -->
 
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT B: Dashboard Calendar Widget with Subscribe Button -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant" id="v-dashboard">
-    <div style="max-width:380px">
-      <p style="font-size:12px;color:#9ca3af;margin-bottom:12px;text-align:center">Dashboard calendar widget — right-rail card</p>
-      <div class="dashboard-card">
-        <div class="dashboard-card-header">
-          <div class="dashboard-card-title">
-            <span class="icon">📅</span>
-            Upcoming Events
-          </div>
-          <!-- Subscribe shortcut (new — D-11) -->
-          <button class="btn-icon" title="Copy calendar subscription URL" onclick="showToast()">🔗</button>
-        </div>
-        <div class="event-list">
-          <div class="event-item">
-            <div class="event-dot" style="background:#8b5cf6"></div>
-            <div class="event-name">Monthly Wine Club</div>
-            <div class="event-date">May 20</div>
-          </div>
-          <div class="event-item">
-            <div class="event-dot" style="background:#3b82f6"></div>
-            <div class="event-name">Supplier Visit — Burgundy Co.</div>
-            <div class="event-date">May 23</div>
-          </div>
-          <div class="event-item">
-            <div class="event-dot" style="background:#22c55e"></div>
-            <div class="event-name">Weekly Inventory Check</div>
-            <div class="event-date">May 27</div>
-          </div>
-          <div class="event-item">
-            <div class="event-dot" style="background:#ef4444"></div>
-            <div class="event-name">Private Tasting — Côte de Nuits</div>
-            <div class="event-date">Jun 1</div>
-          </div>
-        </div>
-        <button class="add-btn" onclick="showAddToast()">
-          + Add Event
-        </button>
-      </div>
-      <p style="font-size:11px;color:#9ca3af;margin-top:10px;text-align:center">
-        🔗 button copies iCal URL to clipboard with toast · "Add Event" now opens modal (not redirect)
-      </p>
+    <hr class="divider" />
+
+    <!-- Regenerate -->
+    <div class="regen-row">
+      <button class="btn-regen">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+        Regenerate Token
+      </button>
+      <span class="regen-warn">Warning: regenerating invalidates all existing subscriptions.</span>
     </div>
-  </div><!-- /v-dashboard -->
-
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <!-- VARIANT C: Copy URL flow showing toast -->
-  <!-- ════════════════════════════════════════════════════════════════ -->
-  <div class="variant" id="v-copy-flow">
-    <div style="max-width:600px">
-      <p style="font-size:13px;color:#6b7280;margin-bottom:20px">Copy flow — click the button to see the toast notification feedback.</p>
-      <div class="section-card">
-        <h3>🔗 Your Calendar Subscription URL</h3>
-        <p class="card-desc">Share this URL with your calendar app to subscribe and see all WineOps events automatically.</p>
-        <div class="url-row" style="margin-bottom:16px">
-          <div class="url-box">https://wineops.vercel.app/api/v1/calendar/feed/a3f9c1e8b2d7044f.ics</div>
-          <button class="btn-copy" onclick="showToast()">📋 Copy URL</button>
-        </div>
-        <p style="font-size:12px;color:#9ca3af">Token: a3f9c1e8b2d7044f… · Last updated May 12, 2026</p>
-      </div>
-
-      <div style="background:#f3f4f6;border-radius:12px;padding:16px 20px;font-size:13px;color:#6b7280;line-height:1.6">
-        <strong style="color:#374151">Flow:</strong><br>
-        1. User clicks "Copy URL" button<br>
-        2. <code style="background:#e5e7eb;padding:1px 4px;border-radius:4px">navigator.clipboard.writeText(fullUrl)</code> writes the iCal feed URL<br>
-        3. Toast fires: "Calendar subscription URL copied!" (2s auto-dismiss)<br>
-        4. User pastes in Outlook / Apple Calendar / Google Calendar<br>
-        5. Done — WineOps events appear in their calendar, auto-updating forever
-      </div>
-    </div>
-  </div><!-- /v-copy-flow -->
-
+  </div>
 </div>
 
-<!-- Toast -->
-<div class="toast" id="toast">✅ Calendar subscription URL copied to clipboard!</div>
-<div class="toast" id="toast2">📅 Opening calendar to create event…</div>
+<!-- Toast demo (Copy feedback) -->
+<div class="toast">
+  <div class="check">✓</div>
+  Subscription URL copied to clipboard
+</div>
 
-<script>
-function show(id) {
-  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('v-' + id).classList.add('active');
-  event.currentTarget.classList.add('active');
-}
+<div class="note">
+  D-13 sketch 018: Settings Calendar Subscription section<br>
+  Shows: URL box, Copy button, per-app instructions, Regenerate Token with warning
+</div>
 
-function showToast() {
-  const t = document.getElementById('toast');
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
-}
-
-function showAddToast() {
-  const t = document.getElementById('toast2');
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2000);
-}
-</script>
 </body>
 </html>
