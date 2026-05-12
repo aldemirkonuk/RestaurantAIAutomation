@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import { Header } from '../components/layout/Header'
 import {
   TrendingUp,
@@ -25,6 +26,7 @@ import {
   Plus,
   Zap,
   Link as LinkIcon,
+  Link2,
   ExternalLink,
   Clock,
   Bell,
@@ -185,6 +187,22 @@ export function Dashboard() {
     storeAIDateContext(aiContext)
   }
 
+
+  const handleCopyICalUrl = async () => {
+    try {
+      const accessToken = localStorage.getItem('accessToken')
+      const res = await fetch('/api/v1/calendar/ical-token', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!res.ok) throw new Error('Failed to fetch token')
+      const { token } = await res.json()
+      const fullUrl = `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
+      await navigator.clipboard.writeText(fullUrl)
+      toast.success('Calendar subscription URL copied!')
+    } catch {
+      toast.error('Failed to copy subscription URL')
+    }
+  }
 
   // Keyboard shortcut for Create Action
   useEffect(() => {
@@ -504,6 +522,15 @@ export function Dashboard() {
                 <ExternalLink className="w-4 h-4" />
                 <span className="hidden sm:inline">Full Calendar</span>
               </NavLink>
+
+              {/* Subscribe (copy iCal URL) */}
+              <button
+                onClick={handleCopyICalUrl}
+                title="Copy calendar subscription URL"
+                className="p-1.5 text-gray-400 hover:text-wine-600 rounded-md hover:bg-gray-100 transition-colors"
+              >
+                <Link2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
           
