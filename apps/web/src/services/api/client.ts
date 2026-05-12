@@ -5,7 +5,53 @@
  * Handles authentication, error handling, and request/response interceptors.
  */
 
-import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+
+/** Decode JWT exp claim — returns expiry timestamp in ms, or 0 if unreadable */
+function jwtExpiry(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return (payload.exp ?? 0) * 1000
+  } catch {
+    return 0
+  }
+}
+
+/** Deduplicated in-flight refresh promise so concurrent requests don't race */
+let refreshPromise: Promise<string> | null = null
+
+async function ensureFreshToken(): Promise<string | null> {
+  const token = localStorage.getItem('accessToken')
+  if (!token) return null
+
+  const expiry = jwtExpiry(token)
+  // Refresh proactively if token expires within 60 seconds
+  if (expiry && expiry - Date.now() > 60_000) return token
+
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) return token
+
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'}/api/v1/auth/refresh`, { refreshToken })
+      .then((res) => {
+        const { accessToken, refreshToken: newRefresh } = res.data
+        localStorage.setItem('accessToken', accessToken)
+        if (newRefresh) localStorage.setItem('refreshToken', newRefresh)
+        return accessToken as string
+      })
+      .finally(() => { refreshPromise = null })
+  }
+
+  try {
+    return await refreshPromise
+  } catch {
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    window.location.href = '/login'
+    return null
+  }
+}
 
 // API Gateway URL from environment
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
@@ -22,64 +68,44 @@ function createApiClient(): AxiosInstance {
     },
   });
 
-  // Request interceptor - add auth token and restaurant ID
+  // Request interceptor — proactively refresh token if near expiry, then attach headers
   client.interceptors.request.use(
-    (config) => {
-      // Add auth token
-      const token = localStorage.getItem('accessToken');
+    async (config: InternalAxiosRequestConfig) => {
+      const token = await ensureFreshToken()
       if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+        config.headers.Authorization = `Bearer ${token}`
       }
 
-      // Add restaurant ID header
-      const restaurantId = localStorage.getItem('activeRestaurantId');
+      const restaurantId = localStorage.getItem('activeRestaurantId')
       if (restaurantId) {
-        config.headers['X-Restaurant-Id'] = restaurantId;
+        config.headers['X-Restaurant-Id'] = restaurantId
       }
 
-      return config;
+      return config
     },
     (error) => Promise.reject(error)
-  );
+  )
 
-  // Response interceptor - handle errors and token refresh
+  // Response interceptor — fallback 401 handling (token was valid but still rejected)
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
-      const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+      const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean }
 
-      // Handle 401 Unauthorized - try to refresh token
       if (error.response?.status === 401 && !originalRequest._retry) {
-        originalRequest._retry = true;
-
-        try {
-          const refreshToken = localStorage.getItem('refreshToken');
-          if (refreshToken) {
-            const response = await axios.post(`${API_GATEWAY_URL}/api/v1/auth/refresh`, {
-              refreshToken,
-            });
-
-            const { accessToken, refreshToken: newRefresh } = response.data;
-            localStorage.setItem('accessToken', accessToken);
-            localStorage.setItem('refreshToken', newRefresh);
-
-            // Retry the original request
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-            }
-            return client(originalRequest);
-          }
-        } catch (refreshError) {
-          // Refresh failed, clear tokens and redirect to login
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          window.location.href = '/login';
+        originalRequest._retry = true
+        // Force a refresh regardless of expiry (server may have revoked the token)
+        localStorage.removeItem('accessToken') // ensure ensureFreshToken re-fetches
+        const newToken = await ensureFreshToken()
+        if (newToken && originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return client(originalRequest)
         }
       }
 
-      return Promise.reject(error);
+      return Promise.reject(error)
     }
-  );
+  )
 
   return client;
 }

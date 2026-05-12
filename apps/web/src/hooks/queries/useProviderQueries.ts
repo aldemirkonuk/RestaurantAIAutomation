@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
 import type { ProviderFilters } from '../../lib/query-keys'
 import {
@@ -61,9 +61,11 @@ export function useProviders(restaurantId: string, filters?: ProviderFilters) {
     },
     enabled: !!restaurantId,
     staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
+    // Keep previous data visible while re-fetching so navigation back never shows a full spinner
+    placeholderData: keepPreviousData,
   })
 }
 

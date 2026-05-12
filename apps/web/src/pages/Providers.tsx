@@ -147,7 +147,7 @@ export function Providers() {
     updatePreferences({ providerRatings: updater(ratings) })
   }, [ratings, updatePreferences])
 
-  const { data: providers = [], isLoading, error, refetch } = useProviders(restaurantId || '', {
+  const { data: providers = [], isLoading, isFetching, error, refetch } = useProviders(restaurantId || '', {
     search: searchQuery,
     category: businessTypeFilter === 'All' ? undefined : businessTypeFilter,
   })
@@ -264,7 +264,10 @@ export function Providers() {
 
   const clearFilters = () => { setSearchQuery(''); setBusinessTypeFilter('All'); setShowFavoritesOnly(false) }
 
-  if (!restaurantId || (isLoading && !providers.length)) {
+  // Only show full-page skeleton on the very first load (no cached data at all).
+  // For re-mounts / SPA navigations with stale cache, placeholderData keeps prior
+  // results visible while the background refetch runs, so isLoading stays false.
+  if (!restaurantId || isLoading) {
     return (
       <div className="min-h-screen">
         <Header title="Wine Providers" subtitle="Manage your supplier relationships" />
@@ -293,7 +296,7 @@ export function Providers() {
       <Header
         title="Wine Providers"
         subtitle={providers.length > 0
-          ? `${providers.length} verified U.S.-based distributors, importers, and wholesalers`
+          ? `${providers.length} verified U.S.-based distributors, importers, and wholesalers${isFetching ? ' · Refreshing…' : ''}`
           : 'Manage your supplier relationships'}
       />
 
