@@ -83,8 +83,12 @@ export async function fetchNotifications(
     params.append('dateTo', filters.dateTo)
   }
   
-  const response = await apiClient.get<Notification[]>(`/notifications?${params.toString()}`)
-  return response.data
+  const response = await apiClient.get<Notification[] | { data?: Notification[]; notifications?: Notification[]; items?: Notification[] }>(
+    `/notifications?${params.toString()}`
+  )
+  const raw = response.data
+  if (Array.isArray(raw)) return raw
+  return (raw as any)?.data ?? (raw as any)?.notifications ?? (raw as any)?.items ?? []
 }
 
 /**

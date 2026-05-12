@@ -1,21 +1,23 @@
 /**
- * Notification & Reminder Flow E2E Tests
- * =======================================
- * Mimics the Outlook-style lifecycle:
- *   Suite 1 — Email delivery via Gmail API (real or mock fallback)
- *   Suite 2 — Custom reminder → DB notification row + email (requires Supabase)
- *   Suite 3 — Recurring reminder next_fire_at calculation (pure logic, no network)
- *   Suite 4 — Calendar event prep email (2-day advance notice, like Outlook)
+ * Notification & Reminder Flow E2E Tests — live/real data only
+ * ============================================================
+ * No mocks. Every assertion requires a real delivery.
+ *
+ *   Suite 1 — Email delivery via Gmail API (OAuth2) or SMTP fallback
+ *   Suite 2 — Custom reminder → DB notification row + real email (requires Supabase)
+ *   Suite 3 — Recurring reminder next_fire_at (pure function, no DI)
+ *   Suite 4 — Calendar event prep email (Outlook-style 2-day advance reminder)
  *
  * Run:
  *   cd apps/api-gateway && pnpm test:e2e:notification-flows
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { GmailService } from '../gmail.service';
 import { ScheduledTasksService } from '../scheduled-tasks.service';
+import { computeNextFireAt } from '../scheduled-tasks.service';
 import { CommunicationsService } from '../communications.service';
 import { RecipientResolverService } from '../recipient-resolver.service';
 import { DatabaseService } from '../../database/database.service';
@@ -36,10 +38,10 @@ function hasSupabaseEnv(): boolean {
 }
 
 // ===========================================================================
-// SUITE 1 — EMAIL DELIVERY
+// SUITE 1 — EMAIL DELIVERY (real — no mock accepted)
 // ===========================================================================
 
-describe('Suite 1 — Email Delivery (Gmail API or mock fallback)', () => {
+describe('Suite 1 — Email Delivery (live — Gmail API or SMTP fallback)', () => {
   let gmailService: GmailService;
   let module: TestingModule;
 
@@ -60,12 +62,10 @@ describe('Suite 1 — Email Delivery (Gmail API or mock fallback)', () => {
 
   afterAll(() => module?.close());
 
-  it('should send a plain notification email', async () => {
+  it('should send a plain notification email and deliver it for real', async () => {
     /**
      * Outlook analogy: user manually sends a notification email.
-     * When Gmail OAuth is valid the messageId will NOT start with "mock_".
-     * When credentials are expired/offline the service falls back to mock mode
-     * — still succeeds so CI stays green; the console logs the mode.
+     * Must arrive in inbox — mock IDs (mock_*) are a hard failure.
      */
     const result = await gmailService.sendEmail({
       to: [TEST_EMAIL],
@@ -74,27 +74,17 @@ describe('Suite 1 — Email Delivery (Gmail API or mock fallback)', () => {
         <h2>Notification Flow Test</h2>
         <p>Sent at ${new Date().toISOString()} during the
            <strong>notification-flow.e2e</strong> test run.</p>
-        <p>If this is in your inbox, Gmail OAuth2 is working.</p>
+        <p>If this is in your inbox, email delivery is live.</p>
       `,
     });
 
     expect(result.success).toBe(true);
     expect(result.messageId).toBeTruthy();
-
-    const isReal = !result.messageId!.startsWith('mock_');
-    console.log(
-      `[1/4] Plain email ${isReal ? 'delivered via Gmail API' : 'sent in MOCK mode'}. ` +
-        `MessageID: ${result.messageId}`,
-    );
-    if (!isReal) {
-      console.warn(
-        '⚠ Gmail OAuth returned "Unexpected Gaxios Error" — ' +
-          'check that GMAIL_REFRESH_TOKEN is valid and not revoked.',
-      );
-    }
+    expect(result.messageId).not.toMatch(/^mock_/);
+    console.log(`[1/4] Plain email delivered. MessageID: ${result.messageId}`);
   }, 20000);
 
-  it('should send a custom reminder email (notification reminder template)', async () => {
+  it('should send a custom reminder email (notification reminder template) for real', async () => {
     /**
      * Outlook analogy: a calendar reminder fires and emails the user.
      */
@@ -113,29 +103,25 @@ describe('Suite 1 — Email Delivery (Gmail API or mock fallback)', () => {
         'Record temperature readings for all 4 zones',
       ],
       isRecurring: true,
-      recurrencePattern: '0 9 1 * *', // 1st of every month at 9 AM
+      recurrencePattern: '0 9 1 * *',
     });
 
     expect(result.success).toBe(true);
     expect(result.messageId).toBeTruthy();
-    const isReal = !result.messageId!.startsWith('mock_');
-    console.log(
-      `[2/4] Reminder email ${isReal ? 'delivered via Gmail API' : 'MOCK'}. ` +
-        `MessageID: ${result.messageId}`,
-    );
+    expect(result.messageId).not.toMatch(/^mock_/);
+    console.log(`[2/4] Reminder email delivered. MessageID: ${result.messageId}`);
   }, 20000);
 });
 
 // ===========================================================================
-// SUITE 2 — CUSTOM REMINDER: DB notification row + email
+// SUITE 2 — CUSTOM REMINDER: DB notification row + email (live Supabase)
 // ===========================================================================
 
-describe('Suite 2 — Custom Reminder → DB notification + email (requires Supabase)', () => {
+describe('Suite 2 — Custom Reminder → DB notification + real email (requires Supabase)', () => {
   let scheduledTasks: ScheduledTasksService;
   let db: DatabaseService;
   let module: TestingModule;
   let testReminderId: string | null = null;
-  const restaurantId = process.env.DEFAULT_RESTAURANT_ID;
 
   let resolvedRestaurantId: string | null = null;
   const skipSuite = !hasSupabaseEnv();
@@ -157,7 +143,7 @@ describe('Suite 2 — Custom Reminder → DB notification + email (requires Supa
         RecipientResolverService,
         {
           provide: CommunicationsService,
-          useValue: { /* ScheduledTasksService only calls GmailService directly */ },
+          useValue: {},
         },
         ScheduledTasksService,
       ],
@@ -167,13 +153,13 @@ describe('Suite 2 — Custom Reminder → DB notification + email (requires Supa
     db = module.get<DatabaseService>(DatabaseService);
     await module.init();
 
-    // Resolve a real restaurant ID from the DB
-    const { data: restaurants } = await db.getClient()
+    // Resolve a real restaurant ID from the live DB — no hardcoded IDs
+    const { data: restaurant } = await db.getClient()
       .from('restaurants')
       .select('id')
       .limit(1)
       .single();
-    resolvedRestaurantId = restaurants?.id ?? null;
+    resolvedRestaurantId = restaurant?.id ?? null;
   }, 30000);
 
   afterAll(async () => {
@@ -186,12 +172,12 @@ describe('Suite 2 — Custom Reminder → DB notification + email (requires Supa
     await module?.close();
   });
 
-  it('should fire a due one-time reminder → email sent + reminder deactivated', async () => {
+  it('should fire a due one-time reminder → real email sent + reminder deactivated', async () => {
     if (skipSuite || !resolvedRestaurantId) {
       console.warn(
         skipSuite
           ? 'Suite 2 skipped — set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY'
-          : 'Suite 2 skipped — no restaurants row found in DB',
+          : 'Suite 2 skipped — no restaurants row found in live DB',
       );
       return;
     }
@@ -202,7 +188,7 @@ describe('Suite 2 — Custom Reminder → DB notification + email (requires Supa
      * and marks it as done (is_active = false).
      */
     const client = db.getClient();
-    const pastDate = new Date(Date.now() - 2 * 60 * 1000); // 2 minutes ago
+    const pastDate = new Date(Date.now() - 2 * 60 * 1000);
 
     const { data: inserted, error: insertErr } = await client
       .from('custom_reminders')
@@ -239,80 +225,38 @@ describe('Suite 2 — Custom Reminder → DB notification + email (requires Supa
 });
 
 // ===========================================================================
-// SUITE 3 — RECURRING NEXT_FIRE_AT CALCULATION (pure logic)
+// SUITE 3 — RECURRING NEXT_FIRE_AT (pure standalone function — zero DI)
 // ===========================================================================
 
-describe('Suite 3 — Recurring reminder next_fire_at calculation', () => {
+describe('Suite 3 — Recurring reminder next_fire_at calculation (pure function, no DI)', () => {
   /**
-   * `computeNextFireAt` is a pure method on ScheduledTasksService.
-   * We instantiate it with all dependencies mocked so NestJS DI is satisfied
-   * without needing a real DB or Gmail connection.
+   * computeNextFireAt is exported as a standalone pure function from
+   * scheduled-tasks.service.ts — no NestJS module or jest mocks needed.
    */
-  let svc: ScheduledTasksService;
-  let module: TestingModule;
-
-  const mockDb = {
-    getClient: () => null,
-    supabase: null,
-    getLowStockItems: jest.fn(),
-    getProcurementOrders: jest.fn(),
-    getRestaurantInventory: jest.fn(),
-  };
-  const mockGmail = {
-    sendCustomReminder: jest.fn().mockResolvedValue({ success: true, messageId: 'mock_test' }),
-    sendEmail: jest.fn().mockResolvedValue({ success: true, messageId: 'mock_test' }),
-    ensureGmailReady: jest.fn().mockResolvedValue(true),
-  };
-  const mockComms = {};
-  const mockRecipient = {
-    resolveRecipients: jest.fn().mockResolvedValue({ emails: [TEST_EMAIL], phones: [] }),
-  };
-
-  beforeAll(async () => {
-    module = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
-        ScheduleModule.forRoot(),
-      ],
-      providers: [
-        ScheduledTasksService,
-        { provide: DatabaseService, useValue: mockDb },
-        { provide: GmailService, useValue: mockGmail },
-        { provide: CommunicationsService, useValue: mockComms },
-        { provide: RecipientResolverService, useValue: mockRecipient },
-      ],
-    }).compile();
-
-    svc = module.get<ScheduledTasksService>(ScheduledTasksService);
-    await module.init();
-  }, 20000);
-
-  afterAll(() => module?.close());
-
   const base = new Date('2026-05-11T09:00:00.000Z'); // Monday 9 AM UTC
 
   it('daily cron (0 9 * * *) → advances by exactly 1 day', () => {
-    const next = svc.computeNextFireAt('0 9 * * *', base);
+    const next = computeNextFireAt('0 9 * * *', base);
     const diffDays = (next.getTime() - base.getTime()) / 86_400_000;
     expect(diffDays).toBeCloseTo(1, 1);
     console.log(`[4a] daily → ${next.toISOString()}`);
   });
 
   it('weekly cron (0 9 * * 1) → advances by 7 days', () => {
-    const next = svc.computeNextFireAt('0 9 * * 1', base);
+    const next = computeNextFireAt('0 9 * * 1', base);
     const diffDays = (next.getTime() - base.getTime()) / 86_400_000;
     expect(diffDays).toBeCloseTo(7, 1);
     console.log(`[4b] weekly → ${next.toISOString()}`);
   });
 
   it('monthly cron (0 9 1 * *) → advances by ~1 month', () => {
-    const next = svc.computeNextFireAt('0 9 1 * *', base);
+    const next = computeNextFireAt('0 9 1 * *', base);
     expect(next.getMonth()).toBe((base.getMonth() + 1) % 12);
     console.log(`[4c] monthly → ${next.toISOString()}`);
   });
 
   it('30-min step cron (*/30 * * * *) → advances by 30 minutes', () => {
-    const next = svc.computeNextFireAt('*/30 * * * *', base);
+    const next = computeNextFireAt('*/30 * * * *', base);
     const diffMin = (next.getTime() - base.getTime()) / 60_000;
     expect(diffMin).toBeCloseTo(30, 0);
     console.log(`[4d] 30-min → ${next.toISOString()}`);
@@ -321,10 +265,9 @@ describe('Suite 3 — Recurring reminder next_fire_at calculation', () => {
   it('daily 8 AM cron (0 8 * * *) → advances by 1 calendar day (Outlook recurring event)', () => {
     /**
      * Outlook analogy: a recurring calendar event fires a reminder every day at 8 AM.
-     * After it fires, the next occurrence must be scheduled exactly 1 day later
-     * so the user receives a notification every day — not just once.
+     * After it fires, the next occurrence must be scheduled exactly 1 day later.
      */
-    const next = svc.computeNextFireAt('0 8 * * *', base);
+    const next = computeNextFireAt('0 8 * * *', base);
     const diffHours = (next.getTime() - base.getTime()) / 3_600_000;
     expect(diffHours).toBeGreaterThanOrEqual(20);
     expect(diffHours).toBeLessThan(30);
@@ -333,10 +276,10 @@ describe('Suite 3 — Recurring reminder next_fire_at calculation', () => {
 });
 
 // ===========================================================================
-// SUITE 4 — CALENDAR EVENT PREP EMAIL (Outlook 2-day advance reminder)
+// SUITE 4 — CALENDAR EVENT PREP EMAIL (Outlook 2-day advance reminder, live)
 // ===========================================================================
 
-describe('Suite 4 — Calendar event prep email (Outlook-style 2-day advance reminder)', () => {
+describe('Suite 4 — Calendar event prep email (Outlook-style 2-day advance reminder, live)', () => {
   let gmailService: GmailService;
   let module: TestingModule;
 
@@ -357,9 +300,9 @@ describe('Suite 4 — Calendar event prep email (Outlook-style 2-day advance rem
 
   afterAll(() => module?.close());
 
-  it('should send an event-prep reminder 2 days before the event', async () => {
+  it('should send an event-prep reminder 2 days before the event (real delivery)', async () => {
     /**
-     * Outlook analogy: a recurring calendar event (e.g. "Monthly Wine Tasting")
+     * Outlook analogy: a recurring calendar event ("Monthly Wine Tasting")
      * triggers a reminder 2 days before so staff can order missing wines.
      */
     const eventDate = new Date();
@@ -386,16 +329,13 @@ describe('Suite 4 — Calendar event prep email (Outlook-style 2-day advance rem
 
     expect(result.success).toBe(true);
     expect(result.messageId).toBeTruthy();
-    const isReal = !result.messageId!.startsWith('mock_');
-    console.log(
-      `[5a] Event prep email ${isReal ? 'delivered' : 'MOCK'}. MessageID: ${result.messageId}`,
-    );
+    expect(result.messageId).not.toMatch(/^mock_/);
+    console.log(`[5a] Event prep email delivered. MessageID: ${result.messageId}`);
   }, 20000);
 
-  it('should flag ACTION NEEDED when wine shortfalls exist (Outlook urgent flag analogy)', async () => {
+  it('should flag ACTION NEEDED when wine shortfalls exist (real delivery)', async () => {
     /**
-     * Outlook analogy: when a meeting has missing resources (no room booked,
-     * agenda incomplete), Outlook flags the reminder as urgent.
+     * Outlook analogy: missing resources → urgent flag on the reminder.
      * Here: wine shortfalls → "ACTION NEEDED:" subject prefix.
      */
     const result = await gmailService.sendEventPrepReminder({
@@ -415,6 +355,8 @@ describe('Suite 4 — Calendar event prep email (Outlook-style 2-day advance rem
     });
 
     expect(result.success).toBe(true);
-    console.log(`[5b] Urgent event email. MessageID: ${result.messageId}`);
+    expect(result.messageId).toBeTruthy();
+    expect(result.messageId).not.toMatch(/^mock_/);
+    console.log(`[5b] Urgent event email delivered. MessageID: ${result.messageId}`);
   }, 20000);
 });

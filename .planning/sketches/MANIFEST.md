@@ -22,3 +22,4 @@ Premium B2B SaaS onboarding for restaurant operators. The visual language is Str
 | 008 | providers-page-layout | How should the overall page hierarchy feel — flat grid, type-organized, or split-panel sidebar? | A — Editorial Grid (refined) | providers, layout, toolbar, grid, filters |
 | 009 | provider-card-design | How much should a card surface at rest — actions, portfolio info, or relationship status? | A — Action-First | providers, card, grid, actions, ux |
 | 010 | provider-detail-modal | What's the right modal anatomy — centered sheet, right drawer, or bottom 2-col sheet? | A — Centered Sheet | providers, modal, detail, ux, interaction |
+| 016 | communications-templates | Should the templates page be a browsable library, a split panel editor, or an activity-first feed? | null | communications, templates, email, sms, library, feed |

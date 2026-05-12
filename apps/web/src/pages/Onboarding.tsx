@@ -33,11 +33,11 @@ export function Onboarding() {
   // Show "Setup has moved" while redirecting or for users already onboarded
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-gray-50 via-wine-50/30 to-gray-50">
-      <motion.div
+    <motion.div
         initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
+      animate={{ opacity: 1, y: 0 }}
         className="text-center max-w-sm"
-      >
+    >
         <div className="w-16 h-16 bg-gradient-to-br from-wine-500 to-wine-700 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
           <Wine className="w-8 h-8 text-white" />
         </div>
@@ -57,7 +57,7 @@ export function Onboarding() {
             Set up my wine list
           </Button>
         </div>
-      </motion.div>
+    </motion.div>
     </div>
   )
 }

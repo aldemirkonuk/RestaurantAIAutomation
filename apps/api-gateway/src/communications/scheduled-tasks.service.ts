@@ -6,6 +6,50 @@ import { DatabaseService } from '../database/database.service';
 import { GmailService } from './gmail.service';
 import { RecipientResolverService } from './recipient-resolver.service';
 
+/**
+ * Pure function — exported for direct use in tests without NestJS DI.
+ * Determines the next fire date from a 5-part cron expression.
+ */
+export function computeNextFireAt(cronExpr: string, from: Date = new Date()): Date {
+  const next = new Date(from);
+  try {
+    const parts = cronExpr.trim().split(/\s+/);
+    if (parts.length !== 5) throw new Error('non-standard cron');
+
+    const [minute, hour, dom, , dow] = parts;
+
+    // Monthly: specific day of month (e.g. "0 9 1 * *")
+    if (dom !== '*' && dow === '*') {
+      next.setMonth(next.getMonth() + 1);
+      return next;
+    }
+
+    // Weekly: specific day of week (e.g. "0 9 * * 1")
+    if (dom === '*' && dow !== '*') {
+      next.setDate(next.getDate() + 7);
+      return next;
+    }
+
+    // Minute step (e.g. "*/30 * * * *")
+    const minuteMatch = minute.match(/^\*\/(\d+)$/);
+    if (minuteMatch && hour === '*') {
+      next.setMinutes(next.getMinutes() + parseInt(minuteMatch[1], 10));
+      return next;
+    }
+
+    // Fixed hour = daily
+    if (hour !== '*') {
+      next.setDate(next.getDate() + 1);
+      return next;
+    }
+
+    next.setDate(next.getDate() + 1);
+  } catch {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
 @Injectable()
 export class ScheduledTasksService implements OnModuleInit {
   private readonly logger = new Logger(ScheduledTasksService.name);

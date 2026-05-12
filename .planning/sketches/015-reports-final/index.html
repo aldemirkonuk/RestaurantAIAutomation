@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>015 — Reports: Final (Draggable + All Sections)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#F9FAFB; --surface:#FFFFFF; --border:#E5E7EB; --border2:#F3F4F6;
+  --ink:#111827; --ink2:#374151; --ink3:#4B5563; --muted:#6B7280; --muted2:#9CA3AF;
+  --wine:#cd2d5b; --wine-d:#ac204a; --wine-l:#fce7eb; --wine-xl:#fdf2f4;
+  --good:#10B981; --good-l:#D1FAE5; --warn:#F59E0B; --warn-l:#FEF3C7;
+  --bad:#EF4444; --bad-l:#FEE2E2; --info:#3B82F6; --info-l:#DBEAFE;
+  --prev:#9CA3AF; --prev-l:#F3F4F6;
+  --r:8px; --r-md:10px; --r-lg:12px; --r-xl:16px; --r-2xl:20px; --r-full:9999px;
+  --shadow-xs:0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm:0 1px 3px rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);
+  --shadow-card:0 1px 3px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.06);
+  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.08),0 4px 6px -4px rgba(0,0,0,.08);
+  --shadow-xl:0 20px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.08);
+  --shadow-drag:0 20px 40px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:14px}
+button,input{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}
+svg{display:block}
+
+/* Tabs */
+.tabs{display:flex;gap:5px;padding:10px 18px 0;background:#fff;border-bottom:1px solid var(--border)}
+.tab{padding:8px 15px;border-radius:8px 8px 0 0;font-size:12.5px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;border:1px solid transparent;border-bottom:none;position:relative;top:1px}
+.tab.on{background:var(--bg);color:var(--ink);border-color:var(--border);font-weight:600}
+.tab:not(.on):hover{background:rgba(249,250,251,.5);color:var(--ink2)}
+.winner{display:inline-block;margin-left:4px;font-size:9px;padding:1px 5px;border-radius:999px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.variant{display:none}
+.variant.on{display:block}
+
+/* Shell */
+.shell{display:grid;grid-template-columns:220px 1fr;height:calc(100vh - 42px)}
+
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar-logo{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid var(--border2)}
+.logo-mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--wine),var(--wine-d));display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0}
+.logo-text{font-weight:700;font-size:14px;letter-spacing:-.01em}
+.nav{padding:6px 8px;flex:1;overflow-y:auto}
+.nav-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);font-weight:600;padding:10px 8px 3px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:var(--r-md);font-size:13px;font-weight:500;color:var(--ink3);cursor:pointer;transition:all .14s;margin-bottom:1px}
+.nav-item:hover{background:var(--bg);color:var(--ink)}
+.nav-item.active{background:var(--wine-xl);color:var(--wine);font-weight:600}
+.nav-item svg{width:15px;height:15px;flex-shrink:0}
+.badge{margin-left:auto;font-size:10px;padding:1px 6px;border-radius:999px;background:var(--wine-l);color:var(--wine);font-weight:600}
+.badge-warn{background:var(--warn-l);color:var(--warn)}
+.sidebar-foot{padding:12px 14px;border-top:1px solid var(--border2);display:flex;align-items:center;gap:9px}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;font-size:11px;display:grid;place-items:center;flex-shrink:0}
+
+/* Main */
+.main{display:flex;flex-direction:column;overflow:hidden}
+
+/* Page header */
+.page-hd{display:flex;align-items:center;gap:10px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.page-title{font-size:19px;font-weight:700;letter-spacing:-.02em}
+.page-sub{font-size:11.5px;color:var(--muted);margin-top:1px}
+.hd-r{display:flex;align-items:center;gap:7px;margin-left:auto;flex-shrink:0}
+.seg{display:flex;background:var(--border2);border-radius:var(--r-md);padding:3px;gap:1px}
+.seg-btn{padding:5px 11px;border-radius:var(--r);font-size:12px;font-weight:500;color:var(--muted);transition:all .14s}
+.seg-btn.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-xs);font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:var(--r-md);font-size:12.5px;font-weight:500;transition:all .14s;cursor:pointer;white-space:nowrap}
+.btn-ghost{color:var(--ink3);border:1px solid var(--border);background:var(--surface)}
+.btn-ghost:hover{background:var(--bg)}
+.btn-primary{background:var(--wine);color:#fff;border:1px solid var(--wine)}
+.btn-primary:hover{background:var(--wine-d)}
+.btn svg{width:13px;height:13px}
+.cmp-toggle{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--r-md);border:1px solid var(--border);font-size:12px;color:var(--ink3);cursor:pointer;transition:all .14s}
+.cmp-toggle.on{border-color:var(--wine);color:var(--wine);background:var(--wine-xl)}
+.cmp-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* Scrollable body */
+.body{flex:1;overflow-y:auto;overflow-x:hidden}
+
+/* AI strip */
+.ai-strip{display:flex;align-items:flex-start;gap:10px;padding:12px 24px;background:linear-gradient(90deg,var(--wine-xl),transparent 60%);border-bottom:1px solid var(--border);flex-shrink:0}
+.ai-orb{width:30px;height:30px;background:var(--wine);color:#fff;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0;box-shadow:0 3px 8px rgba(205,45,91,.22)}
+.ai-orb svg{width:13px;height:13px}
+.ai-body{flex:1;font-size:13px;line-height:1.58;color:var(--ink3)}
+.ai-body b{color:var(--ink);font-weight:600}
+.ai-hl{background:linear-gradient(transparent 58%,var(--wine-l) 58%);padding:0 1px;cursor:pointer}
+.ai-chips{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.ai-chip{font-size:11px;padding:3px 9px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface);color:var(--ink3);cursor:pointer;transition:all .13s}
+.ai-chip:hover{border-color:var(--wine);color:var(--wine)}
+.ai-chip.p{background:var(--wine);color:#fff;border-color:var(--wine)}
+.ai-chip.p:hover{background:var(--wine-d)}
+.dismiss-btn{color:var(--muted2);padding:3px;border-radius:var(--r);flex-shrink:0;cursor:pointer}
+.dismiss-btn:hover{background:var(--border2)}
+
+/* Canvas */
+.canvas{padding:18px 24px 100px;display:flex;flex-direction:column;gap:14px}
+
+/* ── DRAG-AND-DROP ── */
+.draggable{position:relative;transition:box-shadow .15s,transform .12s;cursor:grab}
+.draggable:active{cursor:grabbing}
+.draggable.dragging{opacity:.55;transform:scale(.98);box-shadow:var(--shadow-drag)!important;z-index:100;cursor:grabbing}
+.draggable.drag-over{outline:2px dashed var(--wine);outline-offset:3px;border-radius:var(--r-xl)}
+/* drag handle in top-left on hover */
+.drag-grip{position:absolute;top:10px;left:12px;display:none;gap:3px;cursor:grab;z-index:5}
+.drag-grip span{width:3px;height:3px;border-radius:50%;background:var(--muted2)}
+.draggable:hover .drag-grip{display:flex;flex-wrap:wrap;width:9px}
+.draggable:active .drag-grip{cursor:grabbing}
+
+/* KPI grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi-card{background:var(--surface);border:2px solid var(--border2);border-radius:var(--r-xl);padding:15px;box-shadow:var(--shadow-card);position:relative;transition:all .15s}
+.kpi-card:hover{border-color:var(--border);box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.kpi-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpi-val{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:3px 0 1px}
+.kpi-prev{font-size:11px;color:var(--muted2)}
+.kpi-delta{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:3px;margin-top:3px}
+.kpi-delta.up{color:var(--good)}.kpi-delta.dn{color:var(--bad)}
+.kpi-icon{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:var(--r-lg);background:var(--wine-xl);display:grid;place-items:center}
+.kpi-icon svg{width:16px;height:16px;color:var(--wine)}
+.kpi-spk{display:flex;align-items:flex-end;gap:1.5px;height:22px;margin-top:8px}
+.spk{border-radius:2px 2px 0 0;flex:1}.spk.c{background:var(--wine);opacity:.85}.spk.p{background:var(--prev);opacity:.3}
+
+/* Chart card */
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:16px 18px;box-shadow:var(--shadow-card)}
+.chart-row{display:grid;gap:12px}
+.r8-4{grid-template-columns:2fr 1fr}
+.r4-8{grid-template-columns:1fr 2fr}
+.r3{grid-template-columns:1fr 1fr 1fr}
+.chart-hd{display:flex;align-items:center;gap:7px;margin-bottom:12px}
+.chart-title{font-size:13px;font-weight:600;color:var(--ink)}
+.chart-sub{font-size:11px;color:var(--muted)}
+.chart-grow{flex:1}
+.legend{display:flex;gap:9px;align-items:center}
+.leg-it{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink3)}
+.leg-dot{width:7px;height:7px;border-radius:50%}
+.leg-cur{width:14px;height:3px;border-radius:2px;background:var(--wine)}
+.leg-prv{width:14px;height:3px;background:repeating-linear-gradient(90deg,var(--prev) 0,var(--prev) 4px,transparent 4px,transparent 8px);border-radius:2px}
+
+/* 3-dot menu */
+.menu-btn{width:26px;height:26px;border-radius:var(--r);display:grid;place-items:center;color:var(--muted2);transition:all .13s;flex-shrink:0}
+.menu-btn:hover{background:var(--bg);color:var(--ink3)}
+.menu-btn svg{width:13px;height:13px}
+.menu-dd{position:absolute;top:46px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-lg);width:170px;z-index:30;overflow:hidden;animation:fd .13s ease;padding:4px 0}
+@keyframes fd{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+.menu-item{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12.5px;color:var(--ink3);cursor:pointer;width:100%}
+.menu-item:hover{background:var(--bg)}
+.menu-item svg{width:12px;height:12px;color:var(--muted)}
+.menu-sep{height:1px;background:var(--border2);margin:3px 0}
+.menu-item.danger{color:var(--bad)}
+
+/* Swatch bars */
+.swatch-row{display:flex;gap:5px}
+.sw-day{flex:1;display:flex;flex-direction:column;align-items:center}
+.sw-name{font-size:9.5px;color:var(--muted);margin-bottom:5px;font-weight:500}
+.sw-bars{display:flex;gap:2px;align-items:flex-end;height:68px}
+.sw-b{width:14px;border-radius:3px 3px 0 0}
+.sw-c{background:var(--wine)}.sw-p{background:var(--prev);opacity:.32}
+.sw-delta{font-size:9px;font-weight:700;margin-top:3px}
+.sw-delta.up{color:var(--good)}.sw-delta.dn{color:var(--bad)}.sw-delta.fl{color:var(--muted)}
+
+/* Heatmap */
+.heat-wrap{display:grid;grid-template-columns:30px repeat(7,1fr);gap:2px}
+.heat-yl{font-size:9px;color:var(--muted);text-align:right;padding-right:3px;display:flex;align-items:center;justify-content:flex-end;font-weight:500}
+.heat-xl{font-size:9px;color:var(--muted);text-align:center;padding-bottom:2px;font-weight:500}
+.heat-cell{aspect-ratio:1;border-radius:3px;cursor:pointer;transition:transform .12s}
+.heat-cell:hover{transform:scale(1.2);z-index:2;position:relative;box-shadow:0 2px 8px rgba(205,45,91,.2)}
+.h0{background:#F9FAFB}.h1{background:#fce7eb}.h2{background:#f9d0d9}.h3{background:#ed7896}.h4{background:#cd2d5b}.h5{background:#ac204a}
+.heat-scale{display:flex;align-items:center;gap:3px;margin-top:6px;font-size:9.5px;color:var(--muted)}
+.heat-sw{width:11px;height:6px;border-radius:2px}
+
+/* Donut */
+.donut-wrap{display:flex;align-items:center;gap:14px}
+.donut-leg{flex:1;display:flex;flex-direction:column;gap:6px}
+.donut-row{display:flex;align-items:center;gap:7px}
+.donut-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.donut-key{flex:1;font-size:12px;color:var(--ink3)}
+.donut-v{font-size:12.5px;font-weight:600}
+.donut-pct{font-size:10.5px;color:var(--muted);width:26px;text-align:right}
+
+/* Labor */
+.labor-svg{width:100%;height:130px;overflow:visible}
+
+/* Funnel */
+.funnel-list{display:flex;flex-direction:column;gap:4px}
+.funnel-row{display:flex;align-items:center;gap:8px}
+.funnel-name{width:88px;font-size:11px;color:var(--ink3);text-align:right;flex-shrink:0}
+.funnel-track{flex:1;height:28px;background:var(--border2);border-radius:var(--r);overflow:hidden}
+.funnel-fill{height:100%;border-radius:var(--r);display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:600;color:#fff}
+.funnel-drop{font-size:9.5px;font-weight:600;color:var(--bad);margin-left:3px}
+
+/* ── COLLAPSIBLE SECTIONS ── */
+.section{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);overflow:hidden;box-shadow:var(--shadow-card)}
+.sec-hd{display:flex;align-items:center;gap:9px;padding:13px 16px;cursor:pointer;transition:background .13s;border-bottom:1px solid transparent;user-select:none}
+.sec-hd:hover{background:var(--bg)}
+.sec-hd.open{border-bottom-color:var(--border2)}
+.sec-title{font-size:13px;font-weight:600;color:var(--ink)}
+.sec-count{font-size:11px;color:var(--muted);background:var(--border2);padding:1px 7px;border-radius:var(--r-full)}
+.sec-badge{font-size:10px;padding:1px 6px;border-radius:var(--r-full);font-weight:600}
+.sec-grow{flex:1}
+.chev{width:15px;height:15px;color:var(--muted);transition:transform .2s;flex-shrink:0}
+.sec-body{display:none;padding:12px 16px}
+.sec-body.open{display:block}
+.sec-desc{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+
+/* Tables */
+.mini-table{width:100%;border-collapse:collapse;font-size:12px}
+.mini-table th{text-align:left;padding:5px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border2)}
+.mini-table td{padding:7px 8px;border-bottom:1px solid var(--border2);color:var(--ink3);vertical-align:middle}
+.mini-table tr:last-child td{border:none}
+.mini-table tr:hover td{background:var(--bg)}
+.tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:var(--r-full);font-weight:600}
+.tag-red{background:var(--wine-xl);color:var(--wine)}
+.tag-green{background:var(--good-l);color:#065f46}
+.tag-warn{background:var(--warn-l);color:#92400e}
+.tag-blue{background:var(--info-l);color:#1e40af}
+.tag-gray{background:var(--border2);color:var(--ink3)}
+.prog{height:5px;background:var(--border2);border-radius:3px;overflow:hidden;width:80px}
+.prog-fill{height:100%;border-radius:3px;background:var(--wine)}
+
+/* Report Generator section */
+.report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.report-tpl{border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 12px;cursor:pointer;transition:all .14s}
+.report-tpl:hover{border-color:var(--wine);background:var(--wine-xl)}
+.report-tpl.sel{border-color:var(--wine);background:var(--wine-xl)}
+.report-tpl .rt-name{font-size:12px;font-weight:600;color:var(--ink);margin-bottom:2px}
+.report-tpl .rt-desc{font-size:10.5px;color:var(--muted);line-height:1.4}
+.report-tpl .rt-ico{width:22px;height:22px;border-radius:var(--r);background:var(--wine-l);display:grid;place-items:center;margin-bottom:6px}
+.report-tpl .rt-ico svg{width:11px;height:11px;color:var(--wine)}
+.report-actions{display:flex;gap:7px;align-items:center}
+.gen-history{margin-top:12px;border-top:1px solid var(--border2);padding-top:10px}
+.gh-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:12px}
+.gh-item:last-child{border:none}
+.gh-ico{width:24px;height:24px;border-radius:var(--r);background:var(--border2);display:grid;place-items:center;flex-shrink:0}
+.gh-ico svg{width:11px;height:11px;color:var(--muted)}
+.gh-name{flex:1;color:var(--ink3)}
+.gh-time{font-size:11px;color:var(--muted2)}
+
+/* Placement annotation label */
+.placement-label{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:var(--r-full);margin-left:8px}
+.pl-top{background:#dbeafe;color:#1e40af}
+.pl-mid{background:#f0fdf4;color:#15803d}
+.pl-bot{background:#fef9c3;color:#92400e}
+
+/* Floating ⌘K */
+.fab{position:fixed;bottom:24px;right:24px;display:flex;align-items:center;gap:7px;padding:10px 16px;background:var(--ink);color:#F9FAFB;border-radius:var(--r-full);font-size:13px;font-weight:600;box-shadow:var(--shadow-xl);cursor:pointer;z-index:40;transition:all .18s}
+.fab:hover{background:#000;transform:translateY(-2px)}
+.fab svg{width:13px;height:13px;opacity:.7}
+.fab .kk{font-size:10px;opacity:.4;margin-left:1px}
+
+/* Command palette */
+#ov{display:none;position:fixed;inset:0;background:rgba(17,24,39,.38);backdrop-filter:blur(4px);z-index:50}
+#cp{display:none;position:fixed;top:11%;left:50%;transform:translateX(-50%);width:min(560px,94vw);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);box-shadow:var(--shadow-xl);z-index:60;overflow:hidden}
+.cp-in-row{display:flex;align-items:center;gap:9px;padding:13px 16px;border-bottom:1px solid var(--border2)}
+.cp-in-row svg{width:15px;height:15px;color:var(--muted);flex-shrink:0}
+.cp-input{flex:1;border:none;outline:none;font-size:14.5px;background:transparent;color:var(--ink)}
+.cp-input::placeholder{color:var(--muted2)}
+.esc-key{font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);padding:2px 5px;background:var(--bg)}
+.cp-body{max-height:340px;overflow-y:auto}
+.cp-sect{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);font-weight:600;padding:9px 14px 3px}
+.cp-item{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;transition:background .11s}
+.cp-item:hover,.cp-item.hi{background:var(--bg)}
+.cp-ic{width:28px;height:28px;border-radius:var(--r-md);background:var(--border2);display:grid;place-items:center;flex-shrink:0}
+.cp-ic svg{width:12px;height:12px;color:var(--ink3)}
+.cp-lbl{font-size:13px;color:var(--ink);flex:1}
+.cp-sub{font-size:11px;color:var(--muted)}
+.cp-ans{padding:12px 16px;background:linear-gradient(90deg,var(--wine-xl),transparent 70%);border-top:1px solid var(--border2)}
+.cp-ans-row{display:flex;gap:10px}
+.cp-ans-ic{width:28px;height:28px;background:var(--wine);color:#fff;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0}
+.cp-ans-ic svg{width:12px;height:12px}
+.cp-ans-text{font-size:13px;line-height:1.6;color:var(--ink3);flex:1}
+.cp-chips{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.cp-chip{font-size:11px;padding:3px 8px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface);color:var(--ink3);cursor:pointer}
+.cp-chip:hover{border-color:var(--wine);color:var(--wine)}
+
+/* Export dropdown */
+.exp-wrap{position:relative}
+.exp-dd{position:absolute;top:calc(100% + 5px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-lg);width:190px;z-index:30;overflow:hidden;padding:4px 0;animation:fd .13s ease}
+.exp-item{display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:12.5px;color:var(--ink3);cursor:pointer;width:100%}
+.exp-item:hover{background:var(--bg)}
+.exp-item svg{width:13px;height:13px}
+.exp-sep{height:1px;background:var(--border2);margin:3px 0}
+
+/* Placeholder chart area */
+.chart-svg{width:100%;height:150px;overflow:visible}
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <button class="tab on" onclick="switchTab(0)">Full page layout <span class="winner">★ implementation target</span></button>
+  <button class="tab" onclick="switchTab(1)">Section placement map</button>
+  <button class="tab" onclick="switchTab(2)">⌘K palette</button>
+</div>
+
+<!-- ═══════════════════════════════ VARIANT A — FULL PAGE ═══════════════════════════════ -->
+<div class="variant on" id="v0">
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">W</div>
+      <div class="logo-text">WineOps AI</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">Analytics</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg>Reports</div>
+      <div class="nav-label">Operations</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Inventory<div class="badge badge-warn">3</div></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v20M18 2v20M2 6h4M2 18h4M20 6h2M20 18h2"/></svg>Orders</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="9" r="4"/><path d="M15.5 15.5a7.5 7.5 0 0 1-13 0"/><circle cx="17" cy="7" r="3"/></svg>Providers</div>
+      <div class="nav-label">Setup</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.1 1.5 3.5.7.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6M10 22h4"/></svg>Get started<div class="badge">1/3</div></div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="avatar">AK</div>
+      <div><div style="font-size:12.5px;font-weight:600">Alex K.</div><div style="font-size:11px;color:var(--muted)">Manager · Marina</div></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- PAGE HEADER -->
+    <div class="page-hd">
+      <div>
+        <div class="page-title">Reports</div>
+        <div class="page-sub">May 5 – May 11 · Marina</div>
+      </div>
+      <div class="hd-r">
+        <div class="seg">
+          <button class="seg-btn" onclick="setSeg(this)">7D</button>
+          <button class="seg-btn on" onclick="setSeg(this)">30D</button>
+          <button class="seg-btn" onclick="setSeg(this)">90D</button>
+        </div>
+        <button class="cmp-toggle on" id="cmpBtn" onclick="this.classList.toggle('on')">
+          <div class="cmp-dot"></div>vs. prev
+        </button>
+        <button class="btn btn-ghost" id="editBtn" onclick="toggleEdit()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit Layout
+        </button>
+        <div class="exp-wrap">
+          <button class="btn btn-primary" onclick="toggleExport()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-left:-2px"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="exp-dd" id="expDd" style="display:none">
+            <button class="exp-item"><svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>CSV</button>
+            <button class="exp-item"><svg viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Excel (.xlsx)</button>
+            <button class="exp-item"><svg viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>PDF</button>
+            <div class="exp-sep"></div>
+            <button class="exp-item"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>Google Sheets</button>
+            <button class="exp-item"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M2 20h.01M7 20v-4"/><path d="M12 20v-8M17 20V8"/></svg>Google Drive</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BODY (scrollable) -->
+    <div class="body">
+
+      <!-- AI strip -->
+      <div class="ai-strip" id="aiStrip">
+        <div class="ai-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+        <div class="ai-body">
+          <b>Revenue up 8.4%</b> vs. last week — driven by <span class="ai-hl">Fri/Sat Marina</span>. Labor at 28.1%, best in 6 weeks. <span class="ai-hl">Tuesday down 14%</span> — kitchen delay, not demand.
+          <div class="ai-chips">
+            <button class="ai-chip p" onclick="openCP('Why did Tuesday revenue drop 14%?')">Why Tuesday dipped →</button>
+            <button class="ai-chip" onclick="openCP('What drove Saturday performance?')">Saturday drivers</button>
+            <button class="ai-chip" onclick="openCP('Which wines should I reorder?')">Reorder alerts</button>
+            <button class="ai-chip" onclick="openCP('Summarize this week for the owner')">Email to owner</button>
+          </div>
+        </div>
+        <button class="dismiss-btn" onclick="document.getElementById('aiStrip').style.display='none'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      <!-- CANVAS -->
+      <div class="canvas" id="canvas">
+
+        <!-- ① KPI ROW — draggable individually -->
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi-card draggable" draggable="true" id="kpi-rev">
+            <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="kpi-label">Net Revenue</div>
+            <div class="kpi-val">$184k</div>
+            <div class="kpi-prev">vs. $170k prev</div>
+            <div class="kpi-delta up">▲ +8.4%</div>
+            <div class="kpi-spk">
+              <div class="spk p" style="height:52%"></div><div class="spk p" style="height:48%"></div><div class="spk p" style="height:58%"></div><div class="spk p" style="height:62%"></div><div class="spk p" style="height:70%"></div><div class="spk p" style="height:78%"></div><div class="spk p" style="height:65%"></div>
+              <div class="spk c" style="height:55%"></div><div class="spk c" style="height:44%"></div><div class="spk c" style="height:60%"></div><div class="spk c" style="height:67%"></div><div class="spk c" style="height:90%"></div><div class="spk c" style="height:100%"></div><div class="spk c" style="height:72%"></div>
+            </div>
+          </div>
+          <div class="kpi-card draggable" draggable="true" id="kpi-ord">
+            <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v20M18 2v20M2 6h4M2 18h4M20 6h2M20 18h2"/></svg></div>
+            <div class="kpi-label">Orders</div>
+            <div class="kpi-val">3,041</div>
+            <div class="kpi-prev">vs. 2,894</div>
+            <div class="kpi-delta up">▲ +5.1%</div>
+          </div>
+          <div class="kpi-card draggable" draggable="true" id="kpi-ticket">
+            <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="kpi-label">Avg Ticket</div>
+            <div class="kpi-val">$60</div>
+            <div class="kpi-prev">vs. $58</div>
+            <div class="kpi-delta up">▲ +3.4%</div>
+          </div>
+          <div class="kpi-card draggable" draggable="true" id="kpi-inv">
+            <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+            <div class="kpi-label">Inventory Value</div>
+            <div class="kpi-val">$42k</div>
+            <div class="kpi-prev">vs. $44k · 3 alerts</div>
+            <div class="kpi-delta dn">▼ −4.5%</div>
+          </div>
+        </div>
+
+        <!-- ② Trend + Heatmap (draggable row) -->
+        <div class="chart-row r8-4 draggable" draggable="true" id="row-trend">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <!-- Trend -->
+          <div class="chart-card" style="position:relative">
+            <div class="chart-hd">
+              <div><div class="chart-title">Revenue by day</div></div>
+              <div class="chart-grow"></div>
+              <div class="legend"><div class="leg-it"><div class="leg-cur"></div>This week</div><div class="leg-it"><div class="leg-prv"></div>Last week</div></div>
+              <button class="menu-btn" onclick="toggleMenu('m1')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              <div class="menu-dd" id="m1" style="display:none">
+                <button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg>Edit</button>
+                <button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/></svg>Change chart type</button>
+                <button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>Export</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Remove</button>
+              </div>
+            </div>
+            <svg class="chart-svg" viewBox="0 0 520 130" preserveAspectRatio="none">
+              <defs><linearGradient id="gW" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#cd2d5b" stop-opacity=".16"/><stop offset="100%" stop-color="#cd2d5b" stop-opacity="0"/></linearGradient></defs>
+              <line stroke="#F3F4F6" stroke-width="1" x1="0" y1="130" x2="520" y2="130"/>
+              <line stroke="#F3F4F6" stroke-width="1" x1="0" y1="87" x2="520" y2="87"/>
+              <line stroke="#F3F4F6" stroke-width="1" x1="0" y1="43" x2="520" y2="43"/>
+              <path fill="none" stroke="#9CA3AF" stroke-width="1.6" stroke-dasharray="5,4" opacity=".55" d="M22,96 L100,104 L190,88 L275,76 L360,58 L450,44 L510,70"/>
+              <path fill="url(#gW)" d="M22,85 L100,93 L190,73 L275,60 L360,18 L450,9 L510,52 L510,130 L22,130 Z"/>
+              <path fill="none" stroke="#cd2d5b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M22,85 L100,93 L190,73 L275,60 L360,18 L450,9 L510,52"/>
+              <circle cx="22" cy="85" r="3.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <circle cx="100" cy="93" r="3.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <circle cx="190" cy="73" r="3.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <circle cx="275" cy="60" r="3.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <circle cx="360" cy="18" r="4.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <circle cx="450" cy="9" r="3.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <circle cx="510" cy="52" r="3.5" fill="#cd2d5b" stroke="white" stroke-width="2"/>
+              <text font-size="9.5" fill="#6B7280" font-family="Plus Jakarta Sans" text-anchor="middle" x="22" y="145">Mon</text>
+              <text font-size="9.5" fill="#6B7280" font-family="Plus Jakarta Sans" text-anchor="middle" x="100" y="145">Tue</text>
+              <text font-size="9.5" fill="#6B7280" font-family="Plus Jakarta Sans" text-anchor="middle" x="190" y="145">Wed</text>
+              <text font-size="9.5" fill="#6B7280" font-family="Plus Jakarta Sans" text-anchor="middle" x="275" y="145">Thu</text>
+              <text font-size="9.5" fill="#6B7280" font-family="Plus Jakarta Sans" text-anchor="middle" x="360" y="145">Fri</text>
+              <text font-size="9.5" fill="#cd2d5b" font-family="Plus Jakarta Sans" text-anchor="middle" x="450" y="145" font-weight="600">Sat ★</text>
+              <text font-size="9.5" fill="#6B7280" font-family="Plus Jakarta Sans" text-anchor="middle" x="510" y="145">Sun</text>
+            </svg>
+            <!-- Day compare swatches -->
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2)">
+              <div style="font-size:10.5px;color:var(--muted);font-weight:500;margin-bottom:7px">Day-by-day vs. prev period</div>
+              <div class="swatch-row">
+                <div class="sw-day"><div class="sw-name">Mon</div><div class="sw-bars"><div class="sw-b sw-p" style="height:45%"></div><div class="sw-b sw-c" style="height:48%"></div></div><div class="sw-delta up">+5%</div></div>
+                <div class="sw-day"><div class="sw-name">Tue</div><div class="sw-bars"><div class="sw-b sw-p" style="height:52%"></div><div class="sw-b sw-c" style="height:44%"></div></div><div class="sw-delta dn">−14%</div></div>
+                <div class="sw-day"><div class="sw-name">Wed</div><div class="sw-bars"><div class="sw-b sw-p" style="height:50%"></div><div class="sw-b sw-c" style="height:55%"></div></div><div class="sw-delta up">+10%</div></div>
+                <div class="sw-day"><div class="sw-name">Thu</div><div class="sw-bars"><div class="sw-b sw-p" style="height:60%"></div><div class="sw-b sw-c" style="height:62%"></div></div><div class="sw-delta up">+3%</div></div>
+                <div class="sw-day"><div class="sw-name">Fri</div><div class="sw-bars"><div class="sw-b sw-p" style="height:68%"></div><div class="sw-b sw-c" style="height:90%"></div></div><div class="sw-delta up">+32%</div></div>
+                <div class="sw-day"><div class="sw-name">Sat</div><div class="sw-bars"><div class="sw-b sw-p" style="height:72%"></div><div class="sw-b sw-c" style="height:100%"></div></div><div class="sw-delta up">+39%</div></div>
+                <div class="sw-day"><div class="sw-name">Sun</div><div class="sw-bars"><div class="sw-b sw-p" style="height:58%"></div><div class="sw-b sw-c" style="height:62%"></div></div><div class="sw-delta up">+7%</div></div>
+              </div>
+            </div>
+          </div>
+          <!-- Heatmap -->
+          <div class="chart-card" style="position:relative">
+            <div class="chart-hd">
+              <div class="chart-title">Busy hours</div>
+              <div class="chart-sub" style="margin-left:5px">covers · hr × day</div>
+              <div class="chart-grow"></div>
+              <button class="menu-btn" onclick="toggleMenu('m2')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              <div class="menu-dd" id="m2" style="display:none"><button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>Export</button></div>
+            </div>
+            <div class="heat-wrap">
+              <div></div>
+              <div class="heat-xl">M</div><div class="heat-xl">T</div><div class="heat-xl">W</div><div class="heat-xl">T</div><div class="heat-xl">F</div><div class="heat-xl">S</div><div class="heat-xl">S</div>
+              <script>(function(){var hrs=['12p','1p','2p','5p','6p','7p','8p','9p','10p'],data=[[1,1,1,1,2,2,1],[1,1,1,1,2,2,1],[0,0,0,0,1,1,0],[2,2,2,2,3,4,3],[3,3,3,2,4,5,4],[4,3,3,3,5,5,4],[3,3,3,2,5,5,4],[2,2,2,1,4,5,3],[1,1,1,0,2,3,2]],html='';data.forEach(function(r,i){html+='<div class="heat-yl">'+hrs[i]+'</div>';r.forEach(function(v){html+='<div class="heat-cell h'+v+'"></div>';});});document.write(html);})()</script>
+            </div>
+            <div class="heat-scale"><span>Low</span><div class="heat-sw h1"></div><div class="heat-sw h2"></div><div class="heat-sw h3"></div><div class="heat-sw h4"></div><div class="heat-sw h5"></div><span>Peak</span></div>
+          </div>
+        </div>
+
+        <!-- ③ Donut + Labor overlay (draggable) -->
+        <div class="chart-row r4-8 draggable" draggable="true" id="row-donut">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <!-- Donut -->
+          <div class="chart-card" style="position:relative">
+            <div class="chart-hd">
+              <div class="chart-title">Channel mix</div>
+              <div class="chart-grow"></div>
+              <button class="menu-btn" onclick="toggleMenu('m3')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              <div class="menu-dd" id="m3" style="display:none"><button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/></svg>Change type</button><button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>Export</button></div>
+            </div>
+            <div class="donut-wrap">
+              <svg width="110" height="110" viewBox="0 0 110 110" style="flex-shrink:0">
+                <circle cx="55" cy="55" r="40" fill="none" stroke="var(--border2)" stroke-width="18"/>
+                <circle cx="55" cy="55" r="40" fill="none" stroke="#cd2d5b" stroke-width="18" stroke-dasharray="120.4 131.5" stroke-dashoffset="0" transform="rotate(-90 55 55)"/>
+                <circle cx="55" cy="55" r="40" fill="none" stroke="#ed7896" stroke-width="18" stroke-dasharray="75.3 176.6" stroke-dashoffset="-120.4" transform="rotate(-90 55 55)"/>
+                <circle cx="55" cy="55" r="40" fill="none" stroke="#f9d0d9" stroke-width="18" stroke-dasharray="35 196.9" stroke-dashoffset="-195.7" transform="rotate(-90 55 55)"/>
+                <circle cx="55" cy="55" r="40" fill="none" stroke="#fce7eb" stroke-width="18" stroke-dasharray="20.4 211.5" stroke-dashoffset="-230.7" transform="rotate(-90 55 55)"/>
+                <text text-anchor="middle" dominant-baseline="middle" x="55" y="52" font-size="13" font-weight="700" fill="var(--ink)" font-family="Plus Jakarta Sans">$184k</text>
+                <text text-anchor="middle" dominant-baseline="middle" x="55" y="64" font-size="8.5" fill="var(--muted)" font-family="Plus Jakarta Sans">total</text>
+              </svg>
+              <div class="donut-leg">
+                <div class="donut-row"><div class="donut-dot" style="background:#cd2d5b"></div><span class="donut-key">Dine-in</span><span class="donut-v">$88k</span><span class="donut-pct">48%</span></div>
+                <div class="donut-row"><div class="donut-dot" style="background:#ed7896"></div><span class="donut-key">Delivery</span><span class="donut-v">$55k</span><span class="donut-pct">30%</span></div>
+                <div class="donut-row"><div class="donut-dot" style="background:#f9d0d9"></div><span class="donut-key">Takeout</span><span class="donut-v">$26k</span><span class="donut-pct">14%</span></div>
+                <div class="donut-row"><div class="donut-dot" style="background:#fce7eb"></div><span class="donut-key">Bar</span><span class="donut-v">$15k</span><span class="donut-pct">8%</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Labor overlay -->
+          <div class="chart-card" style="position:relative">
+            <div class="chart-hd">
+              <div class="chart-title">Revenue vs. Labor %</div>
+              <div class="chart-sub" style="margin-left:6px">bars = revenue · line = labor %</div>
+              <div class="chart-grow"></div>
+              <div class="legend">
+                <div class="leg-it"><div style="width:12px;height:8px;border-radius:2px;background:var(--wine-l);border:1px solid var(--wine)"></div>Rev</div>
+                <div class="leg-it"><div style="width:14px;height:2.5px;border-radius:2px;background:var(--warn)"></div>Labor</div>
+              </div>
+              <button class="menu-btn" onclick="toggleMenu('m4')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              <div class="menu-dd" id="m4" style="display:none"><button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>Export</button></div>
+            </div>
+            <svg class="labor-svg" viewBox="0 0 500 120" preserveAspectRatio="none">
+              <line stroke="#F3F4F6" x1="0" y1="120" x2="500" y2="120"/><line stroke="#F3F4F6" x1="0" y1="80" x2="500" y2="80"/><line stroke="#F3F4F6" x1="0" y1="40" x2="500" y2="40"/>
+              <rect x="8" y="72" width="40" height="48" fill="var(--wine-l)" stroke="var(--wine)" stroke-width="0.5" rx="3"/>
+              <rect x="82" y="78" width="40" height="42" fill="var(--wine-l)" stroke="var(--wine)" stroke-width="0.5" rx="3"/>
+              <rect x="162" y="66" width="40" height="54" fill="var(--wine-l)" stroke="var(--wine)" stroke-width="0.5" rx="3"/>
+              <rect x="242" y="62" width="40" height="58" fill="var(--wine-l)" stroke="var(--wine)" stroke-width="0.5" rx="3"/>
+              <rect x="320" y="16" width="40" height="104" fill="var(--wine)" rx="3"/>
+              <rect x="398" y="8" width="40" height="112" fill="var(--wine-d)" rx="3"/>
+              <rect x="462" y="54" width="30" height="66" fill="var(--wine-l)" stroke="var(--wine)" stroke-width="0.5" rx="3"/>
+              <path fill="none" stroke="var(--warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M28,46 L102,58 L182,40 L262,50 L340,39 L418,37 L477,44"/>
+              <circle cx="28" cy="46" r="3" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <circle cx="102" cy="58" r="3" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <circle cx="182" cy="40" r="3" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <circle cx="262" cy="50" r="3" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <circle cx="340" cy="39" r="3" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <circle cx="418" cy="37" r="4" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <circle cx="477" cy="44" r="3" fill="var(--warn)" stroke="white" stroke-width="1.8"/>
+              <text font-size="8.5" fill="var(--warn)" font-family="Plus Jakarta Sans" x="486" y="40" font-weight="600">32%</text>
+              <text font-size="8.5" fill="var(--muted)" font-family="Plus Jakarta Sans" x="486" y="84">25%</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="28" y="136">Mon</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="102" y="136">Tue</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="182" y="136">Wed</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="262" y="136">Thu</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="340" y="136">Fri</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="418" y="136">Sat</text>
+              <text font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans" text-anchor="middle" x="477" y="136">Sun</text>
+            </svg>
+          </div>
+        </div>
+
+        <!-- ④ Funnel + Wine type dist (draggable) -->
+        <div class="chart-row r4-8 draggable" draggable="true" id="row-funnel">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <!-- Funnel -->
+          <div class="chart-card" style="position:relative">
+            <div class="chart-hd"><div class="chart-title">Order funnel</div><div class="chart-grow"></div><button class="menu-btn" onclick="toggleMenu('m5')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button><div class="menu-dd" id="m5" style="display:none"><button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>Export</button></div></div>
+            <div class="funnel-list">
+              <div class="funnel-row"><div class="funnel-name">Browsed</div><div class="funnel-track"><div class="funnel-fill" style="width:100%;background:var(--wine)">4,820</div></div></div>
+              <div class="funnel-row"><div class="funnel-name">Added item</div><div class="funnel-track"><div class="funnel-fill" style="width:82%;background:#d94068">3,953<span class="funnel-drop">−18%</span></div></div></div>
+              <div class="funnel-row"><div class="funnel-name">Checkout</div><div class="funnel-track"><div class="funnel-fill" style="width:72%;background:#e45478">3,470<span class="funnel-drop">−12%</span></div></div></div>
+              <div class="funnel-row"><div class="funnel-name">Completed</div><div class="funnel-track"><div class="funnel-fill" style="width:63%;background:#ed7896">3,041<span class="funnel-drop">−12%</span></div></div></div>
+              <div class="funnel-row"><div class="funnel-name">Reordered</div><div class="funnel-track"><div class="funnel-fill" style="width:38%;background:var(--wine-xl);color:var(--wine)">1,836 <span style="font-size:9px;color:var(--good)">+repeat</span></div></div></div>
+            </div>
+          </div>
+          <!-- Wine consumption analytics (existing — now properly surfaced) -->
+          <div class="chart-card" style="position:relative">
+            <div class="chart-hd"><div class="chart-title">Wine consumption analytics</div><div class="chart-sub" style="margin-left:6px">type breakdown · velocity</div><div class="chart-grow"></div><button class="menu-btn" onclick="toggleMenu('m6')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button><div class="menu-dd" id="m6" style="display:none"><button class="menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>Export</button></div></div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:9px"><div style="width:56px;font-size:11.5px;color:var(--ink3);font-weight:500">Red</div><div style="flex:1;height:22px;background:var(--border2);border-radius:var(--r);overflow:hidden"><div style="width:52%;height:100%;background:#7f1d1d;border-radius:var(--r);display:flex;align-items:center;padding:0 7px;font-size:10.5px;font-weight:600;color:#fff">52% · 1,581 btl</div></div><div style="width:34px;font-size:10.5px;color:var(--muted);text-align:right">2.3/d</div></div>
+              <div style="display:flex;align-items:center;gap:9px"><div style="width:56px;font-size:11.5px;color:var(--ink3);font-weight:500">White</div><div style="flex:1;height:22px;background:var(--border2);border-radius:var(--r);overflow:hidden"><div style="width:28%;height:100%;background:#d97706;border-radius:var(--r);display:flex;align-items:center;padding:0 7px;font-size:10.5px;font-weight:600;color:#fff">28% · 852</div></div><div style="width:34px;font-size:10.5px;color:var(--muted);text-align:right">1.2/d</div></div>
+              <div style="display:flex;align-items:center;gap:9px"><div style="width:56px;font-size:11.5px;color:var(--ink3);font-weight:500">Sparkling</div><div style="flex:1;height:22px;background:var(--border2);border-radius:var(--r);overflow:hidden"><div style="width:12%;height:100%;background:#1d4ed8;border-radius:var(--r);display:flex;align-items:center;padding:0 7px;font-size:10.5px;font-weight:600;color:#fff">12%</div></div><div style="width:34px;font-size:10.5px;color:var(--muted);text-align:right">0.5/d</div></div>
+              <div style="display:flex;align-items:center;gap:9px"><div style="width:56px;font-size:11.5px;color:var(--ink3);font-weight:500">Rosé</div><div style="flex:1;height:22px;background:var(--border2);border-radius:var(--r);overflow:hidden"><div style="width:8%;height:100%;background:#db2777;border-radius:var(--r);display:flex;align-items:center;padding:0 7px;font-size:10.5px;font-weight:600;color:#fff">8%</div></div><div style="width:34px;font-size:10.5px;color:var(--muted);text-align:right">0.3/d</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ COLLAPSIBLE DATA SECTIONS — all draggable, open by default if important ═══════ -->
+
+        <!-- ⑤ Daily Breakdown — open -->
+        <div class="section draggable" draggable="true" id="sec-daily">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="sec-hd open" onclick="toggleSec('daily')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--wine)" stroke-width="2" width="15" height="15"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <div class="sec-title">Daily breakdown</div>
+            <div class="sec-count">7 days</div>
+            <div class="sec-grow"></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="daily-chev" style="transform:rotate(180deg)"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="sec-body open" id="daily-body">
+            <table class="mini-table">
+              <thead><tr><th>Date</th><th>Revenue</th><th>Orders</th><th>Bottles</th><th>Avg ticket</th><th>vs. prev</th><th>Red</th><th>White</th><th>Sparkling</th></tr></thead>
+              <tbody>
+                <tr><td>Mon May 5</td><td>$22.4k</td><td>374</td><td>420</td><td>$60</td><td><span class="tag tag-green">+5%</span></td><td>218</td><td>117</td><td>50</td></tr>
+                <tr><td>Tue May 6</td><td>$18.9k</td><td>315</td><td>340</td><td>$60</td><td><span class="tag" style="background:var(--bad-l);color:var(--bad)">−14%</span></td><td>176</td><td>95</td><td>41</td></tr>
+                <tr><td>Wed May 7</td><td>$24.1k</td><td>401</td><td>460</td><td>$60</td><td><span class="tag tag-green">+10%</span></td><td>239</td><td>128</td><td>55</td></tr>
+                <tr><td>Thu May 8</td><td>$25.6k</td><td>427</td><td>490</td><td>$60</td><td><span class="tag tag-green">+3%</span></td><td>254</td><td>137</td><td>58</td></tr>
+                <tr><td>Fri May 9</td><td>$28.4k</td><td>474</td><td>560</td><td>$60</td><td><span class="tag tag-green">+32%</span></td><td>291</td><td>156</td><td>67</td></tr>
+                <tr><td>Sat May 10</td><td>$31.2k</td><td>520</td><td>620</td><td>$60</td><td><span class="tag tag-green">+39%</span></td><td>322</td><td>173</td><td>74</td></tr>
+                <tr><td>Sun May 11</td><td>$23.4k</td><td>390</td><td>440</td><td>$60</td><td><span class="tag tag-green">+7%</span></td><td>228</td><td>123</td><td>53</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ⑥ Purchased Wines — collapsed -->
+        <div class="section draggable" draggable="true" id="sec-wines">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="sec-hd" onclick="toggleSec('wines')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--wine)" stroke-width="2" width="15" height="15"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <div class="sec-title">Purchased wines</div>
+            <div class="sec-count">28 items</div>
+            <div class="sec-grow"></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="wines-chev"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="sec-body" id="wines-body">
+            <table class="mini-table">
+              <thead><tr><th>Wine</th><th>Type</th><th>Supplier</th><th>Qty</th><th>Unit cost</th><th>Total</th><th>Menu price</th><th>Margin</th></tr></thead>
+              <tbody>
+                <tr><td>Barolo '21 · Gaja</td><td><span class="tag tag-red">Red</span></td><td>VinMaster</td><td>2 cs</td><td>$42</td><td>$1,008</td><td>$125</td><td>66%</td></tr>
+                <tr><td>Sancerre '23 · Vacheron</td><td><span class="tag tag-warn">White</span></td><td>Statewide</td><td>1 cs</td><td>$38</td><td>$456</td><td>$95</td><td>60%</td></tr>
+                <tr><td>Dom Pérignon '15</td><td><span class="tag tag-blue">Sparkling</span></td><td>Premier</td><td>6 btl</td><td>$185</td><td>$1,110</td><td>$480</td><td>61%</td></tr>
+                <tr><td>Malbec Reserve '22</td><td><span class="tag tag-red">Red</span></td><td>VinMaster</td><td>1 cs</td><td>$28</td><td>$336</td><td>$75</td><td>63%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ⑦ Monthly Stock Reconciliation — collapsed -->
+        <div class="section draggable" draggable="true" id="sec-recon">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="sec-hd" onclick="toggleSec('recon')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--wine)" stroke-width="2" width="15" height="15"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
+            <div class="sec-title">Monthly stock reconciliation</div>
+            <div class="sec-count">Apr 2026</div>
+            <div class="sec-grow"></div>
+            <span class="tag" style="background:var(--warn-l);color:#92400e;font-size:9.5px">2 variances</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="recon-chev" style="margin-left:6px"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="sec-body" id="recon-body">
+            <div class="sec-desc">Compare expected stock (opening inventory + purchases − sales) against physical count. Variances flag potential breakage, theft, or counting errors.</div>
+            <table class="mini-table">
+              <thead><tr><th>Wine</th><th>Opening</th><th>Purchased</th><th>Sold</th><th>Expected</th><th>Physical</th><th>Variance</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Barolo '21 · Gaja</td><td>24</td><td>24</td><td>142</td><td>−94</td><td>2</td><td style="color:var(--bad);font-weight:600">−96</td><td><span class="tag" style="background:var(--bad-l);color:var(--bad)">Review</span></td></tr>
+                <tr><td>Sancerre '23 · Vacheron</td><td>18</td><td>12</td><td>98</td><td>−68</td><td>4</td><td style="color:var(--muted)">−72</td><td><span class="tag tag-warn">Low stock</span></td></tr>
+                <tr><td>Dom Pérignon '15</td><td>12</td><td>6</td><td>44</td><td>−26</td><td>−26</td><td style="color:var(--good);font-weight:600">0</td><td><span class="tag tag-green">OK</span></td></tr>
+                <tr><td>Malbec Reserve '22</td><td>20</td><td>12</td><td>31</td><td>1</td><td>0</td><td style="color:var(--warn);font-weight:600">−1</td><td><span class="tag tag-warn">Variance</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ⑧ Digital Check Scanner — collapsed -->
+        <div class="section draggable" draggable="true" id="sec-check">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="sec-hd" onclick="toggleSec('check')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--wine)" stroke-width="2" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <div class="sec-title">Digital check scanner</div>
+            <div class="sec-count">5 scans</div>
+            <div class="sec-grow"></div>
+            <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border);border-radius:var(--r-full);color:var(--ink3);background:var(--surface);cursor:pointer;display:flex;align-items:center;gap:4px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload check
+            </button>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="check-chev" style="margin-left:6px"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="sec-body" id="check-body">
+            <div class="sec-desc">Upload guest checks or invoices — AI extracts line items and cross-references wines against your inventory and pricing.</div>
+            <table class="mini-table">
+              <thead><tr><th>Date</th><th>File</th><th>Amount</th><th>Status</th><th>Matched wines</th><th>Discrepancy</th></tr></thead>
+              <tbody>
+                <tr><td>May 10</td><td>check_0510.pdf</td><td>$2,340</td><td><span class="tag tag-green">Matched</span></td><td>12 / 12</td><td>—</td></tr>
+                <tr><td>May 9</td><td>check_0509.pdf</td><td>$1,890</td><td><span class="tag tag-warn">Partial</span></td><td>8 / 10</td><td>$42 over</td></tr>
+                <tr><td>May 8</td><td>invoice_0508.pdf</td><td>$4,120</td><td><span class="tag tag-green">Matched</span></td><td>18 / 18</td><td>—</td></tr>
+                <tr><td>May 7</td><td>check_0507.pdf</td><td>$980</td><td><span class="tag tag-green">Matched</span></td><td>5 / 5</td><td>—</td></tr>
+                <tr><td>May 6</td><td>invoice_0506.pdf</td><td>$3,670</td><td><span class="tag" style="background:var(--bad-l);color:var(--bad)">Error</span></td><td>0 / 14</td><td>Re-upload</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ⑨ Report Generator — collapsed, last (action tool, not data view) -->
+        <div class="section draggable" draggable="true" id="sec-rptgen">
+          <div class="drag-grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="sec-hd" onclick="toggleSec('rptgen')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--wine)" stroke-width="2" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 12v6M9 15l3 3 3-3"/></svg>
+            <div class="sec-title">Report generator</div>
+            <div class="sec-count">6 templates</div>
+            <div class="sec-grow"></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="rptgen-chev"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="sec-body" id="rptgen-body">
+            <div class="sec-desc">Pick a template, choose your date range, and generate a formatted report — PDF, Excel, or CSV.</div>
+            <div class="report-grid">
+              <div class="report-tpl sel" id="tpl-weekly" onclick="selectTpl('weekly')">
+                <div class="rt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div>
+                <div class="rt-name">Weekly Summary</div>
+                <div class="rt-desc">Revenue, inventory, top performers · 5 pages</div>
+              </div>
+              <div class="report-tpl" id="tpl-monthly" onclick="selectTpl('monthly')">
+                <div class="rt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+                <div class="rt-name">Monthly Financial</div>
+                <div class="rt-desc">P&L, cost analysis, trends · 8 pages</div>
+              </div>
+              <div class="report-tpl" id="tpl-inventory" onclick="selectTpl('inventory')">
+                <div class="rt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+                <div class="rt-name">Inventory Status</div>
+                <div class="rt-desc">Stock levels, low-stock alerts · 3 pages</div>
+              </div>
+              <div class="report-tpl" id="tpl-purchase" onclick="selectTpl('purchase')">
+                <div class="rt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg></div>
+                <div class="rt-name">Purchase Order Report</div>
+                <div class="rt-desc">All purchases by supplier · 4 pages</div>
+              </div>
+              <div class="report-tpl" id="tpl-ai" onclick="selectTpl('ai')">
+                <div class="rt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+                <div class="rt-name">AI Insights Report</div>
+                <div class="rt-desc">AI-generated narrative summary · 2 pages</div>
+              </div>
+              <div class="report-tpl" id="tpl-custom" onclick="selectTpl('custom')">
+                <div class="rt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></div>
+                <div class="rt-name">Custom Report</div>
+                <div class="rt-desc">Choose your own sections</div>
+              </div>
+            </div>
+            <div class="report-actions">
+              <button class="btn btn-primary" onclick="this.textContent='Generating…';setTimeout(()=>this.textContent='Generate Report',1600)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12v6M9 15l3 3 3-3"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                Generate Report
+              </button>
+              <button class="btn btn-ghost">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                Schedule delivery
+              </button>
+              <span style="font-size:11.5px;color:var(--muted);margin-left:4px">PDF · Excel · CSV · Email</span>
+            </div>
+            <div class="gen-history">
+              <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Recent reports</div>
+              <div class="gh-item"><div class="gh-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div><div class="gh-name">Weekly Summary · May 5–11</div><span class="tag tag-green" style="font-size:9.5px">PDF</span><div class="gh-time">Today 6:14am</div><button style="margin-left:6px;font-size:11px;color:var(--wine);cursor:pointer">Download</button></div>
+              <div class="gh-item"><div class="gh-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div><div class="gh-name">Monthly Financial · April 2026</div><span class="tag tag-blue" style="font-size:9.5px">Excel</span><div class="gh-time">May 1</div><button style="margin-left:6px;font-size:11px;color:var(--wine);cursor:pointer">Download</button></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /canvas -->
+    </div><!-- /body -->
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════ VARIANT B — PLACEMENT MAP ═══════════════════════════════ -->
+<div class="variant" id="v1">
+<div style="max-width:800px;margin:0 auto;padding:28px 24px">
+  <div style="font-size:17px;font-weight:700;margin-bottom:4px">Section placement rationale</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Minimal code change — sections slot into existing &lt;canvas&gt; flex column. No new route or page needed.</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--wine-xl);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--wine)">①</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">KPI Cards<span class="placement-label pl-top">Top — pinned</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px">Already first. Draggable individually within the 4-column grid. Summary numbers that tell you if today was good or bad.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--wine-xl);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--wine)">②</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Revenue trend + Heatmap<span class="placement-label pl-top">Row 1</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px">8/4 split. Trend answers "how did this week go?", heatmap answers "when are we busiest?". Together they set the operational context.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--wine-xl);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--wine)">③</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Channel donut + Labor overlay<span class="placement-label pl-top">Row 2</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px">4/8 split. Donut is compact and answers "where did revenue come from?", labor overlay answers "did we staff efficiently?". Managers read these together.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--wine-xl);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--wine)">④</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Order funnel + Wine consumption analytics<span class="placement-label pl-mid">Row 3</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px">4/8 split. Funnel = guest behavior. Consumption analytics = wine velocity by type. Both need context from rows 1–2 first. <b>Wine consumption analytics is the existing WineDistributionChart surfaced as a proper card.</b></div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--info-l);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--info)">⑤</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Daily breakdown<span class="placement-label pl-mid">Collapsible · open by default</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px"><b>Already exists as DailyBreakdownTable.</b> Moved up (before purchased wines) so the raw day-by-day numbers are right below the visual trend. Add "vs. prev" column — tiny delta.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--info-l);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--info)">⑥</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Purchased wines<span class="placement-label pl-mid">Collapsible · collapsed</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px"><b>Already exists as PurchasedWinesTable.</b> No change needed — just reorder below Daily Breakdown. Add Margin column if not already shown.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--warn-l);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--warn)">⑦</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Monthly stock reconciliation<span class="placement-label pl-bot">Collapsible · collapsed · NEW</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px"><b>New section.</b> Computes expected stock = opening + purchases − sales, compares against physical count. Badge shows variance count. Collapsed by default — managers open it monthly.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--good-l);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--good)">⑧</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Digital check scanner<span class="placement-label pl-bot">Collapsible · collapsed</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px"><b>Already exists as CheckScannerSection.</b> Keep as-is but move below Reconciliation. "Upload check" button stays in the section header so it's always accessible even when collapsed.</div></div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+      <div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--border2);display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--ink3)">⑨</div>
+      <div><div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Report generator<span class="placement-label pl-bot">Collapsible · collapsed · last</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px"><b>Already exists as &lt;ReportGenerator&gt;.</b> Move to the very bottom — it's an action tool, not a data view. Managers scroll here intentionally to generate a report, not accidentally.</div></div>
+    </div>
+
+    <div style="background:var(--wine-xl);border:1px solid var(--wine-l);border-radius:var(--r-xl);padding:14px 16px;margin-top:6px">
+      <div style="font-size:12.5px;font-weight:600;color:var(--wine);margin-bottom:6px">Drag-and-drop implementation note</div>
+      <div style="font-size:12px;color:var(--ink3);line-height:1.6">
+        Rows ②–④ and sections ⑤–⑨ all use the HTML5 Drag API (<code>draggable="true"</code>, <code>dragstart</code>/<code>dragover</code>/<code>drop</code>). Each block gets an ID stored in the existing <code>dashboardBlocks</code> state array — reordering just updates the array, which is already persisted to user preferences via <code>serializeDashboardBlocks</code>. <b>Zero new state, zero new storage.</b> The 6-dot grip icon appears on hover at top-left of each draggable block.
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════ VARIANT C — ⌘K PALETTE ═══════════════════════════════ -->
+<div class="variant" id="v2" style="min-height:calc(100vh - 42px);background:rgba(17,24,39,.3);display:flex;align-items:flex-start;justify-content:center;padding-top:80px">
+  <div style="width:min(560px,94vw);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);box-shadow:var(--shadow-xl);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:9px;padding:13px 16px;border-bottom:1px solid var(--border2)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" width="15" height="15"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input style="flex:1;border:none;outline:none;font-size:14.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:transparent" value="Why did Tuesday revenue drop 14%?" readonly/>
+      <span style="font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);padding:2px 5px;background:var(--bg)">esc</span>
+    </div>
+    <div style="padding:12px 16px;background:linear-gradient(90deg,var(--wine-xl),transparent 65%);border-bottom:1px solid var(--border2)">
+      <div style="display:flex;gap:10px">
+        <div style="width:28px;height:28px;background:var(--wine);color:#fff;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+        <div style="font-size:13px;line-height:1.6;color:var(--ink3)"><b style="color:var(--ink)">Tuesday was down 14%</b> vs. prior Tuesday. Kitchen ticket times at Marina spiked to 14 min between 7–9pm, slowing 3 table turns. Prep bottleneck on <span style="background:linear-gradient(transparent 58%,var(--wine-l) 58%)">truffle pasta</span> — not a demand problem.
+          <div style="display:flex;gap:5px;margin-top:6px"><button style="font-size:11px;padding:3px 8px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface);color:var(--ink3);cursor:pointer">Drill into Tuesday →</button><button style="font-size:11px;padding:3px 8px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface);color:var(--ink3);cursor:pointer">Compare all Tuesdays</button><button style="font-size:11px;padding:3px 8px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface);color:var(--ink3);cursor:pointer">Pin insight</button></div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);font-weight:600;padding:9px 14px 3px;border-top:1px solid var(--border2)">Jump to section</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--bg)"><div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--border2);display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="2" width="12" height="12"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div><div><div style="font-size:13px;color:var(--ink)">Revenue trend</div><div style="font-size:11px;color:var(--muted)">Chart · Row 1</div></div></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px"><div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--border2);display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="2" width="12" height="12"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M8 8h1M12 8h1M16 8h1"/></svg></div><div><div style="font-size:13px;color:var(--ink)">Busy hours heatmap</div><div style="font-size:11px;color:var(--muted)">Chart · Row 1</div></div></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px"><div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--border2);display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="2" width="12" height="12"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg></div><div><div style="font-size:13px;color:var(--ink)">Monthly stock reconciliation</div><div style="font-size:11px;color:var(--muted)">Section · 2 variances</div></div></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border2)"><div style="width:28px;height:28px;border-radius:var(--r-md);background:var(--border2);display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="2" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div><div><div style="font-size:13px;color:var(--ink)">Generate report</div><div style="font-size:11px;color:var(--muted)">Report generator · bottom</div></div></div>
+    <div style="padding:9px 14px;display:flex;justify-content:space-between"><div style="font-size:11px;color:var(--muted2)">↑↓ navigate · ↵ select · esc close</div><div style="font-size:11px;color:var(--muted2)">Powered by WineOps AI</div></div>
+  </div>
+</div>
+
+<!-- Floating ⌘K -->
+<div class="fab" id="fab" onclick="openCP()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+  Ask anything <span class="kk">⌘K</span>
+</div>
+
+<!-- Command palette -->
+<div id="ov" onclick="closeCP()"></div>
+<div id="cp">
+  <div class="cp-in-row">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input class="cp-input" id="cpInput" placeholder='Ask anything or jump to a section…' onkeydown="cpKey(event)"/>
+    <span class="esc-key">esc</span>
+  </div>
+  <div class="cp-body">
+    <div class="cp-sect">Ask the AI</div>
+    <div class="cp-item hi" onclick="cpAsk('Why did Tuesday revenue drop 14%?')"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div><div><div class="cp-lbl">Why did Tuesday revenue drop 14%?</div><div class="cp-sub">AI explanation</div></div></div>
+    <div class="cp-item" onclick="cpAsk('What drove Saturday performance?')"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div><div><div class="cp-lbl">What drove Saturday performance?</div><div class="cp-sub">AI explanation</div></div></div>
+    <div class="cp-item" onclick="cpAsk('Which wines should I reorder?')"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div><div class="cp-lbl">Which wines should I reorder?</div><div class="cp-sub">Inventory AI</div></div></div>
+    <div class="cp-item" onclick="cpAsk('Summarize this week for the owner')"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div><div><div class="cp-lbl">Summarize this week for the owner</div><div class="cp-sub">AI summary · email</div></div></div>
+    <div class="cp-sect" style="border-top:1px solid var(--border2)">Jump to section</div>
+    <div class="cp-item" onclick="closeCP();document.getElementById('sec-daily').scrollIntoView({behavior:'smooth'})"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div><div class="cp-lbl">Daily breakdown</div><div class="cp-sub">Section · open</div></div></div>
+    <div class="cp-item" onclick="closeCP();document.getElementById('sec-recon').scrollIntoView({behavior:'smooth'})"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18"/></svg></div><div><div class="cp-lbl">Monthly stock reconciliation</div><div class="cp-sub">Section · 2 variances</div></div></div>
+    <div class="cp-item" onclick="closeCP();document.getElementById('sec-check').scrollIntoView({behavior:'smooth'})"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div><div><div class="cp-lbl">Digital check scanner</div><div class="cp-sub">Section · upload or view</div></div></div>
+    <div class="cp-item" onclick="closeCP();document.getElementById('sec-rptgen').scrollIntoView({behavior:'smooth'})"><div class="cp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12v6M9 15l3 3 3-3"/></svg></div><div><div class="cp-lbl">Generate a report</div><div class="cp-sub">Report generator · bottom</div></div></div>
+  </div>
+  <div class="cp-ans" id="cpAns" style="display:none">
+    <div class="cp-ans-row">
+      <div class="cp-ans-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div><div class="cp-ans-text" id="cpAnsText"></div>
+      <div class="cp-chips"><button class="cp-chip">Drill in →</button><button class="cp-chip">Pin</button><button class="cp-chip" onclick="closeCP()">Dismiss</button></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var AI_ANS={'Why did Tuesday revenue drop 14%?':'Tuesday was down 14% vs. prior Tuesday. Kitchen ticket times at Marina spiked to 14 min between 7–9pm, slowing 3 table turns. Prep bottleneck on truffle pasta — not a demand problem.','What drove Saturday performance?':'Saturday hit $31.2k — up 39% vs. last Saturday. Marina fully booked. Barolo bottle sales up 40% after the sommelier featured it. Outdoor seating at full capacity.','Which wines should I reorder?':'3 wines below par: Barolo \'21 (2 bottles), Sancerre \'23 (4 bottles), Malbec Reserve (1 case). Barolo is your top Saturday seller — order 1 case before the weekend.','Summarize this week for the owner':'Week of May 5–11: revenue up 8.4% to $184k. Labor improved to 28.1% (best in 6 weeks). Top performer: Marina Fri/Sat. Inventory alert: 3 wines at low stock. Recommendation: reorder Barolo.'};
+
+function switchTab(i){
+  document.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('on',i===j)});
+  document.querySelectorAll('.variant').forEach(function(v,j){v.classList.toggle('on',i===j)});
+  document.getElementById('fab').style.display=i===0?'flex':'none';
+}
+function setSeg(b){document.querySelectorAll('.seg-btn').forEach(function(x){x.classList.remove('on')});b.classList.add('on')}
+function toggleEdit(){var b=document.getElementById('editBtn');var em=b.textContent.trim()==='Edit Layout';b.innerHTML=em?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Exit Edit':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit Layout';}
+function toggleExport(){var d=document.getElementById('expDd');d.style.display=d.style.display==='none'?'block':'none'}
+function toggleMenu(id){document.querySelectorAll('.menu-dd').forEach(function(m){if(m.id!==id)m.style.display='none'});var m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function toggleSec(id){var b=document.getElementById(id+'-body');var c=document.getElementById(id+'-chev');var h=b.previousElementSibling;var o=b.classList.toggle('open');h.classList.toggle('open',o);c.style.transform=o?'rotate(180deg)':'rotate(0)';}
+function selectTpl(t){document.querySelectorAll('.report-tpl').forEach(function(x){x.classList.remove('sel')});document.getElementById('tpl-'+t).classList.add('sel');}
+function openCP(q){document.getElementById('ov').style.display='block';document.getElementById('cp').style.display='block';if(q){document.getElementById('cpInput').value=q;cpAsk(q);}else{document.getElementById('cpInput').value='';document.getElementById('cpAns').style.display='none';}setTimeout(function(){document.getElementById('cpInput').focus()},60);}
+function closeCP(){document.getElementById('ov').style.display='none';document.getElementById('cp').style.display='none';}
+function cpKey(e){if(e.key==='Escape')closeCP();if(e.key==='Enter'&&e.target.value)cpAsk(e.target.value);}
+function cpAsk(q){var a=AI_ANS[q]||'Analyzing: "'+q+'"… Revenue is up 8.4% with labor well-controlled. The main outlier is Tuesday\'s kitchen delay at Marina.';document.getElementById('cpAnsText').textContent=a;document.getElementById('cpAns').style.display='block';}
+
+// ── Drag-and-drop (HTML5 native, no library) ──
+var dragSrc=null;
+document.querySelectorAll('.draggable').forEach(function(el){
+  el.addEventListener('dragstart',function(e){
+    dragSrc=el;el.classList.add('dragging');
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain',el.id);
+  });
+  el.addEventListener('dragend',function(){
+    el.classList.remove('dragging');
+    document.querySelectorAll('.drag-over').forEach(function(x){x.classList.remove('drag-over')});
+    dragSrc=null;
+  });
+  el.addEventListener('dragover',function(e){
+    e.preventDefault();e.dataTransfer.dropEffect='move';
+    if(dragSrc&&dragSrc!==el){el.classList.add('drag-over');}
+  });
+  el.addEventListener('dragleave',function(){el.classList.remove('drag-over');});
+  el.addEventListener('drop',function(e){
+    e.preventDefault();el.classList.remove('drag-over');
+    if(dragSrc&&dragSrc!==el){
+      var canvas=document.getElementById('canvas');
+      var els=Array.from(canvas.children);
+      var si=els.indexOf(dragSrc),ti=els.indexOf(el);
+      if(si>-1&&ti>-1){
+        if(si<ti){canvas.insertBefore(dragSrc,el.nextSibling);}
+        else{canvas.insertBefore(dragSrc,el);}
+      }
+    }
+  });
+});
+
+// KPI grid individual card drag
+document.querySelectorAll('.kpi-card').forEach(function(card){
+  card.setAttribute('draggable','true');
+  card.addEventListener('dragstart',function(e){
+    dragSrc=card;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.stopPropagation();
+  });
+  card.addEventListener('dragend',function(){card.classList.remove('dragging');dragSrc=null;});
+  card.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();if(dragSrc&&dragSrc!==card&&card.closest('.kpi-grid'))card.classList.add('drag-over');});
+  card.addEventListener('dragleave',function(){card.classList.remove('drag-over');});
+  card.addEventListener('drop',function(e){
+    e.preventDefault();e.stopPropagation();card.classList.remove('drag-over');
+    if(dragSrc&&dragSrc!==card&&card.closest('.kpi-grid')&&dragSrc.closest('.kpi-grid')){
+      var grid=document.getElementById('kpiGrid');
+      var ci=Array.from(grid.children).indexOf(card);
+      var si=Array.from(grid.children).indexOf(dragSrc);
+      if(si<ci)grid.insertBefore(dragSrc,card.nextSibling);else grid.insertBefore(dragSrc,card);
+    }
+  });
+});
+
+window.addEventListener('keydown',function(e){if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();openCP(null);}if(e.key==='Escape'){closeCP();}});
+document.addEventListener('click',function(e){if(!e.target.closest('.menu-btn')&&!e.target.closest('.menu-dd'))document.querySelectorAll('.menu-dd').forEach(function(m){m.style.display='none'});if(!e.target.closest('.exp-wrap'))document.getElementById('expDd').style.display='none';});
+</script>
+</body>
+</html>

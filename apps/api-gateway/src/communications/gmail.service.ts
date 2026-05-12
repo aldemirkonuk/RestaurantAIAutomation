@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import * as nodemailer from 'nodemailer';
 import {
   lowStockAlertTemplate,
   weeklyReportTemplate,
@@ -82,24 +83,37 @@ export class GmailService implements OnModuleInit {
     if (!this.gmailCredentials) return false;
     try {
       const { clientId, clientSecret, refreshToken } = this.gmailCredentials;
+      // Supply the short-lived access token alongside the refresh token so the
+      // OAuth2 client uses it immediately (if not yet expired) and only hits
+      // Google's token endpoint when the access token is stale.
+      const accessToken = this.configService.get<string>('GMAIL_ACCESS_TOKEN');
+
       this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-      this.oauth2Client.setCredentials({ refresh_token: refreshToken });
+      this.oauth2Client.setCredentials({
+        access_token: accessToken || undefined,
+        refresh_token: refreshToken,
+      });
 
       const tokenTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('getAccessToken timed out after 8s')), 8000),
+        setTimeout(() => reject(new Error('getAccessToken timed out after 10s')), 10000),
       );
       const { token } = await Promise.race([
         this.oauth2Client.getAccessToken(),
         tokenTimeout,
       ]);
-      if (!token) throw new Error('No access token');
+      if (!token) throw new Error('No access token returned from Google');
 
       this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
       this.isConfigured = true;
-      this.logger.log('Gmail API lazy-initialized successfully');
+      this.logger.log('Gmail API initialized via OAuth2');
       return true;
     } catch (error) {
-      this.logger.error('Gmail lazy-init failed:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      const responseData = (error as any)?.response?.data;
+      this.logger.error(
+        `Gmail OAuth2 failed: ${msg}` +
+        (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ''),
+      );
       this.gmailCredentials = null;
       return false;
     }
@@ -113,7 +127,7 @@ export class GmailService implements OnModuleInit {
     this.logger.log(`Subject: ${options.subject}`);
 
     if (!await this.ensureGmailReady()) {
-      return this.mockSendEmail(options);
+      return this.smtpSendEmail(options);
     }
 
     try {
@@ -521,33 +535,43 @@ This is an automated alert from WineOps AI.
   }
 
   /**
-   * Mock email sending for development/testing
+   * Real SMTP fallback via Nodemailer + GMAIL_APP_PASSWORD.
+   * Used when the Gmail API OAuth2 flow fails (e.g. expired token).
+   * Never returns a mock ID — throws if SMTP credentials are missing.
    */
-  private mockSendEmail(options: EmailOptions): EmailResult {
-    const mockId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const mockThreadId = options.threadId || `thread_${Date.now()}`;
-    
-    this.logger.log('='.repeat(60));
-    this.logger.log('MOCK EMAIL SENT');
-    this.logger.log('='.repeat(60));
-    this.logger.log(`To: ${options.to.join(', ')}`);
-    if (options.cc?.length) this.logger.log(`Cc: ${options.cc.join(', ')}`);
-    if (options.bcc?.length) this.logger.log(`Bcc: ${options.bcc.join(', ')}`);
-    this.logger.log(`Subject: ${options.subject}`);
-    if (options.threadId) this.logger.log(`Thread ID: ${options.threadId}`);
-    if (options.inReplyTo) this.logger.log(`In-Reply-To: ${options.inReplyTo}`);
-    this.logger.log('-'.repeat(60));
-    this.logger.log('HTML Content Length:', options.html.length, 'chars');
-    this.logger.log('-'.repeat(60));
-    this.logger.log(`Mock Message ID: ${mockId}`);
-    this.logger.log(`Mock Thread ID: ${mockThreadId}`);
-    this.logger.log('='.repeat(60));
+  private async smtpSendEmail(options: EmailOptions): Promise<EmailResult> {
+    const user = this.configService.get<string>('GMAIL_USER');
+    const pass = this.configService.get<string>('GMAIL_APP_PASSWORD');
 
-    return {
-      success: true,
-      messageId: mockId,
-      threadId: mockThreadId,
-    };
+    if (!user || !pass) {
+      this.logger.error(
+        'Gmail OAuth2 failed and no SMTP fallback configured ' +
+        '(set GMAIL_USER + GMAIL_APP_PASSWORD). Email NOT sent.',
+      );
+      return { success: false, error: 'No email delivery method available — OAuth failed and SMTP not configured' };
+    }
+
+    this.logger.log(`Gmail OAuth2 unavailable — sending via SMTP (${user})`);
+
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: { user, pass },
+    });
+
+    const info = await transporter.sendMail({
+      from: `"WineOps AI" <${this.senderEmail}>`,
+      to: options.to.join(', '),
+      cc: options.cc?.length ? options.cc.join(', ') : undefined,
+      bcc: options.bcc?.length ? options.bcc.join(', ') : undefined,
+      subject: options.subject,
+      html: options.html,
+      text: options.text || this.htmlToPlainText(options.html),
+    });
+
+    this.logger.log(`Email delivered via SMTP. MessageId: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
   }
 
   /**

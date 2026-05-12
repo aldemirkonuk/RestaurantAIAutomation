@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>012 — Reports AI Command Bar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F7F4EE; --bg2: #EFEAE0; --surface: #FFFFFF; --surface2: #FBF8F2;
+  --ink: #1F1B16; --ink2: #4A4339; --muted: #8B8175;
+  --line: #E7E0D2; --line-strong: #D6CDBB;
+  --accent: #722F37; --accent2: #9B4450; --accent-soft: #F2D4D7;
+  --good: #3D7A5C; --warn: #B8860B; --bad: #A33030;
+  --radius: 14px; --radius-sm: 8px; --radius-lg: 20px;
+  --shadow-sm: 0 1px 3px rgba(31,27,22,.06);
+  --shadow-md: 0 6px 20px rgba(31,27,22,.08);
+  --shadow-lg: 0 20px 60px rgba(31,27,22,.12);
+  --ease: cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.serif{font-family:'Fraunces',serif}
+button,input{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}
+
+/* ── Tab bar ── */
+.tabs{display:flex;gap:6px;padding:14px 20px 0;background:var(--bg2);border-bottom:1px solid var(--line)}
+.tab{padding:9px 18px;border-radius:10px 10px 0 0;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .18s;border:1px solid transparent;border-bottom:none;position:relative;top:1px}
+.tab.on{background:var(--surface);color:var(--ink);border-color:var(--line);font-weight:600}
+.tab:not(.on):hover{background:rgba(255,255,255,.5);color:var(--ink2)}
+.variant{display:none;animation:fadeIn .2s var(--ease)}
+.variant.on{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.winner-badge{display:inline-block;margin-left:6px;font-size:10px;padding:1px 6px;border-radius:999px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+
+/* ── Shared shell ── */
+.shell{display:grid;grid-template-columns:60px 1fr;min-height:100vh}
+.rail{background:var(--bg);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:8px}
+.logo{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;font-size:16px}
+.rail-btn{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;color:var(--muted);transition:all .18s}
+.rail-btn:hover,.rail-btn.a{background:var(--accent-soft);color:var(--accent)}
+.rail-btn svg{width:17px;height:17px}
+.spacer{flex:1}
+.main{display:flex;flex-direction:column}
+
+/* ── Topbar ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--line);background:rgba(247,244,238,.9);backdrop-filter:blur(12px);position:sticky;top:0;z-index:20}
+.page-label{font-family:'Fraunces',serif;font-size:20px;letter-spacing:-.02em;flex-shrink:0}
+.grow{flex:1}
+
+/* ── Variant A: inline ask bar ── */
+.ask-inline{flex:1;max-width:500px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;box-shadow:var(--shadow-sm);transition:all .2s}
+.ask-inline:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.ask-inline svg{width:15px;height:15px;color:var(--muted);flex-shrink:0}
+.ask-inline input{flex:1;font-size:13.5px;outline:none;background:transparent;color:var(--ink)}
+.ask-inline input::placeholder{color:var(--muted)}
+.ask-inline .kbd{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;background:var(--bg2)}
+
+/* ── Variant B: floating pill ── */
+.ask-pill-btn{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--ink);color:var(--bg);border-radius:999px;font-size:13px;font-weight:500;box-shadow:var(--shadow-md);transition:all .2s}
+.ask-pill-btn:hover{background:#000;transform:translateY(-1px)}
+.ask-pill-btn svg{width:14px;height:14px;opacity:.8}
+.ask-pill-btn .kbd2{font-size:10px;opacity:.5;margin-left:4px}
+
+/* ── Variant C: bottom rail ── */
+.bottom-rail{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--ink);color:var(--bg);border-radius:999px;box-shadow:var(--shadow-lg);z-index:50;font-size:13px}
+.bottom-rail svg{width:15px;height:15px;opacity:.7}
+.bottom-rail input{background:transparent;border:none;outline:none;color:var(--bg);font-size:13px;width:260px}
+.bottom-rail input::placeholder{color:rgba(247,244,238,.4)}
+.bottom-rail .divider{width:1px;height:16px;background:rgba(255,255,255,.15)}
+.bottom-rail .cmd-hint{font-size:11px;opacity:.4}
+
+/* ── Palette / dropdown ── */
+.palette{position:absolute;top:calc(100% + 8px);left:0;right:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:50;overflow:hidden;animation:fadeIn .15s var(--ease)}
+.pal-section{padding:6px 0}
+.pal-section + .pal-section{border-top:1px solid var(--line)}
+.pal-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:8px 14px 4px}
+.pal-item{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;transition:background .12s;font-size:13.5px}
+.pal-item:hover,.pal-item.hi{background:var(--bg2)}
+.pal-item .ic{width:28px;height:28px;border-radius:8px;background:var(--bg2);display:grid;place-items:center;color:var(--ink2);flex-shrink:0}
+.pal-item .ic svg{width:13px;height:13px}
+.pal-item .lbl{flex:1;color:var(--ink)}
+.pal-item .sub{font-size:11.5px;color:var(--muted)}
+
+/* ── AI response strip ── */
+.ai-answer{margin:0 24px 16px;padding:14px 18px;background:linear-gradient(95deg,var(--accent-soft),transparent 60%);border:1px solid var(--line);border-radius:var(--radius-lg);display:flex;gap:14px;align-items:flex-start}
+.ai-spark{width:34px;height:34px;background:var(--accent);color:#fff;border-radius:10px;display:grid;place-items:center;flex-shrink:0;box-shadow:0 4px 12px rgba(114,47,55,.3)}
+.ai-spark svg{width:16px;height:16px}
+.ai-text{font-size:13.5px;line-height:1.6;color:var(--ink2)}
+.ai-text b{color:var(--ink)}
+.ai-text .hl{background:linear-gradient(transparent 55%,var(--accent-soft) 55%);padding:0 2px;cursor:pointer}
+.ai-chips{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.ai-chip{font-size:11.5px;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--ink2);cursor:pointer;transition:all .15s}
+.ai-chip:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── Mini dashboard to give context ── */
+.canvas{padding:14px 24px 80px;display:flex;flex-direction:column;gap:14px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm)}
+.kpi .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.kpi .val{font-family:'Fraunces',serif;font-size:30px;letter-spacing:-.02em;margin:4px 0}
+.kpi .delta{font-size:11.5px;display:flex;align-items:center;gap:4px}
+.kpi .delta.up{color:var(--good)}
+.kpi .delta.dn{color:var(--bad)}
+.chart-placeholder{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;height:220px;display:flex;align-items:flex-end;gap:3px;box-shadow:var(--shadow-sm)}
+.bar{border-radius:4px 4px 0 0;flex:1;background:var(--accent-soft);transition:all .2s}
+.bar:hover{background:var(--accent)}
+
+/* ── Topbar icons ── */
+.icon-btn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--ink2);border:1px solid transparent;transition:all .18s}
+.icon-btn:hover{background:var(--bg2);border-color:var(--line)}
+.icon-btn svg{width:15px;height:15px}
+.avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#7B8EA6,#A6B7C9);display:grid;place-items:center;color:#fff;font-weight:600;font-size:11px}
+
+/* label */
+.variant-label{padding:10px 24px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;background:var(--bg2);border-bottom:1px solid var(--line)}
+</style>
+</head>
+<body>
+
+<!-- TAB BAR -->
+<div class="tabs">
+  <button class="tab on" onclick="switchTab(0)">A — Inline Ask Bar</button>
+  <button class="tab" onclick="switchTab(1)">B — Floating Pill Button <span class="winner-badge">★</span></button>
+  <button class="tab" onclick="switchTab(2)">C — Bottom Command Rail</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════ VARIANT A -->
+<div class="variant on" id="v0">
+<div class="variant-label">Variant A: Ask bar lives inline in the topbar (always visible)</div>
+<div class="shell">
+  <aside class="rail">
+    <div class="logo">W</div>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></button>
+    <button class="rail-btn a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></button>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h12"/></svg></button>
+    <div class="spacer"></div>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg></button>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="page-label serif">Reports</div>
+      <div class="grow"></div>
+      <label class="ask-inline" id="askA" style="position:relative">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="inputA" placeholder='Ask anything — "why did Thursday sales dip?"' onfocus="showPalA()" onblur="setTimeout(hidePalA,200)" oninput="filterPal('palA',this.value)"/>
+        <span class="kbd">⌘K</span>
+        <div class="palette" id="palA" style="display:none;top:calc(100% + 8px);left:-14px;right:-14px">
+          <div class="pal-section">
+            <div class="pal-label">Suggested questions</div>
+            <div class="pal-item hi" onclick="fillA('Why did Thursday revenue drop 14%?')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div><div><div class="lbl">Why did Thursday revenue drop 14%?</div></div></div>
+            <div class="pal-item" onclick="fillA('Which wines are running low this week?')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div><div class="lbl">Which wines are running low this week?</div></div></div>
+            <div class="pal-item" onclick="fillA('Summarize this week for the owner')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6l4 6-4 6H9l-4-6z"/></svg></div><div><div class="lbl">Summarize this week for the owner</div></div></div>
+          </div>
+          <div class="pal-section">
+            <div class="pal-label">Jump to</div>
+            <div class="pal-item" onclick="fillA('')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div><div class="lbl">Marina · Bella's Trattoria</div><div class="sub">Location report</div></div></div>
+          </div>
+        </div>
+      </label>
+      <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <div class="avatar">AK</div>
+    </div>
+    <div class="ai-answer" id="aiA" style="display:none">
+      <div class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div class="ai-text">
+        <b>Thursday was down 14%</b> vs. the prior Thursday. The Marina kitchen had a <span class="hl">4-minute delay spike on entrées</span> between 7–9pm, likely causing 3 table turns to slow. Staffing was normal — this looks like a prep bottleneck on the <span class="hl">truffle pasta</span>.
+        <div class="ai-chips">
+          <button class="ai-chip">Drill into Thursday ↗</button>
+          <button class="ai-chip">Compare all Thursdays</button>
+          <button class="ai-chip">Dismiss</button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="kpi-row">
+        <div class="kpi"><div class="label">Net Revenue</div><div class="val serif">$184k</div><div class="delta up">▲ 8.4% vs last week</div></div>
+        <div class="kpi"><div class="label">Orders</div><div class="val serif">3,041</div><div class="delta up">▲ 5.1%</div></div>
+        <div class="kpi"><div class="label">Avg Ticket</div><div class="val serif">$60</div><div class="delta up">▲ $2.10</div></div>
+        <div class="kpi"><div class="label">Inventory Value</div><div class="val serif">$42k</div><div class="delta dn">▼ 3 low stock</div></div>
+      </div>
+      <div class="chart-placeholder">
+        <div class="bar" style="height:55%"></div><div class="bar" style="height:48%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:88%"></div><div class="bar" style="height:95%"></div><div class="bar" style="height:66%"></div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ VARIANT B -->
+<div class="variant" id="v1">
+<div class="variant-label">Variant B ★ — Pill button in topbar, expands into full overlay on click</div>
+<div class="shell">
+  <aside class="rail">
+    <div class="logo">W</div>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></button>
+    <button class="rail-btn a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></button>
+    <div class="spacer"></div>
+    <div class="avatar" style="margin-bottom:4px">AK</div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="page-label serif">Reports</div>
+      <div class="grow"></div>
+      <button class="ask-pill-btn" onclick="openOverlay()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2a7 7 0 0 1 5.4 11.4l5.3 5.3-1.4 1.4-5.3-5.3A7 7 0 1 1 9 2z"/></svg>
+        Ask anything
+        <span class="kbd2">⌘K</span>
+      </button>
+      <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <div class="avatar">AK</div>
+    </div>
+    <div class="ai-answer">
+      <div class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div class="ai-text">
+        <b>Revenue is up 8.4% vs. last week,</b> driven mostly by <span class="hl">Friday dinner at Marina</span>. The <span class="hl">truffle pasta</span> over-indexed by 22% — consider featuring it next weekend. Labor held at <b>28.1%</b>, your best in 6 weeks.
+        <div class="ai-chips">
+          <button class="ai-chip">Why truffle pasta? →</button>
+          <button class="ai-chip">Schedule more</button>
+          <button class="ai-chip">Pin this</button>
+          <button class="ai-chip">Dismiss</button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="kpi-row">
+        <div class="kpi"><div class="label">Net Revenue</div><div class="val serif">$184k</div><div class="delta up">▲ 8.4%</div></div>
+        <div class="kpi"><div class="label">Orders</div><div class="val serif">3,041</div><div class="delta up">▲ 5.1%</div></div>
+        <div class="kpi"><div class="label">Avg Ticket</div><div class="val serif">$60</div><div class="delta up">▲ $2.10</div></div>
+        <div class="kpi"><div class="label">Inventory Value</div><div class="val serif">$42k</div><div class="delta dn">▼ 3 alerts</div></div>
+      </div>
+      <div class="chart-placeholder">
+        <div class="bar" style="height:55%"></div><div class="bar" style="height:48%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:88%"></div><div class="bar" style="height:95%"></div><div class="bar" style="height:66%"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- OVERLAY -->
+<div id="overlay" style="display:none;position:fixed;inset:0;background:rgba(31,27,22,.4);backdrop-filter:blur(4px);z-index:60" onclick="closeOverlay()"></div>
+<div id="cmdk" style="display:none;position:fixed;top:15%;left:50%;transform:translateX(-50%);width:min(580px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:70;overflow:hidden">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input id="cmdkInput" style="flex:1;border:none;outline:none;font-size:15px;background:transparent;color:var(--ink)" placeholder='Ask, jump, or search… "why did Thursday dip?"' oninput="filterOverlay(this.value)"/>
+    <span style="font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:2px 7px;background:var(--bg2)">esc</span>
+  </div>
+  <div id="cmdkBody" style="max-height:380px;overflow:auto;padding:8px">
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:8px 12px 4px">Ask the AI</div>
+    <div class="pal-item hi" onclick="askFromOverlay('Why did Thursday revenue drop 14%?')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M2 12h6M16 12h6"/></svg></div><div><div class="lbl">Why did Thursday revenue drop 14%?</div><div class="sub">AI explanation</div></div></div>
+    <div class="pal-item" onclick="askFromOverlay('Which wines are running low?')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div><div class="lbl">Which wines are running low?</div><div class="sub">Inventory alert</div></div></div>
+    <div class="pal-item" onclick="askFromOverlay('Summarize this week for the owner')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div><div><div class="lbl">Summarize this week for the owner</div><div class="sub">AI summary · email</div></div></div>
+    <div class="pal-item" onclick="askFromOverlay('Forecast next 14 days')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div><div><div class="lbl">Forecast next 14 days</div><div class="sub">AI forecast</div></div></div>
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:10px 12px 4px;border-top:1px solid var(--line)">Jump to</div>
+    <div class="pal-item"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div><div class="lbl">Marina · Bella's Trattoria</div><div class="sub">Location report</div></div></div>
+    <div class="pal-item"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div><div class="lbl">Downtown · Bella's Café</div><div class="sub">Location report</div></div></div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ VARIANT C -->
+<div class="variant" id="v2">
+<div class="variant-label">Variant C — Persistent bottom command rail (always present, type anywhere)</div>
+<div class="shell">
+  <aside class="rail">
+    <div class="logo">W</div>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></button>
+    <button class="rail-btn a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></button>
+    <div class="spacer"></div>
+    <div class="avatar" style="margin-bottom:4px">AK</div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="page-label serif">Reports</div>
+      <div class="grow"></div>
+      <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <div class="avatar">AK</div>
+    </div>
+    <div class="canvas">
+      <div class="kpi-row">
+        <div class="kpi"><div class="label">Net Revenue</div><div class="val serif">$184k</div><div class="delta up">▲ 8.4%</div></div>
+        <div class="kpi"><div class="label">Orders</div><div class="val serif">3,041</div><div class="delta up">▲ 5.1%</div></div>
+        <div class="kpi"><div class="label">Avg Ticket</div><div class="val serif">$60</div><div class="delta up">▲ $2.10</div></div>
+        <div class="kpi"><div class="label">Inventory</div><div class="val serif">$42k</div><div class="delta dn">▼ 3 alerts</div></div>
+      </div>
+      <div class="chart-placeholder">
+        <div class="bar" style="height:55%"></div><div class="bar" style="height:48%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:88%"></div><div class="bar" style="height:95%"></div><div class="bar" style="height:66%"></div>
+      </div>
+      <div style="height:60px"></div><!-- spacer for rail -->
+    </div>
+  </main>
+</div>
+<div class="bottom-rail">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg>
+  <input placeholder='Ask anything… "why did Thursday dip?"' id="railInput" onkeydown="railEnter(event)"/>
+  <div class="divider"></div>
+  <span class="cmd-hint">⌘K</span>
+</div>
+<div id="railAnswer" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);width:min(540px,90vw);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:16px 18px;z-index:50">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div class="ai-spark" style="width:30px;height:30px;border-radius:9px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+    <div class="ai-text">Thursday was down 14% — kitchen ticket times at Marina spiked past 14 min during 7–9pm, slowing 3 table turns. Prep bottleneck on <span class="hl">truffle pasta</span> most likely cause.
+      <div class="ai-chips"><button class="ai-chip">Drill in →</button><button class="ai-chip" onclick="document.getElementById('railAnswer').style.display='none'">Dismiss</button></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('on',i===j))
+  document.querySelectorAll('.variant').forEach((v,j)=>v.classList.toggle('on',i===j))
+}
+function showPalA(){document.getElementById('palA').style.display='block'}
+function hidePalA(){document.getElementById('palA').style.display='none'}
+function fillA(q){
+  document.getElementById('inputA').value=q
+  hidePalA()
+  if(q) setTimeout(()=>{document.getElementById('aiA').style.display='flex'},400)
+}
+function openOverlay(){
+  document.getElementById('overlay').style.display='block'
+  document.getElementById('cmdk').style.display='block'
+  setTimeout(()=>document.getElementById('cmdkInput').focus(),60)
+}
+function closeOverlay(){
+  document.getElementById('overlay').style.display='none'
+  document.getElementById('cmdk').style.display='none'
+}
+function askFromOverlay(q){
+  closeOverlay()
+}
+function filterOverlay(v){}
+function filterPal(id,v){}
+function railEnter(e){
+  if(e.key==='Enter'&&e.target.value){
+    document.getElementById('railAnswer').style.display='block'
+  }
+}
+window.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){
+    e.preventDefault()
+    const tab=document.querySelector('.tab.on')
+    const idx=[...document.querySelectorAll('.tab')].indexOf(tab)
+    if(idx===1) openOverlay()
+    else if(idx===2) document.getElementById('railInput').focus()
+  }
+  if(e.key==='Escape') closeOverlay()
+})
+</script>
+</body>
+</html>

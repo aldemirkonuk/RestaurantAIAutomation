@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 011 — Activation Checklist Variants</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --wine: #CD2D5B; --wine-hover: #AC204A; --wine-light: #fdf2f4;
+    --wine-medium: #f4a9ba; --wine-dark: #7c1d3c;
+    --bg: #f7f8f9; --surface: #fff; --border: #e5e7eb;
+    --text: #111827; --text-2: #4b5563; --text-3: #9ca3af;
+    --success: #059669; --success-bg: #ecfdf5; --success-border: #a7f3d0;
+    --warning: #D97706; --warning-bg: #fffbeb;
+    --font-d: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-b: 'DM Sans', system-ui, sans-serif;
+    --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 20px;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.04),0 8px 24px rgba(0,0,0,0.06);
+    --shadow-lg: 0 10px 20px rgba(0,0,0,0.06),0 4px 8px rgba(0,0,0,0.04);
+  }
+  body { font-family: var(--font-b); background: var(--bg); color: var(--text); }
+
+  /* ── Page chrome ── */
+  .page-header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 20px 32px; display: flex; align-items: center; gap: 16px;
+  }
+  .logo { font-family: var(--font-d); font-weight: 800; font-size: 1.25rem; color: var(--wine); }
+  .page-title { font-size: 0.9rem; color: var(--text-2); }
+  .section-label {
+    font-family: var(--font-d); font-weight: 700; font-size: 0.7rem;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--text-3);
+    padding: 32px 32px 12px;
+  }
+
+  /* ── Variant switcher ── */
+  .variant-nav {
+    display: flex; gap: 8px; padding: 0 32px 24px; flex-wrap: wrap;
+  }
+  .vnav-btn {
+    padding: 8px 18px; border-radius: var(--r-md); border: 1.5px solid var(--border);
+    background: var(--surface); font-family: var(--font-b); font-size: 0.85rem;
+    font-weight: 500; color: var(--text-2); cursor: pointer; transition: all .2s;
+  }
+  .vnav-btn:hover { border-color: var(--wine); color: var(--wine); }
+  .vnav-btn.active {
+    background: var(--wine); color: #fff; border-color: var(--wine);
+  }
+
+  .variant { display: none; }
+  .variant.visible { display: block; }
+
+  /* ═══════════════════════════════════════════════════
+     VARIANT A — Top Collapsible Banner
+  ═══════════════════════════════════════════════════ */
+  .va-shell {
+    max-width: 1100px; margin: 0 auto 48px; padding: 0 32px;
+  }
+  .va-banner {
+    border-radius: var(--r-lg); background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-left: 4px solid var(--wine);
+    box-shadow: var(--shadow-card); overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .va-banner-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; cursor: pointer;
+    background: linear-gradient(135deg, #fff 0%, #fdf2f4 100%);
+  }
+  .va-banner-head:hover { background: #fdf2f4; }
+  .va-head-left { display: flex; align-items: center; gap: 12px; }
+  .va-rocket { font-size: 1.25rem; }
+  .va-banner-title { font-family: var(--font-d); font-weight: 700; font-size: 0.95rem; color: var(--text); }
+  .va-progress-pill {
+    font-size: 0.75rem; font-weight: 600; background: var(--wine-light);
+    color: var(--wine); padding: 2px 10px; border-radius: var(--r-full);
+    border: 1px solid var(--wine-medium);
+  }
+  .va-head-right { display: flex; align-items: center; gap: 12px; }
+  .va-collapse-btn {
+    width: 28px; height: 28px; border-radius: var(--r-sm);
+    border: 1px solid var(--border); background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 0.75rem; color: var(--text-3);
+    transition: all .2s;
+  }
+  .va-collapse-btn:hover { border-color: var(--wine); color: var(--wine); }
+  .va-dismiss { font-size: 0.78rem; color: var(--text-3); text-decoration: underline; cursor: pointer; }
+  .va-dismiss:hover { color: var(--text-2); }
+  .va-body { padding: 0 20px 16px; border-top: 1px solid var(--border); }
+  .va-tasks { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+  .va-task {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 8px; border-radius: var(--r-sm); transition: background .15s;
+  }
+  .va-task:hover { background: #fafafa; }
+  .va-check {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border);
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; transition: all .2s;
+  }
+  .va-check.done { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+  .va-check.active { border-color: var(--wine); border-width: 2px; }
+  .va-task-text { flex: 1; }
+  .va-task-name { font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .va-task-name.done { text-decoration: line-through; color: var(--text-3); }
+  .va-task-desc { font-size: 0.78rem; color: var(--text-3); margin-top: 1px; }
+  .va-cta {
+    padding: 6px 14px; border-radius: var(--r-md); border: 1.5px solid var(--wine);
+    background: transparent; color: var(--wine); font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .va-cta:hover { background: var(--wine); color: #fff; }
+  .va-sub { padding: 8px 20px 12px; }
+  .va-sub-text { font-size: 0.78rem; color: var(--text-3); }
+  .va-collapsed .va-body { display: none; }
+  .va-collapsed .va-collapse-btn { transform: rotate(180deg); }
+
+  /* Mock dashboard grid */
+  .va-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .va-widget {
+    background: var(--surface); border-radius: var(--r-lg);
+    border: 1px solid var(--border); padding: 20px; box-shadow: var(--shadow-card);
+    min-height: 120px;
+  }
+  .va-widget-label { font-size: 0.75rem; font-weight: 600; color: var(--text-3); letter-spacing: .05em; text-transform: uppercase; }
+  .va-widget-value { font-family: var(--font-d); font-weight: 800; font-size: 2rem; color: var(--text); margin-top: 8px; }
+  .va-widget-sub { font-size: 0.8rem; color: var(--text-3); margin-top: 4px; }
+
+  /* ═══════════════════════════════════════════════════
+     VARIANT B — Sidebar Notification + Slide-in Panel
+  ═══════════════════════════════════════════════════ */
+  .vb-shell {
+    display: flex; height: 520px; max-width: 1100px; margin: 0 auto 48px;
+    border-radius: var(--r-xl); border: 1px solid var(--border);
+    box-shadow: var(--shadow-card); overflow: hidden;
+  }
+  .vb-sidebar {
+    width: 64px; background: #1a1a2e; flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 4px;
+  }
+  .vb-logo-mark {
+    width: 36px; height: 36px; background: var(--wine); border-radius: var(--r-md);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-d); font-weight: 900; color: #fff; font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+  .vb-nav-item {
+    width: 40px; height: 40px; border-radius: var(--r-md);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; cursor: pointer; transition: background .15s;
+    position: relative; color: rgba(255,255,255,.5);
+  }
+  .vb-nav-item:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.9); }
+  .vb-nav-item.active { background: rgba(205,45,91,.2); color: var(--wine); }
+  .vb-badge {
+    position: absolute; top: 4px; right: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--wine); color: #fff; font-size: 0.6rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #1a1a2e;
+  }
+  .vb-nav-tooltip {
+    position: absolute; left: 52px; background: #1a1a2e; color: #fff;
+    font-size: 0.75rem; padding: 4px 10px; border-radius: var(--r-sm);
+    white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s;
+    border: 1px solid rgba(255,255,255,.1); z-index: 10;
+  }
+  .vb-nav-item:hover .vb-nav-tooltip { opacity: 1; }
+
+  .vb-main { flex: 1; background: var(--bg); overflow: auto; }
+  .vb-top-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .vb-page-title { font-family: var(--font-d); font-weight: 700; font-size: 1.1rem; }
+  .vb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 24px; }
+  .vb-widget {
+    background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border);
+    padding: 20px; box-shadow: var(--shadow-card); min-height: 110px;
+  }
+  .vb-widget-label { font-size: 0.72rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; }
+  .vb-widget-value { font-family: var(--font-d); font-weight: 800; font-size: 1.8rem; color: var(--text); margin-top: 6px; }
+
+  /* Slide-in panel */
+  .vb-panel {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 320px;
+    background: var(--surface); border-left: 1px solid var(--border);
+    box-shadow: -8px 0 32px rgba(0,0,0,.1);
+    transform: translateX(0); transition: transform .3s cubic-bezier(.4,0,.2,1);
+    z-index: 20; display: flex; flex-direction: column;
+  }
+  .vb-panel.hidden { transform: translateX(100%); }
+  .vb-panel-head {
+    padding: 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between;
+    background: linear-gradient(135deg, #fff 0%, #fdf2f4 100%);
+  }
+  .vb-panel-title { font-family: var(--font-d); font-weight: 700; font-size: 1rem; color: var(--text); }
+  .vb-panel-sub { font-size: 0.78rem; color: var(--text-3); margin-top: 4px; }
+  .vb-close {
+    width: 28px; height: 28px; border-radius: var(--r-sm);
+    border: 1px solid var(--border); background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 0.9rem; color: var(--text-3);
+    transition: all .15s; flex-shrink: 0;
+  }
+  .vb-close:hover { border-color: var(--wine); color: var(--wine); }
+  .vb-panel-body { padding: 16px 20px; flex: 1; overflow-y: auto; }
+  .vb-panel-progress { margin-bottom: 16px; }
+  .vb-progress-label { font-size: 0.78rem; color: var(--text-3); margin-bottom: 6px; }
+  .vb-progress-bar { height: 4px; background: var(--border); border-radius: var(--r-full); overflow: hidden; }
+  .vb-progress-fill { height: 100%; background: var(--wine); border-radius: var(--r-full); width: 33%; transition: width .5s; }
+  .vb-ptask {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .vb-ptask:last-child { border-bottom: none; }
+  .vb-pcheck {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; margin-top: 1px;
+  }
+  .vb-pcheck.done { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+  .vb-pcheck.pending { border-color: var(--wine); border-style: dashed; }
+  .vb-ptask-info { flex: 1; }
+  .vb-ptask-name { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+  .vb-ptask-name.done { text-decoration: line-through; color: var(--text-3); }
+  .vb-ptask-desc { font-size: 0.76rem; color: var(--text-3); margin-top: 2px; }
+  .vb-ptask-cta {
+    margin-top: 8px; padding: 5px 12px; border-radius: var(--r-md);
+    background: var(--wine-light); color: var(--wine); border: 1px solid var(--wine-medium);
+    font-size: 0.78rem; font-weight: 600; cursor: pointer; display: inline-block;
+    transition: all .15s;
+  }
+  .vb-ptask-cta:hover { background: var(--wine); color: #fff; }
+  .vb-shell-relative { position: relative; max-width: 1100px; margin: 0 auto 48px; }
+
+  /* ═══════════════════════════════════════════════════
+     VARIANT C — Bottom-Right Floating Card
+  ═══════════════════════════════════════════════════ */
+  .vc-shell {
+    max-width: 1100px; margin: 0 auto 48px; padding: 0 32px;
+    position: relative;
+  }
+  .vc-page { background: var(--surface); border-radius: var(--r-xl); border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow-card); }
+  .vc-topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 12px;
+  }
+  .vc-page-title { font-family: var(--font-d); font-weight: 700; }
+  .vc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 24px; background: var(--bg); }
+  .vc-widget { background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border); padding: 20px; min-height: 100px; }
+  .vc-widget-label { font-size: 0.72rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; }
+  .vc-widget-value { font-family: var(--font-d); font-weight: 800; font-size: 1.8rem; margin-top: 6px; }
+
+  /* The floating card */
+  .vc-float {
+    position: absolute; bottom: 32px; right: 32px; width: 310px;
+    background: var(--surface); border-radius: var(--r-xl);
+    border: 1px solid var(--border); box-shadow: 0 20px 60px rgba(0,0,0,.15);
+    overflow: hidden; z-index: 30;
+    transition: all .3s cubic-bezier(.4,0,.2,1);
+  }
+  .vc-float.collapsed { width: 200px; }
+  .vc-float-head {
+    padding: 14px 16px; background: linear-gradient(135deg, var(--wine) 0%, var(--wine-dark) 100%);
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+  }
+  .vc-float-icon { font-size: 1.1rem; }
+  .vc-float-title { font-family: var(--font-d); font-weight: 700; font-size: 0.9rem; color: #fff; flex: 1; }
+  .vc-float-badge { background: rgba(255,255,255,.25); color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: var(--r-full); }
+  .vc-float-toggle { color: rgba(255,255,255,.7); font-size: 0.8rem; transition: transform .2s; }
+  .vc-float.collapsed .vc-float-toggle { transform: rotate(180deg); }
+  .vc-float-body { display: block; }
+  .vc-float.collapsed .vc-float-body { display: none; }
+  .vc-ftask {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    transition: background .15s; cursor: pointer;
+  }
+  .vc-ftask:last-child { border-bottom: none; }
+  .vc-ftask:hover { background: #f9fafb; }
+  .vc-fcheck {
+    width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border);
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.65rem;
+  }
+  .vc-fcheck.done { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+  .vc-fcheck.active { border-color: var(--wine); border-style: dashed; }
+  .vc-ftask-label { font-size: 0.83rem; font-weight: 500; color: var(--text); }
+  .vc-ftask-label.done { text-decoration: line-through; color: var(--text-3); }
+  .vc-ftask-arrow { margin-left: auto; color: var(--text-3); font-size: 0.75rem; }
+  .vc-float-foot { padding: 10px 16px; background: #fafafa; border-top: 1px solid var(--border); }
+  .vc-float-progress { height: 4px; background: var(--border); border-radius: var(--r-full); overflow: hidden; }
+  .vc-float-fill { height: 100%; background: var(--wine); width: 33%; border-radius: var(--r-full); }
+  .vc-float-sub { font-size: 0.72rem; color: var(--text-3); margin-top: 6px; text-align: center; }
+
+  /* ═══════════════════════════════════════════════════
+     VARIANT D — Dashboard Widget Card
+  ═══════════════════════════════════════════════════ */
+  .vd-shell { max-width: 1100px; margin: 0 auto 48px; padding: 0 32px; }
+  .vd-topbar {
+    background: var(--surface); border-radius: var(--r-lg) var(--r-lg) 0 0;
+    border: 1px solid var(--border); border-bottom: none;
+    padding: 0 24px; height: 56px; display: flex; align-items: center;
+  }
+  .vd-page-title { font-family: var(--font-d); font-weight: 700; }
+  .vd-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px; padding: 24px;
+    background: var(--bg);
+    border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+  .vd-widget {
+    background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border);
+    padding: 20px; box-shadow: var(--shadow-card); min-height: 110px;
+  }
+  .vd-widget-label { font-size: 0.72rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; }
+  .vd-widget-value { font-family: var(--font-d); font-weight: 800; font-size: 1.8rem; margin-top: 6px; }
+
+  /* The checklist widget */
+  .vd-checklist-widget {
+    background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border);
+    padding: 0; box-shadow: var(--shadow-card); overflow: hidden;
+    grid-column: span 1;
+  }
+  .vd-cw-head {
+    padding: 14px 16px;
+    background: linear-gradient(135deg, var(--wine-light) 0%, #fff 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .vd-cw-title { font-family: var(--font-d); font-weight: 700; font-size: 0.88rem; flex: 1; }
+  .vd-ring {
+    position: relative; width: 44px; height: 44px; flex-shrink: 0;
+  }
+  .vd-ring svg { transform: rotate(-90deg); }
+  .vd-ring-track { fill: none; stroke: var(--border); stroke-width: 3; }
+  .vd-ring-fill { fill: none; stroke: var(--wine); stroke-width: 3; stroke-dasharray: 100; stroke-dashoffset: 67; stroke-linecap: round; transition: stroke-dashoffset .5s; }
+  .vd-ring-label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-d); font-weight: 800; font-size: 0.7rem; color: var(--wine);
+  }
+  .vd-ctask {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); cursor: pointer; transition: background .15s;
+  }
+  .vd-ctask:last-child { border-bottom: none; }
+  .vd-ctask:hover { background: #fafafa; }
+  .vd-ccheck {
+    width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0.6rem;
+  }
+  .vd-ccheck.done { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+  .vd-ccheck.next { border-color: var(--wine); border-style: dashed; }
+  .vd-ctask-label { font-size: 0.82rem; font-weight: 500; color: var(--text); flex: 1; }
+  .vd-ctask-label.done { text-decoration: line-through; color: var(--text-3); }
+  .vd-ctask-arrow { font-size: 0.7rem; color: var(--text-3); }
+
+  /* ── Shared utilities ── */
+  .tag-new {
+    display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: var(--r-full);
+    background: var(--wine); color: #fff; margin-left: 6px; vertical-align: middle;
+  }
+  .variant-title {
+    font-family: var(--font-d); font-weight: 800; font-size: 1.2rem;
+    padding: 0 32px 8px; color: var(--text);
+  }
+  .variant-desc { font-size: 0.875rem; color: var(--text-2); padding: 0 32px 20px; line-height: 1.6; max-width: 680px; }
+  .pro-con { display: flex; gap: 32px; padding: 0 32px 24px; }
+  .pros, .cons { flex: 1; }
+  .pros-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--success); margin-bottom: 8px; }
+  .cons-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--warning); margin-bottom: 8px; }
+  li { font-size: 0.82rem; color: var(--text-2); line-height: 1.8; list-style: none; padding-left: 16px; position: relative; }
+  li::before { position: absolute; left: 0; }
+  .pros li::before { content: '✓'; color: var(--success); }
+  .cons li::before { content: '·'; color: var(--text-3); font-weight: 700; }
+  .divider { height: 1px; background: var(--border); margin: 0 32px 32px; }
+  hr.section { height: 1px; background: var(--border); border: none; margin: 0 0 32px; }
+</style>
+</head>
+<body>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <span class="logo">🍷 WineOps</span>
+  <span class="page-title">Sketch 011 — Activation Checklist · 4 Variants</span>
+</div>
+
+<!-- VARIANT SWITCHER -->
+<div class="section-label">Choose a variant</div>
+<div class="variant-nav">
+  <button class="vnav-btn active" onclick="showVariant('a', this)">A — Top Banner</button>
+  <button class="vnav-btn" onclick="showVariant('b', this)">B — Sidebar + Slide-in Panel</button>
+  <button class="vnav-btn" onclick="showVariant('c', this)">C — Floating Card (Notion-style)</button>
+  <button class="vnav-btn" onclick="showVariant('d', this)">D — Dashboard Widget</button>
+</div>
+
+<!-- ══════════════════════════════════════
+     VARIANT A — Top Collapsible Banner
+══════════════════════════════════════ -->
+<div class="variant visible" id="variant-a">
+  <div class="variant-title">A — Top Collapsible Banner</div>
+  <div class="variant-desc">A wide card pinned to the top of the dashboard with a wine-red left border. The user can collapse it to a thin bar or dismiss for the session. Tasks are shown inline — one row each.</div>
+  <div class="pro-con">
+    <div class="pros">
+      <div class="pros-title">Strengths</div>
+      <ul>
+        <li>High visibility — immediately seen on login</li>
+        <li>All tasks visible at a glance</li>
+        <li>Collapses cleanly when user wants to work</li>
+        <li>No extra UI chrome required</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="cons-title">Trade-offs</div>
+      <ul>
+        <li>Pushes dashboard content down</li>
+        <li>Can feel "in the way" for daily users</li>
+        <li>No persistent presence after collapse</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="va-shell">
+    <!-- Collapsible banner (expanded) -->
+    <div class="va-banner" id="va-expanded">
+      <div class="va-banner-head" onclick="toggleBanner()">
+        <div class="va-head-left">
+          <span class="va-rocket">🚀</span>
+          <span class="va-banner-title">Get started with WineOps</span>
+          <span class="va-progress-pill">1 of 3 complete</span>
+        </div>
+        <div class="va-head-right">
+          <span class="va-dismiss" onclick="event.stopPropagation()">Dismiss</span>
+          <div class="va-collapse-btn" title="Collapse">▲</div>
+        </div>
+      </div>
+      <div class="va-body">
+        <div class="va-tasks">
+          <div class="va-task">
+            <div class="va-check done">✓</div>
+            <div class="va-task-text">
+              <div class="va-task-name done">Create your restaurant account</div>
+            </div>
+          </div>
+          <div class="va-task">
+            <div class="va-check active"></div>
+            <div class="va-task-text">
+              <div class="va-task-name">Upload your wine menu</div>
+              <div class="va-task-desc">Import your wine list so WineOps can start making smart suggestions</div>
+            </div>
+            <button class="va-cta">Upload Menu →</button>
+          </div>
+          <div class="va-task">
+            <div class="va-check"></div>
+            <div class="va-task-text">
+              <div class="va-task-name">Add your first wine vendor</div>
+              <div class="va-task-desc">Connect a distributor to place orders directly from WineOps</div>
+            </div>
+            <button class="va-cta">Browse Vendors →</button>
+          </div>
+          <div class="va-task">
+            <div class="va-check"></div>
+            <div class="va-task-text">
+              <div class="va-task-name">Invite a team member</div>
+              <div class="va-task-desc">Add your sommelier, bar manager, or assistant</div>
+            </div>
+            <button class="va-cta">Send Invite →</button>
+          </div>
+        </div>
+      </div>
+      <div class="va-sub">
+        <span class="va-sub-text">Complete all steps to unlock advanced AI features</span>
+      </div>
+    </div>
+
+    <!-- Dashboard grid below -->
+    <div class="va-grid">
+      <div class="va-widget">
+        <div class="va-widget-label">Total Wines</div>
+        <div class="va-widget-value">0</div>
+        <div class="va-widget-sub">Import your menu to populate</div>
+      </div>
+      <div class="va-widget">
+        <div class="va-widget-label">Pending Orders</div>
+        <div class="va-widget-value">0</div>
+        <div class="va-widget-sub">Add a vendor to place orders</div>
+      </div>
+      <div class="va-widget">
+        <div class="va-widget-label">Team Members</div>
+        <div class="va-widget-value">1</div>
+        <div class="va-widget-sub">Just you so far</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     VARIANT B — Sidebar + Slide-in Panel
+══════════════════════════════════════ -->
+<div class="variant" id="variant-b">
+  <div class="variant-title">B — Sidebar Nav + Slide-in Panel</div>
+  <div class="variant-desc">A persistent badge on a sidebar nav item (like Linear/Notion's setup). Clicking "Getting Started" slides a drawer in from the right with the checklist. Dashboard remains fully visible and uncluttered.</div>
+  <div class="pro-con">
+    <div class="pros">
+      <div class="pros-title">Strengths</div>
+      <ul>
+        <li>Dashboard real-estate is 100% preserved</li>
+        <li>Badge is subtle but persistent reminder</li>
+        <li>Feels native to sidebar-nav app patterns</li>
+        <li>Panel can expand with rich content per task</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="cons-title">Trade-offs</div>
+      <ul>
+        <li>Low initial discoverability</li>
+        <li>Requires intentional click to view progress</li>
+        <li>Needs left sidebar (app must have nav rail)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="vb-shell-relative" style="height:520px; padding: 0 32px;">
+    <div class="vb-shell" style="margin:0; height:100%;">
+      <!-- Sidebar -->
+      <div class="vb-sidebar">
+        <div class="vb-logo-mark">W</div>
+        <div class="vb-nav-item active" title="Dashboard">
+          🏠
+          <div class="vb-nav-tooltip">Dashboard</div>
+        </div>
+        <div class="vb-nav-item">
+          📦
+          <div class="vb-nav-tooltip">Inventory</div>
+        </div>
+        <div class="vb-nav-item">
+          📋
+          <div class="vb-nav-tooltip">Orders</div>
+        </div>
+        <div class="vb-nav-item">
+          🏪
+          <div class="vb-nav-tooltip">Providers</div>
+        </div>
+        <div class="vb-nav-item" onclick="togglePanel()" style="margin-top:auto; margin-bottom:16px;">
+          🚀
+          <div class="vb-badge">2</div>
+          <div class="vb-nav-tooltip">Getting Started</div>
+        </div>
+      </div>
+
+      <!-- Main content -->
+      <div class="vb-main">
+        <div class="vb-top-bar">
+          <div class="vb-page-title">Dashboard</div>
+          <div style="font-size:0.8rem; color:var(--text-3);">← Click 🚀 to see checklist</div>
+        </div>
+        <div class="vb-grid">
+          <div class="vb-widget">
+            <div class="vb-widget-label">Total Wines</div>
+            <div class="vb-widget-value">0</div>
+          </div>
+          <div class="vb-widget">
+            <div class="vb-widget-label">Pending Orders</div>
+            <div class="vb-widget-value">0</div>
+          </div>
+          <div class="vb-widget">
+            <div class="vb-widget-label">Team Members</div>
+            <div class="vb-widget-value">1</div>
+          </div>
+          <div class="vb-widget" style="grid-column:span 3; min-height:200px; display:flex; align-items:center; justify-content:center; color:var(--text-3); font-size:0.85rem;">
+            Full dashboard content — completely unobstructed
+          </div>
+        </div>
+      </div>
+
+      <!-- Slide-in panel -->
+      <div class="vb-panel hidden" id="vb-panel">
+        <div class="vb-panel-head">
+          <div>
+            <div class="vb-panel-title">🚀 Get started</div>
+            <div class="vb-panel-sub">1 of 3 tasks complete</div>
+          </div>
+          <div class="vb-close" onclick="togglePanel()">✕</div>
+        </div>
+        <div class="vb-panel-body">
+          <div class="vb-panel-progress">
+            <div class="vb-progress-label">Progress · 33% complete</div>
+            <div class="vb-progress-bar"><div class="vb-progress-fill"></div></div>
+          </div>
+          <div class="vb-ptask">
+            <div class="vb-pcheck done">✓</div>
+            <div class="vb-ptask-info">
+              <div class="vb-ptask-name done">Create your restaurant account</div>
+              <div class="vb-ptask-desc">Your restaurant is set up</div>
+            </div>
+          </div>
+          <div class="vb-ptask">
+            <div class="vb-pcheck pending"></div>
+            <div class="vb-ptask-info">
+              <div class="vb-ptask-name">Upload your wine menu</div>
+              <div class="vb-ptask-desc">Import via photo, CSV, or manual entry</div>
+              <div class="vb-ptask-cta">Upload Menu →</div>
+            </div>
+          </div>
+          <div class="vb-ptask">
+            <div class="vb-pcheck"></div>
+            <div class="vb-ptask-info">
+              <div class="vb-ptask-name">Add your first vendor</div>
+              <div class="vb-ptask-desc">Connect a wine distributor</div>
+              <div class="vb-ptask-cta">Browse Vendors →</div>
+            </div>
+          </div>
+          <div class="vb-ptask">
+            <div class="vb-pcheck"></div>
+            <div class="vb-ptask-info">
+              <div class="vb-ptask-name">Invite a team member</div>
+              <div class="vb-ptask-desc">Accepted invite counts as complete</div>
+              <div class="vb-ptask-cta">Send Invite →</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="height:32px;"></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     VARIANT C — Floating Card (Notion/Intercom)
+══════════════════════════════════════ -->
+<div class="variant" id="variant-c">
+  <div class="variant-title">C — Floating Card (Notion / Intercom style)</div>
+  <div class="variant-desc">A persistent floating card anchored to the bottom-right. Wine-red header, expandable/collapsible. Always present until all tasks are done — then animates away. Zero impact on page layout.</div>
+  <div class="pro-con">
+    <div class="pros">
+      <div class="pros-title">Strengths</div>
+      <ul>
+        <li>No layout disruption whatsoever</li>
+        <li>Familiar pattern (Notion, Intercom, Figma)</li>
+        <li>Always accessible without navigating away</li>
+        <li>Collapses to a small pill — stays out of the way</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="cons-title">Trade-offs</div>
+      <ul>
+        <li>May overlap page content on small screens</li>
+        <li>Could conflict with chat/support widgets</li>
+        <li>Lower discoverability than a banner</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="vc-shell" style="padding:0 32px;">
+    <div class="vc-page" style="position:relative; overflow:visible;">
+      <div class="vc-topbar">
+        <div class="vc-page-title">Dashboard</div>
+      </div>
+      <div class="vc-grid">
+        <div class="vc-widget">
+          <div class="vc-widget-label">Total Wines</div>
+          <div class="vc-widget-value">0</div>
+        </div>
+        <div class="vc-widget">
+          <div class="vc-widget-label">Pending Orders</div>
+          <div class="vc-widget-value">0</div>
+        </div>
+        <div class="vc-widget">
+          <div class="vc-widget-label">Team Members</div>
+          <div class="vc-widget-value">1</div>
+        </div>
+        <div class="vc-widget" style="grid-column:span 3; min-height:160px; display:flex; align-items:center; justify-content:center; color:var(--text-3); font-size:0.85rem;">
+          Full dashboard content here
+        </div>
+      </div>
+
+      <!-- Floating card -->
+      <div class="vc-float" id="vc-float" style="position:absolute; bottom:16px; right:16px;">
+        <div class="vc-float-head" onclick="toggleFloat()">
+          <span class="vc-float-icon">🚀</span>
+          <span class="vc-float-title">Get started</span>
+          <span class="vc-float-badge">1/3</span>
+          <span class="vc-float-toggle">▲</span>
+        </div>
+        <div class="vc-float-body">
+          <div class="vc-ftask">
+            <div class="vc-fcheck done">✓</div>
+            <div class="vc-ftask-label done">Create your account</div>
+          </div>
+          <div class="vc-ftask">
+            <div class="vc-fcheck active"></div>
+            <div class="vc-ftask-label">Upload wine menu</div>
+            <div class="vc-ftask-arrow">→</div>
+          </div>
+          <div class="vc-ftask">
+            <div class="vc-fcheck"></div>
+            <div class="vc-ftask-label">Add first vendor</div>
+            <div class="vc-ftask-arrow">→</div>
+          </div>
+          <div class="vc-ftask">
+            <div class="vc-fcheck"></div>
+            <div class="vc-ftask-label">Invite teammate</div>
+            <div class="vc-ftask-arrow">→</div>
+          </div>
+          <div class="vc-float-foot">
+            <div class="vc-float-progress"><div class="vc-float-fill"></div></div>
+            <div class="vc-float-sub">1 of 3 complete · Click a task to continue</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="height:48px;"></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     VARIANT D — Dashboard Widget Card
+══════════════════════════════════════ -->
+<div class="variant" id="variant-d">
+  <div class="variant-title">D — Dashboard Widget Card</div>
+  <div class="variant-desc">The checklist lives as a first-class widget in the dashboard grid alongside inventory and order cards. It has a progress ring showing X/3 complete. Feels native — part of the dashboard, not an overlay.</div>
+  <div class="pro-con">
+    <div class="pros">
+      <div class="pros-title">Strengths</div>
+      <ul>
+        <li>Feels native — part of the dashboard data</li>
+        <li>Progress ring is a compelling visual</li>
+        <li>Disappears naturally when done (widget slot freed)</li>
+        <li>No separate UI layer to manage</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="cons-title">Trade-offs</div>
+      <ul>
+        <li>Takes up a widget slot permanently until done</li>
+        <li>Users may want to rearrange grid (not standard)</li>
+        <li>Less contextual than a banner or panel</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="vd-shell">
+    <div class="vd-topbar"><div class="vd-page-title">Dashboard</div></div>
+    <div class="vd-grid">
+      <!-- Checklist widget (top-left) -->
+      <div class="vd-checklist-widget">
+        <div class="vd-cw-head">
+          <div style="flex:1">
+            <div class="vd-cw-title">🚀 Get started</div>
+            <div style="font-size:0.75rem; color:var(--text-3); margin-top:2px;">1 of 3 tasks complete</div>
+          </div>
+          <div class="vd-ring">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <circle class="vd-ring-track" cx="22" cy="22" r="16"/>
+              <circle class="vd-ring-fill" cx="22" cy="22" r="16"/>
+            </svg>
+            <div class="vd-ring-label">1/3</div>
+          </div>
+        </div>
+        <div class="vd-ctask">
+          <div class="vd-ccheck done">✓</div>
+          <div class="vd-ctask-label done">Create restaurant account</div>
+        </div>
+        <div class="vd-ctask">
+          <div class="vd-ccheck next"></div>
+          <div class="vd-ctask-label">Upload wine menu</div>
+          <div class="vd-ctask-arrow">→</div>
+        </div>
+        <div class="vd-ctask">
+          <div class="vd-ccheck"></div>
+          <div class="vd-ctask-label">Add first vendor</div>
+          <div class="vd-ctask-arrow">→</div>
+        </div>
+        <div class="vd-ctask">
+          <div class="vd-ccheck"></div>
+          <div class="vd-ctask-label">Invite a teammate</div>
+          <div class="vd-ctask-arrow">→</div>
+        </div>
+      </div>
+
+      <!-- Other widgets -->
+      <div class="vd-widget">
+        <div class="vd-widget-label">Total Wines</div>
+        <div class="vd-widget-value">0</div>
+      </div>
+      <div class="vd-widget">
+        <div class="vd-widget-label">Pending Orders</div>
+        <div class="vd-widget-value">0</div>
+      </div>
+      <div class="vd-widget" style="grid-column:span 3; min-height:160px; display:flex; align-items:center; justify-content:center; color:var(--text-3); font-size:0.85rem;">
+        Rest of dashboard grid · checklist occupies one standard slot
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('visible'));
+    document.querySelectorAll('.vnav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('visible');
+    btn.classList.add('active');
+  }
+
+  // Variant A: toggle collapse
+  let vaCollapsed = false;
+  function toggleBanner() {
+    vaCollapsed = !vaCollapsed;
+    const banner = document.getElementById('va-expanded');
+    if (vaCollapsed) banner.classList.add('va-collapsed');
+    else banner.classList.remove('va-collapsed');
+  }
+
+  // Variant B: toggle slide panel
+  let vbPanelOpen = false;
+  function togglePanel() {
+    vbPanelOpen = !vbPanelOpen;
+    const panel = document.getElementById('vb-panel');
+    if (vbPanelOpen) panel.classList.remove('hidden');
+    else panel.classList.add('hidden');
+  }
+
+  // Variant C: toggle float
+  let vcCollapsed = false;
+  function toggleFloat() {
+    vcCollapsed = !vcCollapsed;
+    const f = document.getElementById('vc-float');
+    if (vcCollapsed) f.classList.add('collapsed');
+    else f.classList.remove('collapsed');
+  }
+</script>
+</body>
+</html>

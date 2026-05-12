@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>014 — Reports Full Canvas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F7F4EE;--bg2:#EFEAE0;--surface:#FFFFFF;--surface2:#FBF8F2;
+  --ink:#1F1B16;--ink2:#4A4339;--muted:#8B8175;
+  --line:#E7E0D2;--line-strong:#D6CDBB;
+  --accent:#722F37;--accent2:#9B4450;--accent3:#C67C84;--accent-soft:#F2D4D7;
+  --good:#3D7A5C;--good-soft:#D4EDE3;--warn:#B8860B;--warn-soft:#F5ECD0;--bad:#A33030;
+  --prev:#A0AEC0;
+  --heat0:#FBF8F2;--heat1:#F4DDE0;--heat2:#E8B4BA;--heat3:#CC7A82;--heat4:#A63D47;--heat5:#722F37;
+  --radius:14px;--radius-sm:8px;--radius-lg:20px;
+  --shadow-sm:0 1px 3px rgba(31,27,22,.06);
+  --shadow-md:0 6px 20px rgba(31,27,22,.08);
+  --shadow-lg:0 20px 60px rgba(31,27,22,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}
+input{font-family:inherit}
+
+/* ═══════ Variant Tabs ═══════ */
+.tabs{display:flex;gap:6px;padding:14px 20px 0;background:var(--bg2);border-bottom:1px solid var(--line)}
+.tab{padding:9px 18px;border-radius:10px 10px 0 0;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .18s;border:1px solid transparent;border-bottom:none;position:relative;top:1px}
+.tab.on{background:var(--surface);color:var(--ink);border-color:var(--line);font-weight:600}
+.tab:not(.on):hover{background:rgba(255,255,255,.5);color:var(--ink2)}
+.variant{display:none;animation:fadeIn .2s}
+.variant.on{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.winner-badge{display:inline-block;margin-left:6px;font-size:10px;padding:1px 6px;border-radius:999px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.variant-label{padding:10px 24px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;background:var(--bg2);border-bottom:1px solid var(--line)}
+
+/* ═══════ Shell ═══════ */
+.shell{display:grid;grid-template-columns:60px 1fr;min-height:100vh}
+.rail{background:var(--bg);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:8px}
+.logo{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#722F37,#9B4450);color:#fff;display:grid;place-items:center;font-family:'Fraunces',serif;font-size:16px;font-weight:600}
+.rail-btn{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;color:var(--muted);transition:all .18s}
+.rail-btn.a{background:var(--accent-soft);color:var(--accent)}
+.rail-btn:hover:not(.a){background:var(--bg2);color:var(--ink2)}
+.rail-btn svg{width:17px;height:17px}
+.spacer{flex:1}
+.main{display:flex;flex-direction:column;min-height:100vh}
+.avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#7B8EA6,#A6B7C9);display:grid;place-items:center;color:#fff;font-weight:600;font-size:11px}
+
+/* ═══════ Topbar ═══════ */
+.topbar{display:flex;align-items:center;gap:10px;padding:12px 24px;border-bottom:1px solid var(--line);background:rgba(247,244,238,.95);backdrop-filter:blur(12px);position:sticky;top:0;z-index:30}
+.page-label{font-family:'Fraunces',serif;font-size:20px;letter-spacing:-.02em;flex-shrink:0}
+.grow{flex:1}
+.ask-pill{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--ink);color:var(--bg);border-radius:999px;font-size:13px;font-weight:500;box-shadow:var(--shadow-md);cursor:pointer;transition:all .2s;flex-shrink:0}
+.ask-pill:hover{background:#000;transform:translateY(-1px)}
+.ask-pill svg{width:14px;height:14px;opacity:.75}
+.ask-pill .kk{font-size:10px;opacity:.45;margin-left:2px}
+.icon-btn{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:var(--ink2);border:1px solid transparent;transition:all .18s}
+.icon-btn:hover{background:var(--bg2)}
+.icon-btn svg{width:15px;height:15px}
+.period-chip{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-size:12.5px;border:1px solid var(--line);background:var(--surface);cursor:pointer;white-space:nowrap}
+.period-chip svg{width:12px;height:12px;color:var(--muted)}
+.compare-pill{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:12px;border:1px solid var(--line);cursor:pointer;white-space:nowrap;color:var(--ink2)}
+.compare-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--prev)}
+.compare-pill.on{border-color:var(--accent);color:var(--accent)}
+.compare-pill.on .dot{background:var(--accent)}
+
+/* ═══════ AI Answer strip ═══════ */
+.ai-strip{display:flex;align-items:flex-start;gap:14px;padding:14px 24px;background:linear-gradient(95deg,rgba(242,212,215,.35),transparent 65%);border-bottom:1px solid var(--line)}
+.ai-icon{width:34px;height:34px;background:var(--accent);color:#fff;border-radius:10px;display:grid;place-items:center;flex-shrink:0;box-shadow:0 4px 12px rgba(114,47,55,.25)}
+.ai-icon svg{width:15px;height:15px}
+.ai-body{flex:1;font-size:13.5px;line-height:1.65;color:var(--ink2)}
+.ai-body b{color:var(--ink)}
+.ai-hl{background:linear-gradient(transparent 55%,var(--accent-soft) 55%);padding:0 2px;cursor:pointer}
+.ai-chips{display:flex;gap:6px;margin-top:6px}
+.ai-chip{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink2);cursor:pointer;transition:all .15s}
+.ai-chip:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ═══════ Canvas ═══════ */
+.canvas{padding:18px 24px 60px;display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:auto;gap:14px}
+
+/* KPI row */
+.kpi{grid-column:span 3;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow-sm)}
+.kpi .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.kpi .val{font-family:'Fraunces',serif;font-size:28px;letter-spacing:-.02em;margin:3px 0 1px}
+.kpi .prev-val{font-size:11px;color:var(--muted)}
+.kpi .delta{font-size:12px;font-weight:600;display:flex;align-items:center;gap:3px;margin-top:4px}
+.kpi .delta.up{color:var(--good)}.kpi .delta.dn{color:var(--bad)}
+.spk-row{display:flex;align-items:flex-end;gap:2px;height:24px;margin-top:8px}
+.spk{border-radius:2px 2px 0 0;flex:1}
+.spk.c{background:var(--accent);opacity:.85}.spk.p{background:var(--prev);opacity:.4}
+
+/* Chart card base */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm)}
+.card-hd{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.card-title{font-weight:600;font-size:13.5px}
+.card-sub{font-size:11.5px;color:var(--muted);margin-left:auto}
+.leg{display:flex;gap:12px}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink2)}
+.leg-line{width:18px;height:3px;border-radius:2px}
+
+/* ── Trend chart (span 8) ── */
+.trend-card{grid-column:span 8}
+.trend-svg{width:100%;height:170px;overflow:visible}
+
+/* ── Heatmap (span 4) ── */
+.heat-card{grid-column:span 4}
+.heat-grid{display:grid;grid-template-columns:28px repeat(7,1fr);gap:3px}
+.heat-ylab{font-size:9.5px;color:var(--muted);text-align:right;padding-right:4px;display:flex;align-items:center;justify-content:flex-end}
+.heat-xlab{font-size:9.5px;color:var(--muted);text-align:center;padding-top:3px}
+.heat-cell{aspect-ratio:1;border-radius:4px;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.heat-cell:hover{transform:scale(1.15);box-shadow:0 2px 8px rgba(114,47,55,.2);z-index:1;position:relative}
+.heat-legend{display:flex;align-items:center;gap:4px;margin-top:8px;font-size:10px;color:var(--muted)}
+.heat-swatch{width:14px;height:8px;border-radius:2px}
+
+/* ── Donut (span 4) ── */
+.donut-card{grid-column:span 4}
+.donut-wrap{display:flex;align-items:center;gap:20px}
+.donut-svg{width:130px;height:130px;flex-shrink:0}
+.donut-legend{flex:1;display:flex;flex-direction:column;gap:8px}
+.donut-row{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.donut-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.donut-key{flex:1;color:var(--ink2)}
+.donut-val{font-weight:600;font-size:13px}
+.donut-pct{font-size:11px;color:var(--muted)}
+.donut-center{text-anchor:middle;dominant-baseline:middle}
+
+/* ── Labor/Revenue overlay (span 8) ── */
+.labor-card{grid-column:span 8}
+.labor-svg{width:100%;height:160px;overflow:visible}
+.revenue-bar{fill:var(--accent-soft);stroke:none;rx:3;transition:fill .2s}
+.revenue-bar:hover{fill:var(--accent3)}
+.labor-line{fill:none;stroke:var(--warn);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.labor-dot{fill:var(--warn);stroke:#fff;stroke-width:2;cursor:pointer}
+
+/* ── Funnel (span 4) ── */
+.funnel-card{grid-column:span 4}
+.funnel-stages{display:flex;flex-direction:column;gap:4px}
+.funnel-stage{display:flex;align-items:center;gap:10px}
+.funnel-bar-wrap{flex:1;height:34px;background:var(--bg2);border-radius:6px;overflow:hidden;position:relative;cursor:pointer}
+.funnel-bar{height:100%;border-radius:6px;display:flex;align-items:center;padding-left:12px;font-size:11.5px;font-weight:600;color:#fff;transition:filter .2s}
+.funnel-bar:hover{filter:brightness(1.08)}
+.funnel-label{width:90px;font-size:11.5px;color:var(--ink2);text-align:right}
+.funnel-cnt{font-size:11px;color:var(--muted);width:40px;text-align:right}
+.funnel-drop{font-size:10px;color:var(--bad);padding-left:4px}
+
+/* ── Floating ⌘K button ── */
+.fab{position:fixed;bottom:28px;right:28px;display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--ink);color:var(--bg);border-radius:999px;font-size:13.5px;font-weight:500;box-shadow:var(--shadow-lg);cursor:pointer;z-index:40;transition:all .2s}
+.fab:hover{background:#000;transform:translateY(-2px)}
+.fab svg{width:15px;height:15px;opacity:.75}
+.fab .kk{font-size:10.5px;opacity:.4;margin-left:2px}
+
+/* ── Command palette overlay ── */
+#cmdk-overlay{display:none;position:fixed;inset:0;background:rgba(31,27,22,.35);backdrop-filter:blur(4px);z-index:50}
+#cmdk-box{display:none;position:fixed;top:14%;left:50%;transform:translateX(-50%);width:min(600px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:60;overflow:hidden}
+.cmdk-input-row{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.cmdk-input-row svg{width:17px;height:17px;color:var(--muted);flex-shrink:0}
+.cmdk-input{flex:1;border:none;outline:none;font-size:15px;background:transparent;color:var(--ink)}
+.cmdk-input::placeholder{color:var(--muted)}
+.esc-key{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:2px 7px;background:var(--bg2)}
+.cmdk-body{max-height:380px;overflow:auto;padding:8px 0}
+.cmdk-sect-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:8px 16px 4px}
+.cmdk-item{display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:pointer;transition:background .12s}
+.cmdk-item:hover,.cmdk-item.hi{background:var(--bg2)}
+.cmdk-ic{width:30px;height:30px;border-radius:9px;background:var(--bg2);display:grid;place-items:center;color:var(--ink2);flex-shrink:0}
+.cmdk-ic svg{width:14px;height:14px}
+.cmdk-lbl{font-size:13.5px;flex:1}
+.cmdk-sub{font-size:11.5px;color:var(--muted)}
+.cmdk-ans{padding:16px 18px;background:linear-gradient(95deg,var(--accent-soft),transparent 60%);border-top:1px solid var(--line)}
+.cmdk-ans-row{display:flex;gap:12px}
+.cmdk-ans-ic{width:32px;height:32px;background:var(--accent);color:#fff;border-radius:9px;display:grid;place-items:center;flex-shrink:0}
+.cmdk-ans-ic svg{width:14px;height:14px}
+.cmdk-ans-text{font-size:13.5px;line-height:1.6;color:var(--ink2)}
+.cmdk-ans-chips{display:flex;gap:6px;margin-top:8px}
+.cmdk-ans-chip{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink2);cursor:pointer}
+.cmdk-ans-chip:hover{border-color:var(--accent);color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <button class="tab on" onclick="switchTab(0)">A — Warm paper · all 4 charts <span class="winner-badge">★</span></button>
+  <button class="tab" onclick="switchTab(1)">B — Dark ink · same charts</button>
+</div>
+
+<!-- ═══════════════════════════ VARIANT A — WARM PAPER ═══════════════════════════ -->
+<div class="variant on" id="v0">
+<div class="variant-label">Variant A ★ — Warm terracotta system · heatmap + donut + labor overlay + funnel · ⌘K pill · period compare</div>
+<div class="shell">
+  <aside class="rail">
+    <div class="logo">W</div>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></button>
+    <button class="rail-btn a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></button>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2h6l4 6-4 6H9L5 8z"/><path d="M9 14h6l4 6-4 6H9l-4-6z"/></svg></button>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="4"/><path d="M15.5 15.5a7.5 7.5 0 0 1-13 0"/><circle cx="17" cy="7" r="3"/><path d="M20.5 10.5a4.5 4.5 0 0 1-8 0"/></svg></button>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2v20M18 2v20M2 6h4M2 18h4M20 6h2M20 18h2"/></svg></button>
+    <div class="spacer"></div>
+    <button class="rail-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg></button>
+  </aside>
+  <main class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <span class="page-label">Reports</span>
+      <div class="grow"></div>
+      <div class="period-chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        May 5 – May 11
+      </div>
+      <div class="compare-pill on" id="cmpPill" onclick="this.classList.toggle('on')">
+        <div class="dot"></div>
+        vs. prev week
+      </div>
+      <button class="ask-pill" onclick="openCmd()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        Ask anything
+        <span class="kk">⌘K</span>
+      </button>
+      <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <div class="avatar">AK</div>
+    </div>
+
+    <!-- AI STRIP -->
+    <div class="ai-strip">
+      <div class="ai-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div class="ai-body">
+        <b>Revenue is up 8.4%</b> vs. last week — driven by <span class="ai-hl">Fri/Sat Marina dinners</span>. Labor held at 28.1%, best in 6 weeks. The <span class="ai-hl">Tuesday dip (−14%)</span> was a kitchen delay, not a demand problem.
+        <div class="ai-chips">
+          <button class="ai-chip" onclick="openCmd()">Why Tuesday? →</button>
+          <button class="ai-chip">Labor details</button>
+          <button class="ai-chip">Email to owner</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CANVAS GRID -->
+    <div class="canvas">
+
+      <!-- KPIs -->
+      <div class="kpi">
+        <div class="label">Net Revenue</div>
+        <div class="val">$184k</div>
+        <div class="prev-val">vs $170k last week</div>
+        <div class="delta up">▲ +8.4%</div>
+        <div class="spk-row">
+          <div class="spk p" style="height:52%"></div><div class="spk p" style="height:48%"></div><div class="spk p" style="height:58%"></div><div class="spk p" style="height:62%"></div><div class="spk p" style="height:70%"></div><div class="spk p" style="height:78%"></div><div class="spk p" style="height:65%"></div>
+          <div class="spk c" style="height:55%"></div><div class="spk c" style="height:44%"></div><div class="spk c" style="height:60%"></div><div class="spk c" style="height:67%"></div><div class="spk c" style="height:90%"></div><div class="spk c" style="height:100%"></div><div class="spk c" style="height:72%"></div>
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="label">Orders</div>
+        <div class="val">3,041</div>
+        <div class="prev-val">vs 2,894</div>
+        <div class="delta up">▲ +5.1%</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Ticket</div>
+        <div class="val">$60</div>
+        <div class="prev-val">vs $58</div>
+        <div class="delta up">▲ +3.4%</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Labor %</div>
+        <div class="val">28.1%</div>
+        <div class="prev-val">vs 30.4%</div>
+        <div class="delta up">▲ −2.3pp</div>
+      </div>
+
+      <!-- ── TREND CHART (span 8) ── -->
+      <div class="card trend-card" style="grid-column:span 8">
+        <div class="card-hd">
+          <div class="card-title">Revenue by day</div>
+          <div class="leg" style="margin-left:auto">
+            <div class="leg-item"><div class="leg-line" style="background:var(--accent)"></div>This week</div>
+            <div class="leg-item"><div class="leg-line" style="background:var(--prev);background:repeating-linear-gradient(90deg,var(--prev) 0,var(--prev) 4px,transparent 4px,transparent 8px)"></div>Last week</div>
+          </div>
+        </div>
+        <svg class="trend-svg" viewBox="0 0 660 150" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="gC" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#722F37" stop-opacity=".22"/><stop offset="100%" stop-color="#722F37" stop-opacity="0"/></linearGradient>
+          </defs>
+          <line stroke="var(--line)" stroke-width="1" x1="0" y1="150" x2="660" y2="150"/>
+          <line stroke="var(--line)" stroke-width="1" x1="0" y1="100" x2="660" y2="100"/>
+          <line stroke="var(--line)" stroke-width="1" x1="0" y1="50" x2="660" y2="50"/>
+          <!-- prev -->
+          <path fill="none" stroke="var(--prev)" stroke-width="1.8" stroke-dasharray="6,4" d="M30,105 L135,112 L240,98 L345,85 L450,62 L555,45 L640,78"/>
+          <!-- curr area -->
+          <path fill="url(#gC)" d="M30,95 L135,102 L240,82 L345,65 L450,22 L555,10 L640,58 L640,150 L30,150 Z" opacity=".3"/>
+          <!-- curr line -->
+          <path fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M30,95 L135,102 L240,82 L345,65 L450,22 L555,10 L640,58"/>
+          <!-- dots curr -->
+          <circle cx="30" cy="95" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <circle cx="135" cy="102" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <circle cx="240" cy="82" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <circle cx="345" cy="65" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <circle cx="450" cy="22" r="5" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <circle cx="555" cy="10" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <circle cx="640" cy="58" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2"/>
+          <!-- x labels -->
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="30" y="167">Mon</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="135" y="167">Tue</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="240" y="167">Wed</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="345" y="167">Thu</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="450" y="167">Fri</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="555" y="167">Sat ★</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="640" y="167">Sun</text>
+        </svg>
+      </div>
+
+      <!-- ── HEATMAP (span 4) ── -->
+      <div class="card heat-card" style="grid-column:span 4">
+        <div class="card-hd">
+          <div class="card-title">Busy hours</div>
+          <div class="card-sub">Covers by hour · day</div>
+        </div>
+        <div class="heat-grid">
+          <div></div>
+          <div class="heat-xlab">M</div><div class="heat-xlab">T</div><div class="heat-xlab">W</div><div class="heat-xlab">T</div><div class="heat-xlab">F</div><div class="heat-xlab">S</div><div class="heat-xlab">S</div>
+          <!-- rows: hour labels + cells -->
+          <script>
+          (function(){
+            const hrs=['12p','1p','2p','5p','6p','7p','8p','9p','10p'];
+            // heat values per row (Mon-Sun) roughly realistic
+            const data=[
+              [1,1,1,1,2,2,1],[1,1,1,1,2,2,1],[1,1,1,1,1,1,0],
+              [2,2,2,2,3,4,3],[3,3,3,2,4,5,4],[4,3,3,3,5,5,4],
+              [3,3,3,2,5,5,4],[2,2,2,1,4,5,3],[1,1,1,0,2,3,2]
+            ];
+            const colors=['var(--heat0)','var(--heat1)','var(--heat2)','var(--heat3)','var(--heat4)','var(--heat5)'];
+            let html='';
+            data.forEach((row,i)=>{
+              html+=`<div class="heat-ylab">${hrs[i]}</div>`;
+              row.forEach(v=>{
+                html+=`<div class="heat-cell" style="background:${colors[v]}" title="${v} covers"></div>`;
+              });
+            });
+            document.write(html);
+          })();
+          </script>
+        </div>
+        <div class="heat-legend">
+          <span>Low</span>
+          <div class="heat-swatch" style="background:var(--heat1)"></div>
+          <div class="heat-swatch" style="background:var(--heat2)"></div>
+          <div class="heat-swatch" style="background:var(--heat3)"></div>
+          <div class="heat-swatch" style="background:var(--heat4)"></div>
+          <div class="heat-swatch" style="background:var(--heat5)"></div>
+          <span>Peak</span>
+        </div>
+      </div>
+
+      <!-- ── DONUT — Sales by channel (span 4) ── -->
+      <div class="card donut-card" style="grid-column:span 4">
+        <div class="card-hd">
+          <div class="card-title">Revenue by channel</div>
+          <div class="card-sub">This week</div>
+        </div>
+        <div class="donut-wrap">
+          <svg class="donut-svg" viewBox="0 0 130 130">
+            <!-- Donut segments (approximate) -->
+            <circle cx="65" cy="65" r="48" fill="none" stroke="#E7E0D2" stroke-width="22"/>
+            <!-- Dine-in: 48% = 172.8deg -->
+            <circle cx="65" cy="65" r="48" fill="none" stroke="#722F37" stroke-width="22"
+              stroke-dasharray="144.4 157.6" stroke-dashoffset="0" transform="rotate(-90 65 65)"/>
+            <!-- Delivery: 30% = 108deg -->
+            <circle cx="65" cy="65" r="48" fill="none" stroke="#C67C84" stroke-width="22"
+              stroke-dasharray="90.2 211.8" stroke-dashoffset="-144.4" transform="rotate(-90 65 65)"/>
+            <!-- Takeout: 14% -->
+            <circle cx="65" cy="65" r="48" fill="none" stroke="#E8B4BA" stroke-width="22"
+              stroke-dasharray="44 258" stroke-dashoffset="-234.6" transform="rotate(-90 65 65)"/>
+            <!-- Bar: 8% -->
+            <circle cx="65" cy="65" r="48" fill="none" stroke="#F2D4D7" stroke-width="22"
+              stroke-dasharray="24 278" stroke-dashoffset="-278.6" transform="rotate(-90 65 65)"/>
+            <text class="donut-center" x="65" y="60" font-size="18" font-weight="600" fill="#1F1B16" font-family="Fraunces,serif">$184k</text>
+            <text class="donut-center" x="65" y="76" font-size="9.5" fill="#8B8175" font-family="Inter,sans-serif">total</text>
+          </svg>
+          <div class="donut-legend">
+            <div class="donut-row"><div class="donut-dot" style="background:#722F37"></div><span class="donut-key">Dine-in</span><span class="donut-val">$88.3k</span><span class="donut-pct">48%</span></div>
+            <div class="donut-row"><div class="donut-dot" style="background:#C67C84"></div><span class="donut-key">Delivery</span><span class="donut-val">$55.2k</span><span class="donut-pct">30%</span></div>
+            <div class="donut-row"><div class="donut-dot" style="background:#E8B4BA"></div><span class="donut-key">Takeout</span><span class="donut-val">$25.8k</span><span class="donut-pct">14%</span></div>
+            <div class="donut-row"><div class="donut-dot" style="background:#F2D4D7"></div><span class="donut-key">Bar</span><span class="donut-val">$14.7k</span><span class="donut-pct">8%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── LABOR / REVENUE OVERLAY (span 8) ── -->
+      <div class="card labor-card" style="grid-column:span 8">
+        <div class="card-hd">
+          <div class="card-title">Revenue vs. Labor %</div>
+          <div class="card-sub">Bars = revenue · Line = labor cost %</div>
+          <div class="leg" style="margin-left:0;margin-top:0">
+            <div class="leg-item"><div class="leg-line" style="background:var(--accent-soft);border:1px solid var(--accent3)"></div>Revenue</div>
+            <div class="leg-item"><div class="leg-line" style="background:var(--warn)"></div>Labor %</div>
+          </div>
+        </div>
+        <svg class="labor-svg" viewBox="0 0 660 140" preserveAspectRatio="none">
+          <!-- Grid -->
+          <line stroke="var(--line)" stroke-width="1" x1="0" y1="140" x2="660" y2="140"/>
+          <line stroke="var(--line)" stroke-width="1" x1="0" y1="93" x2="660" y2="93"/>
+          <line stroke="var(--line)" stroke-width="1" x1="0" y1="47" x2="660" y2="47"/>
+          <!-- Revenue bars -->
+          <rect x="15" y="80" width="52" height="60" fill="var(--accent-soft)" stroke="var(--accent3)" stroke-width="0.5" rx="4"/>
+          <rect x="120" y="86" width="52" height="54" fill="var(--accent-soft)" stroke="var(--accent3)" stroke-width="0.5" rx="4"/>
+          <rect x="225" y="75" width="52" height="65" fill="var(--accent-soft)" stroke="var(--accent3)" stroke-width="0.5" rx="4"/>
+          <rect x="330" y="70" width="52" height="70" fill="var(--accent-soft)" stroke="var(--accent3)" stroke-width="0.5" rx="4"/>
+          <rect x="435" y="20" width="52" height="120" fill="var(--accent3)" stroke="none" rx="4"/>
+          <rect x="540" y="10" width="52" height="130" fill="var(--accent)" stroke="none" rx="4"/>
+          <rect x="608" y="62" width="36" height="78" fill="var(--accent-soft)" stroke="var(--accent3)" stroke-width="0.5" rx="4"/>
+          <!-- Labor line -->
+          <path class="labor-line" d="M41,55 L146,70 L251,50 L356,60 L461,48 L566,45 L626,52"/>
+          <circle cx="41" cy="55" r="4" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <circle cx="146" cy="70" r="4" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <circle cx="251" cy="50" r="4" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <circle cx="356" cy="60" r="4" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <circle cx="461" cy="48" r="4" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <circle cx="566" cy="45" r="5" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <circle cx="626" cy="52" r="4" fill="var(--warn)" stroke="#fff" stroke-width="2"/>
+          <!-- Y-axis right: labor % labels -->
+          <text font-size="9" fill="var(--warn)" font-family="Inter,sans-serif" x="648" y="50">32%</text>
+          <text font-size="9" fill="var(--warn)" font-family="Inter,sans-serif" x="648" y="98">25%</text>
+          <!-- X labels -->
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="41" y="156">Mon</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="146" y="156">Tue</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="251" y="156">Wed</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="356" y="156">Thu</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="461" y="156">Fri</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="566" y="156">Sat</text>
+          <text font-size="10" fill="var(--muted)" font-family="Inter,sans-serif" text-anchor="middle" x="626" y="156">Sun</text>
+        </svg>
+      </div>
+
+      <!-- ── FUNNEL (span 4) ── -->
+      <div class="card funnel-card" style="grid-column:span 4">
+        <div class="card-hd">
+          <div class="card-title">Order funnel</div>
+          <div class="card-sub">This week</div>
+        </div>
+        <div class="funnel-stages">
+          <div class="funnel-stage">
+            <div class="funnel-label">Browsed menu</div>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:100%;background:var(--accent)">4,820</div>
+            </div>
+          </div>
+          <div class="funnel-stage">
+            <div class="funnel-label">Added item</div>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:82%;background:#8B3D44">3,953 <span class="funnel-drop">−18%</span></div>
+            </div>
+          </div>
+          <div class="funnel-stage">
+            <div class="funnel-label">Reached checkout</div>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:72%;background:#A6525A">3,470 <span class="funnel-drop">−12%</span></div>
+            </div>
+          </div>
+          <div class="funnel-stage">
+            <div class="funnel-label">Completed order</div>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:63%;background:#C07078">3,041 <span class="funnel-drop">−12%</span></div>
+            </div>
+          </div>
+          <div class="funnel-stage">
+            <div class="funnel-label">Reordered (30d)</div>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:38%;background:var(--accent-soft);color:var(--accent)">1,836 <span style="font-size:10px;color:var(--good)">+repeat</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /canvas -->
+  </main>
+</div>
+
+<!-- Floating ⌘K button -->
+<button class="fab" onclick="openCmd()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+  Ask anything
+  <span class="kk">⌘K</span>
+</button>
+</div>
+
+<!-- ═══════════════════════════ VARIANT B — DARK INK ═══════════════════════════ -->
+<div class="variant" id="v1">
+<div class="variant-label">Variant B — Dark ink version of same layout · same charts · different feel</div>
+<div style="background:#13100D;min-height:100vh;display:grid;grid-template-columns:60px 1fr">
+  <aside style="background:#1A1612;border-right:1px solid #2C2620;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:8px">
+    <div style="width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#722F37,#9B4450);display:grid;place-items:center;color:#fff;font-family:'Fraunces',serif;font-size:16px;font-weight:600">W</div>
+    <button style="width:38px;height:38px;border-radius:9px;display:grid;place-items:center;color:#6B7280;transition:all .18s;border:none;background:none;cursor:pointer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="17" height="17"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></button>
+    <button style="width:38px;height:38px;border-radius:9px;display:grid;place-items:center;background:rgba(114,47,55,.3);color:#C67C84;border:none;cursor:pointer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="17" height="17"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></button>
+    <div style="flex:1"></div>
+    <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#4A5568,#718096);display:grid;place-items:center;color:#fff;font-weight:600;font-size:11px">AK</div>
+  </aside>
+  <main style="display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 24px;border-bottom:1px solid #2C2620;background:rgba(19,16,13,.95)">
+      <span style="font-family:'Fraunces',serif;font-size:20px;color:#F7F4EE">Reports</span>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-size:12.5px;border:1px solid #2C2620;color:#9CA3AF;cursor:pointer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        May 5 – May 11
+      </div>
+      <button style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#722F37;color:#fff;border-radius:999px;font-size:13px;font-weight:500;box-shadow:0 4px 14px rgba(114,47,55,.4);border:none;cursor:pointer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        Ask anything
+        <span style="font-size:10px;opacity:.5;margin-left:2px">⌘K</span>
+      </button>
+    </div>
+    <div style="padding:16px 24px;background:rgba(114,47,55,.12);border-bottom:1px solid #2C2620;display:flex;align-items:center;gap:14px">
+      <div style="width:34px;height:34px;background:#722F37;border-radius:10px;display:grid;place-items:center;flex-shrink:0;box-shadow:0 4px 12px rgba(114,47,55,.4)"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" width="15" height="15"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div style="font-size:13.5px;line-height:1.65;color:#D1C9BE"><b style="color:#F7F4EE">Revenue up 8.4%</b> vs last week — best Saturday on record. Labor at 28.1%, down 2.3pp. Tuesday dip was a prep delay at Marina, not demand.</div>
+    </div>
+    <div style="padding:16px 24px 40px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px">
+      <!-- Dark KPIs -->
+      <div style="grid-column:span 3;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:16px 18px">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#6B7280;font-weight:600">Net Revenue</div>
+        <div style="font-family:'Fraunces',serif;font-size:28px;color:#F7F4EE;margin:3px 0 1px">$184k</div>
+        <div style="font-size:11px;color:#4B5563">vs $170k last week</div>
+        <div style="font-size:12px;font-weight:600;color:#34D399;margin-top:4px">▲ +8.4%</div>
+      </div>
+      <div style="grid-column:span 3;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:16px 18px">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#6B7280;font-weight:600">Orders</div>
+        <div style="font-family:'Fraunces',serif;font-size:28px;color:#F7F4EE;margin:3px 0 1px">3,041</div>
+        <div style="font-size:11px;color:#4B5563">vs 2,894</div>
+        <div style="font-size:12px;font-weight:600;color:#34D399;margin-top:4px">▲ +5.1%</div>
+      </div>
+      <div style="grid-column:span 3;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:16px 18px">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#6B7280;font-weight:600">Avg Ticket</div>
+        <div style="font-family:'Fraunces',serif;font-size:28px;color:#F7F4EE;margin:3px 0 1px">$60</div>
+        <div style="font-size:11px;color:#4B5563">vs $58</div>
+        <div style="font-size:12px;font-weight:600;color:#34D399;margin-top:4px">▲ +3.4%</div>
+      </div>
+      <div style="grid-column:span 3;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:16px 18px">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#6B7280;font-weight:600">Labor %</div>
+        <div style="font-family:'Fraunces',serif;font-size:28px;color:#F7F4EE;margin:3px 0 1px">28.1%</div>
+        <div style="font-size:11px;color:#4B5563">vs 30.4%</div>
+        <div style="font-size:12px;font-weight:600;color:#34D399;margin-top:4px">▲ −2.3pp</div>
+      </div>
+      <!-- Dark trend placeholder -->
+      <div style="grid-column:span 8;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:18px 20px">
+        <div style="font-weight:600;font-size:13.5px;color:#F7F4EE;margin-bottom:14px">Revenue by day</div>
+        <svg style="width:100%;height:150px;overflow:visible" viewBox="0 0 600 130" preserveAspectRatio="none">
+          <defs><linearGradient id="gDk" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#722F37" stop-opacity=".3"/><stop offset="100%" stop-color="#722F37" stop-opacity="0"/></linearGradient></defs>
+          <line stroke="#2C2620" stroke-width="1" x1="0" y1="130" x2="600" y2="130"/>
+          <line stroke="#2C2620" stroke-width="1" x1="0" y1="87" x2="600" y2="87"/>
+          <line stroke="#2C2620" stroke-width="1" x1="0" y1="43" x2="600" y2="43"/>
+          <path fill="none" stroke="#4B5563" stroke-width="1.5" stroke-dasharray="6,4" d="M25,95 L125,100 L225,88 L325,75 L425,55 L525,42 L590,68"/>
+          <path fill="url(#gDk)" d="M25,82 L125,90 L225,72 L325,58 L425,20 L525,10 L590,52 L590,130 L25,130 Z" opacity=".3"/>
+          <path fill="none" stroke="#C67C84" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M25,82 L125,90 L225,72 L325,58 L425,20 L525,10 L590,52"/>
+          <circle cx="25" cy="82" r="4" fill="#C67C84" stroke="#13100D" stroke-width="2"/>
+          <circle cx="525" cy="10" r="5" fill="#722F37" stroke="#13100D" stroke-width="2"/>
+          <text font-size="10" fill="#4B5563" font-family="Inter,sans-serif" text-anchor="middle" x="25" y="145">Mon</text>
+          <text font-size="10" fill="#4B5563" font-family="Inter,sans-serif" text-anchor="middle" x="125" y="145">Tue</text>
+          <text font-size="10" fill="#4B5563" font-family="Inter,sans-serif" text-anchor="middle" x="225" y="145">Wed</text>
+          <text font-size="10" fill="#4B5563" font-family="Inter,sans-serif" text-anchor="middle" x="325" y="145">Thu</text>
+          <text font-size="10" fill="#4B5563" font-family="Inter,sans-serif" text-anchor="middle" x="425" y="145">Fri</text>
+          <text font-size="10" fill="#C67C84" font-family="Inter,sans-serif" text-anchor="middle" x="525" y="145">Sat ★</text>
+          <text font-size="10" fill="#4B5563" font-family="Inter,sans-serif" text-anchor="middle" x="590" y="145">Sun</text>
+        </svg>
+      </div>
+      <!-- Dark heatmap -->
+      <div style="grid-column:span 4;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:18px 20px">
+        <div style="font-weight:600;font-size:13.5px;color:#F7F4EE;margin-bottom:14px">Busy hours</div>
+        <div style="display:grid;grid-template-columns:28px repeat(7,1fr);gap:3px">
+          <div></div>
+          <div style="font-size:9.5px;color:#4B5563;text-align:center">M</div><div style="font-size:9.5px;color:#4B5563;text-align:center">T</div><div style="font-size:9.5px;color:#4B5563;text-align:center">W</div><div style="font-size:9.5px;color:#4B5563;text-align:center">T</div><div style="font-size:9.5px;color:#4B5563;text-align:center">F</div><div style="font-size:9.5px;color:#4B5563;text-align:center">S</div><div style="font-size:9.5px;color:#4B5563;text-align:center">S</div>
+          <script>
+          (function(){
+            const hrs=['12p','1p','5p','6p','7p','8p','9p'];
+            const data=[[1,1,1,1,2,2,1],[1,1,1,1,2,2,1],[2,2,2,2,3,4,3],[3,3,3,2,4,5,4],[4,3,3,3,5,5,4],[3,3,3,2,5,5,4],[2,2,2,1,4,5,3]];
+            const colors=['#1A1612','#3A1F23','#5A2D32','#7A3B40','#9A4850','#BA5560'];
+            let html='';
+            data.forEach((row,i)=>{
+              html+=`<div style="font-size:9.5px;color:#4B5563;text-align:right;padding-right:4px;display:flex;align-items:center;justify-content:flex-end">${hrs[i]}</div>`;
+              row.forEach(v=>{ html+=`<div style="aspect-ratio:1;border-radius:4px;background:${colors[v]};cursor:pointer"></div>`; });
+            });
+            document.write(html);
+          })();
+          </script>
+        </div>
+      </div>
+      <!-- Dark donut -->
+      <div style="grid-column:span 4;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:18px 20px">
+        <div style="font-weight:600;font-size:13.5px;color:#F7F4EE;margin-bottom:14px">Revenue by channel</div>
+        <div style="display:flex;align-items:center;gap:20px">
+          <svg width="110" height="110" viewBox="0 0 110 110" style="flex-shrink:0">
+            <circle cx="55" cy="55" r="38" fill="none" stroke="#2C2620" stroke-width="18"/>
+            <circle cx="55" cy="55" r="38" fill="none" stroke="#722F37" stroke-width="18" stroke-dasharray="114.3 125.2" stroke-dashoffset="0" transform="rotate(-90 55 55)"/>
+            <circle cx="55" cy="55" r="38" fill="none" stroke="#9B4450" stroke-width="18" stroke-dasharray="71.4 168.1" stroke-dashoffset="-114.3" transform="rotate(-90 55 55)"/>
+            <circle cx="55" cy="55" r="38" fill="none" stroke="#5A2D32" stroke-width="18" stroke-dasharray="34.8 204.7" stroke-dashoffset="-185.7" transform="rotate(-90 55 55)"/>
+            <text text-anchor="middle" dominant-baseline="middle" x="55" y="52" font-size="14" font-weight="600" fill="#F7F4EE" font-family="Fraunces,serif">$184k</text>
+            <text text-anchor="middle" dominant-baseline="middle" x="55" y="64" font-size="8" fill="#6B7280" font-family="Inter,sans-serif">total</text>
+          </svg>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><div style="width:8px;height:8px;border-radius:50%;background:#722F37;flex-shrink:0"></div><span style="flex:1;color:#9CA3AF">Dine-in</span><span style="font-weight:600;color:#F7F4EE">48%</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><div style="width:8px;height:8px;border-radius:50%;background:#9B4450;flex-shrink:0"></div><span style="flex:1;color:#9CA3AF">Delivery</span><span style="font-weight:600;color:#F7F4EE">30%</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><div style="width:8px;height:8px;border-radius:50%;background:#5A2D32;flex-shrink:0"></div><span style="flex:1;color:#9CA3AF">Takeout</span><span style="font-weight:600;color:#F7F4EE">14%</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><div style="width:8px;height:8px;border-radius:50%;background:#2C1A1D;flex-shrink:0"></div><span style="flex:1;color:#9CA3AF">Bar</span><span style="font-weight:600;color:#F7F4EE">8%</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- Dark funnel -->
+      <div style="grid-column:span 4;background:#1A1612;border:1px solid #2C2620;border-radius:14px;padding:18px 20px">
+        <div style="font-weight:600;font-size:13.5px;color:#F7F4EE;margin-bottom:14px">Order funnel</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:90px;font-size:11px;color:#6B7280;text-align:right">Browsed</div>
+            <div style="flex:1;height:30px;background:#2C2620;border-radius:6px;overflow:hidden"><div style="width:100%;height:100%;background:#722F37;border-radius:6px;display:flex;align-items:center;padding-left:10px;font-size:11px;font-weight:600;color:#fff">4,820</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:90px;font-size:11px;color:#6B7280;text-align:right">Added item</div>
+            <div style="flex:1;height:30px;background:#2C2620;border-radius:6px;overflow:hidden"><div style="width:82%;height:100%;background:#8B3D44;border-radius:6px;display:flex;align-items:center;padding-left:10px;font-size:11px;font-weight:600;color:#fff">3,953 <span style="font-size:9px;color:#F87171;margin-left:4px">−18%</span></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:90px;font-size:11px;color:#6B7280;text-align:right">Checkout</div>
+            <div style="flex:1;height:30px;background:#2C2620;border-radius:6px;overflow:hidden"><div style="width:72%;height:100%;background:#9B4450;border-radius:6px;display:flex;align-items:center;padding-left:10px;font-size:11px;font-weight:600;color:#fff">3,470 <span style="font-size:9px;color:#F87171;margin-left:4px">−12%</span></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:90px;font-size:11px;color:#6B7280;text-align:right">Completed</div>
+            <div style="flex:1;height:30px;background:#2C2620;border-radius:6px;overflow:hidden"><div style="width:63%;height:100%;background:#B05560;border-radius:6px;display:flex;align-items:center;padding-left:10px;font-size:11px;font-weight:600;color:#fff">3,041</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════ COMMAND PALETTE ═══════════════════ -->
+<div id="cmdk-overlay" onclick="closeCmd()"></div>
+<div id="cmdk-box">
+  <div class="cmdk-input-row">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input class="cmdk-input" id="cmdkIn" placeholder='Ask, jump, or search… "why did Tuesday dip?"' oninput="cmdkFilter(this.value)" onkeydown="cmdkKey(event)"/>
+    <span class="esc-key">esc</span>
+  </div>
+  <div class="cmdk-body" id="cmdkBody">
+    <div class="cmdk-sect-label">Ask the AI</div>
+    <div class="cmdk-item hi" onclick="cmdkAsk('Why did Tuesday revenue drop 14%?')">
+      <div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div><div class="cmdk-lbl">Why did Tuesday revenue drop 14%?</div><div class="cmdk-sub">AI explanation</div></div>
+    </div>
+    <div class="cmdk-item" onclick="cmdkAsk('What drove Saturday performance?')">
+      <div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div>
+      <div><div class="cmdk-lbl">What drove Saturday performance?</div><div class="cmdk-sub">AI explanation</div></div>
+    </div>
+    <div class="cmdk-item" onclick="cmdkAsk('Which wines should I reorder?')">
+      <div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
+      <div><div class="cmdk-lbl">Which wines should I reorder?</div><div class="cmdk-sub">Inventory AI</div></div>
+    </div>
+    <div class="cmdk-item" onclick="cmdkAsk('Summarize this week for the owner')">
+      <div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+      <div><div class="cmdk-lbl">Summarize this week for the owner</div><div class="cmdk-sub">AI summary · email</div></div>
+    </div>
+    <div class="cmdk-sect-label" style="border-top:1px solid var(--line)">Jump to chart</div>
+    <div class="cmdk-item"><div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-7"/></svg></div><div><div class="cmdk-lbl">Revenue trend</div><div class="cmdk-sub">Line chart</div></div></div>
+    <div class="cmdk-item"><div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M8 8h1M12 8h1M16 8h1M8 12h1M12 12h1M16 12h1"/></svg></div><div><div class="cmdk-lbl">Busy hours heatmap</div><div class="cmdk-sub">Hour × day</div></div></div>
+    <div class="cmdk-item"><div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l5 3"/></svg></div><div><div class="cmdk-lbl">Revenue by channel</div><div class="cmdk-sub">Donut chart</div></div></div>
+    <div class="cmdk-item"><div class="cmdk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M6 12h12M8 18h8"/></svg></div><div><div class="cmdk-lbl">Order funnel</div><div class="cmdk-sub">Conversion stages</div></div></div>
+  </div>
+  <div class="cmdk-ans" id="cmdkAns" style="display:none">
+    <div class="cmdk-ans-row">
+      <div class="cmdk-ans-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6"/></svg></div>
+      <div>
+        <div class="cmdk-ans-text" id="cmdkAnsText"></div>
+        <div class="cmdk-ans-chips"><button class="cmdk-ans-chip">Drill in →</button><button class="cmdk-ans-chip">Pin to dashboard</button><button class="cmdk-ans-chip" onclick="document.getElementById('cmdkAns').style.display='none'">Dismiss</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(i){
+  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('on',i===j))
+  document.querySelectorAll('.variant').forEach((v,j)=>v.classList.toggle('on',i===j))
+}
+function openCmd(){
+  document.getElementById('cmdk-overlay').style.display='block'
+  document.getElementById('cmdk-box').style.display='block'
+  setTimeout(()=>document.getElementById('cmdkIn').focus(),60)
+}
+function closeCmd(){
+  document.getElementById('cmdk-overlay').style.display='none'
+  document.getElementById('cmdk-box').style.display='none'
+  document.getElementById('cmdkAns').style.display='none'
+}
+function cmdkKey(e){if(e.key==='Escape')closeCmd();if(e.key==='Enter'&&e.target.value)cmdkAsk(e.target.value)}
+function cmdkAsk(q){
+  const answers={
+    'Why did Tuesday revenue drop 14%?':'Tuesday was down 14% vs. the prior Tuesday. Kitchen ticket times at Marina spiked to 14 min between 7–9pm, causing 3 table turns to slow. This looks like a prep bottleneck on the truffle pasta, not a demand problem.',
+    'What drove Saturday performance?':'Saturday hit $28.4k — a 23% jump vs. last Saturday. Marina was fully booked, and the Barolo bottle sales were up 40% after the sommelier featured it. Weather was ideal: outdoor seating used 100% capacity.',
+    'Which wines should I reorder?':'3 wines are below par: Barolo \'21 (2 bottles remaining), Sancerre \'23 (4 bottles), and Malbec Reserve (1 case). Barolo is your top Saturday seller — recommend ordering 1 case immediately.',
+    'Summarize this week for the owner':'Week of May 5–11: revenue up 8.4% to $184k. Labor cost improved to 28.1% (best in 6 weeks). Top performer: Marina location, especially Fri/Sat. Inventory alert: 3 wines at low stock. Recommendation: reorder Barolo before the weekend.',
+    'Forecast next 14 days':'Based on last 8 weeks, next 14 days should land between $340k–$380k total. Mother\'s Day weekend (May 11–12) likely adds $30–40k above baseline if reservations hold.',
+  }
+  const answer = answers[q] || `Analyzing: "${q}"... Based on this week's data, revenue is trending up 8.4% with labor well-controlled. The main outlier is Tuesday's dip at Marina.`
+  document.getElementById('cmdkAnsText').textContent = answer
+  document.getElementById('cmdkAns').style.display = 'block'
+}
+function cmdkFilter(v){}
+window.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();openCmd()}
+  if(e.key==='Escape')closeCmd()
+})
+</script>
+</body>
+</html>

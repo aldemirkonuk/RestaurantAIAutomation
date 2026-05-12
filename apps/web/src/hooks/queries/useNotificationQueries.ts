@@ -62,6 +62,7 @@ export function useNotifications(userId: string, filters?: NotificationFilters) 
     enabled: !!userId,
     staleTime: 15000, // Consider data fresh for 15 seconds
     gcTime: 2 * 60 * 1000, // Keep in cache for 2 minutes
+    select: (data): Notification[] => (Array.isArray(data) ? data : []),
   })
 }
 
