@@ -8,11 +8,13 @@ import {
   LayoutTemplate,
   Search,
   FileText,
+  Plus,
+  ChevronDown,
 } from 'lucide-react'
 import { GmailTemplateBuilder, SavedTemplate } from '../components/documents/GmailTemplateBuilder'
 import { SMSTemplateBuilder } from '../components/documents/SMSTemplateBuilder'
-import { SavedSMSTemplate } from '../components/documents/SavedSMSTemplates'
-import { TemplateLibrary } from '../components/documents/TemplateLibrary'
+import { SavedTemplates } from '../components/documents/SavedTemplates'
+import { SavedSMSTemplates, SavedSMSTemplate } from '../components/documents/SavedSMSTemplates'
 import { ReportScheduler } from '../components/communications/ReportScheduler'
 import {
   useConversations,
@@ -162,16 +164,23 @@ function ApiCommunicationHistory() {
   )
 }
 
+type ChannelFilter = 'all' | 'email' | 'sms'
+
 export function Communications() {
   const [selectedTab, setSelectedTab] = useState<'templates' | 'history' | 'scheduled-reports'>('templates')
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
+  const [showNewMenu, setShowNewMenu] = useState(false)
   const [showGmailBuilder, setShowGmailBuilder] = useState(false)
   const [showSMSBuilder, setShowSMSBuilder] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<SavedTemplate | null>(null)
   const [editingSMSTemplate, setEditingSMSTemplate] = useState<SavedSMSTemplate | null>(null)
+  const [emailRefreshKey, setEmailRefreshKey] = useState(0)
+  const [smsRefreshKey, setSmsRefreshKey] = useState(0)
 
   const handleNewEmailTemplate = useCallback(() => {
     setEditingTemplate(null)
     setShowGmailBuilder(true)
+    setShowNewMenu(false)
   }, [])
 
   const handleEditEmailTemplate = useCallback((template: SavedTemplate) => {
@@ -182,12 +191,16 @@ export function Communications() {
   const handleNewSMSTemplate = useCallback(() => {
     setEditingSMSTemplate(null)
     setShowSMSBuilder(true)
+    setShowNewMenu(false)
   }, [])
 
   const handleEditSMSTemplate = useCallback((template: SavedSMSTemplate) => {
     setEditingSMSTemplate(template)
     setShowSMSBuilder(true)
   }, [])
+
+  const showEmail = channelFilter === 'all' || channelFilter === 'email'
+  const showSMS   = channelFilter === 'all' || channelFilter === 'sms'
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -196,12 +209,12 @@ export function Communications() {
         subtitle="Manage templates, send history, and scheduled reports"
       />
 
-      {/* Tab bar */}
+      {/* Top tab bar */}
       <div className="flex gap-1 px-6 pt-4 pb-0 bg-white border-b border-gray-100">
         {([
-          { key: 'templates',         label: 'Templates',            Icon: LayoutTemplate },
-          { key: 'history',           label: 'Send History',         Icon: Clock },
-          { key: 'scheduled-reports', label: 'Scheduled Reports',    Icon: Calendar },
+          { key: 'templates',         label: 'Templates',         Icon: LayoutTemplate },
+          { key: 'history',           label: 'Send History',      Icon: Clock },
+          { key: 'scheduled-reports', label: 'Scheduled Reports', Icon: Calendar },
         ] as const).map(({ key, label, Icon }) => (
           <button
             key={key}
@@ -219,22 +232,108 @@ export function Communications() {
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* ── Templates tab ── */}
       {selectedTab === 'templates' && (
-        <TemplateLibrary
-          onNewEmailTemplate={handleNewEmailTemplate}
-          onEditEmailTemplate={handleEditEmailTemplate}
-          onNewSMSTemplate={handleNewSMSTemplate}
-          onEditSMSTemplate={handleEditSMSTemplate}
-        />
+        <div className="flex-1 p-6 space-y-6">
+
+          {/* Channel switcher + New button */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl shadow-sm">
+              {([
+                { key: 'all',   label: 'All Templates', Icon: LayoutTemplate },
+                { key: 'email', label: 'Email',          Icon: Mail },
+                { key: 'sms',   label: 'SMS',            Icon: MessageSquare },
+              ] as const).map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setChannelFilter(key)}
+                  className={[
+                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all',
+                    channelFilter === key
+                      ? 'bg-wine-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50',
+                  ].join(' ')}
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* New Template dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNewMenu(v => !v)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-wine-600 hover:bg-wine-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                New Template
+                <ChevronDown className={`w-4 h-4 transition-transform ${showNewMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showNewMenu && (
+                <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-50">
+                  <button
+                    onClick={handleNewEmailTemplate}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Mail className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-800">Email Template</p>
+                      <p className="text-xs text-gray-400">Drag-and-drop canvas</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={handleNewSMSTemplate}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-800">SMS Template</p>
+                      <p className="text-xs text-gray-400">With iPhone preview</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Email cards */}
+          {showEmail && (
+            <SavedTemplates
+              key={emailRefreshKey}
+              onEditTemplate={handleEditEmailTemplate}
+              onDuplicateTemplate={() => setEmailRefreshKey(k => k + 1)}
+              onDeleteTemplate={() => setEmailRefreshKey(k => k + 1)}
+              onUseTemplate={handleEditEmailTemplate}
+              onNewTemplate={handleNewEmailTemplate}
+            />
+          )}
+
+          {/* SMS cards */}
+          {showSMS && (
+            <SavedSMSTemplates
+              key={smsRefreshKey}
+              onEditTemplate={handleEditSMSTemplate}
+              onDuplicateTemplate={() => setSmsRefreshKey(k => k + 1)}
+              onDeleteTemplate={() => setSmsRefreshKey(k => k + 1)}
+              onNewTemplate={handleNewSMSTemplate}
+            />
+          )}
+        </div>
       )}
 
+      {/* ── History tab ── */}
       {selectedTab === 'history' && (
         <div className="p-6">
           <ApiCommunicationHistory />
         </div>
       )}
 
+      {/* ── Scheduled Reports tab ── */}
       {selectedTab === 'scheduled-reports' && (
         <div className="p-6">
           <ReportScheduler
@@ -248,7 +347,7 @@ export function Communications() {
       {showGmailBuilder && (
         <GmailTemplateBuilder
           onClose={() => { setShowGmailBuilder(false); setEditingTemplate(null) }}
-          onSave={() => { setShowGmailBuilder(false); setEditingTemplate(null) }}
+          onSave={() => { setShowGmailBuilder(false); setEditingTemplate(null); setEmailRefreshKey(k => k + 1) }}
           editingTemplate={editingTemplate}
         />
       )}
@@ -257,7 +356,7 @@ export function Communications() {
       {showSMSBuilder && (
         <SMSTemplateBuilder
           onClose={() => { setShowSMSBuilder(false); setEditingSMSTemplate(null) }}
-          onSave={() => { setShowSMSBuilder(false); setEditingSMSTemplate(null) }}
+          onSave={() => { setShowSMSBuilder(false); setEditingSMSTemplate(null); setSmsRefreshKey(k => k + 1) }}
           editingTemplate={editingSMSTemplate as any}
         />
       )}
