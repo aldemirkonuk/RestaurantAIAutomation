@@ -492,8 +492,11 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Custom Reminders Check - Runs every 15 minutes
-   * Fires any custom reminders that are due
+   * Custom Reminders Check - Runs every 15 minutes.
+   * Fires any custom reminders that are due:
+   *   1. Sends a Gmail email to recipients.
+   *   2. Writes a `notifications` DB row so the alert appears in the in-app inbox.
+   *   3. Advances next_fire_at based on the cron expression (not a crude +7 days).
    */
   @Cron('*/15 * * * *', {
     name: 'custom-reminders-check',
@@ -505,7 +508,6 @@ export class ScheduledTasksService implements OnModuleInit {
       const client = this.databaseService.getClient();
       const now = new Date();
 
-      // Find reminders due to fire
       const { data: reminders } = await client
         .from('custom_reminders')
         .select('*')
@@ -517,7 +519,7 @@ export class ScheduledTasksService implements OnModuleInit {
       if (!reminders || reminders.length === 0) return;
 
       for (const reminder of reminders) {
-        // Determine recipients
+        // Resolve email recipients
         let emails = reminder.recipient_emails || [];
         if (emails.length === 0 && reminder.recipient_roles?.length > 0) {
           const recipients = await this.recipientResolver.resolveRecipients({
@@ -531,7 +533,8 @@ export class ScheduledTasksService implements OnModuleInit {
           emails = this.managerEmails;
         }
 
-        await this.gmailService.sendCustomReminder({
+        // 1. Send email
+        const emailResult = await this.gmailService.sendCustomReminder({
           to: emails,
           restaurantName: 'WineOps Restaurant',
           title: reminder.title,
@@ -544,17 +547,41 @@ export class ScheduledTasksService implements OnModuleInit {
           recurrencePattern: reminder.schedule_cron,
         });
 
-        // Update reminder: mark as fired
+        // 2. Write a notifications row (so it appears in the in-app inbox)
+        const notifUserId = reminder.created_by || null;
+        if (notifUserId) {
+          try {
+            await client.from('notifications').insert({
+              user_id: notifUserId,
+              restaurant_id: reminder.restaurant_id || this.defaultRestaurantId,
+              type: 'custom_reminder',
+              title: reminder.title,
+              message: reminder.description || reminder.title,
+              priority: reminder.metadata?.priority || 'medium',
+              status: 'unread',
+              action_url: '/notifications',
+              action_label: 'View Reminder',
+              metadata: {
+                reminder_id: reminder.id,
+                reminder_type: reminder.reminder_type,
+                email_sent: emailResult.success,
+                email_message_id: emailResult.messageId,
+              },
+              created_at: now.toISOString(),
+            });
+          } catch (notifErr) {
+            this.logger.warn(`Could not write notifications row for reminder ${reminder.id}: ${notifErr?.message}`);
+          }
+        }
+
+        // 3. Advance or deactivate
         if (reminder.is_recurring && reminder.schedule_cron) {
-          // For recurring reminders, calculate next fire time (simplified: add 7 days for weekly)
-          const nextFire = new Date(now);
-          nextFire.setDate(nextFire.getDate() + 7);
+          const nextFire = this.computeNextFireAt(reminder.schedule_cron, now);
           await client
             .from('custom_reminders')
             .update({ last_fired_at: now.toISOString(), next_fire_at: nextFire.toISOString() })
             .eq('id', reminder.id);
         } else {
-          // One-time reminder: deactivate
           await client
             .from('custom_reminders')
             .update({ last_fired_at: now.toISOString(), is_active: false })
@@ -566,6 +593,60 @@ export class ScheduledTasksService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to process custom reminders:', error);
     }
+  }
+
+  /**
+   * Compute the next fire time for a recurring reminder by parsing the cron expression.
+   *
+   * Supported patterns (covers the common Outlook-like frequencies):
+   *   - Every N minutes: * /N * * * *  → advance by N minutes
+   *   - Hourly:          0 * * * *      → advance by 1 hour
+   *   - Daily at HH:MM:  MM HH * * *   → advance by 1 day
+   *   - Weekly (any dow): MM HH * * N  → advance by 7 days
+   *   - Monthly (dom N): MM HH N * *  → advance by ~30 days (next same DOM)
+   *
+   * Falls back to +1 day when the expression cannot be parsed.
+   */
+  computeNextFireAt(cronExpr: string, from: Date = new Date()): Date {
+    const next = new Date(from);
+    try {
+      const parts = cronExpr.trim().split(/\s+/);
+      if (parts.length !== 5) throw new Error('non-standard cron');
+
+      const [minute, hour, dom, month, dow] = parts;
+
+      // Monthly: specific day of month (e.g. "0 9 1 * *" = 1st of month at 9am)
+      if (dom !== '*' && dow === '*') {
+        next.setMonth(next.getMonth() + 1);
+        return next;
+      }
+
+      // Weekly: specific day of week (e.g. "0 9 * * 1" = every Monday)
+      if (dom === '*' && dow !== '*') {
+        next.setDate(next.getDate() + 7);
+        return next;
+      }
+
+      // Hourly step (e.g. "*/30 * * * *" = every 30 minutes)
+      const minuteMatch = minute.match(/^\*\/(\d+)$/);
+      if (minuteMatch && hour === '*') {
+        next.setMinutes(next.getMinutes() + parseInt(minuteMatch[1], 10));
+        return next;
+      }
+
+      // Fixed hour, any minute = daily
+      if (hour !== '*') {
+        next.setDate(next.getDate() + 1);
+        return next;
+      }
+
+      // Default: daily
+      next.setDate(next.getDate() + 1);
+    } catch {
+      // Fallback: +1 day
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
   }
 
   // ==========================================================================

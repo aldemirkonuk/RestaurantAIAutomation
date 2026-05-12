@@ -2,6 +2,7 @@ import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { CommunicationsService } from '../communications/communications.service';
+import { GmailService } from '../communications/gmail.service';
 import { DatabaseService } from '../database/database.service';
 
 export interface NotificationPayload {
@@ -32,6 +33,8 @@ export class NotificationsService {
     private readonly databaseService: DatabaseService,
     @Optional() @Inject(forwardRef(() => CommunicationsService))
     private readonly communicationsService?: CommunicationsService,
+    @Optional() @Inject(forwardRef(() => GmailService))
+    private readonly gmailService?: GmailService,
   ) {
     this.initWebPush();
   }
@@ -370,9 +373,8 @@ export class NotificationsService {
   }
 
   /**
-   * Send email
-   * In production, this would forward to the Python agent-orchestrator email service
-   * For now, it's a mock implementation that logs the email details
+   * Send email via GmailService (OAuth2).
+   * Falls back to a logged mock when GmailService is not injected (e.g. isolated unit tests).
    */
   async sendEmail(data: {
     to: string[];
@@ -382,39 +384,79 @@ export class NotificationsService {
     cc?: string[];
     bcc?: string[];
   }): Promise<{ success: boolean; messageId: string }> {
-    this.logger.log(`📧 Sending email:`);
-    this.logger.log(`   To: ${data.to.join(', ')}`);
-    this.logger.log(`   Subject: ${data.subject}`);
-    if (data.cc && data.cc.length > 0) {
-      this.logger.log(`   CC: ${data.cc.join(', ')}`);
+    this.logger.log(`📧 Sending email to: ${data.to.join(', ')} — ${data.subject}`);
+
+    if (this.gmailService) {
+      const result = await this.gmailService.sendEmail({
+        to: data.to,
+        subject: data.subject,
+        html: data.bodyHtml,
+        text: data.bodyText,
+        cc: data.cc,
+        bcc: data.bcc,
+      });
+      this.logger.log(`✅ Email ${result.success ? 'sent' : 'failed'} — MessageID: ${result.messageId}`);
+      return { success: result.success, messageId: result.messageId ?? `err-${Date.now()}` };
     }
-    if (data.bcc && data.bcc.length > 0) {
-      this.logger.log(`   BCC: ${data.bcc.join(', ')}`);
-    }
-    this.logger.log(`   Body HTML length: ${data.bodyHtml.length} chars`);
-    
-    // TODO: In production, forward to Python agent-orchestrator
-    // const response = await axios.post('http://localhost:8000/api/v1/notifications/send-email', {
-    //   to: data.to,
-    //   subject: data.subject,
-    //   body_html: data.bodyHtml,
-    //   body_text: data.bodyText,
-    //   cc: data.cc,
-    //   bcc: data.bcc,
-    // });
-    
-    // Mock implementation - simulate successful send
+
+    // Fallback mock (no GmailService available)
     const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    this.logger.log(`✅ Email sent successfully (mock) - Message ID: ${messageId}`);
-    
-    return {
-      success: true,
-      messageId,
-    };
+    this.logger.warn(`⚠ GmailService not available — email mocked. MessageID: ${messageId}`);
+    return { success: true, messageId };
+  }
+
+  /**
+   * Create a persistent notification row in the notifications table.
+   * Called by the frontend reminder-scheduler and backend cron jobs so the
+   * notification appears in the in-app notification center.
+   */
+  async createNotification(data: {
+    userId: string;
+    restaurantId: string;
+    type: string;
+    title: string;
+    message: string;
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+    actionUrl?: string;
+    actionLabel?: string;
+    metadata?: Record<string, any>;
+  }) {
+    const { data: row, error } = await this.databaseService.supabase
+      .from('notifications')
+      .insert({
+        user_id: data.userId,
+        restaurant_id: data.restaurantId,
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        priority: data.priority ?? 'medium',
+        status: 'unread',
+        action_url: data.actionUrl,
+        action_label: data.actionLabel,
+        metadata: data.metadata ?? {},
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error(`createNotification DB error: ${error.message}`);
+      throw error;
+    }
+
+    this.logger.log(`Notification created: ${row.id} for user ${data.userId}`);
+
+    // Emit real-time event so the frontend inbox updates instantly
+    this.websocketGateway.server
+      .to(`user:${data.userId}`)
+      .emit('notification:new', {
+        type: data.type,
+        title: data.title,
+        body: data.message,
+        data: data.metadata,
+      });
+
+    return this.mapNotificationRow(row);
   }
 
   // =========================================================================

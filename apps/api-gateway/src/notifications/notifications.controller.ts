@@ -36,6 +36,34 @@ export class NotificationsController {
   // NOTIFICATION CRUD ENDPOINTS
   // =========================================================================
 
+  /**
+   * Create a notification row in the DB.
+   * Called by the frontend reminder-scheduler (POST /notifications) so
+   * calendar reminders appear in the in-app notification center.
+   */
+  @Post()
+  async createNotification(
+    @Body()
+    body: {
+      userId: string;
+      restaurantId: string;
+      type: string;
+      title: string;
+      message: string;
+      priority?: 'low' | 'medium' | 'high' | 'critical';
+      actionUrl?: string;
+      actionLabel?: string;
+      metadata?: Record<string, any>;
+    },
+  ) {
+    try {
+      return await this.notificationsService.createNotification(body);
+    } catch (error) {
+      this.logger.error(`Failed to create notification: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Get()
   async getNotifications(@Query() query: GetNotificationsQueryDto) {
     try {
