@@ -590,22 +590,16 @@ async getOrGenerateICalToken(restaurantId: string): Promise<string> {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **`generate_recurring_events` stub vs full implementation**
-   - What we know: the function doesn't exist; the frontend does client-side recurrence expansion via `expandAllRecurringEvents()`
-   - What's unclear: does Phase 30 need server-side occurrence generation (e.g., for iCal feed to include recurring events correctly)?
-   - Recommendation: implement a full server-side occurrence generator in the Postgres function for the iCal feed to work correctly with recurring events (subscribers would only see the parent, not all occurrences, without server-side expansion). Plan as a separate task within the phase.
+1. **`generate_recurring_events` stub vs full implementation** — RESOLVED
+   - Phase 30 uses a stub implementation that returns 0 (no server-side occurrence rows generated). The frontend handles all recurrence expansion client-side via `expandAllRecurringEvents()`. The iCal feed (Plan 30-03) will emit parent events with RRULE lines (queried from `calendar_recurrence_rules`) so that subscribing calendar apps handle the recurrence display natively — no server-side occurrence generation needed for iCal correctness. Full server-side RPC implementation is deferred to Phase 31.
 
-2. **`CreateCalendarEventDto.eventTimeEnd` — needed?**
-   - What we know: `buildCreatePayload` needs to send `end_time` to backend for new events
-   - What's unclear: the backend DTO `CreateCalendarEventDto` has no `eventTimeEnd` field, yet the DB already has an `end_time` column
-   - Recommendation: add `eventTimeEnd?: string` to `CreateCalendarEventDto` in same task as D-04.
+2. **`CreateCalendarEventDto.eventTimeEnd` — needed?** — RESOLVED
+   - Yes. Plan 30-02 adds `eventTimeEnd?: string` to both `CreateCalendarEventDto` and `UpdateCalendarEventDto` in `calendar.dto.ts`. Service `insertPayload` maps `dto.eventTimeEnd → end_time`. Frontend `buildCreatePayload` maps `data.endTime → eventTimeEnd` (naming follows the existing `eventTime` convention).
 
-3. **Settings page: add section vs add tab**
-   - What we know: Settings uses scrollspy sections, NOT tabs. Adding a new section means adding to `SECTION_IDS` and rendering a `<section id="calendar">` block.
-   - What's unclear: nothing — the pattern is clear from code.
-   - Recommendation: add `calendar` section following the existing pattern.
+3. **Settings page: add section vs add tab** — RESOLVED
+   - Add a section. Settings uses `SECTION_IDS` scrollspy (not tabs) — confirmed from codebase. Plan 30-05 adds `'calendar'` to `SECTION_IDS`, creates a `<section id="calendar">` block in the page body, and adds the label to `SECTION_LABELS`. No tab infrastructure changes needed.
 
 ---
 
