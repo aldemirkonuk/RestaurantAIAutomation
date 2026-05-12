@@ -84,9 +84,10 @@ export function Notifications() {
   const [detailRequestStatus, setDetailRequestStatus] = useState<Record<string, 'idle' | 'sending' | 'sent'>>({})
   
   // Fetch notifications from API
-  const { data: notifications = [], isLoading: _isLoading, error: _error, refetch } = useNotifications(user?.userId || '', {
+  const { data: rawNotifications, isLoading: _isLoading, error: _error, refetch } = useNotifications(user?.userId || '', {
     status: filter === 'all' ? undefined : filter,
   })
+  const notifications: Notification[] = Array.isArray(rawNotifications) ? rawNotifications : []
   const markAsRead = useMarkNotificationAsRead()
   const markAllAsRead = useMarkAllNotificationsAsRead()
   const archiveNotificationMutation = useArchiveNotification()
@@ -114,7 +115,8 @@ export function Notifications() {
   }, [refetch])
 
   const filteredNotifications = useMemo(() => {
-    return notifications.filter(n => {
+    const safeNotifications = Array.isArray(notifications) ? notifications : []
+    return safeNotifications.filter(n => {
       const matchesFilter = filter === 'all' || n.status === filter
       const matchesPriority = priorityFilter === 'all' || n.priority === priorityFilter
       const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -172,10 +174,11 @@ export function Notifications() {
   }, [filteredNotifications, starredNotifications])
 
   const stats = useMemo(() => {
-    const unread = notifications.filter(n => n.status === 'unread').length
-    const urgent = notifications.filter(n => n.priority === 'urgent' && n.status === 'unread').length
+    const safeNotifications = Array.isArray(notifications) ? notifications : []
+    const unread = safeNotifications.filter(n => n.status === 'unread').length
+    const urgent = safeNotifications.filter(n => n.priority === 'urgent' && n.status === 'unread').length
     const starred = starredNotifications.size
-    const today = notifications.filter(n => {
+    const today = safeNotifications.filter(n => {
       const notifDate = new Date(n.timestamp)
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
