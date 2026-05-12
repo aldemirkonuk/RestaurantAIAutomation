@@ -106,6 +106,9 @@ importers:
       googleapis:
         specifier: ^170.0.0
         version: 170.0.0
+      ical-generator:
+        specifier: ^10.2.0
+        version: 10.2.0(@types/luxon@3.4.2)(@types/node@20.19.27)(dayjs@1.11.19)(luxon@3.5.0)(moment@2.30.1)
       nodemailer:
         specifier: ^8.0.1
         version: 8.0.1
@@ -6242,6 +6245,39 @@ packages:
   human-signals@2.1.0:
     resolution: {integrity: sha512-B4FFZ6q/T2jhhksgkbEW3HBvWIfDW85snkQgawt07S7J5QXTk6BkNV+0yAeZrM5QpMAdYlocGoljn0sJ/WQkFw==}
     engines: {node: '>=10.17.0'}
+
+  ical-generator@10.2.0:
+    resolution: {integrity: sha512-XR5FsiDWCsz5MwBwMA/sQqR3A9H240xkXIeXOabV7uNAiieP+TA9rleVvlwPLRXMz+CXME8cGuDd7cdnE5At6w==}
+    engines: {node: 20 || 22 || >=24}
+    peerDependencies:
+      '@touch4it/ical-timezones': '>=1.6.0'
+      '@types/luxon': '>= 1.26.0'
+      '@types/mocha': '>= 8.2.1'
+      '@types/node': '*'
+      dayjs: '>= 1.10.0'
+      luxon: '>= 1.26.0'
+      moment: '>= 2.29.0'
+      moment-timezone: '>= 0.5.33'
+      rrule: '>= 2.6.8'
+    peerDependenciesMeta:
+      '@touch4it/ical-timezones':
+        optional: true
+      '@types/luxon':
+        optional: true
+      '@types/mocha':
+        optional: true
+      '@types/node':
+        optional: true
+      dayjs:
+        optional: true
+      luxon:
+        optional: true
+      moment:
+        optional: true
+      moment-timezone:
+        optional: true
+      rrule:
+        optional: true
 
   iceberg-js@0.8.1:
     resolution: {integrity: sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==}
@@ -16172,6 +16208,14 @@ snapshots:
       - supports-color
 
   human-signals@2.1.0: {}
+
+  ical-generator@10.2.0(@types/luxon@3.4.2)(@types/node@20.19.27)(dayjs@1.11.19)(luxon@3.5.0)(moment@2.30.1):
+    optionalDependencies:
+      '@types/luxon': 3.4.2
+      '@types/node': 20.19.27
+      dayjs: 1.11.19
+      luxon: 3.5.0
+      moment: 2.30.1
 
   iceberg-js@0.8.1: {}
 

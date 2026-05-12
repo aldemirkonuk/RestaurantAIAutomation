@@ -1,6 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
+import ical from 'ical-generator';
+import * as crypto from 'crypto';
 import { EventType, SourcePage } from '../events/dto/event.dto';
 import {
   CreateCalendarEventDto,
@@ -914,5 +916,147 @@ export class CalendarService {
       lastGeneratedDate: row.last_generated_date || undefined,
       nextGenerationDate: row.next_generation_date || undefined,
     };
+  }
+
+  // ==========================================================================
+  // iCAL SUBSCRIPTION FEED (D-07, D-08, D-09)
+  // ==========================================================================
+
+  async getOrGenerateICalToken(restaurantId: string): Promise<string> {
+    const { data, error } = await this.databaseService.supabase
+      .from('restaurants')
+      .select('calendar_ical_token')
+      .eq('id', restaurantId)
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to fetch iCal token: ${error.message}`);
+    }
+
+    if (data?.calendar_ical_token) {
+      return data.calendar_ical_token;
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const { error: updateError } = await this.databaseService.supabase
+      .from('restaurants')
+      .update({ calendar_ical_token: token })
+      .eq('id', restaurantId);
+
+    if (updateError) {
+      throw new Error(`Failed to store iCal token: ${updateError.message}`);
+    }
+
+    return token;
+  }
+
+  async regenerateICalToken(restaurantId: string): Promise<string> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const { error } = await this.databaseService.supabase
+      .from('restaurants')
+      .update({ calendar_ical_token: token })
+      .eq('id', restaurantId);
+
+    if (error) {
+      throw new Error(`Failed to regenerate iCal token: ${error.message}`);
+    }
+
+    return token;
+  }
+
+  async getICalFeed(token: string): Promise<string> {
+    const { data: restaurant, error: restError } = await this.databaseService.supabase
+      .from('restaurants')
+      .select('id, name')
+      .eq('calendar_ical_token', token)
+      .single();
+
+    if (restError || !restaurant) {
+      // Return empty calendar (not 404) to avoid exposing token validity (T-30-09)
+      const emptyCal = ical({ name: 'WineOps Calendar', prodId: '-//WineOps//Restaurant Calendar//EN' });
+      return emptyCal.toString();
+    }
+
+    const { data: events, error: eventsError } = await this.databaseService.supabase
+      .from('calendar_events')
+      .select('id, title, description, start_date, start_time, end_date, end_time, all_day, status, is_recurring, parent_event_id')
+      .eq('restaurant_id', restaurant.id)
+      .is('parent_event_id', null)
+      .order('start_date', { ascending: true });
+
+    if (eventsError || !events) {
+      const emptyCal = ical({ name: 'WineOps Calendar', prodId: '-//WineOps//Restaurant Calendar//EN' });
+      return emptyCal.toString();
+    }
+
+    const recurringEventIds = events.filter(e => e.is_recurring).map(e => e.id);
+    let recurrenceRules: Record<string, any> = {};
+    if (recurringEventIds.length > 0) {
+      const { data: rules } = await this.databaseService.supabase
+        .from('calendar_recurrence_rules')
+        .select('calendar_event_id, frequency, interval_value, end_on_date, end_after_count, days_of_week')
+        .in('calendar_event_id', recurringEventIds);
+      if (rules) {
+        for (const rule of rules) {
+          recurrenceRules[rule.calendar_event_id] = rule;
+        }
+      }
+    }
+
+    const calendar = ical({
+      name: `${restaurant.name || 'WineOps'} Calendar`,
+      prodId: '-//WineOps//Restaurant Calendar//EN',
+    });
+
+    const freqMap: Record<string, string> = {
+      daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY',
+    };
+
+    for (const event of events) {
+      const icalStatus = (event.status === 'cancelled' || event.status === 'dismissed')
+        ? 'CANCELLED'
+        : (event.status === 'pending')
+        ? 'TENTATIVE'
+        : 'CONFIRMED';
+
+      const startDateStr = event.start_date;
+      const endDateStr = event.end_date || event.start_date;
+
+      let startDate: Date;
+      let endDate: Date;
+
+      if (event.all_day) {
+        startDate = new Date(`${startDateStr}T00:00:00`);
+        endDate = new Date(`${endDateStr}T00:00:00`);
+        endDate.setDate(endDate.getDate() + 1);
+      } else {
+        const startTime = event.start_time || '00:00';
+        const endTime = event.end_time || '23:59';
+        startDate = new Date(`${startDateStr}T${startTime}:00`);
+        endDate = new Date(`${endDateStr}T${endTime}:00`);
+      }
+
+      const calEvent = calendar.createEvent({
+        id: `${event.id}@wineops.app`,
+        start: startDate,
+        end: endDate,
+        summary: event.title,
+        description: event.description || undefined,
+        allDay: event.all_day,
+        status: icalStatus as any,
+      });
+
+      const rule = recurrenceRules[event.id];
+      if (rule && freqMap[rule.frequency]) {
+        let rrule = `FREQ=${freqMap[rule.frequency]}`;
+        if (rule.interval_value && rule.interval_value > 1) rrule += `;INTERVAL=${rule.interval_value}`;
+        if (rule.end_on_date) rrule += `;UNTIL=${rule.end_on_date.replace(/-/g, '')}T000000Z`;
+        if (rule.end_after_count) rrule += `;COUNT=${rule.end_after_count}`;
+        if (rule.days_of_week?.length > 0) rrule += `;BYDAY=${rule.days_of_week.join(',')}`;
+        (calEvent as any).repeating(rrule);
+      }
+    }
+
+    return calendar.toString();
   }
 }
