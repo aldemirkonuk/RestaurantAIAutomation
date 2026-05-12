@@ -164,7 +164,7 @@ export interface CalendarEvent {
   occurrenceDate?: string
 }
 
-export interface EventType {
+export interface EventTypeRecord {
   id: string
   name: string
   color: string
@@ -288,8 +288,8 @@ export async function fetchUpcomingEvents(
 /**
  * Fetch event types for a restaurant (including custom types)
  */
-export async function fetchEventTypes(restaurantId: string): Promise<EventType[]> {
-  const response = await apiClient.get<EventType[]>(
+export async function fetchEventTypes(restaurantId: string): Promise<EventTypeRecord[]> {
+  const response = await apiClient.get<EventTypeRecord[]>(
     `/calendar/event-types/${restaurantId}`
   )
   return response.data
@@ -301,8 +301,8 @@ export async function fetchEventTypes(restaurantId: string): Promise<EventType[]
 export async function createEventType(
   restaurantId: string,
   data: { name: string; color: string; icon: string }
-): Promise<EventType> {
-  const response = await apiClient.post<EventType>('/calendar/event-types', {
+): Promise<EventTypeRecord> {
+  const response = await apiClient.post<EventTypeRecord>('/calendar/event-types', {
     ...data,
     restaurantId,
   })
@@ -315,8 +315,8 @@ export async function createEventType(
 export async function updateEventType(
   id: string,
   data: { name?: string; color?: string; icon?: string }
-): Promise<EventType> {
-  const response = await apiClient.patch<EventType>(`/calendar/event-types/${id}`, data)
+): Promise<EventTypeRecord> {
+  const response = await apiClient.patch<EventTypeRecord>(`/calendar/event-types/${id}`, data)
   return response.data
 }
 

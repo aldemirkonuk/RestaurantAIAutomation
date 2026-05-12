@@ -14,7 +14,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { CalendarEvent } from './useCalendarPage'
-import type { EventType } from '../../services/api/calendar'
+import type { EventTypeRecord as EventType } from '../../services/api/calendar'
 import type { Provider } from '../../services/api/types'
 import type { RecurrenceRule } from '../../lib/calendar/recurrence'
 
