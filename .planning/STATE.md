@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 30 — Calendar Operations Hub. Plan 30-01 complete (schema migrations applied).
+**Current focus:** Phase 30 — Calendar Operations Hub. Plans 30-01 and 30-02 complete. Service column renames + eventTimeEnd + color wired through service and DTOs.
 
 ---
 
 ## Current Position
 
-**Last completed:** Phase 28 — Onboarding Reform + Menu Import. All 5 plans executed 2026-05-11. Phase complete.
+**Last completed:** Phase 30 Plan 02 — Calendar service column fix. calendar.service.ts column names aligned with migration; eventTimeEnd + color wired through all payloads and DTOs. 2026-05-12.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27, 28
 **Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
 - Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
@@ -761,4 +761,4 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 ---
 
 *State initialized: 2026-03-30*
-*Last updated: 2026-05-11 — Phase 27 fully complete. All 5 UAT tests passed. Providers page redesigned from sketches 008/009/010-A and deployed. Phase 28 (Onboarding Reform + Menu Import) is next.*
+*Last updated: 2026-05-12 — Phase 30 Plans 30-01 and 30-02 complete. Calendar schema migrations applied; calendar.service.ts column names aligned with DB (start_date/end_date/start_time/end_time/color); eventTimeEnd added to all 3 calendar DTOs. TypeScript compiles clean.*

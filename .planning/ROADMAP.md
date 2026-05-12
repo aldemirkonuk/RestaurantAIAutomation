@@ -271,7 +271,7 @@ Plans:
 **Plans:** 6 plans
 Plans:
 - [x] 30-01-PLAN.md — Comprehensive DB schema migration (calendar_events + recurrence tables + generate_recurring_events RPC + restaurants.calendar_ical_token)
-- [ ] 30-02-PLAN.md — Backend service column alignment (D-01), color persistence (D-03), endTime wiring (D-04)
+- [x] 30-02-PLAN.md — Backend service column alignment (D-01), color persistence (D-03), endTime wiring (D-04)
 - [ ] 30-03-PLAN.md — iCal feed backend: ical-generator install, feed endpoint (@Public), token generation/regeneration endpoints
 - [ ] 30-04-PLAN.md — Frontend bug fixes: status enum (D-02), endTime payload (D-04), Dashboard Add Event modal navigation (D-06), CalendarPage openModal param
 - [ ] 30-05-PLAN.md — Frontend iCal UI: Settings calendar subscription section (D-10) + dashboard subscribe shortcut (D-11)
