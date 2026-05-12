@@ -109,7 +109,7 @@ const buildCreatePayload = (data: CreateEventInput | (CreateEventInput & { event
   eventDate: data.date ?? (data as any).eventDate,
   allDay: data.allDay,
   eventTime: data.allDay ? undefined : data.startTime,
-  eventDateEnd: data.allDay ? undefined : (data as any).endDate,
+  eventDateEnd: data.allDay ? undefined : data.eventDateEnd,
   eventTimeEnd: data.allDay ? undefined : data.endTime,
   providerId: data.providerId,
   orderId: data.orderId,
@@ -177,6 +177,7 @@ export interface CreateEventInput {
   title: string
   type: EventType
   date: string
+  eventDateEnd?: string
   startTime?: string
   endTime?: string
   allDay?: boolean
@@ -249,8 +250,8 @@ export async function updateCalendarEvent(data: UpdateEventInput): Promise<Calen
   if (updateData.date !== undefined) payload.eventDate = updateData.date
   if (updateData.allDay !== undefined) payload.allDay = updateData.allDay
   if (updateData.startTime !== undefined) payload.eventTime = updateData.startTime
-  if (updateData.endTime !== undefined) {
-    payload.eventDateEnd = updateData.allDay ? undefined : (updateData as any).endDate
+  if (updateData.endTime !== undefined || updateData.eventDateEnd !== undefined) {
+    payload.eventDateEnd = updateData.allDay ? undefined : updateData.eventDateEnd
     payload.eventTimeEnd = updateData.allDay ? undefined : updateData.endTime
   }
   if (updateData.providerId !== undefined) payload.providerId = updateData.providerId
