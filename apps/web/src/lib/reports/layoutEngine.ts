@@ -7,9 +7,11 @@
 
 import type { LayoutConfig } from './types'
 import type { DashboardBlock, DashboardLayoutConfig } from '../../components/reports/dashboardTypes'
+import { DEFAULT_BLOCKS } from '../../components/reports/dashboardMeta'
 
 const LAYOUT_VERSION = 1
-const DASHBOARD_VERSION = 1
+// Increment when DEFAULT_BLOCKS gains new block IDs that must be injected into saved layouts
+const DASHBOARD_VERSION = 2
 
 // ═══════════════════════════════════════════════════════════════════════
 // Legacy layout functions
@@ -88,8 +90,11 @@ export function parseLayoutFromPreferences(raw: unknown): LayoutConfig | null {
 export function parseDashboardBlocksFromPreferences(raw: unknown): DashboardBlock[] | null {
   try {
     const config = raw as DashboardLayoutConfig
-    if (config && config.version === DASHBOARD_VERSION && Array.isArray(config.blocks)) {
-      return config.blocks
+    if (config && Array.isArray(config.blocks) && config.blocks.length > 0) {
+      // Merge: keep saved positions, but inject any new default blocks that are missing
+      const savedIds = new Set(config.blocks.map((b) => b.id))
+      const missing = DEFAULT_BLOCKS.filter((b) => !savedIds.has(b.id))
+      return missing.length > 0 ? [...config.blocks, ...missing] : config.blocks
     }
   } catch { /* ignore */ }
   return null
@@ -99,6 +104,6 @@ export function serializeLayout(config: LayoutConfig): object {
   return { ...config, version: LAYOUT_VERSION }
 }
 
-export function serializeDashboardBlocks(blocks: DashboardBlock[]): object {
-  return { blocks, version: DASHBOARD_VERSION } satisfies DashboardLayoutConfig
+export function serializeDashboardBlocks(blocks: DashboardBlock[]): DashboardLayoutConfig {
+  return { blocks, version: DASHBOARD_VERSION }
 }
