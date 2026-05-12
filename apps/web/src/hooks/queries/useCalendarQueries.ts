@@ -326,7 +326,7 @@ export function useUpdateEventStatus() {
   const toast = useNotificationStore()
   
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'pending' | 'confirmed' | 'completed' | 'cancelled' }) =>
+    mutationFn: ({ id, status }: { id: string; status: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled' }) =>
       updateEventStatus(id, status),
     onSuccess: (updatedEvent) => {
       // Update event cache

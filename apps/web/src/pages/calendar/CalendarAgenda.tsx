@@ -164,7 +164,7 @@ function EventRow({
       </div>
 
       {/* Status badge */}
-      {event.status && event.status !== 'confirmed' && (
+      {event.status && event.status !== 'approved' && (
         <span className={`
           flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full
           ${event.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}

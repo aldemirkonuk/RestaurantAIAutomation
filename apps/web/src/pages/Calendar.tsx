@@ -75,7 +75,7 @@ interface CalendarEvent {
   providerId?: string
   wineCount?: number
   totalValue?: number
-  status?: 'pending' | 'confirmed' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
+  status?: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
   recurring?: RecurringConfig
   reminders?: ReminderTime[]
   customReminderMinutes?: number
@@ -1006,7 +1006,7 @@ export function Calendar() {
     await updateEvent.mutateAsync({ id: eventId, status })
     
     // Send push notification for status change
-    if (user?.userId && restaurantId && event && status === 'confirmed') {
+    if (user?.userId && restaurantId && event && status === 'approved') {
       try {
         await createNotification({
           userId: user.userId,
@@ -1323,7 +1323,7 @@ export function Calendar() {
                               <h4 className="font-semibold text-gray-900">{event.title}</h4>
                               <span
                                 className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  event.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                  event.status === 'approved' ? 'bg-green-100 text-green-700' :
                                   event.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                                   event.status === 'cancelled' ? 'bg-red-100 text-red-700' :
                                   'bg-yellow-100 text-yellow-700'
@@ -1621,14 +1621,14 @@ export function Calendar() {
                     value={selectedEvent.status}
                     onChange={(e) => handleUpdateEventStatus(selectedEvent.id, e.target.value as CalendarEvent['status'])}
                     className={`px-3 py-1 rounded-full text-sm font-medium border-0 cursor-pointer ${
-                      selectedEvent.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                      selectedEvent.status === 'approved' ? 'bg-green-100 text-green-700' :
                       selectedEvent.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                       selectedEvent.status === 'cancelled' ? 'bg-red-100 text-red-700' :
                       'bg-yellow-100 text-yellow-700'
                     }`}
                   >
                     <option value="pending">Pending</option>
-                    <option value="confirmed">Confirmed</option>
+                    <option value="approved">Confirmed</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                   </select>

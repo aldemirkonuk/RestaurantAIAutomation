@@ -37,7 +37,7 @@ export const FALLBACK_CALENDAR_EVENTS: CalendarEvent[] = [
     endTime: '11:00',
     description: 'Scheduled wine delivery',
     color: '#10B981',
-    status: 'confirmed',
+    status: 'approved',
     restaurantId: '550e8400-e29b-41d4-a716-446655440000',
   },
 ]

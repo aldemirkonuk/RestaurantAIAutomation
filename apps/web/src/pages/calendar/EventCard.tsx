@@ -137,7 +137,7 @@ export function EventCard({ event, color, onClose }: EventCardProps) {
             <span className={`
               inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize
               ${event.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
-              ${event.status === 'confirmed' ? 'bg-green-100 text-green-600' : ''}
+              ${event.status === 'approved' ? 'bg-green-100 text-green-600' : ''}
               ${event.status === 'approved' ? 'bg-blue-100 text-blue-600' : ''}
               ${event.status === 'completed' ? 'bg-green-100 text-green-600' : ''}
               ${event.status === 'cancelled' ? 'bg-red-100 text-red-600' : ''}
