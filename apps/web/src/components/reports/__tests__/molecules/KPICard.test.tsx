@@ -44,14 +44,14 @@ describe('KPICard', () => {
     expect(onDelete).toHaveBeenCalledTimes(1)
   })
 
-  it('calls onEdit when card clicked in edit mode', () => {
+  it('calls onEdit when card double-clicked in edit mode', () => {
     const onEdit = vi.fn()
     const { container } = render(
       <KPICard card={mockCard} value={mockValue} isEditMode onEdit={onEdit} />
     )
     
     const cardElement = container.firstChild as HTMLElement
-    fireEvent.click(cardElement)
+    fireEvent.doubleClick(cardElement)
     
     expect(onEdit).toHaveBeenCalledTimes(1)
   })

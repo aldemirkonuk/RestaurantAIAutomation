@@ -20,8 +20,8 @@ import {
   AlertTriangle,
   Wine,
   Settings,
-  GripVertical,
 } from 'lucide-react'
+import { isInteractiveReorderSurfaceTarget } from '../lib/reports-drag'
 import { ReportGenerator } from '../components/reports/ReportGenerator'
 import { TopBar } from '../components/reports/organisms/TopBar'
 import { AIInsightsSection } from '../components/reports/organisms/AIInsightsSection'
@@ -668,6 +668,226 @@ export function Reports() {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section as keyof typeof prev] }))
   }, [])
 
+  /** Renders one below-the-dashboard section (used both in static view and reorder mode). */
+  function renderSectionContent(sectionId: string) {
+    return (
+      <>
+        {sectionId === 'aiInsights' && (
+          <AIInsightsSection
+            insights={aiInsights}
+            isOpen={showAIInsights}
+            onToggle={() => setShowAIInsights(!showAIInsights)}
+            onInsightAction={(id) => console.log('Insight action:', id)}
+          />
+        )}
+
+        {sectionId === 'dataTable' && (
+          <DataTablesSection
+            dailyData={salesData}
+            purchaseData={purchaseData}
+            purchaseMetrics={purchaseMetrics}
+            totalRevenue={metrics.totalRevenue}
+            checkScans={checkScans}
+            expandedSections={expandedSections}
+            onToggle={handleSectionToggle}
+            onCheckUpload={(file) => console.log('Check uploaded:', file.name)}
+          />
+        )}
+
+        {sectionId === 'reconciliation' && (
+          <MonthlyReconciliation totalBottlesSold={metrics.totalBottles} totalInventoryValue={metrics.inventoryValue} />
+        )}
+
+        {sectionId === 'consumption' && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Wine className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Wine Consumption Analytics</h3>
+                  <p className="text-sm text-gray-500">Per-wine bottle and glass sales with volume tracking</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6">
+              {hasConsumptionData ? (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                      <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">Total Bottles Consumed</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalBottlesSold} bottles</p>
+                      <p className="text-sm text-gray-500">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</p>
+                    </div>
+                    <div className="p-4 bg-pink-50 rounded-lg border border-pink-100">
+                      <p className="text-xs text-pink-600 font-medium uppercase tracking-wide">Total Glasses Consumed</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalGlassesSold} glasses</p>
+                      <p className="text-sm text-gray-500">= {consumptionTotals.totalGlassBottleEquiv.toFixed(1)} bottle equivalent</p>
+                    </div>
+                    <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+                      <p className="text-xs text-emerald-600 font-medium uppercase tracking-wide">Combined Revenue</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">
+                        ${(consumptionTotals.totalBottleRevenue + consumptionTotals.totalGlassRevenue).toLocaleString()}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        bottles: ${consumptionTotals.totalBottleRevenue.toLocaleString()} + glasses: $
+                        {consumptionTotals.totalGlassRevenue.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  {bottleConsumptionRows.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Bottles Consumed</h4>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-200 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
+                              <th className="text-left py-2.5 px-3 font-medium text-gray-600">Format</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottles Sold</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Total Volume</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bottleConsumptionRows.map((d: any) => (
+                              <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
+                                <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.bottleSizeMl, measurementUnit)}</td>
+                                <td className="py-2.5 px-3 text-right text-gray-900">{d.bottlesSold}</td>
+                                <td className="py-2.5 px-3 text-right text-gray-900">
+                                  ${((d.bottlesSold || 0) * (d.bottlePrice || 0)).toLocaleString()}
+                                </td>
+                                <td className="py-2.5 px-3 text-right text-gray-600">
+                                  {formatVolume(bottlesToVolume(d.bottlesSold || 0, d.bottleSizeMl || 750), measurementUnit)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-50 font-semibold border-t border-gray-200">
+                              <td className="py-2.5 px-3 text-gray-900" colSpan={2}>
+                                Total
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalBottlesSold}</td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalBottleRevenue.toLocaleString()}</td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">
+                                {formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {glassConsumptionRows.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Glasses Consumed</h4>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-200 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
+                              <th className="text-left py-2.5 px-3 font-medium text-gray-600">Pour Size</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Glasses Sold</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottle Equiv.</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Cost/Glass</th>
+                              <th className="text-right py-2.5 px-3 font-medium text-gray-600">Margin</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {glassConsumptionRows.map((d: any) => {
+                              const gpb = getGlassesPerBottle(d.bottleSizeMl || 750, d.pourSizeMl || 150)
+                              const cpg = costPerGlass(d.costPerBottle || 0, gpb)
+                              const margin = glassMarginPercent(cpg, d.glassPrice || 0)
+                              const bottleEquiv = gpb > 0 ? ((d.glassesSold || 0) / gpb).toFixed(1) : '0'
+                              return (
+                                <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                  <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
+                                  <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.pourSizeMl || 150, measurementUnit)}</td>
+                                  <td className="py-2.5 px-3 text-right text-gray-900">{d.glassesSold}</td>
+                                  <td className="py-2.5 px-3 text-right text-gray-900">
+                                    ${((d.glassesSold || 0) * (d.glassPrice || 0)).toLocaleString()}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right text-gray-600">{bottleEquiv}</td>
+                                  <td className="py-2.5 px-3 text-right text-gray-600">${cpg.toFixed(2)}</td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    <span
+                                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        margin >= 70
+                                          ? 'bg-emerald-100 text-emerald-700'
+                                          : margin >= 50
+                                            ? 'bg-amber-100 text-amber-700'
+                                            : 'bg-red-100 text-red-700'
+                                      }`}
+                                    >
+                                      {margin.toFixed(1)}%
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-50 font-semibold border-t border-gray-200">
+                              <td className="py-2.5 px-3 text-gray-900" colSpan={2}>
+                                Total
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassesSold}</td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">
+                                ${consumptionTotals.totalGlassRevenue.toLocaleString()}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">
+                                {consumptionTotals.totalGlassBottleEquiv.toFixed(1)}
+                              </td>
+                              <td className="py-2.5 px-3" colSpan={2}></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 px-4">
+                  <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
+                    <Wine className="w-8 h-8 text-purple-600" />
+                  </div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                    Connect your POS system to see wine consumption analytics
+                  </h4>
+                  <p className="text-sm text-gray-500 text-center max-w-md mb-6">
+                    Once connected, you&apos;ll see detailed analytics including bottles sold, glasses sold, revenue breakdown, and margin
+                    analysis per wine.
+                  </p>
+                  <Link
+                    to="/settings"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Configure POS
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {sectionId === 'reportGenerator' && (
+          <ReportGenerator
+            onGenerate={(templateId, options) => {
+              console.log('Generating report:', templateId, options)
+            }}
+            salesData={salesData}
+            metrics={metrics}
+          />
+        )}
+      </>
+    )
+  }
+
   // ── Render ─────────────────────────────────────────────────────────
 
   if (loading) {
@@ -789,215 +1009,41 @@ export function Reports() {
           metrics={metrics}
         />
 
-        {/* Reorderable sections — drag handles on left edge of each card */}
-        <Reorder.Group
-          axis="y"
-          values={sectionOrder}
-          onReorder={setSectionOrder}
-          className="space-y-6"
-          as="div"
-        >
-          {sectionOrder.map((sectionId) => (
-            <Reorder.Item key={sectionId} value={sectionId} as="div">
-              <div className="relative group/section">
-                {/* Per-section drag handle */}
-                <div className="absolute -left-7 top-1/2 -translate-y-1/2 opacity-0 group-hover/section:opacity-100 transition-opacity z-10 cursor-grab active:cursor-grabbing">
-                  <GripVertical className="w-4 h-4 text-gray-300" />
+        {/* Below-dashboard sections — full-card drag reorder in Edit layout */}
+        {isEditMode ? (
+          <Reorder.Group axis="y" values={sectionOrder} onReorder={setSectionOrder} className="space-y-6" as="div">
+            {sectionOrder.map((sectionId) => (
+              <Reorder.Item
+                key={sectionId}
+                value={sectionId}
+                as="div"
+                style={{ cursor: 'grab', listStyle: 'none' }}
+                whileDrag={{
+                  cursor: 'grabbing',
+                  scale: 1.008,
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
+                  zIndex: 40,
+                  position: 'relative',
+                }}
+                className="rounded-xl outline outline-1 outline-transparent transition-[outline-color] hover:outline-blue-100"
+              >
+                <div
+                  onPointerDown={(e) => {
+                    if (isInteractiveReorderSurfaceTarget(e.target)) e.stopPropagation()
+                  }}
+                >
+                  {renderSectionContent(sectionId)}
                 </div>
-
-                {sectionId === 'aiInsights' && (
-                  <AIInsightsSection
-                    insights={aiInsights}
-                    isOpen={showAIInsights}
-                    onToggle={() => setShowAIInsights(!showAIInsights)}
-                    onInsightAction={(id) => console.log('Insight action:', id)}
-                  />
-                )}
-
-                {sectionId === 'dataTable' && (
-                  <DataTablesSection
-                    dailyData={salesData}
-                    purchaseData={purchaseData}
-                    purchaseMetrics={purchaseMetrics}
-                    totalRevenue={metrics.totalRevenue}
-                    checkScans={checkScans}
-                    expandedSections={expandedSections}
-                    onToggle={handleSectionToggle}
-                    onCheckUpload={(file) => console.log('Check uploaded:', file.name)}
-                  />
-                )}
-
-                {sectionId === 'reconciliation' && (
-                  <MonthlyReconciliation
-                    totalBottlesSold={metrics.totalBottles}
-                    totalInventoryValue={metrics.inventoryValue}
-                  />
-                )}
-
-                {sectionId === 'consumption' && (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-purple-100 rounded-lg">
-                          <Wine className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">Wine Consumption Analytics</h3>
-                          <p className="text-sm text-gray-500">Per-wine bottle and glass sales with volume tracking</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-6">
-                      {hasConsumptionData ? (
-                        <div className="space-y-8">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                              <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">Total Bottles Consumed</p>
-                              <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalBottlesSold} bottles</p>
-                              <p className="text-sm text-gray-500">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</p>
-                            </div>
-                            <div className="p-4 bg-pink-50 rounded-lg border border-pink-100">
-                              <p className="text-xs text-pink-600 font-medium uppercase tracking-wide">Total Glasses Consumed</p>
-                              <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalGlassesSold} glasses</p>
-                              <p className="text-sm text-gray-500">= {consumptionTotals.totalGlassBottleEquiv.toFixed(1)} bottle equivalent</p>
-                            </div>
-                            <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-                              <p className="text-xs text-emerald-600 font-medium uppercase tracking-wide">Combined Revenue</p>
-                              <p className="text-2xl font-bold text-gray-900 mt-1">
-                                ${(consumptionTotals.totalBottleRevenue + consumptionTotals.totalGlassRevenue).toLocaleString()}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                bottles: ${consumptionTotals.totalBottleRevenue.toLocaleString()} + glasses: ${consumptionTotals.totalGlassRevenue.toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                          {bottleConsumptionRows.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Bottles Consumed</h4>
-                              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b border-gray-200 bg-gray-50">
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Format</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottles Sold</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Total Volume</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {bottleConsumptionRows.map((d: any) => (
-                                      <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                        <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
-                                        <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.bottleSizeMl, measurementUnit)}</td>
-                                        <td className="py-2.5 px-3 text-right text-gray-900">{d.bottlesSold}</td>
-                                        <td className="py-2.5 px-3 text-right text-gray-900">${((d.bottlesSold || 0) * (d.bottlePrice || 0)).toLocaleString()}</td>
-                                        <td className="py-2.5 px-3 text-right text-gray-600">{formatVolume(bottlesToVolume(d.bottlesSold || 0, d.bottleSizeMl || 750), measurementUnit)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                                      <td className="py-2.5 px-3 text-gray-900" colSpan={2}>Total</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalBottlesSold}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalBottleRevenue.toLocaleString()}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                          {glassConsumptionRows.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Glasses Consumed</h4>
-                              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b border-gray-200 bg-gray-50">
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Pour Size</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Glasses Sold</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottle Equiv.</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Cost/Glass</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Margin</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {glassConsumptionRows.map((d: any) => {
-                                      const gpb = getGlassesPerBottle(d.bottleSizeMl || 750, d.pourSizeMl || 150)
-                                      const cpg = costPerGlass(d.costPerBottle || 0, gpb)
-                                      const margin = glassMarginPercent(cpg, d.glassPrice || 0)
-                                      const bottleEquiv = gpb > 0 ? ((d.glassesSold || 0) / gpb).toFixed(1) : '0'
-                                      return (
-                                        <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                          <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
-                                          <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.pourSizeMl || 150, measurementUnit)}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-900">{d.glassesSold}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-900">${((d.glassesSold || 0) * (d.glassPrice || 0)).toLocaleString()}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-600">{bottleEquiv}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-600">${cpg.toFixed(2)}</td>
-                                          <td className="py-2.5 px-3 text-right">
-                                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                                              margin >= 70 ? 'bg-emerald-100 text-emerald-700' : margin >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                                            }`}>
-                                              {margin.toFixed(1)}%
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      )
-                                    })}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                                      <td className="py-2.5 px-3 text-gray-900" colSpan={2}>Total</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassesSold}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalGlassRevenue.toLocaleString()}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassBottleEquiv.toFixed(1)}</td>
-                                      <td className="py-2.5 px-3" colSpan={2}></td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-12 px-4">
-                          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-                            <Wine className="w-8 h-8 text-purple-600" />
-                          </div>
-                          <h4 className="text-lg font-semibold text-gray-900 mb-2">Connect your POS system to see wine consumption analytics</h4>
-                          <p className="text-sm text-gray-500 text-center max-w-md mb-6">
-                            Once connected, you'll see detailed analytics including bottles sold, glasses sold, revenue breakdown, and margin analysis per wine.
-                          </p>
-                          <Link
-                            to="/settings"
-                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                            Configure POS
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {sectionId === 'reportGenerator' && (
-                  <ReportGenerator
-                    onGenerate={(templateId, options) => {
-                      console.log('Generating report:', templateId, options)
-                    }}
-                    salesData={salesData}
-                    metrics={metrics}
-                  />
-                )}
-              </div>
-            </Reorder.Item>
-          ))}
-        </Reorder.Group>
+              </Reorder.Item>
+            ))}
+          </Reorder.Group>
+        ) : (
+          <div className="space-y-6">
+            {sectionOrder.map((sectionId) => (
+              <div key={sectionId}>{renderSectionContent(sectionId)}</div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* AI Command Palette (global overlay) */}

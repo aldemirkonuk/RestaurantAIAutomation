@@ -4,6 +4,7 @@
  */
 
 import { X, Pencil, LucideIcon } from 'lucide-react'
+import { isInteractiveReorderSurfaceTarget } from '../../../lib/reports-drag'
 import { MetricDisplay, TrendIndicator, DragHandle } from '../atoms'
 
 interface KPICardData {
@@ -54,14 +55,25 @@ export function KPICard({
           ? 'border-wine-300 shadow-wine-100 hover:border-wine-400'
           : 'border-gray-100 hover:shadow-md hover:border-gray-200'
       } ${className}`}
-      onClick={() => isEditMode && onEdit?.()}
-      onPointerDown={onLongPressStart}
+      onDoubleClick={() => {
+        if (isEditMode) onEdit?.()
+      }}
+      title={isEditMode ? 'Drag to reorder, or double-click / use Edit to change metric' : undefined}
+      onPointerDown={(e) => {
+        if (isInteractiveReorderSurfaceTarget(e.target)) {
+          e.stopPropagation()
+          return
+        }
+        onLongPressStart?.()
+      }}
       onPointerUp={onLongPressEnd}
       onPointerLeave={onLongPressEnd}
     >
       {/* Edit mode delete button */}
       {isEditMode && onDelete && (
         <button
+          type="button"
+          aria-label="Delete KPI card"
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
@@ -74,6 +86,7 @@ export function KPICard({
 
       {isEditMode && onEdit && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation()
             onEdit()

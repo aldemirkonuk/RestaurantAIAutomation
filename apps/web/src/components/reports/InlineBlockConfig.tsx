@@ -113,7 +113,7 @@ export function InlineBlockConfig({ block, onSave, onClose, onDelete }: InlineBl
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.96 }}
         transition={{ duration: 0.15 }}
-        className="absolute z-50 top-full left-0 mt-2 w-[380px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
+        className="no-dashboard-reorder absolute z-50 top-full left-0 mt-2 w-[380px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
       onClick={(e: React.MouseEvent) => e.stopPropagation()}
       onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
       >

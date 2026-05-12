@@ -353,8 +353,10 @@ export function DashboardBlock({
       {isEditMode && (
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-2 py-1.5 bg-gradient-to-b from-white/95 to-white/0 pointer-events-none">
           <div className="flex items-center gap-1.5 pointer-events-auto">
-            {/* Drag handle - has class "drag-handle" for react-grid-layout */}
-            <div className="drag-handle cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100 transition-colors">
+            <div
+              className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100 transition-colors"
+              title="Drag from anywhere on the card to move — use buttons normally"
+            >
               <GripVertical className="w-4 h-4 text-gray-400" />
             </div>
             {/* Block info badge */}

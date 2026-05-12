@@ -43,6 +43,10 @@ const ROW_HEIGHT = 80
 const COLS = { lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }
 const MARGIN: [number, number] = [16, 16]
 
+/** Selectors whose pointer events must not initiate grid drag */
+const DRAG_CANCEL_SELECTORS =
+  '.react-resizable-handle,button,a,input,textarea,select,option,label,[role="button"],[role="slider"],[role="menuitem"],[role="option"],[role="dialog"],[contenteditable="true"],.no-dashboard-reorder'
+
 // ── Component ──────────────────────────────────────────────────────────
 
 export function DashboardCanvas({
@@ -136,9 +140,15 @@ export function DashboardCanvas({
   }
 
   return (
-    <div ref={containerRef} className={`dashboard-canvas ${className}`}>
+    <div ref={containerRef} className={`dashboard-canvas ${isEditMode ? 'is-edit-layout' : ''} ${className}`}>
       {/* Custom styles for react-grid-layout */}
       <style>{`
+        .dashboard-canvas.is-edit-layout .react-grid-item {
+          cursor: grab;
+        }
+        .dashboard-canvas.is-edit-layout .react-grid-item.react-draggable-dragging {
+          cursor: grabbing;
+        }
         .dashboard-canvas .react-grid-item {
           transition: all 200ms ease;
         }
@@ -173,7 +183,7 @@ export function DashboardCanvas({
         containerPadding={[0, 0]}
         isDraggable={isEditMode}
         isResizable={isEditMode}
-        draggableHandle=".drag-handle"
+        draggableCancel={DRAG_CANCEL_SELECTORS}
         onLayoutChange={handleLayoutChange}
         useCSSTransforms
         compactType="vertical"
