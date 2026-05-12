@@ -38,13 +38,13 @@ export function useProviders(restaurantId: string, filters?: ProviderFilters) {
       try {
         const providers = await fetchProviders(restaurantId, filters)
         
-        // Cache the successful response
-        await offlineStorage.cacheEntity(cacheKey, providers, 5 * 60 * 1000) // 5 min TTL
-        await offlineStorage.markSynced('providers')
+        // Fire-and-forget — do NOT await IDB writes; they must not block the render
+        offlineStorage.cacheEntity(cacheKey, providers, 5 * 60 * 1000).catch(() => {})
+        offlineStorage.markSynced('providers').catch(() => {})
         
         return providers
       } catch (error) {
-        // Try to get cached data
+        // Try to get cached data (IDB read is acceptable on error path — no spinner is shown)
         const cached = await offlineStorage.getCachedEntity<Provider[]>(cacheKey)
         if (cached) {
           console.warn('[Providers] Using cached data due to API error')

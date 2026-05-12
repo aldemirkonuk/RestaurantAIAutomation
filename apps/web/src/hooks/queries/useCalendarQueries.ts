@@ -39,9 +39,9 @@ export function useCalendarEvents(restaurantId: string, filters: CalendarFilters
       try {
         const events = await fetchCalendarEvents(restaurantId, filters)
         
-        // Cache the successful response
-        await offlineStorage.cacheEntity(cacheKey, events, 5 * 60 * 1000) // 5 min TTL
-        await offlineStorage.markSynced('calendar')
+        // Fire-and-forget — do NOT await IDB writes; they must not block the render
+        offlineStorage.cacheEntity(cacheKey, events, 5 * 60 * 1000).catch(() => {})
+        offlineStorage.markSynced('calendar').catch(() => {})
         
         return events
       } catch (error) {

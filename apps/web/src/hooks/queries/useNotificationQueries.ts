@@ -38,9 +38,9 @@ export function useNotifications(userId: string, filters?: NotificationFilters) 
       try {
         const notifications = await fetchNotifications(userId, filters)
         
-        // Cache the successful response
-        await offlineStorage.cacheEntity(cacheKey, notifications, 2 * 60 * 1000) // 2 min TTL
-        await offlineStorage.markSynced('notifications')
+        // Fire-and-forget — do NOT await IDB writes; they must not block the render
+        offlineStorage.cacheEntity(cacheKey, notifications, 2 * 60 * 1000).catch(() => {})
+        offlineStorage.markSynced('notifications').catch(() => {})
         
         return notifications
       } catch (error) {
