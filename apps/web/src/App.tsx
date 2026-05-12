@@ -1,4 +1,31 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, ComponentType } from 'react'
+
+/**
+ * Wraps a dynamic import so that stale-chunk errors (after a new deploy)
+ * trigger a one-time page reload instead of crashing the app with
+ * "text/html is not a valid JavaScript MIME type".
+ */
+function lazyWithRefresh<T extends ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(() =>
+    factory().catch((err: Error) => {
+      const isChunkError =
+        err?.message?.includes('text/html') ||
+        err?.message?.includes('Failed to fetch dynamically imported module') ||
+        err?.message?.includes('error loading dynamically imported module')
+
+      if (isChunkError && !sessionStorage.getItem('chunk_reload')) {
+        sessionStorage.setItem('chunk_reload', '1')
+        window.location.reload()
+        // Return a never-resolving promise so React doesn't render anything
+        return new Promise<never>(() => {})
+      }
+
+      throw err
+    })
+  )
+}
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
@@ -24,31 +51,31 @@ import { Inventory } from './pages/Inventory'
 import { Orders } from './pages/Orders'
 
 // Onboarding pages (lazy loaded)
-const GetStarted = lazy(() => import('./pages/GetStarted'))
+const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 
 // Heavy pages (lazy loaded)
-const Reports = lazy(() => import('./pages/Reports'))
-const WineLibrary = lazy(() => import('./pages/wine-library'))
-const SommelierAI = lazy(() => import('./pages/SommelierAI'))
-const AdminPanel = lazy(() => import('./pages/AdminPanel'))
-const AdminHealth = lazy(() => import('./pages/AdminHealth'))
+const Reports = lazyWithRefresh(() => import('./pages/Reports'))
+const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
+const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
+const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
+const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 
 // Standard pages (lazy loaded)
-const Providers = lazy(() => import('./pages/Providers'))
-const Communications = lazy(() => import('./pages/Communications'))
-const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
-const Notifications = lazy(() => import('./pages/Notifications'))
-const Calendar = lazy(() => import('./pages/Calendar'))
-const Onboarding = lazy(() => import('./pages/Onboarding'))
-const Settings = lazy(() => import('./pages/Settings'))
+const Providers = lazyWithRefresh(() => import('./pages/Providers'))
+const Communications = lazyWithRefresh(() => import('./pages/Communications'))
+const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
+const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
+const Calendar = lazyWithRefresh(() => import('./pages/Calendar'))
+const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding'))
+const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 
 // Dev/Test pages
-const DevSandbox = lazy(() => import('./pages/DevSandbox'))
+const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
 
 // Studio pages — separate layout with StudioLayout
-const Studio = lazy(() => import('./pages/studio/Studio'))
-const StudioApprovalQueue = lazy(() => import('./pages/studio/StudioApprovalQueue'))
-const StudioCertify = lazy(() => import('./pages/studio/StudioCertify'))
+const Studio = lazyWithRefresh(() => import('./pages/studio/Studio'))
+const StudioApprovalQueue = lazyWithRefresh(() => import('./pages/studio/StudioApprovalQueue'))
+const StudioCertify = lazyWithRefresh(() => import('./pages/studio/StudioCertify'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
