@@ -275,7 +275,7 @@ Plans:
 - [x] 30-03-PLAN.md — iCal feed backend: ical-generator install, feed endpoint (@Public), token generation/regeneration endpoints
 - [x] 30-04-PLAN.md — Frontend bug fixes: status enum (D-02), endTime payload (D-04), Dashboard Add Event modal navigation (D-06), CalendarPage openModal param
 - [x] 30-05-PLAN.md — Frontend iCal UI: Settings calendar subscription section (D-10) + dashboard subscribe shortcut (D-11)
-- [ ] 30-06-PLAN.md — this_and_future recurring update scope implementation (D-05)
+- [x] 30-06-PLAN.md — this_and_future recurring update scope implementation (D-05)
 
 ### Phase 31: Event-Driven Procurement Signals
 **Goal**: Connect the calendar to inventory and procurement. When a wine-related event (wine_tasting, private_dinner, special_event) is created or confirmed, the system performs a lightweight inventory adequacy check and surfaces a non-blocking procurement suggestion if stock may be insufficient for the event.
