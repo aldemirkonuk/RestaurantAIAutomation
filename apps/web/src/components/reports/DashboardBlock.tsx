@@ -16,6 +16,10 @@ import { DATA_SOURCE_MAP, CHART_TYPE_MAP } from './dashboardMeta'
 import { InlineBlockConfig } from './InlineBlockConfig'
 import { KPIChartBlock } from './molecules/KPIChartBlock'
 import { DataTableBlock, type TableColumn } from './molecules/DataTableBlock'
+import { BusyHoursHeatmap } from './molecules/BusyHoursHeatmap'
+import { ChannelDonutChart } from './molecules/ChannelDonutChart'
+import { LaborRevenueOverlay } from './molecules/LaborRevenueOverlay'
+import { OrderFunnelChart } from './molecules/OrderFunnelChart'
 import type { KPIBlockData } from './molecules/KPIChartBlock'
 import type { WineTypeDistribution, TopWine } from './molecules'
 
@@ -34,6 +38,8 @@ interface DashboardBlockProps {
   getKPIValue: (key: string) => { value: string | number; change: number; changeType: 'increase' | 'decrease' }
   onKPIClick?: (kpiKey: string) => void
   spotlightedKPI?: string | null
+  totalOrders?: number
+  totalRevenue?: number
 }
 
 // ── Table column definitions per data source ───────────────────────────
@@ -118,8 +124,33 @@ function renderChart(
   salesData: DashboardBlockProps['salesData'],
   wineTypeDistribution: WineTypeDistribution[],
   topWines: TopWine[],
+  totalOrders = 0,
+  totalRevenue = 0,
 ) {
   const { chartType, dataSource } = block
+
+  // ── New specialty charts ────────────────────────────────────────────
+  if (chartType === 'heatmap' || dataSource === 'busyHours') {
+    return <BusyHoursHeatmap totalOrders={totalOrders} className="h-full" />
+  }
+
+  if (chartType === 'channel-donut' || dataSource === 'channelMix') {
+    return (
+      <ChannelDonutChart
+        wineTypeDistribution={wineTypeDistribution}
+        totalRevenue={totalRevenue}
+        className="h-full"
+      />
+    )
+  }
+
+  if (chartType === 'labor-overlay' || dataSource === 'laborRevenue') {
+    return <LaborRevenueOverlay salesData={salesData} className="h-full" />
+  }
+
+  if (chartType === 'funnel' || dataSource === 'orderFunnel') {
+    return <OrderFunnelChart totalOrders={totalOrders} totalRevenue={totalRevenue} className="h-full" />
+  }
 
   // Distribution data for donut
   if (chartType === 'donut') {
@@ -267,6 +298,8 @@ export function DashboardBlock({
   getKPIValue,
   onKPIClick,
   spotlightedKPI,
+  totalOrders = 0,
+  totalRevenue = 0,
 }: DashboardBlockProps) {
   const [showConfig, setShowConfig] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -405,7 +438,7 @@ export function DashboardBlock({
           />
         ) : (
           <div className="h-full min-h-[120px]">
-            {renderChart(block, salesData, wineTypeDistribution, topWines)}
+            {renderChart(block, salesData, wineTypeDistribution, topWines, totalOrders, totalRevenue)}
           </div>
         )}
       </div>

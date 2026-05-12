@@ -9,7 +9,7 @@ import type { LucideIcon } from 'lucide-react'
 
 export type BlockType = 'chart' | 'kpi' | 'table'
 
-export type ChartType = 'area' | 'line' | 'bar' | 'donut' | 'stacked-bar'
+export type ChartType = 'area' | 'line' | 'bar' | 'donut' | 'stacked-bar' | 'heatmap' | 'labor-overlay' | 'funnel' | 'channel-donut'
 
 export type DataSource =
   | 'revenue'
@@ -24,6 +24,10 @@ export type DataSource =
   | 'dailyBreakdown'
   | 'providerPerformance'
   | 'salesTrend'
+  | 'busyHours'
+  | 'channelMix'
+  | 'laborRevenue'
+  | 'orderFunnel'
 
 // ── Dashboard block ────────────────────────────────────────────────────
 

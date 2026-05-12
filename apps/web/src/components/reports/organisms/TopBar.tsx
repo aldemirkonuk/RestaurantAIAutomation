@@ -15,6 +15,7 @@ import {
   Cloud,
   CheckCircle,
   LayoutGrid,
+  GitCompare,
 } from 'lucide-react'
 import { Button } from '../../ui'
 
@@ -26,6 +27,8 @@ interface TopBarProps {
   onOpenArrange: () => void
   onExport: (format: string) => void
   exportSuccess?: string | null
+  showComparison?: boolean
+  onToggleComparison?: () => void
   className?: string
 }
 
@@ -37,6 +40,8 @@ export function TopBar({
   onOpenArrange,
   onExport,
   exportSuccess,
+  showComparison = false,
+  onToggleComparison,
   className = '',
 }: TopBarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
@@ -75,6 +80,20 @@ export function TopBar({
               <Pencil className="w-3.5 h-3.5" />
               Drag to reorder • Click cards to edit
             </div>
+          )}
+          {onToggleComparison && (
+            <button
+              onClick={onToggleComparison}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                showComparison
+                  ? 'bg-wine-50 text-wine-700 border-wine-200'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+              title="Toggle period comparison"
+            >
+              <GitCompare className="w-3.5 h-3.5" />
+              Compare
+            </button>
           )}
         </div>
 

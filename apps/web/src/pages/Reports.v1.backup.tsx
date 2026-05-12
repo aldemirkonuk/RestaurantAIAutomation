@@ -5,7 +5,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Reorder } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useInventoryData } from '../hooks/useInventoryData'
@@ -15,20 +14,17 @@ import { mapApiWinesToUiWines } from '../lib/wine-library'
 import { Header } from '../components/layout/Header'
 import {
   DollarSign,
+  Package,
   TrendingUp,
   Target,
   AlertTriangle,
   Wine,
   Settings,
-  GripVertical,
 } from 'lucide-react'
 import { ReportGenerator } from '../components/reports/ReportGenerator'
 import { TopBar } from '../components/reports/organisms/TopBar'
 import { AIInsightsSection } from '../components/reports/organisms/AIInsightsSection'
 import { DataTablesSection, ExpandedSections } from '../components/reports/organisms/DataTablesSection'
-import { AICommandPalette, AICommandPill } from '../components/reports/organisms/AICommandPalette'
-import { MonthlyReconciliation } from '../components/reports/organisms/MonthlyReconciliation'
-import { PeriodCompareBar } from '../components/reports/molecules/PeriodCompareBar'
 import { formatMoney } from '../lib/utils'
 import { formatVolume, costPerGlass, glassMarginPercent, bottlesToVolume, getGlassesPerBottle } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
@@ -224,36 +220,14 @@ export function Reports() {
   // KPI Spotlight state
   const [spotlightedKPI, setSpotlightedKPI] = useState<string | null>(null)
 
-  // Period comparison state
-  const [showComparison, setShowComparison] = useState(false)
-
-  // AI Command Palette state
-  const [showAIPalette, setShowAIPalette] = useState(false)
-
-  // Reorderable section IDs (below the canvas)
-  const [sectionOrder, setSectionOrder] = useState<string[]>([
-    'aiInsights',
-    'dataTable',
-    'reconciliation',
-    'consumption',
-    'reportGenerator',
-  ])
-
-  // Close spotlight / AI palette on Escape key, ⌘K to open palette
+  // Close spotlight on Escape key
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showAIPalette) { setShowAIPalette(false); return }
-        if (spotlightedKPI) setSpotlightedKPI(null)
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setShowAIPalette((v) => !v)
-      }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && spotlightedKPI) setSpotlightedKPI(null)
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [spotlightedKPI, showAIPalette])
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [spotlightedKPI])
 
   // ── Data derivation ────────────────────────────────────────────────
 
@@ -715,8 +689,6 @@ export function Reports() {
           onOpenArrange={() => setIsEditMode(true)}
           onExport={handleExport}
           exportSuccess={exportSuccess}
-          showComparison={showComparison}
-          onToggleComparison={() => setShowComparison((v) => !v)}
         />
 
         {/* Edit Toolbar (replaces old EditLayoutPanel) */}
@@ -728,7 +700,7 @@ export function Reports() {
           onReset={handleResetBlocks}
         />
 
-        {/* Dashboard Canvas — react-grid-layout drag/resize for all chart blocks */}
+        {/* Dashboard Canvas (replaces old ChartsGrid + KPI cards in grid) */}
         <DashboardCanvas
           blocks={dashboardBlocks}
           isEditMode={isEditMode}
@@ -740,22 +712,7 @@ export function Reports() {
           getKPIValue={getKPIValue}
           onKPIClick={(kpiKey) => setSpotlightedKPI(prev => prev === kpiKey ? null : kpiKey)}
           spotlightedKPI={spotlightedKPI}
-          totalOrders={metrics.totalOrders}
-          totalRevenue={metrics.totalRevenue}
         />
-
-        {/* Period Comparison Bar (optional, below canvas) */}
-        {showComparison && salesData.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Period Comparison — Revenue
-            </p>
-            <PeriodCompareBar
-              currentData={salesData.map((d) => ({ date: d.date, value: d.revenue }))}
-              metric="revenue"
-            />
-          </div>
-        )}
 
         {/* KPI Spotlight Detail Panel */}
         <KPISpotlightView
@@ -789,228 +746,254 @@ export function Reports() {
           metrics={metrics}
         />
 
-        {/* Reorderable sections — drag handles on left edge of each card */}
-        <Reorder.Group
-          axis="y"
-          values={sectionOrder}
-          onReorder={setSectionOrder}
-          className="space-y-6"
-          as="div"
-        >
-          {sectionOrder.map((sectionId) => (
-            <Reorder.Item key={sectionId} value={sectionId} as="div">
-              <div className="relative group/section">
-                {/* Per-section drag handle */}
-                <div className="absolute -left-7 top-1/2 -translate-y-1/2 opacity-0 group-hover/section:opacity-100 transition-opacity z-10 cursor-grab active:cursor-grabbing">
-                  <GripVertical className="w-4 h-4 text-gray-300" />
+        {/* AI Insights Section */}
+        <AIInsightsSection
+          insights={aiInsights}
+          isOpen={showAIInsights}
+          onToggle={() => setShowAIInsights(!showAIInsights)}
+          onInsightAction={(id) => console.log('Insight action:', id)}
+        />
+
+        {/* Report Generator */}
+        <ReportGenerator
+          onGenerate={(templateId, options) => {
+            console.log('Generating report:', templateId, options)
+          }}
+          salesData={salesData}
+          metrics={metrics}
+        />
+
+        {/* Data Tables Section */}
+        <DataTablesSection
+          dailyData={salesData}
+          purchaseData={purchaseData}
+          purchaseMetrics={purchaseMetrics}
+          totalRevenue={metrics.totalRevenue}
+          checkScans={checkScans}
+          expandedSections={expandedSections}
+          onToggle={handleSectionToggle}
+          onCheckUpload={(file) => console.log('Check uploaded:', file.name)}
+        />
+
+        {/* Monthly Stock Reconciliation Section */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => handleSectionToggle('reconciliation')}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 rounded-lg">
+                <Package className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold text-gray-900">Monthly Stock Reconciliation</h3>
+                <p className="text-sm text-gray-500">
+                  Compare system quantities against physical counts
+                </p>
+              </div>
+            </div>
+          </button>
+
+          {expandedSections.reconciliation && (
+            <div className="p-4 border-t border-gray-200">
+              <div className="mb-4 p-4 bg-indigo-50 rounded-lg">
+                <h4 className="text-sm font-semibold text-indigo-900 mb-2">How Monthly Reconciliation Works</h4>
+                <ol className="text-sm text-indigo-700 space-y-1 list-decimal list-inside">
+                  <li>Go to Inventory and use the "Reconcile" button on each wine</li>
+                  <li>Enter the actual physical count for each wine</li>
+                  <li>The system calculates discrepancies (system vs actual)</li>
+                  <li>Review and approve adjustments to sync inventory</li>
+                </ol>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500 font-medium">Total System Stock</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {inventory.reduce((sum: number, item: any) => sum + (item.stockLive || item.liveStock || 0), 0)}
+                  </p>
+                  <p className="text-xs text-gray-500">bottles across all locations</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500 font-medium">Total Wine Items</p>
+                  <p className="text-2xl font-bold text-gray-900">{inventory.length}</p>
+                  <p className="text-xs text-gray-500">unique wines tracked</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500 font-medium">Last Reconciliation</p>
+                  <p className="text-lg font-bold text-gray-900">Not yet performed</p>
+                  <p className="text-xs text-amber-600">Recommended: monthly</p>
+                </div>
+              </div>
+
+              <a
+                href="/inventory"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+              >
+                <Package className="w-4 h-4" />
+                Start Reconciliation in Inventory
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Wine Consumption Analytics */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Wine className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Wine Consumption Analytics</h3>
+                <p className="text-sm text-gray-500">Per-wine bottle and glass sales with volume tracking</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6">
+            {hasConsumptionData ? (
+              <div className="space-y-8">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                    <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">Total Bottles Consumed</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalBottlesSold} bottles</p>
+                    <p className="text-sm text-gray-500">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</p>
+                  </div>
+                  <div className="p-4 bg-pink-50 rounded-lg border border-pink-100">
+                    <p className="text-xs text-pink-600 font-medium uppercase tracking-wide">Total Glasses Consumed</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalGlassesSold} glasses</p>
+                    <p className="text-sm text-gray-500">= {consumptionTotals.totalGlassBottleEquiv.toFixed(1)} bottle equivalent</p>
+                  </div>
+                  <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+                    <p className="text-xs text-emerald-600 font-medium uppercase tracking-wide">Combined Revenue</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      ${(consumptionTotals.totalBottleRevenue + consumptionTotals.totalGlassRevenue).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      bottles: ${consumptionTotals.totalBottleRevenue.toLocaleString()} + glasses: ${consumptionTotals.totalGlassRevenue.toLocaleString()}
+                    </p>
+                  </div>
                 </div>
 
-                {sectionId === 'aiInsights' && (
-                  <AIInsightsSection
-                    insights={aiInsights}
-                    isOpen={showAIInsights}
-                    onToggle={() => setShowAIInsights(!showAIInsights)}
-                    onInsightAction={(id) => console.log('Insight action:', id)}
-                  />
-                )}
-
-                {sectionId === 'dataTable' && (
-                  <DataTablesSection
-                    dailyData={salesData}
-                    purchaseData={purchaseData}
-                    purchaseMetrics={purchaseMetrics}
-                    totalRevenue={metrics.totalRevenue}
-                    checkScans={checkScans}
-                    expandedSections={expandedSections}
-                    onToggle={handleSectionToggle}
-                    onCheckUpload={(file) => console.log('Check uploaded:', file.name)}
-                  />
-                )}
-
-                {sectionId === 'reconciliation' && (
-                  <MonthlyReconciliation
-                    totalBottlesSold={metrics.totalBottles}
-                    totalInventoryValue={metrics.inventoryValue}
-                  />
-                )}
-
-                {sectionId === 'consumption' && (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-purple-100 rounded-lg">
-                          <Wine className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">Wine Consumption Analytics</h3>
-                          <p className="text-sm text-gray-500">Per-wine bottle and glass sales with volume tracking</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-6">
-                      {hasConsumptionData ? (
-                        <div className="space-y-8">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                              <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">Total Bottles Consumed</p>
-                              <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalBottlesSold} bottles</p>
-                              <p className="text-sm text-gray-500">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</p>
-                            </div>
-                            <div className="p-4 bg-pink-50 rounded-lg border border-pink-100">
-                              <p className="text-xs text-pink-600 font-medium uppercase tracking-wide">Total Glasses Consumed</p>
-                              <p className="text-2xl font-bold text-gray-900 mt-1">{consumptionTotals.totalGlassesSold} glasses</p>
-                              <p className="text-sm text-gray-500">= {consumptionTotals.totalGlassBottleEquiv.toFixed(1)} bottle equivalent</p>
-                            </div>
-                            <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-                              <p className="text-xs text-emerald-600 font-medium uppercase tracking-wide">Combined Revenue</p>
-                              <p className="text-2xl font-bold text-gray-900 mt-1">
-                                ${(consumptionTotals.totalBottleRevenue + consumptionTotals.totalGlassRevenue).toLocaleString()}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                bottles: ${consumptionTotals.totalBottleRevenue.toLocaleString()} + glasses: ${consumptionTotals.totalGlassRevenue.toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                          {bottleConsumptionRows.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Bottles Consumed</h4>
-                              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b border-gray-200 bg-gray-50">
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Format</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottles Sold</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Total Volume</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {bottleConsumptionRows.map((d: any) => (
-                                      <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                        <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
-                                        <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.bottleSizeMl, measurementUnit)}</td>
-                                        <td className="py-2.5 px-3 text-right text-gray-900">{d.bottlesSold}</td>
-                                        <td className="py-2.5 px-3 text-right text-gray-900">${((d.bottlesSold || 0) * (d.bottlePrice || 0)).toLocaleString()}</td>
-                                        <td className="py-2.5 px-3 text-right text-gray-600">{formatVolume(bottlesToVolume(d.bottlesSold || 0, d.bottleSizeMl || 750), measurementUnit)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                                      <td className="py-2.5 px-3 text-gray-900" colSpan={2}>Total</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalBottlesSold}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalBottleRevenue.toLocaleString()}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                          {glassConsumptionRows.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Glasses Consumed</h4>
-                              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b border-gray-200 bg-gray-50">
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
-                                      <th className="text-left py-2.5 px-3 font-medium text-gray-600">Pour Size</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Glasses Sold</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottle Equiv.</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Cost/Glass</th>
-                                      <th className="text-right py-2.5 px-3 font-medium text-gray-600">Margin</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {glassConsumptionRows.map((d: any) => {
-                                      const gpb = getGlassesPerBottle(d.bottleSizeMl || 750, d.pourSizeMl || 150)
-                                      const cpg = costPerGlass(d.costPerBottle || 0, gpb)
-                                      const margin = glassMarginPercent(cpg, d.glassPrice || 0)
-                                      const bottleEquiv = gpb > 0 ? ((d.glassesSold || 0) / gpb).toFixed(1) : '0'
-                                      return (
-                                        <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                          <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
-                                          <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.pourSizeMl || 150, measurementUnit)}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-900">{d.glassesSold}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-900">${((d.glassesSold || 0) * (d.glassPrice || 0)).toLocaleString()}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-600">{bottleEquiv}</td>
-                                          <td className="py-2.5 px-3 text-right text-gray-600">${cpg.toFixed(2)}</td>
-                                          <td className="py-2.5 px-3 text-right">
-                                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                                              margin >= 70 ? 'bg-emerald-100 text-emerald-700' : margin >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                                            }`}>
-                                              {margin.toFixed(1)}%
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      )
-                                    })}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                                      <td className="py-2.5 px-3 text-gray-900" colSpan={2}>Total</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassesSold}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalGlassRevenue.toLocaleString()}</td>
-                                      <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassBottleEquiv.toFixed(1)}</td>
-                                      <td className="py-2.5 px-3" colSpan={2}></td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-12 px-4">
-                          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-                            <Wine className="w-8 h-8 text-purple-600" />
-                          </div>
-                          <h4 className="text-lg font-semibold text-gray-900 mb-2">Connect your POS system to see wine consumption analytics</h4>
-                          <p className="text-sm text-gray-500 text-center max-w-md mb-6">
-                            Once connected, you'll see detailed analytics including bottles sold, glasses sold, revenue breakdown, and margin analysis per wine.
-                          </p>
-                          <Link
-                            to="/settings"
-                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                            Configure POS
-                          </Link>
-                        </div>
-                      )}
+                {/* Bottles Consumed Table */}
+                {bottleConsumptionRows.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Bottles Consumed</h4>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50">
+                            <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
+                            <th className="text-left py-2.5 px-3 font-medium text-gray-600">Format</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottles Sold</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Total Volume</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bottleConsumptionRows.map((d: any) => (
+                            <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                              <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
+                              <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.bottleSizeMl, measurementUnit)}</td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">{d.bottlesSold}</td>
+                              <td className="py-2.5 px-3 text-right text-gray-900">${((d.bottlesSold || 0) * (d.bottlePrice || 0)).toLocaleString()}</td>
+                              <td className="py-2.5 px-3 text-right text-gray-600">{formatVolume(bottlesToVolume(d.bottlesSold || 0, d.bottleSizeMl || 750), measurementUnit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 font-semibold border-t border-gray-200">
+                            <td className="py-2.5 px-3 text-gray-900" colSpan={2}>Total</td>
+                            <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalBottlesSold}</td>
+                            <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalBottleRevenue.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-right text-gray-900">{formatVolume(consumptionTotals.totalBottleVolumeMl, measurementUnit)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
                   </div>
                 )}
 
-                {sectionId === 'reportGenerator' && (
-                  <ReportGenerator
-                    onGenerate={(templateId, options) => {
-                      console.log('Generating report:', templateId, options)
-                    }}
-                    salesData={salesData}
-                    metrics={metrics}
-                  />
+                {/* Glasses Consumed Table */}
+                {glassConsumptionRows.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Glasses Consumed</h4>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50">
+                            <th className="text-left py-2.5 px-3 font-medium text-gray-600">Wine</th>
+                            <th className="text-left py-2.5 px-3 font-medium text-gray-600">Pour Size</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Glasses Sold</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Revenue</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Bottle Equiv.</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Cost/Glass</th>
+                            <th className="text-right py-2.5 px-3 font-medium text-gray-600">Margin</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {glassConsumptionRows.map((d: any) => {
+                            const gpb = getGlassesPerBottle(d.bottleSizeMl || 750, d.pourSizeMl || 150)
+                            const cpg = costPerGlass(d.costPerBottle || 0, gpb)
+                            const margin = glassMarginPercent(cpg, d.glassPrice || 0)
+                            const bottleEquiv = gpb > 0 ? ((d.glassesSold || 0) / gpb).toFixed(1) : '0'
+                            return (
+                              <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
+                                <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.pourSizeMl || 150, measurementUnit)}</td>
+                                <td className="py-2.5 px-3 text-right text-gray-900">{d.glassesSold}</td>
+                                <td className="py-2.5 px-3 text-right text-gray-900">${((d.glassesSold || 0) * (d.glassPrice || 0)).toLocaleString()}</td>
+                                <td className="py-2.5 px-3 text-right text-gray-600">{bottleEquiv}</td>
+                                <td className="py-2.5 px-3 text-right text-gray-600">${cpg.toFixed(2)}</td>
+                                <td className="py-2.5 px-3 text-right">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    margin >= 70 ? 'bg-emerald-100 text-emerald-700' : margin >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {margin.toFixed(1)}%
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 font-semibold border-t border-gray-200">
+                            <td className="py-2.5 px-3 text-gray-900" colSpan={2}>Total</td>
+                            <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassesSold}</td>
+                            <td className="py-2.5 px-3 text-right text-gray-900">${consumptionTotals.totalGlassRevenue.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-right text-gray-900">{consumptionTotals.totalGlassBottleEquiv.toFixed(1)}</td>
+                            <td className="py-2.5 px-3" colSpan={2}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
                 )}
               </div>
-            </Reorder.Item>
-          ))}
-        </Reorder.Group>
+            ) : (
+              /* Empty State */
+              <div className="flex flex-col items-center justify-center py-12 px-4">
+                <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
+                  <Wine className="w-8 h-8 text-purple-600" />
+                </div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-2">Connect your POS system to see wine consumption analytics</h4>
+                <p className="text-sm text-gray-500 text-center max-w-md mb-6">
+                  Once connected, you'll see detailed analytics including bottles sold, glasses sold, revenue breakdown, and margin analysis per wine.
+                </p>
+                <Link
+                  to="/settings"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Configure POS
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-
-      {/* AI Command Palette (global overlay) */}
-      <AICommandPalette
-        isOpen={showAIPalette}
-        onClose={() => setShowAIPalette(false)}
-        timeRange={timeRange}
-      />
-
-      {/* Floating ⌘K pill — always visible */}
-      {!showAIPalette && (
-        <AICommandPill onClick={() => setShowAIPalette(true)} />
-      )}
     </div>
   )
 }

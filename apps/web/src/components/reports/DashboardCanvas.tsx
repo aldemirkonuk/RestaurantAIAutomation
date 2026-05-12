@@ -32,6 +32,8 @@ interface DashboardCanvasProps {
   getKPIValue: (key: string) => { value: string | number; change: number; changeType: 'increase' | 'decrease' }
   onKPIClick?: (kpiKey: string) => void
   spotlightedKPI?: string | null
+  totalOrders?: number
+  totalRevenue?: number
   className?: string
 }
 
@@ -54,6 +56,8 @@ export function DashboardCanvas({
   getKPIValue,
   onKPIClick,
   spotlightedKPI,
+  totalOrders = 0,
+  totalRevenue = 0,
   className = '',
 }: DashboardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -189,6 +193,8 @@ export function DashboardCanvas({
               getKPIValue={getKPIValue}
               onKPIClick={onKPIClick}
               spotlightedKPI={spotlightedKPI}
+              totalOrders={totalOrders}
+              totalRevenue={totalRevenue}
             />
           </div>
         ))}

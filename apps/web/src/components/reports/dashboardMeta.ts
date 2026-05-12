@@ -23,6 +23,10 @@ import {
   Columns,
   Rows,
   Maximize2,
+  Grid3x3,
+  GitFork,
+  Briefcase,
+  Radio,
 } from 'lucide-react'
 import type {
   DataSourceMeta,
@@ -47,6 +51,10 @@ export const DATA_SOURCES: DataSourceMeta[] = [
   { key: 'dailyBreakdown', title: 'Daily Breakdown', icon: Calendar, description: 'Day-by-day performance', compatibleChartTypes: ['bar', 'line', 'area'], supportsKPI: false, supportsTable: true, category: 'time-series' },
   { key: 'providerPerformance', title: 'Provider Performance', icon: Users, description: 'Supplier metrics', compatibleChartTypes: ['bar'], supportsKPI: false, supportsTable: true, category: 'ranked' },
   { key: 'salesTrend', title: 'Sales Trend', icon: Target, description: 'Sales trajectory analysis', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
+  { key: 'busyHours', title: 'Busy Hours', icon: Grid3x3, description: 'Hourly traffic heatmap', compatibleChartTypes: ['heatmap'], supportsKPI: false, supportsTable: false, category: 'categorical' },
+  { key: 'channelMix', title: 'Revenue by Channel', icon: Radio, description: 'Revenue split by service channel', compatibleChartTypes: ['channel-donut'], supportsKPI: false, supportsTable: false, category: 'distribution' },
+  { key: 'laborRevenue', title: 'Labor vs Revenue', icon: Briefcase, description: 'Labor cost overlaid on revenue', compatibleChartTypes: ['labor-overlay'], supportsKPI: false, supportsTable: false, category: 'time-series' },
+  { key: 'orderFunnel', title: 'Order Funnel', icon: GitFork, description: 'Order conversion pipeline', compatibleChartTypes: ['funnel'], supportsKPI: false, supportsTable: false, category: 'categorical' },
 ]
 
 export const DATA_SOURCE_MAP = Object.fromEntries(DATA_SOURCES.map((ds) => [ds.key, ds])) as Record<string, DataSourceMeta>
@@ -59,6 +67,10 @@ export const CHART_TYPES: ChartTypeMeta[] = [
   { key: 'bar', title: 'Bar Chart', icon: BarChart3, description: 'Vertical bars' },
   { key: 'donut', title: 'Donut Chart', icon: PieChart, description: 'Circular distribution' },
   { key: 'stacked-bar', title: 'Stacked Bar', icon: Layers, description: 'Stacked categories' },
+  { key: 'heatmap', title: 'Heatmap', icon: Grid3x3, description: 'Hourly traffic grid' },
+  { key: 'labor-overlay', title: 'Labor Overlay', icon: Briefcase, description: 'Labor vs revenue dual line' },
+  { key: 'funnel', title: 'Funnel', icon: GitFork, description: 'Conversion funnel' },
+  { key: 'channel-donut', title: 'Channel Donut', icon: Radio, description: 'Revenue by channel' },
 ]
 
 export const CHART_TYPE_MAP = Object.fromEntries(CHART_TYPES.map((ct) => [ct.key, ct])) as Record<string, ChartTypeMeta>
@@ -100,6 +112,11 @@ export const DEFAULT_BLOCKS: DashboardBlock[] = [
   // Second chart row
   { id: 'chart-ordertype', title: 'Orders by Wine Type', blockType: 'chart', dataSource: 'ordersByType', chartType: 'stacked-bar', layout: { x: 0, y: 6, w: 6, h: 4, minW: 4, minH: 3 }, visible: true },
   { id: 'chart-topwines', title: 'Top Performing Wines', blockType: 'chart', dataSource: 'topWines', chartType: 'bar', layout: { x: 6, y: 6, w: 6, h: 4, minW: 4, minH: 3 }, visible: true },
+  // New analytics row
+  { id: 'chart-heatmap', title: 'Busy Hours', blockType: 'chart', dataSource: 'busyHours', chartType: 'heatmap', layout: { x: 0, y: 10, w: 8, h: 5, minW: 6, minH: 4 }, visible: true },
+  { id: 'chart-channeldonut', title: 'Revenue by Channel', blockType: 'chart', dataSource: 'channelMix', chartType: 'channel-donut', layout: { x: 8, y: 10, w: 4, h: 5, minW: 3, minH: 4 }, visible: true },
+  { id: 'chart-laboroverlay', title: 'Labor vs Revenue', blockType: 'chart', dataSource: 'laborRevenue', chartType: 'labor-overlay', layout: { x: 0, y: 15, w: 7, h: 4, minW: 5, minH: 3 }, visible: true },
+  { id: 'chart-funnel', title: 'Order Funnel', blockType: 'chart', dataSource: 'orderFunnel', chartType: 'funnel', layout: { x: 7, y: 15, w: 5, h: 4, minW: 4, minH: 3 }, visible: true },
 ]
 
 // ── Layout presets ─────────────────────────────────────────────────────
