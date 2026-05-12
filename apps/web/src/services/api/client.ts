@@ -25,8 +25,10 @@ async function ensureFreshToken(): Promise<string | null> {
   if (!token) return null
 
   const expiry = jwtExpiry(token)
-  // Refresh proactively if token expires within 60 seconds
-  if (expiry && expiry - Date.now() > 60_000) return token
+  // expiry === 0 means the claim couldn't be decoded (non-standard format, Supabase variant, etc.)
+  // Treat as valid and let the server reject — don't force a refresh on every request.
+  // Only refresh when we KNOW the token expires within 60 seconds.
+  if (expiry === 0 || expiry - Date.now() > 60_000) return token
 
   const refreshToken = localStorage.getItem('refreshToken')
   if (!refreshToken) return token

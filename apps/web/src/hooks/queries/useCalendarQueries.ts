@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
 import type { CalendarFilters } from '../../lib/query-keys'
 import {
@@ -25,12 +25,14 @@ import {
 import { useNotificationStore } from '../../stores'
 import { offlineStorage } from '../../lib/offline-storage'
 import { syncManager } from '../../lib/sync-manager'
+import { useAuth } from '../../contexts/AuthContext'
 
 /**
  * Hook to fetch calendar events for a date range
  * With offline support: caches data and falls back to cached data when offline
  */
 export function useCalendarEvents(restaurantId: string, filters: CalendarFilters) {
+  const { isAuthenticated } = useAuth()
   const cacheKey = `calendar_events_${restaurantId}_${filters.startDate}_${filters.endDate}`
   
   return useQuery({
@@ -60,9 +62,10 @@ export function useCalendarEvents(restaurantId: string, filters: CalendarFilters
         throw error
       }
     },
-    enabled: !!restaurantId && !!filters.startDate && !!filters.endDate,
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    enabled: !!restaurantId && !!filters.startDate && !!filters.endDate && isAuthenticated,
+    staleTime: 2 * 60_000,   // 2 min — calendar changes infrequently within a session
+    gcTime: 15 * 60_000,     // 15 min — survive long sessions without cache eviction
+    placeholderData: keepPreviousData,
   })
 }
 

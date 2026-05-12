@@ -24,12 +24,14 @@ import {
 import { useNotificationStore } from '../../stores'
 import { offlineStorage } from '../../lib/offline-storage'
 import { syncManager } from '../../lib/sync-manager'
+import { useAuth } from '../../contexts/AuthContext'
 
 /**
  * Hook to fetch all providers for a restaurant
  * With offline support: caches data and falls back to cached data when offline
  */
 export function useProviders(restaurantId: string, filters?: ProviderFilters) {
+  const { isAuthenticated } = useAuth()
   const cacheKey = `providers_${restaurantId}_${JSON.stringify(filters || {})}`
   
   return useQuery({
@@ -59,12 +61,13 @@ export function useProviders(restaurantId: string, filters?: ProviderFilters) {
         throw error
       }
     },
-    enabled: !!restaurantId,
-    staleTime: 30000,
-    gcTime: 10 * 60 * 1000,
+    // Mirror useOrders: don't fire until both the restaurant and auth are settled
+    enabled: !!restaurantId && isAuthenticated,
+    staleTime: 3 * 60_000,   // 3 min — SPA navigation within this window is instant
+    gcTime: 20 * 60_000,     // 20 min — survive a long browsing session without cache eviction
     refetchOnMount: true,
     refetchOnWindowFocus: false,
-    // Keep previous data visible while re-fetching so navigation back never shows a full spinner
+    // Keep previous data visible while re-fetching so navigation back never shows a full skeleton
     placeholderData: keepPreviousData,
   })
 }

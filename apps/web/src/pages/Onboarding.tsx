@@ -61,7 +61,7 @@ export function Onboarding() {
     </div>
   )
 }
-
 // Re-export context types so existing imports don't break
 export { OnboardingProvider, useOnboarding, ONBOARDING_STEPS } from '../contexts/OnboardingContext'
 export type { WineImportItem } from '../contexts/OnboardingContext'
+

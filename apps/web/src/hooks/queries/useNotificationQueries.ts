@@ -60,8 +60,8 @@ export function useNotifications(userId: string, filters?: NotificationFilters) 
       }
     },
     enabled: !!userId,
-    staleTime: 15000, // Consider data fresh for 15 seconds
-    gcTime: 2 * 60 * 1000, // Keep in cache for 2 minutes
+    staleTime: 60_000,      // 1 min — notifications are low-urgency; the bell icon doesn't need sub-second freshness
+    gcTime: 15 * 60_000,    // 15 min — prevent Header from causing a full refetch on every page visit
     select: (data): Notification[] => (Array.isArray(data) ? data : []),
   })
 }
