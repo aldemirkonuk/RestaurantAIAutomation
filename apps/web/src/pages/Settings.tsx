@@ -32,6 +32,7 @@ import {
   Trash2,
   Link2,
   Check,
+  Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
@@ -54,13 +55,14 @@ const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'locations', 'measurement', 'features'] as const;
+const SECTION_IDS = ['team', 'locations', 'measurement', 'features', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
   locations: 'Locations',
   measurement: 'Measurement',
   features: 'Features',
+  calendar: 'Calendar',
 };
 
 // ─── Feature flag definitions ─────────────────────────────────────────────────
@@ -106,6 +108,108 @@ const categoryLabels: Record<string, string> = {
   analytics: 'Analytics',
   operations: 'Operations',
 };
+
+// ─── Calendar subscription section ───────────────────────────────────────────
+
+function CalendarSubscriptionSection() {
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const fullFeedUrl = token
+    ? `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
+    : null;
+
+  useEffect(() => {
+    fetchToken();
+  }, []);
+
+  async function fetchToken() {
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_URL}/api/v1/calendar/ical-token`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch token');
+      const data = await res.json();
+      setToken(data.token);
+    } catch {
+      // silently fail — show empty state
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!confirm('Regenerating the token will break all existing calendar subscriptions. Continue?')) return;
+    setRegenerating(true);
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_URL}/api/v1/calendar/ical-token/regenerate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error('Failed to regenerate token');
+      const data = await res.json();
+      setToken(data.token);
+      toast.success('Token regenerated. Update your calendar subscription URL.');
+    } catch {
+      toast.error('Failed to regenerate token');
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!fullFeedUrl) return;
+    try {
+      await navigator.clipboard.writeText(fullFeedUrl);
+      toast.success('Subscription URL copied to clipboard');
+    } catch {
+      toast.error('Failed to copy URL');
+    }
+  }
+
+  if (loading) return <div className="py-4 text-sm text-gray-500">Loading subscription URL...</div>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Subscribe to your WineOps calendar in Outlook, Apple Calendar, or Google Calendar using the URL below. No login required — the URL includes a secure token.
+      </p>
+      {fullFeedUrl && (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono truncate">
+            {fullFeedUrl}
+          </div>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 px-3 py-2 text-xs bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors"
+          >
+            <Copy className="w-3 h-3" />
+            Copy
+          </button>
+        </div>
+      )}
+      <div className="text-xs text-gray-500 space-y-1">
+        <p><strong>Outlook:</strong> Add Calendar → Subscribe from web → paste URL</p>
+        <p><strong>Apple Calendar:</strong> File → New Calendar Subscription → paste URL</p>
+        <p><strong>Google Calendar:</strong> Other Calendars (+) → From URL → paste URL</p>
+      </div>
+      <div className="pt-2 border-t border-gray-100">
+        <button
+          onClick={handleRegenerate}
+          disabled={regenerating}
+          className="flex items-center gap-1 px-3 py-2 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3 h-3 ${regenerating ? 'animate-spin' : ''}`} />
+          {regenerating ? 'Regenerating...' : 'Regenerate Token'}
+        </button>
+        <p className="mt-1 text-xs text-gray-400">Warning: regenerating invalidates all existing subscriptions.</p>
+      </div>
+    </div>
+  );
+}
 
 // ─── Measurement section ──────────────────────────────────────────────────────
 
@@ -527,7 +631,6 @@ export default function Settings() {
     locationCount: locationsList.filter((b) => b.chain_id === chain.id).length,
   }));
 
-  const currentLocation = availableRestaurants.find((b) => b.id === activeRestaurantId);
   const editingChains = chainsList.map((c) => ({
     ...c,
     locationCount: locationsList.filter((b) => b.chain_id === c.id).length,
@@ -925,6 +1028,20 @@ export default function Settings() {
               </motion.div>
             );
           })}
+        </div>
+
+        {/* ── Calendar Subscription ── */}
+        <div id="calendar" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 flex items-center gap-2 border-b border-gray-100">
+            <Calendar className="w-4 h-4 text-wine-500" />
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Calendar</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Subscribe to your restaurant calendar from Outlook, Apple, or Google Calendar.</p>
+            </div>
+          </div>
+          <div className="px-6 py-5">
+            <CalendarSubscriptionSection />
+          </div>
         </div>
 
         {/* Info note */}
