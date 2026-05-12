@@ -21,8 +21,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:e2e:register-verification-email": "RUN_REGISTER_VERIFICATION_E2E=1 jest --testPathPattern register-verification-email --runInBand --forceExit",
     "test:e2e:procurement-emails": "jest --testPathPattern procurement-email --runInBand --forceExit",
-    "test:e2e:notification-flows": "jest --testPathPattern notification-flow --runInBand --forceExit",
-    "test:e2e:all-emails": "jest --testPathPattern \"email-e2e|procurement-email|register-verification|notification-flow\" --runInBand --forceExit"
+    "test:e2e:notification-flows": "NODE_OPTIONS=--experimental-vm-modules jest --testPathPattern notification-flow --runInBand --forceExit",
+    "test:e2e:all-emails": "NODE_OPTIONS=--experimental-vm-modules jest --testPathPattern \"email-e2e|procurement-email|register-verification|notification-flow\" --runInBand --forceExit"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

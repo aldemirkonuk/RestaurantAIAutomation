@@ -86,13 +86,8 @@ export class GmailService implements OnModuleInit {
       // Supply the short-lived access token alongside the refresh token so the
       // OAuth2 client uses it immediately (if not yet expired) and only hits
       // Google's token endpoint when the access token is stale.
-      const accessToken = this.configService.get<string>('GMAIL_ACCESS_TOKEN');
-
       this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-      this.oauth2Client.setCredentials({
-        access_token: accessToken || undefined,
-        refresh_token: refreshToken,
-      });
+      this.oauth2Client.setCredentials({ refresh_token: refreshToken });
 
       const tokenTimeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('getAccessToken timed out after 10s')), 10000),
@@ -127,7 +122,17 @@ export class GmailService implements OnModuleInit {
     this.logger.log(`Subject: ${options.subject}`);
 
     if (!await this.ensureGmailReady()) {
-      return this.smtpSendEmail(options);
+      try {
+        return await this.smtpSendEmail(options);
+      } catch (smtpError) {
+        const smtpMsg = smtpError instanceof Error ? smtpError.message : String(smtpError);
+        this.logger.error(
+          `SMTP fallback also failed: ${smtpMsg}. ` +
+          'Fix GMAIL_REFRESH_TOKEN (run scripts/gmail-reauth.js) ' +
+          'or set a valid GMAIL_APP_PASSWORD (Google App Password).',
+        );
+        return { success: false, error: `Email delivery failed: ${smtpMsg}` };
+      }
     }
 
     try {
@@ -157,7 +162,13 @@ export class GmailService implements OnModuleInit {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to send email: ${errorMessage}`);
+      const httpStatus = (error as any)?.status ?? (error as any)?.code;
+      const responseData = (error as any)?.response?.data;
+      this.logger.error(
+        `Failed to send email via Gmail API: ${errorMessage}` +
+        (httpStatus ? ` [HTTP ${httpStatus}]` : '') +
+        (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ''),
+      );
 
       return {
         success: false,
