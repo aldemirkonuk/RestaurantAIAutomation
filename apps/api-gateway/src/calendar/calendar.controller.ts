@@ -283,9 +283,11 @@ export class CalendarController {
   @ApiResponse({ status: 201, description: 'Event type created', type: EventTypeResponseDto })
   async createEventType(
     @Body() dto: CreateEventTypeDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<EventTypeResponseDto> {
     try {
-      return await this.calendarService.createEventType(dto);
+      // restaurantId must come from the authenticated JWT, not the request body
+      return await this.calendarService.createEventType({ ...dto, restaurantId: user.restaurantId });
     } catch (error) {
       this.logger.error({ message: 'Create event type failed', error: error.message });
       throw new HttpException(
@@ -302,9 +304,10 @@ export class CalendarController {
   async updateEventType(
     @Param('id') id: string,
     @Body() dto: UpdateEventTypeDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<EventTypeResponseDto> {
     try {
-      return await this.calendarService.updateEventType(id, dto);
+      return await this.calendarService.updateEventType(id, user.restaurantId, dto);
     } catch (error) {
       if (error.status === 404) throw error;
       this.logger.error({ message: 'Update event type failed', error: error.message });
@@ -321,9 +324,10 @@ export class CalendarController {
   @ApiResponse({ status: 200, description: 'Event type deleted' })
   async deleteEventType(
     @Param('id') id: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ success: boolean }> {
     try {
-      return await this.calendarService.deleteEventType(id);
+      return await this.calendarService.deleteEventType(id, user.restaurantId);
     } catch (error) {
       this.logger.error({ message: 'Delete event type failed', error: error.message });
       throw new HttpException(

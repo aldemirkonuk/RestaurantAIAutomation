@@ -819,6 +819,7 @@ export class CalendarService {
 
   async updateEventType(
     id: string,
+    restaurantId: string,
     dto: UpdateEventTypeDto,
   ): Promise<EventTypeResponseDto> {
     const updatePayload: Record<string, unknown> = {};
@@ -830,6 +831,7 @@ export class CalendarService {
       .from('calendar_event_types')
       .update(updatePayload)
       .eq('id', id)
+      .eq('restaurant_id', restaurantId)
       .select('*')
       .single();
 
@@ -846,11 +848,12 @@ export class CalendarService {
     };
   }
 
-  async deleteEventType(id: string): Promise<{ success: boolean }> {
+  async deleteEventType(id: string, restaurantId: string): Promise<{ success: boolean }> {
     const { error } = await this.databaseService.supabase
       .from('calendar_event_types')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('restaurant_id', restaurantId);
 
     if (error) {
       this.logger.error(`Failed to delete event type: ${error.message}`);
