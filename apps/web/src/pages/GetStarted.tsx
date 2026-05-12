@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, FileSpreadsheet, PenLine, Check, Wine } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -57,9 +57,18 @@ function SuccessScreen({
 
 export default function GetStarted() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [activeMethod, setActiveMethod] = useState<ImportMethod | null>(null)
   const [result, setResult] = useState<MenuImportResult | null>(null)
   const { progress, isLoading } = useOnboardingProgress()
+
+  // Deep-link: /get-started?method=scan|csv|manual (also used by /onboarding/extract)
+  useEffect(() => {
+    const m = searchParams.get('method')?.toLowerCase()
+    if (m === 'scan' || m === 'csv' || m === 'manual') {
+      setActiveMethod(m as ImportMethod)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (!isLoading && progress?.menu_uploaded) {

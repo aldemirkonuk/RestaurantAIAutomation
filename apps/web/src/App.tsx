@@ -109,6 +109,8 @@ function App() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/get-started" element={<GetStarted />} />
+                {/* Menu / vision extraction entrypoint (opens Scan on get-started) */}
+                <Route path="/onboarding/extract" element={<Navigate to="/get-started?method=scan" replace />} />
                 <Route path="/onboarding" element={<Onboarding />} />
 
                 {/* Studio routes — separate layout with StudioLayout, outside DashboardLayout */}
