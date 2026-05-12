@@ -551,8 +551,14 @@ This is an automated alert from WineOps AI.
    * Never returns a mock ID — throws if SMTP credentials are missing.
    */
   private async smtpSendEmail(options: EmailOptions): Promise<EmailResult> {
-    const user = this.configService.get<string>('GMAIL_USER');
-    const pass = this.configService.get<string>('GMAIL_APP_PASSWORD');
+    // Fall back to process.env directly — ConfigService may not inherit it in all
+    // NestJS test module contexts (same issue as GMAIL_ACCESS_TOKEN for OAuth2).
+    const user =
+      this.configService.get<string>('GMAIL_USER') ||
+      process.env.GMAIL_USER;
+    const pass =
+      this.configService.get<string>('GMAIL_APP_PASSWORD') ||
+      process.env.GMAIL_APP_PASSWORD;
 
     if (!user || !pass) {
       this.logger.error(
