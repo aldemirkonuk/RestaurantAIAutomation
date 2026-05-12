@@ -162,6 +162,11 @@ export class CreateCalendarEventDto {
   @IsOptional()
   eventTime?: string;
 
+  @ApiPropertyOptional({ description: 'Event end time (HH:MM)' })
+  @IsString()
+  @IsOptional()
+  eventTimeEnd?: string;
+
   @ApiPropertyOptional()
   @IsUUID()
   @IsOptional()
@@ -245,6 +250,11 @@ export class UpdateCalendarEventDto {
   @IsString()
   @IsOptional()
   eventTime?: string;
+
+  @ApiPropertyOptional({ description: 'Event end time (HH:MM)' })
+  @IsString()
+  @IsOptional()
+  eventTimeEnd?: string;
 
   @ApiPropertyOptional({ enum: CalendarEventStatus })
   @IsEnum(CalendarEventStatus)
@@ -392,6 +402,9 @@ export class CalendarEventResponseDto {
 
   @ApiPropertyOptional()
   eventTime?: string;
+
+  @ApiPropertyOptional({ description: 'Event end time (HH:MM)' })
+  eventTimeEnd?: string;
 
   @ApiPropertyOptional()
   providerId?: string;
