@@ -173,7 +173,12 @@ export class CalendarService {
           eventId: eventData.id,
           error: ruleError.message,
         });
-        // Don't throw - event was created, just log the error
+        // Revert is_recurring to false to avoid leaving the event in an orphan
+        // state (is_recurring=true with no associated recurrence rule).
+        await this.databaseService.supabase
+          .from('calendar_events')
+          .update({ is_recurring: false })
+          .eq('id', eventData.id);
       } else {
         recurrenceRule = this.mapRecurrenceRule(ruleData);
 
