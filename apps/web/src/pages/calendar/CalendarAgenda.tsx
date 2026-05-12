@@ -170,7 +170,6 @@ function EventRow({
           ${event.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
           ${event.status === 'cancelled' ? 'bg-red-100 text-red-600' : ''}
           ${event.status === 'completed' ? 'bg-green-100 text-green-600' : ''}
-          ${event.status === 'approved' ? 'bg-blue-100 text-blue-600' : ''}
           ${event.status === 'dismissed' ? 'bg-gray-100 text-gray-500' : ''}
         `}>
           {event.status}

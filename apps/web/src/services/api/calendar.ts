@@ -29,6 +29,7 @@ interface ApiCalendarEvent {
   orderId?: string
   source: string
   status: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
+  eventTimeEnd?: string
   reminderEnabled: boolean
   reminderDaysBefore: number
   reminderSent?: boolean
@@ -108,6 +109,8 @@ const buildCreatePayload = (data: CreateEventInput | (CreateEventInput & { event
   eventDate: data.date ?? (data as any).eventDate,
   allDay: data.allDay,
   eventTime: data.allDay ? undefined : data.startTime,
+  eventDateEnd: data.allDay ? undefined : (data as any).endDate,
+  eventTimeEnd: data.allDay ? undefined : data.endTime,
   providerId: data.providerId,
   orderId: data.orderId,
   status: data.status,
@@ -133,7 +136,7 @@ export interface CalendarEvent {
   providerId?: string
   wineCount?: number
   totalValue?: number
-  status?: 'pending' | 'confirmed' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
+  status?: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
   recurring?: RecurringConfig
   reminders?: ReminderTime[]
   customReminderMinutes?: number
@@ -186,7 +189,7 @@ export interface CreateEventInput {
   orderId?: string
   wineCount?: number
   totalValue?: number
-  status?: 'pending' | 'confirmed' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
+  status?: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
   reminderEnabled?: boolean
   reminderDaysBefore?: number
   recurring?: RecurringConfig
@@ -246,6 +249,10 @@ export async function updateCalendarEvent(data: UpdateEventInput): Promise<Calen
   if (updateData.date !== undefined) payload.eventDate = updateData.date
   if (updateData.allDay !== undefined) payload.allDay = updateData.allDay
   if (updateData.startTime !== undefined) payload.eventTime = updateData.startTime
+  if (updateData.endTime !== undefined) {
+    payload.eventDateEnd = updateData.allDay ? undefined : (updateData as any).endDate
+    payload.eventTimeEnd = updateData.allDay ? undefined : updateData.endTime
+  }
   if (updateData.providerId !== undefined) payload.providerId = updateData.providerId
   if (updateData.orderId !== undefined) payload.orderId = updateData.orderId
   if (updateData.status !== undefined) payload.status = updateData.status
@@ -325,7 +332,7 @@ export async function deleteEventType(id: string): Promise<void> {
  */
 export async function updateEventStatus(
   id: string,
-  status: 'pending' | 'confirmed' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
+  status: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
 ): Promise<CalendarEvent> {
   const response = await apiClient.patch<CalendarEvent>(`/calendar/events/${id}/status`, {
     status,

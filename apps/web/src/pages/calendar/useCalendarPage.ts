@@ -23,7 +23,7 @@ export interface CalendarEvent {
   providerId?: string
   wineCount?: number
   totalValue?: number
-  status?: 'pending' | 'confirmed' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
+  status?: 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled'
 }
 
 function parseLocalDate(value: string): Date {

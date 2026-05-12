@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft,
@@ -142,6 +143,21 @@ export default function CalendarPage() {
     setModalInitialEndDate(endDate)
     setModalOpen(true)
   }, [])
+
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('openModal') === 'true') {
+      const dateStr = searchParams.get('date')
+      const date = dateStr ? new Date(dateStr) : new Date()
+      openCreateModal(date)
+      setSearchParams(prev => {
+        prev.delete('openModal')
+        prev.delete('date')
+        return prev
+      }, { replace: true })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEditModal = useCallback((event: CalendarEvent) => {
     setEditingEvent(event)

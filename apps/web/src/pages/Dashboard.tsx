@@ -31,7 +31,7 @@ import {
   Target,
   Search,
 } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
 import { AddImportantDateModal, ImportantDate } from '../components/dashboard/AddImportantDateModal'
 import { useRealtimeDispatch, CalendarEventPayload } from '../contexts/RealtimeContext'
@@ -98,6 +98,7 @@ const getImportantDateConfig = (type?: string) => {
 type ModalType = 'revenue' | 'inventory' | 'orders' | 'lowStock' | null
 
 export function Dashboard() {
+  const navigate = useNavigate()
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const { measurementUnit } = useRestaurantSettingsStore()
   // Use the extracted dashboard page hook
@@ -694,13 +695,13 @@ export function Dashboard() {
               </div>
               
               {/* Quick Add */}
-              <NavLink
-                to="/calendar"
+              <button
+                onClick={() => navigate('/calendar?openModal=true')}
                 className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-wine-400 hover:text-wine-600 transition-colors text-xs font-medium"
               >
                 <Plus className="w-3 h-3" />
                 Add Event
-              </NavLink>
+              </button>
             </div>
           </div>
         </motion.div>
