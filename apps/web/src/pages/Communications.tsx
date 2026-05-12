@@ -1,44 +1,24 @@
 import { useState, useCallback } from 'react'
 import { Header } from '../components/layout/Header'
-import { Card, Button } from '../components/ui'
 import {
-  FileText,
   Mail,
   MessageSquare,
-  Eye,
-  Plus,
   Calendar,
   Clock,
-  Save,
-  Sparkles,
-  Zap,
   LayoutTemplate,
-  Upload,
-  ChevronDown,
-  Wand2,
-  Library,
   Search,
+  FileText,
 } from 'lucide-react'
 import { GmailTemplateBuilder, SavedTemplate } from '../components/documents/GmailTemplateBuilder'
 import { SMSTemplateBuilder } from '../components/documents/SMSTemplateBuilder'
-import { SavedTemplates } from '../components/documents/SavedTemplates'
-import { SavedSMSTemplates, SavedSMSTemplate } from '../components/documents/SavedSMSTemplates'
+import { SavedSMSTemplate } from '../components/documents/SavedSMSTemplates'
+import { TemplateLibrary } from '../components/documents/TemplateLibrary'
 import { ReportScheduler } from '../components/communications/ReportScheduler'
 import {
   useConversations,
   useConversationStats,
   type ConversationFilters,
 } from '../hooks/queries/useConversationQueries'
-
-// Quick template presets for common use cases
-const QUICK_TEMPLATES = [
-  { id: 'order-confirm', name: 'Order Confirmation', category: 'Orders' },
-  { id: 'delivery-update', name: 'Delivery Update', category: 'Orders' },
-  { id: 'provider-intro', name: 'Provider Introduction', category: 'Providers' },
-  { id: 'inventory-alert', name: 'Low Stock Alert', category: 'Inventory' },
-  { id: 'follow-up', name: 'Follow-up Email', category: 'General' },
-  { id: 'thank-you', name: 'Thank You Note', category: 'General' },
-]
 
 function ApiCommunicationHistory() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -184,119 +164,19 @@ function ApiCommunicationHistory() {
 
 export function Communications() {
   const [selectedTab, setSelectedTab] = useState<'templates' | 'history' | 'scheduled-reports'>('templates')
-  const [_selectedCategory, _setSelectedCategory] = useState<'all' | 'communication' | 'report' | 'notification'>('communication')
   const [showGmailBuilder, setShowGmailBuilder] = useState(false)
   const [showSMSBuilder, setShowSMSBuilder] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<SavedTemplate | null>(null)
-  const [_editingSMSTemplate, setEditingSMSTemplate] = useState<SavedSMSTemplate | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [smsRefreshKey, setSmsRefreshKey] = useState(0)
-  const [showQuickTemplatesMenu, setShowQuickTemplatesMenu] = useState(false)
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [editingSMSTemplate, setEditingSMSTemplate] = useState<SavedSMSTemplate | null>(null)
 
-  // Email Template handlers
-  const handleEditTemplate = useCallback((template: SavedTemplate) => {
+  const handleNewEmailTemplate = useCallback(() => {
+    setEditingTemplate(null)
+    setShowGmailBuilder(true)
+  }, [])
+
+  const handleEditEmailTemplate = useCallback((template: SavedTemplate) => {
     setEditingTemplate(template)
     setShowGmailBuilder(true)
-  }, [])
-
-  const handleDuplicateTemplate = useCallback((_template: SavedTemplate) => {
-    setRefreshKey(prev => prev + 1)
-  }, [])
-
-  const handleDeleteTemplate = useCallback((_templateId: string) => {
-    setRefreshKey(prev => prev + 1)
-  }, [])
-
-  const handleUseTemplate = useCallback((_template: SavedTemplate) => {
-    console.log('Using template:', template.name)
-  }, [])
-
-  const handleNewTemplate = useCallback(() => {
-    setEditingTemplate(null)
-    setShowGmailBuilder(true)
-  }, [])
-
-  const handleSaveTemplate = useCallback((_template: SavedTemplate) => {
-    setRefreshKey(prev => prev + 1)
-  }, [])
-
-  const handleCloseBuilder = useCallback(() => {
-    setShowGmailBuilder(false)
-    setEditingTemplate(null)
-    setRefreshKey(prev => prev + 1)
-  }, [])
-
-  // Import template from file
-  const handleImportTemplate = useCallback(() => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.json,.html'
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        const reader = new FileReader()
-        reader.onload = (event) => {
-          try {
-            const content = event.target?.result as string
-            // Parse and validate imported template
-            if (file.name.endsWith('.json')) {
-              const template = JSON.parse(content)
-              console.log('Imported template:', template)
-              alert(`Template "${template.name || 'Untitled'}" imported successfully!`)
-            } else {
-              // HTML template - create new with imported content
-              console.log('Imported HTML template')
-              alert('HTML template imported! Opening editor...')
-            }
-            setShowGmailBuilder(true)
-            setRefreshKey(prev => prev + 1)
-          } catch (error) {
-            console.error('Failed to import template:', error)
-            alert('Failed to import template. Please check the file format.')
-          }
-        }
-        reader.readAsText(file)
-      }
-    }
-    input.click()
-  }, [])
-
-  // Quick template selection
-  const handleQuickTemplate = useCallback((templateId: string) => {
-    console.log('Loading quick template:', templateId)
-    setShowQuickTemplatesMenu(false)
-    // In a real implementation, this would load the preset template
-    setShowGmailBuilder(true)
-  }, [])
-
-  // AI generate template
-  const handleAIGenerate = useCallback(async () => {
-    setIsGeneratingAI(true)
-    // Simulate AI generation
-    setTimeout(() => {
-      setIsGeneratingAI(false)
-      setShowGmailBuilder(true)
-      // In a real implementation, this would open the builder with AI-generated content
-    }, 1500)
-  }, [])
-  
-  // SMS Template handlers
-  const handleEditSMSTemplate = useCallback((template: SavedSMSTemplate) => {
-    setEditingSMSTemplate(template)
-    setShowSMSBuilder(true)
-  }, [])
-
-  const handleDuplicateSMSTemplate = useCallback((_template: SavedSMSTemplate) => {
-    setSmsRefreshKey(prev => prev + 1)
-  }, [])
-
-  const handleDeleteSMSTemplate = useCallback((_templateId: string) => {
-    setSmsRefreshKey(prev => prev + 1)
-  }, [])
-
-  const handleUseSMSTemplate = useCallback((_template: SavedSMSTemplate) => {
-    console.log('Using SMS template:', template.name)
   }, [])
 
   const handleNewSMSTemplate = useCallback(() => {
@@ -304,272 +184,81 @@ export function Communications() {
     setShowSMSBuilder(true)
   }, [])
 
-  const handleCloseSMSBuilder = useCallback(() => {
-    setShowSMSBuilder(false)
-    setEditingSMSTemplate(null)
-    setSmsRefreshKey(prev => prev + 1)
+  const handleEditSMSTemplate = useCallback((template: SavedSMSTemplate) => {
+    setEditingSMSTemplate(template)
+    setShowSMSBuilder(true)
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header 
-        title="Documents & Templates" 
-        subtitle="Manage communication templates, reports, and notifications" 
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Header
+        title="Communications"
+        subtitle="Manage templates, send history, and scheduled reports"
       />
 
-      <div className="p-6">
-        {/* Tabs */}
-        <div className="flex gap-4 mb-6">
-          <Button
-            variant={selectedTab === 'templates' ? 'default' : 'outline'}
-            onClick={() => setSelectedTab('templates')}
-            className={selectedTab === 'templates' ? 'bg-wine-600' : ''}
+      {/* Tab bar */}
+      <div className="flex gap-1 px-6 pt-4 pb-0 bg-white border-b border-gray-100">
+        {([
+          { key: 'templates',         label: 'Templates',            Icon: LayoutTemplate },
+          { key: 'history',           label: 'Send History',         Icon: Clock },
+          { key: 'scheduled-reports', label: 'Scheduled Reports',    Icon: Calendar },
+        ] as const).map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => setSelectedTab(key)}
+            className={[
+              'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all -mb-px',
+              selectedTab === key
+                ? 'border-wine-600 text-wine-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700',
+            ].join(' ')}
           >
-            <LayoutTemplate className="w-4 h-4 mr-2" />
-            Templates
-          </Button>
-          <Button
-            variant={selectedTab === 'history' ? 'default' : 'outline'}
-            onClick={() => setSelectedTab('history')}
-            className={selectedTab === 'history' ? 'bg-wine-600' : ''}
-          >
-            <Clock className="w-4 h-4 mr-2" />
-            Communication History
-          </Button>
-          <Button
-            variant={selectedTab === 'scheduled-reports' ? 'default' : 'outline'}
-            onClick={() => setSelectedTab('scheduled-reports')}
-            className={selectedTab === 'scheduled-reports' ? 'bg-wine-600' : ''}
-          >
-            <Calendar className="w-4 h-4 mr-2" />
-            Scheduled Reports
-          </Button>
-        </div>
-
-        {selectedTab === 'templates' && (
-          <>
-            {/* Two-Column Hero Section - Email & SMS Builders */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Gmail Template Builder CTA */}
-              <Card variant="glass" padding="lg" className="overflow-hidden relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 via-transparent to-indigo-600/5" />
-                <div className="relative">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-600/30">
-                        <Mail className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                          <h2 className="text-xl font-bold text-gray-900">Email Templates</h2>
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        Enhanced
-                      </span>
-                    </div>
-                        <p className="text-sm text-gray-600">
-                          Professional email templates with drag-and-drop components
-                    </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Feature highlights */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    {[
-                      { icon: Zap, label: 'Dynamic Variables' },
-                      { icon: LayoutTemplate, label: '10+ Components' },
-                      { icon: Eye, label: 'Live Preview' },
-                      { icon: Save, label: 'Save & Reuse' },
-                    ].map((feature, idx) => (
-                      <div key={idx} className="flex items-center gap-2 p-2 bg-blue-50/50 rounded-lg">
-                        <feature.icon className="w-4 h-4 text-blue-600" />
-                        <span className="text-xs font-medium text-gray-700">{feature.label}</span>
-                      </div>
-                    ))}
-                </div>
-
-                {/* Primary Create Button */}
-                <Button
-                  variant="default"
-                  onClick={handleNewTemplate}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-600/30"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                    Create Email Template
-                </Button>
-
-                {/* Secondary Action Buttons */}
-                <div className="flex gap-2 mt-3">
-                  {/* Import Template */}
-                  <button
-                    onClick={handleImportTemplate}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all text-sm font-medium"
-                  >
-                    <Upload className="w-4 h-4" />
-                    Import
-                  </button>
-
-                  {/* Quick Templates Dropdown */}
-                  <div className="flex-1 relative">
-                    <button
-                      onClick={() => setShowQuickTemplatesMenu(!showQuickTemplatesMenu)}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all text-sm font-medium"
-                    >
-                      <Library className="w-4 h-4" />
-                      Quick
-                      <ChevronDown className={`w-3 h-3 transition-transform ${showQuickTemplatesMenu ? 'rotate-180' : ''}`} />
-                    </button>
-                    
-                    {showQuickTemplatesMenu && (
-                      <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-10 max-h-64 overflow-y-auto">
-                        <p className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase">Quick Templates</p>
-                        {QUICK_TEMPLATES.map((template) => (
-                          <button
-                            key={template.id}
-                            onClick={() => handleQuickTemplate(template.id)}
-                            className="w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors"
-                          >
-                            <p className="text-sm font-medium text-gray-900">{template.name}</p>
-                            <p className="text-xs text-gray-500">{template.category}</p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* AI Generate */}
-                  <button
-                    onClick={handleAIGenerate}
-                    disabled={isGeneratingAI}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all text-sm font-medium disabled:opacity-50"
-                  >
-                    {isGeneratingAI ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="w-4 h-4" />
-                        AI
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-              </Card>
-
-              {/* SMS Template Builder CTA */}
-              <Card variant="glass" padding="lg" className="overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/5 via-transparent to-teal-600/5" />
-                <div className="relative">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/30">
-                        <MessageSquare className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <h2 className="text-xl font-bold text-gray-900">SMS Templates</h2>
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" />
-                            New
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          Professional SMS templates with iPhone preview
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Feature highlights */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    {[
-                      { icon: Zap, label: 'Variables Support' },
-                      { icon: Eye, label: 'iPhone Preview' },
-                      { icon: LayoutTemplate, label: 'Character Count' },
-                      { icon: Save, label: 'Template Library' },
-                    ].map((feature, idx) => (
-                      <div key={idx} className="flex items-center gap-2 p-2 bg-emerald-50/50 rounded-lg">
-                        <feature.icon className="w-4 h-4 text-emerald-600" />
-                        <span className="text-xs font-medium text-gray-700">{feature.label}</span>
-                  </div>
-                ))}
-                  </div>
-
-                  <Button
-                    variant="default"
-                    onClick={handleNewSMSTemplate}
-                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/30"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create SMS Template
-                  </Button>
-              </div>
-            </Card>
-            </div>
-
-            {/* Two-Column Saved Templates Section - Email & SMS Side by Side */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Saved Email Templates */}
-              <div>
-              <SavedTemplates
-                key={refreshKey}
-                onEditTemplate={handleEditTemplate}
-                onDuplicateTemplate={handleDuplicateTemplate}
-                onDeleteTemplate={handleDeleteTemplate}
-                onUseTemplate={handleUseTemplate}
-                onNewTemplate={handleNewTemplate}
-              />
-            </div>
-
-              {/* Saved SMS Templates */}
-              <div>
-                <SavedSMSTemplates
-                  key={smsRefreshKey}
-                  onEditTemplate={handleEditSMSTemplate}
-                  onDuplicateTemplate={handleDuplicateSMSTemplate}
-                  onDeleteTemplate={handleDeleteSMSTemplate}
-                  onUseTemplate={handleUseSMSTemplate}
-                  onNewTemplate={handleNewSMSTemplate}
-                />
-                </div>
-            </div>
-          </>
-        )}
-
-        {selectedTab === 'history' && (
-          <ApiCommunicationHistory />
-        )}
-
-        {selectedTab === 'scheduled-reports' && (
-          <ReportScheduler
-            onSchedule={(config) => {
-              console.log('Report schedule saved:', config)
-            }}
-            onGenerateNow={(reportType, format) => {
-              console.log('Generating report now:', reportType, format)
-            }}
-          />
-        )}
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
       </div>
+
+      {/* Tab content */}
+      {selectedTab === 'templates' && (
+        <TemplateLibrary
+          onNewEmailTemplate={handleNewEmailTemplate}
+          onEditEmailTemplate={handleEditEmailTemplate}
+          onNewSMSTemplate={handleNewSMSTemplate}
+          onEditSMSTemplate={handleEditSMSTemplate}
+        />
+      )}
+
+      {selectedTab === 'history' && (
+        <div className="p-6">
+          <ApiCommunicationHistory />
+        </div>
+      )}
+
+      {selectedTab === 'scheduled-reports' && (
+        <div className="p-6">
+          <ReportScheduler
+            onSchedule={(config) => { console.log('Report schedule saved:', config) }}
+            onGenerateNow={(reportType, format) => { console.log('Generating report now:', reportType, format) }}
+          />
+        </div>
+      )}
 
       {/* Gmail Template Builder Modal */}
       {showGmailBuilder && (
-        <GmailTemplateBuilder 
-          onClose={handleCloseBuilder}
-          onSave={handleSaveTemplate}
+        <GmailTemplateBuilder
+          onClose={() => { setShowGmailBuilder(false); setEditingTemplate(null) }}
+          onSave={() => { setShowGmailBuilder(false); setEditingTemplate(null) }}
           editingTemplate={editingTemplate}
         />
       )}
 
       {/* SMS Template Builder Modal */}
       {showSMSBuilder && (
-        <SMSTemplateBuilder 
-          onClose={handleCloseSMSBuilder}
-          onSave={() => setSmsRefreshKey(prev => prev + 1)}
+        <SMSTemplateBuilder
+          onClose={() => { setShowSMSBuilder(false); setEditingSMSTemplate(null) }}
+          onSave={() => { setShowSMSBuilder(false); setEditingSMSTemplate(null) }}
+          editingTemplate={editingSMSTemplate as any}
         />
       )}
     </div>
