@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
 status: unknown
-last_updated: "2026-05-12T20:30:00.000Z"
+last_updated: "2026-05-12T20:40:00.000Z"
 progress:
   total_phases: 14
   completed_phases: 9
   total_plans: 65
-  completed_plans: 58
-  percent: 89
+  completed_plans: 59
+  percent: 91
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 30 — Calendar Operations Hub. Plans 30-01, 30-02, and 30-03 complete. Service column renames + eventTimeEnd + color wired through service and DTOs. iCal subscription feed (ical-generator) implemented with public feed endpoint and token management.
+**Current focus:** Phase 30 — Calendar Operations Hub. Plans 30-01 through 30-04 complete. Service column renames + eventTimeEnd + color wired through service and DTOs. iCal subscription feed (ical-generator) implemented. Frontend bug fixes applied: 'confirmed' status removed everywhere, end time payload wired, Dashboard Add Event opens modal via ?openModal=true.
 
 ---
 
 ## Current Position
 
-**Last completed:** Phase 30 Plan 03 — iCal subscription feed. Installed ical-generator; implemented public GET /calendar/feed/:token.ics endpoint and authenticated GET/POST token management endpoints. TypeScript compiles clean. 2026-05-12.
+**Last completed:** Phase 30 Plan 04 — Frontend bug fixes. Removed 'confirmed' status from 9 frontend files; wired eventDateEnd+eventTimeEnd into create/update payloads; added ?openModal=true URL param detection in CalendarPage; Dashboard Add Event navigates to /calendar?openModal=true. 2026-05-12.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27, 28
 **Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
 
@@ -762,4 +762,4 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 ---
 
 *State initialized: 2026-03-30*
-*Last updated: 2026-05-12 — Phase 30 Plans 30-01, 30-02, and 30-03 complete. Calendar schema migrations applied; service column names fixed; ical-generator installed; public iCal feed + token management endpoints implemented. TypeScript compiles clean.*
+*Last updated: 2026-05-12 — Phase 30 Plans 30-01 through 30-04 complete. Calendar schema migrations applied; service column names fixed; ical-generator installed; public iCal feed + token management endpoints implemented; frontend 'confirmed' status bug fixed; end time payload wired; Dashboard Add Event opens modal via URL param.*
