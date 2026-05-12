@@ -30,10 +30,12 @@ interface CalendarEventRow {
   title: string;
   description: string | null;
   event_type: string;
-  event_date: string;
-  event_date_end: string | null;
+  start_date: string;
+  end_date: string | null;
   all_day: boolean;
-  event_time: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  color: string | null;
   source: string;
   status: string;
   reminder_enabled: boolean;
@@ -107,10 +109,12 @@ export class CalendarService {
       title: dto.title,
       description: dto.description || null,
       event_type: dto.eventType,
-      event_date: dto.eventDate,
-      event_date_end: dto.eventDateEnd || null,
+      start_date: dto.eventDate,
+      end_date: dto.eventDateEnd || null,
       all_day: dto.allDay ?? true,
-      event_time: dto.eventTime || null,
+      start_time: dto.eventTime || null,
+      end_time: dto.eventTimeEnd || null,
+      color: dto.color || null,
       provider_id: dto.providerId || null,
       order_id: dto.orderId || null,
       source: dto.source || 'manual',
@@ -278,10 +282,10 @@ export class CalendarService {
 
     // Date range filter
     if (query.startDate) {
-      supabaseQuery = supabaseQuery.gte('event_date', query.startDate);
+      supabaseQuery = supabaseQuery.gte('start_date', query.startDate);
     }
     if (query.endDate) {
-      supabaseQuery = supabaseQuery.lte('event_date', query.endDate);
+      supabaseQuery = supabaseQuery.lte('start_date', query.endDate);
     }
 
     // Type filter
@@ -305,7 +309,7 @@ export class CalendarService {
     }
 
     const { data, error, count } = await supabaseQuery
-      .order('event_date', { ascending: true })
+      .order('start_date', { ascending: true })
       .range(fromIndex, toIndex);
 
     if (error) {
@@ -367,10 +371,12 @@ export class CalendarService {
     if (dto.title !== undefined) updatePayload.title = dto.title;
     if (dto.description !== undefined) updatePayload.description = dto.description;
     if (dto.eventType !== undefined) updatePayload.event_type = dto.eventType;
-    if (dto.eventDate !== undefined) updatePayload.event_date = dto.eventDate;
-    if (dto.eventDateEnd !== undefined) updatePayload.event_date_end = dto.eventDateEnd;
+    if (dto.eventDate !== undefined) updatePayload.start_date = dto.eventDate;
+    if (dto.eventDateEnd !== undefined) updatePayload.end_date = dto.eventDateEnd;
     if (dto.allDay !== undefined) updatePayload.all_day = dto.allDay;
-    if (dto.eventTime !== undefined) updatePayload.event_time = dto.eventTime;
+    if (dto.eventTime !== undefined) updatePayload.start_time = dto.eventTime;
+    if (dto.eventTimeEnd !== undefined) updatePayload.end_time = dto.eventTimeEnd;
+    if (dto.color !== undefined) updatePayload.color = dto.color;
     if (dto.status !== undefined) updatePayload.status = dto.status;
     if (dto.reminderEnabled !== undefined) updatePayload.reminder_enabled = dto.reminderEnabled;
     if (dto.reminderDaysBefore !== undefined) updatePayload.reminder_days_before = dto.reminderDaysBefore;
@@ -429,7 +435,7 @@ export class CalendarService {
           title: data.title,
           eventType: data.event_type,
           action: 'updated',
-          date: data.event_date,
+          date: data.start_date,
           changes: dto,
         },
       });
@@ -794,13 +800,13 @@ export class CalendarService {
       .eq('parent_event_id', eventId);
 
     if (startDate) {
-      query = query.gte('event_date', startDate);
+      query = query.gte('start_date', startDate);
     }
     if (endDate) {
-      query = query.lte('event_date', endDate);
+      query = query.lte('start_date', endDate);
     }
 
-    const { data, error } = await query.order('event_date', { ascending: true });
+    const { data, error } = await query.order('start_date', { ascending: true });
 
     if (error) {
       this.logger.error(`Failed to get recurring instances: ${error.message}`);
@@ -823,7 +829,7 @@ export class CalendarService {
       .eq('parent_event_id', eventId);
 
     if (fromDate) {
-      query = query.gte('event_date', fromDate);
+      query = query.gte('start_date', fromDate);
     }
 
     const { data, error } = await query.select('id');
@@ -872,10 +878,12 @@ export class CalendarService {
       title: row.title,
       description: row.description || undefined,
       eventType: row.event_type as CalendarEventResponseDto['eventType'],
-      eventDate: row.event_date,
-      eventDateEnd: row.event_date_end || undefined,
+      eventDate: row.start_date,
+      eventDateEnd: row.end_date || undefined,
       allDay: row.all_day,
-      eventTime: row.event_time || undefined,
+      eventTime: row.start_time || undefined,
+      eventTimeEnd: row.end_time || undefined,
+      color: row.color || undefined,
       providerId: row.provider_id || undefined,
       orderId: row.order_id || undefined,
       source: row.source as CalendarEventResponseDto['source'],
