@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
-status: active
-last_updated: "2026-05-11T00:00:00.000Z"
+status: unknown
+last_updated: "2026-05-12T20:30:00.000Z"
 progress:
-  total_phases: 11
+  total_phases: 14
   completed_phases: 9
-  total_plans: 68
-  completed_plans: 55
-  percent: 81
+  total_plans: 65
+  completed_plans: 58
+  percent: 89
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,15 +19,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 30 — Calendar Operations Hub. Plans 30-01 and 30-02 complete. Service column renames + eventTimeEnd + color wired through service and DTOs.
+**Current focus:** Phase 30 — Calendar Operations Hub. Plans 30-01, 30-02, and 30-03 complete. Service column renames + eventTimeEnd + color wired through service and DTOs. iCal subscription feed (ical-generator) implemented with public feed endpoint and token management.
 
 ---
 
 ## Current Position
 
-**Last completed:** Phase 30 Plan 02 — Calendar service column fix. calendar.service.ts column names aligned with migration; eventTimeEnd + color wired through all payloads and DTOs. 2026-05-12.
+**Last completed:** Phase 30 Plan 03 — iCal subscription feed. Installed ical-generator; implemented public GET /calendar/feed/:token.ics endpoint and authenticated GET/POST token management endpoints. TypeScript compiles clean. 2026-05-12.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27, 28
 **Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
+
 - Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
 - Phase 24: ~20% done (test stubs + model_clients.py only); plans 24-01, 24-04, 24-05 not executed. Blocked on Phase 23 being live.
 
@@ -761,4 +762,4 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 ---
 
 *State initialized: 2026-03-30*
-*Last updated: 2026-05-12 — Phase 30 Plans 30-01 and 30-02 complete. Calendar schema migrations applied; calendar.service.ts column names aligned with DB (start_date/end_date/start_time/end_time/color); eventTimeEnd added to all 3 calendar DTOs. TypeScript compiles clean.*
+*Last updated: 2026-05-12 — Phase 30 Plans 30-01, 30-02, and 30-03 complete. Calendar schema migrations applied; service column names fixed; ical-generator installed; public iCal feed + token management endpoints implemented. TypeScript compiles clean.*
