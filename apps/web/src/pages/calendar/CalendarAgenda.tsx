@@ -89,7 +89,8 @@ function groupByDate(events: CalendarEvent[]): DateGroup[] {
   let current: DateGroup | null = null
 
   for (const ev of sorted) {
-    const dateKey = ev.date.toISOString().split('T')[0]
+    const d = ev.date
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     if (!current || current.dateKey !== dateKey) {
       current = { dateKey, date: new Date(ev.date), events: [] }
       groups.push(current)

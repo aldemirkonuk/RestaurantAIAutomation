@@ -50,13 +50,13 @@ export function useCalendarPage() {
 
   // Calculate date range for current view
   const startDate = useMemo(() => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-    return date.toISOString().split('T')[0]
+    const d = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }, [currentDate])
 
   const endDate = useMemo(() => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
-    return date.toISOString().split('T')[0]
+    const d = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }, [currentDate])
 
   // Fetch events from API
@@ -123,7 +123,8 @@ export function useCalendarPage() {
   const eventsByDate = useMemo(() => {
     const grouped: Record<string, CalendarEvent[]> = {}
     filteredEvents.forEach(event => {
-      const dateKey = event.date.toISOString().split('T')[0]
+      const d = event.date
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       if (!grouped[dateKey]) {
         grouped[dateKey] = []
       }
