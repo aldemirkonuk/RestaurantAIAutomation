@@ -394,8 +394,95 @@ export class CalendarService {
           eventId,
         );
       } else if (dto.updateScope === 'this_and_future') {
-        // TODO: Split the recurrence rule
-        this.logger.warn('this_and_future update scope not yet implemented');
+        // Split the recurring series at the occurrence date:
+        // 1. Truncate the existing rule: set end_on_date to one day before occurrence
+        // 2. Create a new parent event starting at occurrence_date with updated fields
+        // 3. Create a new recurrence rule for the new parent, starting from occurrence_date
+
+        const occurrenceDate = existing.occurrenceDate || existing.eventDate;
+        if (!occurrenceDate) {
+          throw new Error('occurrence_date required for this_and_future update scope');
+        }
+
+        // Step 1: Truncate the existing recurrence rule at occurrence_date - 1 day
+        if (existing.recurrenceRule?.id) {
+          const splitDate = new Date(occurrenceDate);
+          splitDate.setDate(splitDate.getDate() - 1);
+          const truncateEndDate = splitDate.toISOString().split('T')[0];
+
+          const { error: ruleUpdateError } = await this.databaseService.supabase
+            .from('calendar_recurrence_rules')
+            .update({ end_on_date: truncateEndDate, end_type: 'on_date' })
+            .eq('id', existing.recurrenceRule.id);
+
+          if (ruleUpdateError) {
+            this.logger.error('Failed to truncate existing recurrence rule', ruleUpdateError);
+          }
+        }
+
+        // Step 2: Build the new parent event payload (same shape as insertPayload in createEvent)
+        const newParentPayload: Record<string, any> = {
+          restaurant_id: restaurantId,
+          title: dto.title ?? existing.title,
+          description: dto.description !== undefined ? dto.description : existing.description,
+          event_type: dto.eventType ?? existing.eventType,
+          start_date: occurrenceDate,
+          end_date: dto.eventDateEnd ?? existing.eventDateEnd ?? null,
+          all_day: dto.allDay !== undefined ? dto.allDay : existing.allDay,
+          start_time: dto.eventTime ?? existing.eventTime ?? null,
+          end_time: dto.eventTimeEnd ?? existing.eventTimeEnd ?? null,
+          color: dto.color !== undefined ? dto.color : existing.color ?? null,
+          source: existing.source || 'manual',
+          status: dto.status ?? existing.status ?? 'pending',
+          reminder_enabled: dto.reminderEnabled !== undefined ? dto.reminderEnabled : existing.reminderEnabled,
+          reminder_days_before: dto.reminderDaysBefore ?? existing.reminderDaysBefore ?? 1,
+          is_recurring: true,
+          created_by: userId,
+        };
+
+        const { data: newParentData, error: newParentError } = await this.databaseService.supabase
+          .from('calendar_events')
+          .insert(newParentPayload)
+          .select('*')
+          .single();
+
+        if (newParentError || !newParentData) {
+          throw new Error(`Failed to create new parent event: ${newParentError?.message}`);
+        }
+
+        // Step 3: Create new recurrence rule for the new parent, cloning the existing rule
+        if (existing.recurrenceRule && newParentData) {
+          const newRulePayload: Record<string, any> = {
+            restaurant_id: restaurantId,
+            calendar_event_id: newParentData.id,
+            frequency: existing.recurrenceRule.frequency,
+            interval_value: existing.recurrenceRule.interval ?? 1,
+            days_of_week: existing.recurrenceRule.daysOfWeek ?? null,
+            day_of_month: existing.recurrenceRule.dayOfMonth ?? null,
+            week_of_month: existing.recurrenceRule.weekOfMonth ?? null,
+            month_of_year: existing.recurrenceRule.monthOfYear ?? null,
+            end_type: existing.recurrenceRule.endType ?? 'never',
+            end_after_count: existing.recurrenceRule.endAfterCount ?? null,
+            end_on_date: existing.recurrenceRule.endOnDate ?? null,
+            generation_horizon_days: 90,
+          };
+
+          const { data: newRuleData, error: newRuleError } = await this.databaseService.supabase
+            .from('calendar_recurrence_rules')
+            .insert(newRulePayload)
+            .select('id')
+            .single();
+
+          if (newRuleError) {
+            this.logger.error('Failed to create new recurrence rule', newRuleError);
+          } else if (newRuleData) {
+            // Trigger occurrence generation for the new rule (stub returns 0 in Phase 30)
+            await this.generateOccurrences(restaurantId, newRuleData.id);
+          }
+        }
+
+        // Return the new parent event (not the individual occurrence)
+        return this.mapCalendarEvent(newParentData);
       } else if (dto.updateScope === 'all') {
         // Update the parent event and regenerate occurrences
         if (existing.parentEventId) {
