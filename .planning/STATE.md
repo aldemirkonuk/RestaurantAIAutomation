@@ -133,6 +133,7 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260413-ow5 | Close Phase 22, update STATE/ROADMAP, add Phases 23-25 (Gmail, Comms Agent, Prod Tests) | 2026-04-13 | — | [260413-ow5-close-phase-22-update-state-and-roadmap-](./quick/260413-ow5-close-phase-22-update-state-and-roadmap-/) |
+| 260511-0aa | Add E2E tests for procurement email templates (managerReview, vendorOutbound, conversationSummary, legacy procurement) and onboarding email | 2026-05-11 | — | [260511-0aa-test-procurement-and-onboarding-emails](./quick/260511-0aa-test-procurement-and-onboarding-emails/) |
 
 ---
 
