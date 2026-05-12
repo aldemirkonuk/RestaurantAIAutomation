@@ -257,74 +257,76 @@ export function SavedTemplates({
 
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Saved Templates</h2>
-            <p className="text-sm text-gray-600">{templates.length} template{templates.length !== 1 ? 's' : ''} available</p>
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Mail className="w-4 h-4 text-blue-500" />
+              Email Templates
+              <span className="text-xs font-semibold px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{templates.length}</span>
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">{templates.reduce((s, t) => s + t.used_count, 0)} total sends</p>
           </div>
-          {onNewTemplate && (
-            <button
-              onClick={onNewTemplate}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search…"
+                className="pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 w-44 transition-all"
+              />
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30 cursor-pointer bg-white"
             >
-              <Mail className="w-4 h-4" />
-              New Template
-            </button>
-          )}
+              <option value="recent">Recent</option>
+              <option value="name">A–Z</option>
+              <option value="usage">Most used</option>
+            </select>
+            {onNewTemplate && (
+              <button
+                onClick={onNewTemplate}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                New
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-wrap gap-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search templates..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Category Filter */}
-          <div className="flex flex-wrap gap-1 p-1 bg-gray-100 rounded-lg">
-            {availableCategories.map((cat) => (
+        {/* Category chips */}
+        <div className="flex flex-wrap gap-1.5">
+          {availableCategories.map((cat) => {
+            const count = cat === 'all'
+              ? templates.length
+              : cat === 'favorites'
+              ? favoriteTemplates.length
+              : templates.filter(t => String(t.category || 'custom').toLowerCase().trim() === cat).length
+            return (
               <button
                 key={cat}
                 onClick={() => setFilter(cat)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
+                className={[
+                  'flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold capitalize transition-all border',
                   filter === cat
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600',
+                ].join(' ')}
               >
-                {cat === 'favorites' && <Star className="w-3 h-3 inline mr-1 fill-amber-400 text-amber-400" />}
+                {cat === 'favorites' && <Star className="w-3 h-3 fill-amber-400 text-amber-400" />}
                 {cat}
-                <span className="ml-1 text-xs opacity-60">
-                  ({cat === 'all' 
-                    ? templates.length 
-                    : cat === 'favorites' 
-                    ? favoriteTemplates.length 
-                    : templates.filter(t => String(t.category || 'custom').toLowerCase().trim() === String(cat).toLowerCase().trim()).length})
-                </span>
+                <span className={`ml-0.5 ${filter === cat ? 'opacity-70' : 'opacity-50'}`}>({count})</span>
               </button>
-            ))}
-          </div>
-
-          {/* Sort */}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="recent">Most Recent</option>
-            <option value="name">Name A-Z</option>
-            <option value="usage">Most Used</option>
-          </select>
+            )
+          })}
         </div>
       </div>
 
@@ -355,7 +357,7 @@ export function SavedTemplates({
           </div>
         ) : (
           <AnimatePresence mode="wait">
-            <motion.div 
+            <motion.div
               key={`${filter}-${filteredTemplates.length}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -364,197 +366,185 @@ export function SavedTemplates({
             >
               {filteredTemplates.map((template, index) => {
                 const CategoryIcon = getCategoryIcon(template.category)
-                
+                const isFav = favoriteTemplates.includes(template.id)
+                const isDefault = defaultEmailTemplate === template.id
+
+                // Per-category accent colours for the preview mockup
+                const accent = template.category === 'inventory'
+                  ? { bg: '#eff6ff', bar: '#3b82f6', barText: '#1d4ed8' }
+                  : template.category === 'financial'
+                  ? { bg: '#f0fdf4', bar: '#10b981', barText: '#065f46' }
+                  : template.category === 'order'
+                  ? { bg: '#f5f3ff', bar: '#8b5cf6', barText: '#5b21b6' }
+                  : { bg: '#f9fafb', bar: '#6b7280', barText: '#374151' }
+
                 return (
                   <motion.div
                     key={template.id}
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="bg-white rounded-xl border border-gray-200 hover:shadow-lg hover:border-blue-200 transition-all group relative"
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ delay: index * 0.04, duration: 0.25 }}
+                    className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all duration-300 group relative flex flex-col overflow-visible"
                   >
-                  {/* Thumbnail */}
-                  <div className="h-36 bg-gradient-to-br from-gray-100 to-gray-50 relative overflow-hidden rounded-t-xl">
-                    <img 
-                      src={template.thumbnail} 
-                      alt={template.name}
-                      className="w-full h-full object-cover"
-                    />
-                    
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all flex items-end justify-center pb-4">
-                      <button
-                        onClick={() => handleUseTemplate(template)}
-                        className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 font-medium rounded-lg shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform"
-                      >
-                        <Send className="w-4 h-4" />
-                        Use Template
-                      </button>
-                    </div>
+                    {/* ── Preview: mini email mockup ── */}
+                    <div
+                      className="h-44 rounded-t-2xl relative overflow-hidden flex items-center justify-center"
+                      style={{ background: accent.bg }}
+                    >
+                      {/* Decorative orbs */}
+                      <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full opacity-20"
+                        style={{ background: accent.bar }} />
+                      <div className="absolute -bottom-6 -left-6 w-20 h-20 rounded-full opacity-10"
+                        style={{ background: accent.bar }} />
 
-                    {/* Category badge */}
-                    <div className="absolute top-2 left-2 flex flex-col gap-1">
-                      <div className={`px-2 py-1 rounded-md text-xs font-medium border ${getCategoryColor(template.category)}`}>
-                        <div className="flex items-center gap-1">
+                      {/* Mini email paper */}
+                      <div className="relative z-10 w-[82%] bg-white rounded-xl shadow-lg overflow-hidden">
+                        {/* Email chrome bar */}
+                        <div className="h-7 px-3 flex items-center gap-2" style={{ background: accent.bar }}>
+                          <div className="flex gap-1 mr-1">
+                            <div className="w-2 h-2 rounded-full bg-white/30" />
+                            <div className="w-2 h-2 rounded-full bg-white/30" />
+                            <div className="w-2 h-2 rounded-full bg-white/30" />
+                          </div>
+                          <span className="text-[8px] font-semibold text-white/90 truncate flex-1">
+                            {template.subject || template.name}
+                          </span>
+                        </div>
+                        {/* Body lines */}
+                        <div className="p-3 space-y-1.5">
+                          <div className="h-1.5 rounded-full bg-gray-200 w-2/3" />
+                          <div className="h-1.5 rounded-full bg-gray-100 w-full" />
+                          <div className="h-1.5 rounded-full bg-gray-100 w-5/6" />
+                          <div className="h-1.5 rounded-full bg-gray-100 w-3/4" />
+                          <div className="h-1.5 rounded-full bg-gray-100 w-1/2" />
+                          <div className="mt-2.5 h-5 rounded-lg w-1/3 opacity-60"
+                            style={{ background: accent.bar }} />
+                        </div>
+                      </div>
+
+                      {/* Top-left badges */}
+                      <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
+                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getCategoryColor(template.category)} backdrop-blur-sm bg-white/80`}>
                           <CategoryIcon className="w-3 h-3" />
                           <span className="capitalize">{template.category}</span>
                         </div>
-                      </div>
-                      {/* Show Default badge if this template is set as default */}
-                      {defaultEmailTemplate === template.id && (
-                        <div className="px-2 py-1 rounded-md text-xs font-medium border bg-amber-100 text-amber-700 border-amber-200">
-                          <div className="flex items-center gap-1">
-                            <Star className="w-3 h-3 fill-current" />
-                            <span>Default</span>
+                        {isDefault && (
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100/90 text-amber-700 border border-amber-200 backdrop-blur-sm">
+                            <Crown className="w-3 h-3 fill-amber-500" />
+                            Default
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
 
-                    {/* Favorite Star Button - Enhanced Interactive */}
-                    <div className="absolute top-2 right-12">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleToggleFavorite(template.id)
-                        }}
-                        className="p-1.5 bg-white/90 hover:bg-white rounded-lg shadow-md hover:shadow-lg transition-all hover:scale-110 active:scale-95"
-                        title={favoriteTemplates.includes(template.id) ? 'Remove from favorites' : 'Add to favorites'}
-                      >
-                        <Star 
-                          className={`w-5 h-5 transition-all ${
-                            favoriteTemplates.includes(template.id) 
-                              ? 'fill-amber-400 text-amber-400 drop-shadow-sm' 
-                              : 'fill-none stroke-gray-400 hover:stroke-amber-400'
-                          }`}
-                          strokeWidth={2}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Menu button */}
-                    <div className="absolute top-2 right-2 z-10">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSelectedTemplateMenu(selectedTemplateMenu === template.id ? null : template.id)
-                        }}
-                        className="p-1.5 bg-white/90 hover:bg-white rounded-lg shadow-sm transition-colors"
-                      >
-                        <MoreVertical className="w-4 h-4 text-gray-600" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Dropdown menu - OUTSIDE thumbnail to avoid overflow clipping */}
-                  <AnimatePresence>
-                    {selectedTemplateMenu === template.id && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        className="absolute top-10 right-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[100]"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      {/* Top-right: star + menu */}
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            if (onEditTemplate) onEditTemplate(template)
-                            setSelectedTemplateMenu(null)
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          onClick={(e) => { e.stopPropagation(); handleToggleFavorite(template.id) }}
+                          className="p-1.5 bg-white/90 hover:bg-white rounded-lg shadow-sm hover:shadow-md transition-all hover:scale-110 active:scale-95"
                         >
-                          <Edit3 className="w-4 h-4" />
+                          <Star className={`w-3.5 h-3.5 transition-colors ${isFav ? 'fill-amber-400 text-amber-400' : 'text-gray-400'}`} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedTemplateMenu(selectedTemplateMenu === template.id ? null : template.id) }}
+                          className="p-1.5 bg-white/90 hover:bg-white rounded-lg shadow-sm transition-colors"
+                        >
+                          <MoreVertical className="w-3.5 h-3.5 text-gray-500" />
+                        </button>
+                      </div>
+
+                      {/* Hover overlay — Use button */}
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center rounded-t-2xl">
+                        <button
+                          onClick={() => handleUseTemplate(template)}
+                          className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 font-semibold text-sm rounded-xl shadow-xl translate-y-2 group-hover:translate-y-0 transition-transform duration-200"
+                        >
+                          <Send className="w-4 h-4" />
+                          Use Template
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Dropdown menu */}
+                    <AnimatePresence>
+                      {selectedTemplateMenu === template.id && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                          transition={{ duration: 0.12 }}
+                          className="absolute top-12 right-2 w-48 bg-white rounded-xl shadow-2xl border border-gray-100 py-1.5 z-[100]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button onClick={() => { onEditTemplate?.(template); setSelectedTemplateMenu(null) }}
+                            className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors">
+                            <Edit3 className="w-4 h-4 text-gray-400" /> Edit
+                          </button>
+                          <button onClick={() => { duplicateTemplate(template); setSelectedTemplateMenu(null) }}
+                            className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors">
+                            <Copy className="w-4 h-4 text-gray-400" /> Duplicate
+                          </button>
+                          <div className="h-px bg-gray-100 my-1" />
+                          {isDefault ? (
+                            <button onClick={() => { const u = { ...templateDefaults }; delete u['email']; updatePreferences({ templateDefaults: u }); setSelectedTemplateMenu(null) }}
+                              className="w-full px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2 transition-colors">
+                              <Star className="w-4 h-4 fill-amber-400" /> Remove Default
+                            </button>
+                          ) : (
+                            <button onClick={() => { updatePreferences({ templateDefaults: { ...templateDefaults, email: { templateId: template.id, templateName: template.name } } }); setSelectedTemplateMenu(null) }}
+                              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors">
+                              <Star className="w-4 h-4 text-gray-400" /> Set as Default
+                            </button>
+                          )}
+                          <div className="h-px bg-gray-100 my-1" />
+                          <button onClick={() => { deleteTemplate(template.id); setSelectedTemplateMenu(null) }}
+                            className="w-full px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors">
+                            <Trash2 className="w-4 h-4" /> Delete
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* ── Card body ── */}
+                    <div className="flex flex-col flex-1 p-4">
+                      <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-1 mb-1">
+                        {template.name}
+                      </h3>
+                      <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed mb-3 min-h-[2.5rem]">
+                        {template.description}
+                      </p>
+                      <div className="flex items-center justify-between text-[11px] text-gray-400 mt-auto mb-3">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(template.last_modified).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <BarChart3 className="w-3 h-3" />
+                          {template.used_count}× used
+                        </span>
+                      </div>
+
+                      {/* Action row */}
+                      <div className="flex gap-2 pt-3 border-t border-gray-50">
+                        <button
+                          onClick={() => onEditTemplate?.(template)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
                           Edit
                         </button>
                         <button
-                          onClick={() => {
-                            duplicateTemplate(template)
-                            setSelectedTemplateMenu(null)
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          onClick={() => handleUseTemplate(template)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm shadow-blue-200"
                         >
-                          <Copy className="w-4 h-4" />
-                          Duplicate
+                          <Send className="w-3.5 h-3.5" />
+                          Use
                         </button>
-                        <hr className="my-1 border-gray-200" />
-                        {defaultEmailTemplate === template.id ? (
-                          <button
-                            onClick={() => {
-                              const updated = { ...templateDefaults }
-                              delete updated['email']
-                              updatePreferences({ templateDefaults: updated })
-                              setSelectedTemplateMenu(null)
-                            }}
-                            className="w-full px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2"
-                          >
-                            <Star className="w-4 h-4 fill-amber-500" />
-                            Remove as Default
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              updatePreferences({
-                                templateDefaults: {
-                                  ...templateDefaults,
-                                  email: { templateId: template.id, templateName: template.name },
-                                },
-                              })
-                              setSelectedTemplateMenu(null)
-                            }}
-                            className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                          >
-                            <Star className="w-4 h-4" />
-                            Set as Default
-                          </button>
-                        )}
-                        <hr className="my-1 border-gray-200" />
-                        <button
-                          onClick={() => {
-                            deleteTemplate(template.id)
-                            setSelectedTemplateMenu(null)
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Content */}
-                  <div className="p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-gray-900 text-sm line-clamp-1 flex-1">
-                        {template.name}
-                      </h3>
-                      {defaultEmailTemplate === template.id && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">
-                          <Crown className="w-3 h-3 fill-amber-500" />
-                          Default
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 line-clamp-2 mb-3 min-h-[2rem]">
-                      {template.description}
-                    </p>
-
-                    {/* Meta */}
-                    <div className="flex items-center justify-between text-xs text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{new Date(template.last_modified).toLocaleDateString()}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <BarChart3 className="w-3 h-3" />
-                        <span>{template.used_count}x used</span>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              )
-            })}
+                  </motion.div>
+                )
+              })}
             </motion.div>
           </AnimatePresence>
         )}
