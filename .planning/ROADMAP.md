@@ -253,6 +253,42 @@ Plans:
 - [x] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
 **UAT**: All 5 tests passed 2026-05-11. Phase complete.
 
+### Phase 30: Calendar Operations Hub
+**Goal**: Make the calendar fully functional and operationally connected. Fix 5 critical bugs (column name mismatch, status enum divergence, color/endTime persistence, unimplemented recurrence scope). Fix dashboard "Add Event" to open the modal in-context. Add iCal subscription feed so operators can subscribe WineOps events directly into Outlook/Apple Calendar/Google Calendar in one URL — zero OAuth, zero friction.
+**Depends on**: Phase 28 (registration + dashboard complete)
+**Requirements**: CAL-FIX-01..05, CAL-UX-01..02, CAL-ICAL-01..03
+**Success Criteria** (what must be TRUE):
+  1. Editing a calendar event saves all fields correctly (title, status, color, endTime, description, recurrence)
+  2. Status dropdown accepts: pending, approved, confirmed (mapped→approved), completed, cancelled — no mutation error
+  3. Color is persisted to DB and restored on page reload
+  4. End time is persisted to DB and restored on page reload
+  5. Dashboard "Add Event" button opens the EventModal in-context (no redirect to /calendar)
+  6. `GET /api/v1/calendar/feed/:restaurantToken.ics` returns a valid RFC 5545 iCal document with all restaurant events
+  7. iCal token is generated per-restaurant (HMAC-based) and shown in Settings → Calendar
+  8. Subscribing the URL in Outlook/Apple Calendar/Google Calendar shows WineOps events
+  9. `start_date`/`end_date`/`start_time`/`end_time` column names are consistent between migration and service code
+  10. "this_and_future" recurring update scope is implemented (splits recurrence rule at given date)
+**Plans:** 6 plans
+Plans:
+- [ ] 30-01-PLAN.md — Comprehensive DB schema migration (calendar_events + recurrence tables + generate_recurring_events RPC + restaurants.calendar_ical_token)
+- [ ] 30-02-PLAN.md — Backend service column alignment (D-01), color persistence (D-03), endTime wiring (D-04)
+- [ ] 30-03-PLAN.md — iCal feed backend: ical-generator install, feed endpoint (@Public), token generation/regeneration endpoints
+- [ ] 30-04-PLAN.md — Frontend bug fixes: status enum (D-02), endTime payload (D-04), Dashboard Add Event modal navigation (D-06), CalendarPage openModal param
+- [ ] 30-05-PLAN.md — Frontend iCal UI: Settings calendar subscription section (D-10) + dashboard subscribe shortcut (D-11)
+- [ ] 30-06-PLAN.md — this_and_future recurring update scope implementation (D-05)
+
+### Phase 31: Event-Driven Procurement Signals
+**Goal**: Connect the calendar to inventory and procurement. When a wine-related event (wine_tasting, private_dinner, special_event) is created or confirmed, the system performs a lightweight inventory adequacy check and surfaces a non-blocking procurement suggestion if stock may be insufficient for the event.
+**Depends on**: Phase 30 (calendar fully functional), Phase 27 (vendor model)
+**Requirements**: CALDRIVE-01..05
+**Success Criteria** (what must be TRUE):
+  1. Creating/confirming an event of type wine_tasting/private_dinner/special_event triggers an inventory adequacy check
+  2. Check compares current stock of wines tagged to the event's type against a heuristic (guest_count × avg_pour or configurable threshold)
+  3. If stock is below threshold, a dismissable in-modal prompt appears: "X bottle(s) of Y may run low — create procurement order?"
+  4. User can dismiss (no-op) or click "Create Order" (pre-fills order with suggested wines/quantity)
+  5. Procurement suggestion logged to `agent_activity_logs`
+**Plans:** TBD (created by `/gsd-plan-phase 31`)
+
 ### Phase 29: Autonomous Vendor Discovery (Paid Tier)
 **Goal**: Paid-tier restaurants can place orders even with zero pre-configured vendors. On order creation with no providers, instead of a hard block, the LLM autonomously web-searches for matching wine distributors — finds contact info, operating region, specialties — and presents a ranked shortlist the manager can approve. Approved vendors are auto-created in `providers` and the order proceeds.
 **Depends on**: Phase 27 (provider model + order guard in place), Phase 28 (activation checklist)
