@@ -583,6 +583,32 @@ export class CalendarService {
       return { deleted: true, message: 'Occurrence cancelled' };
     }
 
+    if (deleteScope === 'all') {
+      // Delete the entire recurring series (parent + all occurrences)
+      const parentId = existing.parentEventId || eventId;
+      const result = await this.deleteRecurringSeries(restaurantId, userId, parentId);
+      return { deleted: result.success, message: `Deleted ${result.deletedCount} occurrence(s) and series` };
+    }
+
+    if (deleteScope === 'this_and_future' && existing.parentEventId) {
+      // Truncate the recurrence rule so it ends the day before this occurrence,
+      // then delete this and all future occurrences from the parent series.
+      const occurrenceDate = existing.occurrenceDate || existing.eventDate;
+      if (existing.recurrenceRule?.id) {
+        const cutDate = new Date(occurrenceDate);
+        cutDate.setDate(cutDate.getDate() - 1);
+        const endOnDate = cutDate.toISOString().split('T')[0];
+        await this.databaseService.supabase
+          .from('calendar_recurrence_rules')
+          .update({ end_on_date: endOnDate, end_type: 'on_date' })
+          .eq('id', existing.recurrenceRule.id);
+      }
+      const result = await this.deleteRecurringSeries(
+        restaurantId, userId, existing.parentEventId, occurrenceDate,
+      );
+      return { deleted: true, message: `Deleted ${result.deletedCount} future occurrence(s)` };
+    }
+
     // Delete the event (and cascade to occurrences if parent)
     const { error } = await this.databaseService.supabase
       .from('calendar_events')
