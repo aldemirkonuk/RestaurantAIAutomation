@@ -1099,6 +1099,11 @@ export class CalendarService {
       daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY',
     };
 
+    // RFC 5545 day codes indexed by JS day number (0=Sunday … 6=Saturday)
+    const icalDayCodes: Record<number, string> = {
+      0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA',
+    };
+
     for (const event of events) {
       const icalStatus = (event.status === 'cancelled' || event.status === 'dismissed')
         ? 'CANCELLED'
@@ -1139,7 +1144,12 @@ export class CalendarService {
         if (rule.interval_value && rule.interval_value > 1) rrule += `;INTERVAL=${rule.interval_value}`;
         if (rule.end_on_date) rrule += `;UNTIL=${rule.end_on_date.replace(/-/g, '')}T000000Z`;
         if (rule.end_after_count) rrule += `;COUNT=${rule.end_after_count}`;
-        if (rule.days_of_week?.length > 0) rrule += `;BYDAY=${rule.days_of_week.join(',')}`;
+        if (rule.days_of_week?.length > 0) {
+          const dayCodes = (rule.days_of_week as number[])
+            .map((d) => icalDayCodes[d])
+            .filter(Boolean);
+          if (dayCodes.length > 0) rrule += `;BYDAY=${dayCodes.join(',')}`;
+        }
         (calEvent as any).repeating(rrule);
       }
     }
