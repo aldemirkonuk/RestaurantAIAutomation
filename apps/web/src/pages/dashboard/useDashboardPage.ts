@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { formatLocalDateKey, parseCalendarDateString } from '../../lib/calendar-dates'
 import { DollarSign, Package, ShoppingCart, AlertTriangle } from 'lucide-react'
 import { formatMoney, formatNumber as fmtNumber } from '../../lib/utils'
 import { formatVolume } from '../../utils/volumeUtils'
@@ -130,8 +131,14 @@ export function useDashboardPage() {
   
   const libraryWines = useMemo(() => mapApiWinesToUiWines(apiWines), [apiWines])
   
-  const calendarStartDate = useMemo(() => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).toISOString().split('T')[0], [calendarMonth])
-  const calendarEndDate = useMemo(() => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).toISOString().split('T')[0], [calendarMonth])
+  const calendarStartDate = useMemo(
+    () => formatLocalDateKey(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)),
+    [calendarMonth]
+  )
+  const calendarEndDate = useMemo(
+    () => formatLocalDateKey(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0)),
+    [calendarMonth]
+  )
   
   const { data: dashboardCalendarEvents = [] } = useCalendarEvents(restaurantId || '', {
     startDate: calendarStartDate,
@@ -139,7 +146,10 @@ export function useDashboardPage() {
     eventType: calendarFilterType === 'all' ? undefined : calendarFilterType,
   })
   
-  const mappedCalendarEvents = useMemo(() => dashboardCalendarEvents.map((e: any) => ({ ...e, date: new Date(e.date) })), [dashboardCalendarEvents])
+  const mappedCalendarEvents = useMemo(
+    () => dashboardCalendarEvents.map((e: any) => ({ ...e, date: parseCalendarDateString(e.date) })),
+    [dashboardCalendarEvents]
+  )
   const filteredCalendarEvents = useMemo(() => mappedCalendarEvents.filter((e: any) => {
     const matchesFilter = calendarFilterType === 'all' || e.type === calendarFilterType
     return matchesFilter && `${e.title || ''} ${e.description || ''} ${e.provider || ''}`.toLowerCase().includes(calendarSearchQuery.toLowerCase())

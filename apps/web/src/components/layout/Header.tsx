@@ -61,25 +61,21 @@ export function Header({ title, subtitle }: HeaderProps) {
   const [isSwitching, setIsSwitching] = useState(false)
   const { user, logout, activeRestaurantId, availableRestaurants, setActiveRestaurantId } = useAuth()
   const navigate = useNavigate()
-  const notificationStore = useNotificationStore()
-  const localUnreadCount = useNotificationStore(state => state.unreadCount)
+  const storeUnread = useNotificationStore((s) => s.unreadCount)
+  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount)
   const userId = user?.userId || ''
   const { data: notifications = [], refetch: refetchNotifications } = useNotifications(userId, { status: 'unread' })
   const markAsRead = useMarkNotificationAsRead()
   const markAllAsRead = useMarkAllNotificationsAsRead()
-  const unreadCount = Math.max(notifications.length, localUnreadCount)
+  /** Hide badge while the dropdown is open; otherwise prefer API unread list + any higher store value (e.g. realtime). */
+  const unreadCount = showNotifications ? 0 : Math.max(notifications.length, storeUnread)
 
+  // When the panel is closed, keep the store aligned with the API unread list (no full-store subscription = no update loops).
   useEffect(() => {
-    if (notifications.length > localUnreadCount) {
-      notificationStore.setUnreadCount(notifications.length)
-    }
-  }, [notifications.length, localUnreadCount, notificationStore])
-
-  useEffect(() => {
-    if (showNotifications) {
-      notificationStore.clearUnreadCount()
-    }
-  }, [showNotifications, notificationStore])
+    if (showNotifications) return
+    const n = notifications.length
+    if (n !== storeUnread) setUnreadCount(n)
+  }, [notifications.length, showNotifications, storeUnread, setUnreadCount])
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp)

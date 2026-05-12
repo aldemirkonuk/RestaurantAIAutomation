@@ -27,6 +27,7 @@ import {
   Filter,
 } from 'lucide-react'
 import { useCalendarEvents, useCreateCalendarEvent, useUpdateCalendarEvent, useDeleteCalendarEvent, useProviders } from '../hooks/queries'
+import { formatLocalDateKey } from '../lib/calendar-dates'
 import { PageSkeleton, ErrorState } from '../components/ui'
 import { getCustomEventTypes, deleteCustomEventType, isCustomEventType } from '../data/customEventTypes'
 import { NewEventTypeModal } from '../components/calendar/NewEventTypeModal'
@@ -512,16 +513,16 @@ export function Calendar() {
     return new Map(providers.map(provider => [provider.id, provider.name]))
   }, [providers])
   
-  // Calculate date range for current month
-  const startDate = useMemo(() => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-    return date.toISOString().split('T')[0]
-  }, [currentDate])
-  
-  const endDate = useMemo(() => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
-    return date.toISOString().split('T')[0]
-  }, [currentDate])
+  // Calculate date range for current month (local calendar days, not UTC via toISOString)
+  const startDate = useMemo(
+    () => formatLocalDateKey(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)),
+    [currentDate]
+  )
+
+  const endDate = useMemo(
+    () => formatLocalDateKey(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)),
+    [currentDate]
+  )
   
   // Fetch events from API
   const { data: apiEvents = [], isLoading, error, refetch } = useCalendarEvents(restaurantId || '', {
