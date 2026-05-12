@@ -534,3 +534,15 @@ export class UpdateEventStatusDto {
   @IsEnum(CalendarEventStatus)
   status: CalendarEventStatus;
 }
+
+// ============================================================================
+// iCAL TOKEN RESPONSE DTO
+// ============================================================================
+
+export class ICalTokenResponseDto {
+  @ApiProperty({ description: '64-char hex token', example: 'abc123...' })
+  token: string;
+
+  @ApiProperty({ description: 'Full subscription URL', example: '/api/v1/calendar/feed/abc123.ics' })
+  feedUrl: string;
+}

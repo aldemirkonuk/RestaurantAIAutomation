@@ -10,11 +10,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CalendarService } from './calendar.service';
 import {
   CreateCalendarEventDto,
@@ -28,6 +31,7 @@ import {
   CreateEventTypeDto,
   UpdateEventTypeDto,
   UpdateEventStatusDto,
+  ICalTokenResponseDto,
 } from './dto/calendar.dto';
 
 @ApiTags('calendar')
@@ -455,5 +459,46 @@ export class CalendarController {
       includeRecurring: true,
       limit: 50,
     });
+  }
+
+  // ==========================================================================
+  // iCAL SUBSCRIPTION FEED (D-07, D-08, D-09)
+  // ==========================================================================
+
+  @Get('feed/:token.ics')
+  @Public()
+  @ApiOperation({ summary: 'Public iCal feed — subscribe with Outlook/Apple/Google Calendar' })
+  @ApiParam({ name: 'token', description: 'Restaurant iCal token (64-char hex)' })
+  async getICalFeed(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const icalString = await this.calendarService.getICalFeed(token);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="wineops-calendar.ics"');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.send(icalString);
+  }
+
+  @Get('ical-token')
+  @ApiOperation({ summary: 'Get or generate iCal subscription token for current restaurant' })
+  @ApiResponse({ status: 200, type: ICalTokenResponseDto })
+  async getICalToken(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<ICalTokenResponseDto> {
+    const token = await this.calendarService.getOrGenerateICalToken(user.restaurantId);
+    const feedUrl = `/api/v1/calendar/feed/${token}.ics`;
+    return { token, feedUrl };
+  }
+
+  @Post('ical-token/regenerate')
+  @ApiOperation({ summary: 'Regenerate iCal token — invalidates all existing subscriptions' })
+  @ApiResponse({ status: 201, type: ICalTokenResponseDto })
+  async regenerateICalToken(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<ICalTokenResponseDto> {
+    const token = await this.calendarService.regenerateICalToken(user.restaurantId);
+    const feedUrl = `/api/v1/calendar/feed/${token}.ics`;
+    return { token, feedUrl };
   }
 }
