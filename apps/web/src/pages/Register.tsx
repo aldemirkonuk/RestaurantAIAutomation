@@ -7,6 +7,7 @@ import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { CuisinePicker } from '../components/ui/CuisinePicker'
+import { apiClient } from '../services/api/client'
 
 // Email availability check result
 type EmailAvailability = {
@@ -77,32 +78,32 @@ export function Register() {
   const [createEmailCheck, setCreateEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
   const emailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Debounced email availability check
-  const checkEmailAvailability = useCallback(async (email: string, setEmailCheck: (check: EmailAvailability) => void) => {
+  // Email availability check — returns true=available, false=taken, null=error/unknown
+  const checkEmailAvailability = useCallback(async (
+    email: string,
+    setEmailCheck: (check: EmailAvailability) => void,
+  ): Promise<boolean | null> => {
     if (!email || !email.includes('@')) {
       setEmailCheck({ checking: false, available: null, error: null })
-      return
+      return null
     }
 
     setEmailCheck({ checking: true, available: null, error: null })
 
     try {
-      const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-      const resp = await fetch(`${API_URL}/api/v1/auth/check-email?email=${encodeURIComponent(email)}`)
-      const data = await resp.json()
-
-      if (resp.ok) {
-        setEmailCheck({
-          checking: false,
-          available: data.available,
-          error: data.available ? null : 'This email is already registered. Please sign in instead.'
-        })
-      } else {
-        setEmailCheck({ checking: false, available: null, error: null })
-      }
+      const { data } = await apiClient.get<{ available: boolean; email: string }>(
+        `/auth/check-email?email=${encodeURIComponent(email)}`,
+      )
+      setEmailCheck({
+        checking: false,
+        available: data.available,
+        error: data.available ? null : 'This email is already registered. Please sign in instead.',
+      })
+      return data.available
     } catch {
-      // Silently fail - don't block registration on network errors
+      // Network / server error — don't block registration, let the backend validate
       setEmailCheck({ checking: false, available: null, error: null })
+      return null
     }
   }, [])
 
@@ -637,13 +638,29 @@ export function Register() {
       )}
       <Button
         className="w-full h-12 mt-5"
-        disabled={loading || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
-        onClick={handleJoinSubmit}
+        disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
+        onClick={async () => {
+          // If debounced check hasn't settled, run immediately before submitting
+          let available = joinEmailCheck.available
+          if (available === null && joinEmail && joinEmail.includes('@')) {
+            available = await checkEmailAvailability(joinEmail, setJoinEmailCheck)
+          }
+          if (available === false) {
+            setError('This email is already registered. Please sign in instead.')
+            return
+          }
+          handleJoinSubmit()
+        }}
       >
         {loading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
             Joining...
+          </>
+        ) : joinEmailCheck.checking ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            Checking email…
           </>
         ) : (
           'Join Restaurant'
@@ -793,21 +810,43 @@ export function Register() {
       <Button
         type="button"
         className="w-full h-12 mt-5"
-        disabled={!createName || !createEmail || createPassword.length < 8 || createPassword !== createConfirm || createEmailCheck.available === false}
-        onClick={() => {
+        disabled={
+          !createName ||
+          !createEmail ||
+          createPassword.length < 8 ||
+          createPassword !== createConfirm ||
+          createEmailCheck.available === false ||
+          createEmailCheck.checking
+        }
+        onClick={async () => {
           if (createPassword !== createConfirm) {
             setError('Passwords do not match')
             return
           }
-          if (createEmailCheck.available === false) {
+
+          // If the debounced check hasn't settled, run it immediately now
+          let available = createEmailCheck.available
+          if (available === null && createEmail && createEmail.includes('@')) {
+            available = await checkEmailAvailability(createEmail, setCreateEmailCheck)
+          }
+
+          if (available === false) {
             setError('This email is already registered. Please sign in instead.')
             return
           }
+
           setError(null)
           setPathBStep(2)
         }}
       >
-        Next: Restaurant Details <ArrowRight className="w-4 h-4 ml-1" />
+        {createEmailCheck.checking ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            Checking email…
+          </>
+        ) : (
+          <>Next: Restaurant Details <ArrowRight className="w-4 h-4 ml-1" /></>
+        )}
       </Button>
     </motion.div>
   )
