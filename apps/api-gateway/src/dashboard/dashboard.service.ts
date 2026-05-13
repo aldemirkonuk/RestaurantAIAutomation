@@ -385,7 +385,7 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from('restaurant_inventory')
-            .select('id, stock_live, bottle_size_ml, wine_id')
+            .select('id, stock_live, bottle_size_ml')
             .eq('restaurant_id', restaurantId),
           client
             .from('v_low_stock_items')
@@ -397,7 +397,7 @@ export class DashboardService {
             .eq('restaurant_id', restaurantId),
           client
             .from('wine_consumption_log')
-            .select('id, amount_ml, created_at')
+            .select('id, volume_ml, created_at')
             .eq('restaurant_id', restaurantId),
         ]);
 
@@ -481,7 +481,7 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from('procurement_orders')
-            .select('id, wine_name, status, created_at, updated_at')
+            .select('id, status, created_at, updated_at')
             .eq('restaurant_id', restaurantId)
             .order('updated_at', { ascending: false })
             .limit(limit),
@@ -493,7 +493,7 @@ export class DashboardService {
             .limit(limit),
           client
             .from('restaurant_inventory')
-            .select('id, wine_id, stock_live, updated_at')
+            .select('id, master_wine_id, stock_live, updated_at')
             .eq('restaurant_id', restaurantId)
             .order('updated_at', { ascending: false })
             .limit(limit),
@@ -510,9 +510,7 @@ export class DashboardService {
           id: `order-${o.id}`,
           type: 'order',
           title: `Order ${o.status}`,
-          description: o.wine_name
-            ? `${o.wine_name} - ${o.status}`
-            : `Order ${o.status}`,
+          description: `Order ${o.status}`,
           timestamp: o.updated_at || o.created_at,
           entityId: o.id,
           entityType: 'procurement_order',
@@ -578,16 +576,16 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from('v_low_stock_items')
-            .select('id, wine_id, stock_live, min_stock, wine_name')
+            .select('id, master_wine_id, stock_live, threshold_min, wine_name')
             .eq('restaurant_id', restaurantId),
           client
             .from('procurement_orders')
-            .select('id, wine_name, status, expected_delivery_date, created_at')
+            .select('id, status, expected_delivery_date, created_at')
             .eq('restaurant_id', restaurantId)
             .in('status', ['pending', 'awaiting_approval', 'ordered']),
           client
             .from('restaurant_inventory')
-            .select('id, wine_id, stock_live, updated_at, wine_name')
+            .select('id, master_wine_id, stock_live, updated_at, wine_name')
             .eq('restaurant_id', restaurantId)
             .eq('stock_live', 0),
         ]);
@@ -602,7 +600,7 @@ export class DashboardService {
           type: 'low_stock',
           severity: item.stock_live === 0 ? 'critical' : 'warning',
           title: 'Low Stock',
-          message: `${item.wine_name || item.wine_id} has ${item.stock_live} bottles (min: ${item.min_stock || 0})`,
+          message: `${item.wine_name || item.master_wine_id} has ${item.stock_live} bottles (min: ${item.threshold_min || 0})`,
           actionUrl: `/inventory?highlight=${item.id}`,
           createdAt: new Date().toISOString(),
         });
@@ -623,7 +621,7 @@ export class DashboardService {
             type: 'overdue_order',
             severity: 'warning',
             title: 'Overdue Order',
-            message: `${order.wine_name || 'Order'} expected by ${order.expected_delivery_date}`,
+            message: `Order expected by ${order.expected_delivery_date}`,
             actionUrl: `/orders?highlight=${order.id}`,
             createdAt: order.created_at,
           });
@@ -641,7 +639,7 @@ export class DashboardService {
             type: 'out_of_stock',
             severity: 'critical',
             title: 'Out of Stock',
-            message: `${item.wine_name || item.wine_id} is completely out of stock`,
+            message: `${item.wine_name || item.master_wine_id} is completely out of stock`,
             actionUrl: `/inventory?highlight=${item.id}`,
             createdAt: item.updated_at || new Date().toISOString(),
           });
@@ -709,7 +707,7 @@ export class DashboardService {
           .gte('delivered_at', sinceStr),
         client
           .from('wine_consumption_log')
-          .select('id, amount_ml, glasses, created_at')
+          .select('id, volume_ml, quantity, created_at')
           .eq('restaurant_id', restaurantId)
           .gte('created_at', sinceStr),
       ]);
@@ -747,7 +745,7 @@ export class DashboardService {
           bottles: 0,
           glasses: 0,
         };
-        existing.glasses += c.glasses || 0;
+        existing.glasses += c.quantity || 0;
         buckets.set(dateKey, existing);
       }
 

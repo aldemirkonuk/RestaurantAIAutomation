@@ -226,6 +226,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setActiveRestaurantIdState(resolvedActive)
         localStorage.setItem('activeRestaurantId', resolvedActive)
         api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
+        // Keep Zustand store in sync so components reading useAuthStore get the value immediately
+        useAuthStore.getState().setActiveRestaurantId(resolvedActive)
         return
       }
     } catch (err) {
@@ -245,6 +247,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setActiveRestaurantIdState(userId)
     localStorage.setItem('activeRestaurantId', userId)
     api.defaults.headers.common['X-Restaurant-Id'] = userId
+    // Keep Zustand store in sync (fallback path)
+    useAuthStore.getState().setActiveRestaurantId(userId)
   }, [])
 
   // Public refresh — can be called after chain/location changes to update the branch switcher
