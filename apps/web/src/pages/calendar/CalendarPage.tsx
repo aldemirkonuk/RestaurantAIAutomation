@@ -21,6 +21,8 @@ import { CalendarSidebar } from './CalendarSidebar'
 import { DragDropProvider } from './DragDropProvider'
 import { EventModal } from './EventModal'
 import type { CreateCalendarEventData } from './EventModal'
+import { MeetingMemoPrompt } from './MeetingMemoPrompt'
+import type { MeetingMemo } from './MeetingMemoPrompt'
 import {
   useCreateCalendarEvent,
   useUpdateCalendarEvent,
@@ -107,6 +109,10 @@ export default function CalendarPage() {
   const [modalInitialDate, setModalInitialDate] = useState<Date | undefined>()
   const [modalInitialEndDate, setModalInitialEndDate] = useState<Date | undefined>()
 
+  // Meeting memo prompt state
+  const [memoPromptOpen, setMemoPromptOpen] = useState(false)
+  const [pendingMemoData, setPendingMemoData] = useState<{ title: string; date: string; labels: CreateCalendarEventData['labels'] }>({ title: '', date: '', labels: [] })
+
   // Sidebar enabled types for filtering legend
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(
     () => new Set(Object.keys(EVENT_TYPE_COLORS))
@@ -186,6 +192,7 @@ export default function CalendarPage() {
           color: data.color,
           providerId: data.providerId,
           type: eventType,
+          status: data.status,
         })
       } else {
         createEvent.mutate({
@@ -199,12 +206,27 @@ export default function CalendarPage() {
           color: data.color,
           providerId: data.providerId,
           type: eventType,
+          status: data.status,
           recurring: data.recurrence as RecurringConfig | undefined,
         })
+      }
+
+      // Trigger meeting memo prompt for labeled events
+      const hasMeetingLabel = data.labels?.some(
+        l => l.type === 'provider_meeting' || l.type === 'call' || l.type === 'tasting'
+      )
+      if (hasMeetingLabel && data.labels) {
+        setPendingMemoData({ title: data.title, date: data.eventDate, labels: data.labels })
+        setTimeout(() => setMemoPromptOpen(true), 400)
       }
     },
     [editingEvent, restaurantId, createEvent, updateEvent]
   )
+
+  const handleMemoSave = useCallback((_memo: MeetingMemo) => {
+    // Future: persist to documents API
+    setMemoPromptOpen(false)
+  }, [])
 
   const handleModalDelete = useCallback(
     (eventId: string) => {
@@ -481,6 +503,15 @@ export default function CalendarPage() {
         existingEvent={editingEvent || undefined}
         eventTypes={eventTypes}
         providers={providers}
+      />
+
+      <MeetingMemoPrompt
+        isOpen={memoPromptOpen}
+        onClose={() => setMemoPromptOpen(false)}
+        onSave={handleMemoSave}
+        eventTitle={pendingMemoData.title}
+        eventDate={pendingMemoData.date}
+        labels={pendingMemoData.labels}
       />
     </div>
   )
