@@ -24,12 +24,15 @@ let refreshPromise: Promise<string> | null = null;
 
 /**
  * Exchange the refresh token for a new access token.
- * Clears auth and redirects to /login on failure.
+ * Throws (does NOT navigate) when there is no refresh token — the caller is
+ * responsible for deciding whether to redirect. This prevents an infinite
+ * reload loop when the SyncManager makes API calls while the user is already
+ * logged out (no token → 401 → doTokenRefresh → window.location.href →
+ * page reload → SyncManager restarts → repeat).
  */
 async function doTokenRefresh(): Promise<string> {
   const refreshToken = localStorage.getItem('refreshToken');
   if (!refreshToken) {
-    window.location.href = '/login';
     throw new Error('No refresh token available');
   }
 
@@ -84,11 +87,19 @@ function createApiClient(): AxiosInstance {
       if (error.response?.status === 401 && !originalRequest._retry) {
         originalRequest._retry = true;
 
+        // If there is no refresh token the user is logged out — don't attempt
+        // a refresh and do NOT navigate. Just reject so the caller can handle
+        // the 401 gracefully (e.g. SyncManager skips, queries show an error).
+        if (!localStorage.getItem('refreshToken')) {
+          return Promise.reject(error);
+        }
+
         // Deduplicate: all concurrent 401s share the same refresh call
         if (!refreshPromise) {
           refreshPromise = doTokenRefresh()
             .catch((err) => {
-              // Refresh failed — clear everything and force re-login
+              // Refresh endpoint itself failed (expired/revoked) — clear tokens
+              // and send the user back to login only in this case.
               localStorage.removeItem('accessToken');
               localStorage.removeItem('refreshToken');
               window.location.href = '/login';
