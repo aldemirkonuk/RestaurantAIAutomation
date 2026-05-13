@@ -49,7 +49,7 @@ export async function importMenu(
 
 export async function getOnboardingProgress(): Promise<OnboardingProgress | null> {
   try {
-    const response = await apiClient.get<OnboardingProgress>('/menus/onboarding/progress')
+    const response = await apiClient.get<OnboardingProgress>('/onboarding/progress')
     return response.data
   } catch (error: any) {
     if (error?.response?.status === 404) return null
@@ -60,5 +60,5 @@ export async function getOnboardingProgress(): Promise<OnboardingProgress | null
 export async function updateOnboardingProgress(
   update: Partial<OnboardingProgress>
 ): Promise<void> {
-  await apiClient.patch('/menus/onboarding/progress', update)
+  await apiClient.patch('/onboarding/progress', update)
 }
