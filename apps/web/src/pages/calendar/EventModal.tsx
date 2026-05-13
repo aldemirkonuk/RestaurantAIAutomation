@@ -19,7 +19,8 @@ import type { CalendarEvent } from './useCalendarPage'
 import type { EventTypeRecord as EventType } from '../../services/api/calendar'
 import type { Provider } from '../../services/api/types'
 import type { RecurrenceRule } from '../../lib/calendar/recurrence'
-import { addCustomEventType, getCustomEventTypes, isEventTypeNameAvailable } from '../../data/customEventTypes'
+import { addCustomEventType, getCustomEventTypes, isEventTypeNameAvailable, deleteCustomEventType } from '../../data/customEventTypes'
+import { useUpdateEventType, useDeleteEventType } from '../../hooks/queries'
 
 // ─────────────────────────────── Types ───────────────────────────────────────
 
@@ -277,6 +278,16 @@ export function EventModal({
     getCustomEventTypes().map(t => ({ id: `custom-${t.name}`, name: t.name, color: t.color }))
   )
 
+  // Manage-type panel (edit / delete)
+  const updateEventTypeMutation = useUpdateEventType()
+  const deleteEventTypeMutation = useDeleteEventType()
+  const [typeMenuId, setTypeMenuId] = useState<string | null>(null)
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editColor, setEditColor] = useState(COLOR_PALETTE[0])
+  const [editTypeError, setEditTypeError] = useState('')
+
   // Detect label from title
   useEffect(() => {
     if (!title.trim()) { setDetectedLabel(null); setLabelDismissed(false); return }
@@ -393,6 +404,65 @@ export function EventModal({
 
   function setReminderPreset(id: string, value: number) {
     setReminders(prev => prev.map(r => r.id === id ? { ...r, minutesBefore: value } : r))
+  }
+
+  function isCustomId(id: string) { return localCustomTypes.some(ct => ct.id === id) }
+
+  function openTypeMenu(id: string, name: string, color: string) {
+    if (typeMenuId === id) { setTypeMenuId(null); setEditingTypeId(null); setConfirmDeleteId(null); return }
+    setTypeMenuId(id)
+    setEditingTypeId(null)
+    setConfirmDeleteId(null)
+    setEditName(name)
+    setEditColor(color)
+    setEditTypeError('')
+    setShowNewTypeForm(false)
+  }
+
+  function startEditType() {
+    setEditingTypeId(typeMenuId)
+    setConfirmDeleteId(null)
+    setEditTypeError('')
+  }
+
+  function saveEditType() {
+    const name = editName.trim()
+    if (!name || name.length < 2) { setEditTypeError('At least 2 characters'); return }
+    if (name.length > 30) { setEditTypeError('Max 30 characters'); return }
+
+    if (editingTypeId && isCustomId(editingTypeId)) {
+      const old = localCustomTypes.find(ct => ct.id === editingTypeId)
+      if (old) {
+        try {
+          deleteCustomEventType(old.name)
+          addCustomEventType({ name, color: editColor, icon: 'Star', createdBy: 'user' })
+          const newId = `custom-${name}`
+          setLocalCustomTypes(prev => prev.map(ct =>
+            ct.id === editingTypeId ? { id: newId, name, color: editColor } : ct
+          ))
+          if (selectedEventType === editingTypeId) { setSelectedEventType(newId); setSelectedColor(editColor) }
+        } catch { setEditTypeError('Name already taken'); return }
+      }
+    } else if (editingTypeId) {
+      updateEventTypeMutation.mutate({ id: editingTypeId, data: { name, color: editColor } })
+    }
+    setEditingTypeId(null); setTypeMenuId(null)
+  }
+
+  function requestDeleteType(id: string) {
+    setConfirmDeleteId(id); setEditingTypeId(null)
+  }
+
+  function confirmDelete() {
+    if (!confirmDeleteId) return
+    if (isCustomId(confirmDeleteId)) {
+      const ct = localCustomTypes.find(c => c.id === confirmDeleteId)
+      if (ct) { deleteCustomEventType(ct.name); setLocalCustomTypes(prev => prev.filter(c => c.id !== confirmDeleteId)) }
+    } else {
+      deleteEventTypeMutation.mutate(confirmDeleteId)
+    }
+    if (selectedEventType === confirmDeleteId) setSelectedEventType(eventTypes[0]?.id || '')
+    setConfirmDeleteId(null); setTypeMenuId(null)
   }
 
   function saveCustomType() {
@@ -666,9 +736,15 @@ export function EventModal({
               <button
                 key={et.id}
                 type="button"
-                onClick={() => { setSelectedEventType(et.id); setShowNewTypeForm(false) }}
+                onClick={() => {
+                  setSelectedEventType(et.id)
+                  setShowNewTypeForm(false)
+                  openTypeMenu(et.id, et.name, et.color)
+                }}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
-                  selectedEventType === et.id
+                  typeMenuId === et.id
+                    ? 'border-wine-500 bg-wine-50 text-wine-800 ring-1 ring-wine-300'
+                    : selectedEventType === et.id
                     ? 'border-wine-700 bg-wine-50 text-wine-800'
                     : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'
                 }`}
@@ -683,9 +759,16 @@ export function EventModal({
               <button
                 key={ct.id}
                 type="button"
-                onClick={() => { setSelectedEventType(ct.id); setSelectedColor(ct.color); setShowNewTypeForm(false) }}
+                onClick={() => {
+                  setSelectedEventType(ct.id)
+                  setSelectedColor(ct.color)
+                  setShowNewTypeForm(false)
+                  openTypeMenu(ct.id, ct.name, ct.color)
+                }}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
-                  selectedEventType === ct.id
+                  typeMenuId === ct.id
+                    ? 'border-wine-500 bg-wine-50 text-wine-800 ring-1 ring-wine-300'
+                    : selectedEventType === ct.id
                     ? 'border-wine-700 bg-wine-50 text-wine-800'
                     : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'
                 }`}
@@ -698,7 +781,7 @@ export function EventModal({
             {/* Add new type button */}
             <button
               type="button"
-              onClick={() => { setShowNewTypeForm(v => !v); setNewTypeName(''); setNewTypeError('') }}
+              onClick={() => { setShowNewTypeForm(v => !v); setTypeMenuId(null); setNewTypeName(''); setNewTypeError('') }}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
                 showNewTypeForm
                   ? 'border-wine-300 bg-wine-50 text-wine-700'
@@ -709,6 +792,100 @@ export function EventModal({
               New type
             </button>
           </div>
+
+          {/* ── Manage-type panel (inline, appears below pills) ────────── */}
+          {typeMenuId && !showNewTypeForm && (() => {
+            const apiType = eventTypes.find(et => et.id === typeMenuId)
+            const cusType = localCustomTypes.find(ct => ct.id === typeMenuId)
+            const typeLabel = apiType?.name ?? cusType?.name ?? ''
+            const typeColor = apiType?.color ?? cusType?.color ?? '#6b7280'
+
+            return (
+              <div className="mt-2.5 rounded-xl border border-gray-200 bg-gray-50/60 overflow-hidden">
+                {/* Panel header */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-white">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: editingTypeId ? editColor : typeColor }} />
+                  <span className="text-[12px] font-bold text-gray-700 flex-1 min-w-0 truncate">
+                    {editingTypeId ? (editName || 'Editing…') : typeLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeMenuId(null); setEditingTypeId(null); setConfirmDeleteId(null) }}
+                    className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* ── Edit mode ───────────────────────────────────────── */}
+                {editingTypeId === typeMenuId ? (
+                  <div className="px-3 py-3 space-y-2.5">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={e => { setEditName(e.target.value); setEditTypeError('') }}
+                      maxLength={30}
+                      placeholder="Type name"
+                      autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveEditType() } if (e.key === 'Escape') setEditingTypeId(null) }}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-[13px] font-medium text-gray-800 focus:outline-none focus:border-wine-500 focus:ring-1 focus:ring-wine-500/20 bg-white"
+                    />
+                    {editTypeError && <p className="text-[11px] text-red-500">{editTypeError}</p>}
+                    <div className="flex gap-1.5 flex-wrap">
+                      {COLOR_PALETTE.map(c => (
+                        <button
+                          key={c} type="button"
+                          onClick={() => setEditColor(c)}
+                          className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 shrink-0 ${editColor === c ? 'border-gray-800' : 'border-transparent'}`}
+                          style={{ backgroundColor: c, boxShadow: editColor === c ? 'inset 0 0 0 1.5px #fff' : undefined }}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button type="button" onClick={() => { setEditingTypeId(null); setEditTypeError('') }}
+                        className="px-3 py-1.5 text-[12px] font-semibold text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={saveEditType} disabled={!editName.trim()}
+                        className="px-3 py-1.5 text-[12px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1"
+                        style={{ backgroundColor: '#901d42' }}>
+                        <Check className="w-3 h-3" /> Save
+                      </button>
+                    </div>
+                  </div>
+                ) : confirmDeleteId === typeMenuId ? (
+                  /* ── Delete confirm ──────────────────────────────────── */
+                  <div className="px-3 py-3">
+                    <p className="text-[12px] text-gray-600 mb-3">
+                      Remove <span className="font-bold">"{typeLabel}"</span>? Events using this type won't be affected.
+                    </p>
+                    <div className="flex gap-2 justify-end">
+                      <button type="button" onClick={() => setConfirmDeleteId(null)}
+                        className="px-3 py-1.5 text-[12px] font-semibold text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={confirmDelete}
+                        className="px-3 py-1.5 text-[12px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── Default actions ─────────────────────────────────── */
+                  <div className="flex">
+                    <button type="button" onClick={startEditType}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold text-gray-600 hover:bg-gray-100 transition-colors border-r border-gray-100">
+                      <Edit2 className="w-3.5 h-3.5" /> Edit
+                    </button>
+                    <button type="button" onClick={() => requestDeleteType(typeMenuId)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Inline custom type form */}
           {showNewTypeForm && (
