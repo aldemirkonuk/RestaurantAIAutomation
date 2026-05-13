@@ -1,7 +1,7 @@
 # Phase 23: Gmail Integration & Calendar Reminder Emails — Context
 
 **Gathered:** 2026-04-13
-**Status:** DEFERRED — revisit later. Plans 01, 02, 04 complete. Blocked at plan 23-03 (user must set Railway OAuth2 env vars: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN). Plans 23-03 + 23-06 remain to resume.
+**Status:** CODE COMPLETE. Plans 01, 02, 04 complete. Plan 23-03 complete — all 8 Railway api-gateway env vars confirmed set (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, GMAIL_SENDER_EMAIL, MANAGER_EMAIL, DEFAULT_RESTAURANT_ID, CALENDAR_REMINDER_DAYS=7,2,1, GMAIL_WATCH_LABEL_IDS=INBOX). Full E2E test suite: 4/4 suites, 30/30 tests passing, 0 skipped — all 11 email templates delivering real messages. SMTP fallback (Nodemailer) operational. Plan 23-06 superseded by broader Phase 25 production E2E suite (completed 2026-05-05).
 
 <domain>
 ## Phase Boundary
