@@ -1,123 +1,124 @@
 /**
  * API Client Configuration
- * 
- * Base axios client configured for the NestJS API Gateway.
- * Handles authentication, error handling, and request/response interceptors.
+ *
+ * Synchronous request setup + reactive 401 handling.
+ *
+ * Design principles:
+ *  1. Request interceptor is SYNCHRONOUS — it only reads localStorage and
+ *     attaches headers. No async/await, no HTTP calls, no blocking.
+ *  2. Token refresh is REACTIVE — it only happens when the server actually
+ *     returns 401, not speculatively. This eliminates the "async barrier"
+ *     that previously serialized all parallel page-load requests behind a
+ *     token refresh round-trip.
+ *  3. Refresh is DEDUPLICATED — a single in-flight refreshPromise is shared
+ *     by all concurrent 401 responses so the refresh endpoint is called
+ *     at most once per expiry cycle, regardless of how many requests failed.
  */
 
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 
-/** Decode JWT exp claim — returns expiry timestamp in ms, or 0 if unreadable */
-function jwtExpiry(token: string): number {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    return (payload.exp ?? 0) * 1000
-  } catch {
-    return 0
-  }
-}
-
-/** Deduplicated in-flight refresh promise so concurrent requests don't race */
-let refreshPromise: Promise<string> | null = null
-
-async function ensureFreshToken(): Promise<string | null> {
-  const token = localStorage.getItem('accessToken')
-  if (!token) return null
-
-  const expiry = jwtExpiry(token)
-  // expiry === 0 means the claim couldn't be decoded (non-standard format, Supabase variant, etc.)
-  // Treat as valid and let the server reject — don't force a refresh on every request.
-  // Only refresh when we KNOW the token expires within 60 seconds.
-  if (expiry === 0 || expiry - Date.now() > 60_000) return token
-
-  const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) return token
-
-  if (!refreshPromise) {
-    refreshPromise = axios
-      .post(`${import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'}/api/v1/auth/refresh`, { refreshToken })
-      .then((res) => {
-        const { accessToken, refreshToken: newRefresh } = res.data
-        localStorage.setItem('accessToken', accessToken)
-        if (newRefresh) localStorage.setItem('refreshToken', newRefresh)
-        return accessToken as string
-      })
-      .finally(() => { refreshPromise = null })
-  }
-
-  try {
-    return await refreshPromise
-  } catch {
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-    window.location.href = '/login'
-    return null
-  }
-}
-
-// API Gateway URL from environment
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
+/** Single in-flight refresh promise — shared across all concurrent 401s */
+let refreshPromise: Promise<string> | null = null;
+
 /**
- * Create and configure the axios client
+ * Exchange the refresh token for a new access token.
+ * Clears auth and redirects to /login on failure.
  */
+async function doTokenRefresh(): Promise<string> {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) {
+    window.location.href = '/login';
+    throw new Error('No refresh token available');
+  }
+
+  const response = await axios.post(
+    `${API_GATEWAY_URL}/api/v1/auth/refresh`,
+    { refreshToken },
+  );
+  const { accessToken, refreshToken: newRefresh } = response.data;
+  localStorage.setItem('accessToken', accessToken);
+  if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
+  return accessToken as string;
+}
+
 function createApiClient(): AxiosInstance {
   const client = axios.create({
     baseURL: `${API_GATEWAY_URL}/api/v1`,
     timeout: 30000,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
   });
 
-  // Request interceptor — proactively refresh token if near expiry, then attach headers
+  // ─── Request interceptor — SYNCHRONOUS ──────────────────────────────────
+  // Just reads localStorage and stamps the headers. Never awaits anything.
+  // This means all parallel queries on a page mount fire immediately instead
+  // of being serialized behind a token-refresh round-trip.
   client.interceptors.request.use(
-    async (config: InternalAxiosRequestConfig) => {
-      const token = await ensureFreshToken()
+    (config: InternalAxiosRequestConfig) => {
+      const token = localStorage.getItem('accessToken');
       if (token) {
-        config.headers.Authorization = `Bearer ${token}`
+        config.headers.Authorization = `Bearer ${token}`;
       }
 
-      const restaurantId = localStorage.getItem('activeRestaurantId')
+      const restaurantId = localStorage.getItem('activeRestaurantId');
       if (restaurantId) {
-        config.headers['X-Restaurant-Id'] = restaurantId
+        config.headers['X-Restaurant-Id'] = restaurantId;
       }
 
-      return config
+      return config;
     },
-    (error) => Promise.reject(error)
-  )
+    (error) => Promise.reject(error),
+  );
 
-  // Response interceptor — fallback 401 handling (token was valid but still rejected)
+  // ─── Response interceptor — reactive 401 handling ───────────────────────
+  // When the server rejects a token (expired or revoked), we:
+  //   1. Start a single refresh call (or join the in-flight one)
+  //   2. Retry the original request with the new token
+  //   3. If refresh fails, clear auth and redirect to /login
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
-      const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean }
+      const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
       if (error.response?.status === 401 && !originalRequest._retry) {
-        originalRequest._retry = true
-        // Force a refresh regardless of expiry (server may have revoked the token)
-        localStorage.removeItem('accessToken') // ensure ensureFreshToken re-fetches
-        const newToken = await ensureFreshToken()
-        if (newToken && originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-          return client(originalRequest)
+        originalRequest._retry = true;
+
+        // Deduplicate: all concurrent 401s share the same refresh call
+        if (!refreshPromise) {
+          refreshPromise = doTokenRefresh()
+            .catch((err) => {
+              // Refresh failed — clear everything and force re-login
+              localStorage.removeItem('accessToken');
+              localStorage.removeItem('refreshToken');
+              window.location.href = '/login';
+              throw err;
+            })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
+
+        try {
+          const newToken = await refreshPromise;
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          }
+          return client(originalRequest);
+        } catch {
+          return Promise.reject(error);
         }
       }
 
-      return Promise.reject(error)
-    }
-  )
+      return Promise.reject(error);
+    },
+  );
 
   return client;
 }
 
-// Export singleton instance
 export const apiClient = createApiClient();
 
-/**
- * API Error type for consistent error handling
- */
 export interface ApiError {
   message: string;
   statusCode: number;
@@ -125,9 +126,6 @@ export interface ApiError {
   details?: Record<string, any>;
 }
 
-/**
- * Extract error message from API error response
- */
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const apiError = error.response?.data as ApiError | undefined;
@@ -139,9 +137,6 @@ export function getErrorMessage(error: unknown): string {
   return 'An unexpected error occurred';
 }
 
-/**
- * Helper to get active restaurant ID
- */
 export function getActiveRestaurantId(): string {
   return localStorage.getItem('activeRestaurantId') || '';
 }
