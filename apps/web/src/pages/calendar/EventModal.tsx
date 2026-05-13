@@ -736,9 +736,15 @@ export function EventModal({
               <button
                 key={et.id}
                 type="button"
+                title="Right-click to edit or delete"
                 onClick={() => {
                   setSelectedEventType(et.id)
+                  setSelectedColor(et.color)
                   setShowNewTypeForm(false)
+                  if (typeMenuId && typeMenuId !== et.id) setTypeMenuId(null)
+                }}
+                onContextMenu={e => {
+                  e.preventDefault()
                   openTypeMenu(et.id, et.name, et.color)
                 }}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
@@ -759,10 +765,15 @@ export function EventModal({
               <button
                 key={ct.id}
                 type="button"
+                title="Right-click to edit or delete"
                 onClick={() => {
                   setSelectedEventType(ct.id)
                   setSelectedColor(ct.color)
                   setShowNewTypeForm(false)
+                  if (typeMenuId && typeMenuId !== ct.id) setTypeMenuId(null)
+                }}
+                onContextMenu={e => {
+                  e.preventDefault()
                   openTypeMenu(ct.id, ct.name, ct.color)
                 }}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
