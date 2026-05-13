@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
@@ -7,6 +7,13 @@ import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { CuisinePicker } from '../components/ui/CuisinePicker'
+
+// Email availability check result
+type EmailAvailability = {
+  checking: boolean
+  available: boolean | null
+  error: string | null
+}
 
 type Path = 'selector' | 'join' | 'create'
 type PathAStep = 1 | 2
@@ -64,6 +71,56 @@ export function Register() {
 
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
+
+  // Email availability checking state
+  const [joinEmailCheck, setJoinEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
+  const [createEmailCheck, setCreateEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
+  const emailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Debounced email availability check
+  const checkEmailAvailability = useCallback(async (email: string, setEmailCheck: (check: EmailAvailability) => void) => {
+    if (!email || !email.includes('@')) {
+      setEmailCheck({ checking: false, available: null, error: null })
+      return
+    }
+
+    setEmailCheck({ checking: true, available: null, error: null })
+
+    try {
+      const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+      const resp = await fetch(`${API_URL}/api/v1/auth/check-email?email=${encodeURIComponent(email)}`)
+      const data = await resp.json()
+
+      if (resp.ok) {
+        setEmailCheck({
+          checking: false,
+          available: data.available,
+          error: data.available ? null : 'This email is already registered. Please sign in instead.'
+        })
+      } else {
+        setEmailCheck({ checking: false, available: null, error: null })
+      }
+    } catch {
+      // Silently fail - don't block registration on network errors
+      setEmailCheck({ checking: false, available: null, error: null })
+    }
+  }, [])
+
+  // Debounced email check for Path A (join)
+  const debouncedCheckJoinEmail = useCallback((email: string) => {
+    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current)
+    emailDebounceRef.current = setTimeout(() => {
+      checkEmailAvailability(email, setJoinEmailCheck)
+    }, 400)
+  }, [checkEmailAvailability])
+
+  // Debounced email check for Path B (create)
+  const debouncedCheckCreateEmail = useCallback((email: string) => {
+    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current)
+    emailDebounceRef.current = setTimeout(() => {
+      checkEmailAvailability(email, setCreateEmailCheck)
+    }, 400)
+  }, [checkEmailAvailability])
 
   // Auto-route from URL params on mount (D-09):
   // ?invite=CODE  → Path A (join) with code pre-filled
@@ -458,29 +515,119 @@ export function Register() {
       )}
       <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
       <div className="space-y-4">
-        {(
-          [
-            { label: 'Full Name', value: joinName, setter: setJoinName, type: 'text', icon: User, placeholder: 'Jane Smith', hint: undefined as string | undefined },
-            { label: 'Email', value: joinEmail, setter: setJoinEmail, type: 'email', icon: Mail, placeholder: 'jane@restaurant.com', hint: undefined as string | undefined },
-            { label: 'Password', value: joinPassword, setter: setJoinPassword, type: 'password', icon: Lock, placeholder: '••••••••', hint: 'Min. 8 characters' as string | undefined },
-            { label: 'Confirm Password', value: joinConfirm, setter: setJoinConfirm, type: 'password', icon: Lock, placeholder: '••••••••', hint: undefined as string | undefined },
-          ]
-        ).map(({ label, value, setter, type, icon: Icon, placeholder, hint }) => (
-          <div key={label}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{label} *</label>
-            <div className="relative">
-              <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type={type}
-                value={value}
-                onChange={(e) => setter(e.target.value)}
-                placeholder={placeholder}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-            {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+        {/* Full Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={joinName}
+              onChange={(e) => setJoinName(e.target.value)}
+              placeholder="Jane Smith"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
           </div>
-        ))}
+        </div>
+
+        {/* Email with availability check */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="email"
+              value={joinEmail}
+              onChange={(e) => {
+                setJoinEmail(e.target.value)
+                debouncedCheckJoinEmail(e.target.value)
+              }}
+              placeholder="jane@restaurant.com"
+              className={[
+                'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                joinEmailCheck.available === false
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20'
+                  : joinEmailCheck.available === true
+                    ? 'border-green-400 focus:border-green-500 focus:ring-green-500/20'
+                    : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20'
+              ].join(' ')}
+            />
+            {/* Status icon */}
+            {joinEmailCheck.checking && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+              </div>
+            )}
+            {!joinEmailCheck.checking && joinEmailCheck.available === true && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                <Check className="w-3 h-3 text-white stroke-[3]" />
+              </div>
+            )}
+            {!joinEmailCheck.checking && joinEmailCheck.available === false && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+                <X className="w-3 h-3 text-white stroke-[3]" />
+              </div>
+            )}
+          </div>
+          {/* Availability message */}
+          <AnimatePresence mode="wait">
+            {joinEmailCheck.available === false && joinEmailCheck.error && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="mt-2 flex items-center gap-2 text-sm text-red-600"
+              >
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{joinEmailCheck.error}</span>
+                <Link to="/login" className="text-wine-600 hover:text-wine-700 font-medium underline">
+                  Sign in
+                </Link>
+              </motion.div>
+            )}
+            {joinEmailCheck.available === true && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="mt-1 text-xs text-green-600"
+              >
+                Email is available
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="password"
+              value={joinPassword}
+              onChange={(e) => setJoinPassword(e.target.value)}
+              placeholder="••••••••"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Min. 8 characters</p>
+        </div>
+
+        {/* Confirm Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="password"
+              value={joinConfirm}
+              onChange={(e) => setJoinConfirm(e.target.value)}
+              placeholder="••••••••"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
+          </div>
+        </div>
       </div>
       {(error || authError) && (
         <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
@@ -490,7 +637,7 @@ export function Register() {
       )}
       <Button
         className="w-full h-12 mt-5"
-        disabled={loading || !joinName || !joinEmail || !joinPassword || !joinConfirm}
+        disabled={loading || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={handleJoinSubmit}
       >
         {loading ? (
@@ -529,37 +676,131 @@ export function Register() {
       </div>
       <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
       <div className="space-y-4">
-        {(
-          [
-            { label: 'Full Name', value: createName, setter: setCreateName, type: 'text', icon: User, placeholder: 'John Smith', hint: undefined as string | undefined },
-            { label: 'Email', value: createEmail, setter: setCreateEmail, type: 'email', icon: Mail, placeholder: 'john@myrestaurant.com', hint: undefined as string | undefined },
-            { label: 'Password', value: createPassword, setter: setCreatePassword, type: 'password', icon: Lock, placeholder: '••••••••', hint: 'Min. 8 characters' as string | undefined },
-            { label: 'Confirm Password', value: createConfirm, setter: setCreateConfirm, type: 'password', icon: Lock, placeholder: '••••••••', hint: undefined as string | undefined },
-          ]
-        ).map(({ label, value, setter, type, icon: Icon, placeholder, hint }) => (
-          <div key={label}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{label} *</label>
-            <div className="relative">
-              <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type={type}
-                value={value}
-                onChange={(e) => setter(e.target.value)}
-                placeholder={placeholder}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-              />
-            </div>
-            {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+        {/* Full Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              placeholder="John Smith"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
           </div>
-        ))}
+        </div>
+
+        {/* Email with availability check */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="email"
+              value={createEmail}
+              onChange={(e) => {
+                setCreateEmail(e.target.value)
+                debouncedCheckCreateEmail(e.target.value)
+              }}
+              placeholder="john@myrestaurant.com"
+              className={[
+                'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                createEmailCheck.available === false
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20'
+                  : createEmailCheck.available === true
+                    ? 'border-green-400 focus:border-green-500 focus:ring-green-500/20'
+                    : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20'
+              ].join(' ')}
+            />
+            {/* Status icon */}
+            {createEmailCheck.checking && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+              </div>
+            )}
+            {!createEmailCheck.checking && createEmailCheck.available === true && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                <Check className="w-3 h-3 text-white stroke-[3]" />
+              </div>
+            )}
+            {!createEmailCheck.checking && createEmailCheck.available === false && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+                <X className="w-3 h-3 text-white stroke-[3]" />
+              </div>
+            )}
+          </div>
+          {/* Availability message */}
+          <AnimatePresence mode="wait">
+            {createEmailCheck.available === false && createEmailCheck.error && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="mt-2 flex items-center gap-2 text-sm text-red-600"
+              >
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{createEmailCheck.error}</span>
+                <Link to="/login" className="text-wine-600 hover:text-wine-700 font-medium underline">
+                  Sign in
+                </Link>
+              </motion.div>
+            )}
+            {createEmailCheck.available === true && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="mt-1 text-xs text-green-600"
+              >
+                Email is available
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="password"
+              value={createPassword}
+              onChange={(e) => setCreatePassword(e.target.value)}
+              placeholder="••••••••"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Min. 8 characters</p>
+        </div>
+
+        {/* Confirm Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="password"
+              value={createConfirm}
+              onChange={(e) => setCreateConfirm(e.target.value)}
+              placeholder="••••••••"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+            />
+          </div>
+        </div>
       </div>
       <Button
         type="button"
         className="w-full h-12 mt-5"
-        disabled={!createName || !createEmail || createPassword.length < 8 || createPassword !== createConfirm}
+        disabled={!createName || !createEmail || createPassword.length < 8 || createPassword !== createConfirm || createEmailCheck.available === false}
         onClick={() => {
           if (createPassword !== createConfirm) {
             setError('Passwords do not match')
+            return
+          }
+          if (createEmailCheck.available === false) {
+            setError('This email is already registered. Please sign in instead.')
             return
           }
           setError(null)

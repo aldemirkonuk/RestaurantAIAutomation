@@ -873,4 +873,18 @@ export class AuthService {
 
     return user;
   }
+
+  /**
+   * Check if an email is already registered.
+   * Returns true if email exists, false otherwise.
+   */
+  async checkEmailExists(email: string): Promise<boolean> {
+    const { data: existing } = await this.databaseService.supabase
+      .from('users')
+      .select('email')
+      .eq('email', email.toLowerCase().trim())
+      .maybeSingle();
+
+    return !!existing;
+  }
 }

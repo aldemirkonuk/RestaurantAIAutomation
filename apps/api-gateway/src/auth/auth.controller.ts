@@ -10,12 +10,14 @@ import {
   Logger,
   Headers,
   Param,
+  Query,
 } from '@nestjs/common';
 import { AuthService, LoginCredentials, RegisterData } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { Public } from './decorators/public.decorator';
+import { CheckEmailDto } from './dto/check-email.dto';
 import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
 import { JoinViaInviteDto } from './dto/join-via-invite.dto';
 import { InviteDto } from './dto/invite.dto';
@@ -223,6 +225,20 @@ export class AuthController {
   ) {
     const tokens = await this.authService.switchRestaurant(req.user.userId, body.restaurantId);
     return { success: true, ...tokens };
+  }
+
+  /**
+   * Check if an email is already registered.
+   * Public endpoint for registration form validation.
+   */
+  @Get('check-email')
+  @Public()
+  async checkEmail(@Query() query: CheckEmailDto) {
+    const exists = await this.authService.checkEmailExists(query.email);
+    return {
+      available: !exists,
+      email: query.email,
+    };
   }
 }
 
