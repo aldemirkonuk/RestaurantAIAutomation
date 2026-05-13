@@ -13,11 +13,13 @@ import {
   Sparkles,
   Plus,
   Edit2,
+  Check,
 } from 'lucide-react'
 import type { CalendarEvent } from './useCalendarPage'
 import type { EventTypeRecord as EventType } from '../../services/api/calendar'
 import type { Provider } from '../../services/api/types'
 import type { RecurrenceRule } from '../../lib/calendar/recurrence'
+import { addCustomEventType, getCustomEventTypes, isEventTypeNameAvailable } from '../../data/customEventTypes'
 
 // ─────────────────────────────── Types ───────────────────────────────────────
 
@@ -266,6 +268,15 @@ export function EventModal({
     { id: uid(), minutesBefore: 60, channels: ['in_app', 'email'] },
   ])
 
+  // Custom event type inline form
+  const [showNewTypeForm, setShowNewTypeForm] = useState(false)
+  const [newTypeName, setNewTypeName] = useState('')
+  const [newTypeColor, setNewTypeColor] = useState(COLOR_PALETTE[1])
+  const [newTypeError, setNewTypeError] = useState('')
+  const [localCustomTypes, setLocalCustomTypes] = useState<Array<{ id: string; name: string; color: string }>>(() =>
+    getCustomEventTypes().map(t => ({ id: `custom-${t.name}`, name: t.name, color: t.color }))
+  )
+
   // Detect label from title
   useEffect(() => {
     if (!title.trim()) { setDetectedLabel(null); setLabelDismissed(false); return }
@@ -384,6 +395,27 @@ export function EventModal({
     setReminders(prev => prev.map(r => r.id === id ? { ...r, minutesBefore: value } : r))
   }
 
+  function saveCustomType() {
+    const name = newTypeName.trim()
+    if (!name) { setNewTypeError('Name is required'); return }
+    if (name.length < 2) { setNewTypeError('At least 2 characters'); return }
+    if (name.length > 30) { setNewTypeError('Max 30 characters'); return }
+    if (!isEventTypeNameAvailable(name)) { setNewTypeError('Name already taken'); return }
+    try {
+      addCustomEventType({ name, color: newTypeColor, icon: 'Star', createdBy: 'user' })
+      const newEntry = { id: `custom-${name}`, name, color: newTypeColor }
+      setLocalCustomTypes(prev => [...prev, newEntry])
+      setSelectedEventType(newEntry.id)
+      setSelectedColor(newTypeColor)
+      setNewTypeName('')
+      setNewTypeColor(COLOR_PALETTE[1])
+      setNewTypeError('')
+      setShowNewTypeForm(false)
+    } catch {
+      setNewTypeError('Could not save — try a different name')
+    }
+  }
+
   function toggleReminderChannel(id: string, ch: 'in_app' | 'email') {
     setReminders(prev => prev.map(r => {
       if (r.id !== id) return r
@@ -399,6 +431,7 @@ export function EventModal({
     if (!title.trim()) return
 
     const selectedType = eventTypes.find(et => et.id === selectedEventType)
+      ?? localCustomTypes.find(ct => ct.id === selectedEventType)
     const eventTypeString = selectedType?.name.toLowerCase() || selectedEventType
 
     const data: CreateCalendarEventData = {
@@ -590,7 +623,7 @@ export function EventModal({
   // ── Edit / Create Form ────────────────────────────────────────────────────
 
   const renderForm = () => (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full">
+    <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 shrink-0">
         <div
@@ -620,19 +653,20 @@ export function EventModal({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
 
         {/* ── Type · Status · Color ─────────────────────────────────────── */}
         <div className="px-5 py-4 border-b border-gray-100">
           <SectionLabel icon={<Palette className="w-3 h-3" />} text="Appearance" />
 
-          {/* Type pills */}
+          {/* Type pills — built-in + user-created */}
           <div className="flex gap-1.5 flex-wrap mt-2">
+            {/* Built-in types from API */}
             {eventTypes.map(et => (
               <button
                 key={et.id}
                 type="button"
-                onClick={() => setSelectedEventType(et.id)}
+                onClick={() => { setSelectedEventType(et.id); setShowNewTypeForm(false) }}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
                   selectedEventType === et.id
                     ? 'border-wine-700 bg-wine-50 text-wine-800'
@@ -643,7 +677,99 @@ export function EventModal({
                 {et.name}
               </button>
             ))}
+
+            {/* User-created custom types */}
+            {localCustomTypes.map(ct => (
+              <button
+                key={ct.id}
+                type="button"
+                onClick={() => { setSelectedEventType(ct.id); setSelectedColor(ct.color); setShowNewTypeForm(false) }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
+                  selectedEventType === ct.id
+                    ? 'border-wine-700 bg-wine-50 text-wine-800'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ct.color }} />
+                {ct.name}
+              </button>
+            ))}
+
+            {/* Add new type button */}
+            <button
+              type="button"
+              onClick={() => { setShowNewTypeForm(v => !v); setNewTypeName(''); setNewTypeError('') }}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-all ${
+                showNewTypeForm
+                  ? 'border-wine-300 bg-wine-50 text-wine-700'
+                  : 'border-dashed border-gray-300 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Plus className="w-3 h-3" />
+              New type
+            </button>
           </div>
+
+          {/* Inline custom type form */}
+          {showNewTypeForm && (
+            <div className="mt-3 p-3 rounded-xl border border-wine-100 bg-wine-50/40">
+              <p className="text-[10px] font-bold text-wine-700 uppercase tracking-widest mb-2.5">Create custom type</p>
+
+              {/* Name input */}
+              <input
+                type="text"
+                value={newTypeName}
+                onChange={e => { setNewTypeName(e.target.value); setNewTypeError('') }}
+                placeholder="e.g. Team Briefing, PR Event…"
+                maxLength={30}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-[13px] font-medium text-gray-800 focus:outline-none focus:border-wine-500 focus:ring-1 focus:ring-wine-500/20 bg-white"
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveCustomType() } if (e.key === 'Escape') setShowNewTypeForm(false) }}
+              />
+              {newTypeError && <p className="text-[11px] text-red-500 mt-1">{newTypeError}</p>}
+
+              {/* Color row */}
+              <div className="flex gap-1.5 flex-wrap mt-2.5">
+                {COLOR_PALETTE.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setNewTypeColor(c)}
+                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 shrink-0 ${
+                      newTypeColor === c ? 'border-gray-800' : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: c, boxShadow: newTypeColor === c ? 'inset 0 0 0 1.5px #fff' : undefined }}
+                  />
+                ))}
+              </div>
+
+              {/* Preview + actions */}
+              <div className="flex items-center gap-2 mt-3">
+                <div className="flex items-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-lg bg-white border border-gray-200">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: newTypeColor }} />
+                  <span className="text-[12px] font-semibold text-gray-700 truncate">
+                    {newTypeName || 'Preview'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNewTypeForm(false)}
+                  className="px-3 py-1.5 text-[12px] font-semibold text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveCustomType}
+                  disabled={!newTypeName.trim()}
+                  className="px-3 py-1.5 text-[12px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1"
+                  style={{ backgroundColor: '#901d42' }}
+                >
+                  <Check className="w-3 h-3" /> Save
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Status chips */}
           <div className="flex gap-1.5 flex-wrap mt-3">
