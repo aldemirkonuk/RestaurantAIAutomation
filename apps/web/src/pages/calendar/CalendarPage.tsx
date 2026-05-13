@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Menu,
   X,
+  Plus,
 } from 'lucide-react'
 import { useCalendarPage } from './useCalendarPage'
 import type { CalendarEvent, ViewMode } from './useCalendarPage'
@@ -353,8 +354,20 @@ export default function CalendarPage() {
           </h1>
         </div>
 
-        {/* Right: search + view tabs */}
+        {/* Right: new event + search + view tabs */}
         <div className="flex items-center gap-3">
+          {/* New Event CTA */}
+          <button
+            onClick={() => openCreateModal()}
+            className="hidden sm:flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white rounded-lg transition-colors"
+            style={{ backgroundColor: '#901d42' }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7c1d3c')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#901d42')}
+          >
+            <Plus className="w-4 h-4" />
+            New Event
+          </button>
+
           {/* Search */}
           <div className="relative hidden sm:block">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -488,6 +501,16 @@ export default function CalendarPage() {
           </DragDropProvider>
         </div>
       </div>
+
+      {/* ── Mobile FAB ── */}
+      <button
+        onClick={() => openCreateModal()}
+        className="sm:hidden fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white"
+        style={{ backgroundColor: '#901d42' }}
+        aria-label="New event"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
 
       {/* ── Event Modal ── */}
       <EventModal
