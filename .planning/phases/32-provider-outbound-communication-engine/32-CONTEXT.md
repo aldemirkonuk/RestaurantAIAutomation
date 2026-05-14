@@ -181,27 +181,72 @@ Available. Triggered from order modal when manager opens an order without a targ
 
 Future wave. `providers.preferred_channel` column is already set. When implemented, the same 5-step flow applies — just replaces email send with SMS API call.
 
-### D-32-14 — Constraint System (Draft — manager to finalize)
+### D-32-14 — Constraint System (Finalized — 20 real-world constraints)
 
+#### HARD CONSTRAINTS — block or freeze AI response
 ```
-HARD CONSTRAINTS:
-C-01  TOPIC_LOCK        Wine/beverage procurement only. Off-topic → freeze + escalate
-C-02  COMMITMENT_GUARD  No final purchase commitments (extends Phase 24)
-C-03  QUANTITY_CAP      Never agree to quantity > order.quantity × 1.5
-C-04  PRICE_CEILING     Never agree to price > target_price × 1.15 without escalation
-C-05  ROUND_LIMIT       After MAX_ROUNDS without resolution → freeze + escalate
-C-06  LENGTH_CAP        Max 180 words per outbound email
-C-07  DISCLAIMER        WineOps AI disclaimer always appended (non-removable)
-C-08  SENSITIVE_SKIP    Sensitivity detected → no AI draft, escalate immediately
+C-01  TOPIC_LOCK              Wine/beverage procurement only. Off-topic → freeze + escalate
+C-02  COMMITMENT_GUARD        No explicit purchase commitments. "we're interested at X" not
+                              "we agree to buy X". (Extends Phase 24 commitment guardrail)
+C-03  QUANTITY_CAP            Never agree to quantity > order.quantity × 1.5 without escalation
+C-04  PRICE_CEILING           Never agree to price > target_price × 1.15 without escalation
+C-05  ROUND_LIMIT             After MAX_ROUNDS (default 6, hard cap 12) without resolution →
+                              freeze AI + notify manager
+C-06  LENGTH_CAP              Max 180 words per outbound email
+C-07  DISCLAIMER              WineOps AI disclaimer appended to every draft. Non-removable.
+C-08  SENSITIVE_SKIP          PII/sensitivity detected → discrete mode, no embedding,
+                              no summary, notify manager (extends Phase 24-05)
+C-10  DUPLICATE_ORDER_BLOCK   Active unfulfilled order exists for same wine → flag before draft
+C-12  VINTAGE_DEVIATION_FLAG  Provider confirmed different vintage than ordered → freeze draft
+C-13  AUTO_REPLY_LOOP_BLOCK   OOO / auto-reply detected → no draft, no notification spam
+C-16  BULK_TRAP_DETECT        Provider min quantity > order.quantity × 2 → block draft + flag
+C-19  THREE_TIER_COMPLIANCE   No language implying: direct-from-winery, off-invoice, bypass
+                              distributor, kickback. Hard block + escalate.
+C-20  EMOTIONAL_ESCALATION    Anger / ultimatum / threats detected in incoming → no AI draft,
+                              manager-only response required
+C-21  PII_PAYMENT_GUARD       Routing numbers, SSN patterns, medical content → discrete mode,
+                              no logging, manager flagged
+C-22  PRICE_BAIT_SWITCH       Invoice price deviates from negotiation_facts agreed price →
+                              flag + freeze any payment acknowledgment draft
+```
 
-SOFT CONSTRAINTS (default on, manager can override per-provider):
-S-01  NO_COMPETITOR_MENTION   Don't reference other vendors' prices
+#### ANNOTATING CONSTRAINTS — draft proceeds but with visible warning to manager
+```
+C-09  STALE_PRICE_GUARD       price data >30 days old → append "Note: last price was $X on [date]"
+C-11  UNIT_AMBIGUITY_GUARD    Bare number with no unit (cases/bottles) → draft must ask for
+                              unit clarification before continuing negotiation round
+C-14  OUTSTANDING_INVOICE     Active unpaid invoice with this provider → inject warning context
+C-15  RELATIONSHIP_DRIFT      close_relationship=true but last_contact >90d OR recent dispute →
+                              override to standard tone + flag profile staleness
+C-17  OFF_HOURS_HOLD          Draft ready but outside provider's business hours → hold until
+                              8am their local time. urgency=urgent overrides.
+C-18  SOFT_COMMITMENT_TRAP    "we always order from you", "count on us every quarter", etc. →
+                              replace with neutral language, log as soft_commitment_detected
+C-23  GHOST_THREAD_ESCALATE   No provider reply in >5 business days → notify manager
+                              ("no response in 5 days — follow up or try another provider?")
+C-24  COMPETITIVE_PRICE_LEAK  Draft mentions another vendor's price or name → require explicit
+                              manager confirmation before send
+C-25  THREAD_ORPHAN_GUARD     Inbound email can't be matched to active order → notify manager,
+                              don't auto-create session or draft
+C-26  ALLOCATION_SCARCITY     "only X left / expires today" detected → annotate draft:
+                              "⚠ Scarcity pressure — verify independently before committing"
+C-27  STORAGE_CAPACITY_CHECK  Order quantity > available cellar capacity → soft flag in draft
+C-28  TONE_DRIFT_ALERT        Draft tone shifted significantly from thread baseline →
+                              flag in draft panel before send
+```
+
+#### SOFT CONSTRAINTS — style defaults, manager-overridable per provider
+```
+S-01  NO_COMPETITOR_MENTION   Don't reference other vendors' prices (unless manager enables)
 S-02  PROFESSIONAL_CLOSE      Always end with specific next action + timeline
-S-03  WARM_ACKNOWLEDGE        Acknowledge their most recent action in opening
-S-04  PRICE_ANCHOR_FIRST      Ask for their price before revealing target (default)
+S-03  WARM_ACKNOWLEDGE        Acknowledge provider's most recent action in opening line
+S-04  PRICE_ANCHOR_FIRST      Ask for their price before revealing our target (negotiation default)
 ```
 
-Constraint violation → thread frozen + "action required" notification + `session_status = 'pending_manual_review'`.
+**Violation handling:**
+- Hard constraint triggered → `session_status = 'pending_manual_review'` + "action required" notification
+- Annotating constraint triggered → draft proceeds with inline warning visible in approval panel
+- Soft constraint overridden → logged to `negotiation_facts` for audit trail
 
 ---
 
