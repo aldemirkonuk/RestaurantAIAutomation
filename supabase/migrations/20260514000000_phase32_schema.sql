@@ -33,10 +33,6 @@ WHERE pc.order_id = po.id
 CREATE INDEX IF NOT EXISTS idx_conv_restaurant_id
   ON procurement_conversations(restaurant_id);
 
-CREATE INDEX IF NOT EXISTS idx_conv_status_restaurant
-  ON procurement_conversations(restaurant_id, status)
-  WHERE status = 'PENDING_APPROVAL';
-
 -- Constraint: only valid outbound email type values
 DO $$
 BEGIN
