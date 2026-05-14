@@ -183,56 +183,68 @@ Future wave. `providers.preferred_channel` column is already set. When implement
 
 ### D-32-14 — Constraint System (Finalized — 20 real-world constraints)
 
-#### HARD CONSTRAINTS — block or freeze AI response
+#### HARD CONSTRAINTS — block or freeze AI response, manager must act
 ```
 C-01  TOPIC_LOCK              Wine/beverage procurement only. Off-topic → freeze + escalate
 C-02  COMMITMENT_GUARD        No explicit purchase commitments. "we're interested at X" not
                               "we agree to buy X". (Extends Phase 24 commitment guardrail)
-C-03  QUANTITY_CAP            Never agree to quantity > order.quantity × 1.5 without escalation
+C-03  QUANTITY_CAP            Context-aware. Two modes:
+                              — Pre-approved: manager has set a per-provider approved multiplier
+                                (stored in provider_intelligence.profile_dynamic.approved_qty_multiplier).
+                                AI may draft up to that multiplier silently.
+                              — Not pre-approved: quantity > order.quantity × 1.5 → ask manager
+                                before generating draft.
 C-04  PRICE_CEILING           Never agree to price > target_price × 1.15 without escalation
 C-05  ROUND_LIMIT             After MAX_ROUNDS (default 6, hard cap 12) without resolution →
                               freeze AI + notify manager
 C-06  LENGTH_CAP              Max 180 words per outbound email
 C-07  DISCLAIMER              WineOps AI disclaimer appended to every draft. Non-removable.
 C-08  SENSITIVE_SKIP          PII/sensitivity detected → discrete mode, no embedding,
-                              no summary, notify manager (extends Phase 24-05)
+                              no summary. Notify dev/admin channel only (see C-21). 
+                              (Extends Phase 24-05)
 C-10  DUPLICATE_ORDER_BLOCK   Active unfulfilled order exists for same wine → flag before draft
 C-12  VINTAGE_DEVIATION_FLAG  Provider confirmed different vintage than ordered → freeze draft
-C-13  AUTO_REPLY_LOOP_BLOCK   OOO / auto-reply detected → no draft, no notification spam
-C-16  BULK_TRAP_DETECT        Provider min quantity > order.quantity × 2 → block draft + flag
+C-13  AUTO_REPLY_LOOP_BLOCK   OOO / auto-reply detected → no draft, no notification spam.
+                              If same from_email sends 3+ emails within 10 min → suppress as loop.
+C-16  BULK_TRAP_DETECT        Two modes:
+                              — Pre-approved bulk scenario for this provider → allow, log only.
+                                (manager enables per provider in profile settings)
+                              — Not pre-approved: provider min > order.quantity × 2 → block
+                                draft, ask manager: "Bulk commitment required — approve?"
 C-19  THREE_TIER_COMPLIANCE   No language implying: direct-from-winery, off-invoice, bypass
                               distributor, kickback. Hard block + escalate.
-C-20  EMOTIONAL_ESCALATION    Anger / ultimatum / threats detected in incoming → no AI draft,
+C-20  EMOTIONAL_ESCALATION    Anger / ultimatum / threats detected → no AI draft,
                               manager-only response required
-C-21  PII_PAYMENT_GUARD       Routing numbers, SSN patterns, medical content → discrete mode,
-                              no logging, manager flagged
+C-21  PII_PAYMENT_GUARD       Routing numbers, SSN patterns, medical/personal content →
+                              discrete mode: no body logging, no embedding, no summary.
+                              Notification routed to DEV/ADMIN channel only — not manager
+                              general inbox. Manager sees a sanitized line in weekly report:
+                              "1 email from [Provider] contained sensitive content — not stored."
 C-22  PRICE_BAIT_SWITCH       Invoice price deviates from negotiation_facts agreed price →
                               flag + freeze any payment acknowledgment draft
 ```
 
-#### ANNOTATING CONSTRAINTS — draft proceeds but with visible warning to manager
+#### ANNOTATING CONSTRAINTS — draft proceeds with inline warning visible in approval panel
 ```
-C-09  STALE_PRICE_GUARD       price data >30 days old → append "Note: last price was $X on [date]"
-C-11  UNIT_AMBIGUITY_GUARD    Bare number with no unit (cases/bottles) → draft must ask for
-                              unit clarification before continuing negotiation round
-C-14  OUTSTANDING_INVOICE     Active unpaid invoice with this provider → inject warning context
+C-09  STALE_PRICE_GUARD       Price data >30 days old → append note inside draft:
+                              "Last recorded price: $X on [date] — confirm current pricing."
+C-11  UNIT_AMBIGUITY_GUARD    Bare number without unit (cases/bottles/magnums) → draft must
+                              explicitly ask for unit before round progresses
+C-14  OUTSTANDING_INVOICE     Active unpaid invoice with this provider → annotation banner in
+                              draft panel: "Outstanding invoice #X with this provider."
+                              NOT a block. Manager decides whether to proceed.
+                              Money matters — the manager speaks last, not the system.
 C-15  RELATIONSHIP_DRIFT      close_relationship=true but last_contact >90d OR recent dispute →
-                              override to standard tone + flag profile staleness
-C-17  OFF_HOURS_HOLD          Draft ready but outside provider's business hours → hold until
-                              8am their local time. urgency=urgent overrides.
-C-18  SOFT_COMMITMENT_TRAP    "we always order from you", "count on us every quarter", etc. →
-                              replace with neutral language, log as soft_commitment_detected
-C-23  GHOST_THREAD_ESCALATE   No provider reply in >5 business days → notify manager
-                              ("no response in 5 days — follow up or try another provider?")
-C-24  COMPETITIVE_PRICE_LEAK  Draft mentions another vendor's price or name → require explicit
-                              manager confirmation before send
-C-25  THREAD_ORPHAN_GUARD     Inbound email can't be matched to active order → notify manager,
-                              don't auto-create session or draft
-C-26  ALLOCATION_SCARCITY     "only X left / expires today" detected → annotate draft:
-                              "⚠ Scarcity pressure — verify independently before committing"
-C-27  STORAGE_CAPACITY_CHECK  Order quantity > available cellar capacity → soft flag in draft
-C-28  TONE_DRIFT_ALERT        Draft tone shifted significantly from thread baseline →
-                              flag in draft panel before send
+                              override to standard tone + flag: "Relationship profile may be
+                              outdated — using standard tone."
+C-17  OFF_HOURS_HOLD          Draft held until provider's business hours (8am–6pm their timezone).
+                              urgency=urgent overrides. Manager notified of hold time.
+C-18  SOFT_COMMITMENT_TRAP    "we always order from you / count on us every quarter" etc. →
+                              replaced with neutral language, logged as soft_commitment_detected,
+                              annotation shown: "Softened implicit ongoing commitment in [paragraph]"
+C-23  GHOST_THREAD_ESCALATE   No reply in >5 business days → manager notification only
+                              ("No response in 5 days — follow up, call, or try another provider?")
+C-25  THREAD_ORPHAN + OFF-APP See Section D-32-15 below for full architecture.
 ```
 
 #### SOFT CONSTRAINTS — style defaults, manager-overridable per provider
@@ -245,8 +257,80 @@ S-04  PRICE_ANCHOR_FIRST      Ask for their price before revealing our target (n
 
 **Violation handling:**
 - Hard constraint triggered → `session_status = 'pending_manual_review'` + "action required" notification
-- Annotating constraint triggered → draft proceeds with inline warning visible in approval panel
+- Annotating constraint triggered → draft proceeds with warning badge/banner in approval panel
 - Soft constraint overridden → logged to `negotiation_facts` for audit trail
+
+**Removed constraints:** C-24 (competitive price leak), C-26 (scarcity pressure), C-27 (storage capacity), C-28 (tone drift) — removed per user decision 2026-05-14.
+
+---
+
+### D-32-15 — Thread Orphan + Off-App Order + Invoice Matching
+
+**C-25 expanded architecture.**
+
+#### What's already built
+`VisualVerificationAgent` handles image-based invoice OCR (`_scan_invoice` via EasyOCR), compares price/quantity/vintage against a known `order_id`. Works for photos of invoices. **Requires** `order_id` to compare against.
+
+**What's missing:**
+- Email-embedded invoice text / PDF — agent expects an image, not email body text
+- Off-app order matching — no `order_id` in DB to compare against
+
+#### Three scenarios C-25 must handle
+
+**Scenario A — Orphaned thread (provider emails out of nowhere)**
+Inbound email from known `providers.contact_email` but no matching `gmail_thread_id` or active order found.
+Action: Notify manager — "Unmatched email from [Provider] — does this relate to an existing order, or should we start a new one?" Manager creates order manually or links to existing.
+
+**Scenario B — Off-app order, invoice arrives by email**
+Manager placed an order by phone/WhatsApp/in person. Provider emails an invoice. No order in DB.
+
+Matching algorithm (in EmailIntelAgent, triggered when incoming email is classified OPERATIONAL + contains invoice signals):
+1. Extract from email body/attachment: `provider_name`, `wine_name`, `quantity`, `unit_price`, `total`, `invoice_date`
+2. Fuzzy-match against `procurement_orders`:
+   - `provider_id` matches provider (by email domain or name)
+   - `wine_name` similarity > 70% (fuzzy string match)
+   - `created_at` within 45 days of invoice date
+   - `quantity` within 30% of order quantity
+3. Score:
+   - > 0.80 → Auto-suggest: "This invoice looks like order #1041 — confirm?"
+   - 0.50–0.80 → Possible match: "Could this be for order #1041 (Pommard × 4 from [Provider])? Yes / No / Different order"
+   - < 0.50 → No match: "This looks like a delivery not recorded in the app — create a retroactive order?"
+
+**Scenario C — Off-app order confirmed, create retroactive record**
+Manager confirms "yes this is outside the app." System creates:
+```
+procurement_orders (status='delivered', source='retroactive')
+  + actual_delivery = invoice_date
+  + final_confirmed_cost = invoice_total
+  + wine_name from invoice extraction
+  + provider_id matched
+procurement_conversations (direction='INBOUND', content=email body, ai_summary=extracted facts)
+order_interactions (interaction_type='invoice_received', content=raw invoice text)
+```
+Then triggers `VisualVerificationAgent` comparison logic with the now-matched order_id.
+
+**Invoice text extraction (new, Phase 32):**
+For email-body invoices (no image), extract structured data using Haiku:
+```
+Prompt: "Extract invoice fields from this email. Return JSON:
+{vendor_name, invoice_number, invoice_date, line_items: [{wine_name, vintage, quantity, unit_price}], total}"
+```
+Cost: ~$0.001 per invoice email. Fallback: regex patterns from `_parse_invoice_text` (already in VisualVerificationAgent).
+
+---
+
+### D-32-16 — Invoice Scanning Full Status
+
+| Capability | Status | Notes |
+|------------|--------|-------|
+| Photo/image invoice OCR | ✅ Built | `VisualVerificationAgent._scan_invoice()` via EasyOCR |
+| Price mismatch detection | ✅ Built | `_compare_invoice_to_order()` |
+| Quantity mismatch | ✅ Built | Same |
+| Vintage mismatch + barcode cross-ref | ✅ Built | `_process_barcode_scan()` |
+| Email-text invoice extraction | ❌ Missing | Add in Phase 32: Haiku + regex fallback |
+| Off-app order matching | ❌ Missing | Add in Phase 32: fuzzy match algorithm |
+| Retroactive order creation | ❌ Missing | Add in Phase 32: new API endpoint |
+| Invoice data saved to DB | ✅ Partial | `_store_verification_result()` exists but only when order_id known |
 
 ---
 
