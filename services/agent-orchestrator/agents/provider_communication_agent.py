@@ -100,7 +100,17 @@ class ProviderCommunicationAgent(BaseAgent):
         payload = message
         order_id = payload.get("order_id", "")
         routing_key = payload.get("_routing_key", "")
-        idempotency_key = f"prov_comm:{order_id}:{routing_key}"
+        # Use a payload-specific identifier so invoice events (which carry no order_id)
+        # don't all collapse to the same key and get silently deduplicated after the first.
+        if "invoice.received" in routing_key:
+            unique_part = (
+                payload.get("email_id")
+                or payload.get("gmail_message_id")
+                or f"{payload.get('provider_id','')}:{payload.get('restaurant_id','')}:{payload.get('subject','')[:40]}"
+            )
+        else:
+            unique_part = order_id
+        idempotency_key = f"prov_comm:{unique_part}:{routing_key}"
 
         if await self._check_idempotency(idempotency_key):
             self.logger.debug(f"Skipping duplicate: {idempotency_key}")
@@ -342,6 +352,20 @@ class ProviderCommunicationAgent(BaseAgent):
             round_count=0,
             max_rounds=self.settings.hard_round_cap,
         )
+
+        # Gate on pre-draft hard constraints (C-03 / C-05 and others).
+        # pre_check runs against the order context before the Haiku call to avoid wasting tokens.
+        if pre_check.blocked:
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="constraint_triggered",
+                title=f"Draft blocked: {', '.join(pre_check.triggered_hard)}",
+                message="Order context violates hard constraints. Manual drafting required.",
+                priority="high",
+                action_url="/orders",
+                metadata={"order_id": order_id, "constraints": pre_check.triggered_hard},
+            )
+            return
 
         # C-10: Duplicate order block — check for active unfulfilled order for same wine
         duplicate_check = False

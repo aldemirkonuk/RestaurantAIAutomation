@@ -594,7 +594,7 @@ class EmailIntelAgent(BaseAgent):
                 "message": message,
                 "priority": priority,
                 "action_url": action_url,
-                "is_read": False,
+                "status": "unread",
             }
             if metadata:
                 insert_payload["metadata"] = metadata

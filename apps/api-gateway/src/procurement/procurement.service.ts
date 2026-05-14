@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
@@ -733,16 +733,23 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
   ): Promise<{ success: boolean }> {
-    const { error } = await this.databaseService.supabase
+    const { data, error } = await this.databaseService.supabase
       .from('procurement_conversations')
       .update({ status: 'DISCARDED' })
       .eq('restaurant_id', restaurantId)
       .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL');
+      .eq('status', 'PENDING_APPROVAL')
+      .select('id');
 
     if (error) {
       this.logger.error('discardDraft failed', { restaurantId, orderId, error: error.message });
       throw error;
+    }
+
+    if (!data || (data as any[]).length === 0) {
+      throw new NotFoundException(
+        `No PENDING_APPROVAL draft found for order ${orderId}`,
+      );
     }
 
     if (this.orchestratorService) {
@@ -761,16 +768,27 @@ export class ProcurementService {
     orderId: string,
     newContent: string,
   ): Promise<{ success: boolean }> {
-    const { error } = await this.databaseService.supabase
+    if (!newContent || newContent.trim().length === 0) {
+      throw new BadRequestException('Draft content cannot be empty');
+    }
+
+    const { data, error } = await this.databaseService.supabase
       .from('procurement_conversations')
       .update({ content: newContent })
       .eq('restaurant_id', restaurantId)
       .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL');
+      .eq('status', 'PENDING_APPROVAL')
+      .select('id');
 
     if (error) {
       this.logger.error('editDraft failed', { restaurantId, orderId, error: error.message });
       throw error;
+    }
+
+    if (!data || (data as any[]).length === 0) {
+      throw new NotFoundException(
+        `No PENDING_APPROVAL draft found for order ${orderId}`,
+      );
     }
 
     return { success: true };

@@ -287,7 +287,7 @@ export class ProcurementController {
       return await this.procurementService.editDraft(
         user.restaurantId,
         orderId,
-        dto.modifiedContent ?? '',
+        dto.modifiedContent,
       );
     } catch (error: any) {
       if (error instanceof ForbiddenException) throw error;

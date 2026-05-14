@@ -416,12 +416,36 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     dto: UpdateIntelligenceDto,
   ): Promise<{ success: boolean }> {
+    // Fetch existing JSONB blobs so we can deep-merge rather than full-replace.
+    // A full replace would wipe any fields the caller didn't include in the patch.
+    const { data: existing, error: fetchError } = await this.databaseService.supabase
+      .from('providers')
+      .select('profile_foundational, profile_dynamic')
+      .eq('id', providerId)
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (fetchError) {
+      this.logger.error('updateIntelligence: fetch failed', { providerId, error: fetchError.message });
+      throw fetchError;
+    }
+
     const updatePayload: Record<string, any> = {};
     if (dto.profile_foundational !== undefined) {
-      updatePayload.profile_foundational = dto.profile_foundational;
+      updatePayload.profile_foundational = {
+        ...((existing as any)?.profile_foundational ?? {}),
+        ...dto.profile_foundational,
+      };
     }
     if (dto.profile_dynamic !== undefined) {
-      updatePayload.profile_dynamic = dto.profile_dynamic;
+      updatePayload.profile_dynamic = {
+        ...((existing as any)?.profile_dynamic ?? {}),
+        ...dto.profile_dynamic,
+      };
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return { success: true };
     }
 
     const { error } = await this.databaseService.supabase
@@ -465,11 +489,14 @@ export class ProviderIntelligenceService {
     dto: RetroactiveOrderDto,
   ): Promise<{ orderId: string; conversationId: string; interactionId: string }> {
     // 1. Insert retroactive procurement_order
+    const retroOrderNumber = `RETRO-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
     const { data: orderData, error: orderError } = await this.databaseService.supabase
       .from('procurement_orders')
       .insert({
         restaurant_id: restaurantId,
         provider_id: providerId,
+        order_number: retroOrderNumber,
         wine_name: dto.wineName,
         quantity: dto.quantity ?? null,
         final_confirmed_cost: dto.finalConfirmedCost ?? null,
