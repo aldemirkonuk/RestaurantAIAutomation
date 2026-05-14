@@ -126,3 +126,435 @@ class ProviderCommunicationAgent(BaseAgent):
                 original_routing_key=routing_key or "procurement.order.created",
             )
             raise
+
+    # =========================================================================
+    # EMAIL TYPE SELECTION (D-32-02)
+    # =========================================================================
+
+    def _select_email_type(self, payload: Dict[str, Any]) -> str:
+        """D-32-02: Select email type from order context."""
+        if payload.get("promo_id"):
+            return EMAIL_TYPE_PROMO_INQUIRY
+        if payload.get("wine_inquiry_only"):
+            return EMAIL_TYPE_WINE_INQUIRY
+        if payload.get("target_price_per_bottle") is None:
+            return EMAIL_TYPE_PRICE_INQUIRY
+        return EMAIL_TYPE_DEMAND_OFFER
+
+    # =========================================================================
+    # CONTEXT WINDOW BUILDER (D-32-03)
+    # =========================================================================
+
+    async def _build_context_window(
+        self,
+        provider_id: str,
+        restaurant_id: str,
+        order_id: str,
+        email_type: str,
+        payload: Dict[str, Any],
+    ) -> Tuple[str, int]:
+        """
+        D-32-03: Flat ~6,000 token context window.
+        Budget (approximate):
+          system_prompt + constraints  800 tokens
+          provider_profile_snapshot    400 tokens
+          rolling_summary            1,000 tokens
+          last_3_emails              2,400 tokens
+          current_email_context        800 tokens
+          safety_buffer                600 tokens
+        Returns (prompt_string, estimated_token_count).
+        """
+        system_prompt = (
+            f"You are WineOps AI, drafting a professional outbound email to a wine provider. "
+            f"Email type: {email_type}. Write in a professional, concise style. "
+            f"Maximum 180 words. Do NOT include any purchase commitments. "
+            f"Do NOT reference competitor suppliers. End with a specific next action."
+        )
+
+        # Provider profile snapshot (~400 token cap)
+        provider_snapshot = ""
+        try:
+            result = (
+                self.database.supabase.table("providers")
+                .select(
+                    "name, contact_email, profile_foundational, profile_dynamic, close_relationship, "
+                    "ai_personality_notes, relationship_health_score"
+                )
+                .eq("id", provider_id)
+                .eq("restaurant_id", restaurant_id)
+                .single()
+                .execute()
+            )
+            if result.data:
+                pd = result.data
+                profile_str = json.dumps({
+                    "name": pd.get("name"),
+                    "close_relationship": pd.get("close_relationship"),
+                    "relationship_health_score": pd.get("relationship_health_score"),
+                    "foundational": pd.get("profile_foundational") or {},
+                    "dynamic": pd.get("profile_dynamic") or {},
+                    "notes": (pd.get("ai_personality_notes") or "")[:200],
+                })
+                provider_snapshot = f"\n\nPROVIDER PROFILE:\n{profile_str[:1200]}"
+        except Exception as exc:
+            self.logger.warning(f"Failed to fetch provider profile: {exc}")
+
+        # Rolling summary from previous conversations (~1000 token cap)
+        rolling_summary = ""
+        try:
+            conv_result = (
+                self.database.supabase.table("procurement_conversations")
+                .select("rolling_summary, content, created_at")
+                .eq("order_id", order_id)
+                .eq("restaurant_id", restaurant_id)
+                .order("created_at", desc=True)
+                .limit(3)
+                .execute()
+            )
+            if conv_result.data:
+                for row in conv_result.data:
+                    if row.get("rolling_summary"):
+                        rolling_summary = f"\n\nCONVERSATION SUMMARY:\n{row['rolling_summary'][:3000]}"
+                        break
+        except Exception as exc:
+            self.logger.warning(f"Failed to fetch rolling summary: {exc}")
+
+        # Negotiation facts (committed agreements)
+        facts_str = ""
+        try:
+            facts_result = (
+                self.database.supabase.table("negotiation_facts")
+                .select("fact_field, fact_value")
+                .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
+                .eq("commitment_type", "AGREEMENT")
+                .limit(5)
+                .execute()
+            )
+            if facts_result.data:
+                facts_str = "\n\nNEGOTIATION FACTS:\n" + "; ".join(
+                    f"{r['fact_field']}: {r['fact_value']}" for r in facts_result.data
+                )
+        except Exception as exc:
+            self.logger.warning(f"Failed to fetch negotiation facts: {exc}")
+
+        # Current order context (~800 token cap)
+        order_context = (
+            f"\n\nORDER DETAILS:\n"
+            f"Wine: {payload.get('wine_name', 'Unknown')}\n"
+            f"Quantity: {payload.get('quantity', 'TBD')} cases\n"
+            f"Target price/bottle: {payload.get('target_price_per_bottle', 'Open ask')}\n"
+            f"Urgency: {payload.get('urgency', 'normal')}"
+        )
+
+        prompt = (
+            f"{system_prompt}"
+            f"{provider_snapshot}"
+            f"{rolling_summary}"
+            f"{facts_str}"
+            f"{order_context}"
+            f'\n\nDraft the outbound email now. JSON response: {{"subject": "...", "body": "..."}}'
+        )
+
+        # Rough token estimate: 1 token ≈ 4 chars
+        estimated_tokens = len(prompt) // 4
+        return prompt, estimated_tokens
+
+    # =========================================================================
+    # ORDER CREATED HANDLER (D-32-01)
+    # =========================================================================
+
+    async def _handle_order_created(self, payload: Dict[str, Any]) -> None:
+        """
+        D-32-01: Main order trigger handler.
+        Steps:
+          1. Rate limit check (D-32-04)
+          2. Email type selection (D-32-02)
+          3. Build context window (D-32-03)
+          4. Token hard cap (TOKENBDGT-01)
+          5. Pre-draft constraint check + duplicate order block (C-10)
+          6. Draft lock — prevent duplicates for same order
+          7. Haiku draft generation
+          8. SpendLogger call (TOKENBDGT-03)
+          9. Post-draft constraint check + disclaimer append (D-32-08)
+         10. Auto-send gate (D-32-07) → determine final_status
+         11. INSERT procurement_conversations
+         12. Notify (AUTO_SENT publishes event; PENDING_APPROVAL notifies manager)
+        """
+        order_id = payload.get("order_id", "")
+        restaurant_id = payload.get("restaurant_id", "")
+        provider_id = payload.get("provider_id", "")
+
+        if not all([order_id, restaurant_id, provider_id]):
+            self.logger.warning(f"Missing required fields in order.created payload: {payload}")
+            return
+
+        # Step 1: Daily rate limit (D-32-04)
+        rate_key = f"negotiation_draft:{restaurant_id}:day"
+        if await self._check_and_increment_rate_limit(rate_key, self.settings.negotiation_draft_daily_cap):
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="rate_limit_reached",
+                title="Draft limit reached",
+                message=(
+                    f"Daily AI draft limit ({self.settings.negotiation_draft_daily_cap}) reached. "
+                    "Drafts frozen until tomorrow."
+                ),
+                priority="high",
+                action_url="/orders",
+                metadata={"order_id": order_id},
+            )
+            return
+
+        # Step 2: Email type selection (D-32-02)
+        email_type = self._select_email_type(payload)
+
+        # Step 3: Build context window
+        prompt, estimated_tokens = await self._build_context_window(
+            provider_id, restaurant_id, order_id, email_type, payload
+        )
+
+        # Step 4: Token hard cap (TOKENBDGT-01 — 8,000 input tokens)
+        if estimated_tokens > self.settings.draft_input_token_hard_cap:
+            self.logger.error(
+                f"Token hard cap exceeded: {estimated_tokens} > {self.settings.draft_input_token_hard_cap}"
+            )
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="constraint_triggered",
+                title="Draft blocked: token cap",
+                message="Context too large for AI draft. Shorten conversation history or contact support.",
+                priority="high",
+                action_url="/orders",
+                metadata={"order_id": order_id, "constraint": "TOKENBDGT-01"},
+            )
+            return
+
+        # Step 5: Pre-draft constraint check (D-32-14) on the order context text
+        ce = get_constraint_engine()
+        pre_check = ce.check_hard_constraints(
+            f"wine {payload.get('wine_name', '')} cases quantity {payload.get('quantity', '')}",
+            quantity=float(payload.get("quantity") or 0),
+            order_quantity=float(payload.get("quantity") or 0),
+            round_count=0,
+            max_rounds=self.settings.hard_round_cap,
+        )
+
+        # C-10: Duplicate order block — check for active unfulfilled order for same wine
+        duplicate_check = False
+        try:
+            dup_result = (
+                self.database.supabase.table("procurement_orders")
+                .select("id")
+                .eq("restaurant_id", restaurant_id)
+                .eq("wine_name", payload.get("wine_name", ""))
+                .in_("status", ["PENDING", "CONFIRMED", "DRAFT"])
+                .neq("id", order_id)
+                .limit(1)
+                .execute()
+            )
+            if dup_result.data:
+                duplicate_check = True
+        except Exception:
+            pass
+
+        if duplicate_check:
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="constraint_triggered",
+                title="Duplicate order detected",
+                message=(
+                    f"Active unfulfilled order exists for {payload.get('wine_name')} "
+                    "— review before drafting."
+                ),
+                priority="medium",
+                action_url="/orders",
+                metadata={"order_id": order_id, "constraint": "C-10"},
+            )
+            return
+
+        # Step 6: Draft lock — prevent duplicates for same order (T-32-03-03)
+        lock_key = f"draft_lock:{order_id}"
+        if not await self._acquire_draft_lock(lock_key):
+            self.logger.info(f"Draft lock held for order {order_id} — skipping duplicate")
+            return
+
+        # Step 7: Haiku draft generation
+        draft_json: Dict[str, Any] = {}
+        input_tokens = 0
+        output_tokens = 0
+        try:
+            haiku = get_haiku_client()
+            async with self.haiku_semaphore:
+                response = await haiku.messages.create(
+                    model=self.settings.haiku_model,
+                    max_tokens=512,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            raw = response.content[0].text if response.content else "{}"
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            draft_json = json.loads(raw.strip())
+            input_tokens = (
+                response.usage.input_tokens if hasattr(response, "usage") else estimated_tokens
+            )
+            output_tokens = (
+                response.usage.output_tokens if hasattr(response, "usage") else 100
+            )
+        except (json.JSONDecodeError, Exception) as exc:
+            self.logger.error(f"Haiku draft generation failed for order {order_id}: {exc}")
+            draft_json = {
+                "subject": (
+                    f"Inquiry: {payload.get('wine_name', 'Wine')} — "
+                    f"{email_type.replace('_', ' ').title()}"
+                ),
+                "body": (
+                    f"We are interested in {payload.get('quantity', 'several')} cases of "
+                    f"{payload.get('wine_name', 'wine')}. "
+                    "Please provide pricing and availability."
+                ),
+            }
+
+        # Step 8: SpendLogger (TOKENBDGT-03)
+        try:
+            spend_logger = get_spend_logger()
+            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+            spend_logger.log(
+                provider="anthropic",
+                model=self.settings.haiku_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                restaurant_id=restaurant_id,
+            )
+        except Exception as exc:
+            self.logger.warning(f"SpendLogger failed (non-critical): {exc}")
+
+        # Step 9a: Post-draft constraint checks
+        draft_body = draft_json.get("body", "")
+        post_check = ce.check_hard_constraints(draft_body)
+        annotating = ce.check_annotating_constraints(draft_text=draft_body)
+        word_check = ce.check_length_cap(draft_body)
+
+        # PII sensitivity check (GAP-1 / T-32-03-04 discrete mode)
+        is_sensitive = self._classify_message_sensitivity(draft_body)
+
+        constraint_flags: Dict[str, Any] = {
+            "hard": post_check.triggered_hard,
+            "annotating": annotating.triggered_annotating,
+            "soft_warnings": annotating.annotations,
+            "is_sensitive": is_sensitive,
+        }
+
+        if post_check.blocked or word_check.blocked:
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="constraint_triggered",
+                title=(
+                    f"Draft blocked: {', '.join(post_check.triggered_hard + word_check.triggered_hard)}"
+                ),
+                message="AI draft violates hard constraints. Manual drafting required.",
+                priority="high",
+                action_url="/orders",
+                metadata={"order_id": order_id, "constraints": post_check.triggered_hard},
+            )
+            return
+
+        # Step 9b: Disclaimer append (D-32-08 — non-removable)
+        restaurant_name = payload.get("restaurant_name", "the restaurant")
+        disclaimer = self.settings.wineops_disclaimer.format(restaurant_name=restaurant_name)
+        full_draft = f"{draft_body}\n\n{disclaimer}"
+
+        # Step 10: Auto-send gate (D-32-07 — 3-gate check)
+        auto_send = await self._check_auto_send_gate(restaurant_id, provider_id)
+        final_status = "AUTO_SENT" if auto_send else "PENDING_APPROVAL"
+
+        # Step 11: INSERT procurement_conversations
+        conversation_id = None
+        try:
+            conv_result = (
+                self.database.supabase.table("procurement_conversations")
+                .insert({
+                    "order_id": order_id,
+                    "provider_id": provider_id,
+                    "restaurant_id": restaurant_id,
+                    "direction": "OUTBOUND",
+                    "channel": "email",
+                    "content": full_draft,
+                    "status": final_status,
+                    "outbound_email_type": email_type,
+                    "round_count": 0,
+                    "disclaimer_appended": True,
+                    "constraint_flags": constraint_flags,
+                    "rolling_summary": None,
+                })
+                .execute()
+            )
+            if conv_result.data:
+                conversation_id = conv_result.data[0].get("id")
+        except Exception as exc:
+            self.logger.error(f"Failed to insert procurement_conversation for order {order_id}: {exc}")
+            raise
+
+        # Step 12: Post-insert action
+        provider_name = payload.get("provider_name", "Provider")
+        order_display = order_id[:8]
+
+        if auto_send:
+            # D-32-07: Auto-send path — publish event for downstream Gmail send
+            try:
+                await self.message_bus.publish(
+                    exchange="provider.events",
+                    routing_key="provider.draft.auto_approved",
+                    message={
+                        "conversation_id": conversation_id,
+                        "order_id": order_id,
+                        "restaurant_id": restaurant_id,
+                        "auto_sent": True,
+                    },
+                )
+            except Exception as exc:
+                self.logger.warning(f"Failed to publish auto_approved event (non-critical): {exc}")
+        else:
+            # Manual approval path: notify manager
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="draft_ready",
+                title=f"Draft ready: email to {provider_name}",
+                message=(
+                    f"AI drafted a {email_type.replace('_', ' ').title()} email for order #{order_display}"
+                ),
+                priority="high",
+                action_url=f"/orders?draft={conversation_id}",
+                metadata={
+                    "conversation_id": conversation_id,
+                    "order_id": order_id,
+                    "email_type": email_type,
+                },
+            )
+
+        # Decision log (T-32-03-01 repudiation mitigation)
+        await self.log_decision(
+            decision_type="outbound_draft_generated",
+            inputs={"order_id": order_id, "email_type": email_type, "provider_id": provider_id},
+            output={
+                "conversation_id": conversation_id,
+                "constraint_flags": constraint_flags,
+                "word_count": ce.word_count(draft_body),
+                "final_status": final_status,
+            },
+            reasoning=(
+                f"Email type {email_type} selected; "
+                f"{len(constraint_flags.get('annotating', []))} annotating constraints; "
+                f"auto_send={auto_send}"
+            ),
+            confidence=0.90,
+            restaurant_id=restaurant_id,
+        )
+        self.logger.info(
+            f"Draft generated for order {order_id}: conversation_id={conversation_id}, "
+            f"status={final_status}"
+        )
