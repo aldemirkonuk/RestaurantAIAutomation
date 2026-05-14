@@ -295,6 +295,7 @@ Plans:
 **Plans:** TBD (created by `/gsd-plan-phase 31`)
 
 > **⚠️ PAID TIER NOTE (do not implement yet — ask user first):**
+> See also Phase 32 — the LLM communicator auto-send gate will be implemented there.
 > The LLM communicator (`ProviderConversationAgent` auto-reply + draft generation + D-19 context enrichment from Phase 24) should be **paid-tier only**. Free tier restaurants can still receive and read vendor emails and see PROMO classifications, but the AI-drafted reply generation (`auto_reply_enabled` toggle + Haiku draft synthesis) must be gated behind a paid subscription flag, similar to how `autonomous_vendor_discovery` is gated in Phase 29. When planning this gate, discuss with user: (a) which plan tier unlocks it, (b) whether free users see a locked/upgrade CTA when viewing provider conversation sessions, and (c) whether existing `PROV_AGENT_LEVEL4_ENABLED` settings flag becomes the enforcement point.
 
 ### Phase 29: Autonomous Vendor Discovery (Paid Tier)
@@ -310,6 +311,26 @@ Plans:
   6. Order proceeds immediately after at least one vendor is approved
   7. Fallback to manual entry form if LLM search returns 0 results
   8. Discovery action logged to `agent_activity_logs` with cost estimate for the Claude call
+
+### Phase 32: Provider Outbound Communication Engine *(builds on Phase 24)*
+**Goal**: Outbound half of the provider communication loop. Order creation silently pre-generates an AI email draft and notifies the manager (never auto-emails without approval). Manager approves/edits/discards. Progressive summarization keeps LLM context flat at ~6k tokens regardless of conversation length. Provider intelligence profiles (22 dimensions: foundational + dynamic) built automatically from conversation history.
+**Depends on**: Phase 24 (EmailIntelAgent, ProviderConversationAgent L4, negotiation_facts), Phase 27 (provider model)
+**Context**: `.planning/phases/32-provider-outbound-communication-engine/32-CONTEXT.md` — all decisions locked
+**Requirements**: OUTBOUND-01..08, PROVINT-01..06, TOKENBDGT-01..04
+**Success Criteria** (what must be TRUE):
+  1. Order created with provider assigned → manager notification + silent AI draft (no email to provider yet)
+  2. Manager draft panel: approve / edit / discard (reuses Orders.tsx modal pattern)
+  3. 4 outbound email types: PRICE_INQUIRY, DEMAND_OFFER, PROMO_INQUIRY, WINE_INQUIRY
+  4. Progressive summarization: context flat at ~6k tokens/call; summary every 2 rounds; `negotiation_facts` auto-extracted
+  5. Rate limits enforced: 500 classify/day, 50 negotiation drafts/day per restaurant (configurable)
+  6. Auto-escalation after MAX_ROUNDS (default 6) without resolution
+  7. 8 hard constraints enforced (C-01 topic lock through C-08 sensitive skip); WineOps AI disclaimer on every draft
+  8. `provider_intelligence` table with 22 dimensions (foundational JSONB + dynamic JSONB)
+  9. Unknown sender email → "add to providers?" notification
+  10. Provider card: 3 intelligence badge pills (response speed, specialty, relationship tier)
+  11. Layered email classification (4 layers, avg ~320 tokens vs 8k naive — 10× cheaper)
+  12. Auto-send gate: paid tier + health ≥ 0.80 + manager pre-approved (3-gate, all required)
+**Plans:** TBD (created by `/gsd-plan-phase 32`)
 
 ### Phase 28: Onboarding Reform + Menu Import ✓ COMPLETE (2026-05-11)
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
