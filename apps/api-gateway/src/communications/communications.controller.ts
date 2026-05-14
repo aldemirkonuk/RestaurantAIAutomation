@@ -882,78 +882,8 @@ export class CommunicationsController {
         await this.gmailWatchService.fetchNewMessages(lastHistoryId);
 
       this.logger.log(`Fetched ${newMessages.length} new messages`);
-
-      // Filter for inbound messages (not sent by us)
-      const senderEmail =
-        this.configService.get<string>('GMAIL_SENDER_EMAIL') ||
-        'notifications@wineops.ai';
-
-      for (const msg of newMessages) {
-        const headers = msg.payload?.headers || [];
-        const from =
-          headers.find((h) => h.name?.toLowerCase() === 'from')?.value || '';
-        const subject =
-          headers.find((h) => h.name?.toLowerCase() === 'subject')?.value || '';
-        const messageId =
-          headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value ||
-          '';
-        const inReplyTo =
-          headers.find((h) => h.name?.toLowerCase() === 'in-reply-to')
-            ?.value || '';
-        const references =
-          headers.find((h) => h.name?.toLowerCase() === 'references')?.value ||
-          '';
-
-        // Skip our own outbound emails
-        if (from.includes(senderEmail)) {
-          continue;
-        }
-
-        this.logger.log(
-          `Inbound email: from=${from}, subject=${subject}, gmailId=${msg.id}`,
-        );
-
-        // Extract plain text body
-        let bodyText = '';
-        const parts = msg.payload?.parts || [];
-        for (const part of parts) {
-          if (part.mimeType === 'text/plain' && part.body?.data) {
-            bodyText = Buffer.from(part.body.data, 'base64url').toString(
-              'utf-8',
-            );
-            break;
-          }
-        }
-        if (!bodyText && msg.payload?.body?.data) {
-          bodyText = Buffer.from(msg.payload.body.data, 'base64url').toString(
-            'utf-8',
-          );
-        }
-
-        // Publish to RabbitMQ for EmailParsingAgent to process
-        try {
-          await this.orchestratorService.publishEvent('email.events', 'email.inbound.received', {
-            gmail_message_id: msg.id,
-            gmail_thread_id: msg.threadId,
-            from,
-            subject,
-            body: bodyText,
-            message_id_header: messageId,
-            in_reply_to: inReplyTo,
-            references,
-            received_at: new Date().toISOString(),
-            headers: Object.fromEntries(
-              headers
-                .filter((h) => h.name && h.value)
-                .map((h) => [h.name!.toLowerCase(), h.value]),
-            ),
-          });
-        } catch (pubErr) {
-          this.logger.error(
-            `Failed to publish inbound email to RabbitMQ: ${pubErr}`,
-          );
-        }
-      }
+      // Publishing handled inside GmailWatchService.fetchNewMessages() — each message
+      // is published to email.events / email.inbound.raw with direction + labelIds.
 
       return { status: 'processed', messages: newMessages.length } as any;
     } catch (error) {

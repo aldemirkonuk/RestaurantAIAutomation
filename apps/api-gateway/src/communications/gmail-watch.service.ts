@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { CacheService } from '../common/cache/cache.service';
+import { OrchestratorService } from '../common/orchestrator/orchestrator.service';
 
 /**
  * GmailWatchService manages Gmail API push notifications via Google Pub/Sub.
@@ -27,6 +28,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly cacheService: CacheService,
+    private readonly orchestratorService: OrchestratorService,
   ) {}
 
   async onModuleInit() {
@@ -165,7 +167,10 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Fetch new messages since the last historyId using gmail.users.history.list()
+   * Fetch new messages since the last historyId using gmail.users.history.list().
+   * No labelId filter — both INBOX and SENT messages are fetched so EmailIntelAgent
+   * can process the full thread. Direction is derived from server-authoritative labelIds.
+   * Each message is published to RabbitMQ on the email.inbound.raw routing key.
    */
   async fetchNewMessages(sinceHistoryId: string): Promise<gmail_v1.Schema$Message[]> {
     if (!this.isConfigured) return [];
@@ -175,7 +180,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
         userId: 'me',
         startHistoryId: sinceHistoryId,
         historyTypes: ['messageAdded'],
-        labelId: 'INBOX',
+        // No labelId — inspect fullMessage.data.labelIds for direction
       });
 
       const history = historyResponse.data.history || [];
@@ -190,6 +195,66 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
               id: added.message.id,
               format: 'full',
             });
+
+            const labelIds: string[] = (fullMessage.data.labelIds as string[]) || [];
+            const direction: 'inbound' | 'outbound' =
+              labelIds.includes('SENT') && !labelIds.includes('INBOX') ? 'outbound' : 'inbound';
+
+            // Extract headers for publish payload
+            const headers = fullMessage.data.payload?.headers || [];
+            const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value || '';
+            const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value || '';
+            const messageId =
+              headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || '';
+            const inReplyTo =
+              headers.find((h) => h.name?.toLowerCase() === 'in-reply-to')?.value || '';
+            const references =
+              headers.find((h) => h.name?.toLowerCase() === 'references')?.value || '';
+
+            // Extract plain text body
+            let bodyText = '';
+            const parts = fullMessage.data.payload?.parts || [];
+            for (const part of parts) {
+              if (part.mimeType === 'text/plain' && part.body?.data) {
+                bodyText = Buffer.from(part.body.data, 'base64url').toString('utf-8');
+                break;
+              }
+            }
+            if (!bodyText && fullMessage.data.payload?.body?.data) {
+              bodyText = Buffer.from(
+                fullMessage.data.payload.body.data,
+                'base64url',
+              ).toString('utf-8');
+            }
+
+            this.logger.log(
+              `Email: direction=${direction}, from=${from}, subject=${subject}, gmailId=${fullMessage.data.id}`,
+            );
+
+            // Publish to RabbitMQ for EmailIntelAgent (email.inbound.raw routing key)
+            try {
+              await this.orchestratorService.publishEvent('email.events', 'email.inbound.raw', {
+                gmail_message_id: fullMessage.data.id,
+                gmail_thread_id: fullMessage.data.threadId,
+                from,
+                subject,
+                body: bodyText,
+                message_id_header: messageId,
+                in_reply_to: inReplyTo,
+                references,
+                received_at: new Date().toISOString(),
+                direction,
+                labelIds,
+                headers: Object.fromEntries(
+                  headers
+                    .filter((h) => h.name && h.value)
+                    .map((h) => [h.name!.toLowerCase(), h.value]),
+                ),
+              });
+            } catch (pubErr) {
+              this.logger.error(`Failed to publish email to RabbitMQ: ${pubErr}`);
+            }
+
             messages.push(fullMessage.data);
           }
         }
