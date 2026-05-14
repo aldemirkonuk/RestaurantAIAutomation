@@ -13,34 +13,23 @@
 -- 1. VENDOR PROMOTIONS TABLE
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS vendor_promotions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    provider_id UUID REFERENCES providers(id) ON DELETE CASCADE,
-    restaurant_id UUID NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
-    detected_from_conversation_id UUID,
-    detected_from_email_subject TEXT,
-    product_name VARCHAR(255) NOT NULL,
-    grape_variety VARCHAR(100),
-    region VARCHAR(100),
-    discount_pct DECIMAL(5,2),
-    discount_fixed DECIMAL(10,2),
-    valid_from DATE,
-    valid_until DATE,
-    promo_description TEXT,
-    conditions TEXT,
-    min_quantity INTEGER,
-    menu_fit VARCHAR(20) DEFAULT 'PENDING' CHECK (menu_fit IN ('STRONG_FIT','PARTIAL_FIT','NO_FIT','PENDING')),
-    menu_fit_detail TEXT,
-    dedup_hash VARCHAR(64) UNIQUE,
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','actioned','suppressed','expired')),
-    urgency_score DECIMAL(4,2) DEFAULT NULL,
-    linked_event_ids UUID[] DEFAULT '{}',
-    last_comparison_price DECIMAL(10,2) DEFAULT NULL,
-    price_source_inventory_id UUID,
-    snoozed_until TIMESTAMPTZ DEFAULT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- vendor_promotions base table already exists from 20260415000002_phase24_comms_tables.sql
+-- Add Phase 24 columns that were missing from the original table definition
+ALTER TABLE vendor_promotions
+    ADD COLUMN IF NOT EXISTS urgency_score DECIMAL(4,2) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS linked_event_ids UUID[] DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS last_comparison_price DECIMAL(10,2) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS price_source_inventory_id UUID,
+    ADD COLUMN IF NOT EXISTS snoozed_until TIMESTAMPTZ DEFAULT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'vendor_promotions_dedup_hash_key'
+    ) THEN
+        ALTER TABLE vendor_promotions ADD CONSTRAINT vendor_promotions_dedup_hash_key UNIQUE (dedup_hash);
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS vendor_promotions_restaurant_id_idx ON vendor_promotions(restaurant_id);
 CREATE INDEX IF NOT EXISTS vendor_promotions_provider_id_idx ON vendor_promotions(provider_id);
