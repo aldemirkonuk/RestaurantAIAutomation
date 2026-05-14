@@ -45,6 +45,9 @@ from agents.auto_pilot_agent import AutoPilotAgent
 from agents.compliance_agent import ComplianceAgent
 from agents.shrinkage_detective_agent import ShrinkageDetectiveAgent
 
+# Phase 32 Agents
+from agents.provider_communication_agent import ProviderCommunicationAgent
+
 logger = setup_logger(__name__)
 
 
@@ -154,6 +157,9 @@ class AgentOrchestrator:
             "auto_pilot_agent": AutoPilotAgent,
             "compliance_agent": ComplianceAgent,
             "shrinkage_detective_agent": ShrinkageDetectiveAgent,
+
+            # Phase 32 agents
+            "provider_communication_agent": ProviderCommunicationAgent,
         }
         
         # Register with the new registry (includes tier and dependency info)
