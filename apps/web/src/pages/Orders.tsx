@@ -4,6 +4,8 @@ import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
 import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
+import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
+import { useApproveDraft, useDiscardDraft } from '../hooks/queries/useDraftEmailQueries'
 import {
   Package,
   Clock,
@@ -229,6 +231,22 @@ export function Orders() {
   const [orderApprovalData, setOrderApprovalData] = useState<OrderApprovalData | null>(null)
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
   const [showOrderGuard, setShowOrderGuard] = useState(false)
+  const [draftPanelData, setDraftPanelData] = useState<{
+    conversationId: string
+    orderId: string
+    wineName: string
+    providerName: string
+    providerEmail: string
+    emailType: 'PRICE_INQUIRY' | 'DEMAND_OFFER' | 'PROMO_INQUIRY' | 'WINE_INQUIRY'
+    draftContent: string
+    disclaimer: string
+    constraintWarnings: Array<{ code: string; message: string; severity: 'annotating' | 'soft' }>
+    roundCount: number
+    timestamp: string
+  } | null>(null)
+  const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false)
+  const approveDraftMutation = useApproveDraft()
+  const discardDraftMutation = useDiscardDraft()
 
   // Single entry-point guard. Pre-empts the wine picker when no vendors exist
   // so the user gets the actionable OrderGuardModal instead of a dead-end
@@ -328,6 +346,43 @@ export function Orders() {
         console.log('Notification permission:', permission)
       })
     }
+  }, [])
+
+  // Listen for draft_ready notifications from the WebSocket bridge
+  useEffect(() => {
+    const handleNotification = async (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      const payload = detail?.new as Record<string, any> | undefined
+      if (!payload || payload.type !== 'draft_ready') return
+      const orderId = payload.metadata?.order_id ?? payload.order_id
+      if (!orderId) return
+      try {
+        const res = await apiClient.get(`/procurement/orders/${orderId}/draft`)
+        const draft = res.data
+        if (draft) {
+          setDraftPanelData({
+            conversationId: payload.metadata?.conversation_id ?? payload.conversation_id ?? draft.id ?? orderId,
+            orderId,
+            wineName: draft.wine_name ?? '',
+            providerName: draft.provider_name ?? '',
+            providerEmail: draft.provider_email ?? '',
+            emailType: draft.outbound_email_type ?? 'PRICE_INQUIRY',
+            draftContent: draft.content ?? '',
+            disclaimer: draft.content?.split('\n\n—\n')?.[1] ?? 'Sent via WineOps AI — This message was generated with AI assistance.',
+            constraintWarnings: (draft.constraint_flags?.annotating ?? []).map((c: string) => ({
+              code: c, message: c, severity: 'annotating' as const,
+            })),
+            roundCount: draft.round_count ?? 0,
+            timestamp: draft.created_at ?? new Date().toISOString(),
+          })
+          setIsDraftPanelOpen(true)
+        }
+      } catch (err) {
+        console.error('Failed to fetch pending draft:', err)
+      }
+    }
+    window.addEventListener('notification_sent', handleNotification)
+    return () => window.removeEventListener('notification_sent', handleNotification)
   }, [])
 
   // Check for pending reorder from Wine Library (using Zustand store instead of sessionStorage)
@@ -3092,6 +3147,33 @@ Shadow stock has been moved to Live Stock.`)
           }}
         />
       )}
+
+      {/* AI Draft Email Approval Panel */}
+      <DraftEmailApprovalPanel
+        isOpen={isDraftPanelOpen}
+        draftData={draftPanelData}
+        onApprove={async (modifiedContent, managerNotes) => {
+          if (!draftPanelData) return
+          await approveDraftMutation.mutateAsync({
+            orderId: draftPanelData.orderId,
+            modifiedContent,
+            managerNotes,
+          })
+          setIsDraftPanelOpen(false)
+          setDraftPanelData(null)
+        }}
+        onDiscard={async () => {
+          if (!draftPanelData) return
+          await discardDraftMutation.mutateAsync(draftPanelData.orderId)
+          setIsDraftPanelOpen(false)
+          setDraftPanelData(null)
+        }}
+        onClose={() => {
+          setIsDraftPanelOpen(false)
+          setDraftPanelData(null)
+        }}
+        isSubmitting={approveDraftMutation.isPending || discardDraftMutation.isPending}
+      />
 
       {/* Legacy Approval Modal - For orders from list */}
       <AnimatePresence>
