@@ -22,6 +22,8 @@ export interface Provider {
   catalogueVendorId?: string | null
   /** True if this provider was manually created; false if sourced from catalogue */
   isCustom?: boolean
+  profile_foundational?: Record<string, any>
+  profile_dynamic?: Record<string, any>
 }
 
 export interface ProviderContact {

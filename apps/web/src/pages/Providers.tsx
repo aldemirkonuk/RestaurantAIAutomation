@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -31,6 +32,7 @@ import { AddProviderModal, NewProviderData } from '../components/providers/AddPr
 import { EditProviderModal, EditProviderData } from '../components/providers/EditProviderModal'
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
+import { ProviderProfileForm } from '../components/providers/ProviderProfileForm'
 import { PageSkeleton, ErrorState } from '../components/ui'
 import { QuickGmailModal } from '../components/emails/QuickGmailModal'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
@@ -59,6 +61,32 @@ function TypeBadge({ type }: { type: string | undefined }) {
   )
 }
 
+
+function IntelBadge({ dimension }: { dimension: { key: string; label: string; value: string } }) {
+  const cfg =
+    dimension.key === 'response_speed'   ? { dot: 'bg-green-500', bg: 'bg-green-50', text: 'text-green-700' } :
+    dimension.key === 'negotiation_style' ? { dot: 'bg-amber-500', bg: 'bg-amber-50', text: 'text-amber-700' } :
+    dimension.key === 'relationship_tier' ? { dot: 'bg-rose-500',  bg: 'bg-rose-50',  text: 'text-rose-700'  } :
+                                            { dot: 'bg-gray-400',  bg: 'bg-gray-50',  text: 'text-gray-600'  }
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+      {dimension.label}: {dimension.value}
+    </span>
+  )
+}
+
+function getTopIntelDimensions(profileDynamic: Record<string, any>) {
+  const priorityKeys = ['response_speed', 'negotiation_style', 'relationship_tier']
+  return priorityKeys
+    .filter((k) => profileDynamic[k])
+    .map((k) => ({
+      key: k,
+      label: k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      value: String(profileDynamic[k]).slice(0, 20),
+    }))
+    .slice(0, 3)
+}
 
 interface EmptyProvidersStateProps {
   onBrowseCatalogue: () => void
@@ -106,6 +134,7 @@ export function Providers() {
   const { preferences, updatePreferences } = useUserPreferences()
   const { data: rawOrders } = useOrders()
   const { dispatchProviderUpdate } = useRealtimeDispatch()
+  const queryClient = useQueryClient()
 
   const lastOrderDates = useMemo(() => {
     const dates: Record<string, string> = {}
@@ -130,6 +159,7 @@ export function Providers() {
   const [showEmailModal, setShowEmailModal]         = useState(false)
   const [emailRecipient, setEmailRecipient]         = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly]   = useState(false)
+  const [profileFormProviderId, setProfileFormProviderId] = useState<string | null>(null)
 
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
@@ -557,6 +587,23 @@ export function Providers() {
                         </button>
                       </div>
 
+                      {/* Intel badges — dynamic profile */}
+                      {provider.profile_dynamic && Object.keys(provider.profile_dynamic).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5 mb-1">
+                          {getTopIntelDimensions(provider.profile_dynamic).map((dim) => (
+                            <IntelBadge key={dim.key} dimension={dim} />
+                          ))}
+                        </div>
+                      )}
+                      {(!provider.profile_foundational || Object.keys(provider.profile_foundational).length === 0) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setProfileFormProviderId(provider.id) }}
+                          className="text-[11px] text-indigo-600 hover:text-indigo-800 underline mt-1 mb-1 block"
+                        >
+                          + Fill intelligence profile
+                        </button>
+                      )}
+
                       {/* Star rating — interactive */}
                       <div className="flex items-center gap-0.5 mb-2.5">
                         {[1, 2, 3, 4, 5].map(star => (
@@ -929,6 +976,31 @@ export function Providers() {
       <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
+      )}
+
+      {/* Provider Intelligence Profile overlay */}
+      {profileFormProviderId && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4"
+          onClick={() => setProfileFormProviderId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 pt-6 pb-2">
+              <h3 className="text-lg font-bold text-gray-900">Provider Intelligence Profile</h3>
+              <button onClick={() => setProfileFormProviderId(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <ProviderProfileForm
+              providerId={profileFormProviderId}
+              onSaved={() => {
+                setProfileFormProviderId(null)
+                queryClient.invalidateQueries({ queryKey: ['providers'] })
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
