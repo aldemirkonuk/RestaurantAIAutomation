@@ -160,6 +160,16 @@ Plans:
 **Goal**: Full manager↔provider communication loop with a new `EmailIntelAgent` handling inbox triage, promotional email intelligence, and daily digests. Surface relationship health + deal opportunities in the frontend.
 **Depends on**: Phase 23 (Gmail working, inbox accessible)
 **Requirements**: COMMS-01..08, SENTIMENT-01..03, INTEL-01..06
+**Plans**: 8 plans
+Plans:
+- [ ] 24-01-PLAN.md — DB schema foundations + RabbitMQ exchange fix + supabase db push
+- [ ] 24-02-PLAN.md — Gmail Watch SENT expansion + fetchNewMessages routing key fix
+- [ ] 24-03-PLAN.md — model_clients.py AI SDK singletons (GeminiFlash + Haiku + Pydantic schemas)
+- [ ] 24-04-PLAN.md — EmailIntelAgent (classify → route OPERATIONAL, extract PROMO, Redis digest)
+- [ ] 24-05-PLAN.md — ProviderConversationAgent Level 4 hardening (idempotency, DLQ, learning loop)
+- [ ] 24-06-PLAN.md — DigestCronJob + Provider Comms card + Deals accordion card (frontend)
+- [ ] 24-07-PLAN.md — Manager approval flow + ConversationComposer UI + abandoned draft cleanup
+- [ ] 24-08-PLAN.md — Premortem risk documentation + 3 UI sketch variants
 **Success Criteria** (what must be TRUE):
   1. `ProviderConversationAgent` upgraded to Level 4 (idempotency, decision logging, DLQ)
   2. `EmailParsingAgent` upgraded to Level 4 — all inbound vendor emails parsed + saved to `order_interactions`
