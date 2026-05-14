@@ -34,7 +34,7 @@ export class RecipientResolverService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
   ) {
-    this.defaultEmail = this.configService.get<string>('MANAGER_EMAIL') || 'aldemirkonuk2004@gmail.com';
+    this.defaultEmail = this.configService.get<string>('MANAGER_EMAIL') || '';
     this.defaultRestaurantId = this.configService.get<string>('DEFAULT_RESTAURANT_ID') || null;
   }
 

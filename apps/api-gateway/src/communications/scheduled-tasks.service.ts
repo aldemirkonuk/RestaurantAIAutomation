@@ -1,9 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CommunicationsService } from './communications.service';
 import { DatabaseService } from '../database/database.service';
 import { GmailService } from './gmail.service';
+import type { EmailResult } from './gmail.service';
 import { RecipientResolverService } from './recipient-resolver.service';
 
 /**
@@ -67,7 +68,7 @@ export class ScheduledTasksService implements OnModuleInit {
 
   async onModuleInit() {
     this.managerPhone = this.configService.get<string>('MANAGER_PHONE') || null;
-    const emailConfig = this.configService.get<string>('MANAGER_EMAIL') || 'aldemirkonuk2004@gmail.com';
+    const emailConfig = this.configService.get<string>('MANAGER_EMAIL') || '';
     this.managerEmails = emailConfig.split(',').map(e => e.trim()).filter(e => e);
     this.defaultRestaurantId = this.configService.get<string>('DEFAULT_RESTAURANT_ID') || null;
 
@@ -189,19 +190,28 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Check for low stock alerts - Runs every hour
+   * Critical low-stock email alerts — hourly cron removed (was noisy).
+   * Use midday report (sendMiddayLowStockReport) or trigger manually when needed.
    */
-  @Cron(CronExpression.EVERY_HOUR, {
-    name: 'low-stock-check',
-  })
   async checkLowStockAlerts() {
     if (!this.defaultRestaurantId) {
+      return;
+    }
+
+    if (this.managerEmails.length === 0) {
+      this.logger.log('Low stock check skipped: MANAGER_EMAIL not configured');
       return;
     }
 
     this.logger.log('Checking for low stock items...');
 
     try {
+      const inventory = await this.databaseService.getRestaurantInventory(this.defaultRestaurantId);
+      if (!inventory?.length) {
+        this.logger.log('Low stock check skipped: no inventory for restaurant');
+        return;
+      }
+
       const lowStockItems = await this.getLowStockItems();
 
       for (const item of lowStockItems) {
@@ -563,6 +573,29 @@ export class ScheduledTasksService implements OnModuleInit {
       if (!reminders || reminders.length === 0) return;
 
       for (const reminder of reminders) {
+        const invTypes = new Set(['low_stock', 'inventory', 'inventory_audit']);
+        if (invTypes.has(String(reminder.reminder_type || '').toLowerCase())) {
+          const inventoryRows = await this.databaseService.getRestaurantInventory(this.defaultRestaurantId);
+          if (!inventoryRows?.length) {
+            this.logger.log(
+              `Custom reminder "${reminder.title}" (${reminder.id}) skipped: no inventory rows (${reminder.reminder_type})`,
+            );
+            if (reminder.is_recurring && reminder.schedule_cron) {
+              const nextFire = this.computeNextFireAt(reminder.schedule_cron, now);
+              await client
+                .from('custom_reminders')
+                .update({ last_fired_at: now.toISOString(), next_fire_at: nextFire.toISOString() })
+                .eq('id', reminder.id);
+            } else {
+              await client
+                .from('custom_reminders')
+                .update({ last_fired_at: now.toISOString(), is_active: false })
+                .eq('id', reminder.id);
+            }
+            continue;
+          }
+        }
+
         // Resolve email recipients
         let emails = reminder.recipient_emails || [];
         if (emails.length === 0 && reminder.recipient_roles?.length > 0) {
@@ -577,19 +610,26 @@ export class ScheduledTasksService implements OnModuleInit {
           emails = this.managerEmails;
         }
 
-        // 1. Send email
-        const emailResult = await this.gmailService.sendCustomReminder({
-          to: emails,
-          restaurantName: 'WineOps Restaurant',
-          title: reminder.title,
-          description: reminder.description || '',
-          reminderType: reminder.reminder_type || 'custom',
-          scheduledDate: reminder.next_fire_at,
-          priority: reminder.metadata?.priority || 'medium',
-          actionItems: reminder.metadata?.action_items || [],
-          isRecurring: reminder.is_recurring,
-          recurrencePattern: reminder.schedule_cron,
-        });
+        // 1. Send email (skip when no recipients — avoids Gmail errors / surprise fallback)
+        let emailResult: EmailResult = { success: false };
+        if (emails.length > 0) {
+          emailResult = await this.gmailService.sendCustomReminder({
+            to: emails,
+            restaurantName: 'WineOps Restaurant',
+            title: reminder.title,
+            description: reminder.description || '',
+            reminderType: reminder.reminder_type || 'custom',
+            scheduledDate: reminder.next_fire_at,
+            priority: reminder.metadata?.priority || 'medium',
+            actionItems: reminder.metadata?.action_items || [],
+            isRecurring: reminder.is_recurring,
+            recurrencePattern: reminder.schedule_cron,
+          });
+        } else {
+          this.logger.log(
+            `Custom reminder "${reminder.title}" (${reminder.id}): no email recipients — in-app notification only`,
+          );
+        }
 
         // 2. Write a notifications row (so it appears in the in-app inbox)
         const notifUserId = reminder.created_by || null;

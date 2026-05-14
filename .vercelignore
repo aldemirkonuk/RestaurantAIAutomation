@@ -28,7 +28,11 @@ coverage
 *.log
 logs
 
+# ── Local / backup trees (never ship to Vercel) ───────────────────────────────
+cursor_chat_backup/
+
 # ── Datasets / large assets ───────────────────────────────────────────────────
+datasets/
 External_Wine_Datasets
 datasets/annotation_images
 datasets/annotation_inbox

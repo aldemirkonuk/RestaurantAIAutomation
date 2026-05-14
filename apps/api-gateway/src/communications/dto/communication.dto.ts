@@ -2,7 +2,7 @@ import { IsString, IsArray, IsOptional, IsNumber, IsEmail, Min, IsBoolean } from
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SendEmailDto {
-  @ApiProperty({ description: 'Email recipients', example: ['aldemirkonuk2004@gmail.com'] })
+  @ApiProperty({ description: 'Email recipients', example: ['ops@your-restaurant.com'] })
   @IsArray()
   @IsEmail({}, { each: true })
   to: string[];
@@ -44,7 +44,7 @@ export class SendSmsDto {
 }
 
 export class LowStockAlertDto {
-  @ApiProperty({ description: 'Recipient email address', example: 'aldemirkonuk2004@gmail.com' })
+  @ApiProperty({ description: 'Recipient email address', example: 'ops@your-restaurant.com' })
   @IsEmail()
   recipientEmail: string;
 

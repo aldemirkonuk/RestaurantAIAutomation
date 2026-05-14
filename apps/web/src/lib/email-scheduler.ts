@@ -189,9 +189,14 @@ export function stopEmailScheduler(): void {
 }
 
 /**
- * Schedule a test email (for the specific requirement)
+ * Schedule a test email. Set `VITE_SCHEDULED_TEST_EMAIL` (comma-separated) or this is a no-op.
  */
-export function scheduleTestEmail(): ScheduledEmail {
+export function scheduleTestEmail(): ScheduledEmail | null {
+  const raw = import.meta.env.VITE_SCHEDULED_TEST_EMAIL as string | undefined
+  const to = raw?.split(',').map(e => e.trim()).filter(e => e) ?? []
+  if (to.length === 0) {
+    return null
+  }
   const testHtml = `
 <!DOCTYPE html>
 <html>
@@ -228,7 +233,7 @@ export function scheduleTestEmail(): ScheduledEmail {
   `
   
   return scheduleEmail(
-    ['aldemirkonuk2004@gmail.com'],
+    to,
     'WineOps AI - Scheduled Test Email',
     testHtml,
     'This is a test email scheduled to be sent 20 minutes after creation.',

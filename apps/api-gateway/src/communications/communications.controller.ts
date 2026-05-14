@@ -1,4 +1,16 @@
-import { Controller, Post, Get, Body, Logger, HttpCode, HttpStatus, Req, Res, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Logger,
+  HttpCode,
+  HttpStatus,
+  Req,
+  Res,
+  Query,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { CommunicationsService } from './communications.service';
@@ -35,7 +47,7 @@ export class CommunicationsController {
     private readonly databaseService: DatabaseService,
   ) {
     // Parse comma-separated emails from MANAGER_EMAIL
-    const emailConfig = this.configService.get<string>('MANAGER_EMAIL') || 'aldemirkonuk2004@gmail.com';
+    const emailConfig = this.configService.get<string>('MANAGER_EMAIL') || '';
     this.managerEmails = emailConfig.split(',').map(e => e.trim()).filter(e => e);
     this.logger.log(`Configured manager emails: ${this.managerEmails.join(', ')}`);
   }
@@ -151,8 +163,7 @@ export class CommunicationsController {
   }
 
   /**
-   * TEST ENDPOINT: Simulate low stock alert scenario
-   * Sends email to aldemirkonuk2004@gmail.com with sample data
+   * TEST ENDPOINT: Simulate low stock alert scenario — sends to MANAGER_EMAIL recipients only.
    */
   @Post('test/low-stock-alert')
   @HttpCode(HttpStatus.OK)
@@ -162,6 +173,11 @@ export class CommunicationsController {
   })
   @ApiResponse({ status: 200, type: MultiChannelResultDto })
   async testLowStockAlert(): Promise<MultiChannelResultDto> {
+    if (this.managerEmails.length === 0) {
+      throw new BadRequestException(
+        'MANAGER_EMAIL is not set — configure it to receive test alerts, or use POST /communications/email with explicit recipients.',
+      );
+    }
     this.logger.log('='.repeat(60));
     this.logger.log('TEST SCENARIO: Low Stock Alert');
     this.logger.log('='.repeat(60));
@@ -318,9 +334,8 @@ export class CommunicationsController {
   }
 
   /**
-   * TEST ENDPOINT: Full messaging scenario between Manager and Vendor
-   * Manager (aldemirkonuk2004@gmail.com) <-> Vendor (konukald@msu.edu)
-   * 
+   * TEST ENDPOINT: Full messaging scenario between Manager and Vendor.
+   *
    * Flow:
    * 1. Manager sends order inquiry email to vendor
    * 2. Stores outbound message in procurement_conversations
@@ -330,7 +345,8 @@ export class CommunicationsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'TEST: Execute full messaging scenario (Manager <-> Vendor)',
-    description: 'Simulates the complete order inquiry → vendor response → AI summarization flow. Manager: aldemirkonuk2004@gmail.com, Vendor: konukald@msu.edu',
+    description:
+      'Simulates order inquiry → vendor response → AI summarization. Pass managerEmail or set MANAGER_EMAIL.',
   })
   async testMessagingScenario(@Body() body?: {
     managerEmail?: string;
@@ -340,7 +356,12 @@ export class CommunicationsController {
     quantity?: number;
     targetPrice?: number;
   }) {
-    const managerEmail = body?.managerEmail || 'aldemirkonuk2004@gmail.com';
+    const managerEmail = body?.managerEmail ?? this.managerEmails[0];
+    if (!managerEmail) {
+      throw new BadRequestException(
+        'Pass managerEmail in the body or set MANAGER_EMAIL for the default manager address.',
+      );
+    }
     const vendorEmail = body?.vendorEmail || 'konukald@msu.edu';
     const restaurantId = body?.restaurantId || this.configService.get<string>('DEFAULT_RESTAURANT_ID', '00000000-0000-0000-0000-000000000001');
     const wineName = body?.wineName || 'Opus One 2019';

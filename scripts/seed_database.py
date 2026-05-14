@@ -198,7 +198,7 @@ def seed_managers(restaurant_id):
         },
         {
             "user_id": str(uuid.uuid4()),
-            "email": "aldemirkonuk2004@gmail.com",
+            "email": "manager.devseed@example.com",
             "name": "Aldemir Konuk",
             "phone": "+1-650-555-0101",
             "role": "manager",
