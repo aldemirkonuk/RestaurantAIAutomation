@@ -330,7 +330,14 @@ Plans:
   10. Provider card: 3 intelligence badge pills (response speed, specialty, relationship tier)
   11. Layered email classification (4 layers, avg ~320 tokens vs 8k naive — 10× cheaper)
   12. Auto-send gate: paid tier + health ≥ 0.80 + manager pre-approved (3-gate, all required)
-**Plans:** TBD (created by `/gsd-plan-phase 32`)
+**Plans:** 6 plans
+Plans:
+- [ ] 32-01-PLAN.md — DB schema migrations (providers JSONB columns, procurement_conversations restaurant_id) + rapidfuzz + [BLOCKING] supabase db push
+- [ ] 32-02-PLAN.md — ConstraintEngine (20 constraints) + FuzzyMatcher (rapidfuzz Jaro-Winkler/Levenshtein)
+- [ ] 32-03-PLAN.md — ProviderCommunicationAgent — order-triggered draft engine (subscribe, Haiku draft, constraint check, rate limits, sensitivity classification)
+- [ ] 32-04-PLAN.md — NestJS API: approve-draft/discard-draft/edit-draft endpoints + RabbitMQ trigger + provider intelligence CRUD + retroactive-order endpoint
+- [ ] 32-05-PLAN.md — Frontend: DraftEmailApprovalPanel, IntelBadge, ProviderProfileForm, useDraftEmailQueries, notification wiring
+- [ ] 32-06-PLAN.md — Intelligence extraction: _extract_dynamic_profile, _maybe_summarize (rolling_summary + negotiation_facts), off-app invoice matching
 
 ### Phase 28: Onboarding Reform + Menu Import ✓ COMPLETE (2026-05-11)
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.

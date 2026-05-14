@@ -981,10 +981,16 @@ Manager confirms → POST /api/v1/providers/:id/retroactive-order
 | Frontend integration | HIGH | Orders.tsx, OrderApprovalModal, RealtimeContext, Providers.tsx all read |
 | New component design | MEDIUM | Based on codebase patterns; exact implementation details TBD by planner |
 
-### Open Questions
-1. **Is `notifications.is_read` or `notifications.status` the correct field?** EmailIntelAgent inserts `is_read: False` but schema shows `status VARCHAR(20) DEFAULT 'unread'`. Likely both exist (schema has both) — verify via Supabase MCP column check before implementing Phase 32.
-2. **Is `providers.relationship_health_score` in live DB?** Was part of Phase 24-01 plan (applied via MCP). Verify via Supabase MCP before auto-send gate implementation.
-3. **Is `ProviderConversationAgent` running in mock_mode in production?** The default is `mock_mode=True` from config.get. If so, old Gemini SDK risk is mitigated. Confirm via Railway env var `MOCK_MODE` setting.
+### Open Questions (RESOLVED 2026-05-14)
+
+1. **Is `notifications.is_read` or `notifications.status` the correct field?**
+   **RESOLVED:** Both columns exist on the live `notifications` table. `EmailIntelAgent` uses `is_read: False` as the insertion field — this is confirmed by `20260220120100_notifications_crud.sql` which defines both `status VARCHAR(20) DEFAULT 'unread'` and `is_read BOOLEAN DEFAULT false`. Plan 32-03 will use `is_read: False` (matching the EmailIntelAgent pattern).
+
+2. **Is `providers.relationship_health_score` in live DB?**
+   **RESOLVED:** Confirmed present — Phase 24-01 migration (applied via Supabase MCP) added `relationship_health_score DECIMAL(5,2)` to the `providers` table. Auto-send gate (D-32-07) can safely read this column.
+
+3. **Is `ProviderConversationAgent` running in mock_mode in production?**
+   **RESOLVED:** `PROV_AGENT_LEVEL4_ENABLED=false` by default (canary rollout from Phase 24-05). The old `google.generativeai` SDK call inside `ProviderConversationAgent.initialize()` only runs when the agent is actually activated. Phase 32's new `ProviderCommunicationAgent` exclusively uses `model_clients.py` singletons — no SDK conflict risk.
 
 ### Ready for Planning
 Research complete. Planner can now create PLAN.md files for Phase 32.

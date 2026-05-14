@@ -1,271 +1,867 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>D-13 Sketch: Improved Event Modal</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f8f7f5;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 017 — Calendar Event Modal v3</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:#e8e4df;min-height:100vh;}
 
-    /* ── Modal backdrop ── */
-    .backdrop {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.35);
-      backdrop-filter: blur(4px);
-      display: flex; align-items: center; justify-content: center;
-    }
+/* ── State bar ─────────────────────────────────────────────────────── */
+.sbar{position:fixed;top:0;left:0;right:0;height:48px;background:#18181b;display:flex;align-items:center;padding:0 18px;gap:2px;z-index:300;}
+.sbar-title{font-size:10px;font-weight:700;color:#3f3f46;letter-spacing:.12em;text-transform:uppercase;margin-right:12px;white-space:nowrap;}
+.stab{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;color:#71717a;cursor:pointer;border:none;background:none;transition:all .1s;white-space:nowrap;}
+.stab:hover{color:#e4e4e7;background:#27272a;}
+.stab.on{background:#8b1a2f;color:#fff;}
+.sbar-hint{margin-left:auto;font-size:11px;color:#3f3f46;white-space:nowrap;}
 
-    /* ── Modal card ── */
-    .modal {
-      background: #fff;
-      border-radius: 20px;
-      width: 480px;
-      max-width: 95vw;
-      max-height: 90vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.18);
-    }
+/* ── Backdrop ──────────────────────────────────────────────────────── */
+.backdrop{position:fixed;inset:0;top:48px;background:rgba(12,8,6,.5);backdrop-filter:blur(7px) saturate(.7);display:flex;align-items:center;justify-content:center;padding:16px;}
 
-    /* ── Header ── */
-    .modal-header {
-      padding: 20px 24px 16px;
-      border-bottom: 1px solid #f0eeec;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .modal-header h2 { font-size: 15px; font-weight: 700; color: #111; }
-    .close-btn {
-      width: 28px; height: 28px;
-      border-radius: 50%; border: none;
-      background: #f2f2f2; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; color: #666;
-    }
-    .close-btn:hover { background: #e5e5e5; }
+/* ── Modal ─────────────────────────────────────────────────────────── */
+.modal{background:#fff;border-radius:18px;width:600px;max-width:98vw;max-height:calc(100vh - 80px);display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(0,0,0,.07),0 28px 80px rgba(0,0,0,.3);overflow:hidden;}
 
-    /* ── Scrollable body ── */
-    .modal-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
+/* ── Scope banner ──────────────────────────────────────────────────── */
+.sban{padding:9px 20px;background:#fdf2f4;border-bottom:1px solid #fce7ea;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.sban-lbl{font-size:10px;font-weight:700;color:#8b1a2f;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap;}
+.schips{display:flex;gap:4px;}
+.schip{padding:4px 11px;border-radius:6px;font-size:12px;font-weight:500;border:1.5px solid #e5e3e0;background:#fff;cursor:pointer;color:#6b7280;transition:all .1s;}
+.schip.on{background:#8b1a2f;color:#fff;border-color:#8b1a2f;}
+.simpact{margin-left:auto;font-size:11px;font-weight:600;color:#8b1a2f;}
 
-    /* ── Field group ── */
-    .field-group { display: flex; flex-direction: column; gap: 6px; }
-    .field-label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.06em; }
-    .field-input {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1.5px solid #e5e3e0;
-      border-radius: 10px;
-      font-size: 14px;
-      color: #111;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .field-input:focus { border-color: #8b1a2f; }
+/* ── Modal header ──────────────────────────────────────────────────── */
+.mhdr{padding:15px 20px 13px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #f3f4f6;}
+.cdot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background .15s;}
+.hdr-main{flex:1;min-width:0;}
+.hdr-mode{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.09em;margin-bottom:1px;}
+.hdr-title{font-size:16px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hdr-acts{display:flex;gap:5px;}
+.ibtn{width:30px;height:30px;border-radius:7px;border:1.5px solid #e5e7eb;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;transition:all .1s;}
+.ibtn:hover{background:#f3f4f6;color:#111;}
+.ibtn.red:hover{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
+.xbtn{width:28px;height:28px;border-radius:50%;border:none;background:#f3f4f6;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280;flex-shrink:0;}
+.xbtn:hover{background:#e5e7eb;}
 
-    /* ── Two-column row ── */
-    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+/* ── Modal body ────────────────────────────────────────────────────── */
+.mbody{flex:1;overflow-y:auto;}
+.mbody::-webkit-scrollbar{width:4px;}
+.mbody::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:2px;}
 
-    /* ── Color swatch picker ── */
-    .color-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .swatch {
-      width: 28px; height: 28px;
-      border-radius: 50%; cursor: pointer;
-      border: 2.5px solid transparent;
-      transition: transform 0.12s;
-    }
-    .swatch:hover { transform: scale(1.1); }
-    .swatch.selected { border-color: #111; }
+/* ── Section ───────────────────────────────────────────────────────── */
+.sec{padding:14px 20px;border-bottom:1px solid #f3f4f6;}
+.sec:last-child{border-bottom:none;}
+.slbl{font-size:10px;font-weight:700;color:#d1d5db;text-transform:uppercase;letter-spacing:.11em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.slbl svg{color:#e5e7eb;}
 
-    /* ── Status dropdown ── */
-    .status-select {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1.5px solid #e5e3e0;
-      border-radius: 10px;
-      font-size: 14px;
-      color: #111;
-      background: #fff;
-      cursor: pointer;
-      outline: none;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 10px center;
-      padding-right: 32px;
-    }
+/* ── Title ─────────────────────────────────────────────────────────── */
+.title-inp{width:100%;font-size:15px;font-weight:700;border:none;outline:none;color:#111;background:transparent;padding:0;font-family:inherit;}
+.title-inp::placeholder{color:#d1d5db;font-weight:500;}
 
-    /* ── Status badge ── */
-    .status-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px; font-weight: 600;
-    }
-    .status-badge.approved  { background: #dbeafe; color: #1d4ed8; }
-    .status-badge.pending   { background: #fef3c7; color: #b45309; }
-    .status-badge.recurring { background: #ede9fe; color: #7c3aed; }
+/* ── Type pills ────────────────────────────────────────────────────── */
+.type-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px;}
+.tpill{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;font-size:12px;font-weight:500;border:1.5px solid #e5e7eb;background:#fff;cursor:pointer;color:#6b7280;white-space:nowrap;transition:all .1s;}
+.tpill:hover{border-color:#d1d5db;color:#374151;}
+.tpill.on{border-color:#8b1a2f;background:#fdf4f5;color:#8b1a2f;}
+.tdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 
-    /* ── Recurrence ── */
-    .recurrence-options { display: flex; gap: 6px; flex-wrap: wrap; }
-    .recurrence-chip {
-      padding: 5px 12px;
-      border-radius: 20px;
-      border: 1.5px solid #e5e3e0;
-      font-size: 12px; font-weight: 500; color: #555;
-      cursor: pointer;
-      background: #fff;
-    }
-    .recurrence-chip.active {
-      background: #8b1a2f; color: #fff; border-color: #8b1a2f;
-    }
+/* ── Label detection card (n8n style) ─────────────────────────────── */
+.detect-card{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1.5px solid #fce7ea;background:#fdf9fa;margin-top:10px;position:relative;}
+.detect-strip{width:3px;border-radius:2px;align-self:stretch;flex-shrink:0;}
+.detect-icon{width:32px;height:32px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.detect-body{flex:1;min-width:0;}
+.detect-hint{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;display:flex;align-items:center;gap:5px;}
+.detect-name{font-size:13px;font-weight:600;color:#111;}
+.detect-sub{font-size:11px;color:#6b7280;margin-top:1px;}
+.detect-action{font-size:10.5px;font-weight:600;color:#8b1a2f;margin-top:4px;display:flex;align-items:center;gap:4px;}
+.detect-btns{display:flex;gap:5px;margin-top:1px;}
+.detect-accept{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;background:#8b1a2f;color:#fff;border:none;cursor:pointer;}
+.detect-dismiss{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;background:#f3f4f6;color:#6b7280;border:none;cursor:pointer;}
 
-    /* ── Footer ── */
-    .modal-footer {
-      padding: 16px 24px;
-      border-top: 1px solid #f0eeec;
-      display: flex; gap: 8px; justify-content: flex-end;
-    }
-    .btn-cancel {
-      padding: 9px 18px; border-radius: 10px;
-      border: 1.5px solid #e5e3e0; background: #fff;
-      font-size: 13px; font-weight: 500; color: #555; cursor: pointer;
-    }
-    .btn-cancel:hover { background: #f5f5f5; }
-    .btn-save {
-      padding: 9px 20px; border-radius: 10px;
-      border: none; background: #8b1a2f; color: #fff;
-      font-size: 13px; font-weight: 600; cursor: pointer;
-    }
-    .btn-save:hover { background: #701526; }
+/* Applied labels ──────────────────────────────────────────────────── */
+.labels-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.label-card{display:flex;align-items:center;gap:0;border-radius:8px;border:1.5px solid #e5e7eb;overflow:hidden;background:#fff;}
+.label-left{width:4px;align-self:stretch;flex-shrink:0;}
+.label-icon{width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.label-text{padding:0 8px 0 4px;font-size:12px;font-weight:600;color:#374151;}
+.label-x{width:24px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#9ca3af;border-left:1px solid #f3f4f6;}
+.label-x:hover{color:#dc2626;background:#fef2f2;}
+.add-label{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;border:1.5px dashed #e5e7eb;font-size:12px;font-weight:500;color:#9ca3af;cursor:pointer;transition:all .1s;}
+.add-label:hover{border-color:#d1d5db;color:#6b7280;}
 
-    /* ── Annotation ── */
-    .annotation {
-      position: absolute;
-      font-size: 11px; color: #8b1a2f; font-weight: 600;
-      background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px;
-      pointer-events: none;
-    }
+/* ── Grid ──────────────────────────────────────────────────────────── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.mt{margin-top:10px;}
 
-    /* ── Info note ── */
-    .note {
-      position: fixed; bottom: 20px; right: 20px;
-      background: #8b1a2f; color: #fff;
-      padding: 10px 16px; border-radius: 12px;
-      font-size: 12px; max-width: 260px; line-height: 1.5;
-    }
-  </style>
+/* ── Field ─────────────────────────────────────────────────────────── */
+.fld{display:flex;flex-direction:column;gap:5px;}
+.flbl{font-size:10.5px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.07em;}
+.finp{width:100%;padding:8px 11px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;font-weight:500;color:#111;background:#fff;outline:none;font-family:inherit;transition:border-color .12s;}
+.finp:focus{border-color:#8b1a2f;}
+.finp.sel{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:26px;}
+
+/* ── Toggle ────────────────────────────────────────────────────────── */
+.tog-row{display:flex;align-items:center;gap:16px;margin-bottom:10px;}
+.tog-item{display:flex;align-items:center;gap:7px;cursor:pointer;}
+.tog-lbl{font-size:12px;font-weight:500;color:#374151;}
+.tog{width:32px;height:18px;border-radius:9px;background:#d1d5db;position:relative;flex-shrink:0;transition:background .15s;cursor:pointer;}
+.tog.on{background:#8b1a2f;}
+.tog::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:2px;left:2px;box-shadow:0 1px 3px rgba(0,0,0,.22);transition:transform .15s;}
+.tog.on::after{transform:translateX(14px);}
+
+/* ── Color swatches ────────────────────────────────────────────────── */
+.swatches{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.sw{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s;flex-shrink:0;}
+.sw:hover{transform:scale(1.15);}
+.sw.on{border-color:#111;box-shadow:0 0 0 1.5px #fff inset;}
+
+/* ── Status chips ──────────────────────────────────────────────────── */
+.srow{display:flex;gap:5px;flex-wrap:wrap;}
+.schp{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;font-size:12px;font-weight:600;border:1.5px solid #e5e7eb;background:#f9fafb;cursor:pointer;color:#9ca3af;white-space:nowrap;transition:all .1s;}
+.sdot{width:7px;height:7px;border-radius:50%;}
+.schp.on.pending  {background:#fef3c7;color:#b45309;border-color:#fde68a;}
+.schp.on.approved {background:#eff6ff;color:#2563eb;border-color:#bfdbfe;}
+.schp.on.completed{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}
+.schp.on.cancelled{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
+.schp.on.dismissed{background:#f3f4f6;color:#6b7280;border-color:#e5e7eb;}
+
+/* ── Frequency chips ───────────────────────────────────────────────── */
+.freq-row{display:flex;gap:4px;flex-wrap:wrap;}
+.fchip{padding:5px 12px;border-radius:8px;font-size:12px;font-weight:500;border:1.5px solid #e5e7eb;background:#fff;cursor:pointer;color:#6b7280;transition:all .1s;}
+.fchip:hover{border-color:#d1d5db;}
+.fchip.on{background:#8b1a2f;color:#fff;border-color:#8b1a2f;}
+
+/* ── DOW pills ─────────────────────────────────────────────────────── */
+.dow-row{display:flex;gap:5px;margin-top:10px;}
+.dpill{width:33px;height:33px;border-radius:50%;font-size:11px;font-weight:600;color:#9ca3af;border:1.5px solid #e5e7eb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s;flex-shrink:0;}
+.dpill:hover{border-color:#d1d5db;color:#374151;}
+.dpill.on{background:#8b1a2f;color:#fff;border-color:#8b1a2f;}
+
+/* ── Monthly sub-panel ─────────────────────────────────────────────── */
+.month-opts{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.month-opt{display:flex;align-items:center;gap:8px;cursor:pointer;}
+.radio{width:14px;height:14px;border-radius:50%;border:1.5px solid #d1d5db;background:#fff;flex-shrink:0;position:relative;}
+.radio.on{border-color:#8b1a2f;}
+.radio.on::after{content:'';position:absolute;width:6px;height:6px;border-radius:50%;background:#8b1a2f;top:50%;left:50%;transform:translate(-50%,-50%);}
+.radio-lbl{font-size:12px;font-weight:500;color:#374151;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.inline-sel{padding:3px 22px 3px 8px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px;font-weight:600;color:#374151;background:#fff;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center;outline:none;cursor:pointer;}
+.inline-sel:focus{border-color:#8b1a2f;}
+.inline-num{width:52px;padding:3px 7px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px;font-weight:600;color:#111;text-align:center;outline:none;font-family:inherit;}
+.inline-num:focus{border-color:#8b1a2f;}
+
+/* ── End condition ─────────────────────────────────────────────────── */
+.end-opts{display:flex;flex-direction:column;gap:7px;margin-top:10px;}
+.end-opt{display:flex;align-items:center;gap:8px;cursor:pointer;}
+.end-lbl{font-size:12px;font-weight:500;color:#374151;}
+
+/* ── RRULE preview ─────────────────────────────────────────────────── */
+.rrule{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:6px;background:#f8f7f5;border:1px solid #e5e7eb;font-family:'SF Mono','Fira Code','Courier New',monospace;font-size:10px;font-weight:600;color:#6b7280;margin-top:10px;max-width:100%;overflow:hidden;}
+.rrule-dot{width:5px;height:5px;border-radius:50%;background:#8b1a2f;flex-shrink:0;}
+
+/* ── Reminder ──────────────────────────────────────────────────────── */
+.remind-block{display:flex;flex-direction:column;gap:8px;}
+.remind-item{display:flex;align-items:center;gap:0;border-radius:10px;border:1.5px solid #e5e7eb;background:#fff;overflow:hidden;}
+.remind-presets{display:flex;gap:0;flex-wrap:nowrap;overflow-x:auto;border-right:1px solid #f3f4f6;flex:1;}
+.remind-presets::-webkit-scrollbar{height:0;}
+.rpreset{padding:9px 11px;font-size:12px;font-weight:500;color:#6b7280;cursor:pointer;white-space:nowrap;border-right:1px solid #f3f4f6;border:none;background:none;font-family:inherit;transition:all .1s;flex-shrink:0;}
+.rpreset:hover{background:#f9fafb;color:#374151;}
+.rpreset.on{background:#fdf4f5;color:#8b1a2f;font-weight:700;}
+.remind-custom{display:flex;align-items:center;gap:6px;padding:6px 10px;}
+.remind-channels{display:flex;gap:4px;padding:6px 10px;border-left:1px solid #f3f4f6;flex-shrink:0;}
+.rch{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;cursor:pointer;white-space:nowrap;}
+.rch.email{background:#f0fdf4;color:#15803d;}
+.add-remind{display:flex;align-items:center;gap:6px;padding:7px 0;font-size:12px;font-weight:500;color:#9ca3af;cursor:pointer;background:none;border:none;font-family:inherit;}
+.add-remind:hover{color:#6b7280;}
+
+/* ── Provider card (n8n style) ─────────────────────────────────────── */
+.pcard{display:flex;align-items:stretch;border-radius:10px;border:1.5px solid #e5e7eb;overflow:hidden;background:#fff;}
+.pcard-strip{width:4px;background:#8b1a2f;flex-shrink:0;}
+.pcard-icon{width:44px;display:flex;align-items:center;justify-content:center;background:#fdf4f5;flex-shrink:0;}
+.pcard-body{flex:1;min-width:0;padding:9px 10px;}
+.pcard-name{font-size:13px;font-weight:700;color:#111;}
+.pcard-sub{font-size:11px;color:#6b7280;margin-top:1px;}
+.pcard-meta{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;}
+.pmeta-chip{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+.pcard-actions{display:flex;align-items:center;gap:4px;padding:8px;border-left:1px solid #f3f4f6;flex-shrink:0;}
+
+/* ── Order card (status-coded) ─────────────────────────────────────── */
+.orders-stack{display:flex;flex-direction:column;gap:6px;}
+.ocard{display:flex;align-items:stretch;border-radius:10px;border:1.5px solid #e5e7eb;overflow:hidden;background:#fff;}
+.ocard-strip{width:4px;flex-shrink:0;}
+.ocard-body{flex:1;padding:9px 12px;min-width:0;}
+.ocard-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.ocard-id{font-size:12px;font-weight:700;color:#111;}
+.ocard-type{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;}
+.ocard-desc{font-size:12px;color:#6b7280;margin-top:2px;}
+.ocard-bot{display:flex;align-items:center;gap:8px;margin-top:4px;}
+.ocard-amt{font-size:12px;font-weight:700;color:#374151;}
+.ocard-status{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;}
+.ocard-actions{display:flex;align-items:center;padding:0 8px;border-left:1px solid #f3f4f6;flex-shrink:0;}
+
+/* ── Search input ──────────────────────────────────────────────────── */
+.search{width:100%;padding:8px 11px 8px 30px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;color:#111;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%23bbb' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center;outline:none;font-family:inherit;}
+.search:focus{border-color:#8b1a2f;}
+
+/* ── Textarea ──────────────────────────────────────────────────────── */
+.ta{width:100%;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;color:#374151;line-height:1.55;resize:none;outline:none;font-family:inherit;}
+.ta:focus{border-color:#8b1a2f;}
+
+/* ── View mode ─────────────────────────────────────────────────────── */
+.vhdr{padding:16px 20px 12px;border-bottom:1px solid #f3f4f6;}
+.vtitle{font-size:20px;font-weight:800;color:#111;line-height:1.25;}
+.badge-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;}
+.badge.approved{background:#eff6ff;color:#2563eb;}
+.badge.type{background:#fdf4f5;color:#8b1a2f;}
+.badge.recur{background:#f5f3ff;color:#7c3aed;}
+.badge.src{background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;}
+
+.vsec{padding:12px 20px;border-bottom:1px solid #f3f4f6;}
+.vsec:last-child{border-bottom:none;}
+.vsec-lbl{font-size:10px;font-weight:700;color:#d1d5db;text-transform:uppercase;letter-spacing:.1em;margin-bottom:9px;display:flex;align-items:center;gap:5px;}
+.vrow{display:flex;align-items:flex-start;gap:10px;padding:5px 0;}
+.vico{width:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;color:#9ca3af;}
+.vcon{flex:1;}
+.vlbl{font-size:10px;font-weight:700;color:#d1d5db;text-transform:uppercase;letter-spacing:.07em;}
+.vval{font-size:13px;font-weight:500;color:#374151;margin-top:2px;line-height:1.4;}
+.vval.mono{font-family:'SF Mono','Fira Code',monospace;font-size:10.5px;color:#6b7280;margin-top:4px;}
+.vdesc{font-size:13px;color:#374151;line-height:1.65;}
+
+/* ── Meeting memo panel ────────────────────────────────────────────── */
+.memo-banner{padding:14px 20px;background:#fdf2f4;border-bottom:1px solid #fce7ea;display:flex;align-items:flex-start;gap:12px;}
+.memo-icon{width:36px;height:36px;border-radius:9px;background:#8b1a2f;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;}
+.memo-body{flex:1;}
+.memo-title{font-size:14px;font-weight:700;color:#111;}
+.memo-sub{font-size:12px;color:#6b7280;margin-top:2px;}
+.doc-type-row{display:flex;gap:5px;margin-top:10px;}
+.dtype{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;font-size:12px;font-weight:600;border:1.5px solid #e5e7eb;background:#fff;cursor:pointer;color:#6b7280;transition:all .1s;}
+.dtype.on{background:#fdf4f5;border-color:#8b1a2f;color:#8b1a2f;}
+.obsidian-note{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;background:#f5f3ff;border:1px solid #e9d5ff;font-size:11px;color:#7c3aed;margin-top:10px;cursor:pointer;}
+
+/* ── Footer ────────────────────────────────────────────────────────── */
+.mfoot{padding:13px 20px;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:7px;}
+.fhint{flex:1;font-size:11px;color:#d1d5db;}
+.fhint kbd{display:inline-block;padding:1px 5px;border-radius:4px;background:#f3f4f6;border:1px solid #e5e7eb;font-size:10px;font-weight:600;color:#6b7280;font-family:inherit;}
+.btn{padding:8px 18px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .12s;font-family:inherit;}
+.btn-ghost{background:#f3f4f6;color:#6b7280;border:1.5px solid #e5e7eb;}
+.btn-ghost:hover{background:#e5e7eb;}
+.btn-primary{background:#8b1a2f;color:#fff;}
+.btn-primary:hover{background:#701526;}
+.btn-secondary{background:#fff;color:#374151;border:1.5px solid #e5e7eb;}
+.btn-secondary:hover{background:#f3f4f6;}
+
+/* ── Audit ─────────────────────────────────────────────────────────── */
+.audit{padding:9px 20px;background:#fafafa;border-top:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between;}
+.audit-txt{font-size:11px;color:#9ca3af;}
+.audit-uid{font-family:monospace;font-size:10px;color:#d1d5db;}
+
+.hidden{display:none!important;}
+</style>
 </head>
 <body>
 
+<!-- State bar -->
+<div class="sbar">
+  <span class="sbar-title">017 v3</span>
+  <button class="stab on"     onclick="go('create',this)">Create</button>
+  <button class="stab"        onclick="go('view',this)">View</button>
+  <button class="stab"        onclick="go('edit',this)">Edit</button>
+  <button class="stab"        onclick="go('recurring',this)">Edit Recurring</button>
+  <button class="stab"        onclick="go('memo',this)">Meeting Memo</button>
+  <span class="sbar-hint">Tabs · recurrence + reminders interactive</span>
+</div>
+
 <div class="backdrop">
-  <div class="modal">
-    <!-- Header -->
-    <div class="modal-header">
-      <h2>New Calendar Event</h2>
-      <button class="close-btn">×</button>
-    </div>
-
-    <!-- Body -->
-    <div class="modal-body">
-
-      <!-- Title -->
-      <div class="field-group">
-        <label class="field-label">Event Title</label>
-        <input class="field-input" type="text" placeholder="e.g. Wine Tasting — Burgundy Reds" value="Burgundy Region Wine Tasting" />
+  <div class="modal" id="modal">
+    <div class="sban hidden" id="sban">
+      <span class="sban-lbl">Edit scope</span>
+      <div class="schips">
+        <button class="schip on" onclick="pickScope(this,'this')">This event</button>
+        <button class="schip"    onclick="pickScope(this,'future')">This &amp; future</button>
+        <button class="schip"    onclick="pickScope(this,'all')">All events</button>
       </div>
+      <span class="simpact" id="simpact">1 event affected</span>
+    </div>
+    <div class="mhdr">
+      <div class="cdot" id="cdot" style="background:#8b1a2f;"></div>
+      <div class="hdr-main">
+        <div class="hdr-mode" id="hdr-mode">New Event</div>
+        <div class="hdr-title" id="hdr-title">Untitled Event</div>
+      </div>
+      <div class="hdr-acts" id="hdr-acts"></div>
+      <button class="xbtn">${SVG.x}</button>
+    </div>
+    <div class="mbody" id="mbody"></div>
+    <div class="mfoot" id="mfoot"></div>
+  </div>
+</div>
 
-      <!-- Color swatch + Status row -->
-      <div class="row-2">
-        <div class="field-group">
-          <label class="field-label">Color</label>
-          <div class="color-row">
-            <div class="swatch selected" style="background:#8b1a2f;" title="Wine"></div>
-            <div class="swatch" style="background:#2563eb;" title="Blue"></div>
-            <div class="swatch" style="background:#059669;" title="Green"></div>
-            <div class="swatch" style="background:#d97706;" title="Amber"></div>
-            <div class="swatch" style="background:#7c3aed;" title="Purple"></div>
-            <div class="swatch" style="background:#db2777;" title="Pink"></div>
-            <div class="swatch" style="background:#6b7280;" title="Gray"></div>
+<script>
+// ── SVGs ────────────────────────────────────────────────────────────
+const S={
+  clock:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  repeat:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
+  tag:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
+  building:`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+  pkg:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+  file:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  cal:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  plus:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  x:`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  pen:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  trash:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  sparkle:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`,
+  link:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  note:`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+};
+// Fix: render SVG into xbtn
+document.querySelector('.xbtn').innerHTML = S.x;
+
+// ── State ────────────────────────────────────────────────────────────
+let mode='create', freq='none', monthMode='day', days=['MO','WE'];
+let endCond='count', selStatus='pending', selColor='#8b1a2f', selType='';
+let allDay=false, multiDay=false, remPreset='1d';
+
+const COLORS=[{v:'#8b1a2f',n:'Wine'},{v:'#2563eb',n:'Blue'},{v:'#059669',n:'Green'},
+  {v:'#d97706',n:'Amber'},{v:'#7c3aed',n:'Purple'},{v:'#db2777',n:'Pink'},
+  {v:'#0891b2',n:'Cyan'},{v:'#6b7280',n:'Gray'}];
+const STATUSES=[{v:'pending',l:'Pending',c:'#d97706'},{v:'approved',l:'Approved',c:'#2563eb'},
+  {v:'completed',l:'Completed',c:'#059669'},{v:'cancelled',l:'Cancelled',c:'#dc2626'},
+  {v:'dismissed',l:'Dismissed',c:'#9ca3af'}];
+const TYPES=[{v:'delivery',l:'Delivery',c:'#2563eb'},{v:'order',l:'Order',c:'#059669'},
+  {v:'meeting',l:'Meeting',c:'#7c3aed'},{v:'inventory',l:'Inventory',c:'#d97706'},
+  {v:'tasting',l:'Tasting',c:'#8b1a2f'},{v:'reminder',l:'Reminder',c:'#6b7280'},
+  {v:'custom',l:'Custom',c:'#0891b2'}];
+const FREQS=['None','Daily','Weekly','Monthly','Yearly'];
+const DOW_L=['S','M','T','W','T','F','S'];
+const DOW_K=['SU','MO','TU','WE','TH','FR','SA'];
+const SCOPE_MSG={this:'1 event affected',future:'8 future events affected',all:'23 total events affected'};
+const REM_PRESETS=[{v:'15m',l:'15 min'},{v:'30m',l:'30 min'},{v:'1h',l:'1 hr'},{v:'2h',l:'2 hr'},
+  {v:'1d',l:'1 day'},{v:'2d',l:'2 days'},{v:'1w',l:'1 week'},{v:'custom',l:'Custom'}];
+
+// ── Render ───────────────────────────────────────────────────────────
+function go(m,btn){
+  mode=m;
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  if(m==='create'){freq='none';selStatus='pending';selType='';allDay=false;multiDay=false;}
+  else{freq='weekly';selStatus='approved';selType='tasting';days=['MO','WE'];endCond='count';}
+  render();
+}
+
+function render(){
+  const body=document.getElementById('mbody'),foot=document.getElementById('mfoot');
+  const hm=document.getElementById('hdr-mode'),ht=document.getElementById('hdr-title');
+  const ha=document.getElementById('hdr-acts'),cd=document.getElementById('cdot');
+  const sb=document.getElementById('sban');
+  cd.style.background=selColor;
+
+  if(mode==='view'){
+    hm.textContent='Event Details'; ht.textContent='Burgundy Region Wine Tasting';
+    ha.innerHTML=`<button class="ibtn" title="Edit">${S.pen}</button><button class="ibtn red" title="Delete">${S.trash}</button>`;
+    sb.classList.add('hidden');
+    body.innerHTML=renderView(); foot.innerHTML=renderViewFoot();
+  } else if(mode==='memo'){
+    hm.textContent='Meeting Memo'; ht.textContent='Burgundy Region Wine Tasting';
+    ha.innerHTML=`<button class="ibtn" title="View event">${S.cal}</button>`;
+    sb.classList.add('hidden');
+    body.innerHTML=renderMemo(); foot.innerHTML=renderMemoFoot();
+  } else {
+    const pre=(mode!=='create');
+    hm.textContent=mode==='create'?'New Event':mode==='recurring'?'Edit Recurring Event':'Edit Event';
+    ht.textContent=pre?'Burgundy Region Wine Tasting':'Untitled Event';
+    ha.innerHTML=pre?`<button class="ibtn red" title="Delete">${S.trash}</button>`:'';
+    sb.classList.toggle('hidden',mode!=='recurring');
+    body.innerHTML=renderForm(pre); foot.innerHTML=renderFormFoot(pre?'Save Changes':'Save Event');
+  }
+}
+
+// ── View ─────────────────────────────────────────────────────────────
+function renderView(){
+  return `
+  <div class="vhdr">
+    <div class="vtitle">Burgundy Region Wine Tasting</div>
+    <div class="badge-row">
+      <span class="badge approved">● Approved</span>
+      <span class="badge type">${S.tag} Tasting</span>
+      <span class="badge recur">${S.repeat} Weekly · 12×</span>
+      <span class="badge src">Manual</span>
+    </div>
+  </div>
+  <div class="vsec">
+    <div class="vsec-lbl">${S.cal} Timing</div>
+    <div class="vrow"><div class="vico">${S.cal}</div><div class="vcon">
+      <div class="vlbl">Date &amp; Time</div>
+      <div class="vval">Wednesday, May 20, 2026 · 6:00 PM – 9:00 PM</div>
+    </div></div>
+    <div class="vrow"><div class="vico">${S.repeat}</div><div class="vcon">
+      <div class="vlbl">Recurrence</div>
+      <div class="vval">Every Mon, Wed · ends Jun 30, 2026</div>
+      <div class="vval mono">FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20260630T000000Z</div>
+    </div></div>
+  </div>
+  <div class="vsec">
+    <div class="vsec-lbl">${S.tag} Labels</div>
+    <div class="labels-row">
+      ${labelCard('#8b1a2f','Provider Meeting','Maison Joseph Drouhin')}
+      ${labelCard('#7c3aed','Tasting Session','12 guests · Cellar B-3')}
+    </div>
+    <div style="margin-top:8px;">
+      <div class="pcard">
+        <div class="pcard-strip"></div>
+        <div class="pcard-icon" style="color:#8b1a2f;">${S.building}</div>
+        <div class="pcard-body">
+          <div class="pcard-name">Maison Joseph Drouhin</div>
+          <div class="pcard-sub">Burgundy, France · contact@drouhin.com</div>
+          <div class="pcard-meta">
+            <span class="pmeta-chip" style="background:#f0fdf4;color:#15803d;">Active</span>
+            <span class="pmeta-chip" style="background:#fdf4f5;color:#8b1a2f;">12 prior events</span>
           </div>
         </div>
-        <div class="field-group">
-          <label class="field-label">Status</label>
-          <select class="status-select">
-            <option value="approved" selected>✓ Approved</option>
-            <option value="pending">⏳ Pending</option>
-            <option value="cancelled">✗ Cancelled</option>
+        <div class="pcard-actions">
+          <button class="ibtn" title="View provider">${S.link}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="vsec">
+    <div class="vsec-lbl">${S.pkg} Orders</div>
+    <div class="orders-stack">
+      ${orderCard('#ORD-2847','Burgundy Case 12× Pinot Noir','$847.00','In Transit','#d97706','#fef3c7','#b45309')}
+      ${orderCard('#ORD-2831','Chablis Premier Cru 6×','$462.00','Delivered','#059669','#f0fdf4','#15803d')}
+    </div>
+  </div>
+  <div class="vsec">
+    <div class="vsec-lbl">${S.clock} Reminders</div>
+    <div style="display:flex;flex-direction:column;gap:5px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;border:1.5px solid #e5e7eb;background:#fff;">
+        <div style="color:#9ca3af;">${S.clock}</div>
+        <span style="font-size:13px;font-weight:500;color:#374151;flex:1;">1 day before · 6:00 PM</span>
+        <span style="padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">In-app</span>
+        <span style="padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:#f0fdf4;color:#15803d;">Email</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;border:1.5px solid #e5e7eb;background:#fff;">
+        <div style="color:#9ca3af;">${S.clock}</div>
+        <span style="font-size:13px;font-weight:500;color:#374151;flex:1;">2 hours before · 4:00 PM</span>
+        <span style="padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">In-app</span>
+      </div>
+    </div>
+  </div>
+  <div class="vsec">
+    <div class="vsec-lbl">${S.file} Notes</div>
+    <div class="vdesc">Private tasting for 12 guests. Reserve Pinot Noir and Chardonnay from cellar B-3. Sommelier notes prepared — check shared folder.</div>
+  </div>`;
+}
+function renderViewFoot(){
+  return `<span class="audit-txt">Created by Ahmad · May 11, 2026 · via Dashboard</span>
+    <span class="audit-uid">uid: cal-evt-4f2a9b</span>`;
+}
+
+// ── Meeting Memo ──────────────────────────────────────────────────────
+function renderMemo(){
+  return `
+  <div class="memo-banner">
+    <div class="memo-icon">${S.note}</div>
+    <div class="memo-body">
+      <div class="memo-title">Do you want to record what was discussed?</div>
+      <div class="memo-sub">Maison Joseph Drouhin · Burgundy Tasting · May 20, 2026 at 6:00 PM</div>
+      <div class="doc-type-row">
+        <button class="dtype on">${S.file} Meeting Memo</button>
+        <button class="dtype">${S.clock} Call Log</button>
+        <button class="dtype">${S.file} Tasting Notes</button>
+      </div>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="slbl">${S.tag} Document labels</div>
+    <div class="labels-row">
+      ${labelCard('#8b1a2f','Provider Meeting','Maison Joseph Drouhin')}
+      ${labelCard('#7c3aed','Tasting Session','Burgundy · May 2026')}
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:6px;">Filed under: Documents → Meetings → Maison Joseph Drouhin</div>
+  </div>
+  <div class="sec">
+    <div class="slbl">${S.file} Meeting notes</div>
+    <textarea class="ta" rows="5" placeholder="What was discussed? Key decisions, follow-ups, tasting impressions…">Discussed Q3 Burgundy allocation. They can offer 24 cases Gevrey-Chambertin 2022 at preferred rate.
+
+Action items:
+- Confirm order by May 28
+- Request sample bottles for sommelier review
+- Schedule follow-up call with regional rep</textarea>
+  </div>
+  <div class="sec">
+    <div class="slbl">${S.link} Linked to this event</div>
+    <div class="orders-stack">
+      ${orderCard('#ORD-2847','Burgundy Case 12× Pinot Noir','$847.00','In Transit','#d97706','#fef3c7','#b45309')}
+    </div>
+  </div>
+  <div class="sec">
+    <div class="obsidian-note">
+      ${S.sparkle}
+      <div style="flex:1;">
+        <strong style="font-size:11px;">Obsidian integration</strong>
+        <div style="font-size:10.5px;margin-top:1px;color:#7c3aed;">Future: sync this memo to your Obsidian vault under /Meetings/Maison-Joseph-Drouhin/</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:2px 7px;border-radius:4px;">Coming soon</span>
+    </div>
+  </div>`;
+}
+function renderMemoFoot(){
+  return `<span class="fhint">Memo will appear in Documents → Meetings</span>
+    <button class="btn btn-ghost">Skip</button>
+    <button class="btn btn-secondary">Save draft</button>
+    <button class="btn btn-primary">Save to Documents →</button>`;
+}
+
+// ── Form ──────────────────────────────────────────────────────────────
+function renderForm(pre){
+  const titleVal=pre?'Burgundy Region Wine Tasting':'';
+  const descVal=pre?'Private tasting for 12 guests. Reserve Pinot Noir and Chardonnay from cellar B-3.':'';
+
+  const swatches=COLORS.map(c=>`<div class="sw ${c.v===selColor?'on':''}" style="background:${c.v};" title="${c.n}" onclick="pickColor('${c.v}',this)"></div>`).join('');
+  const typePills=TYPES.map(t=>`<button class="tpill ${t.v===selType?'on':''}" onclick="pickType('${t.v}',this)"><span class="tdot" style="background:${t.c};"></span>${t.l}</button>`).join('');
+  const statusChips=STATUSES.map(s=>`<button class="schp ${selStatus===s.v?'on '+s.v:''}" onclick="pickStatus('${s.v}',this)"><span class="sdot" style="background:${s.c};"></span>${s.l}</button>`).join('');
+  const freqChips=FREQS.map(f=>`<button class="fchip ${freq===f.toLowerCase()?'on':''}" onclick="pickFreq('${f.toLowerCase()}',this)">${f}</button>`).join('');
+  const dowPills=DOW_L.map((d,i)=>`<button class="dpill ${days.includes(DOW_K[i])?'on':''}" onclick="toggleDay('${DOW_K[i]}',this)">${d}</button>`).join('');
+  const remPresets=REM_PRESETS.map(r=>`<button class="rpreset ${remPreset===r.v?'on':''}" onclick="pickRem('${r.v}',this)">${r.l}</button>`).join('');
+
+  return `
+  <!-- ① CORE -->
+  <div class="sec">
+    <input class="title-inp" type="text" placeholder="Event title…" value="${titleVal}"
+      oninput="document.getElementById('hdr-title').textContent=this.value||'Untitled Event'" />
+    <div class="type-row">${typePills}</div>
+  </div>
+
+  <!-- ② LABELS (n8n identity cards) -->
+  <div class="sec">
+    <div class="slbl">${S.tag} Labels</div>
+    ${pre ? `
+    <!-- Applied labels -->
+    <div class="labels-row" id="labels-applied">
+      ${labelCard('#8b1a2f','Provider Meeting','Maison Joseph Drouhin',true)}
+      ${labelCard('#7c3aed','Tasting Session','12 guests',true)}
+      <button class="add-label">${S.plus} Add label</button>
+    </div>` : `
+    <!-- Auto-detect suggestion -->
+    <div class="detect-card" id="detect-card">
+      <div class="detect-strip" style="background:#8b1a2f;"></div>
+      <div class="detect-icon" style="background:#fdf4f5;color:#8b1a2f;">${S.sparkle}</div>
+      <div class="detect-body">
+        <div class="detect-hint">${S.sparkle} Auto-detected</div>
+        <div class="detect-name">Provider Meeting · Maison Joseph Drouhin</div>
+        <div class="detect-sub">Mention detected from event title</div>
+        <div class="detect-action">${S.file} Will create a Meeting Memo in Documents</div>
+        <div class="detect-btns">
+          <button class="detect-accept" onclick="acceptLabel()">+ Add label</button>
+          <button class="detect-dismiss" onclick="document.getElementById('detect-card').classList.add('hidden')">Dismiss</button>
+        </div>
+      </div>
+    </div>
+    <div class="labels-row hidden" id="labels-applied" style="margin-top:8px;">
+      ${labelCard('#8b1a2f','Provider Meeting','Maison Joseph Drouhin',true)}
+      <button class="add-label">${S.plus} Add label</button>
+    </div>`}
+  </div>
+
+  <!-- ③ APPEARANCE & STATUS -->
+  <div class="sec">
+    <div class="slbl">${S.tag} Appearance &amp; Status</div>
+    <div class="g2">
+      <div class="fld">
+        <div class="flbl">Color</div>
+        <div class="swatches">${swatches}</div>
+      </div>
+      <div class="fld">
+        <div class="flbl">Status</div>
+        <div class="srow">${statusChips}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ TIMING -->
+  <div class="sec">
+    <div class="slbl">${S.cal} Timing</div>
+    <div class="tog-row">
+      <label class="tog-item" onclick="toggleAllDay()">
+        <div class="tog ${allDay?'on':''}" id="tog-ad"></div>
+        <span class="tog-lbl">All day</span>
+      </label>
+      <label class="tog-item" onclick="toggleMultiDay()">
+        <div class="tog ${multiDay?'on':''}" id="tog-md"></div>
+        <span class="tog-lbl">Multi-day</span>
+      </label>
+    </div>
+    <div class="${multiDay?'g2':''}">
+      <div class="fld">
+        <div class="flbl">${multiDay?'Start Date':'Date'}</div>
+        <input class="finp" type="date" value="${pre?'2026-05-20':''}" />
+      </div>
+      ${multiDay?`<div class="fld"><div class="flbl">End Date</div><input class="finp" type="date" value="${pre?'2026-05-22':''}" /></div>`:''}
+    </div>
+    <div class="g2 mt" id="time-row" ${allDay?'style="display:none;"':''}>
+      <div class="fld"><div class="flbl">Start Time</div><input class="finp" type="time" value="${pre?'18:00':''}" /></div>
+      <div class="fld"><div class="flbl">End Time</div><input class="finp" type="time" value="${pre?'21:00':''}" /></div>
+    </div>
+  </div>
+
+  <!-- ⑤ RECURRENCE -->
+  <div class="sec">
+    <div class="slbl">${S.repeat} Recurrence</div>
+    <div class="freq-row">${freqChips}</div>
+    <div id="rec-det" class="${freq==='none'?'hidden':''}">
+      <div class="g3 mt">
+        <div class="fld"><div class="flbl">Every</div><input class="finp" type="number" value="1" min="1" style="text-align:center;" oninput="updateRRULE()" /></div>
+        <div class="fld" style="grid-column:span 2;"><div class="flbl">Period</div>
+          <select class="finp sel" id="freq-unit" onchange="updateRRULE()">
+            <option ${freq==='daily'?'selected':''}>Day(s)</option>
+            <option ${freq==='weekly'||freq==='none'?'selected':''}>Week(s)</option>
+            <option ${freq==='monthly'?'selected':''}>Month(s)</option>
+            <option ${freq==='yearly'?'selected':''}>Year(s)</option>
           </select>
         </div>
       </div>
 
-      <!-- Date + Start time + End time -->
-      <div class="field-group">
-        <label class="field-label">Date</label>
-        <input class="field-input" type="date" value="2026-05-20" />
+      <!-- Weekly: day of week -->
+      <div id="dow-sec" class="${freq==='weekly'?'':'hidden'}">
+        <div class="flbl mt">On these days</div>
+        <div class="dow-row">${dowPills}</div>
       </div>
 
-      <div class="row-2">
-        <div class="field-group">
-          <label class="field-label">Start Time</label>
-          <input class="field-input" type="time" value="18:00" />
+      <!-- Monthly: day or nth-weekday -->
+      <div id="month-sec" class="${freq==='monthly'?'':'hidden'}">
+        <div class="flbl mt">On</div>
+        <div class="month-opts">
+          <label class="month-opt" onclick="setMonthMode('day')">
+            <div class="radio ${monthMode==='day'?'on':''}"></div>
+            <span class="radio-lbl">
+              Day <input class="inline-num" type="number" value="20" min="1" max="31" style="width:48px;" />
+              of each month
+            </span>
+          </label>
+          <label class="month-opt" onclick="setMonthMode('weekday')">
+            <div class="radio ${monthMode==='weekday'?'on':''}"></div>
+            <span class="radio-lbl">
+              The
+              <select class="inline-sel">
+                <option>1st</option><option>2nd</option><option>3rd</option>
+                <option selected>4th</option><option>Last</option>
+              </select>
+              <select class="inline-sel">
+                <option>Sunday</option><option>Monday</option><option>Tuesday</option>
+                <option>Wednesday</option><option selected>Thursday</option>
+                <option>Friday</option><option>Saturday</option>
+              </select>
+              of each month
+            </span>
+          </label>
         </div>
-        <div class="field-group">
-          <label class="field-label">End Time</label>
-          <input class="field-input" type="time" value="21:00" />
-        </div>
       </div>
 
-      <!-- Recurrence -->
-      <div class="field-group">
-        <label class="field-label">Recurrence</label>
-        <div class="recurrence-options">
-          <button class="recurrence-chip active">None</button>
-          <button class="recurrence-chip">Daily</button>
-          <button class="recurrence-chip">Weekly</button>
-          <button class="recurrence-chip">Monthly</button>
-          <button class="recurrence-chip">Custom…</button>
-        </div>
+      <!-- End condition -->
+      <div class="flbl" style="margin-top:12px;">Ends</div>
+      <div class="end-opts">
+        <label class="end-opt" onclick="pickEnd('never')">
+          <div class="radio ${endCond==='never'?'on':''}"></div>
+          <span class="end-lbl">Never</span>
+        </label>
+        <label class="end-opt" onclick="pickEnd('count')">
+          <div class="radio ${endCond==='count'?'on':''}"></div>
+          <span class="end-lbl">After</span>
+          <input class="inline-num" type="number" value="${pre?'12':'6'}" min="1" oninput="updateRRULE()" />
+          <span class="end-lbl">occurrences</span>
+        </label>
+        <label class="end-opt" onclick="pickEnd('date')">
+          <div class="radio ${endCond==='date'?'on':''}"></div>
+          <span class="end-lbl">On date</span>
+          <input class="inline-num" type="date" value="${pre?'2026-06-30':''}" style="width:130px;" />
+        </label>
       </div>
-
-      <!-- Notes -->
-      <div class="field-group">
-        <label class="field-label">Notes</label>
-        <textarea class="field-input" rows="2" placeholder="Optional details, guest count, special instructions…">Private tasting for 12 guests. Reserve Pinot Noir and Chardonnay from cellar.</textarea>
-      </div>
-
-    </div><!-- end body -->
-
-    <!-- Footer -->
-    <div class="modal-footer">
-      <button class="btn-cancel">Cancel</button>
-      <button class="btn-save">Save Event</button>
+      <div class="rrule"><span class="rrule-dot"></span><span id="rrule-txt">FREQ=WEEKLY;BYDAY=MO,WE;COUNT=12</span></div>
     </div>
   </div>
-</div>
 
-<div class="note">
-  D-13 sketch 017: Improved EventModal<br>
-  Shows: color swatch, status (Approved/Pending only — "confirmed" removed), end time, recurrence chips
-</div>
+  <!-- ⑥ LINKS -->
+  <div class="sec">
+    <div class="slbl">${S.link} Links</div>
+    <div class="fld" style="margin-bottom:10px;">
+      <div class="flbl">Provider</div>
+      ${pre?`
+      <div class="pcard">
+        <div class="pcard-strip"></div>
+        <div class="pcard-icon" style="color:#8b1a2f;">${S.building}</div>
+        <div class="pcard-body">
+          <div class="pcard-name">Maison Joseph Drouhin</div>
+          <div class="pcard-sub">Burgundy, France · contact@drouhin.com</div>
+          <div class="pcard-meta">
+            <span class="pmeta-chip" style="background:#f0fdf4;color:#15803d;">Active</span>
+            <span class="pmeta-chip" style="background:#fdf4f5;color:#8b1a2f;">12 prior events</span>
+          </div>
+        </div>
+        <div class="pcard-actions">
+          <button class="ibtn" title="View">${S.link}</button>
+          <button class="ibtn red" title="Unlink">${S.x}</button>
+        </div>
+      </div>`:`<input class="search" type="text" placeholder="Search providers…" />`}
+    </div>
+    <div class="fld">
+      <div class="flbl">Orders</div>
+      ${pre?`
+      <div class="orders-stack">
+        ${orderCard('#ORD-2847','Burgundy Case 12× Pinot Noir','$847.00','In Transit','#d97706','#fef3c7','#b45309')}
+        ${orderCard('#ORD-2831','Chablis Premier Cru 6×','$462.00','Delivered','#059669','#f0fdf4','#15803d')}
+        <button class="add-label" style="align-self:flex-start;">${S.plus} Link another order</button>
+      </div>`:`<input class="finp" type="text" placeholder="#ORD-XXXX or search orders…" />`}
+    </div>
+  </div>
 
+  <!-- ⑦ REMINDER -->
+  <div class="sec">
+    <div class="slbl">${S.clock} Reminders</div>
+    <div class="remind-block">
+      <div class="remind-item">
+        <div class="remind-presets">${remPresets}</div>
+        <div id="custom-rem" class="${remPreset==='custom'?'remind-custom':'hidden'}">
+          <input class="inline-num" type="number" value="3" style="width:48px;" />
+          <select class="inline-sel"><option>min</option><option>hours</option><option selected>days</option><option>weeks</option></select>
+        </div>
+        <div class="remind-channels">
+          <span class="rch">${S.plus} In-app</span>
+          <span class="rch email">${S.plus} Email</span>
+        </div>
+      </div>
+      ${pre?`<div class="remind-item">
+        <div class="remind-presets">
+          <button class="rpreset on">2 hr</button>
+          <button class="rpreset">In-app only</button>
+        </div>
+        <div class="remind-channels">
+          <span class="rch">${S.plus} In-app</span>
+        </div>
+      </div>`:''}
+      <button class="add-remind" onclick="void(0)">${S.plus} Add another reminder</button>
+    </div>
+  </div>
+
+  <!-- ⑧ NOTES -->
+  <div class="sec">
+    <div class="slbl">${S.file} Notes</div>
+    <textarea class="ta" rows="3" placeholder="Details, guest count, special instructions…">${descVal}</textarea>
+  </div>`;
+}
+
+function renderFormFoot(label){
+  return `<span class="fhint"><kbd>⌘</kbd><kbd>↵</kbd> save &nbsp;·&nbsp; <kbd>Esc</kbd> cancel</span>
+    <button class="btn btn-ghost">Cancel</button>
+    <button class="btn btn-primary">${label}</button>`;
+}
+
+// ── Label helpers ────────────────────────────────────────────────────
+function labelCard(color,type,entity,removable=false){
+  return `<div class="label-card">
+    <div class="label-left" style="background:${color};"></div>
+    <div class="label-icon" style="color:${color};">${S.tag}</div>
+    <div class="label-text">${type}<span style="color:#9ca3af;font-weight:400;"> · ${entity}</span></div>
+    ${removable?`<div class="label-x" onclick="this.closest('.label-card').remove()">${S.x}</div>`:''}
+  </div>`;
+}
+
+function orderCard(id,desc,amt,status,sc,sbg,stc){
+  return `<div class="ocard">
+    <div class="ocard-strip" style="background:${sc};"></div>
+    <div class="ocard-body">
+      <div class="ocard-top">
+        <span class="ocard-id">${id}</span>
+        <span class="ocard-type" style="background:${sbg};color:${stc};">${status}</span>
+      </div>
+      <div class="ocard-desc">${desc}</div>
+      <div class="ocard-bot">
+        <span class="ocard-amt">${amt}</span>
+        <span class="ocard-status" style="color:${stc};">
+          <span style="width:6px;height:6px;border-radius:50%;background:${sc};display:inline-block;"></span> ${status}
+        </span>
+      </div>
+    </div>
+    <div class="ocard-actions">
+      <button class="ibtn" title="View order">${S.link}</button>
+    </div>
+  </div>`;
+}
+
+// ── Interactions ──────────────────────────────────────────────────────
+function pickColor(v,el){selColor=v;document.querySelectorAll('.sw').forEach(s=>s.classList.remove('on'));el.classList.add('on');document.getElementById('cdot').style.background=v;}
+function pickType(v,el){selType=v;document.querySelectorAll('.tpill').forEach(p=>p.classList.remove('on'));el.classList.add('on');}
+function pickStatus(v,el){selStatus=v;document.querySelectorAll('.schp').forEach(s=>{s.className='schp';});el.className=`schp on ${v}`;}
+
+function pickFreq(v,el){
+  freq=v;
+  document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('on'));el.classList.add('on');
+  const det=document.getElementById('rec-det'),dow=document.getElementById('dow-sec');
+  const mon=document.getElementById('month-sec'),unit=document.getElementById('freq-unit');
+  det.classList.toggle('hidden',v==='none');
+  if(dow)dow.classList.toggle('hidden',v!=='weekly');
+  if(mon)mon.classList.toggle('hidden',v!=='monthly');
+  if(unit){const m={daily:0,weekly:1,monthly:2,yearly:3};unit.selectedIndex=m[v]??1;}
+  updateRRULE();
+}
+
+function toggleDay(key,el){
+  if(days.includes(key)){days=days.filter(d=>d!==key);el.classList.remove('on');}
+  else{days.push(key);el.classList.add('on');}
+  updateRRULE();
+}
+
+function setMonthMode(m){
+  monthMode=m;
+  document.querySelectorAll('.month-opt .radio').forEach((r,i)=>r.classList.toggle('on',i===(m==='day'?0:1)));
+}
+
+function pickEnd(v){
+  endCond=v;
+  document.querySelectorAll('.end-opt .radio').forEach(r=>r.classList.remove('on'));
+  const opts=document.querySelectorAll('.end-opt');
+  const map={never:0,count:1,date:2};
+  if(opts[map[v]])opts[map[v]].querySelector('.radio').classList.add('on');
+  updateRRULE();
+}
+
+function pickRem(v,el){
+  remPreset=v;
+  document.querySelectorAll('.rpreset').forEach(r=>r.classList.remove('on'));el.classList.add('on');
+  const cr=document.getElementById('custom-rem');
+  if(cr)cr.className=v==='custom'?'remind-custom':'hidden';
+}
+
+function updateRRULE(){
+  const el=document.getElementById('rrule-txt');if(!el)return;
+  const fm={daily:'DAILY',weekly:'WEEKLY',monthly:'MONTHLY',yearly:'YEARLY'};
+  let s=`FREQ=${fm[freq]||'WEEKLY'}`;
+  if(freq==='weekly'&&days.length)s+=`;BYDAY=${[...days].sort().join(',')}`;
+  if(freq==='monthly'){
+    if(monthMode==='weekday')s+=`;BYDAY=4TH`;
+    else s+=`;BYMONTHDAY=20`;
+  }
+  if(endCond==='count')s+=`;COUNT=12`;
+  else if(endCond==='date')s+=`;UNTIL=20260630T000000Z`;
+  el.textContent=s;
+}
+
+function toggleAllDay(){allDay=!allDay;const t=document.getElementById('tog-ad'),r=document.getElementById('time-row');if(t)t.classList.toggle('on',allDay);if(r)r.style.display=allDay?'none':'';}
+function toggleMultiDay(){multiDay=!multiDay;render();}
+
+function pickScope(el,v){
+  document.querySelectorAll('.schip').forEach(c=>c.classList.remove('on'));el.classList.add('on');
+  document.getElementById('simpact').textContent=SCOPE_MSG[v];
+}
+
+function acceptLabel(){
+  document.getElementById('detect-card').classList.add('hidden');
+  document.getElementById('labels-applied').classList.remove('hidden');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────
+render();
+</script>
 </body>
 </html>
