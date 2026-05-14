@@ -1,7 +1,7 @@
 ---
 phase: 33
 slug: multi-restaurant-membership-model
-status: draft
+status: verified
 shadcn_initialized: false
 preset: none
 created: 2026-05-14
@@ -120,15 +120,15 @@ Layout:
 - Below: `text-sm text-gray-500` — "Invited by [Inviter Name] · Role: [Role]"
 - Role badge: matching role badge (owner/manager/staff — see Color section)
 - Two buttons stacked (`space-y-3`):
-  - Primary: `bg-wine-600 text-white rounded-xl w-full py-2.5 text-sm font-medium` → "Sign in to accept"
-  - Secondary: `border border-gray-200 text-gray-700 rounded-xl w-full py-2.5 text-sm font-medium hover:bg-gray-50` → "Create account to accept"
+  - Primary: `bg-wine-600 text-white rounded-xl w-full py-3 text-sm font-medium` → "Sign in to accept"
+  - Secondary: `border border-gray-200 text-gray-700 rounded-xl w-full py-3 text-sm font-medium hover:bg-gray-50` → "Create account to accept"
 - Footer: `text-xs text-gray-400 text-center mt-4` — invite expiry date
 
 **State B — Logged-in (valid code, not yet a member):**
 - Top: `text-lg font-semibold text-gray-900` — "Add [Restaurant Name] to your branches?"
 - Body: `text-sm text-gray-500` — "You'll be added as [Role] at [Restaurant Name]."
 - Role badge displayed below body copy
-- Primary CTA: `bg-wine-600 text-white rounded-xl w-full py-2.5` → "Add [Restaurant Name]"
+- Primary CTA: `bg-wine-600 text-white rounded-xl w-full py-3` → "Add [Restaurant Name]"
   - Loading state: `<RefreshCw className="w-4 h-4 animate-spin" />` inline + "Adding…"
 - Ghost link below: `text-sm text-gray-400 underline hover:text-gray-600` → "Cancel, go back"
 
@@ -136,7 +136,7 @@ Layout:
 - Icon: `<AlertCircle className="w-8 h-8 text-rose-400" />` centered
 - Heading: `text-lg font-semibold text-gray-900` — "This invite has expired"
 - Body: `text-sm text-gray-500 text-center mt-2` — "This invite link is no longer valid. Ask the restaurant owner for a new one."
-- CTA: `border border-gray-200 text-gray-700 rounded-xl px-6 py-2.5 text-sm font-medium hover:bg-gray-50 mt-6` → "Back to sign in"
+- CTA: `border border-gray-200 text-gray-700 rounded-xl px-6 py-3 text-sm font-medium hover:bg-gray-50 mt-6` → "Back to sign in"
 
 **State D — Already a member (no page — toast + redirect):**
 - Toast: `toast.success("You're already a member of [Restaurant Name]")` — shown after redirect to that restaurant's dashboard
@@ -158,7 +158,7 @@ The existing `<div id="team">` card in `Settings.tsx` is redesigned. Card shell 
 px-6 py-4 flex items-center justify-between border-b border-gray-50
 ```
 - Left: `<Users />` icon + heading `"Members of [Active Branch Name]"` (text-sm font-semibold) + subtext `"Manage who has access to this location"` (text-xs text-gray-400)
-- Right (owner/manager): `"Invite member"` button — wine-600, rounded-xl, `px-3.5 py-2 text-sm font-medium`
+- Right (owner/manager): `"Invite member"` button — wine-600, rounded-xl, `px-4 py-2 text-sm font-medium`
   - Manager can only invite staff role; enforce this inside `InviteTeamDialog` (role select: manager sees only "Staff" option)
 
 **Member list (populated state):**
@@ -174,7 +174,7 @@ Row anatomy (left to right):
 2. **Name + email** block (`flex-1 min-w-0`):
    - Name: `text-sm font-medium text-gray-800 truncate`
    - Email: `text-xs text-gray-400 truncate`
-3. **Role badge** `text-xs font-medium px-2 py-0.5 rounded-full ring-1` — see Color section
+3. **Role badge** `text-xs font-medium px-2 py-1 rounded-full ring-1` — see Color section
 4. **"You" indicator** (self-row only): `text-xs text-gray-300 italic` — "(you)"
 5. **Role dropdown** (owner only, not shown for own row unless transferring):
    - `<select>` styled as `text-xs border border-gray-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none bg-white text-gray-700`
@@ -182,7 +182,7 @@ Row anatomy (left to right):
    - Triggers PATCH call on change — no separate confirm step for role change
    - Loading: spinner replaces dropdown while saving
 6. **Action button** (kebab or explicit remove):
-   - Owner (for all non-self rows): `<Trash2 />` icon button — `w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all`
+   - Owner (for all non-self rows): `<Trash2 />` icon button — `w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all` with `aria-label="Remove [Name] from team"`
    - Manager (for staff rows only): same trash button
    - Staff view: no action button at all
    - Self-row (owner/manager/staff): `"Leave"` text button — `text-xs text-gray-400 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100` — replaces trash icon
@@ -223,7 +223,7 @@ px-5 py-2 border-t border-gray-100 flex items-center gap-3
 
 Each pending invite row:
 ```
-px-5 py-2.5 flex items-center justify-between border-t border-gray-50 first:border-0 hover:bg-gray-50/40
+px-5 py-2 flex items-center justify-between border-t border-gray-50 first:border-0 hover:bg-gray-50/40
 ```
 - Left: `<Link2 className="w-3.5 h-3.5 text-gray-300 shrink-0" />` + code in `font-mono text-sm text-gray-700 tracking-widest` + `text-xs text-gray-400 ml-2` — "Expires [date]"
 - Right: "Revoke" button — `text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors`
@@ -265,7 +265,7 @@ min-h-screen bg-slate-50 flex items-center justify-center px-4
 - Body: `text-sm text-gray-500 mt-2` — see Copywriting
 
 **Branch available (user has other branches):**
-- CTA: `mt-6 flex items-center gap-2 px-5 py-2.5 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl mx-auto w-fit`
+- CTA: `mt-6 flex items-center gap-2 px-5 py-3 bg-wine-600 hover:bg-wine-700 text-white text-sm font-medium rounded-xl mx-auto w-fit`
 - Label: "Switch to another location"
 - Opens the branch switcher popover (reuse existing `BranchSwitcher` component from Header)
 
@@ -284,9 +284,9 @@ Minor addition to an existing Profile settings section. Append as a read-only ro
 <div className="flex items-center justify-between px-6 py-3 border-t border-gray-50">
   <div>
     <p className="text-sm font-medium text-gray-700">Role at {activeBranchName}</p>
-    <p className="text-xs text-gray-400 mt-0.5">Your access level at this location</p>
+    <p className="text-xs text-gray-400 mt-1">Your access level at this location</p>
   </div>
-  <span className="text-xs font-medium px-2.5 py-1 rounded-full ring-1 {roleColors}">
+  <span className="text-xs font-medium px-2 py-1 rounded-full ring-1 {roleColors}">
     {role}
   </span>
 </div>
@@ -315,6 +315,7 @@ Role badge styling: per Color section role badge map. Capitalized ("Owner", "Man
 | Expired body | "This invite link is no longer valid. Ask the restaurant owner for a new one." |
 | Expired back CTA | "Back to sign in" |
 | Loading state (confirm button) | "Adding…" |
+| Invite accept error (inline) | "Couldn't add you to [Restaurant Name]. Please try again or contact the owner." |
 | Success toast (logged-in accept) | "You've joined [Restaurant Name]!" |
 
 ### Settings → Team Tab
@@ -336,12 +337,15 @@ Role badge styling: per Color section role badge map. Capitalized ("Owner", "Man
 | Leave confirm CTA | "Leave restaurant" |
 | Last-owner block message | "You're the only owner. Transfer ownership or delete the restaurant first." |
 | Role change success toast | "[Name] is now a [Role] at [Restaurant Name]" |
+| Role change error toast | "Couldn't update [Name]'s role. Please try again." |
 | Member removed success toast | "[Name] has been removed from [Restaurant Name]" |
 | Left restaurant success toast | "You've left [Restaurant Name]" |
 | Pending invites section label | "Pending Invites" |
-| Revoke invite CTA | "Revoke" |
+| Revoke invite CTA | "Revoke invite" |
 | Revoke success toast | "Invite revoked" |
+| Revoke error toast | "Couldn't revoke invite. Please try again." |
 | Invite generated success toast | "Invite link generated" |
+| Dialog cancel button | "Cancel" |
 
 ### No-Access Page
 
@@ -366,7 +370,7 @@ Role badge styling: per Color section role badge map. Capitalized ("Owner", "Man
 ### Role Dropdown (Team Tab — Owner Only)
 
 - **Trigger:** Click on role badge area (or an explicit chevron next to badge) — transforms badge into `<select>`
-- **On change:** Immediate optimistic update → fire `PATCH /restaurants/:id/members/:userId` → on error: revert + `toast.error("Failed to update role")`
+- **On change:** Immediate optimistic update → fire `PATCH /restaurants/:id/members/:userId` → on error: revert + `toast.error("Couldn't update [Name]'s role. Please try again.")`
 - **No confirmation required** for role changes (per D-13)
 - **Cannot demote self** if only owner: show last-owner inline block instead
 
@@ -382,14 +386,14 @@ Role badge styling: per Color section role badge map. Capitalized ("Owner", "Man
 - **Trigger:** Click "Revoke" on pending invite row
 - **No confirmation dialog** — revoke is lightweight and reversible by generating a new invite
 - **Immediate:** Optimistic removal from pending list → fire `DELETE /restaurants/:id/invites/:code`
-- **Error:** Revert + `toast.error("Failed to revoke invite")`
+- **Error:** Revert + `toast.error("Couldn't revoke invite. Please try again.")`
 
 ### Invite Accept (Logged-In)
 
 - **Trigger:** Click "Add [Restaurant Name]" on `/invite/[code]`
 - **Loading:** Button shows spinner + "Adding…"
 - **Success:** Redirect to that restaurant's dashboard → `toast.success("You've joined [Restaurant Name]!")`
-- **Error:** Show inline error below button (not a toast): `text-sm text-rose-500 mt-3 text-center`
+- **Error:** Show inline error below button (not a toast): `text-sm text-rose-500 mt-3 text-center` — copy: "Couldn't add you to [Restaurant Name]. Please try again or contact the owner."
 
 ### Branch Switch on No-Access Page
 
@@ -452,11 +456,11 @@ All animations use Framer Motion `motion.div`. Reuse existing patterns from code
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS — all error states have copy + solution path; dialog cancel + inline accept error added
+- [x] Dimension 2 Visuals: PASS — aria-label added to trash icon button
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS — all non-4pt values corrected (py-2.5→py-3, py-0.5→py-1, px-3.5→px-4, px-2.5→px-2, mt-0.5→mt-1)
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** verified (revision 1 — inline fixes by orchestrator)
