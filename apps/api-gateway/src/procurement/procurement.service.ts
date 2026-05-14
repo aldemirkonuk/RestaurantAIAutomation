@@ -17,6 +17,7 @@ import {
   ProcurementOrderStatus,
   UpdateOrderDto,
 } from './dto/procurement.dto';
+import { ApproveDraftDto } from './dto/approve-draft.dto';
 
 interface ProcurementOrderRow {
   id: string;
@@ -156,6 +157,31 @@ export class ProcurementService {
 
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, 'created');
+
+    // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
+    if (dto.providerId && this.orchestratorService) {
+      try {
+        await this.orchestratorService.publishEvent(
+          'procurement.events',
+          'procurement.order.created',
+          {
+            order_id: order.id,
+            restaurant_id: restaurantId,
+            provider_id: dto.providerId,
+            wine_name: order.wineName || '',
+            quantity: order.quantity,
+            target_price_per_bottle: dto.quotedPrice ?? null,
+            urgency: dto.isEmergency ? 'urgent' : 'normal',
+            provider_name: '',
+            restaurant_name: '',
+          },
+        );
+        this.logger.log(`AI draft pre-computation triggered for order ${order.id}`);
+      } catch (err: any) {
+        this.logger.error(`Failed to publish procurement.order.created: ${err?.message}`);
+        // Non-fatal — order still created successfully
+      }
+    }
 
     return order;
   }
@@ -653,5 +679,118 @@ export class ProcurementService {
       .toString()
       .padStart(5, '0');
     return `ORD-${year}-${suffix}`;
+  }
+
+  // =========================================================================
+  // PHASE 32: DRAFT MANAGEMENT
+  // =========================================================================
+
+  async approveDraft(
+    restaurantId: string,
+    orderId: string,
+    dto: ApproveDraftDto,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    const updatePayload: Record<string, any> = {
+      status: 'APPROVED',
+      sent_at: new Date().toISOString(),
+    };
+    if (dto.modifiedContent) {
+      updatePayload.content = dto.modifiedContent;
+    }
+
+    const { data, error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update(updatePayload)
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .eq('status', 'PENDING_APPROVAL')
+      .select('id, sent_at')
+      .single();
+
+    if (error) {
+      this.logger.error('approveDraft failed', { restaurantId, orderId, error: error.message });
+      throw error;
+    }
+
+    if (this.orchestratorService) {
+      await this.orchestratorService.publishEvent(
+        'provider.events',
+        'provider.draft.approved',
+        {
+          conversation_id: (data as any).id,
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          modified_content: dto.modifiedContent ?? null,
+          manager_notes: dto.managerNotes ?? null,
+        },
+      );
+    }
+
+    return { conversationId: (data as any).id, sentAt: (data as any).sent_at };
+  }
+
+  async discardDraft(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{ success: boolean }> {
+    const { error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ status: 'DISCARDED' })
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .eq('status', 'PENDING_APPROVAL');
+
+    if (error) {
+      this.logger.error('discardDraft failed', { restaurantId, orderId, error: error.message });
+      throw error;
+    }
+
+    if (this.orchestratorService) {
+      await this.orchestratorService.publishEvent(
+        'provider.events',
+        'provider.draft.discarded',
+        { order_id: orderId, restaurant_id: restaurantId },
+      );
+    }
+
+    return { success: true };
+  }
+
+  async editDraft(
+    restaurantId: string,
+    orderId: string,
+    newContent: string,
+  ): Promise<{ success: boolean }> {
+    const { error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ content: newContent })
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .eq('status', 'PENDING_APPROVAL');
+
+    if (error) {
+      this.logger.error('editDraft failed', { restaurantId, orderId, error: error.message });
+      throw error;
+    }
+
+    return { success: true };
+  }
+
+  async getPendingDraft(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Record<string, any> | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id, content, outbound_email_type, constraint_flags, round_count, created_at')
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .eq('status', 'PENDING_APPROVAL')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) return null;
+    return data;
   }
 }
