@@ -19,18 +19,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 30 — Calendar Operations Hub. Plans 30-01 through 30-06 complete. Service column renames + eventTimeEnd + color wired through service and DTOs. iCal subscription feed (ical-generator) implemented. Frontend bug fixes applied. Settings Calendar section + Dashboard iCal subscribe button live. this_and_future recurring event update scope fully implemented.
+**Current focus:** Phase 24 — Provider Communication Pipeline + Email Intelligence. All 5 plans complete (2026-05-13). EmailIntelAgent implemented (Gemini Flash + Haiku, Redis digest, vendor_promotions). ProviderConversationAgent Level 4 (commitment guardrail, D-19 context injection, DLQ). Schema pushed via Supabase MCP.
 
 ---
 
 ## Current Position
 
-**Last completed:** Phase 30 Plan 06 — this_and_future recurring event update scope. Splits recurring series by truncating existing rule end_on_date to occurrence_date - 1 day, creating new parent event + cloned recurrence rule from the occurrence date onward. PATCH /calendar/events/:id with updateScope:'this_and_future' now returns 200 + new parent event. 2026-05-12.
-**Phases complete (v2.0):** 18, 19, 20, 21, 22, 25, 26, 27, 28
-**Phases deferred:** 23 (Gmail Integration), 24 (Provider Comms Pipeline) — both `[ ]` in ROADMAP, intentionally deferred, will revisit later
-
-- Phase 23: ~60% done (plans 01, 02, 04 complete); blocked on Railway OAuth2 credentials gate (plan 23-03). Plans 23-03 and 23-06 remain.
-- Phase 24: ~20% done (test stubs + model_clients.py only); plans 24-01, 24-04, 24-05 not executed. Blocked on Phase 23 being live.
+**Last completed:** Phase 24 Plan 05 — ProviderConversationAgent Level 4 hardening. Idempotency guard, DLQ, commitment language guardrail (8 regex patterns, AI-SPEC §6), D-19 context injection (_get_db_context_for_prompt: 4 table queries), close_relationship tone instruction, manager learning loop, Langfuse @observe() on generate_draft(). 2026-05-13.
+**Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30
+**Phases deferred:** 23 (Gmail Integration) — `[ ]` in ROADMAP, plans 23-03 + 23-06 remain (Railway OAuth2 credential gate)
 
 **Next phase:** Phase 29 — Autonomous Vendor Discovery (paid-tier LLM vendor search)
 
