@@ -95,6 +95,7 @@ jinja2>=3.1.0      # Template rendering
 pandas==2.2.0
 python-dateutil==2.8.2
 orjson==3.9.12  # Fast JSON serialization
+rapidfuzz>=3.6.0  # Fuzzy string matching for invoice/provider matching (D-32-15)
 
 # =============================================================================
 # ASYNC UTILITIES
