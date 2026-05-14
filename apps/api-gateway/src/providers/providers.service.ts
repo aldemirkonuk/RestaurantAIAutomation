@@ -14,6 +14,8 @@ import {
   UpdateProviderContactDto,
   UpdateProviderDto,
 } from './dto/providers.dto';
+import { UpdateIntelligenceDto } from './dto/update-intelligence.dto';
+import { RetroactiveOrderDto } from './dto/retroactive-order.dto';
 
 interface ProviderRow {
   id: string;
@@ -587,6 +589,145 @@ export class ProvidersService {
 
     this.logger.log('Bulk import completed', { imported, failed });
     return { imported, failed, errors };
+  }
+
+  // =========================================================================
+  // PHASE 32: INTELLIGENCE (profile_foundational + profile_dynamic)
+  // =========================================================================
+
+  async getIntelligence(
+    providerId: string,
+    restaurantId: string,
+  ): Promise<{ profile_foundational: Record<string, any>; profile_dynamic: Record<string, any> }> {
+    const { data, error } = await this.databaseService.supabase
+      .from('providers')
+      .select('profile_foundational, profile_dynamic')
+      .eq('id', providerId)
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (error) {
+      this.logger.error('getIntelligence failed', { providerId, error: error.message });
+      throw error;
+    }
+
+    return {
+      profile_foundational: (data as any).profile_foundational ?? {},
+      profile_dynamic: (data as any).profile_dynamic ?? {},
+    };
+  }
+
+  async updateIntelligence(
+    providerId: string,
+    restaurantId: string,
+    dto: UpdateIntelligenceDto,
+  ): Promise<{ success: boolean }> {
+    const updatePayload: Record<string, any> = {};
+    if (dto.profile_foundational !== undefined) {
+      updatePayload.profile_foundational = dto.profile_foundational;
+    }
+    if (dto.profile_dynamic !== undefined) {
+      updatePayload.profile_dynamic = dto.profile_dynamic;
+    }
+
+    const { error } = await this.databaseService.supabase
+      .from('providers')
+      .update(updatePayload)
+      .eq('id', providerId)
+      .eq('restaurant_id', restaurantId);
+
+    if (error) {
+      this.logger.error('updateIntelligence failed', { providerId, error: error.message });
+      throw error;
+    }
+
+    return { success: true };
+  }
+
+  getProfileSummary(profileDynamic: Record<string, any>): Array<{ key: string; label: string; value: string }> {
+    const priorityKeys = ['response_speed', 'negotiation_style', 'relationship_tier'];
+    return priorityKeys
+      .filter((k) => profileDynamic[k])
+      .map((k) => ({
+        key: k,
+        label: k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        value: String(profileDynamic[k]).slice(0, 20),
+      }))
+      .slice(0, 3);
+  }
+
+  /**
+   * D-32-15 Scenario C: Create retroactive order from off-app invoice.
+   */
+  async createRetroactiveOrder(
+    providerId: string,
+    restaurantId: string,
+    dto: RetroactiveOrderDto,
+  ): Promise<{ orderId: string; conversationId: string; interactionId: string }> {
+    const { data: orderData, error: orderError } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .insert({
+        restaurant_id: restaurantId,
+        provider_id: providerId,
+        wine_name: dto.wineName,
+        quantity: dto.quantity ?? null,
+        final_confirmed_cost: dto.finalConfirmedCost ?? null,
+        actual_delivery: dto.invoiceDate ?? null,
+        status: 'delivered',
+        source: 'retroactive',
+      })
+      .select('id')
+      .single();
+
+    if (orderError) {
+      this.logger.error('createRetroactiveOrder: order insert failed', { error: orderError.message });
+      throw orderError;
+    }
+
+    const orderId = (orderData as any).id as string;
+
+    const { data: convData, error: convError } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .insert({
+        order_id: orderId,
+        provider_id: providerId,
+        restaurant_id: restaurantId,
+        direction: 'INBOUND',
+        channel: 'email',
+        content: dto.rawInvoiceContent ?? '',
+        status: 'DELIVERED',
+        ai_summary: `Retroactive order created from off-app invoice ${dto.invoiceNumber ?? ''}.`,
+      })
+      .select('id')
+      .single();
+
+    if (convError) {
+      this.logger.warn('createRetroactiveOrder: conversation insert failed', { error: convError.message });
+    }
+
+    const conversationId = convData ? (convData as any).id as string : '';
+
+    const { data: intData, error: intError } = await this.databaseService.supabase
+      .from('order_interactions')
+      .insert({
+        order_id: orderId,
+        interaction_type: 'invoice_received',
+        channel: 'email',
+        content: dto.rawInvoiceContent ?? '',
+        ai_summary: `Invoice ${dto.invoiceNumber ?? 'unknown'} received; retroactive order created.`,
+      })
+      .select('id')
+      .single();
+
+    if (intError) {
+      this.logger.warn('createRetroactiveOrder: interaction insert failed', { error: intError.message });
+    }
+
+    return {
+      orderId,
+      conversationId,
+      interactionId: intData ? (intData as any).id as string : '',
+    };
   }
 
   // =========================================================================

@@ -26,6 +26,8 @@ import {
   UpdateProviderContactDto,
   UpdateProviderDto,
 } from './dto/providers.dto';
+import { UpdateIntelligenceDto } from './dto/update-intelligence.dto';
+import { RetroactiveOrderDto } from './dto/retroactive-order.dto';
 import { ProvidersService } from './providers.service';
 
 @ApiTags('providers')
@@ -389,6 +391,85 @@ export class ProvidersController {
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to get recommendations',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // =========================================================================
+  // PHASE 32: INTELLIGENCE PROFILE (D-32-11 / PROVINT-02)
+  // =========================================================================
+
+  @Get(':id/intelligence')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get provider intelligence profile (foundational + dynamic)' })
+  @ApiResponse({ status: 200, description: 'Returns profile_foundational + profile_dynamic' })
+  async getIntelligence(
+    @Param('id') providerId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ profile_foundational: Record<string, any>; profile_dynamic: Record<string, any> }> {
+    try {
+      return await this.providersService.getIntelligence(providerId, user.restaurantId);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to get intelligence',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch(':id/intelligence')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Update provider foundational intelligence profile' })
+  @ApiResponse({ status: 200 })
+  async updateIntelligence(
+    @Param('id') providerId: string,
+    @Body() dto: UpdateIntelligenceDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ success: boolean }> {
+    try {
+      return await this.providersService.updateIntelligence(providerId, user.restaurantId, dto);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to update intelligence',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get(':id/intelligence/summary')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get top 3 intelligence badge pill dimensions for provider card' })
+  @ApiResponse({ status: 200 })
+  async getIntelligenceSummary(
+    @Param('id') providerId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<Array<{ key: string; label: string; value: string }>> {
+    try {
+      const intel = await this.providersService.getIntelligence(providerId, user.restaurantId);
+      return this.providersService.getProfileSummary(intel.profile_dynamic);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to get intelligence summary',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(':id/retroactive-order')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Create retroactive order from off-app invoice (D-32-15 Scenario C)' })
+  @ApiResponse({ status: 201, description: 'Retroactive order created' })
+  async createRetroactiveOrder(
+    @Param('id') providerId: string,
+    @Body() dto: RetroactiveOrderDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ orderId: string; conversationId: string; interactionId: string }> {
+    try {
+      return await this.providersService.createRetroactiveOrder(providerId, user.restaurantId, dto);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to create retroactive order',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
