@@ -151,6 +151,17 @@ class Settings:
         self.prov_agent_level4_enabled: bool = (
             os.getenv("PROV_AGENT_LEVEL4_ENABLED", "false").lower() == "true"
         )
+        # Phase 32: Provider Outbound Communication Engine
+        self.hard_round_cap: int = int(os.getenv("HARD_ROUND_CAP", "6"))
+        self.max_round_cap: int = int(os.getenv("MAX_ROUND_CAP", "12"))
+        self.negotiation_draft_daily_cap: int = int(os.getenv("NEGOTIATION_DRAFT_DAILY_CAP", "50"))
+        self.email_classify_daily_cap: int = int(os.getenv("EMAIL_CLASSIFY_DAILY_CAP", "500"))
+        self.auto_send_health_threshold: float = float(os.getenv("AUTO_SEND_HEALTH_THRESHOLD", "0.80"))
+        self.draft_token_budget: int = int(os.getenv("DRAFT_TOKEN_BUDGET", "6000"))
+        self.draft_input_token_hard_cap: int = int(os.getenv("DRAFT_INPUT_TOKEN_HARD_CAP", "8000"))
+        self.wineops_disclaimer: str = (
+            "—\nThis message was drafted by WineOps AI on behalf of {restaurant_name}."
+        )
         # Phase 21: Notification backends (E2E-v2-03)
         self.plivo_auth_id: Optional[str] = os.getenv("PLIVO_AUTH_ID")
         self.plivo_auth_token: Optional[str] = os.getenv("PLIVO_AUTH_TOKEN")
