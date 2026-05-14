@@ -22,6 +22,7 @@ import {
   OrderResponseDto,
   UpdateOrderDto,
 } from './dto/procurement.dto';
+import { ApproveDraftDto } from './dto/approve-draft.dto';
 import { ProcurementService } from './procurement.service';
 
 @ApiTags('procurement')
@@ -225,6 +226,91 @@ export class ProcurementController {
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to mark order delivered',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // =========================================================================
+  // PHASE 32: AI DRAFT MANAGEMENT
+  // =========================================================================
+
+  @Post('orders/:id/approve-draft')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Approve AI email draft and trigger send to provider' })
+  @ApiResponse({ status: 200, description: 'Draft approved and sent' })
+  async approveDraft(
+    @Param('id') orderId: string,
+    @Body() dto: ApproveDraftDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    try {
+      return await this.procurementService.approveDraft(user.restaurantId, orderId, dto);
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to approve draft',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('orders/:id/discard-draft')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Discard AI email draft without sending' })
+  @ApiResponse({ status: 200 })
+  async discardDraft(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ success: boolean }> {
+    try {
+      return await this.procurementService.discardDraft(user.restaurantId, orderId);
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to discard draft',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch('orders/:id/draft')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Edit AI email draft content before approval' })
+  @ApiResponse({ status: 200 })
+  async editDraft(
+    @Param('id') orderId: string,
+    @Body() dto: ApproveDraftDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ success: boolean }> {
+    try {
+      return await this.procurementService.editDraft(
+        user.restaurantId,
+        orderId,
+        dto.modifiedContent ?? '',
+      );
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to edit draft',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders/:id/draft')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get pending AI email draft for an order' })
+  @ApiResponse({ status: 200 })
+  async getPendingDraft(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<Record<string, any> | null> {
+    try {
+      return await this.procurementService.getPendingDraft(user.restaurantId, orderId);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to get draft',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
