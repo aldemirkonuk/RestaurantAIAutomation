@@ -340,6 +340,26 @@ Plans:
 - [x] 32-06-PLAN.md — Intelligence extraction: _extract_dynamic_profile, _maybe_summarize, invoice matching, PROVINT-04 unknown sender — 13/13 tests ✓
 - [x] 32-07-PLAN.md — Page wiring: IntelBadge pills + ProviderProfileForm overlay (Providers.tsx) + DraftEmailApprovalPanel (Orders.tsx) ✓
 
+### Phase 33: Multi-Restaurant Membership Model
+**Goal**: Fix the three root causes that prevent reliable staff management across multiple restaurants: (1) `joinViaInvite` crashes for existing users, (2) `user_restaurant_access` is never written to, (3) role is a flat column on `users` instead of per-restaurant. Implements the "workspace membership" model — one identity, N restaurant memberships, independent role per membership.
+**Depends on**: Phase 26 (org + invite infrastructure), Phase 27 (restaurant model stable)
+**Requirements**: MEMBER-01..10
+**Success Criteria** (what must be TRUE):
+  1. `user_restaurant_access` is populated for all new registrations and invite acceptances
+  2. Existing user can accept an invite to a second restaurant without error
+  3. `GET /restaurants/:id/members` returns correct per-restaurant roster
+  4. `PATCH /restaurants/:id/members/:userId` changes role atomically
+  5. `DELETE /restaurants/:id/members/:userId` soft-deactivates membership
+  6. Backfill migration populates `user_restaurant_access` for all existing users idempotently
+  7. `switchRestaurant` validates against `user_restaurant_access` (fine-grained) with org-level fallback
+  8. JWT role sourced from `user_restaurant_access.role` for active restaurant
+  9. Settings Team tab shows per-restaurant members, not org-wide
+  10. OAuth users can be added to a restaurant via manager-initiated path
+**Research:** 33-RESEARCH.md — complete (2026-05-14)
+**Plans:** TBD (created by `/gsd-plan-phase 33`)
+
+---
+
 ### Phase 28: Onboarding Reform + Menu Import ✓ COMPLETE (2026-05-11)
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
 **Depends on**: Phase 26 (registration flow complete), Phase 27 (vendors discoverable)
