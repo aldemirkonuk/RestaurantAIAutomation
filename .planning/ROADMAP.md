@@ -356,7 +356,13 @@ Plans:
   9. Settings Team tab shows per-restaurant members, not org-wide
   10. OAuth users can be added to a restaurant via manager-initiated path
 **Research:** 33-RESEARCH.md — complete (2026-05-14)
-**Plans:** TBD (created by `/gsd-plan-phase 33`)
+**Plans:** 5 plans
+Plans:
+- [ ] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
+- [ ] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
+- [ ] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
+- [ ] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
+- [ ] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
 
 ---
 
