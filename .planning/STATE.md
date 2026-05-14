@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 24 — Provider Communication Pipeline + Email Intelligence. All 5 plans complete (2026-05-13). EmailIntelAgent implemented (Gemini Flash + Haiku, Redis digest, vendor_promotions). ProviderConversationAgent Level 4 (commitment guardrail, D-19 context injection, DLQ). Schema pushed via Supabase MCP.
+**Current focus:** Phase 32 — Provider Outbound Communication Engine. All 7 plans complete (2026-05-14). ProviderCommunicationAgent (742 lines, 13 tests), 20-constraint ConstraintEngine, FuzzyMatcher, NestJS approve/discard/intelligence API, DraftEmailApprovalPanel, IntelBadge pills, PROVINT-04 unknown-sender detection. 50/50 tests passing. Branch: gsd/v2.0-provider-outbound-communication-engine.
 
 ---
 
