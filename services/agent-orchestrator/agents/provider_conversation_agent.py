@@ -335,41 +335,60 @@ class ProviderConversationAgent(BaseAgent):
         routing_key = message.get("routing_key", "")
         payload = message.get("payload", {})
 
-        # --- Inbound provider messages ---
-        if routing_key.startswith("conversation.inbound."):
-            channel = routing_key.split(".")[-1]  # email, sms, whatsapp, voice_transcript
-            await self._handle_inbound_message(payload, channel)
+        # Level 4: idempotency guard (guarded by PROV_AGENT_LEVEL4_ENABLED)
+        _l4_settings = Settings()
+        _idem_key: Optional[str] = None
+        if _l4_settings.prov_agent_level4_enabled:
+            conv_id = payload.get("conversation_id") or payload.get("message_id", "")
+            _idem_key = f"prov_conv:{conv_id}"
+            if await self._check_idempotency(_idem_key):
+                self.logger.debug(f"Skipping duplicate conversation message: {conv_id}")
+                return
 
-        # --- Intent requests from other agents ---
-        elif routing_key == "procurement.conversation_request":
-            await self._handle_procurement_intent(payload)
-        elif routing_key == "provider.promo_check_requested":
-            await self._handle_promo_check(payload)
-        elif routing_key == "provider.profile_refresh_requested":
-            await self._handle_profile_refresh(payload)
-        elif routing_key == "provider.outreach_scheduled":
-            await self._handle_scheduled_outreach(payload)
-        elif routing_key == "provider.created":
-            await self._handle_provider_onboarding(payload)
+        try:
+            # --- Inbound provider messages ---
+            if routing_key.startswith("conversation.inbound."):
+                channel = routing_key.split(".")[-1]  # email, sms, whatsapp, voice_transcript
+                await self._handle_inbound_message(payload, channel)
 
-        # --- Conversation lifecycle ---
-        elif routing_key == "conversation.approved":
-            await self._handle_conversation_approved(payload)
-        elif routing_key == "conversation.rejected":
-            await self._handle_conversation_rejected(payload)
-        elif routing_key == "conversation.modified":
-            await self._handle_conversation_modified(payload)
+            # --- Intent requests from other agents ---
+            elif routing_key == "procurement.conversation_request":
+                await self._handle_procurement_intent(payload)
+            elif routing_key == "provider.promo_check_requested":
+                await self._handle_promo_check(payload)
+            elif routing_key == "provider.profile_refresh_requested":
+                await self._handle_profile_refresh(payload)
+            elif routing_key == "provider.outreach_scheduled":
+                await self._handle_scheduled_outreach(payload)
+            elif routing_key == "provider.created":
+                await self._handle_provider_onboarding(payload)
 
-        # --- Follow-up triggers ---
-        elif routing_key == "calendar.provider_followup_due":
-            await self._handle_followup_due(payload)
+            # --- Conversation lifecycle ---
+            elif routing_key == "conversation.approved":
+                await self._handle_conversation_approved(payload)
+            elif routing_key == "conversation.rejected":
+                await self._handle_conversation_rejected(payload)
+            elif routing_key == "conversation.modified":
+                await self._handle_conversation_modified(payload)
 
-        # --- Scarcity auto-reply (bypasses normal approval) ---
-        elif routing_key == "conversation.auto_reply.urgency":
-            await self._handle_scarcity_auto_reply(payload)
+            # --- Follow-up triggers ---
+            elif routing_key == "calendar.provider_followup_due":
+                await self._handle_followup_due(payload)
 
-        else:
-            self.logger.debug(f"Unhandled routing key: {routing_key}")
+            # --- Scarcity auto-reply (bypasses normal approval) ---
+            elif routing_key == "conversation.auto_reply.urgency":
+                await self._handle_scarcity_auto_reply(payload)
+
+            else:
+                self.logger.debug(f"Unhandled routing key: {routing_key}")
+
+            if _l4_settings.prov_agent_level4_enabled and _idem_key:
+                await self._mark_processed(_idem_key, {"status": "processed"})
+
+        except Exception as e:
+            if _l4_settings.prov_agent_level4_enabled:
+                await self._send_to_dlq(payload, str(e), routing_key)
+            raise
 
     async def cleanup(self) -> None:
         self._active_sessions.clear()
@@ -538,6 +557,7 @@ class ProviderConversationAgent(BaseAgent):
                 memories=relevant_memories,
                 intent=payload,
                 active_promos=active_promos,
+                restaurant_id=restaurant_id or "",
             )
 
             # Store outbound message in memory
@@ -604,6 +624,7 @@ class ProviderConversationAgent(BaseAgent):
                 memories=memories,
                 intent={"intent_type": outreach_type, "topic": topic},
                 active_promos=active_promos,
+                restaurant_id=restaurant_id or "",
             )
 
             conversation_id = await self._create_approval_request(
@@ -1629,6 +1650,7 @@ class ProviderConversationAgent(BaseAgent):
         memories: List[Dict[str, Any]],
         intent: Dict[str, Any],
         active_promos: List[Dict[str, Any]],
+        restaurant_id: str = "",
     ) -> Tuple[str, AuditEntry]:
         """Generate a style-adapted, context-rich message for a provider."""
         audit = AuditEntry(
@@ -1647,6 +1669,34 @@ class ProviderConversationAgent(BaseAgent):
             return self._mock_generate_response(intent, style_profile), audit
 
         try:
+            settings = Settings()
+
+            # D-19: Inject DB-persisted context (survives session restart)
+            if settings.prov_agent_level4_enabled:
+                db_ctx = await self._get_db_context_for_prompt(
+                    provider_id=str(provider_id),
+                    restaurant_id=str(restaurant_id),
+                )
+            else:
+                db_ctx = {
+                    "last_3_db_interactions": "",
+                    "open_orders": "",
+                    "credit_terms": "",
+                    "close_relationship": False,
+                }
+
+            # Edit 5: Close-relationship mode — softer tone when providers.close_relationship=true
+            close_relationship = db_ctx.get("close_relationship", False)
+            if settings.prov_agent_level4_enabled and close_relationship:
+                tone_instruction = (
+                    "This vendor is a close relationship. Use a warm, personal, first-name tone. "
+                    "Reference shared history naturally. Avoid formal boilerplate."
+                )
+            else:
+                tone_instruction = (
+                    "Use a professional but friendly tone appropriate for a business relationship."
+                )
+
             # Build prompt
             twin_summary = json.dumps(digital_twin, indent=2, default=str)[:2000]
             style_summary = json.dumps(style_profile, indent=2)
@@ -1670,6 +1720,10 @@ class ProviderConversationAgent(BaseAgent):
                 top_5_relevant_memories=mem_text or "No relevant memories found",
                 intent_description=json.dumps(intent, default=str),
                 active_promos=promo_text,
+                tone_instruction=tone_instruction,
+                last_3_db_interactions=db_ctx["last_3_db_interactions"],
+                open_orders=db_ctx["open_orders"],
+                credit_terms=db_ctx["credit_terms"],
             )
 
             response = await asyncio.get_event_loop().run_in_executor(
@@ -1683,7 +1737,32 @@ class ProviderConversationAgent(BaseAgent):
                 ),
             )
 
-            return response.text.strip(), audit
+            draft_text = response.text.strip()
+
+            # AI-SPEC §6: Check commitment language — log warning; caller must force pending_approval
+            if self._check_commitment_language(draft_text):
+                self.logger.warning(
+                    f"Commitment language detected in draft for provider {provider_id} "
+                    "— caller must force pending_approval (AI-SPEC §6)"
+                )
+                audit.commitment_language_detected = True
+
+            # Level 4: log draft generation decision to decision_log
+            if settings.prov_agent_level4_enabled:
+                await self.log_decision(
+                    decision_type="draft_generated",
+                    inputs={
+                        "provider_id": str(provider_id),
+                        "intent": str(intent.get("intent_type", "unknown"))[:500],
+                        "context_injected": list(db_ctx.keys()),
+                        "close_relationship": close_relationship,
+                    },
+                    output={"draft_preview": str(draft_text)[:500]},
+                    reasoning="Gemini-generated reply using provider context + DB history (D-19)",
+                    confidence=0.8,
+                )
+
+            return draft_text, audit
 
         except Exception as e:
             self.logger.error(f"Response generation failed: {e}")
@@ -1735,6 +1814,70 @@ class ProviderConversationAgent(BaseAgent):
             f"{f'Specifically interested in {topic}.' if topic else ''} "
             f"Let me know if there's anything new on your end!"
         )
+
+    def _check_commitment_language(self, draft_text: str) -> bool:
+        """Returns True if draft contains commitment language requiring manager approval.
+
+        AI-SPEC §6 guardrail: matches patterns that could constitute a purchase commitment
+        (UCC contract formation risk). Drafts matching this must never auto-send.
+        """
+        text_lower = draft_text.lower()
+        return any(re.search(p, text_lower) for p in COMMITMENT_PATTERNS)
+
+    async def record_correction(
+        self,
+        original_draft: str,
+        edited_draft: str,
+        provider_id: str,
+        restaurant_id: str,
+    ) -> None:
+        """D-12: Log manager edit diff to decision_log (learning loop).
+
+        Called by the approval flow (Plan 24-07) when manager edits a draft before sending.
+        Haiku extracts a short preference string and appends it to
+        conversation_context.manager_instructions[] on the active session row.
+        """
+        if not original_draft or not edited_draft or original_draft == edited_draft:
+            return
+
+        await self.log_decision(
+            decision_type="correction",
+            inputs={"original": original_draft[:1000], "provider_id": provider_id},
+            output={"edited": edited_draft[:1000]},
+            reasoning="Manager edited AI draft — diff recorded for learning loop",
+            confidence=1.0,
+        )
+
+        # Extract communication preference via Haiku and store on session
+        try:
+            haiku = get_haiku_client()
+            settings = Settings()
+            response = await haiku.messages.create(
+                model=settings.haiku_model,
+                max_tokens=100,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Original draft:\n{original_draft[:500]}\n\n"
+                        f"Manager edited to:\n{edited_draft[:500]}\n\n"
+                        "In one sentence (max 20 words), what communication preference does "
+                        "this edit reveal? Format: 'tone: ...' or 'style: ...' or 'avoid: ...'"
+                    ),
+                }],
+            )
+            preference = response.content[0].text.strip() if response.content else ""
+            if preference:
+                # Append to conversation_context.manager_instructions[] on active session
+                self.database.supabase.rpc("jsonb_array_append", {
+                    "table_name": "provider_conversation_sessions",
+                    "column_name": "conversation_context",
+                    "key": "manager_instructions",
+                    "value": preference,
+                    "restaurant_id": restaurant_id,
+                    "provider_id": provider_id,
+                }).execute()
+        except Exception as e:
+            self.logger.warning(f"Learning loop preference extraction failed: {e}")
 
     # =========================================================================
     # 8. THREAD SUMMARIZER
@@ -1965,6 +2108,7 @@ class ProviderConversationAgent(BaseAgent):
                 memories=[],
                 intent={"intent_type": "onboarding"},
                 active_promos=[],
+                restaurant_id=restaurant_id or "",
             )
 
             await self._create_approval_request(
@@ -2342,6 +2486,21 @@ class ProviderConversationAgent(BaseAgent):
             f"I'll get back to you very soon with confirmation.\n\n"
             f"Thank you,\n{self.config.get('default_restaurant_name', 'Restaurant Manager')}"
         )
+
+        # AI-SPEC §6: Commitment language must never auto-send — force pending_approval if detected
+        auto_send = True
+        has_commitment = self._check_commitment_language(hold_message)
+        if has_commitment:
+            self.logger.warning(
+                f"Commitment language detected in scarcity auto-reply for provider {provider_id} "
+                "— overriding auto-send to pending_approval (AI-SPEC §6)"
+            )
+            auto_send = False
+
+        if not auto_send:
+            # Route to approval flow instead of auto-sending
+            self.logger.info(f"Scarcity auto-reply routed to approval for provider {provider_id}")
+            return
 
         send_result = await self._send_message(
             provider_id=provider_id,
