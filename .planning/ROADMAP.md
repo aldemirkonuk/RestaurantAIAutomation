@@ -294,6 +294,9 @@ Plans:
   5. Procurement suggestion logged to `agent_activity_logs`
 **Plans:** TBD (created by `/gsd-plan-phase 31`)
 
+> **⚠️ PAID TIER NOTE (do not implement yet — ask user first):**
+> The LLM communicator (`ProviderConversationAgent` auto-reply + draft generation + D-19 context enrichment from Phase 24) should be **paid-tier only**. Free tier restaurants can still receive and read vendor emails and see PROMO classifications, but the AI-drafted reply generation (`auto_reply_enabled` toggle + Haiku draft synthesis) must be gated behind a paid subscription flag, similar to how `autonomous_vendor_discovery` is gated in Phase 29. When planning this gate, discuss with user: (a) which plan tier unlocks it, (b) whether free users see a locked/upgrade CTA when viewing provider conversation sessions, and (c) whether existing `PROV_AGENT_LEVEL4_ENABLED` settings flag becomes the enforcement point.
+
 ### Phase 29: Autonomous Vendor Discovery (Paid Tier)
 **Goal**: Paid-tier restaurants can place orders even with zero pre-configured vendors. On order creation with no providers, instead of a hard block, the LLM autonomously web-searches for matching wine distributors — finds contact info, operating region, specialties — and presents a ranked shortlist the manager can approve. Approved vendors are auto-created in `providers` and the order proceeds.
 **Depends on**: Phase 27 (provider model + order guard in place), Phase 28 (activation checklist)
