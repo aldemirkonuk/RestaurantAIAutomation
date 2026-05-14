@@ -436,6 +436,8 @@ class MessageBus:
             ("provider.events", ExchangeType.TOPIC, True),
             ("conversation.events", ExchangeType.TOPIC, True),
             ("calendar.events", ExchangeType.TOPIC, True),
+            ("email.events", ExchangeType.TOPIC, True),    # Phase 24: EmailIntelAgent + EmailParsingAgent
+            ("agent.events", ExchangeType.TOPIC, True),    # Phase 24: cross-agent coordination
             ("voice.events", ExchangeType.TOPIC, True),
             
             # System control (high priority)
