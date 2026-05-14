@@ -536,7 +536,76 @@ class VisualVerificationAgent(BaseAgent):
         vintage_matches = re.findall(r'\b(19\d{2}|20[0-3]\d)\b', raw_text)
         
         return invoice_data
-    
+
+    async def _extract_invoice_from_email_text(
+        self, email_body: str
+    ) -> dict:
+        """
+        Phase 32 D-32-15 Scenario B: Extract structured invoice data from email body text.
+        Uses Haiku for semantic extraction; falls back to _parse_invoice_text() regex on failure.
+        Called by ProviderCommunicationAgent when email is classified OPERATIONAL + invoice signals.
+
+        Returns:
+            {
+                "vendor_name": str,
+                "invoice_number": str,
+                "invoice_date": "YYYY-MM-DD",
+                "line_items": [{"wine_name": str, "vintage": int, "quantity": int, "unit_price": float}],
+                "total": float
+            }
+        """
+        from services.model_clients import get_haiku_client as _get_haiku
+        from services.spend_logger import get_spend_logger as _get_spend_logger
+
+        _HAIKU_MODEL = "claude-haiku-4-5-20251001"
+        prompt = (
+            "Extract invoice fields from this email. Return ONLY valid JSON with no extra text:\n"
+            '{"vendor_name": "...", "invoice_number": "...", "invoice_date": "YYYY-MM-DD",\n'
+            ' "line_items": [{"wine_name": "...", "vintage": 2019, "quantity": 6, "unit_price": 45.00}],\n'
+            ' "total": 270.00}\n\n'
+            f"Email body:\n{email_body[:4000]}"
+        )
+
+        try:
+            haiku = _get_haiku()
+            response = await haiku.messages.create(
+                model=_HAIKU_MODEL,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = response.content[0].text if response.content else "{}"
+            raw = raw.strip()
+            if raw.startswith("```"):
+                parts = raw.split("```")
+                raw = parts[1] if len(parts) > 1 else "{}"
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            result = json.loads(raw.strip())
+
+            # SpendLogger (TOKENBDGT-03)
+            try:
+                input_tokens = response.usage.input_tokens if hasattr(response, "usage") else len(prompt) // 4
+                output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 100
+                cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+                _get_spend_logger().log(
+                    provider="anthropic",
+                    model=_HAIKU_MODEL,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost_usd,
+                    restaurant_id=None,
+                )
+            except Exception:
+                pass
+
+            return result
+        except (json.JSONDecodeError, Exception) as exc:
+            self.logger.warning(f"Haiku invoice extraction failed, using regex fallback: {exc}")
+            try:
+                return self._parse_invoice_text(email_body)
+            except Exception:
+                return {}
+
     def _compare_invoice_to_order(
         self,
         invoice_data: Dict[str, Any],
