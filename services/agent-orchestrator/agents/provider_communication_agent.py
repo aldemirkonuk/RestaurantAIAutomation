@@ -740,3 +740,304 @@ class ProviderCommunicationAgent(BaseAgent):
             self.database.supabase.table("notifications").insert(insert_payload).execute()
         except Exception as exc:
             self.logger.warning(f"Notification insert failed (non-critical): {exc}")
+
+    # =========================================================================
+    # DYNAMIC PROFILE EXTRACTION (D-32-10 / PROVINT-03)
+    # =========================================================================
+
+    async def _extract_dynamic_profile(
+        self,
+        conversation_text: str,
+        provider_id: str,
+        restaurant_id: str,
+    ) -> None:
+        """
+        D-32-10: Auto-extract dynamic provider intelligence from conversation text.
+        Extracts: response_speed, negotiation_style, preferred_contact_days,
+        typical_delivery_day, relationship_tier, payment_pattern.
+        UPDATEs providers.profile_dynamic via JSONB merge (|| operator).
+        Haiku call (~$0.001). Non-fatal on failure.
+        """
+        prompt = (
+            "Extract dynamic provider intelligence from this conversation snippet. "
+            "Return ONLY valid JSON with these exact keys (omit any you cannot confidently determine):\n"
+            '{"response_speed": "fast|slow|moderate", '
+            '"negotiation_style": "flexible|fixed|aggressive", '
+            '"preferred_contact_days": "e.g. Mon-Wed", '
+            '"typical_delivery_day": "e.g. Thursday", '
+            '"relationship_tier": "close|standard|new", '
+            '"payment_pattern": "e.g. net-30"}\n\n'
+            f"Conversation:\n{conversation_text[:3000]}"
+        )
+
+        try:
+            haiku = get_haiku_client()
+            async with self.haiku_semaphore:
+                response = await haiku.messages.create(
+                    model=self.settings.haiku_model,
+                    max_tokens=256,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            raw = response.content[0].text if response.content else "{}"
+            raw = raw.strip()
+            if raw.startswith("```"):
+                parts = raw.split("```")
+                raw = parts[1] if len(parts) > 1 else "{}"
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            new_fields = json.loads(raw.strip())
+
+            if not isinstance(new_fields, dict) or not new_fields:
+                return
+
+            # JSONB merge: profile_dynamic = profile_dynamic || new_fields (Python-level)
+            # T-32-06-01: restaurant_id scoping enforced; no eval; values stored as strings
+            try:
+                existing = self.database.supabase.table("providers").select(
+                    "profile_dynamic"
+                ).eq("id", provider_id).eq("restaurant_id", restaurant_id).single().execute()
+                if existing.data:
+                    current_dynamic = existing.data.get("profile_dynamic") or {}
+                    merged = {**current_dynamic, **new_fields}
+                    self.database.supabase.table("providers").update(
+                        {"profile_dynamic": merged}
+                    ).eq("id", provider_id).eq("restaurant_id", restaurant_id).execute()
+            except Exception as exc:
+                self.logger.warning(f"profile_dynamic update failed (non-critical): {exc}")
+
+            # SpendLogger (TOKENBDGT-03)
+            try:
+                input_tokens = response.usage.input_tokens if hasattr(response, "usage") else len(prompt) // 4
+                output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 60
+                cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=self.settings.haiku_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost_usd,
+                    restaurant_id=restaurant_id,
+                )
+            except Exception:
+                pass
+
+            await self.log_decision(
+                decision_type="dynamic_profile_extracted",
+                inputs={"provider_id": provider_id, "fields_extracted": list(new_fields.keys())},
+                output={"merged_fields": list(new_fields.keys())},
+                reasoning=f"Extracted {len(new_fields)} dynamic fields from conversation",
+                confidence=0.80,
+                restaurant_id=restaurant_id,
+            )
+        except Exception as exc:
+            self.logger.warning(f"_extract_dynamic_profile failed (non-critical): {exc}")
+
+    # =========================================================================
+    # PROGRESSIVE SUMMARIZATION (OUTBOUND-04 / TOKENBDGT-04)
+    # =========================================================================
+
+    async def _maybe_summarize(
+        self,
+        conversation_id: str,
+        provider_id: str,
+        restaurant_id: str,
+        round_count: int,
+        full_conversation: str,
+    ) -> None:
+        """
+        D-32-03 TOKENBDGT-04: Progressive summarization after every 2 rounds.
+        Triggered when round_count > 0 and round_count % 2 == 0.
+        1. Haiku summarizes the last 2 rounds
+        2. UPDATEs procurement_conversations.rolling_summary
+        3. INSERTs extracted facts into negotiation_facts table
+        """
+        if round_count <= 0 or round_count % 2 != 0:
+            return  # Not a summarization round
+
+        prompt = (
+            "Summarize this procurement negotiation conversation in ≤100 words. "
+            "Then extract any factual agreements or offers. "
+            "Return ONLY valid JSON:\n"
+            '{"summary": "...", "facts": [{"field": "price_per_bottle", "value": "$45.00", '
+            '"type": "price", "commitment_type": "OFFER", "confidence": 0.9}]}\n\n'
+            f"Conversation:\n{full_conversation[:4000]}"
+        )
+
+        try:
+            haiku = get_haiku_client()
+            async with self.haiku_semaphore:
+                response = await haiku.messages.create(
+                    model=self.settings.haiku_model,
+                    max_tokens=512,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            raw = response.content[0].text if response.content else "{}"
+            raw = raw.strip()
+            if raw.startswith("```"):
+                parts = raw.split("```")
+                raw = parts[1] if len(parts) > 1 else "{}"
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            result = json.loads(raw.strip())
+        except (json.JSONDecodeError, Exception) as exc:
+            self.logger.warning(f"_maybe_summarize Haiku call failed: {exc}")
+            return
+
+        summary = result.get("summary", "")
+        facts: list = result.get("facts", [])
+
+        # UPDATE rolling_summary
+        try:
+            self.database.supabase.table("procurement_conversations").update(
+                {"rolling_summary": summary}
+            ).eq("id", conversation_id).eq("restaurant_id", restaurant_id).execute()
+        except Exception as exc:
+            self.logger.warning(f"rolling_summary update failed: {exc}")
+
+        # INSERT negotiation_facts (T-32-06-02: commitment_type validated against whitelist)
+        valid_commitment_types = {"INDICATIVE", "OFFER", "COUNTER", "AGREEMENT"}
+        for fact in facts:
+            if not fact.get("field") or not fact.get("value"):
+                continue
+            commitment_type = fact.get("commitment_type", "INDICATIVE")
+            if commitment_type not in valid_commitment_types:
+                commitment_type = "INDICATIVE"
+            try:
+                self.database.supabase.table("negotiation_facts").insert({
+                    "provider_id": provider_id,
+                    "restaurant_id": restaurant_id,
+                    "conversation_id": conversation_id,
+                    "fact_field": fact["field"],
+                    "fact_value": fact["value"],
+                    "fact_type": fact.get("type", "general"),
+                    "commitment_type": commitment_type,
+                    "confidence": fact.get("confidence", 0.7),
+                    "source_message": full_conversation[-500:],
+                }).execute()
+            except Exception as exc:
+                self.logger.warning(f"negotiation_facts INSERT failed (non-critical): {exc}")
+
+        # SpendLogger (TOKENBDGT-03)
+        try:
+            input_tokens = response.usage.input_tokens if hasattr(response, "usage") else len(prompt) // 4
+            output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 100
+            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+            get_spend_logger().log(
+                provider="anthropic",
+                model=self.settings.haiku_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                restaurant_id=restaurant_id,
+            )
+        except Exception:
+            pass
+
+        await self.log_decision(
+            decision_type="progressive_summarization",
+            inputs={"conversation_id": conversation_id, "round_count": round_count},
+            output={"facts_extracted": len(facts), "summary_length": len(summary)},
+            reasoning=f"Round {round_count} summarization: {len(facts)} facts extracted",
+            confidence=0.85,
+            restaurant_id=restaurant_id,
+        )
+        self.logger.info(f"Summarized conversation {conversation_id} at round {round_count}: {len(facts)} facts")
+
+    # =========================================================================
+    # INVOICE MATCH HANDLER (D-32-15 Scenario B/C)
+    # =========================================================================
+
+    async def _handle_invoice_match(
+        self,
+        restaurant_id: str,
+        provider_id: str,
+        provider_name: str,
+        extracted_invoice: dict,
+    ) -> None:
+        """
+        D-32-15 Scenario B/C: Fuzzy-match extracted invoice against open procurement_orders.
+        Notifies manager with match result and confidence level.
+        Does NOT auto-create retroactive orders — T-32-06-03: manager must confirm.
+        """
+        try:
+            # Fetch open orders for this restaurant/provider
+            orders_result = self.database.supabase.table("procurement_orders").select(
+                "id, wine_name, quantity, created_at, status"
+            ).eq("restaurant_id", restaurant_id).eq("provider_id", provider_id).in_(
+                "status", ["PENDING", "CONFIRMED", "DRAFT"]
+            ).order("created_at", desc=True).limit(20).execute()
+
+            if not orders_result.data:
+                # No open orders → C-25 orphan scenario
+                await self._notify(
+                    restaurant_id=restaurant_id,
+                    notification_type="off_app_invoice",
+                    title=f"Unrecorded invoice from {provider_name}",
+                    message=(
+                        f"Invoice for {extracted_invoice.get('line_items', [{}])[0].get('wine_name', 'wine')}"
+                        " has no matching order — create a retroactive order?"
+                    ),
+                    priority="medium",
+                    action_url=f"/providers/{provider_id}",
+                    metadata={"provider_id": provider_id, "invoice": extracted_invoice, "match_class": "no_match"},
+                )
+                return
+
+            fm = get_fuzzy_matcher()
+            line_items = extracted_invoice.get("line_items", [{}])
+            extracted_wine = line_items[0].get("wine_name", "") if line_items else ""
+            extracted_qty = float(line_items[0].get("quantity", 0)) if line_items else None
+            extracted_date = extracted_invoice.get("invoice_date")
+
+            orders_with_names = [
+                {**o, "provider_name": provider_name}
+                for o in orders_result.data
+            ]
+
+            best = fm.best_order_match(
+                extracted_provider=provider_name,
+                extracted_wine=extracted_wine,
+                extracted_quantity=extracted_qty,
+                extracted_date=extracted_date,
+                orders=orders_with_names,
+            )
+
+            if not best:
+                match_class = "no_match"
+                score = 0.0
+                order_display = ""
+            else:
+                match_class = best.get("_match_class", "no_match")
+                score = best.get("_match_score", 0.0)
+                order_display = str(best.get("id", ""))[:8]
+
+            if match_class == "auto_suggest":
+                message = f"Invoice looks like order #{order_display} — confirm match?"
+                title = f"Invoice match: order #{order_display}"
+                priority = "high"
+            elif match_class == "possible_match":
+                message = f"Possible match: order #{order_display} ({extracted_wine})? Yes / No / Different order"
+                title = f"Possible invoice match: order #{order_display}"
+                priority = "medium"
+            else:
+                message = f"Invoice for {extracted_wine} from {provider_name} has no matching order — create retroactive order?"
+                title = f"Unrecorded invoice from {provider_name}"
+                priority = "low"
+
+            await self._notify(
+                restaurant_id=restaurant_id,
+                notification_type="off_app_invoice",
+                title=title,
+                message=message,
+                priority=priority,
+                action_url=f"/orders?invoice_match={provider_id}",
+                metadata={
+                    "provider_id": provider_id,
+                    "invoice": extracted_invoice,
+                    "match_class": match_class,
+                    "match_score": round(score, 3),
+                    "order_id": best.get("id") if best else None,
+                },
+            )
+        except Exception as exc:
+            self.logger.warning(f"_handle_invoice_match failed (non-critical): {exc}")
