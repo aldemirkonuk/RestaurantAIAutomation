@@ -113,6 +113,13 @@ class EmailIntelAgent(BaseAgent):
         restaurant_id = payload.get("restaurant_id", "")
         received_at_str = payload.get("received_at") or payload.get("internalDate")
 
+        # PROVINT-04: Unknown sender detection (informational, non-blocking)
+        sender_email = payload.get("from_email", "")
+        if sender_email and restaurant_id:
+            is_unknown = await self._detect_unknown_sender(restaurant_id, sender_email)
+            if is_unknown:
+                await self._notify_unknown_sender(restaurant_id, sender_email, payload)
+
         classification = await self._classify_email(email_subject, email_body)
 
         await self.log_decision(
@@ -144,6 +151,22 @@ class EmailIntelAgent(BaseAgent):
                 priority="high",
                 action_url="/providers",
             )
+            # D-32-15: Invoice signal detected → trigger invoice match pipeline
+            _invoice_keywords = ("invoice", "inv #", "inv-", "payment request", "bill ", "amount due")
+            _body_lower = email_body.lower()
+            _subj_lower = email_subject.lower()
+            if any(kw in _subj_lower or kw in _body_lower for kw in _invoice_keywords):
+                await self.publish(
+                    "provider.events",
+                    "provider.invoice.received",
+                    {
+                        "restaurant_id": restaurant_id,
+                        "provider_id": payload.get("provider_id", ""),
+                        "provider_name": classification.provider_name or "",
+                        "email_body": email_body,
+                        "gmail_thread_id": payload.get("gmail_thread_id", ""),
+                    },
+                )
 
         elif classification.category == "PROMO":
             # Check email age — skip digest accumulation for stale emails (premortem R-06)
@@ -578,3 +601,80 @@ class EmailIntelAgent(BaseAgent):
             self.database.supabase.table("notifications").insert(insert_payload).execute()
         except Exception as e:
             self.logger.warning(f"Notification insert failed (non-critical): {e}")
+
+    # =========================================================================
+    # UNKNOWN SENDER DETECTION (PROVINT-04)
+    # =========================================================================
+
+    async def _detect_unknown_sender(
+        self,
+        restaurant_id: str,
+        sender_email: str,
+        sender_name: str = "",
+    ) -> bool:
+        """
+        PROVINT-04: Check if sender email exists as a known provider contact.
+        Returns True if sender is unknown (not in providers or provider_contacts tables).
+        Fails open — a lookup failure returns False to avoid blocking email processing.
+        """
+        try:
+            result = (
+                self.database.supabase.table("providers")
+                .select("id")
+                .eq("restaurant_id", restaurant_id)
+                .ilike("email", sender_email.strip().lower())
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return False  # known provider
+
+            # Also check provider_contacts table (secondary contacts)
+            contact_result = (
+                self.database.supabase.table("provider_contacts")
+                .select("id")
+                .eq("restaurant_id", restaurant_id)
+                .ilike("email", sender_email.strip().lower())
+                .limit(1)
+                .execute()
+            )
+            return not bool(contact_result.data)
+        except Exception as exc:
+            self.logger.warning(
+                "unknown_sender_check failed",
+                extra={"error": str(exc), "sender": sender_email},
+            )
+            return False  # fail-open: don't block processing on check failure
+
+    async def _notify_unknown_sender(
+        self,
+        restaurant_id: str,
+        sender_email: str,
+        message_payload: dict,
+    ) -> None:
+        """PROVINT-04: Notify manager about email from unknown sender (add to providers?)."""
+        sender_name = message_payload.get("from_name", sender_email)
+        subject = message_payload.get("subject", "(no subject)")
+        try:
+            self.database.supabase.table("notifications").insert({
+                "restaurant_id": restaurant_id,
+                "type": "unknown_sender",
+                "title": f"Email from unknown contact: {sender_name}",
+                "message": (
+                    f"Received email from {sender_name} <{sender_email}> "
+                    f"(subject: {subject[:80]}) — this address is not in your providers list. "
+                    "Would you like to add them as a provider?"
+                ),
+                "status": "unread",   # VERIFIED: notifications uses status='unread'
+                "metadata": {
+                    "sender_email": sender_email,
+                    "sender_name": sender_name,
+                    "subject": subject,
+                    "action": "add_to_providers",
+                },
+            }).execute()
+        except Exception as exc:
+            self.logger.error(
+                "unknown_sender_notify failed",
+                extra={"error": str(exc), "sender": sender_email},
+            )

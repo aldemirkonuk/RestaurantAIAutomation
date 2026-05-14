@@ -92,6 +92,7 @@ class ProviderCommunicationAgent(BaseAgent):
             ("procurement.events", "procurement.order.created"),
             ("provider.events", "provider.draft.approved"),
             ("provider.events", "provider.draft.discarded"),
+            ("provider.events", "provider.invoice.received"),  # D-32-15: off-app invoice match
         ]
 
     async def process_message(self, message: Dict[str, Any]) -> None:
@@ -112,6 +113,8 @@ class ProviderCommunicationAgent(BaseAgent):
                 await self._handle_draft_approved(payload)
             elif "draft.discarded" in routing_key:
                 await self._handle_draft_discarded(payload)
+            elif "invoice.received" in routing_key:
+                await self._handle_invoice_received_event(payload)
             else:
                 self.logger.warning(f"Unhandled routing key: {routing_key}")
                 return
@@ -942,6 +945,43 @@ class ProviderCommunicationAgent(BaseAgent):
             restaurant_id=restaurant_id,
         )
         self.logger.info(f"Summarized conversation {conversation_id} at round {round_count}: {len(facts)} facts")
+
+    # =========================================================================
+    # INVOICE EVENT BRIDGE (D-32-15 — triggered by provider.invoice.received)
+    # =========================================================================
+
+    async def _handle_invoice_received_event(self, payload: Dict[str, Any]) -> None:
+        """
+        Bridge handler for provider.invoice.received events published by EmailIntelAgent.
+        Extracts invoice from email body via VisualVerificationAgent and runs fuzzy matching.
+        """
+        restaurant_id = payload.get("restaurant_id", "")
+        provider_id = payload.get("provider_id", "")
+        provider_name = payload.get("provider_name", "")
+        email_body = payload.get("email_body", "")
+
+        if not (restaurant_id and provider_id and email_body):
+            self.logger.debug("_handle_invoice_received_event: missing required fields, skipping")
+            return
+
+        try:
+            from agents.visual_verification_agent import VisualVerificationAgent
+            vva = VisualVerificationAgent.__new__(VisualVerificationAgent)
+            vva.logger = self.logger
+            extracted = await vva._extract_invoice_from_email_text(email_body)
+        except Exception as exc:
+            self.logger.warning(f"Invoice text extraction failed: {exc}")
+            return
+
+        if not extracted:
+            return
+
+        await self._handle_invoice_match(
+            restaurant_id=restaurant_id,
+            provider_id=provider_id,
+            provider_name=provider_name,
+            extracted_invoice=extracted,
+        )
 
     # =========================================================================
     # INVOICE MATCH HANDLER (D-32-15 Scenario B/C)
