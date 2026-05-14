@@ -143,6 +143,14 @@ class Settings:
         )
         self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 
+        # Phase 24: Email intelligence model selection (model_clients.py)
+        self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self.haiku_model: str = os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001")
+        # Phase 24: ProviderConversationAgent Level 4 feature flag (COMMS-07, R-11)
+        # Default=False — canary rollout per D-05. Set PROV_AGENT_LEVEL4_ENABLED=true to enable.
+        self.prov_agent_level4_enabled: bool = (
+            os.getenv("PROV_AGENT_LEVEL4_ENABLED", "false").lower() == "true"
+        )
         # Phase 21: Notification backends (E2E-v2-03)
         self.plivo_auth_id: Optional[str] = os.getenv("PLIVO_AUTH_ID")
         self.plivo_auth_token: Optional[str] = os.getenv("PLIVO_AUTH_TOKEN")

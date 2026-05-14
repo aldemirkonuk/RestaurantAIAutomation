@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from core.base_agent import BaseAgent
 from utils.logger import setup_logger
 from services.email_composer_service import EmailComposerService
+from config.settings import Settings
+from services.model_clients import get_haiku_client
 
 logger = setup_logger("agent.provider_conversation")
 
@@ -92,6 +94,18 @@ CURRENT INTENT:
 ACTIVE PROMOTIONS FROM THIS PROVIDER:
 {active_promos}
 
+TONE GUIDANCE:
+{tone_instruction}
+
+RECENT CONVERSATION HISTORY (from database, last 3 messages):
+{last_3_db_interactions}
+
+OPEN ORDERS FOR THIS PROVIDER:
+{open_orders}
+
+PROVIDER CREDIT TERMS:
+{credit_terms}
+
 RULES:
 - Match the provider's communication style exactly (formality, length, emoji usage)
 - Reference specific past conversations naturally ("Last time we spoke about the Barolo...")
@@ -102,6 +116,12 @@ RULES:
 - Include a clear next step or question to keep the conversation moving
 
 Generate the message:"""
+
+COMMITMENT_PATTERNS = [
+    r"\bwill take\b", r"\bwould like to order\b", r"\bplease confirm our order\b",
+    r"\bwe'?ll proceed with\b", r"\bwe accept\b", r"\bconfirm \d+ cases?\b",
+    r"\blet'?s go ahead\b", r"\bsending payment\b",
+]
 
 SUMMARY_PROMPT = """Summarize this conversation session in exactly 3 lines:
 Line 1: What was discussed
@@ -200,6 +220,7 @@ class AuditEntry:
     style_adaptations: List[str] = field(default_factory=list)
     active_promos_referenced: List[str] = field(default_factory=list)
     intent_source: str = ""
+    commitment_language_detected: bool = False
 
 
 # =============================================================================
@@ -2501,6 +2522,98 @@ class ProviderConversationAgent(BaseAgent):
                 .execute()
         except Exception as e:
             self.logger.error(f"Error expiring promos: {e}")
+
+    # =========================================================================
+    # LEVEL 4: DB CONTEXT INJECTION (D-19)
+    # =========================================================================
+
+    async def _get_db_context_for_prompt(self, provider_id: str, restaurant_id: str) -> dict:
+        """
+        Fetch DB-persisted context for Haiku prompt injection (D-19).
+        Survives session restart unlike in-memory context.
+        All queries wrapped in try/except — DB failure returns safe empty defaults.
+        """
+        ctx: dict = {
+            "last_3_db_interactions": "No previous interactions on record.",
+            "open_orders": "No open orders.",
+            "credit_terms": "No credit terms on record.",
+            "close_relationship": False,
+        }
+        try:
+            # Last 3 interactions from procurement_conversations (persisted)
+            convs = (self.database.supabase.table("procurement_conversations")
+                     .select("direction, message_text, created_at")
+                     .eq("provider_id", provider_id)
+                     .eq("restaurant_id", restaurant_id)
+                     .order("created_at", desc=True)
+                     .limit(3)
+                     .execute())
+            if convs.data:
+                parts = [
+                    f"[{r['direction'].upper()}] {r['message_text'][:200]} "
+                    f"({r['created_at'][:10]})"
+                    for r in convs.data
+                ]
+                ctx["last_3_db_interactions"] = "\n".join(parts)
+        except Exception as e:
+            self.logger.warning(f"_get_db_context: conversations query failed: {e}")
+
+        try:
+            # Open orders
+            orders = (self.database.supabase.table("procurement_orders")
+                      .select("wine_name, quantity, status, notes")
+                      .eq("provider_id", provider_id)
+                      .in_("status", ["pending", "approved", "ordered", "negotiating"])
+                      .execute())
+            if orders.data:
+                parts = [
+                    f"{r['wine_name']} ×{r['quantity']} [{r['status']}]"
+                    for r in orders.data
+                ]
+                ctx["open_orders"] = "; ".join(parts)
+        except Exception as e:
+            self.logger.warning(f"_get_db_context: orders query failed: {e}")
+
+        try:
+            # Credit terms: negotiation_facts WHERE commitment_type='AGREEMENT' AND fact_field ILIKE '%payment%'
+            facts = (self.database.supabase.table("negotiation_facts")
+                     .select("fact_field, fact_value")
+                     .eq("provider_id", provider_id)
+                     .eq("commitment_type", "AGREEMENT")
+                     .ilike("fact_field", "%payment%")
+                     .limit(1)
+                     .execute())
+            if facts.data:
+                f = facts.data[0]
+                ctx["credit_terms"] = f"{f['fact_field']}: {f['fact_value']}"
+            else:
+                # Fallback to providers.notes + close_relationship
+                prov = (self.database.supabase.table("providers")
+                        .select("notes, close_relationship")
+                        .eq("id", provider_id)
+                        .maybe_single()
+                        .execute())
+                if prov.data:
+                    if prov.data.get("notes"):
+                        ctx["credit_terms"] = f"Notes: {prov.data['notes'][:200]}"
+                    ctx["close_relationship"] = bool(prov.data.get("close_relationship", False))
+        except Exception as e:
+            self.logger.warning(f"_get_db_context: credit_terms query failed: {e}")
+
+        # Fetch close_relationship if not already set above
+        if not ctx["close_relationship"]:
+            try:
+                prov_cr = (self.database.supabase.table("providers")
+                           .select("close_relationship")
+                           .eq("id", provider_id)
+                           .maybe_single()
+                           .execute())
+                if prov_cr.data:
+                    ctx["close_relationship"] = bool(prov_cr.data.get("close_relationship", False))
+            except Exception as e:
+                self.logger.warning(f"_get_db_context: close_relationship query failed: {e}")
+
+        return ctx
 
     # =========================================================================
     # UTILITY
