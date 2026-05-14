@@ -558,3 +558,185 @@ class ProviderCommunicationAgent(BaseAgent):
             f"Draft generated for order {order_id}: conversation_id={conversation_id}, "
             f"status={final_status}"
         )
+
+    # =========================================================================
+    # DRAFT APPROVED / DISCARDED HANDLERS (D-32-06)
+    # =========================================================================
+
+    async def _handle_draft_approved(self, payload: Dict[str, Any]) -> None:
+        """D-32-06: Log draft approval decision. Email send handled by NestJS GmailService."""
+        conversation_id = payload.get("conversation_id", "")
+        order_id = payload.get("order_id", "")
+        restaurant_id = payload.get("restaurant_id", "")
+        modified = payload.get("modified_content")
+        await self.log_decision(
+            decision_type="draft_approved",
+            inputs={
+                "conversation_id": conversation_id,
+                "order_id": order_id,
+                "was_modified": bool(modified),
+            },
+            output={"status": "APPROVED"},
+            reasoning="Manager approved outbound draft" + (" with edits" if modified else ""),
+            confidence=1.0,
+            restaurant_id=restaurant_id,
+        )
+        self.logger.info(f"Draft approved: conversation_id={conversation_id}")
+
+    async def _handle_draft_discarded(self, payload: Dict[str, Any]) -> None:
+        """D-32-06: Log draft discard."""
+        conversation_id = payload.get("conversation_id", "")
+        restaurant_id = payload.get("restaurant_id", "")
+        await self.log_decision(
+            decision_type="draft_discarded",
+            inputs={"conversation_id": conversation_id},
+            output={"status": "DISCARDED"},
+            reasoning="Manager discarded outbound draft",
+            confidence=1.0,
+            restaurant_id=restaurant_id,
+        )
+        self.logger.info(f"Draft discarded: conversation_id={conversation_id}")
+
+    # =========================================================================
+    # PII SENSITIVITY CLASSIFIER (GAP-1 — C-08 / C-21)
+    # =========================================================================
+
+    def _classify_message_sensitivity(self, text: str) -> bool:
+        """
+        GAP-1: C-08/C-21 PII/sensitivity detection.
+        Returns True if text contains PII or sensitive content → discrete mode activates.
+        Discrete mode: no body logging, no embedding, no summarization.
+        Notification routed to DEV/ADMIN channel only.
+        """
+        for pattern in PII_PATTERNS:
+            if pattern.search(text):
+                return True
+        return False
+
+    # =========================================================================
+    # RATE LIMIT + DRAFT LOCK HELPERS (D-32-04)
+    # =========================================================================
+
+    async def _check_and_increment_rate_limit(
+        self, key: str, cap: int, ttl_seconds: int = 86400
+    ) -> bool:
+        """
+        Returns True if cap EXCEEDED (should block), False if under cap (allow).
+        Fails open when Redis unavailable (no blocking on Redis outage).
+        """
+        if not self.redis:
+            return False
+        try:
+            current = await self.redis.get(key)
+            if current and int(current) >= cap:
+                return True
+            pipe = self.redis.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, ttl_seconds)
+            await pipe.execute()
+            return False
+        except Exception as exc:
+            self.logger.warning(f"Rate limit check failed (fail open): {exc}")
+            return False
+
+    async def _acquire_draft_lock(self, key: str, px: int = 30_000) -> bool:
+        """
+        SET NX PX — returns True if lock acquired, False if already held.
+        Fails open when Redis unavailable (no lock contention without Redis).
+        """
+        if not self.redis:
+            return True
+        try:
+            result = await self.redis.set(key, "1", nx=True, px=px)
+            return result is not None
+        except Exception as exc:
+            self.logger.warning(f"Draft lock acquisition failed (fail open): {exc}")
+            return True
+
+    # =========================================================================
+    # AUTO-SEND GATE (D-32-07 / OUTBOUND-08)
+    # =========================================================================
+
+    async def _check_auto_send_gate(
+        self,
+        restaurant_id: str,
+        provider_id: str,
+    ) -> bool:
+        """
+        D-32-07 three-gate auto-send check.
+        Returns True only when ALL 3 conditions are met:
+          1. paid_tier: restaurant has auto_send_enabled feature flag
+          2. health_score >= auto_send_health_threshold (default 0.80)
+          3. auto_reply_enabled: provider has manager-pre-approved auto-send
+        Fails closed on any exception (defaults to PENDING_APPROVAL).
+        """
+        threshold = self.settings.auto_send_health_threshold
+        try:
+            # Gate 1: paid tier feature flag
+            rest_result = (
+                self.database.supabase.table("restaurant_feature_flags")
+                .select("auto_send_enabled")
+                .eq("restaurant_id", restaurant_id)
+                .single()
+                .execute()
+            )
+            if not (rest_result.data or {}).get("auto_send_enabled"):
+                return False
+
+            # Gates 2 + 3: provider health score + manager pre-approval
+            prov_result = (
+                self.database.supabase.table("providers")
+                .select("relationship_health_score, auto_reply_enabled")
+                .eq("id", provider_id)
+                .eq("restaurant_id", restaurant_id)
+                .single()
+                .execute()
+            )
+            prov = prov_result.data or {}
+            health = float(prov.get("relationship_health_score") or 0)
+            auto_reply = bool(prov.get("auto_reply_enabled"))
+
+            return health >= threshold and auto_reply
+
+        except Exception as exc:
+            self.logger.warning(
+                f"auto_send_gate check failed (defaulting to manual approval): {exc}",
+            )
+            return False
+
+    # =========================================================================
+    # NOTIFICATION INSERT (D-03)
+    # =========================================================================
+
+    async def _notify(
+        self,
+        restaurant_id: str,
+        notification_type: str,
+        title: str,
+        message: str,
+        priority: str = "medium",
+        action_url: str = "/orders",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Insert in-app notification directly to Supabase notifications table (D-03).
+        Uses status='unread' (VERIFIED_NOTIFICATION_FIELD from Plan 32-01).
+        NOT an HTTP call to NestJS — direct DB insert per RESEARCH.md Q2.
+        """
+        if not restaurant_id:
+            return
+        try:
+            insert_payload: Dict[str, Any] = {
+                "restaurant_id": restaurant_id,
+                "type": notification_type,
+                "title": title,
+                "message": message,
+                "priority": priority,
+                "action_url": action_url,
+                "status": "unread",   # VERIFIED: notifications uses status='unread' (32-01-SUMMARY)
+            }
+            if metadata:
+                insert_payload["metadata"] = metadata
+            self.database.supabase.table("notifications").insert(insert_payload).execute()
+        except Exception as exc:
+            self.logger.warning(f"Notification insert failed (non-critical): {exc}")
