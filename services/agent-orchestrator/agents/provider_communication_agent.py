@@ -570,8 +570,9 @@ class ProviderCommunicationAgent(BaseAgent):
             raise
 
         # Step 12: Post-insert action
-        provider_name = payload.get("provider_name", "Provider")
-        order_display = order_id[:8]
+        provider_name = payload.get("provider_name") or "Provider"
+        order_number  = payload.get("order_number") or f"#{order_id[:8]}"
+        order_display = order_number if order_number.startswith("#") else f"#{order_number}"
 
         if auto_send:
             # D-32-07: Auto-send path — publish event for downstream Gmail send
@@ -590,19 +591,26 @@ class ProviderCommunicationAgent(BaseAgent):
                 self.logger.warning(f"Failed to publish auto_approved event (non-critical): {exc}")
         else:
             # Manual approval path: notify manager
+            # Title is kept short for the bell icon (one line, no wrapping).
+            # action_url → /notifications so the bell click lands on the full
+            # notification detail where the manager can then review the draft.
             await self._notify(
                 restaurant_id=restaurant_id,
                 notification_type="draft_ready",
-                title=f"Draft ready: email to {provider_name}",
+                title=f"Order {order_display} is created from {provider_name}",
                 message=(
-                    f"AI drafted a {email_type.replace('_', ' ').title()} email for order #{order_display}"
+                    f"AI draft ready · {email_type.replace('_', ' ').title()} · "
+                    f"{payload.get('wine_name', 'Wine')}"
                 ),
                 priority="high",
-                action_url=f"/orders?draft={conversation_id}",
+                action_url="/notifications",
                 metadata={
                     "conversation_id": conversation_id,
                     "order_id": order_id,
+                    "order_number": order_number,
                     "email_type": email_type,
+                    "wine_name": payload.get("wine_name", ""),
+                    "provider_name": provider_name,
                 },
             )
 

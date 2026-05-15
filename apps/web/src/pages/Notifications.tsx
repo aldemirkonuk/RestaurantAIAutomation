@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell,
@@ -30,6 +31,7 @@ import {
   Plus,
   Link as LinkIcon,
   MessageSquare,
+  Mail,
 } from 'lucide-react'
 import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useArchiveNotification, useDeleteNotification } from '../hooks/queries'
 import { useAuthStore } from '../stores'
@@ -70,6 +72,7 @@ interface CustomOneTapAction {
 
 export function Notifications() {
   const user = useAuthStore(state => state.user)
+  const location = useLocation()
   const [filter, setFilter] = useState<'all' | NotificationStatus>('all')
   const [priorityFilter, setPriorityFilter] = useState<'all' | NotificationPriority>('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -104,6 +107,14 @@ export function Notifications() {
     priority: 'medium' as 'low' | 'medium' | 'high',
     color: 'wine'
   })
+
+  // Auto-open detail panel when navigated from the bell icon
+  useEffect(() => {
+    const state = location.state as { selectedNotificationId?: string } | null
+    if (!state?.selectedNotificationId || notifications.length === 0) return
+    const target = notifications.find((n) => n.id === state.selectedNotificationId)
+    if (target) setSelectedNotification(target)
+  }, [location.state, notifications])
 
   // Auto-refresh simulation - MOVED BEFORE CONDITIONAL RETURNS
   useEffect(() => {
@@ -189,7 +200,7 @@ export function Notifications() {
   }, [notifications, starredNotifications])
 
   const getTypeConfig = (type: NotificationType) => {
-    const configs: Record<NotificationType, { icon: any; bg: string; text: string; border: string }> = {
+    const configs: Record<string, { icon: any; bg: string; text: string; border: string }> = {
       info: { icon: Info, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-400' },
       success: { icon: CheckCircle2, bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-400' },
       warning: { icon: AlertTriangle, bg: 'bg-amber-100', text: 'text-amber-600', border: 'border-amber-400' },
@@ -199,6 +210,20 @@ export function Notifications() {
       report: { icon: Calendar, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
       reminder: { icon: Bell, bg: 'bg-orange-100', text: 'text-orange-600', border: 'border-orange-400' },
       event: { icon: Calendar, bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'border-cyan-400' },
+      // Phase 32 AI draft types
+      draft_ready: { icon: Mail, bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-400' },
+      constraint_triggered: { icon: AlertTriangle, bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-400' },
+      unknown_sender: { icon: Mail, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
+      invoice_received: { icon: Package, bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-400' },
+      // API type names
+      inventory_low_stock: { icon: Package, bg: 'bg-purple-100', text: 'text-purple-600', border: 'border-purple-400' },
+      order_pending: { icon: TrendingUp, bg: 'bg-indigo-100', text: 'text-indigo-600', border: 'border-indigo-400' },
+      order_delivered: { icon: CheckCircle2, bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-400' },
+      price_change: { icon: TrendingUp, bg: 'bg-amber-100', text: 'text-amber-600', border: 'border-amber-400' },
+      delivery_scheduled: { icon: Calendar, bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'border-cyan-400' },
+      calendar_reminder: { icon: Bell, bg: 'bg-orange-100', text: 'text-orange-600', border: 'border-orange-400' },
+      system: { icon: Info, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
+      ai_suggestion: { icon: Info, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-400' },
     }
     return configs[type] || configs.info
   }
@@ -219,6 +244,14 @@ export function Notifications() {
         return 'Request event notes and attendee list.'
       case 'ai_suggestion':
         return 'Request the AI reasoning and data sources.'
+      case 'draft_ready':
+        return 'Click "Review & Approve Draft" to open the email compose view.'
+      case 'constraint_triggered':
+        return 'A business rule blocked automatic sending. Manager action required.'
+      case 'unknown_sender':
+        return 'An unrecognised sender emailed. Decide whether to add them as a provider.'
+      case 'invoice_received':
+        return 'An invoice arrived. Confirm the order match or create a retroactive order.'
       case 'system':
       default:
         return 'Request additional context for this notification.'
@@ -942,7 +975,27 @@ export function Notifications() {
                     </p>
                   </div>
                 )}
-                {selectedNotification?.actionUrl && (
+                {selectedNotification?.type === 'draft_ready' && selectedNotification.metadata?.conversation_id && (
+                  <div className="mt-6 flex flex-col gap-2">
+                    <a
+                      href={`/orders?draft=${selectedNotification.metadata.conversation_id}`}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-700 text-white rounded-lg hover:bg-indigo-800 transition-colors font-medium"
+                    >
+                      <Mail className="w-4 h-4" />
+                      Review &amp; Approve Draft
+                    </a>
+                    {selectedNotification.metadata.email_type && (
+                      <p className="text-xs text-gray-500">
+                        {(selectedNotification.metadata.email_type as string).replace(/_/g, ' ')} ·{' '}
+                        {selectedNotification.metadata.wine_name || ''}
+                        {selectedNotification.metadata.provider_name
+                          ? ` · ${selectedNotification.metadata.provider_name}`
+                          : ''}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {selectedNotification?.actionUrl && selectedNotification.type !== 'draft_ready' && (
                   <div className="mt-6">
                     <a
                       href={selectedNotification.actionUrl}

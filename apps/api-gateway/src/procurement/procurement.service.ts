@@ -161,18 +161,31 @@ export class ProcurementService {
     // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
     if (dto.providerId && this.orchestratorService) {
       try {
+        // Resolve provider name so the agent can use it in the notification title.
+        let resolvedProviderName = '';
+        try {
+          const { data: prov } = await this.databaseService.supabase
+            .from('providers')
+            .select('name')
+            .eq('id', dto.providerId)
+            .eq('restaurant_id', restaurantId)
+            .single();
+          resolvedProviderName = (prov as any)?.name || '';
+        } catch { /* non-fatal */ }
+
         await this.orchestratorService.publishEvent(
           'procurement.events',
           'procurement.order.created',
           {
             order_id: order.id,
+            order_number: order.orderNumber || '',
             restaurant_id: restaurantId,
             provider_id: dto.providerId,
+            provider_name: resolvedProviderName,
             wine_name: order.wineName || '',
             quantity: order.quantity,
             target_price_per_bottle: dto.quotedPrice ?? null,
             urgency: dto.isEmergency ? 'urgent' : 'normal',
-            provider_name: '',
             restaurant_name: '',
           },
         );

@@ -234,7 +234,9 @@ export function Orders() {
   const [draftPanelData, setDraftPanelData] = useState<{
     conversationId: string
     orderId: string
+    orderNumber?: string
     wineName: string
+    quantity?: number
     providerName: string
     providerEmail: string
     emailType: 'PRICE_INQUIRY' | 'DEMAND_OFFER' | 'PROMO_INQUIRY' | 'WINE_INQUIRY'
@@ -1016,18 +1018,30 @@ Shadow stock has been moved to Live Stock.`)
                 `/procurement/orders/${order.order_id}/draft`
               )
               const draft = res.data
-              if (draft?.conversationId) {
+              if (draft?.conversationId ?? draft?.id) {
+                const conversationId = draft.conversationId ?? draft.id ?? order.order_id
+                const rawContent = draft.draftContent ?? draft.content ?? ''
+                const [bodyPart, disclaimerPart] = rawContent.split('\n\n—\n')
                 setDraftPanelData({
-                  conversationId: draft.conversationId,
+                  conversationId,
                   orderId: order.order_id,
-                  wineName: order.wine_name || draft.wineName || 'Wine',
-                  providerName: order.provider_name || draft.providerName || 'Provider',
-                  subject: draft.subject || '',
-                  body: draft.body || draft.content || '',
-                  constraintFlags: draft.constraintFlags || {},
-                  emailType: draft.emailType || 'PRICE_INQUIRY',
+                  orderNumber: order.order_number ?? undefined,
+                  wineName: order.wine_name || draft.wineName || draft.wine_name || 'Wine',
+                  quantity: order.quantity ?? undefined,
+                  providerName: order.provider_name || draft.providerName || draft.provider_name || 'Provider',
+                  providerEmail: draft.providerEmail ?? draft.provider_email ?? '',
+                  emailType: draft.emailType ?? draft.outbound_email_type ?? 'PRICE_INQUIRY',
+                  draftContent: bodyPart ?? rawContent,
+                  disclaimer: disclaimerPart ?? 'Sent via WineOps AI — This message was generated with AI assistance.',
+                  constraintWarnings: (draft.constraintWarnings ?? draft.constraint_flags?.annotating ?? []).map((c: any) => ({
+                    code: typeof c === 'string' ? c : (c.code ?? 'C-??'),
+                    message: typeof c === 'string' ? c : (c.message ?? ''),
+                    severity: c.severity ?? 'annotating',
+                  })),
+                  roundCount: draft.roundCount ?? draft.round_count ?? 1,
+                  timestamp: draft.createdAt ?? draft.created_at ?? new Date().toISOString(),
                 })
-                setShowApprovalModal(true)
+                setIsDraftPanelOpen(true)
                 return
               }
             } catch {

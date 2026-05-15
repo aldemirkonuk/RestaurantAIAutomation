@@ -363,10 +363,12 @@ export function Header({ title, subtitle }: HeaderProps) {
                             onClick={async () => {
                               await markAsRead.mutateAsync(notification.id)
                               refetchNotifications()
-                              if (notification.actionUrl) {
-                                navigate(notification.actionUrl)
-                                setShowNotifications(false)
-                              }
+                              // Always navigate to /notifications with the ID so the
+                              // detail panel opens on the right notification.
+                              navigate('/notifications', {
+                                state: { selectedNotificationId: notification.id },
+                              })
+                              setShowNotifications(false)
                             }}
                             className={cn(
                               'px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0',
@@ -379,13 +381,10 @@ export function Header({ title, subtitle }: HeaderProps) {
                                 style={{ backgroundColor: getNotificationTypeColor(notification.type) }}
                               />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900">
+                                <p className="text-sm font-medium text-gray-900 leading-snug">
                                   {notification.title}
                                 </p>
-                                <p className="text-sm text-gray-500 truncate">
-                                  {notification.message}
-                                </p>
-                                <p className="text-xs text-gray-400 mt-1">
+                                <p className="text-xs text-gray-400 mt-0.5">
                                   {formatTimestamp(notification.timestamp)}
                                 </p>
                               </div>

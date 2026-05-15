@@ -8,7 +8,7 @@
  * - No autonomous purchasing without manager approval
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle,
@@ -74,24 +74,35 @@ const ACTIONS_STORAGE_KEY = 'wineops_pending_actions'
 const SHADOW_STOCK_KEY = 'wineops_shadow_stock'
 const PENDING_ORDERS_KEY = 'wineops_orders_history'
 
-// Load persisted actions from localStorage
+// Hard cap: never persist more than this many actions.
+const MAX_PERSISTED_ACTIONS = 50
+
+// Load persisted actions from localStorage.
+// If the stored list is clearly corrupted (> MAX_PERSISTED_ACTIONS), wipe it.
 function loadPersistedActions(): ActionItem[] {
   if (typeof window === 'undefined') return []
   try {
     const stored = localStorage.getItem(ACTIONS_STORAGE_KEY)
-    if (stored) {
-      const actions = JSON.parse(stored)
-      // Convert timestamps back to Date objects
-      return actions.map((a: any) => ({ ...a, timestamp: new Date(a.timestamp) }))
+    if (!stored) return []
+    const actions = JSON.parse(stored)
+    if (!Array.isArray(actions)) { localStorage.removeItem(ACTIONS_STORAGE_KEY); return [] }
+    if (actions.length > MAX_PERSISTED_ACTIONS) {
+      localStorage.removeItem(ACTIONS_STORAGE_KEY)
+      return []
     }
-  } catch {}
-  return []
+    return actions.map((a: any) => ({ ...a, timestamp: new Date(a.timestamp) }))
+  } catch {
+    localStorage.removeItem(ACTIONS_STORAGE_KEY)
+    return []
+  }
 }
 
-// Save actions to localStorage
+// Save actions to localStorage — always cap to MAX_PERSISTED_ACTIONS.
 function saveActionsToStorage(actions: ActionItem[]): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(actions))
+  try {
+    localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(actions.slice(0, MAX_PERSISTED_ACTIONS)))
+  } catch {}
 }
 
 // Generate real actions from data sources
@@ -250,7 +261,13 @@ export function OneTapActionCenter() {
     () => getInitialActions(libraryWines, lowStockItems),
     [libraryWines, lowStockItems],
   )
-  const [actions, setActions] = useState<ActionItem[]>(initialActions)
+  // One-time mount cleanup: wipe any localStorage that ballooned beyond the cap.
+  // loadPersistedActions() already guards this, but call it explicitly on mount
+  // so stale data from before this fix is also removed.
+  const [actions, setActions] = useState<ActionItem[]>(() => {
+    loadPersistedActions() // side-effect: prunes oversized store
+    return initialActions
+  })
   const [expandedAction, setExpandedAction] = useState<string | null>(null)
   const [processingAction, setProcessingAction] = useState<string | null>(null)
   const [_ordersLoading, setOrdersLoading] = useState(false)
@@ -284,11 +301,9 @@ export function OneTapActionCenter() {
         if (uniqueOrders.length > 0) {
           const newActions = generateRealActions(libraryWines, lowStockItems, uniqueOrders)
           setActions(prev => {
-            // Merge with any user-created actions
-            const userCreatedActions = prev.filter(
-              a => !a.id.startsWith('delivery_') && !a.id.startsWith('stock_')
-            )
-            return [...newActions, ...userCreatedActions]
+            const autoIds = new Set(newActions.map(a => a.id))
+            const userCreatedActions = prev.filter(a => !autoIds.has(a.id))
+            return [...newActions, ...userCreatedActions].slice(0, MAX_PERSISTED_ACTIONS)
           })
         }
       } catch (error) {
@@ -319,61 +334,44 @@ export function OneTapActionCenter() {
   const [gmailRecipient, setGmailRecipient] = useState('')
   const [gmailSubject, setGmailSubject] = useState('')
   
-  // Merge incoming auto-generated actions (low_stock_, stock_receipt_, delivery_)
-  // without touching custom or manually-added entries that the manager hasn't dismissed.
+  // Merge auto-generated actions into state only when the set of IDs actually changes.
+  // Using a serialised key prevents the effect running on every render cycle.
+  const initialActionKey = useMemo(
+    () => initialActions.map((a) => a.id).join(','),
+    [initialActions],
+  )
   useEffect(() => {
     setActions(prev => {
       const autoIds = new Set(initialActions.map(a => a.id))
+      // If every auto-id is already present, skip the update to break the loop.
+      const allPresent = initialActions.every(a => prev.some(p => p.id === a.id))
+      if (allPresent) return prev
       const preserved = prev.filter(a => !autoIds.has(a.id))
-      return [...initialActions, ...preserved]
+      return [...initialActions, ...preserved].slice(0, MAX_PERSISTED_ACTIONS)
     })
-  }, [initialActions])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialActionKey])
 
-  // Persist actions when they change
+  // Persist actions when they change, but debounce to avoid write-storms.
   useEffect(() => {
-    saveActionsToStorage(actions)
+    const timer = setTimeout(() => saveActionsToStorage(actions), 500)
+    return () => clearTimeout(timer)
   }, [actions])
   
-  // Refresh actions periodically and on window focus
-  const refreshActions = useCallback(() => {
-    const newActions = generateRealActions(libraryWines, lowStockItems)
-    // Merge with existing custom actions
-    setActions(prev => {
-      const customActions = prev.filter(a => 
-        !a.id.startsWith('low_stock_') && 
-        !a.id.startsWith('stock_receipt_') && 
-        !a.id.startsWith('delivery_') &&
-        a.id !== 'action_gmail_001'
-      )
-      return [...newActions, ...customActions]
-    })
-  }, [libraryWines, lowStockItems])
-  
   useEffect(() => {
-    const handleFocus = () => refreshActions()
     const handleNewAction = (event: Event) => {
       const customEvent = event as CustomEvent<ActionItem>
       if (customEvent.detail) {
         setActions(prev =>
           prev.some(a => a.id === customEvent.detail.id)
             ? prev
-            : [customEvent.detail, ...prev]
+            : [customEvent.detail, ...prev].slice(0, MAX_PERSISTED_ACTIONS)
         )
       }
     }
-    
-    window.addEventListener('focus', handleFocus)
     window.addEventListener('onetap_action_added', handleNewAction)
-    
-    // Refresh every 2 minutes
-    const interval = setInterval(refreshActions, 120000)
-    
-    return () => {
-      window.removeEventListener('focus', handleFocus)
-      window.removeEventListener('onetap_action_added', handleNewAction)
-      clearInterval(interval)
-    }
-  }, [refreshActions])
+    return () => window.removeEventListener('onetap_action_added', handleNewAction)
+  }, [])
 
   const getPriorityColor = (priority: ActionItem['priority']) => {
     switch (priority) {

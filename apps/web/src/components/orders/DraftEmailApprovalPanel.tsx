@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, XCircle, Edit2, X } from 'lucide-react'
+import { CheckCircle, XCircle, Edit2, Eye, X, Mail, Clock, Hash } from 'lucide-react'
 
 interface ConstraintWarning {
   code: string
@@ -11,7 +11,9 @@ interface ConstraintWarning {
 interface DraftEmailData {
   conversationId: string
   orderId: string
+  orderNumber?: string
   wineName: string
+  quantity?: number
   providerName: string
   providerEmail: string
   emailType: 'PRICE_INQUIRY' | 'DEMAND_OFFER' | 'PROMO_INQUIRY' | 'WINE_INQUIRY'
@@ -33,12 +35,17 @@ interface DraftEmailApprovalPanelProps {
 
 const emailTypeBadge: Record<
   DraftEmailData['emailType'],
-  { label: string; bg: string; text: string }
+  { label: string; bg: string; text: string; dot: string }
 > = {
-  PRICE_INQUIRY: { label: 'Price Inquiry', bg: 'bg-blue-100', text: 'text-blue-700' },
-  DEMAND_OFFER: { label: 'Demand Offer', bg: 'bg-orange-100', text: 'text-orange-700' },
-  PROMO_INQUIRY: { label: 'Promo Inquiry', bg: 'bg-purple-100', text: 'text-purple-700' },
-  WINE_INQUIRY: { label: 'Wine Inquiry', bg: 'bg-teal-100', text: 'text-teal-700' },
+  PRICE_INQUIRY: { label: 'Price Inquiry', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-400' },
+  DEMAND_OFFER: { label: 'Demand Offer', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
+  PROMO_INQUIRY: { label: 'Promo Inquiry', bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
+  WINE_INQUIRY: { label: 'Wine Inquiry', bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-400' },
+}
+
+function derivedSubject(data: DraftEmailData): string {
+  const typeLabel = emailTypeBadge[data.emailType].label
+  return `${data.wineName} — ${typeLabel}`
 }
 
 export function DraftEmailApprovalPanel({
@@ -51,10 +58,12 @@ export function DraftEmailApprovalPanel({
 }: DraftEmailApprovalPanelProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
+  const [editedSubject, setEditedSubject] = useState('')
 
   useEffect(() => {
     if (draftData) {
       setEditedContent(draftData.draftContent)
+      setEditedSubject(derivedSubject(draftData))
       setIsEditing(false)
     }
   }, [draftData])
@@ -70,6 +79,9 @@ export function DraftEmailApprovalPanel({
   if (!draftData && !isOpen) return null
 
   const badge = draftData ? emailTypeBadge[draftData.emailType] : null
+  const isDirty = draftData
+    ? editedContent !== draftData.draftContent || editedSubject !== derivedSubject(draftData)
+    : false
 
   return (
     <AnimatePresence>
@@ -82,152 +94,234 @@ export function DraftEmailApprovalPanel({
           onClick={onClose}
         >
           <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+            initial={{ scale: 0.96, opacity: 0, y: 16 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            exit={{ scale: 0.96, opacity: 0, y: 16 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="draft-panel-title"
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border-2 border-indigo-900 overflow-hidden max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl border border-indigo-200 overflow-hidden max-h-[92vh] flex flex-col"
           >
-            {/* Header — bg-indigo-900 (distinct from ORDER APPROVAL bg-black) */}
-            <div className="bg-indigo-900 px-6 py-5 border-b-2 border-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <h2
-                    id="draft-panel-title"
-                    className="text-2xl font-black text-white uppercase tracking-wider"
+            {/* ── Top bar ── */}
+            <div className="bg-indigo-900 px-5 py-4 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <Mail className="w-4 h-4 text-indigo-300" aria-hidden="true" />
+                <h2
+                  id="draft-panel-title"
+                  className="text-sm font-bold text-white uppercase tracking-widest"
+                >
+                  AI Draft Ready
+                </h2>
+                {badge && (
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.bg} ${badge.text}`}
                   >
-                    ✦ AI DRAFT READY
-                  </h2>
+                    <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                    {badge.label}
+                  </span>
+                )}
+                {isDirty && (
+                  <span className="text-[10px] font-medium text-indigo-300 italic">
+                    edited
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={onClose}
+                className="text-indigo-300 hover:text-white transition-colors p-1 -mr-1"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* ── Two-panel body ── */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+
+              {/* LEFT — meta strip */}
+              <div className="w-52 flex-shrink-0 bg-gray-50 border-r border-gray-200 px-4 py-5 flex flex-col gap-5 overflow-y-auto">
+
+                {/* To */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">To</p>
+                  <p className="text-sm font-semibold text-gray-800 leading-tight">{draftData.providerName}</p>
+                  <p className="text-xs text-gray-500 truncate">{draftData.providerEmail}</p>
+                </div>
+
+                {/* Wine */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Wine</p>
+                  <p className="text-sm text-gray-700 leading-snug">{draftData.wineName}</p>
+                </div>
+
+                {/* Quantity */}
+                {draftData.quantity != null && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Quantity</p>
+                    <p className="text-sm text-gray-700">{draftData.quantity} bottles</p>
+                  </div>
+                )}
+
+                {/* Type */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Type</p>
                   {badge && (
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.bg} ${badge.text}`}
-                    >
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium ${badge.bg} ${badge.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
                       {badge.label}
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={onClose}
-                  className="text-white hover:text-gray-300 transition-colors p-1 -mr-1"
-                  aria-label="Close"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
 
-            {/* Content */}
-            <div className="bg-gray-50 px-6 py-5 space-y-4">
-              {/* Metadata row */}
-              <div className="text-sm text-gray-600 space-y-1">
-                <p>
-                  <span className="font-medium">To:</span> {draftData.providerName} &middot;{' '}
-                  {draftData.providerEmail}
-                </p>
-                <p>
-                  <span className="font-medium">Wine:</span> {draftData.wineName}
-                </p>
-                <p>
-                  <span className="font-medium">Round:</span> {draftData.roundCount}
-                </p>
-              </div>
+                {/* Round */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Round</p>
+                  <p className="text-sm text-gray-700">#{draftData.roundCount}</p>
+                </div>
 
-              {/* Subject preview */}
-              <p className="text-sm font-semibold text-gray-800">
-                Subject: {draftData.wineName} — {emailTypeBadge[draftData.emailType].label}
-              </p>
-
-              {/* Body area — textarea (editing) or pre (preview) */}
-              <div>
-                {isEditing ? (
-                  <textarea
-                    value={editedContent}
-                    onChange={(e) => setEditedContent(e.target.value)}
-                    className="w-full h-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                    aria-label="Edit draft email content"
-                  />
-                ) : (
-                  <pre className="w-full text-sm text-gray-700 whitespace-pre-wrap font-sans bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    {editedContent}
-                  </pre>
+                {/* Order ref */}
+                {draftData.orderNumber && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Order</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <Hash className="w-3 h-3" />
+                      {draftData.orderNumber}
+                    </div>
+                  </div>
                 )}
 
-                {/* Edit toggle */}
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="w-full h-11 mt-2 bg-gray-700 hover:bg-gray-800 text-white font-medium text-sm rounded-xl transition-all flex items-center justify-center gap-1.5"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  {isEditing ? 'Preview' : 'Edit Draft'}
-                </button>
-              </div>
-
-              {/* Constraint warnings (amber — only if present) */}
-              {draftData.constraintWarnings.length > 0 && (
-                <div
-                  role="alert"
-                  className="bg-amber-50 border border-amber-200 rounded-lg p-3"
-                >
-                  <p className="text-[11px] text-amber-700 font-semibold uppercase tracking-wide mb-1">
-                    ⚠ Constraint Warnings
-                  </p>
-                  {draftData.constraintWarnings.map((w) => (
-                    <p key={w.code} className="text-xs text-amber-700">
-                      [{w.code}] {w.message}
-                    </p>
-                  ))}
+                {/* Drafted at */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Drafted</p>
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <Clock className="w-3 h-3" />
+                    {new Date(draftData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
                 </div>
-              )}
 
-              {/* Disclaimer — read-only, non-removable per D-32-08 */}
-              <div
-                className="bg-gray-100 rounded-lg border border-gray-300 p-3"
-                aria-label="Non-removable WineOps AI disclaimer"
-              >
-                <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">
-                  Auto-appended disclaimer (required)
-                </p>
-                <p className="text-xs text-gray-600 italic whitespace-pre-line">
-                  {draftData.disclaimer}
-                </p>
+                {/* Spacer + discard */}
+                <div className="mt-auto pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={onDiscard}
+                    disabled={isSubmitting}
+                    className="w-full h-9 flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 text-xs font-semibold transition-all"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Discard
+                  </button>
+                </div>
               </div>
 
-              {/* Action buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    onApprove(
-                      editedContent !== draftData.draftContent ? editedContent : undefined,
-                    )
-                  }
-                  disabled={isSubmitting}
-                  aria-disabled={isSubmitting}
-                  className="h-16 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold text-base rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-                >
-                  <CheckCircle className="w-5 h-5" />
-                  Send Draft
-                </button>
-                <button
-                  type="button"
-                  onClick={onDiscard}
-                  disabled={isSubmitting}
-                  aria-disabled={isSubmitting}
-                  className="h-16 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold text-base rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-                >
-                  <XCircle className="w-5 h-5" />
-                  Discard
-                </button>
-              </div>
+              {/* RIGHT — compose area */}
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-              {/* Footer */}
-              <div className="text-[10px] text-gray-400 text-center pt-1.5 border-t border-gray-200">
-                ID: {draftData.conversationId.slice(-8)} &middot;{' '}
-                {new Date(draftData.timestamp).toLocaleTimeString()}
+                {/* Subject row */}
+                <div className="px-5 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                    Subject
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editedSubject}
+                      onChange={(e) => setEditedSubject(e.target.value)}
+                      className="w-full text-sm font-medium text-gray-800 border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      aria-label="Edit email subject"
+                    />
+                  ) : (
+                    <p className="text-sm font-medium text-gray-800">{editedSubject}</p>
+                  )}
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 min-h-0 px-5 py-4 overflow-y-auto">
+                  {isEditing ? (
+                    <textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="w-full h-full min-h-[180px] resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-700 leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-sans"
+                      aria-label="Edit draft email body"
+                    />
+                  ) : (
+                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                      {editedContent}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Constraint warnings */}
+                {draftData.constraintWarnings.length > 0 && (
+                  <div
+                    role="alert"
+                    className="mx-5 mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex-shrink-0"
+                  >
+                    <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide mb-1">
+                      ⚠ Constraint Warnings
+                    </p>
+                    {draftData.constraintWarnings.map((w) => (
+                      <p key={w.code} className="text-xs text-amber-700">
+                        [{w.code}] {w.message}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Disclaimer — read-only, per D-32-08 */}
+                <div
+                  className="mx-5 mb-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-shrink-0"
+                  aria-label="Non-removable WineOps AI disclaimer"
+                >
+                  <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
+                    Auto-appended disclaimer (required · non-editable)
+                  </p>
+                  <p className="text-[11px] text-gray-500 italic leading-snug">
+                    {draftData.disclaimer}
+                  </p>
+                </div>
+
+                {/* Action bar */}
+                <div className="px-5 pb-5 flex items-center gap-3 flex-shrink-0 border-t border-gray-100 pt-3">
+                  {/* Edit / Preview toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-xs font-medium text-gray-600 transition-all"
+                  >
+                    {isEditing ? (
+                      <><Eye className="w-3.5 h-3.5" /> Preview</>
+                    ) : (
+                      <><Edit2 className="w-3.5 h-3.5" /> Edit</>
+                    )}
+                  </button>
+
+                  {/* Spacer */}
+                  <div className="flex-1" />
+
+                  {/* Send */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onApprove(
+                        isDirty ? editedContent : undefined,
+                        isDirty ? `Subject: ${editedSubject}` : undefined,
+                      )
+                    }
+                    disabled={isSubmitting}
+                    aria-disabled={isSubmitting}
+                    className="flex items-center gap-2 h-11 px-6 bg-indigo-900 hover:bg-indigo-800 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-900/20 transition-all"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    {isDirty ? 'Send Edited' : 'Send Draft'}
+                  </button>
+                </div>
+
+                {/* Footer */}
+                <p className="text-center text-[10px] text-gray-300 pb-2 flex-shrink-0">
+                  ID {draftData.conversationId.slice(-8)}
+                </p>
               </div>
             </div>
           </motion.div>
