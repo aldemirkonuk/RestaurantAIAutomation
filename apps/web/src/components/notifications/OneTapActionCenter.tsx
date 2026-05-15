@@ -319,8 +319,14 @@ export function OneTapActionCenter() {
   const [gmailRecipient, setGmailRecipient] = useState('')
   const [gmailSubject, setGmailSubject] = useState('')
   
+  // Merge incoming auto-generated actions (low_stock_, stock_receipt_, delivery_)
+  // without touching custom or manually-added entries that the manager hasn't dismissed.
   useEffect(() => {
-    setActions(initialActions)
+    setActions(prev => {
+      const autoIds = new Set(initialActions.map(a => a.id))
+      const preserved = prev.filter(a => !autoIds.has(a.id))
+      return [...initialActions, ...preserved]
+    })
   }, [initialActions])
 
   // Persist actions when they change
@@ -348,7 +354,11 @@ export function OneTapActionCenter() {
     const handleNewAction = (event: Event) => {
       const customEvent = event as CustomEvent<ActionItem>
       if (customEvent.detail) {
-        setActions(prev => [customEvent.detail, ...prev])
+        setActions(prev =>
+          prev.some(a => a.id === customEvent.detail.id)
+            ? prev
+            : [customEvent.detail, ...prev]
+        )
       }
     }
     

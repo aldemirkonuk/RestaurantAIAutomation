@@ -1004,14 +1004,47 @@ Shadow stock has been moved to Live Stock.`)
 
       if (createdOrders.length) {
         setOrders((prev) => [...createdOrders, ...prev])
-        // Refetch orders to sync with backend
         refetchOrders()
+
+        // Auto-popup draft panel: the Python agent needs ~5-8 s to classify,
+        // build context, and insert the draft.  Poll once after that delay so
+        // the manager doesn't have to hunt for the bell notification.
+        const pollForDraft = async () => {
+          for (const order of createdOrders) {
+            try {
+              const res = await apiClient.get(
+                `/procurement/orders/${order.order_id}/draft`
+              )
+              const draft = res.data
+              if (draft?.conversationId) {
+                setDraftPanelData({
+                  conversationId: draft.conversationId,
+                  orderId: order.order_id,
+                  wineName: order.wine_name || draft.wineName || 'Wine',
+                  providerName: order.provider_name || draft.providerName || 'Provider',
+                  subject: draft.subject || '',
+                  body: draft.body || draft.content || '',
+                  constraintFlags: draft.constraintFlags || {},
+                  emailType: draft.emailType || 'PRICE_INQUIRY',
+                })
+                setShowApprovalModal(true)
+                return
+              }
+            } catch {
+              // draft not ready yet — silently skip
+            }
+          }
+        }
+
+        // Poll at 6 s then 12 s — covers typical pipeline latency
+        setTimeout(pollForDraft, 6000)
+        setTimeout(pollForDraft, 12000)
       }
 
       if (failures.length) {
         alert(`Some orders failed:\n\n${failures.slice(0, 5).join('\n')}${failures.length > 5 ? '\n...' : ''}`)
       } else {
-        alert(`✅ Created ${createdOrders.length} order(s) successfully.`)
+        alert(`✅ Created ${createdOrders.length} order(s) successfully. Check for the AI draft email that will appear shortly.`)
       }
     } finally {
       setActionLoading(null)

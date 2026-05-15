@@ -10,6 +10,10 @@ export type NotificationType =
   | 'calendar_reminder'
   | 'system'
   | 'ai_suggestion'
+  | 'draft_ready'
+  | 'constraint_triggered'
+  | 'unknown_sender'
+  | 'invoice_received'
 
 export interface Notification {
   id: string

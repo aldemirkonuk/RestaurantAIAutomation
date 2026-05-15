@@ -177,11 +177,54 @@ class ProviderCommunicationAgent(BaseAgent):
           safety_buffer                600 tokens
         Returns (prompt_string, estimated_token_count).
         """
+        # Structured template instructions per email type so the LLM produces
+        # consistently formatted, scannable drafts the manager can approve at a glance.
+        if email_type == EMAIL_TYPE_PRICE_INQUIRY:
+            template_instruction = (
+                "You are drafting a PRICE INQUIRY email — the restaurant wants to know "
+                "the provider's current pricing for a specific wine before committing. "
+                "Structure the email as:\n"
+                "  1. One-sentence greeting (use first name if known, else company name)\n"
+                "  2. One sentence: what wine, what quantity, what format (case/bottle)\n"
+                "  3. One sentence: ask for current price list or quote\n"
+                "  4. One sentence: mention requested delivery window if known\n"
+                "  5. One-line closing with your name placeholder [Manager Name]\n"
+                "Keep it under 120 words. Tone: professional and direct. "
+                "Do NOT state a budget or target price. Do NOT make purchase commitments."
+            )
+        elif email_type == EMAIL_TYPE_DEMAND_OFFER:
+            template_instruction = (
+                "You are drafting a DEMAND OFFER email — the manager has a target price "
+                "and wants to propose it to the provider. "
+                "Structure the email as:\n"
+                "  1. One-sentence greeting (use first name if known, else company name)\n"
+                "  2. One sentence: the wine, quantity, and our proposed price per bottle/case\n"
+                "  3. One sentence: brief justification (volume, relationship, or market)\n"
+                "  4. One sentence: ask if provider can meet or come close to that price\n"
+                "  5. One-line closing with your name placeholder [Manager Name]\n"
+                "Keep it under 130 words. Tone: collegial but firm. "
+                "Do NOT mention competitor prices. Do NOT make unconditional commitments."
+            )
+        elif email_type == EMAIL_TYPE_PROMO_INQUIRY:
+            template_instruction = (
+                "You are drafting a PROMO INQUIRY email — the restaurant noticed a promotion "
+                "and wants details. Structure: greeting, reference the promo, ask for full terms "
+                "(pricing, minimum qty, end date), polite close. Under 120 words."
+            )
+        else:  # WINE_INQUIRY
+            template_instruction = (
+                "You are drafting a WINE INQUIRY email — the restaurant is exploring whether "
+                "the provider carries a specific wine. Structure: greeting, describe the wine "
+                "(name, vintage, style), ask if available and at what price, polite close. Under 120 words."
+            )
+
         system_prompt = (
-            f"You are WineOps AI, drafting a professional outbound email to a wine provider. "
-            f"Email type: {email_type}. Write in a professional, concise style. "
-            f"Maximum 180 words. Do NOT include any purchase commitments. "
-            f"Do NOT reference competitor suppliers. End with a specific next action."
+            f"{template_instruction}\n\n"
+            "STRICT RULES: "
+            "Return ONLY valid JSON: {\"subject\": \"...\", \"body\": \"...\"}. "
+            "No markdown, no preamble. "
+            "Do NOT include any bank details, routing numbers, or personal financial data. "
+            "Do NOT reference competitor suppliers by name."
         )
 
         # Provider profile snapshot (~400 token cap)
@@ -735,6 +778,36 @@ class ProviderCommunicationAgent(BaseAgent):
     # NOTIFICATION INSERT (D-03)
     # =========================================================================
 
+    def _get_manager_user_id(self, restaurant_id: str) -> Optional[str]:
+        """
+        Look up the active owner/manager user_id for a restaurant.
+        Notifications require user_id to appear in the bell icon — the API
+        queries notifications WHERE user_id = ?.
+        Cached per restaurant per agent lifetime (hot path: called on every order).
+        """
+        if not hasattr(self, "_manager_user_cache"):
+            self._manager_user_cache: Dict[str, Optional[str]] = {}
+        if restaurant_id in self._manager_user_cache:
+            return self._manager_user_cache[restaurant_id]
+        try:
+            result = (
+                self.database.supabase.table("user_restaurant_access")
+                .select("user_id")
+                .eq("restaurant_id", restaurant_id)
+                .in_("role", ["owner", "manager"])
+                .eq("is_active", True)
+                .order("created_at", desc=False)
+                .limit(1)
+                .execute()
+            )
+            uid = result.data[0]["user_id"] if result.data else None
+            self._manager_user_cache[restaurant_id] = uid
+            return uid
+        except Exception as exc:
+            self.logger.warning(f"_get_manager_user_id failed: {exc}")
+            self._manager_user_cache[restaurant_id] = None
+            return None
+
     async def _notify(
         self,
         restaurant_id: str,
@@ -749,10 +822,12 @@ class ProviderCommunicationAgent(BaseAgent):
         Insert in-app notification directly to Supabase notifications table (D-03).
         Uses status='unread' (VERIFIED_NOTIFICATION_FIELD from Plan 32-01).
         NOT an HTTP call to NestJS — direct DB insert per RESEARCH.md Q2.
+        user_id is resolved from user_restaurant_access so the bell icon picks it up.
         """
         if not restaurant_id:
             return
         try:
+            user_id = self._get_manager_user_id(restaurant_id)
             insert_payload: Dict[str, Any] = {
                 "restaurant_id": restaurant_id,
                 "type": notification_type,
@@ -760,8 +835,10 @@ class ProviderCommunicationAgent(BaseAgent):
                 "message": message,
                 "priority": priority,
                 "action_url": action_url,
-                "status": "unread",   # VERIFIED: notifications uses status='unread' (32-01-SUMMARY)
+                "status": "unread",   # VERIFIED: notifications uses status='unread'
             }
+            if user_id:
+                insert_payload["user_id"] = user_id
             if metadata:
                 insert_payload["metadata"] = metadata
             self.database.supabase.table("notifications").insert(insert_payload).execute()

@@ -27,6 +27,10 @@ export enum NotificationType {
   CALENDAR_REMINDER = 'calendar_reminder',
   SYSTEM = 'system',
   AI_SUGGESTION = 'ai_suggestion',
+  DRAFT_READY = 'draft_ready',
+  CONSTRAINT_TRIGGERED = 'constraint_triggered',
+  UNKNOWN_SENDER = 'unknown_sender',
+  INVOICE_RECEIVED = 'invoice_received',
 }
 
 export enum NotificationStatus {
