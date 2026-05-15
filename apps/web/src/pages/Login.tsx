@@ -15,7 +15,9 @@ export function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const from = (location.state as any)?.from?.pathname || '/'
+  const searchParams = new URLSearchParams(location.search)
+  const redirectQuery = searchParams.get('redirect')
+  const from = redirectQuery || (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

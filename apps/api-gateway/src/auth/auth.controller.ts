@@ -138,6 +138,38 @@ export class AuthController {
     };
   }
 
+  @Get('me/role')
+  @UseGuards(JwtAuthGuard)
+  async getMyRole(
+    @Req() req: Request & { user: any },
+    @Query('restaurantId') restaurantId?: string,
+  ) {
+    if (!restaurantId) {
+      return { success: true, role: null };
+    }
+    const role = await this.authService.getUserRoleAtRestaurant(
+      req.user.userId,
+      restaurantId,
+    );
+    return { success: true, role };
+  }
+
+  @Post('invite/:code/accept')
+  @UseGuards(JwtAuthGuard)
+  async acceptInviteAsAuthed(
+    @Req() req: Request & { user: any },
+    @Param('code') code: string,
+  ) {
+    this.logger.log(
+      `Invite accept by authenticated user ${req.user.userId}, code: ${code}`,
+    );
+    const result = await this.authService.acceptInviteAsExistingUser(
+      req.user.userId,
+      code,
+    );
+    return { success: true, ...result };
+  }
+
   /**
    * Verify token (health check for auth)
    */

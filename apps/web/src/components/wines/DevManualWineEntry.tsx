@@ -1,3 +1,5 @@
+import { PhoneNumberInput } from '../ui/PhoneNumberInput'
+import { isValidPhone } from '../../lib/phone'
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -168,6 +170,7 @@ export function DevManualWineEntry({ onClose, onWineAdded }: DevManualWineEntryP
     if (!formData.provider?.name?.trim()) newErrors.providerName = 'Provider name is required'
     if (!formData.provider?.contact?.trim()) newErrors.providerContact = 'Provider contact is required'
     if (!formData.provider?.phone?.trim()) newErrors.providerPhone = 'Provider phone is required'
+    else if (!isValidPhone(formData.provider?.phone)) newErrors.providerPhone = 'Enter a valid phone number'
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -830,15 +833,13 @@ export function DevManualWineEntry({ onClose, onWineAdded }: DevManualWineEntryP
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Phone <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="tel"
-                    value={formData.provider?.phone}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      provider: { ...formData.provider!, phone: e.target.value }
+                  <PhoneNumberInput
+                    value={formData.provider?.phone ?? ''}
+                    onChange={(phone) => setFormData({
+                      ...formData,
+                      provider: { ...formData.provider!, phone },
                     })}
-                    className={`w-full px-4 py-2.5 border ${errors.providerPhone ? 'border-rose-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-wine-500 focus:border-transparent`}
-                    placeholder="e.g., +1 (555) 123-4567"
+                    invalid={Boolean(errors.providerPhone)}
                   />
                   {errors.providerPhone && (
                     <p className="mt-1 text-xs text-rose-600 flex items-center gap-1">

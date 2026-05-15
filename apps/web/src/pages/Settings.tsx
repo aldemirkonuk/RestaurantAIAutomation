@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -52,6 +52,19 @@ import {
 import { cn } from '../lib/utils';
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
+
+interface TeamMemberRow {
+  user_id: string;
+  role: string;
+  users: { name?: string; email?: string } | null;
+}
+
+interface PendingInviteRow {
+  id: string;
+  code: string;
+  role: string;
+  expires_at: string;
+}
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
@@ -518,7 +531,7 @@ function TreeLocationRow({
 // ─── Main Settings page ───────────────────────────────────────────────────────
 
 export default function Settings() {
-  const { user, activeRestaurantId, availableRestaurants, refreshBranches } = useAuth();
+  const { user, activeRestaurantId, activeRole, availableRestaurants, refreshBranches } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -535,6 +548,11 @@ export default function Settings() {
   const [assigningToChain, setAssigningToChain] = useState<{ id: string; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
   const [activeSection, setActiveSection] = useState<SectionId>('team');
+  const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInviteRow[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+
+  const effectiveRole = activeRole ?? user?.role ?? null;
 
   // Scrollspy: highlight whichever section's top is nearest the sticky bar
   useEffect(() => {
@@ -556,6 +574,125 @@ export default function Settings() {
 
   const scrollToSection = (id: SectionId) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const loadTeam = useCallback(async () => {
+    if (!activeRestaurantId) {
+      setTeamMembers([]);
+      setPendingInvites([]);
+      return;
+    }
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+    setTeamLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const memRes = await fetch(
+        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/members`,
+        { headers },
+      );
+      const members = memRes.ok ? await memRes.json() : [];
+      setTeamMembers(Array.isArray(members) ? members : []);
+
+      const canSeeInvites = effectiveRole === 'owner' || effectiveRole === 'manager';
+      if (canSeeInvites) {
+        const invRes = await fetch(
+          `${API_URL}/api/v1/restaurants/${activeRestaurantId}/invites`,
+          { headers },
+        );
+        const invites = invRes.ok ? await invRes.json() : [];
+        setPendingInvites(Array.isArray(invites) ? invites : []);
+      } else {
+        setPendingInvites([]);
+      }
+    } catch {
+      toast.error('Failed to load team');
+    } finally {
+      setTeamLoading(false);
+    }
+  }, [activeRestaurantId, effectiveRole]);
+
+  useEffect(() => {
+    void loadTeam();
+  }, [loadTeam]);
+
+  const handleUpdateMemberRole = async (
+    memberUserId: string,
+    newRole: 'owner' | 'manager' | 'staff',
+  ) => {
+    if (!activeRestaurantId) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch(
+        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/members/${memberUserId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ role: newRole }),
+        },
+      );
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.message || 'Could not update role');
+      }
+      toast.success('Role updated');
+      await loadTeam();
+      await refreshBranches();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update role');
+    }
+  };
+
+  const handleRemoveMember = async (memberUserId: string) => {
+    if (!activeRestaurantId) return;
+    const isSelf = memberUserId === user?.userId;
+    if (
+      !confirm(
+        isSelf
+          ? 'Leave this restaurant? You will need a new invite to access it again.'
+          : 'Remove this member from this restaurant?',
+      )
+    ) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch(
+        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/members/${memberUserId}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.message || 'Could not remove member');
+      }
+      toast.success(isSelf ? 'You left this restaurant' : 'Member removed');
+      await loadTeam();
+      await refreshBranches();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove member');
+    }
+  };
+
+  const handleRevokeInvite = async (code: string) => {
+    if (!activeRestaurantId || !confirm('Revoke this invite link?')) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch(
+        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/invites/${encodeURIComponent(code)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.message || 'Could not revoke invite');
+      }
+      toast.success('Invite revoked');
+      await loadTeam();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not revoke invite');
+    }
   };
 
   useEffect(() => {
@@ -638,6 +775,9 @@ export default function Settings() {
 
   const standaloneLocations = locationsList.filter((b) => !b.chain_id);
 
+  const formatRoleLabel = (role: string) =>
+    role ? role.charAt(0).toUpperCase() + role.slice(1) : '';
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -718,10 +858,18 @@ export default function Settings() {
               <Users className="w-4 h-4 text-wine-500" />
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Team</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Invite colleagues to your restaurant</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Members at this branch
+                  {effectiveRole ? (
+                    <>
+                      <span className="text-gray-300"> · Your role: </span>
+                      <span className="text-wine-600 font-medium">{formatRoleLabel(effectiveRole)}</span>
+                    </>
+                  ) : null}
+                </p>
               </div>
             </div>
-            {(user?.role === 'owner' || user?.role === 'manager') && (
+            {(effectiveRole === 'owner' || effectiveRole === 'manager') && (
               <button
                 ref={teamInviteAnchorRef}
                 type="button"
@@ -733,19 +881,143 @@ export default function Settings() {
               </button>
             )}
           </div>
-          <div className="px-6 py-8 flex flex-col items-center text-center">
-            <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center mb-3">
-              <Users className="w-5 h-5 text-gray-300" />
-            </div>
-            <p className="text-sm font-medium text-gray-500">No team members yet</p>
-            <p className="text-xs text-gray-400 mt-1">Generate an invite code to bring your team in.</p>
+          <div className="px-6 py-5">
+            {!activeRestaurantId ? (
+              <p className="text-sm text-gray-500 text-center py-6">
+                Select a branch from the header to view and manage team members.
+              </p>
+            ) : teamLoading ? (
+              <div className="flex justify-center py-10">
+                <RefreshCw className="w-6 h-6 animate-spin text-wine-500" />
+              </div>
+            ) : teamMembers.length === 0 && pendingInvites.length === 0 ? (
+              <div className="flex flex-col items-center text-center py-6">
+                <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center mb-3">
+                  <Users className="w-5 h-5 text-gray-300" />
+                </div>
+                <p className="text-sm font-medium text-gray-500">No team members yet</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Invite colleagues using the button above.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Members</h3>
+                  <ul className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+                    {teamMembers.map((m) => {
+                      const displayName =
+                        m.users?.name?.trim() || m.users?.email || 'Team member';
+                      const subtitle =
+                        m.users?.name?.trim() && m.users?.email ? m.users.email : null;
+                      const isSelf = m.user_id === user?.userId;
+                      const canEditRole = effectiveRole === 'owner';
+                      const showRemove = isSelf || effectiveRole === 'owner';
+
+                      return (
+                        <li
+                          key={m.user_id}
+                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 bg-white hover:bg-gray-50/80"
+                        >
+                          <div className="min-w-0 text-left">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {displayName}
+                              {isSelf && (
+                                <span className="ml-2 text-xs font-normal text-wine-600">(you)</span>
+                              )}
+                            </p>
+                            {subtitle && (
+                              <p className="text-xs text-gray-500 truncate">{subtitle}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {canEditRole ? (
+                              <select
+                                value={m.role}
+                                onChange={(e) =>
+                                  void handleUpdateMemberRole(
+                                    m.user_id,
+                                    e.target.value as 'owner' | 'manager' | 'staff',
+                                  )
+                                }
+                                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800"
+                              >
+                                <option value="owner">Owner</option>
+                                <option value="manager">Manager</option>
+                                <option value="staff">Staff</option>
+                              </select>
+                            ) : (
+                              <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-lg capitalize">
+                                {m.role}
+                              </span>
+                            )}
+                            {showRemove && (
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveMember(m.user_id)}
+                                className={cn(
+                                  'text-xs font-medium px-2 py-1.5 rounded-lg border transition-colors',
+                                  isSelf
+                                    ? 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                                    : 'border-rose-200 text-rose-600 hover:bg-rose-50',
+                                )}
+                              >
+                                {isSelf ? 'Leave' : 'Remove'}
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                {pendingInvites.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                      Pending invites
+                    </h3>
+                    <ul className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+                      {pendingInvites.map((inv) => (
+                        <li
+                          key={inv.id}
+                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 bg-white"
+                        >
+                          <div className="min-w-0 text-left">
+                            <p className="text-sm font-mono text-gray-800 truncate">{inv.code}</p>
+                            <p className="text-xs text-gray-500 capitalize">
+                              {inv.role} · expires{' '}
+                              {new Date(inv.expires_at).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleRevokeInvite(inv.code)}
+                            className="text-xs font-medium px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 self-start sm:self-center"
+                          >
+                            Revoke
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {activeRestaurantId && (
           <InviteTeamDialog
             open={showInviteDialog}
-            onClose={() => setShowInviteDialog(false)}
+            onClose={() => {
+              setShowInviteDialog(false);
+              void loadTeam();
+            }}
             restaurantId={activeRestaurantId}
             anchorRef={teamInviteAnchorRef}
           />

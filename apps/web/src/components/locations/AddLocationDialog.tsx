@@ -7,6 +7,8 @@ import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 import { CountryCombobox } from '../ui/CountryCombobox'
+import { PhoneNumberInput } from '../ui/PhoneNumberInput'
+import { countryToPhoneDefault, isValidPhone, toE164 } from '../../lib/phone'
 import { useAuth } from '../../contexts/AuthContext'
 import { useProviders } from '../../hooks/queries'
 import { BranchProviderTransferModal } from '../providers/BranchProviderTransferModal'
@@ -91,7 +93,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         country: country.trim() || undefined,
         stateProvince: stateProvince.trim() || undefined,
         postalCode: postalCode.trim() || undefined,
-        phone: phone.trim() || undefined,
+        phone: phone.trim() ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType.trim() || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         chainId: chainId || undefined,
@@ -271,11 +273,11 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                        <input
+                        <PhoneNumberInput
                           value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          placeholder="+1 (555) 000-0000"
-                          className={INPUT_CLS}
+                          onChange={setPhone}
+                          countryHint={country}
+                          invalid={Boolean(phone.trim() && !isValidPhone(phone))}
                         />
                       </div>
                     </div>

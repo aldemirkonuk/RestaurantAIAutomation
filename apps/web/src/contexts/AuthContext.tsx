@@ -55,6 +55,8 @@ interface AuthContextType {
   loading: boolean
   error: string | null
   activeRestaurantId: string | null
+  /** Role at the active branch from user_restaurant_access; null if unknown */
+  activeRole: 'owner' | 'manager' | 'staff' | null
   availableRestaurants: RestaurantBranch[]
   setActiveRestaurantId: (restaurantId: string) => Promise<void>
   login: (email: string, password: string) => Promise<void>
@@ -144,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<string | null>(null)
   const [availableRestaurants, setAvailableRestaurants] = useState<RestaurantBranch[]>([])
+  const [activeRole, setActiveRole] = useState<'owner' | 'manager' | 'staff' | null>(null)
 
   // Configure axios defaults
   useEffect(() => {
@@ -251,6 +254,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useAuthStore.getState().setActiveRestaurantId(userId)
   }, [])
 
+  useEffect(() => {
+    if (!user) {
+      setActiveRole(null)
+      return
+    }
+    const tid = activeRestaurantId
+    const token = localStorage.getItem('accessToken')
+    if (!tid || !token || !isUuid(tid)) {
+      setActiveRole(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const resp = await fetch(
+          `${API_URL}/api/v1/auth/me/role?restaurantId=${encodeURIComponent(tid)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        if (!resp.ok || cancelled) return
+        const data = await resp.json()
+        const r = data.role as string | null | undefined
+        if (!cancelled && r && ['owner', 'manager', 'staff'].includes(r)) {
+          setActiveRole(r as 'owner' | 'manager' | 'staff')
+        } else if (!cancelled) setActiveRole(null)
+      } catch {
+        if (!cancelled) setActiveRole(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, activeRestaurantId])
+
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {
     if (!user?.userId) return
@@ -262,6 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) {
       setAvailableRestaurants([])
       setActiveRestaurantIdState(null)
+      setActiveRole(null)
       return
     }
 
@@ -455,6 +492,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       delete api.defaults.headers.common['Authorization']
       delete api.defaults.headers.common['X-Restaurant-Id']
       setUser(null)
+      setActiveRole(null)
     }
   }, [])
 
@@ -485,6 +523,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     activeRestaurantId,
+    activeRole,
     availableRestaurants,
     setActiveRestaurantId,
     login,

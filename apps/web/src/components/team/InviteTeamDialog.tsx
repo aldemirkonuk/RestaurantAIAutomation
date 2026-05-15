@@ -61,7 +61,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef }: Inv
     }
   }
 
-  // Copy-able invite URL per D-04: copies /register?invite=XXXXXXXX (not just the code)
+  // Copy-able invite URL: `/invite/:code` landing (sign-in or register from there)
   const handleCopy = () => {
     if (!invite) return
     navigator.clipboard.writeText(invite.inviteUrl)

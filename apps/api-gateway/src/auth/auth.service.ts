@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -249,7 +250,6 @@ export class AuthService {
    * Validates that targetRestaurantId belongs to the same organisation(s) as the user.
    */
   async switchRestaurant(userId: string, targetRestaurantId: string): Promise<TokenPair> {
-    // Load the user record from DB
     const { data: user, error: userErr } = await this.databaseService.supabase
       .from('users')
       .select('*')
@@ -260,7 +260,19 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    // Verify the target restaurant belongs to an organisation the user is a member of.
+    const { data: uraAccess } = await this.databaseService.supabase
+      .from('user_restaurant_access')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('restaurant_id', targetRestaurantId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (uraAccess) {
+      return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+    }
+
+    // Legacy fallback: org-level check for users who have no URA row yet
     // Also handles legacy users (no org row) by checking via restaurant → org path.
     const { data: orgMemberships } = await this.databaseService.supabase
       .from('organization_members')
@@ -319,10 +331,26 @@ export class AuthService {
       // Non-critical — studio endpoints will just reject with 403
     }
 
+    let restaurantRole = user.role as string;
+    if (user.restaurant_id) {
+      try {
+        const { data: membership } = await this.databaseService.supabase
+          .from('user_restaurant_access')
+          .select('role')
+          .eq('user_id', user.user_id)
+          .eq('restaurant_id', user.restaurant_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (membership?.role) restaurantRole = membership.role;
+      } catch {
+        // Legacy fallback
+      }
+    }
+
     const payload = {
       sub: user.user_id,
       email: user.email,
-      role: user.role,
+      role: restaurantRole,
       restaurantId: user.restaurant_id,
       emailVerified: user.email_verified ?? false,
       app_metadata: { roles: studioRoles },
@@ -496,6 +524,14 @@ export class AuthService {
         organization_id: orgId,
         user_id: userId,
         role: 'owner',
+      });
+
+      await this.databaseService.supabase.from('user_restaurant_access').insert({
+        user_id: userId,
+        restaurant_id: restaurantId,
+        role: 'owner',
+        invited_via: null,
+        is_active: true,
       });
 
       // Seed onboarding progress row (fire-and-forget — never block registration)
@@ -690,8 +726,98 @@ export class AuthService {
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      inviteUrl: `${this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app'}/register?invite=${invite.code}`,
+      inviteUrl: `${this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app'}/invite/${invite.code}`,
     };
+  }
+
+  /**
+   * Accept an invite as an already-authenticated user (no new account creation).
+   */
+  async acceptInviteAsExistingUser(
+    userId: string,
+    code: string,
+  ): Promise<{ restaurant: string; role: string }> {
+    const { data: actor } = await this.databaseService.supabase
+      .from('users')
+      .select('email')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const { data: invite, error: inviteErr } = await this.databaseService.supabase
+      .from('organization_invites')
+      .update({
+        used_at: new Date().toISOString(),
+        used_by_email: actor?.email ?? null,
+      })
+      .eq('code', code.toUpperCase())
+      .is('used_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .select('id, organization_id, restaurant_id, role, restaurants(name)')
+      .single();
+
+    if (inviteErr || !invite) {
+      throw new BadRequestException('Invite code is invalid, expired, or already used');
+    }
+
+    const { data: existingAccess } = await this.databaseService.supabase
+      .from('user_restaurant_access')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('restaurant_id', invite.restaurant_id)
+      .maybeSingle();
+
+    if (existingAccess) {
+      await this.databaseService.supabase
+        .from('organization_invites')
+        .update({ used_at: null, used_by_email: null })
+        .eq('id', invite.id);
+      throw new ConflictException('already_member');
+    }
+
+    const { error: uraErr } = await this.databaseService.supabase
+      .from('user_restaurant_access')
+      .insert({
+        user_id: userId,
+        restaurant_id: invite.restaurant_id,
+        role: invite.role,
+        invited_via: invite.id,
+        is_active: true,
+      });
+
+    if (uraErr) {
+      await this.databaseService.supabase
+        .from('organization_invites')
+        .update({ used_at: null, used_by_email: null })
+        .eq('id', invite.id);
+      throw new BadRequestException('Failed to grant restaurant access: ' + uraErr.message);
+    }
+
+    await this.databaseService.supabase.from('organization_members').upsert(
+      {
+        organization_id: invite.organization_id,
+        user_id: userId,
+        role: invite.role,
+        invited_via: invite.id,
+      },
+      { onConflict: 'organization_id,user_id' },
+    );
+
+    const restaurantName = (invite.restaurants as any)?.name ?? 'restaurant';
+    return { restaurant: restaurantName, role: invite.role };
+  }
+
+  async getUserRoleAtRestaurant(
+    userId: string,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data } = await this.databaseService.supabase
+      .from('user_restaurant_access')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true)
+      .maybeSingle();
+    return data?.role ?? null;
   }
 
   /**
@@ -699,14 +825,6 @@ export class AuthService {
    * User is email_verified: true because owner vouched for them.
    */
   async joinViaInvite(dto: JoinViaInviteDto): Promise<TokenPair> {
-    const { data: existing } = await this.databaseService.supabase
-      .from('users')
-      .select('email')
-      .eq('email', dto.email)
-      .maybeSingle();
-    if (existing) throw new BadRequestException('Email already registered');
-
-    // Atomic UPDATE WHERE used_at IS NULL — prevents TOCTOU race (RESEARCH.md Pitfall 3)
     const { data: invite, error: inviteErr } = await this.databaseService.supabase
       .from('organization_invites')
       .update({ used_at: new Date().toISOString(), used_by_email: dto.email })
@@ -720,36 +838,85 @@ export class AuthService {
       throw new BadRequestException('Invite code is invalid, expired, or already used');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
-    const { data: user, error: userErr } = await this.databaseService.supabase
+    const { data: existingUser } = await this.databaseService.supabase
       .from('users')
+      .select('*')
+      .eq('email', dto.email)
+      .maybeSingle();
+
+    let user: any;
+
+    if (existingUser) {
+      const { data: existingAccess } = await this.databaseService.supabase
+        .from('user_restaurant_access')
+        .select('id')
+        .eq('user_id', existingUser.user_id)
+        .eq('restaurant_id', invite.restaurant_id)
+        .maybeSingle();
+
+      if (existingAccess) {
+        await this.databaseService.supabase
+          .from('organization_invites')
+          .update({ used_at: null, used_by_email: null })
+          .eq('id', invite.id);
+        throw new ConflictException('already_member');
+      }
+
+      user = existingUser;
+    } else {
+      const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+      const { data: newUser, error: userErr } = await this.databaseService.supabase
+        .from('users')
+        .insert({
+          email: dto.email,
+          password_hash: passwordHash,
+          name: dto.name,
+          restaurant_id: invite.restaurant_id,
+          role: invite.role,
+          email_verified: true,
+        })
+        .select()
+        .single();
+
+      if (userErr || !newUser) {
+        await this.databaseService.supabase
+          .from('organization_invites')
+          .update({ used_at: null, used_by_email: null })
+          .eq('id', invite.id);
+        throw new BadRequestException('User creation failed: ' + userErr?.message);
+      }
+      user = newUser;
+    }
+
+    const { error: uraErr } = await this.databaseService.supabase
+      .from('user_restaurant_access')
       .insert({
-        email: dto.email,
-        password_hash: passwordHash,
-        name: dto.name,
+        user_id: user.user_id,
         restaurant_id: invite.restaurant_id,
         role: invite.role,
-        email_verified: true,
-      })
-      .select()
-      .single();
+        invited_via: invite.id,
+        is_active: true,
+      });
 
-    if (userErr || !user) {
+    if (uraErr) {
       await this.databaseService.supabase
         .from('organization_invites')
         .update({ used_at: null, used_by_email: null })
         .eq('id', invite.id);
-      throw new BadRequestException('User creation failed: ' + userErr?.message);
+      throw new BadRequestException('Failed to grant restaurant access: ' + uraErr.message);
     }
 
-    await this.databaseService.supabase.from('organization_members').insert({
-      organization_id: invite.organization_id,
-      user_id: user.user_id,
-      role: invite.role,
-      invited_via: invite.id,
-    });
+    await this.databaseService.supabase.from('organization_members').upsert(
+      {
+        organization_id: invite.organization_id,
+        user_id: user.user_id,
+        role: invite.role,
+        invited_via: invite.id,
+      },
+      { onConflict: 'organization_id,user_id' },
+    );
 
-    return this.generateTokens(user);
+    return this.generateTokens({ ...user, restaurant_id: invite.restaurant_id });
   }
 
   /**

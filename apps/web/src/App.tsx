@@ -47,6 +47,8 @@ import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
 import { VerifyEmail } from './pages/VerifyEmail'
+import { InviteLanding } from './pages/InviteLanding'
+import { NoAccess } from './pages/NoAccess'
 import { Inventory } from './pages/Inventory'
 import { Orders } from './pages/Orders'
 
@@ -108,6 +110,8 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/invite/:code" element={<InviteLanding />} />
+                <Route path="/no-access" element={<NoAccess />} />
                 <Route path="/get-started" element={<GetStarted />} />
                 <Route path="/onboarding" element={<Onboarding />} />
 

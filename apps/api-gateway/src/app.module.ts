@@ -25,6 +25,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
 import { RestaurantTemplatesModule } from './restaurant-templates/restaurant-templates.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { RestaurantsModule } from './restaurants/restaurants.module';
 import { VendorCatalogueModule } from './vendor-catalogue/vendor-catalogue.module';
 import { MenusModule } from './menus/menus.module';
 import { ErrorTrackingModule, SentryInterceptor } from './common/error-tracking';
@@ -76,6 +77,7 @@ import { OrchestratorModule } from './common/orchestrator/orchestrator.module';
     ConversationsModule,   // Procurement conversation history, threads, summaries
     SettingsModule,        // Restaurant settings and feature flags
     OrganizationsModule,   // Multi-tenant org hierarchy (branches, chains)
+    RestaurantsModule,     // Per-restaurant membership (URA roster + invites)
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
     MenusModule,           // Menu import (scan/CSV/manual) + onboarding progress
     UserPreferencesModule, // User preference storage (JSONB)

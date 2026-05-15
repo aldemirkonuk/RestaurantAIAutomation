@@ -675,3 +675,32 @@
 .tremor-Tooltip-root {
   @apply !rounded-lg !border-slate-200 !shadow-lg !bg-white;
 }
+
+/* International phone input (react-phone-number-input) */
+.wineops-phone-input {
+  @apply flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900;
+}
+
+.wineops-phone-input:focus-within {
+  @apply outline-none ring-2 ring-wine-500 ring-offset-2;
+}
+
+.wineops-phone-input--invalid {
+  @apply border-rose-500 focus-within:ring-rose-500;
+}
+
+.wineops-phone-input .PhoneInputInput {
+  @apply min-w-0 flex-1 border-0 bg-transparent p-0 text-sm outline-none ring-0 placeholder:text-gray-500 focus:ring-0;
+}
+
+.wineops-phone-input .PhoneInputCountry {
+  @apply shrink-0;
+}
+
+.wineops-phone-input .PhoneInputCountrySelect {
+  @apply text-sm;
+}
+
+.wineops-phone-input .PhoneInputCountryIcon {
+  @apply overflow-hidden rounded-sm shadow-none;
+}

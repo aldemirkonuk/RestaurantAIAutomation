@@ -4,7 +4,6 @@ import {
   X,
   Building2,
   User,
-  Phone,
   Mail,
   Globe,
   MapPin,
@@ -24,6 +23,8 @@ import {
   Wine,
   Grape,
 } from 'lucide-react'
+import { PhoneNumberInput } from '../ui/PhoneNumberInput'
+import { isValidPhone } from '../../lib/phone'
 
 interface AddProviderModalProps {
   isOpen: boolean
@@ -238,6 +239,8 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
     }
     if (!formData.phone.trim()) {
       errors.phone = 'Phone number is required'
+    } else if (!isValidPhone(formData.phone)) {
+      errors.phone = 'Enter a valid phone number'
     }
     if (!formData.email.trim()) {
       errors.email = 'Email is required'
@@ -376,16 +379,11 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Phone <span className="text-rose-500">*</span>
                     </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                        className={`w-full pl-10 pr-4 py-3 border rounded-xl bg-white text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 ${validationErrors.phone ? 'border-rose-500' : 'border-gray-200'}`}
-                        placeholder="(555) 123-4567"
-                      />
-                    </div>
+                    <PhoneNumberInput
+                      value={formData.phone}
+                      onChange={(phone) => setFormData({ ...formData, phone })}
+                      invalid={Boolean(validationErrors.phone)}
+                    />
                     {validationErrors.phone && (
                       <p className="text-xs text-rose-600 mt-1">{validationErrors.phone}</p>
                     )}

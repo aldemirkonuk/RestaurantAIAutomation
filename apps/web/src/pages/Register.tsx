@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, Phone, ChevronRight } from 'lucide-react'
+import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
+import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
+import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
@@ -904,6 +906,10 @@ export function Register() {
       setError('Restaurant name, address, city, and country are required')
       return
     }
+    if (phone.trim() && !isValidPhone(phone)) {
+      setError('Please enter a valid phone number for the selected country')
+      return
+    }
     setError(null)
     setLoading(true)
     try {
@@ -918,7 +924,7 @@ export function Register() {
         stateProvince: stateProvince || undefined,
         postalCode: postalCode || undefined,
         neighborhood: neighborhood || undefined,
-        phone: phone || undefined,
+        phone: phone ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       })
@@ -1201,16 +1207,16 @@ export function Register() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone Number <span className="text-gray-400 font-normal text-xs">(optional)</span>
                 </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (212) 554-1515"
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
-                  />
-                </div>
+                <PhoneNumberInput
+                  value={phone}
+                  onChange={setPhone}
+                  countryHint={country}
+                  className="bg-white/80 py-3"
+                  invalid={Boolean(phone.trim() && !isValidPhone(phone))}
+                />
+                {phone.trim() && !isValidPhone(phone) && (
+                  <p className="text-xs text-rose-600 mt-1">Enter a valid phone number for the selected country.</p>
+                )}
                 <p className="text-xs text-gray-400 mt-1">You can add this any time from Settings.</p>
               </div>
 

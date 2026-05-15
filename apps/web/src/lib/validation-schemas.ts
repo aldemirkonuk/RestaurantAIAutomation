@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isValidPhone } from './phone'
 
 /**
  * Validation Schemas for WineOps Forms
@@ -87,7 +88,10 @@ export const providerAdditionSchema = z.object({
   name: z.string().min(2, 'Provider name must be at least 2 characters').max(200, 'Provider name is too long'),
   contactName: z.string().min(2, 'Contact name is required').max(100),
   email: z.string().email('Invalid email address'),
-  phone: z.string().regex(/^[\d\s\-\+\(\)]+$/, 'Invalid phone number').optional(),
+  phone: z
+    .string()
+    .optional()
+    .refine((v) => !v?.trim() || isValidPhone(v), 'Invalid phone number'),
   address: z.string().max(500).optional(),
   website: z.string().url('Invalid website URL').optional(),
   type: z.enum(['distributor', 'direct_winery', 'broker', 'auction'], {
@@ -124,7 +128,10 @@ export type ReportConfigInput = z.infer<typeof reportConfigSchema>
 export const userProfileSchema = z.object({
   displayName: z.string().min(2, 'Display name must be at least 2 characters').max(100),
   email: z.string().email('Invalid email address'),
-  phone: z.string().regex(/^[\d\s\-\+\(\)]+$/, 'Invalid phone number').optional(),
+  phone: z
+    .string()
+    .optional()
+    .refine((v) => !v?.trim() || isValidPhone(v), 'Invalid phone number'),
   role: z.enum(['manager', 'staff', 'owner', 'admin']),
   notificationPreferences: z.object({
     email: z.boolean(),
