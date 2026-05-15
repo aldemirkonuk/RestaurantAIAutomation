@@ -79,6 +79,7 @@ interface CreateOrderModalProps {
   onEditItem: (item: CreateOrderItem) => void
   onContactProviders: () => void
   totalOrderValue: number
+  isLoading?: boolean
 }
 
 export function CreateOrderModal({
@@ -107,6 +108,7 @@ export function CreateOrderModal({
   onEditItem,
   onContactProviders,
   totalOrderValue,
+  isLoading,
 }: CreateOrderModalProps) {
   const { measurementUnit } = useRestaurantSettingsStore()
   return (
@@ -420,10 +422,15 @@ export function CreateOrderModal({
                     <Button
                       variant="default"
                       onClick={onContactProviders}
-                      className="w-full bg-wine-600 hover:bg-wine-700"
+                      disabled={isLoading}
+                      className="w-full bg-wine-600 hover:bg-wine-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <Phone className="w-4 h-4 mr-2" />
-                      Contact Providers
+                      {isLoading ? (
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Phone className="w-4 h-4 mr-2" />
+                      )}
+                      {isLoading ? 'Creating Orders…' : 'Contact Providers'}
                     </Button>
                   </div>
                 )}

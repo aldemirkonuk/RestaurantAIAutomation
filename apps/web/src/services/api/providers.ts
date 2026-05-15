@@ -10,6 +10,9 @@ export interface Provider {
   email: string
   physicalAddress: string
   website: string
+  /** Split contact name — prefer these over primaryContact.name for salutations */
+  contactFirstName?: string
+  contactLastName?: string
   knownPersonnel?: string[]
   statesOrRegionsServed?: string[]
   rating?: number
@@ -24,6 +27,7 @@ export interface Provider {
   isCustom?: boolean
   profile_foundational?: Record<string, any>
   profile_dynamic?: Record<string, any>
+  primaryContact?: Record<string, any>
 }
 
 export interface ProviderContact {
@@ -68,6 +72,13 @@ export interface UpdateProviderInput extends Partial<CreateProviderInput> {
 type ApiProviderPayload = {
   name?: string
   companyName?: string
+  phone?: string
+  email?: string
+  contactFirstName?: string
+  contactLastName?: string
+  website?: string
+  physicalAddress?: string
+  rating?: number
   primaryContact?: Record<string, unknown>
   alternativeContacts?: Record<string, unknown>[]
   address?: Record<string, unknown>
@@ -81,7 +92,12 @@ type ApiProviderPayload = {
 }
 
 const mapProviderToApiPayload = (
-  data: Partial<CreateProviderInput>,
+  data: Partial<CreateProviderInput & {
+    contactFirstName?: string
+    contactLastName?: string
+    website?: string
+    rating?: number
+  }>,
   options: { requireName?: boolean } = {}
 ): ApiProviderPayload => {
   const payload: ApiProviderPayload = {}
@@ -92,6 +108,15 @@ const mapProviderToApiPayload = (
     payload.name = ''
   }
 
+  // Send phone/email as flat dedicated columns (backend writes contact_phone/contact_email).
+  // Also keep primaryContact JSONB for backward compatibility with old list queries.
+  if (data.phone !== undefined) payload.phone = data.phone
+  if (data.email !== undefined) payload.email = data.email
+  if (data.contactFirstName !== undefined) payload.contactFirstName = data.contactFirstName
+  if (data.contactLastName  !== undefined) payload.contactLastName  = data.contactLastName
+  if (data.website          !== undefined) payload.website          = data.website
+  if (data.rating           !== undefined) payload.rating           = data.rating
+
   if (data.knownPersonnel?.length || data.email || data.phone) {
     payload.primaryContact = {
       name: data.knownPersonnel?.[0],
@@ -101,6 +126,7 @@ const mapProviderToApiPayload = (
   }
 
   if (data.physicalAddress) {
+    payload.physicalAddress = data.physicalAddress
     payload.address = { line1: data.physicalAddress }
   }
 

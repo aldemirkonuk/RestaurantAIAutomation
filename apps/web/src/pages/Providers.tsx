@@ -205,12 +205,20 @@ export function Providers() {
   const handleEditProvider = async (data: EditProviderData) => {
     try {
       await updateProvider.mutateAsync({
-        id: data.id, name: data.name, phone: data.phone, email: data.email,
-        website: data.website, physicalAddress: data.address,
-        primaryBusinessType: data.primaryBusinessType as any, notes: data.notes,
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        contactFirstName: data.contactFirstName,
+        contactLastName: data.contactLastName,
+        website: data.website,
+        physicalAddress: data.address,
+        primaryBusinessType: data.primaryBusinessType as any,
+        notes: data.notes,
+        rating: data.rating > 0 ? data.rating : undefined,
         knownPersonnel: data.contacts.map(c => c.name).filter(Boolean),
         restaurantId: restaurantId || '',
-      })
+      } as any)
       if (data.rating > 0) setRatings(prev => ({ ...prev, [data.id]: data.rating }))
       setEditingProvider(null)
     } catch (err) {

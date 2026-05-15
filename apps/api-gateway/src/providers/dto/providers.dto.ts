@@ -102,6 +102,41 @@ export class UpdateProviderDto {
   companyName?: string;
 
   @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  contactFirstName?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  contactLastName?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  website?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  physicalAddress?: string;
+
+  @ApiPropertyOptional()
+  @IsNumber()
+  @IsOptional()
+  rating?: number;
+
+  @ApiPropertyOptional()
   @IsOptional()
   primaryContact?: Record<string, any>;
 
@@ -181,6 +216,30 @@ export class ProviderResponseDto {
 
   @ApiPropertyOptional()
   companyName?: string;
+
+  @ApiPropertyOptional()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  email?: string;
+
+  @ApiPropertyOptional()
+  contactFirstName?: string;
+
+  @ApiPropertyOptional()
+  contactLastName?: string;
+
+  @ApiPropertyOptional()
+  physicalAddress?: string;
+
+  @ApiPropertyOptional()
+  website?: string;
+
+  @ApiPropertyOptional()
+  rating?: number;
+
+  @ApiPropertyOptional()
+  notes?: string;
 
   @ApiPropertyOptional()
   primaryContact?: Record<string, any>;

@@ -2616,6 +2616,7 @@ Shadow stock has been moved to Live Stock.`)
         onEditItem={editItem}
         onContactProviders={handleContactProviders}
         totalOrderValue={totalOrderValue}
+        isLoading={actionLoading === 'create-orders'}
       />
 
       {/* Order Guard Modal — shown when no vendors are configured */}

@@ -4,7 +4,6 @@ import {
   X,
   Building2,
   User,
-  Phone,
   Mail,
   Globe,
   MapPin,
@@ -23,11 +22,13 @@ import {
   Edit,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
+import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 
 export interface EditProviderData {
   id: string
   name: string
-  contactPerson: string
+  contactFirstName: string
+  contactLastName: string
   phone: string
   email: string
   website: string
@@ -110,7 +111,8 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const [formData, setFormData] = useState<EditProviderData>({
     id: '',
     name: '',
-    contactPerson: '',
+    contactFirstName: '',
+    contactLastName: '',
     phone: '',
     email: '',
     website: '',
@@ -132,12 +134,20 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   // Populate form from provider
   useEffect(() => {
     if (provider && isOpen) {
+      // Derive first/last from dedicated columns, falling back to parsing
+      // primaryContact.name for legacy providers that predate the split columns.
+      const legacyName = (provider as any).primaryContact?.name || ''
+      const spaceIdx = legacyName.indexOf(' ')
+      const legacyFirst = spaceIdx > -1 ? legacyName.slice(0, spaceIdx) : legacyName
+      const legacyLast  = spaceIdx > -1 ? legacyName.slice(spaceIdx + 1) : ''
+
       setFormData({
         id: provider.id,
         name: provider.name,
-        contactPerson: (provider as any).contactPerson || '',
-        phone: provider.phone || '',
-        email: provider.email || '',
+        contactFirstName: (provider as any).contactFirstName || legacyFirst,
+        contactLastName:  (provider as any).contactLastName  || legacyLast,
+        phone: provider.phone || (provider as any).primaryContact?.phone || '',
+        email: provider.email || (provider as any).primaryContact?.email || '',
         website: provider.website || '',
         address: provider.physicalAddress || '',
         primaryBusinessType: provider.primaryBusinessType || 'Distributor',
@@ -329,16 +339,39 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
                       <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
-                          type="tel"
-                          value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          type="text"
+                          value={formData.contactFirstName}
+                          onChange={(e) => setFormData({ ...formData, contactFirstName: e.target.value })}
                           className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                          placeholder="Jane"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={formData.contactLastName}
+                          onChange={(e) => setFormData({ ...formData, contactLastName: e.target.value })}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                          placeholder="Smith"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                      <PhoneNumberInput
+                        value={formData.phone}
+                        onChange={(phone) => setFormData({ ...formData, phone })}
+                      />
                     </div>
 
                     <div>
@@ -628,16 +661,11 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                   </div>
                                   <div>
                                     <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-                                    <div className="relative">
-                                      <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                      <input
-                                        type="tel"
-                                        value={contact.phone}
-                                        onChange={(e) => updateContact(contact.id, { phone: e.target.value })}
-                                        className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                        placeholder="(555) 123-4567"
-                                      />
-                                    </div>
+                                    <PhoneNumberInput
+                                      value={contact.phone}
+                                      onChange={(phone) => updateContact(contact.id, { phone })}
+                                      className="py-2 text-sm"
+                                    />
                                   </div>
                                   <div>
                                     <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>

@@ -21,6 +21,14 @@ interface ProviderRow {
   id: string;
   name: string;
   company_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  contact_first_name: string | null;
+  contact_last_name: string | null;
+  address: string | null;
+  website: string | null;
+  rating: number | null;
+  personality_notes: string | null;
   primary_contact: Record<string, any> | null;
   specialties: string[] | null;
   regions_covered: string[] | null;
@@ -200,20 +208,30 @@ export class ProvidersService {
     restaurantId?: string,
     userId?: string,
   ): Promise<ProviderResponseDto> {
-    const updatePayload = {
+    const updatePayload: Record<string, any> = {
       name: dto.name ?? undefined,
       company_name: dto.companyName ?? undefined,
+      contact_phone: (dto as any).phone ?? undefined,
+      contact_email: (dto as any).email ?? undefined,
+      contact_first_name: (dto as any).contactFirstName ?? undefined,
+      contact_last_name: (dto as any).contactLastName ?? undefined,
+      website: (dto as any).website ?? undefined,
+      rating: (dto as any).rating ?? undefined,
+      personality_notes: dto.notes ?? undefined,
       primary_contact: dto.primaryContact ?? undefined,
       alternative_contacts: dto.alternativeContacts ?? undefined,
-      address: dto.address ?? undefined,
+      address: (dto as any).physicalAddress ?? dto.address ?? undefined,
       specialties: dto.specialties ?? undefined,
       regions_covered: dto.regionsCovered ?? undefined,
       minimum_order: dto.minimumOrder ?? undefined,
       lead_time_days: dto.leadTimeDays ?? undefined,
       tier: dto.tier ?? undefined,
-      notes: dto.notes ?? undefined,
       is_active: dto.isActive ?? undefined,
     };
+    // Remove undefined keys so Supabase doesn't null-out untouched columns
+    Object.keys(updatePayload).forEach(
+      (k) => updatePayload[k] === undefined && delete updatePayload[k],
+    );
 
     const { data, error } = await this.databaseService.supabase
       .from('providers')
@@ -747,10 +765,29 @@ export class ProvidersService {
   }
 
   private mapProviderRow(row: ProviderRow): ProviderResponseDto {
+    // Phone/email: prefer dedicated columns; fall back to primary_contact JSONB
+    // for legacy providers created before the dedicated columns existed.
+    const phone =
+      row.contact_phone ??
+      (row.primary_contact as any)?.phone ??
+      undefined;
+    const email =
+      row.contact_email ??
+      (row.primary_contact as any)?.email ??
+      undefined;
+
     return {
       id: row.id,
       name: row.name,
       companyName: row.company_name ?? undefined,
+      phone,
+      email,
+      contactFirstName: row.contact_first_name ?? undefined,
+      contactLastName: row.contact_last_name ?? undefined,
+      physicalAddress: row.address ?? undefined,
+      website: row.website ?? undefined,
+      rating: row.rating ?? undefined,
+      notes: row.personality_notes ?? undefined,
       primaryContact: row.primary_contact ?? undefined,
       specialties: row.specialties ?? undefined,
       regionsCovered: row.regions_covered ?? undefined,
