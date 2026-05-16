@@ -136,7 +136,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_orders')
       .insert(payload)
-      .select('*, inventory:inventory_id(wine_name)')
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
       .single();
 
     if (error) {
@@ -150,7 +150,7 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || null,
+      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     const order = this.mapOrderRow(orderRow);
@@ -210,7 +210,7 @@ export class ProcurementService {
 
     let supabaseQuery = this.databaseService.supabase
       .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name)', { count: 'exact' })
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))', { count: 'exact' })
       .eq('restaurant_id', restaurantId);
 
     if (query.status) {
@@ -244,7 +244,7 @@ export class ProcurementService {
     const orders = (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
-        wine_name: row.inventory?.wine_name || null,
+        wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
       };
       return this.mapOrderRow(orderRow);
     });
@@ -265,7 +265,7 @@ export class ProcurementService {
   ): Promise<OrderResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name)')
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
       .single();
@@ -282,7 +282,7 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || null,
+      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     return this.mapOrderRow(orderRow);
@@ -314,7 +314,7 @@ export class ProcurementService {
       .update(updatePayload)
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name)')
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
       .single();
 
     if (error) {
@@ -329,7 +329,7 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || null,
+      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     return this.mapOrderRow(orderRow);
@@ -366,7 +366,7 @@ export class ProcurementService {
       })
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name)')
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
       .single();
 
     if (error) {
@@ -381,7 +381,7 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || null,
+      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     const order = this.mapOrderRow(orderRow);
@@ -436,7 +436,7 @@ export class ProcurementService {
       })
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name)')
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
       .single();
 
     if (error) {
@@ -451,7 +451,7 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || null,
+      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     const order = this.mapOrderRow(orderRow);
@@ -635,7 +635,7 @@ export class ProcurementService {
   ): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name)')
+      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
       .eq('restaurant_id', restaurantId)
       .in('status', [
         ProcurementOrderStatus.PENDING,
@@ -654,7 +654,7 @@ export class ProcurementService {
     return (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
-        wine_name: row.inventory?.wine_name || null,
+        wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
       };
       return this.mapOrderRow(orderRow);
     });

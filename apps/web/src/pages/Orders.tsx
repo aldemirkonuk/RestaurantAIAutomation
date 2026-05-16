@@ -39,7 +39,7 @@ import axios from 'axios'
 import { Wine as WineType } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
 import { apiClient } from '../services/api/client'
-import { inventoryApi } from '../services/api'
+import { inventoryApi, getInventory } from '../services/api'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useWinesByIds, useCreateCalendarEvent } from '../hooks/queries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
@@ -924,9 +924,31 @@ Shadow stock has been moved to Live Stock.`)
                 action: 'created_from_order',
               },
             })
-          } catch (error) {
-            failures.push(`Failed to add ${item.wineName} to inventory`)
-            continue
+          } catch (_createError: any) {
+            // Creation failed — likely the inventory item already exists in the DB
+            // but hasn't been loaded into the client cache yet. Fetch all inventory
+            // to find it rather than silently skipping this order.
+            try {
+              const allInventory = await getInventory(user.restaurantId)
+              const existing = allInventory.find(
+                (inv: any) =>
+                  inv.wineId === item.wineId ||
+                  (item.wineName && inv.wineName?.toLowerCase() === item.wineName.toLowerCase())
+              )
+              if (existing) {
+                inventoryItem = {
+                  id: existing.id,
+                  wineId: (existing as any).wineId || item.wineId,
+                  wineName: (existing as any).wineName || item.wineName,
+                }
+              } else {
+                failures.push(`Could not create or find inventory for ${item.wineName}`)
+                continue
+              }
+            } catch {
+              failures.push(`Failed to add ${item.wineName} to inventory`)
+              continue
+            }
           }
         }
 

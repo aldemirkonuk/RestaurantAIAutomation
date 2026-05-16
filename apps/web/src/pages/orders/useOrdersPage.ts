@@ -80,13 +80,35 @@ export function useOrdersPage() {
     return map
   }, [inventory])
 
+  // Master wine lookup from the library (already fetched, stable cache)
+  const wineNameByMasterId = useMemo(() => {
+    const map = new Map<string, string>()
+    apiWines.forEach((w: any) => {
+      const id = w.id || w.wineId
+      const name = w.name || w.wineName
+      if (id && name) map.set(id, name)
+    })
+    return map
+  }, [apiWines])
+
   const resolveOrderWineName = useCallback((order: Order, fallbackName?: string) => {
     if (order.wine_name && !isUuid(order.wine_name) && !isPlaceholderName(order.wine_name)) return order.wine_name
     if (fallbackName && !isUuid(fallbackName) && !isPlaceholderName(fallbackName)) return fallbackName
+    // Try inventory item first
     const inv = inventoryById.get(order.wine_id)
-    const name = inv?.wineName || inv?.wine_name || inv?.name
-    return (name && !isUuid(name) && !isPlaceholderName(name)) ? name : (order.wine_name || 'Unknown Wine')
-  }, [inventoryById])
+    const invName = inv?.wineName || inv?.wine_name || inv?.name
+    if (invName && !isUuid(invName) && !isPlaceholderName(invName)) return invName
+    // Fallback: master wine ID stored on the inventory item
+    const masterWineId = inv?.wineId || inv?.wine_id
+    if (masterWineId) {
+      const masterName = wineNameByMasterId.get(masterWineId)
+      if (masterName && !isPlaceholderName(masterName)) return masterName
+    }
+    // Fallback: treat wine_id itself as a master wine ID
+    const directName = wineNameByMasterId.get(order.wine_id)
+    if (directName && !isPlaceholderName(directName)) return directName
+    return order.wine_name || undefined
+  }, [inventoryById, wineNameByMasterId])
 
   const resolveOrderProviderName = useCallback((order: Order) => {
     if (!order.provider_name) return 'Unknown Provider'
@@ -96,10 +118,10 @@ export function useOrdersPage() {
   useEffect(() => {
     if (!rawOrdersData) return
     const list = Array.isArray(rawOrdersData) ? rawOrdersData : (rawOrdersData as any).orders || []
-    const resolved = list.map(mapApiOrderToUi).map((o: Order) => ({
-      ...o,
-      wine_name: o.wine_name && !isUuid(o.wine_name) ? o.wine_name : resolveOrderWineName(o),
-    }))
+    const resolved = list.map(mapApiOrderToUi).map((o: Order) => {
+      const resolved = resolveOrderWineName(o)
+      return { ...o, wine_name: resolved ?? o.wine_name }
+    })
     setOrders(resolved)
   }, [rawOrdersData, resolveOrderWineName])
 
@@ -123,11 +145,13 @@ export function useOrdersPage() {
   const orderAnalytics = useMemo(() => {
     const now = new Date()
     const oneTime = orders.filter((o) => !o.isRecurring)
-    const thisMonth = orders.filter((o) => {
+    // Exclude cancelled orders from monetary totals — cancellations should reduce the spend card.
+    const activeOrders = orders.filter((o) => o.status !== 'cancelled')
+    const thisMonth = activeOrders.filter((o) => {
       const d = new Date(o.created_at)
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     })
-    const lastMonth = orders.filter((o) => {
+    const lastMonth = activeOrders.filter((o) => {
       const d = new Date(o.created_at)
       const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear()
