@@ -90,18 +90,24 @@ function loadPersistedActions(): ActionItem[] {
       localStorage.removeItem(ACTIONS_STORAGE_KEY)
       return []
     }
-    return actions.map((a: any) => ({ ...a, timestamp: new Date(a.timestamp) }))
+    // Deduplicate by id — prevents legacy duplicate entries from re-inflating
+    const seen = new Set<string>()
+    return actions
+      .filter((a: any) => { if (!a?.id || seen.has(a.id)) return false; seen.add(a.id); return true })
+      .map((a: any) => ({ ...a, timestamp: new Date(a.timestamp) }))
   } catch {
     localStorage.removeItem(ACTIONS_STORAGE_KEY)
     return []
   }
 }
 
-// Save actions to localStorage — always cap to MAX_PERSISTED_ACTIONS.
+// Save actions to localStorage — deduplicate by id and cap to MAX_PERSISTED_ACTIONS.
 function saveActionsToStorage(actions: ActionItem[]): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(actions.slice(0, MAX_PERSISTED_ACTIONS)))
+    const seen = new Set<string>()
+    const deduped = actions.filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true })
+    localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(deduped.slice(0, MAX_PERSISTED_ACTIONS)))
   } catch {}
 }
 
@@ -261,11 +267,12 @@ export function OneTapActionCenter() {
     () => getInitialActions(libraryWines, lowStockItems),
     [libraryWines, lowStockItems],
   )
-  // One-time mount cleanup: wipe any localStorage that ballooned beyond the cap.
-  // loadPersistedActions() already guards this, but call it explicitly on mount
-  // so stale data from before this fix is also removed.
+  // On mount: prune oversized / duplicate localStorage entries immediately.
+  // The deduped result is discarded here because initialActions (from useMemo) is used
+  // as the authoritative starting point; fetchOrders will reconcile everything once data loads.
   const [actions, setActions] = useState<ActionItem[]>(() => {
-    loadPersistedActions() // side-effect: prunes oversized store
+    const persisted = loadPersistedActions() // side-effect: prunes & deduplicates store
+    saveActionsToStorage(persisted)          // write the cleaned list back immediately
     return initialActions
   })
   const [expandedAction, setExpandedAction] = useState<string | null>(null)
@@ -297,15 +304,14 @@ export function OneTapActionCenter() {
           (order, index, self) => self.findIndex(o => o.id === order.id) === index
         )
         
-        // Only update if we got API data
-        if (uniqueOrders.length > 0) {
-          const newActions = generateRealActions(libraryWines, lowStockItems, uniqueOrders)
-          setActions(prev => {
-            const autoIds = new Set(newActions.map(a => a.id))
-            const userCreatedActions = prev.filter(a => !autoIds.has(a.id))
-            return [...newActions, ...userCreatedActions].slice(0, MAX_PERSISTED_ACTIONS)
-          })
-        }
+        // Always regenerate from real data — this also clears any duplicated entries
+        // that may have accumulated in localStorage across sessions.
+        const newActions = generateRealActions(libraryWines, lowStockItems, uniqueOrders)
+        setActions(prev => {
+          const autoIds = new Set(newActions.map(a => a.id))
+          const userCreatedActions = prev.filter(a => !autoIds.has(a.id))
+          return [...newActions, ...userCreatedActions].slice(0, MAX_PERSISTED_ACTIONS)
+        })
       } catch (error) {
         console.warn('[OneTapActions] Failed to fetch orders from API:', error)
         // Keep using existing actions (localStorage fallback already happened)
@@ -342,12 +348,20 @@ export function OneTapActionCenter() {
   )
   useEffect(() => {
     setActions(prev => {
-      const autoIds = new Set(initialActions.map(a => a.id))
+      // Deduplicate initialActions by id before merging (guards against duplicate entries
+      // that can come from localStorage before the dedup fix was applied).
+      const seen = new Set<string>()
+      const dedupedInitial = initialActions.filter(a => {
+        if (seen.has(a.id)) return false
+        seen.add(a.id)
+        return true
+      })
+      const autoIds = new Set(dedupedInitial.map(a => a.id))
       // If every auto-id is already present, skip the update to break the loop.
-      const allPresent = initialActions.every(a => prev.some(p => p.id === a.id))
+      const allPresent = dedupedInitial.every(a => prev.some(p => p.id === a.id))
       if (allPresent) return prev
       const preserved = prev.filter(a => !autoIds.has(a.id))
-      return [...initialActions, ...preserved].slice(0, MAX_PERSISTED_ACTIONS)
+      return [...dedupedInitial, ...preserved].slice(0, MAX_PERSISTED_ACTIONS)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialActionKey])
