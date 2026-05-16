@@ -481,6 +481,7 @@ export class ProcurementService {
             const { data: currentStock } = await this.databaseService.supabase
               .from('restaurant_inventory')
               .select('shadow_stock, stock_live')
+              .eq('restaurant_id', restaurantId)
               .eq('id', order.inventoryId)
               .single();
 
@@ -493,6 +494,7 @@ export class ProcurementService {
                 shadow_stock: Math.max(0, currentShadow - resolvedQuantity),
                 stock_live: currentLive + resolvedQuantity,
               })
+              .eq('restaurant_id', restaurantId)
               .eq('id', order.inventoryId);
 
             await this.inventoryLedgerService.createTransaction(restaurantId, userId, {
