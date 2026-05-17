@@ -43,7 +43,8 @@ export class DatabaseService implements OnModuleInit {
       .select(
         '*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)',
       )
-      .eq('restaurant_id', restaurantId);
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true);
 
     if (error) throw error;
     return data;

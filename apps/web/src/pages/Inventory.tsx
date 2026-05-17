@@ -475,16 +475,23 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
 
     if (!confirm(confirmMessage)) return
 
-    // Optimistically remove from local state immediately
-    setInventory(prev => prev.filter(inv => inv.id !== item.id))
+    // item.inventoryId is the restaurant_inventory PK; item.id is the master wine ID.
+    const inventoryRowId = item.inventoryId || item.id
+
+    // Optimistically remove from the TanStack Query cache so the row disappears
+    // immediately without waiting for the API round-trip.
+    const cacheKey = queryKeys.inventory.list(activeRestaurantId ?? '')
+    queryClient.setQueryData(cacheKey, (old: any[] | undefined) =>
+      old ? old.filter((i: any) => i.id !== inventoryRowId) : []
+    )
 
     try {
-      await inventoryApi.deleteInventoryItem(item.id, activeRestaurantId || undefined)
-      // Invalidate React Query cache so any refetch reflects the deletion
+      await inventoryApi.deleteInventoryItem(inventoryRowId, activeRestaurantId || undefined)
+      // Invalidate so the next background refetch reflects the soft-delete
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
     } catch (err: any) {
-      // Roll back local state if API call fails
-      setInventory(prev => [...prev, item])
+      // Roll back: re-fetch from server so the item reappears
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
       alert(`Failed to remove "${item.name}" from inventory: ${err?.message || 'Unknown error'}. Please try again.`)
     }
   }

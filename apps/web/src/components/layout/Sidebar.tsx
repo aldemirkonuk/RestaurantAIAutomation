@@ -43,8 +43,8 @@ const DocumentsReportsIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const mainNavItems: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Inventory', href: '/inventory', icon: Package, badge: 3 },
-  { name: 'Orders', href: '/orders', icon: ShoppingCart, badge: 5 },
+  { name: 'Inventory', href: '/inventory', icon: Package },
+  { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Wine Library', href: '/wines', icon: Wine },
   { name: 'Providers', href: '/providers', icon: Truck },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
@@ -55,7 +55,7 @@ const secondaryNavItems: NavItem[] = [
   { name: 'Team', href: '/team', icon: Users },
   { name: 'Communications', href: '/communications', icon: MessageSquare },
   { name: 'Documents & Reports', href: '/documents-reports', icon: DocumentsReportsIcon },
-  { name: 'Notifications', href: '/notifications', icon: Bell, badge: 12 },
+  { name: 'Notifications', href: '/notifications', icon: Bell },
 ]
 
 const aiNavItems: NavItem[] = [

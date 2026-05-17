@@ -84,6 +84,7 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.33",
     "qrcode.react": "^4.2.0",
     "storybook": "8.6.14",
