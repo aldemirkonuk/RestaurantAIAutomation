@@ -72,6 +72,15 @@ const PAYMENT_TERMS = ['Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90', 'COD (C
 
 const CONTACT_ROLES = ['Primary Contact', 'Sales Rep', 'Broker', 'Account Manager', 'Owner', 'Billing', 'Delivery Coordinator', 'Other']
 
+function toE164(phone: string | undefined | null): string {
+  if (!phone) return ''
+  if (phone.startsWith('+')) return phone
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  return `+${digits}`
+}
+
 function buildInitialContacts(provider: Provider | null): ProviderContactEntry[] {
   if (!provider) return []
   const contacts: ProviderContactEntry[] = []
@@ -82,7 +91,7 @@ function buildInitialContacts(provider: Provider | null): ProviderContactEntry[]
       id: `primary-${provider.id}`,
       name: (provider as any).contactPerson || provider.name,
       role: 'Primary Contact',
-      phone: provider.phone || '',
+      phone: toE164(provider.phone),
       email: provider.email || '',
       isPrimary: true,
       tag: `Main line for ${provider.name}`,
@@ -146,7 +155,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         name: provider.name,
         contactFirstName: (provider as any).contactFirstName || legacyFirst,
         contactLastName:  (provider as any).contactLastName  || legacyLast,
-        phone: provider.phone || (provider as any).primaryContact?.phone || '',
+        phone: toE164(provider.phone || (provider as any).primaryContact?.phone),
         email: provider.email || (provider as any).primaryContact?.email || '',
         website: provider.website || '',
         address: provider.physicalAddress || '',

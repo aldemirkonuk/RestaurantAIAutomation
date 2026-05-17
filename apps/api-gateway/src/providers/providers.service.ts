@@ -17,6 +17,15 @@ import {
 import { UpdateIntelligenceDto } from './dto/update-intelligence.dto';
 import { RetroactiveOrderDto } from './dto/retroactive-order.dto';
 
+function normalizeToE164(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  if (phone.startsWith('+')) return phone;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return phone;
+}
+
 interface ProviderRow {
   id: string;
   name: string;
@@ -78,7 +87,7 @@ export class ProvidersService {
 
       payload = {
         name: vendor.name,
-        contact_phone: vendor.phone ?? null,
+        contact_phone: normalizeToE164(vendor.phone),
         contact_email: vendor.email ?? null,
         address: vendor.address ?? null,
         personality_notes: catalogueNotes,
@@ -105,7 +114,7 @@ export class ProvidersService {
         lead_time_days: dto.leadTimeDays ?? null,
         tier: dto.tier ?? null,
         personality_notes: dto.notes ?? null,
-        contact_phone: dto.phone ?? null,
+        contact_phone: normalizeToE164(dto.phone),
         contact_email: dto.email ?? null,
         catalogue_vendor_id: null,
         is_custom: true,
@@ -211,7 +220,7 @@ export class ProvidersService {
     const updatePayload: Record<string, any> = {
       name: dto.name ?? undefined,
       company_name: dto.companyName ?? undefined,
-      contact_phone: dto.phone ?? undefined,
+      contact_phone: dto.phone != null ? normalizeToE164(dto.phone) : undefined,
       contact_email: dto.email ?? undefined,
       contact_first_name: dto.contactFirstName ?? undefined,
       contact_last_name: dto.contactLastName ?? undefined,
