@@ -114,34 +114,86 @@ function saveActionsToStorage(actions: ActionItem[]): void {
 // Generate real actions from data sources
 function generateRealActions(
   wines: WineType[],
-  lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number; thresholdMin?: number; thresholdMax?: number; providerName?: string }>,
+  lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number; shadowStock?: number; thresholdMin?: number; thresholdMax?: number; providerName?: string }>,
   apiOrders: Order[] = [],
 ): ActionItem[] {
   const actions: ActionItem[] = []
   const now = new Date()
-  
-  // 1. Low Stock Alerts - from actual wine inventory
-  lowStockItems.slice(0, 5).forEach((item, index) => {
+
+  // 1. Low Stock Alerts — only fire when stockLive + shadowStock <= threshold.
+  //    Multiple wines are collapsed into a single combined notification to prevent spam.
+  const eligibleLowStock = lowStockItems.filter((item) => {
+    const combined = (item.stockLive ?? 0) + (item.shadowStock ?? 0)
+    const threshold = item.thresholdMin ?? 6
+    return combined <= threshold
+  })
+
+  if (eligibleLowStock.length === 1) {
+    const item = eligibleLowStock[0]
+    const combined = (item.stockLive ?? 0) + (item.shadowStock ?? 0)
+    const threshold = item.thresholdMin ?? 6
+    const isCritical = combined <= threshold * 0.5
     const wine = wines.find(w => w.id === item.wineId)
-    const stock = item.stockLive || 0
-    const threshold = item.thresholdMin ?? wine?.threshold ?? 6
-    const isCritical = stock <= threshold * 0.5
     actions.push({
-      id: `low_stock_${item.wineId || item.wineName || index}`,
+      id: `low_stock_${item.wineId || item.wineName || 0}`,
       type: 'low_stock',
       priority: isCritical ? 'critical' : 'high',
       title: wine?.name || item.wineName || 'Low stock wine',
-      subtitle: `Only ${stock} bottles left • Threshold: ${threshold}`,
+      subtitle: `${combined} bottles total (live + on-order) • Threshold: ${threshold}`,
       wine,
-      details: { 
-        currentStock: stock, 
-        threshold, 
-        suggestedOrder: Math.max(threshold * 2 - stock, 6),
-        estimatedPrice: (wine?.price || 0) * Math.max(threshold * 2 - stock, 6),
+      details: {
+        currentStock: combined,
+        threshold,
+        suggestedOrder: Math.max(threshold * 2 - combined, 6),
+        estimatedPrice: (wine?.price || 0) * Math.max(threshold * 2 - combined, 6),
       },
-      timestamp: new Date(now.getTime() - (index + 1) * 1000 * 60 * 5),
+      timestamp: new Date(now.getTime() - 1000 * 60 * 5),
     })
-  })
+  } else if (eligibleLowStock.length > 1) {
+    // Combine all below-threshold wines into one action
+    const hasCritical = eligibleLowStock.some((item) => {
+      const combined = (item.stockLive ?? 0) + (item.shadowStock ?? 0)
+      return combined <= (item.thresholdMin ?? 6) * 0.5
+    })
+    const preview = eligibleLowStock.slice(0, 3).map((item) => {
+      const wine = wines.find(w => w.id === item.wineId)
+      return wine?.name || item.wineName || 'Unknown wine'
+    })
+    const rest = eligibleLowStock.length - 3
+    const subtitle = preview.join(' · ') + (rest > 0 ? ` +${rest} more` : '')
+    const totalSuggested = eligibleLowStock.reduce((sum, item) => {
+      const combined = (item.stockLive ?? 0) + (item.shadowStock ?? 0)
+      const threshold = item.thresholdMin ?? 6
+      return sum + Math.max(threshold * 2 - combined, 6)
+    }, 0)
+    actions.push({
+      id: 'low_stock_combined',
+      type: 'low_stock',
+      priority: hasCritical ? 'critical' : 'high',
+      title: `${eligibleLowStock.length} Wines Need Restocking`,
+      subtitle,
+      wine: undefined,
+      details: {
+        currentStock: 0,
+        threshold: 0,
+        suggestedOrder: totalSuggested,
+        estimatedPrice: 0,
+        items: eligibleLowStock.map((item) => {
+          const combined = (item.stockLive ?? 0) + (item.shadowStock ?? 0)
+          const threshold = item.thresholdMin ?? 6
+          const wine = wines.find(w => w.id === item.wineId)
+          return {
+            wineId: item.wineId,
+            wineName: wine?.name || item.wineName,
+            stock: combined,
+            threshold,
+            isCritical: combined <= threshold * 0.5,
+          }
+        }),
+      },
+      timestamp: new Date(now.getTime() - 1000 * 60 * 5),
+    })
+  }
   
   // 2. Shadow Stock Reconciliation - check for wines with shadow stock > 0
   try {
