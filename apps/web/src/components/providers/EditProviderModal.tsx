@@ -6,7 +6,6 @@ import {
   User,
   Mail,
   Globe,
-  MapPin,
   DollarSign,
   FileText,
   Star,
@@ -23,6 +22,7 @@ import {
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
+import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 
 export interface EditProviderData {
   id: string
@@ -409,15 +409,25 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                        <textarea
-                          value={formData.address}
-                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 resize-none"
-                          rows={2}
-                        />
-                      </div>
+                      <PlacesAutocomplete
+                        value={formData.address}
+                        onChange={(val) => setFormData({ ...formData, address: val })}
+                        onPlaceSelect={(place: PlaceResult) => {
+                          const full = [
+                            place.streetAddress,
+                            place.city,
+                            place.stateProvince,
+                            place.postalCode,
+                            place.country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')
+                          setFormData((prev) => ({ ...prev, address: full }))
+                        }}
+                        placeholder="Start typing an address…"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
                     </div>
                   </div>
                 </div>
