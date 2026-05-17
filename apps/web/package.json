@@ -42,7 +42,7 @@
     "exceljs": "^4.4.0",
     "framer-motion": "^10.18.0",
     "googleapis": "^170.0.0",
-    "jspdf": "^4.0.0",
+    "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "libphonenumber-js": "^1.13.2",
     "lucide-react": "^1.7.0",
