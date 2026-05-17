@@ -19,10 +19,21 @@ import {
   UserPlus,
   Save,
   Edit,
+  MapPin,
+  Plus,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
+import { useAuth } from '../../contexts/AuthContext'
+
+export interface ProviderLocation {
+  id: string
+  name: string
+  type: 'office' | 'warehouse' | 'store' | 'other'
+  address: string
+  isPrimary: boolean
+}
 
 export interface EditProviderData {
   id: string
@@ -41,6 +52,7 @@ export interface EditProviderData {
   notes: string
   rating: number
   contacts: ProviderContactEntry[]
+  locations: ProviderLocation[]
 }
 
 export interface ProviderContactEntry {
@@ -48,9 +60,10 @@ export interface ProviderContactEntry {
   name: string
   role: string
   phone: string
+  phoneType: 'main_line' | 'cell' | 'direct' | 'whatsapp' | 'fax' | 'office'
   email: string
   isPrimary: boolean
-  tag: string // e.g. "Main phone line for X provider"
+  tag: string
 }
 
 interface EditProviderModalProps {
@@ -72,6 +85,22 @@ const PAYMENT_TERMS = ['Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90', 'COD (C
 
 const CONTACT_ROLES = ['Primary Contact', 'Sales Rep', 'Broker', 'Account Manager', 'Owner', 'Billing', 'Delivery Coordinator', 'Other']
 
+const PHONE_TYPES = [
+  { value: 'main_line', label: 'Main Line', emoji: '📞', color: 'bg-blue-100 text-blue-700' },
+  { value: 'cell',      label: 'Cell',      emoji: '📱', color: 'bg-green-100 text-green-700' },
+  { value: 'direct',    label: 'Direct',    emoji: '📲', color: 'bg-amber-100 text-amber-700' },
+  { value: 'whatsapp',  label: 'WhatsApp',  emoji: '💬', color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'fax',       label: 'Fax',       emoji: '📠', color: 'bg-gray-100 text-gray-600' },
+  { value: 'office',    label: 'Office',    emoji: '🏢', color: 'bg-purple-100 text-purple-700' },
+] as const
+
+const LOCATION_TYPES = [
+  { value: 'office',    label: 'Office' },
+  { value: 'warehouse', label: 'Warehouse' },
+  { value: 'store',     label: 'Store' },
+  { value: 'other',     label: 'Other' },
+] as const
+
 function toE164(phone: string | undefined | null): string {
   if (!phone) return ''
   if (phone.startsWith('+')) return phone
@@ -85,20 +114,19 @@ function buildInitialContacts(provider: Provider | null): ProviderContactEntry[]
   if (!provider) return []
   const contacts: ProviderContactEntry[] = []
 
-  // Add the primary contact from the provider itself
   if (provider.phone || provider.email) {
     contacts.push({
       id: `primary-${provider.id}`,
       name: (provider as any).contactPerson || provider.name,
       role: 'Primary Contact',
       phone: toE164(provider.phone),
+      phoneType: 'main_line',
       email: provider.email || '',
       isPrimary: true,
       tag: `Main line for ${provider.name}`,
     })
   }
 
-  // Add known personnel as additional contacts
   if (provider.knownPersonnel && provider.knownPersonnel.length > 0) {
     provider.knownPersonnel.forEach((person, idx) => {
       contacts.push({
@@ -106,6 +134,7 @@ function buildInitialContacts(provider: Provider | null): ProviderContactEntry[]
         name: person,
         role: 'Sales Rep',
         phone: '',
+        phoneType: 'main_line',
         email: '',
         isPrimary: false,
         tag: `${person} at ${provider.name}`,
@@ -116,7 +145,22 @@ function buildInitialContacts(provider: Provider | null): ProviderContactEntry[]
   return contacts
 }
 
+function buildInitialLocations(provider: Provider | null): ProviderLocation[] {
+  if (!provider) return []
+  const address = provider.physicalAddress || ''
+  if (!address) return []
+  return [{
+    id: `primary-location-${provider.id}`,
+    name: 'Main Office',
+    type: 'office',
+    address,
+    isPrimary: true,
+  }]
+}
+
 export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditProviderModalProps) {
+  const { user } = useAuth()
+
   const [formData, setFormData] = useState<EditProviderData>({
     id: '',
     name: '',
@@ -134,17 +178,17 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
     notes: '',
     rating: 0,
     contacts: [],
+    locations: [],
   })
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({})
-  const [activeTab, setActiveTab] = useState<'details' | 'contacts'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'contacts' | 'locations'>('details')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
+  const [isEditingName, setIsEditingName] = useState(false)
 
   // Populate form from provider
   useEffect(() => {
     if (provider && isOpen) {
-      // Derive first/last from dedicated columns, falling back to parsing
-      // primaryContact.name for legacy providers that predate the split columns.
       const legacyName = (provider as any).primaryContact?.name || ''
       const spaceIdx = legacyName.indexOf(' ')
       const legacyFirst = spaceIdx > -1 ? legacyName.slice(0, spaceIdx) : legacyName
@@ -167,11 +211,36 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         notes: provider.notes || '',
         rating: provider.rating || 0,
         contacts: buildInitialContacts(provider),
+        locations: buildInitialLocations(provider),
       })
       setActiveTab('details')
       setValidationErrors({})
+      setIsEditingName(false)
     }
   }, [provider, isOpen])
+
+  // Auto-populate admin contact when contacts list is empty
+  useEffect(() => {
+    if (formData.contacts.length === 0 && user && isOpen) {
+      const fullName = user.name || user.email.split('@')[0] || ''
+      const spaceIdx = fullName.indexOf(' ')
+      const adminFirstName = spaceIdx > -1 ? fullName.slice(0, spaceIdx) : fullName
+      const adminLastName  = spaceIdx > -1 ? fullName.slice(spaceIdx + 1) : ''
+      setFormData(prev => ({
+        ...prev,
+        contacts: [{
+          id: `admin-${user.userId}`,
+          name: `${adminFirstName} ${adminLastName}`.trim() || 'Restaurant Admin',
+          role: 'Primary Contact',
+          phone: '',
+          phoneType: 'main_line',
+          email: user.email,
+          isPrimary: true,
+          tag: 'Primary restaurant contact',
+        }],
+      }))
+    }
+  }, [formData.contacts.length, user, isOpen])
 
   const handleClose = () => {
     setValidationErrors({})
@@ -202,6 +271,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       name: '',
       role: 'Sales Rep',
       phone: '',
+      phoneType: 'main_line',
       email: '',
       isPrimary: false,
       tag: '',
@@ -233,6 +303,48 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       contacts: prev.contacts.map(c => ({
         ...c,
         isPrimary: c.id === contactId,
+      })),
+    }))
+  }
+
+  const addLocation = () => {
+    const newLocation: ProviderLocation = {
+      id: `new-loc-${Date.now()}`,
+      name: `Location ${formData.locations.length + 1}`,
+      type: 'office',
+      address: '',
+      isPrimary: formData.locations.length === 0,
+    }
+    setFormData(prev => ({
+      ...prev,
+      locations: [...prev.locations, newLocation],
+    }))
+  }
+
+  const updateLocation = (locationId: string, updates: Partial<ProviderLocation>) => {
+    setFormData(prev => ({
+      ...prev,
+      locations: prev.locations.map(l => l.id === locationId ? { ...l, ...updates } : l),
+    }))
+  }
+
+  const removeLocation = (locationId: string) => {
+    setFormData(prev => {
+      const updated = prev.locations.filter(l => l.id !== locationId)
+      const removedWasPrimary = prev.locations.find(l => l.id === locationId)?.isPrimary ?? false
+      if (removedWasPrimary && updated.length > 0) {
+        updated[0] = { ...updated[0], isPrimary: true }
+      }
+      return { ...prev, locations: updated }
+    })
+  }
+
+  const setPrimaryLocation = (locationId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      locations: prev.locations.map(l => ({
+        ...l,
+        isPrimary: l.id === locationId,
       })),
     }))
   }
@@ -276,12 +388,37 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-600 rounded-xl">
+              <div className="p-2 bg-amber-600 rounded-xl shrink-0">
                 <Edit className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Edit Provider</h2>
-                <p className="text-sm text-gray-500">{provider.name}</p>
+                <div className="mt-1">
+                  {isEditingName ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      value={formData.name}
+                      onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      onBlur={() => setIsEditingName(false)}
+                      onKeyDown={e => { if (e.key === 'Enter') setIsEditingName(false) }}
+                      className="text-base font-bold px-4 py-1.5 border-2 border-amber-400 rounded-full focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setIsEditingName(true)}
+                      className="group inline-flex items-center gap-2 px-5 py-1.5 bg-amber-50 border-2 border-amber-200 rounded-full hover:border-amber-400 transition-all cursor-pointer"
+                    >
+                      <span className="text-base font-bold text-gray-900">{formData.name || 'Provider Name'}</span>
+                      <Edit className="w-4 h-4 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  )}
+                  {validationErrors.name && (
+                    <p className="text-sm text-rose-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" />{validationErrors.name}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
@@ -317,6 +454,19 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                 Contacts ({formData.contacts.length})
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('locations')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'locations'
+                  ? 'border-amber-600 text-amber-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                Locations ({formData.locations.length})
+              </div>
+            </button>
           </div>
 
           {/* Content */}
@@ -330,23 +480,6 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                     Basic Information
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Provider Name <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className={`w-full px-4 py-3 border rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 ${validationErrors.name ? 'border-rose-500' : 'border-gray-200'}`}
-                      />
-                      {validationErrors.name && (
-                        <p className="text-sm text-rose-600 mt-1 flex items-center gap-1">
-                          <AlertCircle className="w-4 h-4" />{validationErrors.name}
-                        </p>
-                      )}
-                    </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
                       <div className="relative">
@@ -465,7 +598,6 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                     })}
                   </div>
 
-                  {/* Specialties */}
                   <label className="block text-sm font-medium text-gray-700 mb-2">Wine Specialties</label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {WINE_SPECIALTIES.map(specialty => {
@@ -573,7 +705,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : activeTab === 'contacts' ? (
               /* Contacts Tab */
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -606,132 +738,274 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {formData.contacts.map((contact) => (
-                      <div
-                        key={contact.id}
-                        className={`border rounded-xl overflow-hidden transition-all ${
-                          contact.isPrimary ? 'border-amber-300 bg-amber-50/50' : 'border-gray-200 bg-white'
-                        }`}
-                      >
-                        {/* Contact Header - always visible */}
+                    {formData.contacts.map((contact) => {
+                      const phoneTypeItem = PHONE_TYPES.find(t => t.value === contact.phoneType)
+                      return (
                         <div
-                          className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50/50 transition-colors"
-                          onClick={() => setExpandedContactId(expandedContactId === contact.id ? null : contact.id)}
+                          key={contact.id}
+                          className={`border rounded-xl overflow-hidden transition-all ${
+                            contact.isPrimary ? 'border-amber-300 bg-amber-50/50' : 'border-gray-200 bg-white'
+                          }`}
                         >
-                          <div className={`p-2 rounded-lg ${contact.isPrimary ? 'bg-amber-200' : 'bg-gray-100'}`}>
-                            <User className={`w-4 h-4 ${contact.isPrimary ? 'text-amber-700' : 'text-gray-500'}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900 truncate">
-                                {contact.name || 'Unnamed Contact'}
-                              </span>
-                              {contact.isPrimary && (
-                                <span className="px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
-                                  Primary
-                                </span>
-                              )}
-                              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
-                                {contact.role}
-                              </span>
+                          {/* Contact Header - always visible */}
+                          <div
+                            className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50/50 transition-colors"
+                            onClick={() => setExpandedContactId(expandedContactId === contact.id ? null : contact.id)}
+                          >
+                            <div className={`p-2 rounded-lg ${contact.isPrimary ? 'bg-amber-200' : 'bg-gray-100'}`}>
+                              <User className={`w-4 h-4 ${contact.isPrimary ? 'text-amber-700' : 'text-gray-500'}`} />
                             </div>
-                            <p className="text-sm text-gray-500 truncate mt-0.5">
-                              {contact.tag || `${contact.phone || 'No phone'} | ${contact.email || 'No email'}`}
-                            </p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-gray-900 truncate">
+                                  {contact.name || 'Unnamed Contact'}
+                                </span>
+                                {contact.isPrimary && (
+                                  <span className="px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
+                                    Primary
+                                  </span>
+                                )}
+                                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+                                  {contact.role}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                {phoneTypeItem && contact.phone && (
+                                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 text-xs font-medium rounded-full ${phoneTypeItem.color}`}>
+                                    {phoneTypeItem.emoji} {phoneTypeItem.label}
+                                  </span>
+                                )}
+                                <span className="text-sm text-gray-500 truncate">
+                                  {contact.tag || `${contact.phone || 'No phone'} | ${contact.email || 'No email'}`}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${
+                              expandedContactId === contact.id ? 'rotate-180' : ''
+                            }`} />
                           </div>
-                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${
-                            expandedContactId === contact.id ? 'rotate-180' : ''
-                          }`} />
-                        </div>
 
-                        {/* Expanded Details */}
-                        <AnimatePresence>
-                          {expandedContactId === contact.id && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                                    <input
-                                      type="text"
-                                      value={contact.name}
-                                      onChange={(e) => updateContact(contact.id, { name: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                      placeholder="John Smith"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-                                    <select
-                                      value={contact.role}
-                                      onChange={(e) => updateContact(contact.id, { role: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                    >
-                                      {CONTACT_ROLES.map(role => (
-                                        <option key={role} value={role}>{role}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-                                    <PhoneNumberInput
-                                      value={contact.phone}
-                                      onChange={(phone) => updateContact(contact.id, { phone })}
-                                      className="py-2 text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                                    <div className="relative">
-                                      <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          {/* Expanded Details */}
+                          <AnimatePresence>
+                            {expandedContactId === contact.id && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden"
+                              >
+                                <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
                                       <input
-                                        type="email"
-                                        value={contact.email}
-                                        onChange={(e) => updateContact(contact.id, { email: e.target.value })}
-                                        className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                        placeholder="contact@example.com"
+                                        type="text"
+                                        value={contact.name}
+                                        onChange={(e) => updateContact(contact.id, { name: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                                        placeholder="John Smith"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                                      <select
+                                        value={contact.role}
+                                        onChange={(e) => updateContact(contact.id, { role: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                                      >
+                                        {CONTACT_ROLES.map(role => (
+                                          <option key={role} value={role}>{role}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                                      <PhoneNumberInput
+                                        value={contact.phone}
+                                        onChange={(phone) => updateContact(contact.id, { phone })}
+                                        className="py-2 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Phone Type</label>
+                                      <select
+                                        value={contact.phoneType}
+                                        onChange={(e) => updateContact(contact.id, { phoneType: e.target.value as ProviderContactEntry['phoneType'] })}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                                      >
+                                        {PHONE_TYPES.map(type => (
+                                          <option key={type.value} value={type.value}>
+                                            {type.emoji} {type.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                                      <div className="relative">
+                                        <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input
+                                          type="email"
+                                          value={contact.email}
+                                          onChange={(e) => updateContact(contact.id, { email: e.target.value })}
+                                          className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                                          placeholder="contact@example.com"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Tag <span className="text-gray-400">(display label)</span>
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={contact.tag}
+                                        onChange={(e) => updateContact(contact.id, { tag: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                                        placeholder={`e.g., "Main phone line for ${formData.name}" or "Broker - ${contact.name}"`}
                                       />
                                     </div>
                                   </div>
-                                  <div className="md:col-span-2">
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                                      Tag <span className="text-gray-400">(display label)</span>
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={contact.tag}
-                                      onChange={(e) => updateContact(contact.id, { tag: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                      placeholder={`e.g., "Main phone line for ${formData.name}" or "Broker - ${contact.name}"`}
-                                    />
+                                  <div className="flex items-center gap-2 pt-2">
+                                    {!contact.isPrimary && (
+                                      <button
+                                        onClick={() => setPrimaryContact(contact.id)}
+                                        className="text-xs px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-medium"
+                                      >
+                                        Set as Primary
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => removeContact(contact.id)}
+                                      className="text-xs px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors font-medium flex items-center gap-1"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      Remove
+                                    </button>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2 pt-2">
-                                  {!contact.isPrimary && (
-                                    <button
-                                      onClick={() => setPrimaryContact(contact.id)}
-                                      className="text-xs px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-medium"
-                                    >
-                                      Set as Primary
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => removeContact(contact.id)}
-                                    className="text-xs px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors font-medium flex items-center gap-1"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                    Remove
-                                  </button>
-                                </div>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Locations Tab */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Provider Locations</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Manage multiple locations for this provider — offices, warehouses, and stores.
+                    </p>
+                  </div>
+                  <button
+                    onClick={addLocation}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Location
+                  </button>
+                </div>
+
+                {formData.locations.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium">No locations added</p>
+                    <p className="text-sm text-gray-400 mt-1">Add locations to track multiple offices, warehouses, or stores</p>
+                    <button
+                      onClick={addLocation}
+                      className="mt-4 px-4 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 transition-colors text-sm"
+                    >
+                      Add First Location
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {formData.locations.map((location) => (
+                      <div
+                        key={location.id}
+                        className={`border-2 rounded-xl p-4 transition-all ${
+                          location.isPrimary ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <MapPin className={`w-5 h-5 ${location.isPrimary ? 'text-amber-600' : 'text-gray-400'}`} />
+                            {location.isPrimary && (
+                              <span className="px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {!location.isPrimary && (
+                              <button
+                                onClick={() => setPrimaryLocation(location.id)}
+                                className="text-xs px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-medium"
+                              >
+                                Set as Primary
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeLocation(location.id)}
+                              disabled={formData.locations.length === 1}
+                              className="text-xs px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors font-medium flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Location Name</label>
+                            <input
+                              type="text"
+                              value={location.name}
+                              onChange={(e) => updateLocation(location.id, { name: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                              placeholder="Main Office"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                            <select
+                              value={location.type}
+                              onChange={(e) => updateLocation(location.id, { type: e.target.value as ProviderLocation['type'] })}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                            >
+                              {LOCATION_TYPES.map(type => (
+                                <option key={type.value} value={type.value}>{type.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                            <PlacesAutocomplete
+                              value={location.address}
+                              onChange={(val) => updateLocation(location.id, { address: val })}
+                              onPlaceSelect={(place: PlaceResult) => {
+                                const full = [
+                                  place.streetAddress,
+                                  place.city,
+                                  place.stateProvince,
+                                  place.postalCode,
+                                  place.country,
+                                ]
+                                  .filter(Boolean)
+                                  .join(', ')
+                                updateLocation(location.id, { address: full })
+                              }}
+                              placeholder="Start typing an address…"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
