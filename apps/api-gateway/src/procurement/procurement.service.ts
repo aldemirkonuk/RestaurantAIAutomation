@@ -341,15 +341,92 @@ export class ProcurementService {
     userId: string,
     reason?: string,
   ): Promise<OrderResponseDto> {
+    // Capture current order state BEFORE cancelling so we can decide
+    // whether to release shadow stock (only if order was in an active state).
+    const { data: preCancelRow } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .select('status, inventory_id, quantity')
+      .eq('id', orderId)
+      .single();
+
     const order = await this.updateOrder(restaurantId, orderId, {
       status: ProcurementOrderStatus.CANCELLED,
       rejectionReason: reason,
     });
 
+    // Cancel any pending calendar delivery event linked to this order.
+    await this.cancelCalendarEventForOrder(restaurantId, orderId);
+
+    // Release shadow stock if the order had already been approved/sent and
+    // inventory was reserved (shadow_stock was incremented for this order).
+    const preStatus = (preCancelRow as any)?.status ?? '';
+    const RESERVED_STATUSES = ['APPROVED', 'ORDERED', 'CONFIRMED', 'PENDING_APPROVAL'];
+    if (order.inventoryId && order.quantity && RESERVED_STATUSES.includes(preStatus)) {
+      await this.releaseOrderShadowStock(restaurantId, order.inventoryId, order.quantity);
+    }
+
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, 'cancelled');
 
     return order;
+  }
+
+  /** Cancel the calendar delivery event tagged with orderId (non-fatal). */
+  private async cancelCalendarEventForOrder(restaurantId: string, orderId: string): Promise<void> {
+    try {
+      const { data: events } = await this.databaseService.supabase
+        .from('calendar_events')
+        .select('id, tags')
+        .eq('restaurant_id', restaurantId)
+        .eq('event_type', 'delivery')
+        .not('status', 'in', '("COMPLETED","CANCELLED")');
+
+      const match = (events || []).find(e => {
+        try {
+          const tags = typeof e.tags === 'string' ? JSON.parse(e.tags) : e.tags;
+          return tags?.order_id === orderId;
+        } catch { return false; }
+      });
+
+      if (match) {
+        await this.databaseService.supabase
+          .from('calendar_events')
+          .update({ status: 'CANCELLED', description: `Order ${orderId} was cancelled.` })
+          .eq('id', (match as any).id);
+        this.logger.log(`Calendar event cancelled for order ${orderId}`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`cancelCalendarEventForOrder failed: ${e?.message}`);
+    }
+  }
+
+  /** Subtract order quantity from shadow_stock, flooring at 0. Non-fatal. */
+  private async releaseOrderShadowStock(
+    restaurantId: string,
+    inventoryId: string,
+    quantity: number,
+  ): Promise<void> {
+    try {
+      const { data: inv } = await this.databaseService.supabase
+        .from('restaurant_inventory')
+        .select('shadow_stock')
+        .eq('restaurant_id', restaurantId)
+        .eq('id', inventoryId)
+        .single();
+
+      if (inv) {
+        const current = (inv as any).shadow_stock ?? 0;
+        const released = Math.max(0, current - quantity);
+        await this.databaseService.supabase
+          .from('restaurant_inventory')
+          .update({ shadow_stock: released })
+          .eq('restaurant_id', restaurantId)
+          .eq('id', inventoryId);
+        this.logger.log(`Released ${quantity} shadow stock for inventory ${inventoryId} (${current} → ${released})`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`releaseOrderShadowStock failed: ${e?.message}`);
+    }
   }
 
   async approveOrder(
@@ -386,8 +463,10 @@ export class ProcurementService {
 
     const order = this.mapOrderRow(orderRow);
 
-    // Auto-create calendar event for expected delivery
-    await this.createCalendarEventForOrder(restaurantId, order, 'approved');
+    // NOTE: Calendar event is intentionally NOT created here.
+    // It is created in approveDraft(), only after the manager reviews and approves
+    // the outbound email to the provider — ensuring the calendar reflects
+    // confirmed provider communication, not just internal approval.
 
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, 'approved');
@@ -739,6 +818,28 @@ export class ProcurementService {
           manager_notes: dto.managerNotes ?? null,
         },
       );
+    }
+
+    // Create calendar delivery event NOW — only after manager approves the draft email.
+    // This means we've actually communicated with the provider, so the expected
+    // delivery window is meaningful.
+    try {
+      const { data: orderRow } = await this.databaseService.supabase
+        .from('procurement_orders')
+        .select('*, inventory:inventory_id(wine_name)')
+        .eq('id', orderId)
+        .eq('restaurant_id', restaurantId)
+        .single();
+      if (orderRow) {
+        const raw = orderRow as any;
+        const mappedRow: ProcurementOrderRow = {
+          ...raw,
+          wine_name: raw.inventory?.wine_name || null,
+        };
+        await this.createCalendarEventForOrder(restaurantId, this.mapOrderRow(mappedRow), 'approved');
+      }
+    } catch (e: any) {
+      this.logger.warn(`Calendar creation after draft approval failed: ${e?.message}`);
     }
 
     return { conversationId: (data as any).id, sentAt: (data as any).sent_at };

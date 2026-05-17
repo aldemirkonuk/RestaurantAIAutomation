@@ -362,31 +362,146 @@ class ProcurementAgent(BaseAgent):
                 self.logger.info(f"Order {order_id} rejected by vendor")
                 
             elif response_type == "unavailable":
+                # Full OOS cascade — provider reported the wine is out of stock.
+                effective_restaurant_id = restaurant_id or order.get("restaurant_id")
+                wine_name = order.get("wine_name", "Unknown wine")
+                inventory_id = order.get("inventory_id")
+                quantity = order.get("quantity", 0)
+                current_provider_id = order.get("provider_id")
+
+                # 1. Mark order CANCELLED (out-of-stock = effectively cancelled)
                 await self.database.supabase.table("procurement_orders").update({
-                    "status": "UNAVAILABLE",
+                    "status": "CANCELLED",
+                    "rejection_reason": "Out of stock — provider email confirmation",
                     "updated_at": datetime.utcnow().isoformat(),
                 }).eq("id", order_id).execute()
-                
+
+                # 2. Cancel the calendar delivery event for this order
+                await self._cancel_order_calendar_event(effective_restaurant_id, order_id)
+
+                # 3. Release shadow stock that was reserved for this order
+                if inventory_id and quantity:
+                    await self._release_shadow_stock(effective_restaurant_id, inventory_id, int(quantity))
+
+                # 4. Find alternative providers for the manager notification
+                alternatives = await self._find_alternative_providers(
+                    effective_restaurant_id, current_provider_id, wine_name
+                )
+                alt_text = ""
+                if alternatives:
+                    alt_names = ", ".join(alternatives[:3])
+                    alt_text = f" Consider these alternatives: {alt_names}."
+
+                # 5. Notify manager with full context
                 await self.publish(
                     exchange_name="notification.events",
-                    routing_key="notification.procurement_unavailable",
+                    routing_key="notification.procurement_oos",
                     message_body={
-                        "event_type": "ProcurementUnavailable",
+                        "event_type": "ProcurementOutOfStock",
                         "payload": {
-                            "restaurant_id": restaurant_id or order.get("restaurant_id"),
+                            "restaurant_id": effective_restaurant_id,
                             "order_id": order_id,
-                            "title": "Wine unavailable",
-                            "message": f"{order.get('wine_name', 'Unknown')} is unavailable from this provider",
+                            "type": "order_out_of_stock",
+                            "title": f"Out of stock: {wine_name}",
+                            "message": (
+                                f"Provider reports {wine_name} is out of stock. "
+                                f"Order cancelled and delivery removed from calendar."
+                                f"{alt_text}"
+                            ),
                             "urgency": "high",
+                            "action_url": f"/orders?highlight={order_id}",
+                            "metadata": {
+                                "wine_name": wine_name,
+                                "order_id": order_id,
+                                "alternatives": alternatives,
+                            },
                         },
                     },
                 )
-                self.logger.info(f"Order {order_id}: wine unavailable")
+                self.logger.info(
+                    f"Order {order_id} OOS: cancelled, calendar removed, "
+                    f"shadow stock released, manager notified"
+                )
             else:
                 self.logger.info(f"Unknown response type '{response_type}' for order {order_id}")
                 
         except Exception as e:
             self.logger.error(f"Error handling intent response: {e}")
+
+    # =========================================================================
+    # OOS HELPERS
+    # =========================================================================
+
+    async def _cancel_order_calendar_event(self, restaurant_id: str, order_id: str) -> None:
+        """Cancel the calendar delivery event that was linked to order_id."""
+        try:
+            result = self.database.supabase.table("calendar_events") \
+                .select("id, tags") \
+                .eq("restaurant_id", restaurant_id) \
+                .eq("event_type", "delivery") \
+                .not_("status", "in", '("COMPLETED","CANCELLED")') \
+                .execute()
+            for event in (result.data or []):
+                try:
+                    tags = event.get("tags", {})
+                    if isinstance(tags, str):
+                        import json as _json
+                        tags = _json.loads(tags)
+                    if isinstance(tags, dict) and tags.get("order_id") == order_id:
+                        self.database.supabase.table("calendar_events") \
+                            .update({"status": "CANCELLED", "description": f"Order {order_id} cancelled (OOS)."}) \
+                            .eq("id", event["id"]) \
+                            .execute()
+                        self.logger.info(f"Calendar event {event['id']} cancelled for OOS order {order_id}")
+                        break
+                except Exception:
+                    pass
+        except Exception as e:
+            self.logger.warning(f"_cancel_order_calendar_event failed: {e}")
+
+    async def _release_shadow_stock(
+        self, restaurant_id: str, inventory_id: str, quantity: int
+    ) -> None:
+        """Subtract order quantity from shadow_stock, floored at 0."""
+        try:
+            result = self.database.supabase.table("restaurant_inventory") \
+                .select("shadow_stock") \
+                .eq("restaurant_id", restaurant_id) \
+                .eq("id", inventory_id) \
+                .single() \
+                .execute()
+            if result.data:
+                current = result.data.get("shadow_stock") or 0
+                released = max(0, current - quantity)
+                self.database.supabase.table("restaurant_inventory") \
+                    .update({"shadow_stock": released}) \
+                    .eq("restaurant_id", restaurant_id) \
+                    .eq("id", inventory_id) \
+                    .execute()
+                self.logger.info(
+                    f"Released {quantity} shadow stock for inventory {inventory_id} "
+                    f"({current} → {released})"
+                )
+        except Exception as e:
+            self.logger.warning(f"_release_shadow_stock failed: {e}")
+
+    async def _find_alternative_providers(
+        self, restaurant_id: str, exclude_provider_id: str | None, wine_name: str
+    ) -> list:
+        """Return names of active providers for this restaurant, excluding the current one."""
+        try:
+            q = self.database.supabase.table("providers") \
+                .select("name") \
+                .eq("restaurant_id", restaurant_id) \
+                .eq("is_active", True) \
+                .limit(5)
+            if exclude_provider_id:
+                q = q.neq("id", exclude_provider_id)
+            result = q.execute()
+            return [p["name"] for p in (result.data or [])]
+        except Exception as e:
+            self.logger.warning(f"_find_alternative_providers failed: {e}")
+            return []
 
     async def _handle_vendor_email_response(self, message: Dict[str, Any]) -> None:
         """Handle a vendor email response routed by EmailParsingAgent.
