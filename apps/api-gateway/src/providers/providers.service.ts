@@ -229,7 +229,10 @@ export class ProvidersService {
       personality_notes: dto.notes ?? undefined,
       primary_contact: dto.primaryContact ?? undefined,
       alternative_contacts: dto.alternativeContacts ?? undefined,
-      address: dto.physicalAddress ?? dto.address ?? undefined,
+      // physicalAddress is always a plain string; dto.address is a legacy JSONB
+      // object that cannot be stored in the TEXT address column — never fall
+      // back to the object shape here.
+      address: dto.physicalAddress ?? undefined,
       specialties: dto.specialties ?? undefined,
       regions_covered: dto.regionsCovered ?? undefined,
       minimum_order: dto.minimumOrder ?? undefined,
@@ -243,13 +246,19 @@ export class ProvidersService {
       (k) => updatePayload[k] === undefined && delete updatePayload[k],
     );
 
-    const { data, error } = await this.databaseService.supabase
+    // Build the query; only apply the restaurant_id guard when we actually have
+    // a non-empty restaurantId — passing '' would match no UUID rows and cause
+    // .single() to throw PGRST116 even when the provider exists.
+    let updateQuery = this.databaseService.supabase
       .from('providers')
       .update(updatePayload)
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId ?? '')
-      .select('*')
-      .single();
+      .eq('id', providerId);
+
+    if (restaurantId) {
+      updateQuery = updateQuery.eq('restaurant_id', restaurantId);
+    }
+
+    const { data, error } = await updateQuery.select('*').maybeSingle();
 
     if (error) {
       this.logger.error('Failed to update provider', {
@@ -257,6 +266,11 @@ export class ProvidersService {
         error: error.message,
       });
       throw error;
+    }
+
+    if (!data) {
+      this.logger.warn('Provider not found for update', { providerId, restaurantId });
+      throw new NotFoundException(`Provider ${providerId} not found`);
     }
 
     const provider = this.mapProviderRow(data as ProviderRow);

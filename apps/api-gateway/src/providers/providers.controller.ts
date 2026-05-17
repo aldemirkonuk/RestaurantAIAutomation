@@ -5,6 +5,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -193,11 +194,14 @@ export class ProvidersController {
   async updateProvider(
     @Param('id') providerId: string,
     @Body() dto: UpdateProviderDto,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<ProviderResponseDto> {
     try {
-      return await this.providersService.updateProvider(providerId, dto, user.restaurantId, user.id);
+      return await this.providersService.updateProvider(providerId, dto, user.restaurantId, user.userId);
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       throw new HttpException(
         error.message || 'Failed to update provider',
         HttpStatus.INTERNAL_SERVER_ERROR,
