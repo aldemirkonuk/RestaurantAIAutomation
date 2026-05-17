@@ -107,7 +107,7 @@ class SyncManagerService {
   private retryTimeoutId: ReturnType<typeof setTimeout> | null = null
   
   // Retry configuration
-  private readonly MAX_RETRIES = 5
+  private readonly MAX_RETRIES = 3
   private readonly SYNC_INTERVAL = 30000 // 30 seconds
 
   constructor() {
@@ -231,24 +231,26 @@ class SyncManagerService {
       console.log(`[SyncManager] Processing ${mutations.length} pending mutations`)
 
       for (const mutation of mutations) {
+        // Skip and discard mutations that already exhausted retries
+        if (mutation.retryCount >= this.MAX_RETRIES) {
+          console.warn(`[SyncManager] Discarding dead mutation ${mutation.id} (type: ${mutation.type}, retries: ${mutation.retryCount})`)
+          await offlineStorage.removePendingMutation(mutation.id)
+          continue
+        }
+
         try {
           await this.processMutation(mutation)
           await offlineStorage.removePendingMutation(mutation.id)
           result.synced++
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          const mutationData = (mutation.data ?? {}) as Record<string, unknown>
           result.failed++
           result.errors.push({ mutationId: mutation.id, error: errorMessage })
-          // Update retry count
           const newRetryCount = mutation.retryCount + 1
           if (newRetryCount >= this.MAX_RETRIES) {
-            console.error(`[SyncManager] Max retries reached for mutation ${mutation.id}`)
-            // Keep mutation but mark as failed
-            await offlineStorage.updatePendingMutation(mutation.id, {
-              retryCount: newRetryCount,
-              lastError: errorMessage,
-            })
+            // Discard immediately — no point keeping a permanently-broken mutation
+            console.error(`[SyncManager] Max retries reached for mutation ${mutation.id}, discarding`)
+            await offlineStorage.removePendingMutation(mutation.id)
           } else {
             await offlineStorage.updatePendingMutation(mutation.id, {
               retryCount: newRetryCount,
