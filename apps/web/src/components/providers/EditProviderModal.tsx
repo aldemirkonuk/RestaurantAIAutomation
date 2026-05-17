@@ -57,7 +57,8 @@ export interface EditProviderData {
 
 export interface ProviderContactEntry {
   id: string
-  name: string
+  firstName: string
+  lastName: string
   role: string
   phone: string
   phoneType: 'main_line' | 'cell' | 'direct' | 'whatsapp' | 'fax' | 'office'
@@ -115,9 +116,12 @@ function buildInitialContacts(provider: Provider | null): ProviderContactEntry[]
   const contacts: ProviderContactEntry[] = []
 
   if (provider.phone || provider.email) {
+    const rawName = (provider as any).contactPerson || provider.name
+    const nameSpaceIdx = rawName.indexOf(' ')
     contacts.push({
       id: `primary-${provider.id}`,
-      name: (provider as any).contactPerson || provider.name,
+      firstName: nameSpaceIdx > -1 ? rawName.slice(0, nameSpaceIdx) : rawName,
+      lastName: nameSpaceIdx > -1 ? rawName.slice(nameSpaceIdx + 1) : '',
       role: 'Primary Contact',
       phone: toE164(provider.phone),
       phoneType: 'main_line',
@@ -129,9 +133,11 @@ function buildInitialContacts(provider: Provider | null): ProviderContactEntry[]
 
   if (provider.knownPersonnel && provider.knownPersonnel.length > 0) {
     provider.knownPersonnel.forEach((person, idx) => {
+      const personSpaceIdx = person.indexOf(' ')
       contacts.push({
         id: `personnel-${idx}-${Date.now()}`,
-        name: person,
+        firstName: personSpaceIdx > -1 ? person.slice(0, personSpaceIdx) : person,
+        lastName: personSpaceIdx > -1 ? person.slice(personSpaceIdx + 1) : '',
         role: 'Sales Rep',
         phone: '',
         phoneType: 'main_line',
@@ -230,7 +236,8 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         ...prev,
         contacts: [{
           id: `admin-${user.userId}`,
-          name: `${adminFirstName} ${adminLastName}`.trim() || 'Restaurant Admin',
+          firstName: adminFirstName,
+          lastName: adminLastName,
           role: 'Primary Contact',
           phone: '',
           phoneType: 'main_line',
@@ -268,7 +275,8 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const addContact = () => {
     const newContact: ProviderContactEntry = {
       id: `new-${Date.now()}`,
-      name: '',
+      firstName: '',
+      lastName: '',
       role: 'Sales Rep',
       phone: '',
       phoneType: 'main_line',
@@ -480,31 +488,32 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                     Basic Information
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                          type="text"
-                          value={formData.contactFirstName}
-                          onChange={(e) => setFormData({ ...formData, contactFirstName: e.target.value })}
-                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
-                          placeholder="Jane"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                          type="text"
-                          value={formData.contactLastName}
-                          onChange={(e) => setFormData({ ...formData, contactLastName: e.target.value })}
-                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
-                          placeholder="Smith"
-                        />
+                    <div className="md:col-span-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                            First Name
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.contactFirstName}
+                            onChange={e => setFormData(prev => ({ ...prev, contactFirstName: e.target.value }))}
+                            placeholder="First"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                            Last Name
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.contactLastName}
+                            onChange={e => setFormData(prev => ({ ...prev, contactLastName: e.target.value }))}
+                            placeholder="Last"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -758,7 +767,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium text-gray-900 truncate">
-                                  {contact.name || 'Unnamed Contact'}
+                                  {`${contact.firstName} ${contact.lastName}`.trim() || 'Unnamed Contact'}
                                 </span>
                                 {contact.isPrimary && (
                                   <span className="px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
@@ -796,15 +805,29 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                               >
                                 <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                                      <input
-                                        type="text"
-                                        value={contact.name}
-                                        onChange={(e) => updateContact(contact.id, { name: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                        placeholder="John Smith"
-                                      />
+                                    <div className="md:col-span-2">
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">First Name</label>
+                                          <input
+                                            type="text"
+                                            value={contact.firstName}
+                                            onChange={(e) => updateContact(contact.id, { firstName: e.target.value })}
+                                            placeholder="First"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Last Name</label>
+                                          <input
+                                            type="text"
+                                            value={contact.lastName}
+                                            onChange={(e) => updateContact(contact.id, { lastName: e.target.value })}
+                                            placeholder="Last"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                          />
+                                        </div>
+                                      </div>
                                     </div>
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
@@ -862,7 +885,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                         value={contact.tag}
                                         onChange={(e) => updateContact(contact.id, { tag: e.target.value })}
                                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                        placeholder={`e.g., "Main phone line for ${formData.name}" or "Broker - ${contact.name}"`}
+                                        placeholder={`e.g., "Main phone line for ${formData.name}" or "Broker - ${`${contact.firstName} ${contact.lastName}`.trim()}"`}
                                       />
                                     </div>
                                   </div>
