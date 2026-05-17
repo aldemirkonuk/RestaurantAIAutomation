@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -60,7 +60,14 @@ export function Inventory() {
   const { activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
   const { locations: storageLocations, setLocations: setStorageLocations, getWineLocation, getLocationsWithActualCounts, assignWineToLocation, removeWineFromLocation, mappings } = useStorageLocations()
-  
+
+  /** Row IDs soft-deleted in this session; keeps row hidden when refetch fails and TanStack restores stale cache */
+  const [softDeletedRowIds, setSoftDeletedRowIds] = useState<string[]>([])
+
+  useEffect(() => {
+    setSoftDeletedRowIds([])
+  }, [activeRestaurantId])
+
   // Page hook: filter, sort, selection, computed data — single source of truth
   const {
     searchQuery, setSearchQuery,
@@ -80,7 +87,15 @@ export function Inventory() {
     filteredInventory,
     stats,
     uniqueBottleSizes,
-  } = useInventoryPage()
+    serverInventoryRowIds,
+  } = useInventoryPage({ excludeInventoryRowIds: softDeletedRowIds })
+
+  // Once the server list no longer contains a row we soft-deleted, drop its tombstone
+  useEffect(() => {
+    if (softDeletedRowIds.length === 0) return
+    const serverSet = new Set(serverInventoryRowIds)
+    setSoftDeletedRowIds((prev) => prev.filter((id) => serverSet.has(id)))
+  }, [serverInventoryRowIds, softDeletedRowIds.length])
 
   // Local overlay for optimistic updates. Keyed by item ID.
   const [localOverrides, setLocalOverrides] = useState<Record<string, Partial<InventoryItem>>>({})
@@ -477,7 +492,6 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
 
     // item.inventoryId = restaurant_inventory PK; item.id = master wine UUID
     const inventoryRowId = item.inventoryId || item.id
-    console.log('[Inventory] remove:', item.name, '| inventoryId:', item.inventoryId, '| id:', item.id, '| sending:', inventoryRowId)
     const cacheKey = queryKeys.inventory.list(activeRestaurantId ?? '')
 
     // Cancel any in-flight refetch so it can't overwrite our optimistic removal.
@@ -498,7 +512,10 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
 
     try {
       await inventoryApi.deleteInventoryItem(inventoryRowId, activeRestaurantId || undefined)
-      // Invalidate so the next background refetch picks up is_active=false
+      setSoftDeletedRowIds((prev) =>
+        prev.includes(inventoryRowId) ? prev : [...prev, inventoryRowId],
+      )
+      // Invalidate related queries; list stays consistent via softDeletedRowIds if refetch 500s
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
     } catch (err: any) {
       // Roll back: re-fetch from server so the item reappears

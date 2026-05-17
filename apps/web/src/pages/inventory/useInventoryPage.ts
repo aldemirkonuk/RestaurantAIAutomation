@@ -32,7 +32,12 @@ function getDefaultMenuPrice(costPrice: number): number {
   return Math.round(costPrice * 3)
 }
 
-export function useInventoryPage() {
+export interface UseInventoryPageOptions {
+  /** Hide these `restaurant_inventory.id` rows until the server list no longer contains them */
+  excludeInventoryRowIds?: string[]
+}
+
+export function useInventoryPage(options: UseInventoryPageOptions = {}) {
   // Filter state
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
@@ -60,9 +65,25 @@ export function useInventoryPage() {
     updateItem: updateInventoryItem,
   } = useInventoryData()
 
-  const wineIds = useMemo(
-    () => Array.from(new Set(apiInventory.map(item => item.wineId).filter(Boolean))),
+  const excludeRowIdSet = useMemo(
+    () => new Set((options.excludeInventoryRowIds ?? []).filter(Boolean)),
+    [options.excludeInventoryRowIds],
+  )
+
+  const visibleApiInventory = useMemo(
+    () => apiInventory.filter((row) => !excludeRowIdSet.has(row.id)),
+    [apiInventory, excludeRowIdSet],
+  )
+
+  /** Row IDs present in the last successful API payload (before client-side exclusions) */
+  const serverInventoryRowIds = useMemo(
+    () => apiInventory.map((row) => row.id),
     [apiInventory],
+  )
+
+  const wineIds = useMemo(
+    () => Array.from(new Set(visibleApiInventory.map((item) => item.wineId).filter(Boolean))),
+    [visibleApiInventory],
   )
   const { data: apiWines = [] } = useWinesByIds(wineIds)
   const winesById = useMemo(() => {
@@ -75,11 +96,11 @@ export function useInventoryPage() {
 
   // Convert API data to local format
   const inventory = useMemo(() => {
-    if (inventoryLoading || apiInventory.length === 0) {
+    if (inventoryLoading || visibleApiInventory.length === 0) {
       return []
     }
 
-    return apiInventory.map((item) => {
+    return visibleApiInventory.map((item) => {
       const wine = winesById.get(item.wineId)
       const fallback: Wine = wine || {
         id: item.wineId,
@@ -130,7 +151,7 @@ export function useInventoryPage() {
         menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
       } as InventoryItem
     })
-  }, [apiInventory, inventoryLoading, winesById])
+  }, [visibleApiInventory, inventoryLoading, winesById])
 
   // Computed values
   const filteredInventory = useMemo(() => {
@@ -231,7 +252,18 @@ export function useInventoryPage() {
     })
 
     return items
-  }, [inventory, searchQuery, filterType, filterStatus, viewMode, sortField, sortOrder, filterActiveStatus, filterBottleSize, selectedLocationFilter])
+  }, [
+    inventory,
+    searchQuery,
+    filterType,
+    filterStatus,
+    viewMode,
+    sortField,
+    sortOrder,
+    filterActiveStatus,
+    filterBottleSize,
+    selectedLocationFilter,
+  ])
 
   const stats = useMemo(() => {
     const total = inventory.length
@@ -314,6 +346,7 @@ export function useInventoryPage() {
 
     // Data
     inventory,
+    serverInventoryRowIds,
     inventorySummary,
     lowStockItems: apiLowStock,
     isLoading: inventoryLoading,

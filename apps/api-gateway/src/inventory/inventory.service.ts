@@ -182,7 +182,7 @@ export class InventoryService {
     // Fetch old values for event payload (before update)
     const { data: oldItem } = await client
       .from('restaurant_inventory')
-      .select('stock_live, shadow_stock, threshold_min, wine_id')
+      .select('stock_live, shadow_stock, threshold_min, master_wine_id')
       .eq('restaurant_id', restaurantId)
       .eq('id', itemId)
       .single();
@@ -235,7 +235,7 @@ export class InventoryService {
           {
             restaurant_id: restaurantId,
             inventory_id: itemId,
-            wine_id: oldItem?.wine_id || null,
+            wine_id: oldItem?.master_wine_id || null,
             old_stock_live: oldItem?.stock_live ?? 0,
             new_stock_live: dto.stockLive,
             old_shadow_stock: oldItem?.shadow_stock ?? 0,
