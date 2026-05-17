@@ -37,10 +37,10 @@ export class InventoryController {
     try {
       return await this.inventoryService.getRestaurantInventory(restaurantId);
     } catch (error) {
-      throw new HttpException(
-        error.message || 'Failed to fetch inventory',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      const msg = error?.message || String(error) || 'Failed to fetch inventory';
+      this.inventoryService['logger']?.error?.(`getRestaurantInventory failed: ${msg}`, error?.stack);
+      console.error('[inventory] GET /:restaurantId 500:', msg, error?.stack);
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -101,10 +101,9 @@ export class InventoryController {
     try {
       return await this.inventoryService.getInventorySummary(restaurantId);
     } catch (error) {
-      throw new HttpException(
-        error.message || 'Failed to fetch inventory summary',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      const msg = error?.message || String(error) || 'Failed to fetch inventory summary';
+      console.error('[inventory] GET /:restaurantId/summary 500:', msg, error?.stack);
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 

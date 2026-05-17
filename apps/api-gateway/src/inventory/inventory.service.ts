@@ -142,11 +142,13 @@ export class InventoryService {
   }
 
   async getInventorySummary(restaurantId: string) {
-    const inventory = await this.dbService.getRestaurantInventory(restaurantId);
-    const lowStock = await this.dbService.getLowStockItems(restaurantId);
+    const rawInventory = await this.dbService.getRestaurantInventory(restaurantId);
+    const inventory = rawInventory ?? [];
+    const rawLowStock = await this.dbService.getLowStockItems(restaurantId);
+    const lowStock = rawLowStock ?? [];
 
     const totalItems = inventory.length;
-    const totalBottles = inventory.reduce((sum, item) => sum + (item.stock_live || 0), 0);
+    const totalBottles = inventory.reduce((sum: number, item: any) => sum + (item.stock_live || 0), 0);
     const lowStockCount = lowStock.length;
     const criticalCount = inventory.filter(item => (item.stock_live || 0) === 0).length;
     
