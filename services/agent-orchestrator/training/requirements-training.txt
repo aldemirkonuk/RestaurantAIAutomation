@@ -29,4 +29,4 @@ seaborn>=0.12.0             # Statistical plots
 pandas>=2.0.0               # Data manipulation
 
 # Sentence embeddings (for pgvector matching)
-sentence-transformers>=2.2.0  # Generate wine name embeddings
+sentence-transformers>=5.5.0  # Generate wine name embeddings
