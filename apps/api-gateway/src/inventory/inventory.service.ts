@@ -416,18 +416,47 @@ export class InventoryService {
   async softDeleteItem(restaurantId: string, itemId: string): Promise<void> {
     const client = this.dbService.getClient();
 
-    const { error } = await client
+    // Try by restaurant_inventory.id (PK) first
+    const { data: byPk, error: pkError } = await client
       .from('restaurant_inventory')
       .update({ is_active: false })
       .eq('restaurant_id', restaurantId)
-      .eq('id', itemId);
+      .eq('id', itemId)
+      .select('id');
 
-    if (error) {
-      this.logger.error(`Failed to soft-delete inventory item: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    if (pkError) {
+      this.logger.error(`softDeleteItem (by PK) error: ${pkError.message}`);
+      throw new HttpException(pkError.message, HttpStatus.BAD_REQUEST);
     }
 
-    this.logger.log({ message: 'Inventory item soft-deleted', restaurantId, itemId });
+    if (byPk && byPk.length > 0) {
+      this.logger.log({ message: 'Inventory item soft-deleted by PK', restaurantId, itemId });
+      return;
+    }
+
+    // Fallback: caller may have passed master_wine_id instead of restaurant_inventory.id
+    this.logger.warn(`softDeleteItem: no row matched id=${itemId}; retrying by master_wine_id`);
+    const { data: byWineId, error: wineError } = await client
+      .from('restaurant_inventory')
+      .update({ is_active: false })
+      .eq('restaurant_id', restaurantId)
+      .eq('master_wine_id', itemId)
+      .select('id');
+
+    if (wineError) {
+      this.logger.error(`softDeleteItem (by master_wine_id) error: ${wineError.message}`);
+      throw new HttpException(wineError.message, HttpStatus.BAD_REQUEST);
+    }
+
+    if (!byWineId || byWineId.length === 0) {
+      this.logger.error(`softDeleteItem: item not found — id=${itemId}, restaurantId=${restaurantId}`);
+      throw new HttpException(
+        `Inventory item not found (id: ${itemId})`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    this.logger.log({ message: 'Inventory item soft-deleted by master_wine_id', restaurantId, itemId });
   }
 
   /**

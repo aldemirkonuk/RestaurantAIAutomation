@@ -475,8 +475,9 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
 
     if (!confirm(confirmMessage)) return
 
-    // item.inventoryId is the restaurant_inventory PK; item.id is the master wine ID.
+    // item.inventoryId = restaurant_inventory PK; item.id = master wine UUID
     const inventoryRowId = item.inventoryId || item.id
+    console.log('[Inventory] remove:', item.name, '| inventoryId:', item.inventoryId, '| id:', item.id, '| sending:', inventoryRowId)
     const cacheKey = queryKeys.inventory.list(activeRestaurantId ?? '')
 
     // Cancel any in-flight refetch so it can't overwrite our optimistic removal.
@@ -484,8 +485,15 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
 
     // Optimistically remove from the TanStack Query cache so the row disappears
     // immediately without waiting for the API round-trip.
+    // The cache holds RAW api items where i.id = restaurant_inventory PK.
+    // Guard against both the PK and the wine UUID to survive any ID mismatch.
     queryClient.setQueryData(cacheKey, (old: any[] | undefined) =>
-      old ? old.filter((i: any) => i.id !== inventoryRowId) : []
+      old ? old.filter((i: any) =>
+        i.id !== inventoryRowId &&
+        i.id !== item.inventoryId &&
+        i.master_wine_id !== inventoryRowId &&
+        i.wineId !== inventoryRowId
+      ) : []
     )
 
     try {
