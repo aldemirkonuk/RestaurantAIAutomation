@@ -428,7 +428,6 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
-                    </div>
                   </div>
                 </div>
 
