@@ -477,17 +477,20 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
 
     // item.inventoryId is the restaurant_inventory PK; item.id is the master wine ID.
     const inventoryRowId = item.inventoryId || item.id
+    const cacheKey = queryKeys.inventory.list(activeRestaurantId ?? '')
+
+    // Cancel any in-flight refetch so it can't overwrite our optimistic removal.
+    await queryClient.cancelQueries({ queryKey: cacheKey })
 
     // Optimistically remove from the TanStack Query cache so the row disappears
     // immediately without waiting for the API round-trip.
-    const cacheKey = queryKeys.inventory.list(activeRestaurantId ?? '')
     queryClient.setQueryData(cacheKey, (old: any[] | undefined) =>
       old ? old.filter((i: any) => i.id !== inventoryRowId) : []
     )
 
     try {
       await inventoryApi.deleteInventoryItem(inventoryRowId, activeRestaurantId || undefined)
-      // Invalidate so the next background refetch reflects the soft-delete
+      // Invalidate so the next background refetch picks up is_active=false
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
     } catch (err: any) {
       // Roll back: re-fetch from server so the item reappears
