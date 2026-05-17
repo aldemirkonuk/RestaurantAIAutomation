@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -32,7 +31,6 @@ import { AddProviderModal, NewProviderData } from '../components/providers/AddPr
 import { EditProviderModal, EditProviderData } from '../components/providers/EditProviderModal'
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
-import { ProviderProfileForm } from '../components/providers/ProviderProfileForm'
 import { PageSkeleton, ErrorState } from '../components/ui'
 import { QuickGmailModal } from '../components/emails/QuickGmailModal'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
@@ -134,8 +132,6 @@ export function Providers() {
   const { preferences, updatePreferences } = useUserPreferences()
   const { data: rawOrders } = useOrders()
   const { dispatchProviderUpdate } = useRealtimeDispatch()
-  const queryClient = useQueryClient()
-
   const lastOrderDates = useMemo(() => {
     const dates: Record<string, string> = {}
     const orders = Array.isArray(rawOrders) ? rawOrders : (rawOrders as any)?.orders || []
@@ -159,8 +155,6 @@ export function Providers() {
   const [showEmailModal, setShowEmailModal]         = useState(false)
   const [emailRecipient, setEmailRecipient]         = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly]   = useState(false)
-  const [profileFormProviderId, setProfileFormProviderId] = useState<string | null>(null)
-
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
   const ratings: Record<string, number>              = (preferences.providerRatings ?? {}) as Record<string, number>
@@ -214,10 +208,14 @@ export function Providers() {
         website: data.website,
         physicalAddress: data.address,
         primaryBusinessType: data.primaryBusinessType as any,
+        winePortfolio: data.specialties.join(', '),
+        statesOrRegionsServed: data.deliveryDays,
         notes: data.notes,
         rating: data.rating > 0 ? data.rating : undefined,
         knownPersonnel: data.contacts.map(c => c.name).filter(Boolean),
         restaurantId: restaurantId || '',
+        paymentTerms: data.paymentTerms,
+        minimumOrderValue: data.minimumOrder ?? undefined,
       } as any)
       if (data.rating > 0) setRatings(prev => ({ ...prev, [data.id]: data.rating }))
       setEditingProvider(null)
@@ -603,14 +601,6 @@ export function Providers() {
                           ))}
                         </div>
                       )}
-                      {(!provider.profile_foundational || Object.keys(provider.profile_foundational).length === 0) && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setProfileFormProviderId(provider.id) }}
-                          className="text-[11px] text-indigo-600 hover:text-indigo-800 underline mt-1 mb-1 block"
-                        >
-                          + Fill intelligence profile
-                        </button>
-                      )}
 
                       {/* Star rating — interactive */}
                       <div className="flex items-center gap-0.5 mb-2.5">
@@ -986,30 +976,6 @@ export function Providers() {
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
       )}
 
-      {/* Provider Intelligence Profile overlay */}
-      {profileFormProviderId && (
-        <div
-          className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4"
-          onClick={() => setProfileFormProviderId(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-6 pt-6 pb-2">
-              <h3 className="text-lg font-bold text-gray-900">Provider Intelligence Profile</h3>
-              <button onClick={() => setProfileFormProviderId(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            <ProviderProfileForm
-              providerId={profileFormProviderId}
-              onSaved={() => {
-                setProfileFormProviderId(null)
-                queryClient.invalidateQueries({ queryKey: ['providers'] })
-              }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -97,6 +97,8 @@ const mapProviderToApiPayload = (
     contactLastName?: string
     website?: string
     rating?: number
+    paymentTerms?: string
+    minimumOrderValue?: number
   }>,
   options: { requireName?: boolean } = {}
 ): ApiProviderPayload => {
@@ -140,6 +142,14 @@ const mapProviderToApiPayload = (
 
   if (data.notes) {
     payload.notes = data.notes
+  }
+
+  if (data.paymentTerms !== undefined) {
+    ;(payload as any).paymentTerms = data.paymentTerms
+  }
+
+  if (data.minimumOrderValue !== undefined) {
+    payload.minimumOrder = data.minimumOrderValue
   }
 
   return payload
