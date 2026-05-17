@@ -136,7 +136,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_orders')
       .insert(payload)
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
+      .select('*, inventory:inventory_id(wine_name)')
       .single();
 
     if (error) {
@@ -210,7 +210,7 @@ export class ProcurementService {
 
     let supabaseQuery = this.databaseService.supabase
       .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))', { count: 'exact' })
+      .select('*, inventory:inventory_id(wine_name)', { count: 'exact' })
       .eq('restaurant_id', restaurantId);
 
     if (query.status) {
@@ -265,7 +265,7 @@ export class ProcurementService {
   ): Promise<OrderResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
+      .select('*, inventory:inventory_id(wine_name)')
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
       .single();
@@ -314,7 +314,7 @@ export class ProcurementService {
       .update(updatePayload)
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
+      .select('*, inventory:inventory_id(wine_name)')
       .single();
 
     if (error) {
@@ -366,7 +366,7 @@ export class ProcurementService {
       })
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
+      .select('*, inventory:inventory_id(wine_name)')
       .single();
 
     if (error) {
@@ -436,7 +436,7 @@ export class ProcurementService {
       })
       .eq('restaurant_id', restaurantId)
       .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
+      .select('*, inventory:inventory_id(wine_name)')
       .single();
 
     if (error) {
@@ -637,7 +637,7 @@ export class ProcurementService {
   ): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name, wine:wine_id(name))')
+      .select('*, inventory:inventory_id(wine_name)')
       .eq('restaurant_id', restaurantId)
       .in('status', [
         ProcurementOrderStatus.PENDING,
@@ -650,7 +650,7 @@ export class ProcurementService {
         restaurantId,
         error: error.message,
       });
-      throw error;
+      return [];
     }
 
     return (data || []).map((row: any) => {

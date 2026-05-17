@@ -165,6 +165,31 @@ export class OrderFilterDto {
   @IsOptional()
   dateTo?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  endDate?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'] })
+  @IsString()
+  @IsOptional()
+  sortOrder?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsInt()
   @Min(1)
