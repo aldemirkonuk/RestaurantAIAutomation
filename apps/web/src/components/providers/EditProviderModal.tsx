@@ -73,11 +73,42 @@ interface EditProviderModalProps {
   provider: Provider | null
 }
 
-const WINE_SPECIALTIES = [
-  'Red Wines', 'White Wines', 'Sparkling Wines', 'Rose Wines', 'Dessert Wines',
-  'French Wines', 'Italian Wines', 'Spanish Wines', 'California Wines',
-  'Oregon Wines', 'Washington Wines', 'Organic/Biodynamic', 'Premium/Luxury', 'Value Wines',
-]
+const WINE_LIBRARY: Record<string, string[]> = {
+  'Red Varietals': [
+    'Cabernet Sauvignon', 'Pinot Noir', 'Merlot', 'Syrah / Shiraz', 'Zinfandel',
+    'Malbec', 'Grenache', 'Sangiovese', 'Tempranillo', 'Nebbiolo',
+    'Barbera', 'Cabernet Franc', 'Mourvèdre', 'Petit Verdot', 'Gamay',
+  ],
+  'White Varietals': [
+    'Chardonnay', 'Sauvignon Blanc', 'Riesling', 'Pinot Grigio / Pinot Gris',
+    'Gewurztraminer', 'Viognier', 'Chenin Blanc', 'Grüner Veltliner',
+    'Albariño', 'Moscato', 'Pinot Blanc', 'Roussanne',
+  ],
+  'French Regions': [
+    'Bordeaux', 'Burgundy', 'Champagne', 'Rhône Valley',
+    'Alsace', 'Loire Valley', 'Languedoc-Roussillon', 'Provence',
+  ],
+  'Italian Regions': [
+    'Tuscany', 'Piedmont', 'Veneto', 'Sicily', 'Umbria', 'Campania',
+  ],
+  'Spanish Regions': [
+    'Rioja', 'Priorat', 'Ribera del Duero', 'Rías Baixas', 'Cava',
+  ],
+  'US Regions': [
+    'Napa Valley', 'Sonoma', 'Willamette Valley', 'Walla Walla',
+    'Santa Barbara', 'Paso Robles', 'Columbia Valley',
+  ],
+  'Other Regions': [
+    'Barossa Valley', 'Marlborough', 'Mendoza', 'Douro Valley', 'Mosel',
+  ],
+  'Styles & Types': [
+    'Red Wines', 'White Wines', 'Sparkling Wines', 'Rosé', 'Dessert Wines',
+    'Fortified Wines', 'Orange Wine', 'Natural Wine', 'Biodynamic', 'Organic',
+  ],
+  'Price Tiers': [
+    'Value (Under $20)', 'Mid-Range ($20–50)', 'Premium ($50–100)', 'Luxury ($100+)',
+  ],
+}
 
 const DELIVERY_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -190,6 +221,11 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const [activeTab, setActiveTab] = useState<'details' | 'contacts' | 'locations'>('details')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
   const [isEditingName, setIsEditingName] = useState(false)
+  const [editingLeftField, setEditingLeftField] = useState<string | null>(null)
+  const [showWineLibrary, setShowWineLibrary] = useState(false)
+  const [wineLibrarySearch, setWineLibrarySearch] = useState('')
+  const [showCustomInput, setShowCustomInput] = useState(false)
+  const [customSpecialtyInput, setCustomSpecialtyInput] = useState('')
 
   // Populate form from provider
   useEffect(() => {
@@ -221,6 +257,11 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       setActiveTab('details')
       setValidationErrors({})
       setIsEditingName(false)
+      setEditingLeftField(null)
+      setShowWineLibrary(false)
+      setWineLibrarySearch('')
+      setShowCustomInput(false)
+      setCustomSpecialtyInput('')
     }
   }, [provider, isOpen])
 
@@ -374,6 +415,39 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
     }))
   }
 
+  function LeftField({ fieldKey, label, value, onSave, children }: {
+    fieldKey: string
+    label: string
+    value: string
+    onSave: (val: string) => void
+    children?: React.ReactNode
+  }) {
+    const isEditing = editingLeftField === fieldKey
+    return (
+      <div
+        className="flex items-start gap-2 py-1.5 border-b border-gray-100 last:border-0 cursor-pointer group"
+        onClick={() => !isEditing && setEditingLeftField(fieldKey)}
+      >
+        <span className="text-[10px] text-gray-400 w-14 flex-shrink-0 pt-0.5 uppercase tracking-wider">{label}</span>
+        {isEditing ? (
+          children || (
+            <input
+              autoFocus
+              className="flex-1 text-xs text-gray-900 bg-transparent border-0 border-b border-amber-400 outline-none pb-0.5"
+              defaultValue={value}
+              onBlur={(e) => { onSave(e.target.value); setEditingLeftField(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { onSave((e.target as HTMLInputElement).value); setEditingLeftField(null) } }}
+            />
+          )
+        ) : (
+          <span className="flex-1 text-xs text-gray-700 truncate group-hover:text-amber-700 transition-colors">
+            {value || <span className="text-gray-300 italic">—</span>}
+          </span>
+        )}
+      </div>
+    )
+  }
+
   if (!isOpen || !provider) return null
 
   const tabs = [
@@ -464,16 +538,104 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                     {'★'.repeat(Math.round(formData.rating || 0))}{'☆'.repeat(5 - Math.round(formData.rating || 0))}
                   </span>
                 </div>
-                {[
-                  { label: 'Type',      value: formData.primaryBusinessType || '—' },
-                  { label: 'Terms',     value: formData.paymentTerms || '—' },
-                  { label: 'Min. Order', value: formData.minimumOrder ? `$${formData.minimumOrder}` : '—' },
-                ].map(row => (
-                  <div key={row.label} className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-0">
-                    <span className="text-[11px] text-gray-400 w-16 flex-shrink-0">{row.label}</span>
-                    <span className="text-[12px] text-gray-700 truncate">{row.value}</span>
-                  </div>
-                ))}
+
+                {/* Editable Type */}
+                <div className="flex items-center gap-2 py-1 border-b border-gray-100 cursor-pointer group" onClick={() => setEditingLeftField(editingLeftField === 'type' ? null : 'type')}>
+                  <span className="text-[11px] text-gray-400 w-16 flex-shrink-0">Type</span>
+                  {editingLeftField === 'type' ? (
+                    <select
+                      autoFocus
+                      className="flex-1 text-xs text-gray-900 bg-white border border-amber-300 rounded px-1 py-0.5 outline-none"
+                      value={formData.primaryBusinessType}
+                      onChange={e => { setFormData(prev => ({ ...prev, primaryBusinessType: e.target.value })); setEditingLeftField(null) }}
+                      onBlur={() => setEditingLeftField(null)}
+                    >
+                      {['Distributor', 'Importer', 'Wholesaler'].map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[12px] text-gray-700 truncate group-hover:text-amber-700">{formData.primaryBusinessType || '—'}</span>
+                  )}
+                </div>
+
+                {/* Editable Terms */}
+                <div className="flex items-center gap-2 py-1 border-b border-gray-100 cursor-pointer group" onClick={() => setEditingLeftField(editingLeftField === 'terms' ? null : 'terms')}>
+                  <span className="text-[11px] text-gray-400 w-16 flex-shrink-0">Terms</span>
+                  {editingLeftField === 'terms' ? (
+                    <select
+                      autoFocus
+                      className="flex-1 text-xs text-gray-900 bg-white border border-amber-300 rounded px-1 py-0.5 outline-none"
+                      value={formData.paymentTerms}
+                      onChange={e => { setFormData(prev => ({ ...prev, paymentTerms: e.target.value })); setEditingLeftField(null) }}
+                      onBlur={() => setEditingLeftField(null)}
+                    >
+                      {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[12px] text-gray-700 truncate group-hover:text-amber-700">{formData.paymentTerms || '—'}</span>
+                  )}
+                </div>
+
+                {/* Editable Min. Order */}
+                <div className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-0 cursor-pointer group" onClick={() => setEditingLeftField(editingLeftField === 'minOrder' ? null : 'minOrder')}>
+                  <span className="text-[11px] text-gray-400 w-16 flex-shrink-0">Min. Order</span>
+                  {editingLeftField === 'minOrder' ? (
+                    <input
+                      autoFocus
+                      type="number"
+                      className="flex-1 text-xs text-gray-900 bg-transparent border-0 border-b border-amber-400 outline-none pb-0.5"
+                      defaultValue={formData.minimumOrder ?? ''}
+                      onBlur={(e) => { setFormData(prev => ({ ...prev, minimumOrder: e.target.value ? parseFloat(e.target.value) : null })); setEditingLeftField(null) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { setFormData(prev => ({ ...prev, minimumOrder: (e.target as HTMLInputElement).value ? parseFloat((e.target as HTMLInputElement).value) : null })); setEditingLeftField(null) } }}
+                    />
+                  ) : (
+                    <span className="text-[12px] text-gray-700 truncate group-hover:text-amber-700">{formData.minimumOrder ? `$${formData.minimumOrder}` : '—'}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Editable contact identity */}
+              <div className="space-y-0">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Contact</p>
+
+                {/* First + Last name - side by side */}
+                <div
+                  className="flex items-start gap-2 py-1.5 border-b border-gray-100 cursor-pointer group"
+                  onClick={() => setEditingLeftField(editingLeftField === 'firstName' ? null : 'firstName')}
+                >
+                  <span className="text-[10px] text-gray-400 w-14 flex-shrink-0 pt-0.5 uppercase tracking-wider">Name</span>
+                  {editingLeftField === 'firstName' || editingLeftField === 'lastName' ? (
+                    <div className="flex gap-1 flex-1">
+                      <input
+                        autoFocus={editingLeftField === 'firstName'}
+                        placeholder="First"
+                        className="w-1/2 text-xs text-gray-900 bg-transparent border-0 border-b border-amber-400 outline-none pb-0.5"
+                        defaultValue={formData.contactFirstName}
+                        onBlur={(e) => setFormData(prev => ({ ...prev, contactFirstName: e.target.value }))}
+                        onKeyDown={(e) => e.key === 'Escape' && setEditingLeftField(null)}
+                      />
+                      <input
+                        autoFocus={editingLeftField === 'lastName'}
+                        placeholder="Last"
+                        className="w-1/2 text-xs text-gray-900 bg-transparent border-0 border-b border-amber-400 outline-none pb-0.5"
+                        defaultValue={formData.contactLastName}
+                        onBlur={(e) => { setFormData(prev => ({ ...prev, contactLastName: e.target.value })); setEditingLeftField(null) }}
+                        onKeyDown={(e) => e.key === 'Escape' && setEditingLeftField(null)}
+                      />
+                    </div>
+                  ) : (
+                    <span className="flex-1 text-xs text-gray-700 truncate group-hover:text-amber-700 transition-colors">
+                      {`${formData.contactFirstName} ${formData.contactLastName}`.trim() || <span className="text-gray-300 italic">—</span>}
+                    </span>
+                  )}
+                </div>
+
+                {/* Phone */}
+                <LeftField
+                  fieldKey="phone"
+                  label="Phone"
+                  value={formData.phone}
+                  onSave={(val) => setFormData(prev => ({ ...prev, phone: val }))}
+                />
               </div>
 
               {/* Quick actions */}
@@ -525,43 +687,6 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                         Basic Information
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                                First Name
-                              </label>
-                              <input
-                                type="text"
-                                value={formData.contactFirstName}
-                                onChange={e => setFormData(prev => ({ ...prev, contactFirstName: e.target.value }))}
-                                placeholder="First"
-                                className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                                Last Name
-                              </label>
-                              <input
-                                type="text"
-                                value={formData.contactLastName}
-                                onChange={e => setFormData(prev => ({ ...prev, contactLastName: e.target.value }))}
-                                placeholder="Last"
-                                className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                          <PhoneNumberInput
-                            value={formData.phone}
-                            onChange={(phone) => setFormData({ ...formData, phone })}
-                          />
-                        </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Email <span className="text-rose-500">*</span>
@@ -644,22 +769,131 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                         })}
                       </div>
 
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Wine Specialties</label>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        {WINE_SPECIALTIES.map(specialty => {
-                          const isSelected = formData.specialties.includes(specialty)
-                          return (
+                      {/* Wine Specialties */}
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <label className="block text-sm font-medium text-gray-700">Wine Specialties</label>
+                          <div className="flex gap-2">
                             <button
-                              key={specialty}
-                              onClick={() => toggleSpecialty(specialty)}
-                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                isSelected ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              }`}
+                              onClick={() => setShowWineLibrary(prev => !prev)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all"
                             >
-                              {specialty}
+                              <Package className="w-3.5 h-3.5" />
+                              Choose from Wine Library
                             </button>
-                          )
-                        })}
+                            <button
+                              onClick={() => setShowCustomInput(true)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-all"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Add Custom
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Selected specialties chips */}
+                        {formData.specialties.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {formData.specialties.map(s => (
+                              <span key={s} className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                                {s}
+                                <button onClick={() => toggleSpecialty(s)} className="ml-1 text-amber-600 hover:text-amber-900 leading-none">×</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Custom input */}
+                        {showCustomInput && (
+                          <div className="flex gap-2 mb-3">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Type custom specialty (e.g. Grüner Veltliner)"
+                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              value={customSpecialtyInput}
+                              onChange={e => setCustomSpecialtyInput(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && customSpecialtyInput.trim()) {
+                                  const val = customSpecialtyInput.trim()
+                                  if (!formData.specialties.includes(val)) {
+                                    setFormData(prev => ({ ...prev, specialties: [...prev.specialties, val] }))
+                                  }
+                                  setCustomSpecialtyInput('')
+                                  setShowCustomInput(false)
+                                }
+                                if (e.key === 'Escape') { setShowCustomInput(false); setCustomSpecialtyInput('') }
+                              }}
+                            />
+                            <button
+                              onClick={() => {
+                                const val = customSpecialtyInput.trim()
+                                if (val && !formData.specialties.includes(val)) {
+                                  setFormData(prev => ({ ...prev, specialties: [...prev.specialties, val] }))
+                                }
+                                setCustomSpecialtyInput('')
+                                setShowCustomInput(false)
+                              }}
+                              className="px-3 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
+                            >
+                              Add
+                            </button>
+                            <button onClick={() => { setShowCustomInput(false); setCustomSpecialtyInput('') }}
+                              className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Wine Library picker */}
+                        {showWineLibrary && (
+                          <div className="border border-gray-200 rounded-xl overflow-hidden mb-3">
+                            <div className="p-3 border-b border-gray-100 bg-gray-50">
+                              <input
+                                autoFocus
+                                type="text"
+                                placeholder="Search wines, regions, varietals…"
+                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500"
+                                value={wineLibrarySearch}
+                                onChange={e => setWineLibrarySearch(e.target.value)}
+                              />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto p-2">
+                              {Object.entries(WINE_LIBRARY).map(([category, wines]) => {
+                                const filtered = wines.filter(w =>
+                                  !wineLibrarySearch || w.toLowerCase().includes(wineLibrarySearch.toLowerCase())
+                                )
+                                if (filtered.length === 0) return null
+                                return (
+                                  <div key={category} className="mb-3">
+                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">{category}</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {filtered.map(wine => {
+                                        const isSelected = formData.specialties.includes(wine)
+                                        return (
+                                          <button
+                                            key={wine}
+                                            onClick={() => toggleSpecialty(wine)}
+                                            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all ${
+                                              isSelected ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-amber-50 hover:text-amber-700'
+                                            }`}
+                                          >
+                                            {wine}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <div className="p-2 border-t border-gray-100 bg-gray-50 flex justify-end">
+                              <button onClick={() => setShowWineLibrary(false)} className="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-white">
+                                Done
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
