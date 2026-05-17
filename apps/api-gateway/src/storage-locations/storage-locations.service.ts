@@ -6,19 +6,25 @@ import {
   AssignWineToLocationDto,
 } from './dto/storage-locations.dto';
 
+// Matches the actual storage_locations table in production
 interface StorageLocationRow {
   id: string;
   restaurant_id: string;
-  name: string;
-  description?: string | null;
-  parent_id?: string | null;
-  location_type?: string | null;
-  temperature?: string | null;
-  humidity?: string | null;
-  capacity?: number | null;
-  current_count?: number | null;
-  color?: string | null;
+  zone: string;
+  section?: string | null;
+  shelf?: string | null;
+  position?: string | null;
+  full_location?: string | null;
+  capacity_bottles?: number | null;
+  current_occupancy?: number | null;
+  temperature_zone?: string | null;
+  temperature_min?: number | null;
+  temperature_max?: number | null;
+  humidity_controlled?: boolean | null;
+  color_code?: string | null;
+  display_order?: number | null;
   notes?: string | null;
+  is_active?: boolean | null;
   created_at?: string | null;
   updated_at?: string | null;
   deleted_at?: string | null;
@@ -49,18 +55,31 @@ export class StorageLocationsService {
   constructor(private readonly dbService: DatabaseService) {}
 
   private mapLocation(row: StorageLocationRow) {
+    // Build a human-friendly name from zone + section
+    const name = row.section
+      ? `${row.zone} – ${row.section}`
+      : (row.zone ?? 'Unknown Location');
+
+    // Build a temperature string from numeric range if available
+    let temperature: string | undefined;
+    if (row.temperature_zone) {
+      temperature = row.temperature_zone;
+    } else if (row.temperature_min != null && row.temperature_max != null) {
+      temperature = `${row.temperature_min}–${row.temperature_max}°C`;
+    }
+
     return {
       id: row.id,
-      name: row.name,
-      description: row.description ?? undefined,
-      capacity: row.capacity ?? 100,
-      current_count: row.current_count ?? 0,
-      temperature: row.temperature ?? undefined,
-      humidity: row.humidity ?? undefined,
+      name,
+      description: row.full_location ?? undefined,
+      capacity: row.capacity_bottles ?? 100,
+      current_count: row.current_occupancy ?? 0,
+      temperature,
+      humidity: row.humidity_controlled != null
+        ? (row.humidity_controlled ? 'Controlled' : 'None')
+        : undefined,
       notes: row.notes ?? undefined,
-      parent_id: row.parent_id ?? undefined,
-      color: row.color ?? '#6b7280',
-      location_type: row.location_type ?? undefined,
+      color: row.color_code ?? '#6b7280',
       created_at: row.created_at ?? undefined,
       updated_at: row.updated_at ?? undefined,
     };
@@ -82,7 +101,7 @@ export class StorageLocationsService {
       .select('*')
       .eq('restaurant_id', restaurantId)
       .is('deleted_at', null)
-      .order('name', { ascending: true });
+      .order('display_order', { ascending: true, nullsFirst: false });
 
     if (error) {
       this.logger.error(`Failed to list locations: ${error.message}`);
@@ -113,18 +132,14 @@ export class StorageLocationsService {
 
   async createLocation(restaurantId: string, dto: CreateStorageLocationDto) {
     const client = this.dbService.supabase;
-    const payload = {
+    const payload: Record<string, unknown> = {
       restaurant_id: restaurantId,
-      name: dto.name,
-      description: dto.description ?? null,
-      capacity: dto.capacity ?? 100,
-      current_count: 0,
-      temperature: dto.temperature ?? null,
-      humidity: dto.humidity ?? null,
-      notes: dto.notes ?? null,
-      parent_id: dto.parent_id ?? null,
-      color: dto.color ?? '#6b7280',
-      location_type: dto.location_type ?? 'cellar',
+      zone: dto.name ?? 'New Location',
+      capacity_bottles: (dto as any).capacity ?? 100,
+      current_occupancy: 0,
+      color_code: (dto as any).color ?? '#6b7280',
+      notes: (dto as any).notes ?? null,
+      is_active: true,
     };
 
     const { data, error } = await client
@@ -150,16 +165,11 @@ export class StorageLocationsService {
   ) {
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {};
-    if (dto.name !== undefined) payload.name = dto.name;
-    if (dto.description !== undefined) payload.description = dto.description;
-    if (dto.capacity !== undefined) payload.capacity = dto.capacity;
-    if (dto.current_count !== undefined) payload.current_count = dto.current_count;
-    if (dto.temperature !== undefined) payload.temperature = dto.temperature;
-    if (dto.humidity !== undefined) payload.humidity = dto.humidity;
-    if (dto.notes !== undefined) payload.notes = dto.notes;
-    if (dto.parent_id !== undefined) payload.parent_id = dto.parent_id;
-    if (dto.color !== undefined) payload.color = dto.color;
-    if (dto.location_type !== undefined) payload.location_type = dto.location_type;
+    if (dto.name !== undefined) payload.zone = dto.name;
+    if ((dto as any).capacity !== undefined) payload.capacity_bottles = (dto as any).capacity;
+    if ((dto as any).current_count !== undefined) payload.current_occupancy = (dto as any).current_count;
+    if ((dto as any).color !== undefined) payload.color_code = (dto as any).color;
+    if ((dto as any).notes !== undefined) payload.notes = (dto as any).notes;
     payload.updated_at = new Date().toISOString();
 
     const { data, error } = await client
