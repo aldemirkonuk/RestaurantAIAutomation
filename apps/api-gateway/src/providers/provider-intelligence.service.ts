@@ -29,6 +29,19 @@ export class ProviderIntelligenceService {
     const { data, error } = await query;
 
     if (error) {
+      if (
+        error.message?.includes('does not exist') ||
+        error.message?.includes('relation') ||
+        (error as any).code === '42P01' ||
+        (error as any).code === '42703'
+      ) {
+        this.logger.warn('provider_knowledge table/column not available yet, returning empty', {
+          providerId,
+          errorCode: (error as any).code,
+          errorMessage: error.message,
+        });
+        return {};
+      }
       this.logger.error('Failed to fetch provider knowledge', { providerId, error: error.message });
       throw error;
     }
@@ -79,6 +92,18 @@ export class ProviderIntelligenceService {
       .order('updated_at', { ascending: false });
 
     if (error) {
+      if (
+        error.message?.includes('does not exist') ||
+        error.message?.includes('relation') ||
+        (error as any).code === '42P01' ||
+        (error as any).code === '42703'
+      ) {
+        this.logger.warn('provider_knowledge table/column not available yet, returning empty', {
+          providerId,
+          errorCode: (error as any).code,
+        });
+        return [];
+      }
       this.logger.error('Failed to fetch contradictions', { providerId, error: error.message });
       throw error;
     }

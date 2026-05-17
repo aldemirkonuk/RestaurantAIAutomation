@@ -345,6 +345,18 @@ export class ProvidersService {
       .order('created_at', { ascending: false });
 
     if (error) {
+      if (
+        error.code === 'PGRST116' ||
+        error.message?.includes('does not exist') ||
+        error.message?.includes('relation') ||
+        (error as any).code === '42P01'
+      ) {
+        this.logger.warn('procurement_orders table not available yet, returning empty array', {
+          providerId,
+          errorCode: error.code,
+        });
+        return [];
+      }
       this.logger.error('Failed to fetch provider orders', {
         providerId,
         error: error.message,
