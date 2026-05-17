@@ -183,6 +183,16 @@ export class UpdateProviderDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Payment terms (e.g. Net 30, COD)' })
+  @IsString()
+  @IsOptional()
+  paymentTerms?: string;
+
+  @ApiPropertyOptional({ description: 'Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)' })
+  @IsString()
+  @IsOptional()
+  type?: string;
 }
 
 export class ProviderRatingDto {

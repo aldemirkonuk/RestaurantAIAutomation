@@ -776,7 +776,7 @@ export class DashboardService {
       const { data: inventory, error } = await client
         .from('restaurant_inventory')
         .select(
-          'id, wine_type, stock_live, stock_status, storage_location, unit_price',
+          'id, wine_type, stock_live, stock_status, storage_location_id, unit_price',
         )
         .eq('restaurant_id', restaurantId);
 
@@ -802,7 +802,8 @@ export class DashboardService {
         const status = item.stock_status || 'unknown';
         statusMap.set(status, (statusMap.get(status) || 0) + 1);
 
-        const location = item.storage_location || 'unassigned';
+        // storage_location_id is a UUID FK; use 'unassigned' when null
+        const location = item.storage_location_id ? 'assigned' : 'unassigned';
         locationMap.set(
           location,
           (locationMap.get(location) || 0) + (item.stock_live || 0),
