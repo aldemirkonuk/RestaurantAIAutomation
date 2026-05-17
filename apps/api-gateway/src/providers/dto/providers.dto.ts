@@ -399,3 +399,48 @@ export class BulkImportResultDto {
   @ApiProperty({ type: [String] })
   errors: string[];
 }
+
+// --- Provider Locations DTOs ---
+
+export class CreateProviderLocationDto {
+  @ApiProperty()
+  @IsString()
+  name: string;
+
+  @ApiPropertyOptional({ description: 'office | warehouse | store | other' })
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsBoolean()
+  @IsOptional()
+  isPrimary?: boolean;
+}
+
+export class UpdateProviderLocationDto {
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'office | warehouse | store | other' })
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsBoolean()
+  @IsOptional()
+  isPrimary?: boolean;
+}

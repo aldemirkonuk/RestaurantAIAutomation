@@ -20,12 +20,14 @@ import {
   BulkImportResultDto,
   CreateProviderContactDto,
   CreateProviderDto,
+  CreateProviderLocationDto,
   ProviderContactResponseDto,
   ProviderRatingDto,
   ProviderResponseDto,
   UpdateContactDateDto,
   UpdateProviderContactDto,
   UpdateProviderDto,
+  UpdateProviderLocationDto,
 } from './dto/providers.dto';
 import { UpdateIntelligenceDto } from './dto/update-intelligence.dto';
 import { RetroactiveOrderDto } from './dto/retroactive-order.dto';
@@ -455,6 +457,79 @@ export class ProvidersController {
     } catch (error: any) {
       throw new HttpException(
         error.message || 'Failed to get intelligence summary',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // =========================================================================
+  // PROVIDER LOCATIONS
+  // =========================================================================
+
+  @Get(':id/locations')
+  @ApiOperation({ summary: 'Get provider locations' })
+  async getProviderLocations(
+    @Param('id') providerId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.providersService.getProviderLocations(providerId, user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch provider locations',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(':id/locations')
+  @ApiOperation({ summary: 'Add a location to a provider' })
+  async createProviderLocation(
+    @Param('id') providerId: string,
+    @Body() dto: CreateProviderLocationDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.providersService.createProviderLocation(providerId, user.restaurantId, dto);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to create provider location',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch(':id/locations/:locationId')
+  @ApiOperation({ summary: 'Update a provider location' })
+  async updateProviderLocation(
+    @Param('id') providerId: string,
+    @Param('locationId') locationId: string,
+    @Body() dto: UpdateProviderLocationDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.providersService.updateProviderLocation(providerId, locationId, user.restaurantId, dto);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to update provider location',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Delete(':id/locations/:locationId')
+  @ApiOperation({ summary: 'Remove a provider location' })
+  async deleteProviderLocation(
+    @Param('id') providerId: string,
+    @Param('locationId') locationId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      await this.providersService.deleteProviderLocation(providerId, locationId, user.restaurantId);
+      return { success: true };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to delete provider location',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

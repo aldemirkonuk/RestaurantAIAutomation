@@ -360,3 +360,46 @@ export async function bulkImportProviders(
   )
   return response.data
 }
+
+// --- Provider Locations API ---
+
+export interface ProviderLocation {
+  id: string
+  name: string
+  type: string
+  address: string | null
+  isPrimary: boolean
+  createdAt?: string
+}
+
+export async function getProviderLocations(providerId: string): Promise<ProviderLocation[]> {
+  const response = await apiClient.get<ProviderLocation[]>(`/providers/${providerId}/locations`)
+  return response.data
+}
+
+export async function createProviderLocation(
+  providerId: string,
+  data: { name: string; type?: string; address?: string; isPrimary?: boolean }
+): Promise<ProviderLocation> {
+  const response = await apiClient.post<ProviderLocation>(`/providers/${providerId}/locations`, data)
+  return response.data
+}
+
+export async function updateProviderLocation(
+  providerId: string,
+  locationId: string,
+  data: Partial<{ name: string; type: string; address: string; isPrimary: boolean }>
+): Promise<ProviderLocation> {
+  const response = await apiClient.patch<ProviderLocation>(
+    `/providers/${providerId}/locations/${locationId}`,
+    data
+  )
+  return response.data
+}
+
+export async function deleteProviderLocation(
+  providerId: string,
+  locationId: string
+): Promise<void> {
+  await apiClient.delete(`/providers/${providerId}/locations/${locationId}`)
+}

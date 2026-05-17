@@ -7,12 +7,14 @@ import {
   BulkImportResultDto,
   CreateProviderContactDto,
   CreateProviderDto,
+  CreateProviderLocationDto,
   ProviderContactResponseDto,
   ProviderRatingDto,
   ProviderResponseDto,
   UpdateContactDateDto,
   UpdateProviderContactDto,
   UpdateProviderDto,
+  UpdateProviderLocationDto,
 } from './dto/providers.dto';
 import { UpdateIntelligenceDto } from './dto/update-intelligence.dto';
 import { RetroactiveOrderDto } from './dto/retroactive-order.dto';
@@ -782,6 +784,112 @@ export class ProvidersService {
       conversationId,
       interactionId: intData ? (intData as any).id as string : '',
     };
+  }
+
+  // =========================================================================
+  // PROVIDER LOCATIONS
+  // =========================================================================
+
+  async getProviderLocations(providerId: string, restaurantId: string) {
+    const { data, error } = await this.databaseService.supabase
+      .from('provider_locations')
+      .select('*')
+      .eq('provider_id', providerId)
+      .eq('restaurant_id', restaurantId)
+      .order('is_primary', { ascending: false })
+      .order('created_at');
+
+    if (error) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) return [];
+      this.logger.error('Failed to fetch provider locations', { providerId, error: error.message });
+      throw error;
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      address: row.address,
+      isPrimary: row.is_primary,
+      createdAt: row.created_at,
+    }));
+  }
+
+  async createProviderLocation(providerId: string, restaurantId: string, dto: CreateProviderLocationDto) {
+    if (dto.isPrimary) {
+      await this.databaseService.supabase
+        .from('provider_locations')
+        .update({ is_primary: false })
+        .eq('provider_id', providerId)
+        .eq('restaurant_id', restaurantId);
+    }
+
+    const { data, error } = await this.databaseService.supabase
+      .from('provider_locations')
+      .insert({
+        provider_id: providerId,
+        restaurant_id: restaurantId,
+        name: dto.name,
+        type: dto.type || 'office',
+        address: dto.address || null,
+        is_primary: dto.isPrimary ?? false,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      this.logger.error('Failed to create provider location', { providerId, error: error.message });
+      throw error;
+    }
+
+    const row = data as any;
+    return { id: row.id, name: row.name, type: row.type, address: row.address, isPrimary: row.is_primary };
+  }
+
+  async updateProviderLocation(providerId: string, locationId: string, restaurantId: string, dto: UpdateProviderLocationDto) {
+    if (dto.isPrimary) {
+      await this.databaseService.supabase
+        .from('provider_locations')
+        .update({ is_primary: false })
+        .eq('provider_id', providerId)
+        .eq('restaurant_id', restaurantId);
+    }
+
+    const { data, error } = await this.databaseService.supabase
+      .from('provider_locations')
+      .update({
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.type !== undefined && { type: dto.type }),
+        ...(dto.address !== undefined && { address: dto.address }),
+        ...(dto.isPrimary !== undefined && { is_primary: dto.isPrimary }),
+      })
+      .eq('id', locationId)
+      .eq('provider_id', providerId)
+      .eq('restaurant_id', restaurantId)
+      .select('*')
+      .single();
+
+    if (error) {
+      this.logger.error('Failed to update provider location', { locationId, error: error.message });
+      throw error;
+    }
+
+    const row = data as any;
+    return { id: row.id, name: row.name, type: row.type, address: row.address, isPrimary: row.is_primary };
+  }
+
+  async deleteProviderLocation(providerId: string, locationId: string, restaurantId: string) {
+    const { error } = await this.databaseService.supabase
+      .from('provider_locations')
+      .delete()
+      .eq('id', locationId)
+      .eq('provider_id', providerId)
+      .eq('restaurant_id', restaurantId);
+
+    if (error) {
+      this.logger.error('Failed to delete provider location', { locationId, error: error.message });
+      throw error;
+    }
   }
 
   // =========================================================================
