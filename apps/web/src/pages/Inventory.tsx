@@ -39,6 +39,8 @@ import { useTypedInventorySubscription, InventoryUpdatePayload, useRealtimeDispa
 import { useInventoryPage, InventoryItem } from './inventory/index'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
+import { inventoryApi } from '../services/api'
+import { queryKeys } from '../lib/query-keys'
 import { computeAutoLocatePlan, AutoLocateResult, WineLocationScore } from '../lib/autoLocateEngine'
 import { AutoLocatePreviewModal } from '../components/inventory/AutoLocatePreviewModal'
 
@@ -460,7 +462,8 @@ ${mergedInventory.length} items have been reset to 0 stock.
 This action has been logged to the audit trail.`)
   }
 
-  const handleRemoveFromInventory = (item: InventoryItem) => {
+  const handleRemoveFromInventory = async (item: InventoryItem) => {
+    const currentStock = (item.liveStock || 0) + (item.shadowStock || 0)
     const confirmMessage = `Are you sure you want to remove "${item.name}" from your inventory?
 
 This action will:
@@ -468,20 +471,21 @@ This action will:
 • Keep the wine in your Wine Library (can be re-added to inventory anytime)
 • Archive all stock records and transaction history
 
-Current stock: ${item.liveStock || 0} live + ${(item.shadowStock || 0)} shadow = ${(item.liveStock || 0) + (item.shadowStock || 0)} total bottles
+Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = ${currentStock} total bottles`
 
-This cannot be undone.`
+    if (!confirm(confirmMessage)) return
 
-    if (confirm(confirmMessage)) {
-      // Remove from inventory
-      setInventory(prevInventory => prevInventory.filter(inv => inv.id !== item.id))
-      
-      // TODO: Integrate with backend API to soft delete
-      console.log('Removing from inventory:', item.name, item.id)
-      
-      alert(`✅ "${item.name}" has been removed from inventory.
+    // Optimistically remove from local state immediately
+    setInventory(prev => prev.filter(inv => inv.id !== item.id))
 
-The wine is still in your Wine Library. You can re-add it to inventory anytime from the Wine Library page.`)
+    try {
+      await inventoryApi.deleteInventoryItem(item.id, activeRestaurantId || undefined)
+      // Invalidate React Query cache so any refetch reflects the deletion
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
+    } catch (err: any) {
+      // Roll back local state if API call fails
+      setInventory(prev => [...prev, item])
+      alert(`Failed to remove "${item.name}" from inventory: ${err?.message || 'Unknown error'}. Please try again.`)
     }
   }
 

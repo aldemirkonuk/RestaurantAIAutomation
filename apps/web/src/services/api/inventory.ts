@@ -173,6 +173,22 @@ export async function bulkMapToastItems(
 }
 
 /**
+ * Soft-delete an inventory item (sets is_active = false, keeps history)
+ */
+export async function deleteInventoryItem(
+  itemId: string,
+  restaurantId?: string
+): Promise<{ success: boolean }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const response = await apiClient.delete<{ success: boolean }>(
+    `${INVENTORY_PATH}/${id}/item/${itemId}`
+  );
+  return response.data;
+}
+
+/**
  * Remove Toast item mapping from an inventory item
  */
 export async function unmapToastItem(
@@ -197,6 +213,7 @@ export const inventoryApi = {
   getInventorySummary,
   getInventoryItem,
   updateInventoryItem,
+  deleteInventoryItem,
   getUnmappedToastItems,
   findByToastGuid,
   mapToastItem,
