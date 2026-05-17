@@ -333,15 +333,6 @@ export function SavedSMSTemplates({
               <option value="name">A–Z</option>
               <option value="usage">Most used</option>
             </select>
-            {onNewTemplate && (
-              <button
-                onClick={onNewTemplate}
-                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                New
-              </button>
-            )}
           </div>
         </div>
 

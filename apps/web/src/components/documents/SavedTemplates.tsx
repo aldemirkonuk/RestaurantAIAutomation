@@ -290,15 +290,6 @@ export function SavedTemplates({
               <option value="name">A–Z</option>
               <option value="usage">Most used</option>
             </select>
-            {onNewTemplate && (
-              <button
-                onClick={onNewTemplate}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                New
-              </button>
-            )}
           </div>
         </div>
 
