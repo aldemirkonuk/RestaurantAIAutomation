@@ -125,15 +125,7 @@ export function useOrdersPage() {
     setOrders(resolved)
   }, [rawOrdersData, resolveOrderWineName])
 
-  const filteredOrders = useMemo(() => orders.filter((o) => {
-    if (o.isRecurring) return false
-    if (filterStatus !== 'all' && o.status !== filterStatus) return false
-    // Hide orders whose wine identity cannot be resolved at all — they provide no
-    // actionable context to the manager and pollute the list.
-    const resolvedWine = resolveOrderWineName(o)
-    if (!resolvedWine || isUuid(resolvedWine) || isPlaceholderName(resolvedWine)) return false
-    return true
-  }), [orders, filterStatus, resolveOrderWineName])
+  const filteredOrders = useMemo(() => orders.filter((o) => !o.isRecurring && (filterStatus === 'all' || o.status === filterStatus)), [orders, filterStatus])
   const searchFilteredOrders = useMemo(() => {
     if (!orderSearch.trim()) return filteredOrders
     const s = orderSearch.toLowerCase()
