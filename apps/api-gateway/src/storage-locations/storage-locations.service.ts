@@ -135,10 +135,10 @@ export class StorageLocationsService {
     const payload: Record<string, unknown> = {
       restaurant_id: restaurantId,
       zone: dto.name ?? 'New Location',
-      capacity_bottles: (dto as any).capacity ?? 100,
+      capacity_bottles: dto.capacity ?? 100,
       current_occupancy: 0,
-      color_code: (dto as any).color ?? '#6b7280',
-      notes: (dto as any).notes ?? null,
+      color_code: dto.color ?? '#6b7280',
+      notes: dto.notes ?? null,
       is_active: true,
     };
 
@@ -166,10 +166,10 @@ export class StorageLocationsService {
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {};
     if (dto.name !== undefined) payload.zone = dto.name;
-    if ((dto as any).capacity !== undefined) payload.capacity_bottles = (dto as any).capacity;
-    if ((dto as any).current_count !== undefined) payload.current_occupancy = (dto as any).current_count;
-    if ((dto as any).color !== undefined) payload.color_code = (dto as any).color;
-    if ((dto as any).notes !== undefined) payload.notes = (dto as any).notes;
+    if (dto.capacity !== undefined) payload.capacity_bottles = dto.capacity;
+    if (dto.current_count !== undefined) payload.current_occupancy = dto.current_count;
+    if (dto.color !== undefined) payload.color_code = dto.color;
+    if (dto.notes !== undefined) payload.notes = dto.notes;
     payload.updated_at = new Date().toISOString();
 
     const { data, error } = await client
