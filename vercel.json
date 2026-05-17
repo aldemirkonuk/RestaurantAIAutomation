@@ -6,6 +6,10 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/assets/:path*.map",
+      "destination": "/empty.map"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://wineopsapi-gateway-production.up.railway.app/api/:path*"
     },
