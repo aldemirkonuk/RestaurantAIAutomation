@@ -158,6 +158,43 @@ class ProviderCommunicationAgent(BaseAgent):
     # CONTEXT WINDOW BUILDER (D-32-03)
     # =========================================================================
 
+    # -------------------------------------------------------------------------
+    # Cached system prompt — static across all email types.
+    # Sent as a system message with cache_control so Anthropic caches it after
+    # the first call; subsequent calls pay ~1/10 the input token cost.
+    # Each type block is short enough to keep total under 300 tokens.
+    # -------------------------------------------------------------------------
+    _SYSTEM_PROMPT = (
+        "You are a wine procurement email specialist writing on behalf of a restaurant manager. "
+        "Your drafts are concise, warm but professional, and always scannable at a glance.\n\n"
+
+        "EMAIL TYPE RULES\n"
+        "PRICE_INQUIRY  — goal: get a quote. No price commitment. No budget disclosed. "
+        "Ask: wine name + qty + format, then request current pricing and availability. "
+        "Tone: direct. Max 100 words.\n"
+
+        "DEMAND_OFFER   — goal: propose our target price. Cite volume or relationship as "
+        "justification. Ask if they can meet or approach it. No competitor references. "
+        "Tone: collegial, firm. Max 110 words.\n"
+
+        "PROMO_INQUIRY  — goal: get full promo terms. Reference the promotion by name if known. "
+        "Ask: price, minimum qty, end date. Tone: enthusiastic but businesslike. Max 100 words.\n"
+
+        "WINE_INQUIRY   — goal: check if provider carries this wine and at what price. "
+        "Describe wine precisely (name, vintage, style). Tone: curious, friendly. Max 100 words.\n\n"
+
+        "STRUCTURE (all types)\n"
+        "1. Greeting — use first name when known, company name otherwise.\n"
+        "2. Body — 2-3 focused sentences matching the type rules above.\n"
+        "3. Close — one line, sign off as [Manager Name].\n\n"
+
+        "HARD RULES (never violate)\n"
+        "• Return ONLY valid JSON: {\"subject\": \"...\", \"body\": \"...\"} — no markdown, no preamble.\n"
+        "• No bank details, routing numbers, or card numbers.\n"
+        "• No competitor supplier names.\n"
+        "• Never fabricate facts not present in the context."
+    )
+
     async def _build_context_window(
         self,
         provider_id: str,
@@ -167,75 +204,20 @@ class ProviderCommunicationAgent(BaseAgent):
         payload: Dict[str, Any],
     ) -> Tuple[str, int]:
         """
-        D-32-03: Flat ~6,000 token context window.
+        D-32-03: Hybrid cached-system + compressed-user context window.
         Budget (approximate):
-          system_prompt + constraints  800 tokens
-          provider_profile_snapshot    400 tokens
-          rolling_summary            1,000 tokens
-          last_3_emails              2,400 tokens
-          current_email_context        800 tokens
-          safety_buffer                600 tokens
-        Returns (prompt_string, estimated_token_count).
+          system message (cached)   ~280 tokens  → billed at ~28 after first call
+          user message              ~200 tokens  → always billed
+          output                    ~150 tokens
+        Total warm cost: ~378 tokens per draft (vs ~1,500+ before).
         """
-        # Structured template instructions per email type so the LLM produces
-        # consistently formatted, scannable drafts the manager can approve at a glance.
-        if email_type == EMAIL_TYPE_PRICE_INQUIRY:
-            template_instruction = (
-                "You are drafting a PRICE INQUIRY email — the restaurant wants to know "
-                "the provider's current pricing for a specific wine before committing. "
-                "Structure the email as:\n"
-                "  1. One-sentence greeting (use first name if known, else company name)\n"
-                "  2. One sentence: what wine, what quantity, what format (case/bottle)\n"
-                "  3. One sentence: ask for current price list or quote\n"
-                "  4. One sentence: mention requested delivery window if known\n"
-                "  5. One-line closing with your name placeholder [Manager Name]\n"
-                "Keep it under 120 words. Tone: professional and direct. "
-                "Do NOT state a budget or target price. Do NOT make purchase commitments."
-            )
-        elif email_type == EMAIL_TYPE_DEMAND_OFFER:
-            template_instruction = (
-                "You are drafting a DEMAND OFFER email — the manager has a target price "
-                "and wants to propose it to the provider. "
-                "Structure the email as:\n"
-                "  1. One-sentence greeting (use first name if known, else company name)\n"
-                "  2. One sentence: the wine, quantity, and our proposed price per bottle/case\n"
-                "  3. One sentence: brief justification (volume, relationship, or market)\n"
-                "  4. One sentence: ask if provider can meet or come close to that price\n"
-                "  5. One-line closing with your name placeholder [Manager Name]\n"
-                "Keep it under 130 words. Tone: collegial but firm. "
-                "Do NOT mention competitor prices. Do NOT make unconditional commitments."
-            )
-        elif email_type == EMAIL_TYPE_PROMO_INQUIRY:
-            template_instruction = (
-                "You are drafting a PROMO INQUIRY email — the restaurant noticed a promotion "
-                "and wants details. Structure: greeting, reference the promo, ask for full terms "
-                "(pricing, minimum qty, end date), polite close. Under 120 words."
-            )
-        else:  # WINE_INQUIRY
-            template_instruction = (
-                "You are drafting a WINE INQUIRY email — the restaurant is exploring whether "
-                "the provider carries a specific wine. Structure: greeting, describe the wine "
-                "(name, vintage, style), ask if available and at what price, polite close. Under 120 words."
-            )
-
-        system_prompt = (
-            f"{template_instruction}\n\n"
-            "STRICT RULES: "
-            "Return ONLY valid JSON: {\"subject\": \"...\", \"body\": \"...\"}. "
-            "No markdown, no preamble. "
-            "Do NOT include any bank details, routing numbers, or personal financial data. "
-            "Do NOT reference competitor suppliers by name."
-        )
-
-        # Provider profile snapshot (~400 token cap)
-        provider_snapshot = ""
+        # ── Provider profile (lean: name, health score, personality notes only) ──
+        provider_name = "the provider"
+        provider_meta_lines: list[str] = []
         try:
             result = (
                 self.database.supabase.table("providers")
-                .select(
-                    "name, contact_email, profile_foundational, profile_dynamic, close_relationship, "
-                    "ai_personality_notes, relationship_health_score"
-                )
+                .select("name, close_relationship, relationship_health_score, ai_personality_notes")
                 .eq("id", provider_id)
                 .eq("restaurant_id", restaurant_id)
                 .single()
@@ -243,40 +225,40 @@ class ProviderCommunicationAgent(BaseAgent):
             )
             if result.data:
                 pd = result.data
-                profile_str = json.dumps({
-                    "name": pd.get("name"),
-                    "close_relationship": pd.get("close_relationship"),
-                    "relationship_health_score": pd.get("relationship_health_score"),
-                    "foundational": pd.get("profile_foundational") or {},
-                    "dynamic": pd.get("profile_dynamic") or {},
-                    "notes": (pd.get("ai_personality_notes") or "")[:200],
-                })
-                provider_snapshot = f"\n\nPROVIDER PROFILE:\n{profile_str[:1200]}"
+                provider_name = pd.get("name") or provider_name
+                score = pd.get("relationship_health_score")
+                close = pd.get("close_relationship")
+                notes = (pd.get("ai_personality_notes") or "")[:120]
+                if score is not None:
+                    provider_meta_lines.append(f"rel={score}/10")
+                if close:
+                    provider_meta_lines.append("close=yes")
+                if notes:
+                    provider_meta_lines.append(f'notes="{notes}"')
         except Exception as exc:
             self.logger.warning(f"Failed to fetch provider profile: {exc}")
 
-        # Rolling summary from previous conversations (~1000 token cap)
-        rolling_summary = ""
+        # ── Rolling summary (hard cap 200 chars — enough for context, not bloat) ──
+        history_line = ""
         try:
             conv_result = (
                 self.database.supabase.table("procurement_conversations")
-                .select("rolling_summary, content, created_at")
+                .select("rolling_summary")
                 .eq("order_id", order_id)
                 .eq("restaurant_id", restaurant_id)
                 .order("created_at", desc=True)
-                .limit(3)
+                .limit(1)
                 .execute()
             )
             if conv_result.data:
-                for row in conv_result.data:
-                    if row.get("rolling_summary"):
-                        rolling_summary = f"\n\nCONVERSATION SUMMARY:\n{row['rolling_summary'][:3000]}"
-                        break
+                summary = conv_result.data[0].get("rolling_summary") or ""
+                if summary:
+                    history_line = f"history: {summary[:200]}"
         except Exception as exc:
             self.logger.warning(f"Failed to fetch rolling summary: {exc}")
 
-        # Negotiation facts (committed agreements)
-        facts_str = ""
+        # ── Negotiation facts (committed agreements only, compact) ──
+        facts_line = ""
         try:
             facts_result = (
                 self.database.supabase.table("negotiation_facts")
@@ -284,37 +266,46 @@ class ProviderCommunicationAgent(BaseAgent):
                 .eq("provider_id", provider_id)
                 .eq("restaurant_id", restaurant_id)
                 .eq("commitment_type", "AGREEMENT")
-                .limit(5)
+                .limit(4)
                 .execute()
             )
             if facts_result.data:
-                facts_str = "\n\nNEGOTIATION FACTS:\n" + "; ".join(
-                    f"{r['fact_field']}: {r['fact_value']}" for r in facts_result.data
+                facts_line = "agreed: " + "; ".join(
+                    f"{r['fact_field']}={r['fact_value']}" for r in facts_result.data
                 )
         except Exception as exc:
             self.logger.warning(f"Failed to fetch negotiation facts: {exc}")
 
-        # Current order context (~800 token cap)
-        order_context = (
-            f"\n\nORDER DETAILS:\n"
-            f"Wine: {payload.get('wine_name', 'Unknown')}\n"
-            f"Quantity: {payload.get('quantity', 'TBD')} cases\n"
-            f"Target price/bottle: {payload.get('target_price_per_bottle', 'Open ask')}\n"
-            f"Urgency: {payload.get('urgency', 'normal')}"
-        )
+        # ── Compressed user message ──
+        wine    = payload.get("wine_name") or "wine"
+        qty     = payload.get("quantity") or "TBD"
+        target  = payload.get("target_price_per_bottle")
+        urgency = payload.get("urgency") or "normal"
 
-        prompt = (
-            f"{system_prompt}"
-            f"{provider_snapshot}"
-            f"{rolling_summary}"
-            f"{facts_str}"
-            f"{order_context}"
-            f'\n\nDraft the outbound email now. JSON response: {{"subject": "...", "body": "..."}}'
-        )
+        provider_line = f"provider: {provider_name}"
+        if provider_meta_lines:
+            provider_line += f" ({', '.join(provider_meta_lines)})"
 
-        # Rough token estimate: 1 token ≈ 4 chars
-        estimated_tokens = len(prompt) // 4
-        return prompt, estimated_tokens
+        order_parts = [
+            f"type: {email_type}",
+            provider_line,
+            f"wine: {wine}",
+            f"qty: {qty}",
+        ]
+        if target is not None:
+            order_parts.append(f"target: ${target}/bottle")
+        if urgency != "normal":
+            order_parts.append(f"urgency: {urgency}")
+        if history_line:
+            order_parts.append(history_line)
+        if facts_line:
+            order_parts.append(facts_line)
+
+        user_message = "\n".join(order_parts) + "\n\nDraft the email. Return JSON only."
+
+        # Rough token estimate: 1 token ≈ 4 chars (system already counted separately)
+        estimated_tokens = (len(self._SYSTEM_PROMPT) + len(user_message)) // 4
+        return user_message, estimated_tokens
 
     # =========================================================================
     # ORDER CREATED HANDLER (D-32-01)
@@ -458,7 +449,12 @@ class ProviderCommunicationAgent(BaseAgent):
             async with self.haiku_semaphore:
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
-                    max_tokens=512,
+                    max_tokens=256,
+                    system=[{
+                        "type": "text",
+                        "text": self._SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"},
+                    }],
                     messages=[{"role": "user", "content": prompt}],
                 )
             raw = response.content[0].text if response.content else "{}"
@@ -468,12 +464,16 @@ class ProviderCommunicationAgent(BaseAgent):
                 if raw.startswith("json"):
                     raw = raw[4:]
             draft_json = json.loads(raw.strip())
-            input_tokens = (
-                response.usage.input_tokens if hasattr(response, "usage") else estimated_tokens
-            )
-            output_tokens = (
-                response.usage.output_tokens if hasattr(response, "usage") else 100
-            )
+            usage = response.usage if hasattr(response, "usage") else None
+            input_tokens = usage.input_tokens if usage else estimated_tokens
+            output_tokens = usage.output_tokens if usage else 100
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            if cache_read or cache_write:
+                self.logger.info(
+                    f"Haiku prompt cache — read={cache_read} write={cache_write} "
+                    f"live_input={input_tokens} output={output_tokens} order={order_id}"
+                )
         except (json.JSONDecodeError, Exception) as exc:
             self.logger.error(f"Haiku draft generation failed for order {order_id}: {exc}")
             draft_json = {
