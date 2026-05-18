@@ -52,7 +52,9 @@ export function useGetPendingDraft(orderId: string | null) {
   return useQuery({
     queryKey: draftKeys.byOrder(orderId ?? ''),
     queryFn: () =>
-      apiClient.get(`/procurement/orders/${orderId}/draft`).then((r) => r.data),
+      apiClient
+        .get(`/procurement/orders/${orderId}/draft`)
+        .then((r) => r.data?.draft ?? r.data ?? null),
     enabled: !!orderId,
   })
 }

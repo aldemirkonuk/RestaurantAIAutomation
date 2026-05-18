@@ -366,8 +366,9 @@ export function Orders() {
       if (!orderId) return
       try {
         const res = await apiClient.get(`/procurement/orders/${orderId}/draft`)
-        const draft = res.data
-        if (draft) {
+        // Backend now returns { draft: {...} | null } — unwrap the envelope.
+        const draft = res.data?.draft ?? res.data
+        if (draft && draft.id) {
           setDraftPanelData({
             conversationId: payload.metadata?.conversation_id ?? payload.conversation_id ?? draft.id ?? orderId,
             orderId,
@@ -1013,8 +1014,8 @@ Shadow stock has been moved to Live Stock.`)
         const tryOpenDraft = async (orderId: string, fallbackOrder: typeof createdOrders[number]) => {
           try {
             const res = await apiClient.get(`/procurement/orders/${orderId}/draft`)
-            const draft = res.data
-            // Backend returns { id, content, outbound_email_type, ... } or null
+            // Backend now returns { draft: {...} | null } — unwrap the envelope.
+            const draft = res.data?.draft ?? res.data
             if (draft && (draft.id || draft.conversationId)) {
               const conversationId = draft.conversationId ?? draft.id ?? orderId
               const rawContent = draft.draftContent ?? draft.content ?? ''

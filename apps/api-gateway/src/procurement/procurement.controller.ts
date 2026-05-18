@@ -4,6 +4,8 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Header,
+  HttpCode,
   HttpException,
   HttpStatus,
   Param,
@@ -301,14 +303,19 @@ export class ProcurementController {
 
   @Get('orders/:id/draft')
   @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Get pending AI email draft for an order' })
   @ApiResponse({ status: 200 })
   async getPendingDraft(
     @Param('id') orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<Record<string, any> | null> {
+  ): Promise<{ draft: Record<string, any> | null }> {
     try {
-      return await this.procurementService.getPendingDraft(user.restaurantId, orderId);
+      const draft = await this.procurementService.getPendingDraft(user.restaurantId, orderId);
+      // Always return a JSON object so the browser receives Content-Type: application/json
+      // and a non-empty body. Returning `null` directly causes NestJS to send Content-Length: 0
+      // which Safari DevTools flags as an error and Axios deserialises as an empty string.
+      return { draft };
     } catch (error: any) {
       throw new HttpException(
         error.message || 'Failed to get draft',
@@ -323,6 +330,7 @@ export class ProcurementController {
 
   @Get('conversations/active')
   @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Get all PENDING_APPROVAL conversations with order + provider data' })
   @ApiResponse({ status: 200 })
   async getActiveConversations(
