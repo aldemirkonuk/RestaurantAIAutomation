@@ -185,33 +185,29 @@ export class ProcurementService {
         restaurant_name: '',
       };
 
-      // Primary path: publish via RabbitMQ so the Python agent picks it up.
-      let rabbitOk = false;
+      // Primary path: direct HTTP POST to the Python orchestrator.
+      // This is the only path that gives guaranteed delivery — RabbitMQ publish
+      // succeeds even when no consumer is listening, so relying on it as the
+      // sole trigger silently drops drafts.
+      try {
+        await this.orchestratorService.triggerDraftHttp(draftPayload);
+        this.logger.log(`AI draft triggered via HTTP for order ${order.id}`);
+      } catch (httpErr: any) {
+        this.logger.error(
+          `[createOrder] HTTP draft trigger failed for order ${order.id} ` +
+          `(restaurant ${restaurantId}). Error: ${httpErr?.message}. ` +
+          `Ensure AGENT_ORCHESTRATOR_URL and ADMIN_API_KEY are set in Railway env vars.`,
+        );
+      }
+
+      // Secondary: also publish to RabbitMQ for any async consumers (best-effort).
       try {
         await this.orchestratorService.publishEvent(
           'procurement.events',
           'procurement.order.created',
           draftPayload,
         );
-        rabbitOk = true;
-        this.logger.log(`AI draft pre-computation triggered via RabbitMQ for order ${order.id}`);
-      } catch (err: any) {
-        this.logger.warn(`RabbitMQ unavailable (${err?.message}) — trying HTTP fallback`);
-      }
-
-      // HTTP fallback: direct POST to the Python orchestrator when RabbitMQ is not deployed.
-      if (!rabbitOk) {
-        try {
-          await this.orchestratorService.triggerDraftHttp(draftPayload);
-          this.logger.log(`AI draft pre-computation triggered via HTTP fallback for order ${order.id}`);
-        } catch (httpErr: any) {
-          this.logger.error(
-            `[createOrder] All draft generation paths failed for order ${order.id} ` +
-            `(restaurant ${restaurantId}). HTTP error: ${httpErr?.message}. ` +
-            `Ensure AGENT_ORCHESTRATOR_URL and RABBITMQ_URL are set in Railway env vars.`,
-          );
-        }
-      }
+      } catch { /* non-fatal — RabbitMQ is optional */ }
     }
 
     return order;
