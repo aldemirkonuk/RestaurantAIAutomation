@@ -978,4 +978,113 @@ export class ProcurementService {
     if (error) return null;
     return data;
   }
+
+  // =========================================================================
+  // PHASE 34: CONVERSATION READ ENDPOINTS
+  // =========================================================================
+
+  /**
+   * Returns all PENDING_APPROVAL conversations for the restaurant, joined with
+   * order (wine name, quantity) and provider (name) data.
+   * D-08: Used by the Active Conversations panel on /orders.
+   */
+  async getActiveConversations(restaurantId: string): Promise<any[]> {
+    const { data, error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select(`
+        id,
+        order_id,
+        provider_id,
+        outbound_email_type,
+        round_count,
+        created_at,
+        constraint_flags,
+        content,
+        procurement_orders!inner(
+          id, order_number, quantity, quoted_price,
+          inventory:inventory_id(wine_name)
+        ),
+        providers!left(name)
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'PENDING_APPROVAL')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      this.logger.error('getActiveConversations failed', { restaurantId, error: error.message });
+      throw error;
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      orderId: row.order_id,
+      providerId: row.provider_id,
+      emailType: row.outbound_email_type,
+      roundCount: row.round_count,
+      createdAt: row.created_at,
+      constraintFlags: row.constraint_flags,
+      draftContent: row.content ?? null,
+      orderNumber: row.procurement_orders?.order_number ?? null,
+      quantity: row.procurement_orders?.quantity ?? null,
+      quotedPrice: row.procurement_orders?.quoted_price ?? null,
+      wineName: row.procurement_orders?.inventory?.wine_name ?? null,
+      providerName: row.providers?.name ?? null,
+    }));
+  }
+
+  /**
+   * Returns completed/sent procurement conversations for send history.
+   * D-03: Used by the Procurement Emails tab on /communications.
+   */
+  async getConversationHistory(restaurantId: string): Promise<any[]> {
+    const HISTORY_STATUSES = ['AUTO_SENT', 'APPROVED', 'SENT', 'COMPLETED', 'CLOSED'];
+
+    const { data, error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select(`
+        id,
+        order_id,
+        provider_id,
+        outbound_email_type,
+        round_count,
+        created_at,
+        sent_at,
+        status,
+        content,
+        constraint_flags,
+        rolling_summary,
+        procurement_orders!inner(
+          id, order_number, quantity,
+          inventory:inventory_id(wine_name)
+        ),
+        providers!left(name)
+      `)
+      .eq('restaurant_id', restaurantId)
+      .in('status', HISTORY_STATUSES)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      this.logger.error('getConversationHistory failed', { restaurantId, error: error.message });
+      throw error;
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      orderId: row.order_id,
+      providerId: row.provider_id,
+      emailType: row.outbound_email_type,
+      status: row.status,
+      roundCount: row.round_count,
+      createdAt: row.created_at,
+      sentAt: row.sent_at ?? row.created_at,
+      draftContent: row.content,
+      constraintFlags: row.constraint_flags,
+      rollingSummary: row.rolling_summary,
+      orderNumber: row.procurement_orders?.order_number ?? null,
+      quantity: row.procurement_orders?.quantity ?? null,
+      wineName: row.procurement_orders?.inventory?.wine_name ?? null,
+      providerName: row.providers?.name ?? null,
+    }));
+  }
 }

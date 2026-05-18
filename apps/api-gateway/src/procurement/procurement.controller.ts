@@ -316,4 +316,42 @@ export class ProcurementController {
       );
     }
   }
+
+  // =========================================================================
+  // PHASE 34: CONVERSATION READ ENDPOINTS
+  // =========================================================================
+
+  @Get('conversations/active')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all PENDING_APPROVAL conversations with order + provider data' })
+  @ApiResponse({ status: 200 })
+  async getActiveConversations(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<any[]> {
+    try {
+      return await this.procurementService.getActiveConversations(user.restaurantId);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to fetch active conversations',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('conversations/history')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get completed/sent procurement conversation history' })
+  @ApiResponse({ status: 200 })
+  async getConversationHistory(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<any[]> {
+    try {
+      return await this.procurementService.getConversationHistory(user.restaurantId);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to fetch conversation history',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }
