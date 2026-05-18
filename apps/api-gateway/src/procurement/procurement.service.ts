@@ -160,55 +160,54 @@ export class ProcurementService {
 
     // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
     if (dto.providerId && this.orchestratorService) {
+      // Resolve provider name so the agent can use it in the notification title.
+      let resolvedProviderName = '';
       try {
-        // Resolve provider name so the agent can use it in the notification title.
-        let resolvedProviderName = '';
+        const { data: prov } = await this.databaseService.supabase
+          .from('providers')
+          .select('name')
+          .eq('id', dto.providerId)
+          .eq('restaurant_id', restaurantId)
+          .single();
+        resolvedProviderName = (prov as any)?.name || '';
+      } catch { /* non-fatal */ }
+
+      const draftPayload = {
+        order_id: order.id,
+        order_number: order.orderNumber || '',
+        restaurant_id: restaurantId,
+        provider_id: dto.providerId,
+        provider_name: resolvedProviderName,
+        wine_name: order.wineName || '',
+        quantity: order.quantity,
+        target_price_per_bottle: dto.quotedPrice ?? null,
+        urgency: dto.isEmergency ? 'urgent' : 'normal',
+        restaurant_name: '',
+      };
+
+      // Primary path: publish via RabbitMQ so the Python agent picks it up.
+      let rabbitOk = false;
+      try {
+        await this.orchestratorService.publishEvent(
+          'procurement.events',
+          'procurement.order.created',
+          draftPayload,
+        );
+        rabbitOk = true;
+        this.logger.log(`AI draft pre-computation triggered via RabbitMQ for order ${order.id}`);
+      } catch (err: any) {
+        this.logger.warn(`RabbitMQ unavailable (${err?.message}) — trying HTTP fallback`);
+      }
+
+      // HTTP fallback: direct POST to the Python orchestrator when RabbitMQ is not deployed.
+      if (!rabbitOk) {
         try {
-          const { data: prov } = await this.databaseService.supabase
-            .from('providers')
-            .select('name')
-            .eq('id', dto.providerId)
-            .eq('restaurant_id', restaurantId)
-            .single();
-          resolvedProviderName = (prov as any)?.name || '';
-        } catch { /* non-fatal */ }
-
-        const draftPayload = {
-          order_id: order.id,
-          order_number: order.orderNumber || '',
-          restaurant_id: restaurantId,
-          provider_id: dto.providerId,
-          provider_name: resolvedProviderName,
-          wine_name: order.wineName || '',
-          quantity: order.quantity,
-          target_price_per_bottle: dto.quotedPrice ?? null,
-          urgency: dto.isEmergency ? 'urgent' : 'normal',
-          restaurant_name: '',
-        };
-
-        let rabbitOk = false;
-        try {
-          await this.orchestratorService.publishEvent(
-            'procurement.events',
-            'procurement.order.created',
-            draftPayload,
-          );
-          rabbitOk = true;
-          this.logger.log(`AI draft pre-computation triggered via RabbitMQ for order ${order.id}`);
-        } catch (err: any) {
-          this.logger.warn(`RabbitMQ unavailable (${err?.message}) — trying HTTP fallback`);
+          await this.orchestratorService.triggerDraftHttp(draftPayload);
+          this.logger.log(`AI draft pre-computation triggered via HTTP fallback for order ${order.id}`);
+        } catch (httpErr: any) {
+          this.logger.error(`HTTP fallback also failed: ${httpErr?.message} — draft not pre-computed`);
         }
-
-        // HTTP fallback: call the Python orchestrator's direct trigger endpoint.
-        // This works even when RabbitMQ is not deployed (e.g. Railway without a broker).
-        if (!rabbitOk) {
-          try {
-            await this.orchestratorService.triggerDraftHttp(draftPayload);
-            this.logger.log(`AI draft pre-computation triggered via HTTP fallback for order ${order.id}`);
-          } catch (httpErr: any) {
-            this.logger.error(`HTTP fallback also failed: ${httpErr?.message} — draft not pre-computed`);
-          }
-        }
+      }
     }
 
     return order;
