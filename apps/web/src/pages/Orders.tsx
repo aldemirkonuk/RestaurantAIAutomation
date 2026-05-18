@@ -1880,16 +1880,27 @@ Shadow stock has been moved to Live Stock.`)
                                               </p>
                                             </div>
                                             
-                                            <span
-                                              className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                                statusConfig.color === 'warning' ? 'bg-yellow-100 text-yellow-700' :
-                                                statusConfig.color === 'success' ? 'bg-emerald-100 text-emerald-700' :
-                                                statusConfig.color === 'destructive' ? 'bg-red-100 text-red-700' :
-                                                'bg-gray-100 text-gray-700'
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setCommsDrawerOrder({
+                                                  orderId: order.order_id,
+                                                  wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+                                                  orderStatus: order.status,
+                                                })
+                                              }}
+                                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all hover:ring-2 hover:ring-offset-1 active:scale-95 ${
+                                                statusConfig.color === 'warning' ? 'bg-yellow-100 text-yellow-700 hover:ring-yellow-300' :
+                                                statusConfig.color === 'success' ? 'bg-emerald-100 text-emerald-700 hover:ring-emerald-300' :
+                                                statusConfig.color === 'destructive' ? 'bg-red-100 text-red-700 hover:ring-red-300' :
+                                                'bg-gray-100 text-gray-700 hover:ring-gray-300'
                                               }`}
+                                              title="View email thread"
                                             >
+                                              <MessageSquare className="w-3 h-3 flex-shrink-0" />
                                               {statusConfig.label}
-                                            </span>
+                                            </button>
                                           </div>
 
                                           <div className="grid grid-cols-5 gap-4">
