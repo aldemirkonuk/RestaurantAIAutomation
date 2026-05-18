@@ -1096,38 +1096,31 @@ Shadow stock has been moved to Live Stock.`)
     setRecurringStartDate(new Date().toISOString().split('T')[0])
   }
 
-  // Apply auto-hide logic on top of hook's searchFilteredOrders
+  // Apply auto-hide logic on top of hook's searchFilteredOrders.
+  // Cancelled orders are always hidden from "all" view — they live under the
+  // "Cancelled" filter. Delivered orders stay visible (autoHideSetting handles those).
   const filteredOrders = useMemo(() => {
     return searchFilteredOrders.filter((order) => {
-      // Apply auto-hide logic for delivered/cancelled orders
-      if ((order.status === 'delivered' || order.status === 'cancelled') && autoHideSetting !== 'never') {
+      // Cancelled: only show when explicitly filtering for them
+      if (order.status === 'cancelled' && filterStatus !== 'cancelled') return false
+
+      if (order.status === 'delivered' && autoHideSetting !== 'never') {
         const completedDate = new Date(order.delivered_at || order.created_at)
         const now = new Date()
         const hoursSince = (now.getTime() - completedDate.getTime()) / (1000 * 60 * 60)
-        
+
         switch (autoHideSetting) {
-          case 'immediate':
-            return false // Hide immediately
-          case '24h':
-            if (hoursSince >= 24) return false
-            break
-          case '48h':
-            if (hoursSince >= 48) return false
-            break
-          case '1week':
-            if (hoursSince >= 24 * 7) return false
-            break
-          case '2weeks':
-            if (hoursSince >= 24 * 14) return false
-            break
-          case '1month':
-            if (hoursSince >= 24 * 30) return false
-            break
+          case 'immediate': return false
+          case '24h': if (hoursSince >= 24) return false; break
+          case '48h': if (hoursSince >= 48) return false; break
+          case '1week': if (hoursSince >= 24 * 7) return false; break
+          case '2weeks': if (hoursSince >= 24 * 14) return false; break
+          case '1month': if (hoursSince >= 24 * 30) return false; break
         }
       }
       return true
     })
-  }, [searchFilteredOrders, autoHideSetting])
+  }, [searchFilteredOrders, autoHideSetting, filterStatus])
 
   // Re-sort filteredOrders (hook's sortedOrders is based on searchFilteredOrders, not filteredOrders)
   const sortedOrdersWithAutoHide = useMemo(() => {
