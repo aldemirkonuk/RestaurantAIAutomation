@@ -1039,54 +1039,78 @@ Shadow stock has been moved to Live Stock.`)
       }
 
       if (createdOrders.length) {
-        setOrders((prev) => [...createdOrders, ...prev])
+        // Do NOT optimistically prepend — dispatchOrderUpdate already fires a window
+        // 'order_change' event that invalidates the React Query cache synchronously,
+        // triggering a background refetch.  If the refetch resolves before this line
+        // runs, prev already includes the new orders and the prepend duplicates them.
+        // Let the explicit refetchOrders() below be the single source of truth.
         refetchOrders()
 
-        // Auto-popup draft panel: the Python agent needs ~5-8 s to classify,
-        // build context, and insert the draft.  Poll once after that delay so
-        // the manager doesn't have to hunt for the bell notification.
+        // Auto-popup draft panel: the Python agent needs ~5–20 s to classify,
+        // build context, and insert the draft (longer when RabbitMQ must
+        // round-trip to a remote broker).  Poll at increasing intervals so we
+        // catch both fast (local) and slow (Railway cold-start) pipelines.
+        const tryOpenDraft = async (orderId: string, fallbackOrder: typeof createdOrders[number]) => {
+          try {
+            const res = await apiClient.get(`/procurement/orders/${orderId}/draft`)
+            const draft = res.data
+            // Backend returns { id, content, outbound_email_type, ... } or null
+            if (draft && (draft.id || draft.conversationId)) {
+              const conversationId = draft.conversationId ?? draft.id ?? orderId
+              const rawContent = draft.draftContent ?? draft.content ?? ''
+              const [bodyPart, disclaimerPart] = rawContent.split('\n\n—\n')
+              setDraftPanelData({
+                conversationId,
+                orderId,
+                orderNumber: fallbackOrder.order_number ?? undefined,
+                wineName: fallbackOrder.wine_name || draft.wineName || draft.wine_name || 'Wine',
+                quantity: fallbackOrder.quantity ?? undefined,
+                providerName: fallbackOrder.provider_name || draft.providerName || draft.provider_name || 'Provider',
+                providerEmail: draft.providerEmail ?? draft.provider_email ?? '',
+                emailType: draft.emailType ?? draft.outbound_email_type ?? 'PRICE_INQUIRY',
+                draftContent: bodyPart ?? rawContent,
+                disclaimer: disclaimerPart ?? 'Sent via WineOps AI — This message was generated with AI assistance.',
+                constraintWarnings: (draft.constraintWarnings ?? draft.constraint_flags?.annotating ?? []).map((c: any) => ({
+                  code: typeof c === 'string' ? c : (c.code ?? 'C-??'),
+                  message: typeof c === 'string' ? c : (c.message ?? ''),
+                  severity: c.severity ?? 'annotating',
+                })),
+                roundCount: draft.roundCount ?? draft.round_count ?? 1,
+                timestamp: draft.createdAt ?? draft.created_at ?? new Date().toISOString(),
+              })
+              setIsDraftPanelOpen(true)
+              window.dispatchEvent(new Event('draftPanelOpened'))
+              return true
+            }
+          } catch {
+            // not ready yet — caller retries
+          }
+          return false
+        }
+
         const pollForDraft = async () => {
           for (const order of createdOrders) {
-            try {
-              const res = await apiClient.get(
-                `/procurement/orders/${order.order_id}/draft`
-              )
-              const draft = res.data
-              if (draft?.conversationId ?? draft?.id) {
-                const conversationId = draft.conversationId ?? draft.id ?? order.order_id
-                const rawContent = draft.draftContent ?? draft.content ?? ''
-                const [bodyPart, disclaimerPart] = rawContent.split('\n\n—\n')
-                setDraftPanelData({
-                  conversationId,
-                  orderId: order.order_id,
-                  orderNumber: order.order_number ?? undefined,
-                  wineName: order.wine_name || draft.wineName || draft.wine_name || 'Wine',
-                  quantity: order.quantity ?? undefined,
-                  providerName: order.provider_name || draft.providerName || draft.provider_name || 'Provider',
-                  providerEmail: draft.providerEmail ?? draft.provider_email ?? '',
-                  emailType: draft.emailType ?? draft.outbound_email_type ?? 'PRICE_INQUIRY',
-                  draftContent: bodyPart ?? rawContent,
-                  disclaimer: disclaimerPart ?? 'Sent via WineOps AI — This message was generated with AI assistance.',
-                  constraintWarnings: (draft.constraintWarnings ?? draft.constraint_flags?.annotating ?? []).map((c: any) => ({
-                    code: typeof c === 'string' ? c : (c.code ?? 'C-??'),
-                    message: typeof c === 'string' ? c : (c.message ?? ''),
-                    severity: c.severity ?? 'annotating',
-                  })),
-                  roundCount: draft.roundCount ?? draft.round_count ?? 1,
-                  timestamp: draft.createdAt ?? draft.created_at ?? new Date().toISOString(),
-                })
-                setIsDraftPanelOpen(true)
-                return
-              }
-            } catch {
-              // draft not ready yet — silently skip
-            }
+            const found = await tryOpenDraft(order.order_id, order)
+            if (found) return
           }
         }
 
-        // Poll at 6 s then 12 s — covers typical pipeline latency
-        setTimeout(pollForDraft, 6000)
-        setTimeout(pollForDraft, 12000)
+        // Exponential-ish schedule: 6 s → 12 s → 20 s → 35 s → 55 s
+        // Covers both fast LLM responses and Railway cold-start latency.
+        const POLL_DELAYS = [6000, 12000, 20000, 35000, 55000]
+        let pollStopped = false
+        const schedulePolls = () => {
+          POLL_DELAYS.forEach((delay) => {
+            setTimeout(async () => {
+              if (pollStopped) return
+              await pollForDraft()
+            }, delay)
+          })
+        }
+        schedulePolls()
+        // Cancel remaining polls once the panel opens
+        const cancelPolls = () => { pollStopped = true }
+        window.addEventListener('draftPanelOpened', cancelPolls, { once: true })
       }
 
       if (failures.length) {

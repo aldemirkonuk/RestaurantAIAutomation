@@ -173,27 +173,42 @@ export class ProcurementService {
           resolvedProviderName = (prov as any)?.name || '';
         } catch { /* non-fatal */ }
 
-        await this.orchestratorService.publishEvent(
-          'procurement.events',
-          'procurement.order.created',
-          {
-            order_id: order.id,
-            order_number: order.orderNumber || '',
-            restaurant_id: restaurantId,
-            provider_id: dto.providerId,
-            provider_name: resolvedProviderName,
-            wine_name: order.wineName || '',
-            quantity: order.quantity,
-            target_price_per_bottle: dto.quotedPrice ?? null,
-            urgency: dto.isEmergency ? 'urgent' : 'normal',
-            restaurant_name: '',
-          },
-        );
-        this.logger.log(`AI draft pre-computation triggered for order ${order.id}`);
-      } catch (err: any) {
-        this.logger.error(`Failed to publish procurement.order.created: ${err?.message}`);
-        // Non-fatal — order still created successfully
-      }
+        const draftPayload = {
+          order_id: order.id,
+          order_number: order.orderNumber || '',
+          restaurant_id: restaurantId,
+          provider_id: dto.providerId,
+          provider_name: resolvedProviderName,
+          wine_name: order.wineName || '',
+          quantity: order.quantity,
+          target_price_per_bottle: dto.quotedPrice ?? null,
+          urgency: dto.isEmergency ? 'urgent' : 'normal',
+          restaurant_name: '',
+        };
+
+        let rabbitOk = false;
+        try {
+          await this.orchestratorService.publishEvent(
+            'procurement.events',
+            'procurement.order.created',
+            draftPayload,
+          );
+          rabbitOk = true;
+          this.logger.log(`AI draft pre-computation triggered via RabbitMQ for order ${order.id}`);
+        } catch (err: any) {
+          this.logger.warn(`RabbitMQ unavailable (${err?.message}) — trying HTTP fallback`);
+        }
+
+        // HTTP fallback: call the Python orchestrator's direct trigger endpoint.
+        // This works even when RabbitMQ is not deployed (e.g. Railway without a broker).
+        if (!rabbitOk) {
+          try {
+            await this.orchestratorService.triggerDraftHttp(draftPayload);
+            this.logger.log(`AI draft pre-computation triggered via HTTP fallback for order ${order.id}`);
+          } catch (httpErr: any) {
+            this.logger.error(`HTTP fallback also failed: ${httpErr?.message} — draft not pre-computed`);
+          }
+        }
     }
 
     return order;

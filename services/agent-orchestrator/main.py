@@ -155,3 +155,8 @@ app.include_router(pos_router)
 # (health_routes.py imports get_orchestrator() defined above in this file)
 from api.health_routes import router as health_router  # noqa: E402
 app.include_router(health_router)
+
+# Procurement routes — HTTP trigger for draft generation (RabbitMQ-free fallback)
+# Imported at the bottom because _run_draft_generation calls get_orchestrator()
+from api.procurement_routes import router as procurement_router  # noqa: E402
+app.include_router(procurement_router)

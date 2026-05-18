@@ -27,6 +27,19 @@ export class OrchestratorService implements OnModuleDestroy {
     return response.data;
   }
 
+  /**
+   * HTTP fallback for triggering AI email draft generation when RabbitMQ is not available.
+   * Calls the Python orchestrator's dedicated procurement trigger endpoint.
+   */
+  async triggerDraftHttp(payload: Record<string, any>): Promise<void> {
+    const adminKey = this.configService.get<string>('ADMIN_API_KEY', '');
+    await this.httpClient.post(
+      '/api/v1/procurement/trigger-draft',
+      payload,
+      { headers: { 'X-Admin-Key': adminKey } },
+    );
+  }
+
   async publishEvent(exchange: string, routingKey: string, event: any): Promise<void> {
     const channel = await this.getChannel();
     await channel.assertExchange(exchange, 'topic', { durable: true });
