@@ -925,36 +925,39 @@ Shadow stock has been moved to Live Stock.`)
               },
             })
           } catch (_createError: any) {
-            // Creation failed — likely the inventory item already exists in the DB
-            // but hasn't been loaded into the client cache yet. Fetch all inventory
-            // to find it rather than silently skipping this order.
-            try {
-              const rawInventory = await getInventory(user.restaurantId)
+            // Fast path: backend 409 now includes the existing item's ID directly
+            const existingId = _createError?.response?.data?.existingId
+            if (existingId) {
+              inventoryItem = { id: existingId, wineId: item.wineId, wineName: item.wineName }
+            } else {
+              // Fallback: fetch all inventory (including recently re-activated items).
               // Backend returns snake_case DB fields (master_wine_id, wine_name).
-              // Normalize to camelCase so the find() below can match by wineId.
-              const allInventory = rawInventory.map((inv: any) => ({
-                ...inv,
-                wineId: inv.wineId ?? inv.master_wine_id,
-                wineName: inv.wineName ?? inv.wine_name ?? inv.master_wine_library?.name,
-              }))
-              const existing = allInventory.find(
-                (inv: any) =>
-                  inv.wineId === item.wineId ||
-                  (item.wineName && inv.wineName?.toLowerCase() === item.wineName.toLowerCase())
-              )
-              if (existing) {
-                inventoryItem = {
-                  id: existing.id,
-                  wineId: existing.wineId || item.wineId,
-                  wineName: existing.wineName || item.wineName,
+              try {
+                const rawInventory = await getInventory(user.restaurantId)
+                const allInventory = rawInventory.map((inv: any) => ({
+                  ...inv,
+                  wineId: inv.wineId ?? inv.master_wine_id,
+                  wineName: inv.wineName ?? inv.wine_name ?? inv.master_wine_library?.name,
+                }))
+                const existing = allInventory.find(
+                  (inv: any) =>
+                    inv.wineId === item.wineId ||
+                    (item.wineName && inv.wineName?.toLowerCase() === item.wineName.toLowerCase())
+                )
+                if (existing) {
+                  inventoryItem = {
+                    id: existing.id,
+                    wineId: existing.wineId || item.wineId,
+                    wineName: existing.wineName || item.wineName,
+                  }
+                } else {
+                  failures.push(`Could not create or find inventory for ${item.wineName}`)
+                  continue
                 }
-              } else {
-                failures.push(`Could not create or find inventory for ${item.wineName}`)
+              } catch {
+                failures.push(`Failed to add ${item.wineName} to inventory`)
                 continue
               }
-            } catch {
-              failures.push(`Failed to add ${item.wineName} to inventory`)
-              continue
             }
           }
         }

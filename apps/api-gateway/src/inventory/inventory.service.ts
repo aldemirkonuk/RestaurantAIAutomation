@@ -84,17 +84,40 @@ export class InventoryService {
   async createInventoryItem(restaurantId: string, dto: CreateInventoryItemDto) {
     const client = this.dbService.getClient();
 
-    // Check if this wine already exists in the restaurant's inventory
+    // Check if this wine already exists in the restaurant's inventory (active OR soft-deleted)
     const { data: existing } = await client
       .from('restaurant_inventory')
-      .select('id')
+      .select('id, is_active')
       .eq('restaurant_id', restaurantId)
       .eq('master_wine_id', dto.wineId)
       .single();
 
     if (existing) {
+      if (!existing.is_active) {
+        // Soft-deleted item: re-activate it so the order can proceed
+        const { data: reactivated, error: reactivateError } = await client
+          .from('restaurant_inventory')
+          .update({
+            is_active: true,
+            stock_live: dto.stockLive ?? 0,
+            provider_id: dto.providerId || null,
+          })
+          .eq('id', existing.id)
+          .select(`*, master_wine_library (bottle_size_ml), restaurants (default_pour_ml, measurement_unit)`)
+          .single();
+
+        if (reactivateError) {
+          this.logger.error(`Failed to reactivate inventory item: ${reactivateError.message}`);
+          throw new HttpException(reactivateError.message, HttpStatus.BAD_REQUEST);
+        }
+
+        this.logger.log({ message: 'Inventory item reactivated', restaurantId, wineId: dto.wineId, inventoryId: existing.id });
+        return this.mapInventoryItem(reactivated);
+      }
+
+      // Active item: return its ID so the caller can skip re-creation
       throw new HttpException(
-        'This wine already exists in inventory. Use update to modify stock.',
+        { message: 'This wine already exists in inventory.', existingId: existing.id },
         HttpStatus.CONFLICT,
       );
     }
