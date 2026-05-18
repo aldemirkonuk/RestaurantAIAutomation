@@ -36,7 +36,7 @@ import { getWineTypeColor, Wine as WineType } from '../../data/wineData'
 import { QuickGmailModal } from '../emails/QuickGmailModal'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
 import { getOrdersNeedingApproval, getOrders } from '../../services/api/orders'
-import type { Order } from '../../services/api/types'
+import type { Order, OrderStatus } from '../../services/api/types'
 import { useAuthStore } from '../../stores'
 import { useWines } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
@@ -347,7 +347,7 @@ export function OneTapActionCenter() {
         // Fetch both pending orders and recent in-transit orders
         const [pendingOrders, allOrders] = await Promise.all([
           getOrdersNeedingApproval(restaurantId).catch(() => [] as Order[]),
-          getOrders({ status: 'in_transit' }, restaurantId).catch(() => [] as Order[])
+          getOrders({ status: 'ordered' as OrderStatus }, restaurantId).catch(() => [] as Order[])
         ])
         
         // Combine and dedupe

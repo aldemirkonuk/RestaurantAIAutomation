@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { ordersApi } from '../services/api'
+import type { OrderStatus } from '../services/api/types'
 import { useOrdersSubscription } from '../contexts/RealtimeContext'
 
 interface StoredOrder {
@@ -130,7 +131,7 @@ export function useOrdersMetrics() {
           },
           activeRestaurantId
         ),
-        ordersApi.getOrders({ status: 'APPROVED' as any }, activeRestaurantId).catch(() => []),
+        ordersApi.getOrders({ status: 'approved' as OrderStatus }, activeRestaurantId).catch(() => []),
       ])
 
       const combined = [

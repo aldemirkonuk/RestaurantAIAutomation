@@ -888,11 +888,12 @@ Shadow stock has been moved to Live Stock.`)
           (wineNameKey ? inventoryByWineKey.get(wineNameKey) : undefined)
 
         if (!inventoryItem) {
+          if (!user?.restaurantId) {
+            failures.push(`No inventory match for ${item.wineName}`)
+            continue
+          }
+          let inventoryJustCreated = false
           try {
-            if (!user?.restaurantId) {
-              failures.push(`No inventory match for ${item.wineName}`)
-              continue
-            }
             const primaryProviderId =
               item.providers.primary?.id || item.providers.selected[0]
             const createdInventory = await inventoryApi.createInventoryItem(
@@ -905,25 +906,12 @@ Shadow stock has been moved to Live Stock.`)
               },
               user.restaurantId
             )
-
             inventoryItem = {
               id: createdInventory.id,
               wineId: createdInventory.wineId || item.wineId,
               wineName: createdInventory.wineName || item.wineName,
             }
-
-            await dispatchInventoryUpdate({
-              type: 'add',
-              wineId: inventoryItem.wineId || item.wineId,
-              wineName: inventoryItem.wineName || item.wineName,
-              quantity: 0,
-              source: 'order_placed',
-              timestamp: new Date().toISOString(),
-              metadata: {
-                inventoryId: inventoryItem.id,
-                action: 'created_from_order',
-              },
-            })
+            inventoryJustCreated = true
           } catch (_createError: any) {
             // Fast path: backend 409 now includes the existing item's ID directly
             const existingId = _createError?.response?.data?.existingId
@@ -959,6 +947,20 @@ Shadow stock has been moved to Live Stock.`)
                 continue
               }
             }
+          }
+
+          // Fire-and-forget cache update for genuinely new items only — lives outside
+          // the 409 try-catch so a dispatch failure never triggers spurious recovery.
+          if (inventoryJustCreated && inventoryItem) {
+            dispatchInventoryUpdate({
+              type: 'add',
+              wineId: inventoryItem.wineId || item.wineId,
+              wineName: inventoryItem.wineName || item.wineName,
+              quantity: 0,
+              source: 'order_placed',
+              timestamp: new Date().toISOString(),
+              metadata: { inventoryId: inventoryItem.id, action: 'created_from_order' },
+            }).catch(() => {/* non-fatal */})
           }
         }
 
