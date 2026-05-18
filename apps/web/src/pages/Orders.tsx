@@ -41,7 +41,7 @@ import type { Provider } from '../services/api/providers'
 import { apiClient } from '../services/api/client'
 import { inventoryApi, getInventory } from '../services/api'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
-import { useWinesByIds, useCreateCalendarEvent } from '../hooks/queries'
+import { useWinesByIds } from '../hooks/queries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
 import { formatVolume } from '../utils/volumeUtils'
 import { useOrders } from '../hooks/queries/useOrderQueries'
@@ -152,7 +152,7 @@ const getRecommendedProviders = (providerList: Provider[]) => {
 
 export function Orders() {
   const { user } = useAuth()
-  const { dispatchOrderUpdate, dispatchInventoryUpdate, dispatchCalendarEvent } = useRealtimeDispatch()
+  const { dispatchOrderUpdate, dispatchInventoryUpdate } = useRealtimeDispatch()
   const { pendingReorder, clearPendingReorder } = useUIStore()
   const { measurementUnit } = useRestaurantSettingsStore()
   
@@ -262,7 +262,6 @@ export function Orders() {
   }, [providers])
   const [createOrderItems, setCreateOrderItems] = useState<CreateOrderItem[]>([])
   const [wineSearch, setWineSearch] = useState('')
-  const createCalendarEvent = useCreateCalendarEvent()
   const inventoryMasterIds = useMemo(() => {
     const ids = inventory
       .map((item: any) => item?.wineId)
@@ -892,7 +891,6 @@ Shadow stock has been moved to Live Stock.`)
             failures.push(`No inventory match for ${item.wineName}`)
             continue
           }
-          let inventoryJustCreated = false
           try {
             const primaryProviderId =
               item.providers.primary?.id || item.providers.selected[0]
@@ -911,7 +909,6 @@ Shadow stock has been moved to Live Stock.`)
               wineId: createdInventory.wineId || item.wineId,
               wineName: createdInventory.wineName || item.wineName,
             }
-            inventoryJustCreated = true
           } catch (_createError: any) {
             // Fast path: backend 409 now includes the existing item's ID directly
             const existingId = _createError?.response?.data?.existingId
@@ -949,19 +946,6 @@ Shadow stock has been moved to Live Stock.`)
             }
           }
 
-          // Fire-and-forget cache update for genuinely new items only — lives outside
-          // the 409 try-catch so a dispatch failure never triggers spurious recovery.
-          if (inventoryJustCreated && inventoryItem) {
-            dispatchInventoryUpdate({
-              type: 'add',
-              wineId: inventoryItem.wineId || item.wineId,
-              wineName: inventoryItem.wineName || item.wineName,
-              quantity: 0,
-              source: 'order_placed',
-              timestamp: new Date().toISOString(),
-              metadata: { inventoryId: inventoryItem.id, action: 'created_from_order' },
-            }).catch(() => {/* non-fatal */})
-          }
         }
 
         for (const providerId of item.providers.selected) {
@@ -990,37 +974,6 @@ Shadow stock has been moved to Live Stock.`)
               providerId: providerId,
               timestamp: normalizedCreated.created_at,
             })
-
-            const deliveryDate = new Date()
-            deliveryDate.setDate(deliveryDate.getDate() + 5)
-            dispatchCalendarEvent({
-              type: 'created',
-              eventId: `delivery-${normalizedCreated.order_id}`,
-              title: `📦 Expected Delivery: ${normalizedCreated.wine_name}`,
-              eventType: 'delivery',
-              date: deliveryDate.toISOString().split('T')[0],
-              description: `${normalizedCreated.quantity} bottles from ${normalizedCreated.provider_name}. Order ID: ${normalizedCreated.order_id}`,
-              source: 'orders',
-              timestamp: new Date().toISOString(),
-            })
-
-            if (user?.restaurantId) {
-              try {
-                await createCalendarEvent.mutateAsync({
-                  title: `📦 Expected Delivery: ${normalizedCreated.wine_name}`,
-                  type: 'delivery' as any,
-                  date: deliveryDate.toISOString().split('T')[0],
-                  allDay: true,
-                  description: `${normalizedCreated.quantity} bottles from ${normalizedCreated.provider_name}. Order ID: ${normalizedCreated.order_id}`,
-                  orderId: normalizedCreated.order_id,
-                  providerId: providerId,
-                  status: 'pending',
-                  restaurantId: user.restaurantId,
-                })
-              } catch (calendarError: any) {
-              }
-            } else {
-            }
           } catch (error: any) {
             // 403 no_vendors safety net: backend guard triggered
             if (
