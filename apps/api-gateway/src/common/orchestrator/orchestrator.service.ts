@@ -7,15 +7,23 @@ import * as amqplib from 'amqplib';
 export class OrchestratorService implements OnModuleDestroy {
   private readonly logger = new Logger(OrchestratorService.name);
   private readonly httpClient: AxiosInstance;
+  private readonly orchestratorConfigured: boolean;
   private rabbitConnection: amqplib.Connection | null = null;
   private rabbitChannel: amqplib.Channel | null = null;
 
   constructor(private readonly configService: ConfigService) {
-    const baseUrl = this.configService.get<string>(
-      'AGENT_ORCHESTRATOR_URL',
-      'http://localhost:8000',
-    );
-    this.httpClient = axios.create({ baseURL: baseUrl, timeout: 15000 });
+    const baseUrl = this.configService.get<string>('AGENT_ORCHESTRATOR_URL');
+    this.orchestratorConfigured = !!baseUrl;
+    if (!this.orchestratorConfigured) {
+      this.logger.warn(
+        'AGENT_ORCHESTRATOR_URL is not set — HTTP draft trigger is disabled. ' +
+        'Set this env var in Railway to enable AI draft generation.',
+      );
+    }
+    this.httpClient = axios.create({
+      baseURL: baseUrl || 'http://localhost:8000',
+      timeout: 15000,
+    });
   }
 
   async callAgent(agentName: string, action: string, payload: any): Promise<any> {
@@ -30,8 +38,14 @@ export class OrchestratorService implements OnModuleDestroy {
   /**
    * HTTP fallback for triggering AI email draft generation when RabbitMQ is not available.
    * Calls the Python orchestrator's dedicated procurement trigger endpoint.
+   * Throws if AGENT_ORCHESTRATOR_URL is not configured so the caller can log clearly.
    */
   async triggerDraftHttp(payload: Record<string, any>): Promise<void> {
+    if (!this.orchestratorConfigured) {
+      throw new Error(
+        'AGENT_ORCHESTRATOR_URL not configured — HTTP draft trigger skipped',
+      );
+    }
     const adminKey = this.configService.get<string>('ADMIN_API_KEY', '');
     await this.httpClient.post(
       '/api/v1/procurement/trigger-draft',

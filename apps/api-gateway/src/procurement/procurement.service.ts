@@ -205,7 +205,11 @@ export class ProcurementService {
           await this.orchestratorService.triggerDraftHttp(draftPayload);
           this.logger.log(`AI draft pre-computation triggered via HTTP fallback for order ${order.id}`);
         } catch (httpErr: any) {
-          this.logger.error(`HTTP fallback also failed: ${httpErr?.message} — draft not pre-computed`);
+          this.logger.error(
+            `[createOrder] All draft generation paths failed for order ${order.id} ` +
+            `(restaurant ${restaurantId}). HTTP error: ${httpErr?.message}. ` +
+            `Ensure AGENT_ORCHESTRATOR_URL and RABBITMQ_URL are set in Railway env vars.`,
+          );
         }
       }
     }
