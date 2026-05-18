@@ -118,22 +118,26 @@ describe('ProcurementService — draft trigger fallback (regression: Bug 2)', ()
     // Spy on the service logger to verify error messages
     loggerErrorSpy = jest.spyOn((service as any).logger, 'error').mockImplementation(() => {});
 
-    // Default DB call sequence:
-    // 1. provider count check → 1 provider
-    // 2. INSERT procurement_order → insertedOrderRow
-    // 3. provider name lookup (non-critical)
-    mockSingle
-      .mockResolvedValueOnce({ count: 1, error: null })           // provider count
-      .mockResolvedValueOnce({ data: insertedOrderRow, error: null }) // order INSERT
-      .mockResolvedValueOnce({ data: { name: 'Test Provider' }, error: null }); // provider name
-
-    // Also wire the mock supabase .from chain for count queries that use head:true
-    mockDatabaseService.supabase.select.mockReturnThis();
+    // The provider count query uses { count: 'exact', head: true } and does NOT call .single().
+    // The chain returns the mock object itself, so we bake count=1 onto it.
     Object.defineProperty(mockDatabaseService.supabase, 'count', {
       value: 1,
       writable: true,
       configurable: true,
     });
+    // is_active eq filter also returns the mock object; error must be absent for the guard to pass.
+    Object.defineProperty(mockDatabaseService.supabase, 'error', {
+      value: null,
+      writable: true,
+      configurable: true,
+    });
+
+    // .single() call sequence (count query never calls .single()):
+    // 1. INSERT procurement_order .single()      → insertedOrderRow
+    // 2. provider name lookup   .single()      → { name: 'Test Provider' }
+    mockSingle
+      .mockResolvedValueOnce({ data: insertedOrderRow, error: null })
+      .mockResolvedValueOnce({ data: { name: 'Test Provider' }, error: null });
   });
 
   it('calls triggerDraftHttp when publishEvent (RabbitMQ) throws', async () => {

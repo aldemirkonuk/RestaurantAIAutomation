@@ -86,9 +86,13 @@ describe('InventoryService', () => {
     });
 
     it('includes wine_name in the INSERT payload sent to Supabase', async () => {
+      // Real call order:
+      //  1. master_wine_library name lookup  → single()
+      //  2. restaurant_inventory existing check → single() — PGRST116 = not found → proceed to INSERT
+      //  3. INSERT .select().single() → inserted row
       mockSingle
-        .mockResolvedValueOnce({ data: null, error: { code: 'PGRST116', message: 'not found' } })
         .mockResolvedValueOnce({ data: { name: 'Barolo Riserva' }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: 'PGRST116', message: 'not found' } })
         .mockResolvedValueOnce({
           data: {
             id: 'inv-uuid-2',

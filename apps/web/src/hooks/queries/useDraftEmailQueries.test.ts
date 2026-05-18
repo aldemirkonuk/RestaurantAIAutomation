@@ -4,8 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 
 // --- mocks -----------------------------------------------------------
-
-const mockGet = vi.fn()
+// vi.mock() is hoisted to the top of the file by Vitest — any variable it
+// references must be created with vi.hoisted() so it's also available before
+// the rest of the module is initialised.
+const mockGet = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/api/client', () => ({
   apiClient: { get: mockGet },
