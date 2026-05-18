@@ -49,6 +49,9 @@ interface ProviderRow {
   tier: string | null;
   is_active: boolean | null;
   deleted_at: string | null;
+  payment_terms: string | null;
+  vendor_type: string | null;
+  known_personnel: string[] | null;
 }
 
 @Injectable()
@@ -242,6 +245,8 @@ export class ProvidersService {
       tier: dto.tier ?? undefined,
       is_active: dto.isActive ?? undefined,
       payment_terms: dto.paymentTerms ?? undefined,
+      vendor_type: (dto as any).primaryBusinessType ?? undefined,
+      known_personnel: (dto as any).knownPersonnel ?? undefined,
     };
     // Remove undefined keys so Supabase doesn't null-out untouched columns
     Object.keys(updatePayload).forEach(
@@ -953,6 +958,9 @@ export class ProvidersService {
       lastContactNotes: (row as any).last_contact_notes ?? undefined,
       catalogueVendorId: (row as any).catalogue_vendor_id ?? null,
       isCustom: (row as any).is_custom ?? true,
+      paymentTerms: row.payment_terms ?? undefined,
+      primaryBusinessType: row.vendor_type ?? (row as any).primary_business_type ?? undefined,
+      knownPersonnel: row.known_personnel ?? undefined,
     };
   }
 }

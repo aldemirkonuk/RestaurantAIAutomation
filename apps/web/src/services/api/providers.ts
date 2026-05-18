@@ -15,6 +15,8 @@ export interface Provider {
   contactLastName?: string
   knownPersonnel?: string[]
   statesOrRegionsServed?: string[]
+  /** Canonical name from backend — same data as statesOrRegionsServed, use this */
+  regionsCovered?: string[]
   rating?: number
   notes?: string
   lastContactDate?: string
@@ -28,6 +30,14 @@ export interface Provider {
   profile_foundational?: Record<string, any>
   profile_dynamic?: Record<string, any>
   primaryContact?: Record<string, any>
+  /** Payment terms returned from backend (Net 30, COD, etc.) */
+  paymentTerms?: string
+  /** Minimum order value in dollars */
+  minimumOrder?: number
+  /** Lead time in days */
+  leadTimeDays?: number
+  /** Wine specialties array (mirrors winePortfolio but as array) */
+  specialties?: string[]
 }
 
 export interface ProviderContact {
@@ -136,7 +146,7 @@ const mapProviderToApiPayload = (
     payload.specialties = [data.winePortfolio]
   }
 
-  if (data.statesOrRegionsServed?.length) {
+  if (data.statesOrRegionsServed !== undefined) {
     payload.regionsCovered = data.statesOrRegionsServed
   }
 

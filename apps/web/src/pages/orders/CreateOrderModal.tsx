@@ -10,11 +10,13 @@ import {
   Phone,
   RefreshCw,
   Check,
+  Truck,
 } from 'lucide-react'
 import { Wine as WineType } from '../../data/wineData'
 import type { Provider } from '../../services/api/providers'
 import { formatVolume, bottlesToVolume } from '../../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../../stores/restaurantSettingsStore'
+import { calculateDeliveryDate, deliverySignal } from '../../utils/deliveryDateUtils'
 
 interface CreateOrderItem {
   wineId: string
@@ -363,11 +365,24 @@ export function CreateOrderModal({
                         <div className="flex flex-wrap gap-1 mb-2">
                           {item.providers.selected.map(id => {
                             const provider = providers.find(p => p.id === id)
-                            return provider ? (
-                              <span key={id} className="text-[10px] px-1.5 py-0.5 bg-wine-100 text-wine-700 rounded truncate max-w-[80px]">
-                                {provider.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()}
-                              </span>
-                            ) : null
+                            if (!provider) return null
+                            const result = calculateDeliveryDate(
+                              new Date(),
+                              (provider as any).regionsCovered || provider.statesOrRegionsServed || [],
+                              (provider as any).leadTimeDays || 3,
+                            )
+                            const sig = deliverySignal(result)
+                            return (
+                              <div key={id} className="flex items-center gap-1.5 w-full">
+                                <span className="text-[10px] px-1.5 py-0.5 bg-wine-100 text-wine-700 rounded truncate max-w-[80px] font-medium">
+                                  {provider.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()}
+                                </span>
+                                <span className={`text-[10px] flex items-center gap-0.5 ${sig.colorClass}`}>
+                                  <Truck className="w-2.5 h-2.5 inline-block mr-0.5" />
+                                  {sig.icon} {sig.text}
+                                </span>
+                              </div>
+                            )
                           })}
                         </div>
                         <div className="flex items-center justify-between">
@@ -400,8 +415,32 @@ export function CreateOrderModal({
                     ))
                   )}
                 </div>
-                {createOrderItems.length > 0 && (
+                {createOrderItems.length > 0 && (() => {
+                  // Compute earliest delivery across all selected providers
+                  const allProviderIds = [...new Set(createOrderItems.flatMap(i => i.providers.selected))]
+                  const deliveryDates = allProviderIds
+                    .map(id => providers.find(p => p.id === id))
+                    .filter(Boolean)
+                    .map(p => calculateDeliveryDate(
+                      new Date(),
+                      (p as any).regionsCovered || p!.statesOrRegionsServed || [],
+                      (p as any).leadTimeDays || 3,
+                    ).date)
+                    .filter((d): d is Date => d !== null)
+                  const earliestDelivery = deliveryDates.length
+                    ? deliveryDates.reduce((a, b) => (a < b ? b : a))  // latest of all providers = when order can be complete
+                    : null
+                  return (
                   <div className="p-4 border-t border-gray-200 bg-gray-50">
+                    {earliestDelivery && (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <Truck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-[11px] font-semibold text-emerald-800">Order complete by</p>
+                          <p className="text-xs text-emerald-700">{earliestDelivery.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-semibold text-gray-900">Total</span>
                       <span className="text-xl font-bold text-wine-600">
@@ -433,7 +472,8 @@ export function CreateOrderModal({
                       {isLoading ? 'Creating Orders…' : 'Contact Providers'}
                     </Button>
                   </div>
-                )}
+                  )
+                })()}
               </div>
             </div>
           </motion.div>

@@ -111,6 +111,27 @@ const WINE_LIBRARY: Record<string, string[]> = {
   ],
 }
 
+/** Color palette per wine library category — dot · chip background · text */
+const CATEGORY_COLORS: Record<string, { dot: string; chip: string; text: string; btn: string; selected: string }> = {
+  'Red Varietals':   { dot: 'bg-rose-500',    chip: 'bg-rose-50 border-rose-200',      text: 'text-rose-800',    btn: 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200',     selected: 'bg-rose-600 text-white border-rose-600' },
+  'White Varietals': { dot: 'bg-amber-400',   chip: 'bg-amber-50 border-amber-200',    text: 'text-amber-800',   btn: 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200', selected: 'bg-amber-500 text-white border-amber-500' },
+  'French Regions':  { dot: 'bg-blue-500',    chip: 'bg-blue-50 border-blue-200',      text: 'text-blue-800',    btn: 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200',     selected: 'bg-blue-600 text-white border-blue-600' },
+  'Italian Regions': { dot: 'bg-green-600',   chip: 'bg-green-50 border-green-200',    text: 'text-green-800',   btn: 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200', selected: 'bg-green-600 text-white border-green-600' },
+  'Spanish Regions': { dot: 'bg-orange-500',  chip: 'bg-orange-50 border-orange-200',  text: 'text-orange-800',  btn: 'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200', selected: 'bg-orange-500 text-white border-orange-500' },
+  'US Regions':      { dot: 'bg-violet-500',  chip: 'bg-violet-50 border-violet-200',  text: 'text-violet-800',  btn: 'bg-violet-50 hover:bg-violet-100 text-violet-700 border-violet-200', selected: 'bg-violet-600 text-white border-violet-600' },
+  'Other Regions':   { dot: 'bg-gray-400',    chip: 'bg-gray-50 border-gray-200',      text: 'text-gray-700',    btn: 'bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200',     selected: 'bg-gray-500 text-white border-gray-500' },
+  'Styles & Types':  { dot: 'bg-teal-500',    chip: 'bg-teal-50 border-teal-200',      text: 'text-teal-800',    btn: 'bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200',     selected: 'bg-teal-600 text-white border-teal-600' },
+  'Price Tiers':     { dot: 'bg-emerald-500', chip: 'bg-emerald-50 border-emerald-200',text: 'text-emerald-800', btn: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200', selected: 'bg-emerald-600 text-white border-emerald-600' },
+  custom:            { dot: 'bg-slate-400',   chip: 'bg-slate-50 border-slate-200',    text: 'text-slate-700',   btn: 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200', selected: 'bg-slate-500 text-white border-slate-500' },
+}
+
+function getSpecialtyCategory(specialty: string): string {
+  for (const [category, wines] of Object.entries(WINE_LIBRARY)) {
+    if (wines.includes(specialty)) return category
+  }
+  return 'custom'
+}
+
 const DELIVERY_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 const PAYMENT_TERMS = ['Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90', 'COD (Cash on Delivery)', '2/10 Net 30', 'Custom']
@@ -245,11 +266,11 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         email: provider.email || (provider as any).primaryContact?.email || '',
         website: provider.website || '',
         address: provider.physicalAddress || '',
-        primaryBusinessType: provider.primaryBusinessType || 'Distributor',
+        primaryBusinessType: provider.primaryBusinessType || (provider as any).type || 'Distributor',
         specialties: (provider as any).specialties || [],
         paymentTerms: (provider as any).paymentTerms || 'Net 30',
-        deliveryDays: (provider as any).deliveryDays || [],
-        minimumOrder: (provider as any).minimumOrderValue || null,
+        deliveryDays: (provider as any).regionsCovered || provider.statesOrRegionsServed || [],
+        minimumOrder: (provider as any).minimumOrder ?? null,
         notes: provider.notes || '',
         rating: provider.rating || 0,
         contacts: buildInitialContacts(provider),
@@ -822,15 +843,34 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                           </div>
                         </div>
 
-                        {/* Selected specialties chips */}
+                        {/* Empty state */}
+                        {formData.specialties.length === 0 && !showCustomInput && !showWineLibrary && (
+                          <p className="text-xs text-gray-400 italic mb-3">No specialties added yet — use the buttons above to build a profile.</p>
+                        )}
+
+                        {/* Selected specialties chips — category-aware color */}
                         {formData.specialties.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-3">
-                            {formData.specialties.map(s => (
-                              <span key={s} className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
-                                {s}
-                                <button onClick={() => toggleSpecialty(s)} className="ml-1 text-amber-600 hover:text-amber-900 leading-none">×</button>
-                              </span>
-                            ))}
+                          <div className="flex flex-wrap gap-1.5 mb-3">
+                            {formData.specialties.map(s => {
+                              const cat = getSpecialtyCategory(s)
+                              const c = CATEGORY_COLORS[cat] ?? CATEGORY_COLORS.custom
+                              return (
+                                <span
+                                  key={s}
+                                  className={`inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-lg border text-xs font-medium transition-all ${c.chip} ${c.text}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
+                                  {s}
+                                  <button
+                                    onClick={() => toggleSpecialty(s)}
+                                    className={`w-4 h-4 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 hover:bg-black/10 transition-all leading-none text-sm`}
+                                    title="Remove"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              )
+                            })}
                           </div>
                         )}
 
@@ -876,40 +916,47 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                           </div>
                         )}
 
-                        {/* Wine Library picker */}
+                        {/* Wine Library picker — category-colored */}
                         {showWineLibrary && (
-                          <div className="border border-gray-200 rounded-xl overflow-hidden mb-3">
-                            <div className="p-3 border-b border-gray-100 bg-gray-50">
+                          <div className="border border-gray-200 rounded-xl overflow-hidden mb-3 shadow-sm">
+                            <div className="p-3 border-b border-gray-100 bg-gray-50 flex gap-2 items-center">
                               <input
                                 autoFocus
                                 type="text"
                                 placeholder="Search wines, regions, varietals…"
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500"
+                                className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white"
                                 value={wineLibrarySearch}
                                 onChange={e => setWineLibrarySearch(e.target.value)}
                               />
+                              <button onClick={() => setShowWineLibrary(false)} className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-white bg-gray-50 font-medium">
+                                Done
+                              </button>
                             </div>
-                            <div className="max-h-48 overflow-y-auto p-2">
+                            <div className="max-h-52 overflow-y-auto p-2 space-y-3">
                               {Object.entries(WINE_LIBRARY).map(([category, wines]) => {
                                 const filtered = wines.filter(w =>
                                   !wineLibrarySearch || w.toLowerCase().includes(wineLibrarySearch.toLowerCase())
                                 )
                                 if (filtered.length === 0) return null
+                                const c = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.custom
                                 return (
-                                  <div key={category} className="mb-3">
-                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">{category}</p>
-                                    <div className="flex flex-wrap gap-1.5">
+                                  <div key={category}>
+                                    <div className="flex items-center gap-1.5 px-1 mb-1.5">
+                                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{category}</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
                                       {filtered.map(wine => {
                                         const isSelected = formData.specialties.includes(wine)
                                         return (
                                           <button
                                             key={wine}
                                             onClick={() => toggleSpecialty(wine)}
-                                            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all ${
-                                              isSelected ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-amber-50 hover:text-amber-700'
+                                            className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all ${
+                                              isSelected ? c.selected : c.btn
                                             }`}
                                           >
-                                            {wine}
+                                            {isSelected ? '✓ ' : ''}{wine}
                                           </button>
                                         )
                                       })}
@@ -917,11 +964,6 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                   </div>
                                 )
                               })}
-                            </div>
-                            <div className="p-2 border-t border-gray-100 bg-gray-50 flex justify-end">
-                              <button onClick={() => setShowWineLibrary(false)} className="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-white">
-                                Done
-                              </button>
                             </div>
                           </div>
                         )}

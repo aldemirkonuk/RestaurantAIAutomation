@@ -286,6 +286,15 @@ export class ProviderResponseDto {
 
   @ApiPropertyOptional({ description: 'True if this provider was manually created; false if sourced from catalogue' })
   isCustom?: boolean;
+
+  @ApiPropertyOptional({ description: 'Payment terms (e.g. Net 30, COD)' })
+  paymentTerms?: string;
+
+  @ApiPropertyOptional({ description: 'Business type: Distributor, Importer, Wholesaler, etc.' })
+  primaryBusinessType?: string;
+
+  @ApiPropertyOptional({ description: 'Known personnel / contacts (legacy array)' })
+  knownPersonnel?: string[];
 }
 
 // --- Provider Contacts DTOs ---

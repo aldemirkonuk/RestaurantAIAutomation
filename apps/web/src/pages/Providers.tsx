@@ -1039,7 +1039,15 @@ export function Providers() {
       </div>
 
       <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
-      <EditProviderModal isOpen={!!editingProvider} onClose={() => setEditingProvider(null)} onSave={handleEditProvider} provider={editingProvider} />
+      <EditProviderModal
+        isOpen={!!editingProvider}
+        onClose={() => setEditingProvider(null)}
+        onSave={handleEditProvider}
+        provider={editingProvider
+          ? { ...editingProvider, rating: ratings[editingProvider.id] ?? editingProvider.rating ?? 0 }
+          : null
+        }
+      />
       <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
