@@ -385,10 +385,10 @@ Plans:
   12. Guard is enforced in both backend (422) and frontend (disabled button + tooltip when order is pending)
 **Plans:** 4 plans
 Plans:
-- [ ] 34-01-PLAN.md — Frontend integrity: remove dispatchInventoryUpdate/dispatchCalendarEvent/createCalendarEvent.mutateAsync from handleContactProviders (Wave 1)
-- [ ] 34-02-PLAN.md — Backend: location guard (422) + cancelOrder conversation cascade + GET conversations/active + GET conversations/history (Wave 1)
-- [ ] 34-03-PLAN.md — Active Conversations Panel: slide-in component + useActiveConversations hook + Pending KPI badge + AI Draft Ready order badge (Wave 2)
-- [ ] 34-04-PLAN.md — Communications Send History: 'procurement-history' tab + useProcurementConversationHistory hook + expandable thread replay (Wave 2)
+- [x] 34-01-PLAN.md — Frontend integrity: remove dispatchInventoryUpdate/dispatchCalendarEvent/createCalendarEvent.mutateAsync from handleContactProviders (Wave 1)
+- [x] 34-02-PLAN.md — Backend: location guard (422) + cancelOrder conversation cascade + GET conversations/active + GET conversations/history (Wave 1)
+- [x] 34-03-PLAN.md — Active Conversations Panel: slide-in component + useActiveConversations hook + Pending KPI badge + AI Draft Ready order badge (Wave 2)
+- [x] 34-04-PLAN.md — Communications Send History: 'procurement-history' tab + useProcurementConversationHistory hook + expandable thread replay (Wave 2)
 
 ---
 
