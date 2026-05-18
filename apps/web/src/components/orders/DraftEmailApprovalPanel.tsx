@@ -124,12 +124,12 @@ export function DraftEmailApprovalPanel({
             role="dialog"
             aria-modal="true"
             aria-labelledby="draft-panel-title"
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl border border-indigo-200 overflow-hidden max-h-[92vh] flex flex-col"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl border border-wine-200 overflow-hidden max-h-[92vh] flex flex-col shadow-wine-100"
           >
             {/* ── Top bar ── */}
-            <div className="bg-indigo-900 px-5 py-4 flex items-center justify-between flex-shrink-0">
+            <div className="bg-gradient-to-r from-wine-900 to-wine-700 px-5 py-4 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-indigo-300" aria-hidden="true" />
+                <Mail className="w-4 h-4 text-wine-300" aria-hidden="true" />
                 <h2
                   id="draft-panel-title"
                   className="text-sm font-bold text-white uppercase tracking-widest"
@@ -145,14 +145,14 @@ export function DraftEmailApprovalPanel({
                   </span>
                 )}
                 {isDirty && (
-                  <span className="text-[10px] font-medium text-indigo-300 italic">
+                  <span className="text-[10px] font-medium text-wine-300 italic">
                     edited
                   </span>
                 )}
               </div>
               <button
                 onClick={onClose}
-                className="text-indigo-300 hover:text-white transition-colors p-1 -mr-1"
+                className="text-wine-300 hover:text-white transition-colors p-1 -mr-1"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -187,13 +187,13 @@ export function DraftEmailApprovalPanel({
                     {ccEmails.map((email) => (
                       <span
                         key={email}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700 font-medium max-w-full"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-wine-50 border border-wine-200 text-[11px] text-wine-700 font-medium max-w-full"
                       >
                         <span className="truncate max-w-[100px]">{email}</span>
                         <button
                           type="button"
                           onClick={() => removeCcEmail(email)}
-                          className="flex-shrink-0 text-indigo-400 hover:text-indigo-700 transition-colors"
+                          className="flex-shrink-0 text-wine-400 hover:text-wine-700 transition-colors"
                           aria-label={`Remove ${email}`}
                         >
                           <X className="w-2.5 h-2.5" />
@@ -214,12 +214,12 @@ export function DraftEmailApprovalPanel({
                         }
                       }}
                       placeholder="Add email…"
-                      className="flex-1 min-w-0 text-[11px] text-gray-700 placeholder-gray-300 border border-gray-200 rounded-lg px-2 py-1 focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400 outline-none bg-white"
+                      className="flex-1 min-w-0 text-[11px] text-gray-700 placeholder-gray-300 border border-gray-200 rounded-lg px-2 py-1 focus:ring-1 focus:ring-wine-400 focus:border-wine-400 outline-none bg-white"
                     />
                     <button
                       type="button"
                       onClick={() => addCcEmail(ccInput)}
-                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-600 transition-colors"
+                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-wine-50 hover:bg-wine-100 border border-wine-200 text-wine-600 transition-colors"
                       aria-label="Add CC email"
                     >
                       <Plus className="w-3 h-3" />
@@ -305,7 +305,7 @@ export function DraftEmailApprovalPanel({
                       type="text"
                       value={editedSubject}
                       onChange={(e) => setEditedSubject(e.target.value)}
-                      className="w-full text-sm font-medium text-gray-800 border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full text-sm font-medium text-gray-800 border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-wine-500 focus:border-wine-500"
                       aria-label="Edit email subject"
                     />
                   ) : (
@@ -319,7 +319,7 @@ export function DraftEmailApprovalPanel({
                     <textarea
                       value={editedContent}
                       onChange={(e) => setEditedContent(e.target.value)}
-                      className="w-full h-full min-h-[180px] resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-700 leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-sans"
+                      className="w-full h-full min-h-[180px] resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-700 leading-relaxed focus:ring-2 focus:ring-wine-500 focus:border-wine-500 font-sans"
                       aria-label="Edit draft email body"
                     />
                   ) : (
@@ -389,7 +389,7 @@ export function DraftEmailApprovalPanel({
                     }
                     disabled={isSubmitting}
                     aria-disabled={isSubmitting}
-                    className="flex items-center gap-2 h-11 px-6 bg-indigo-900 hover:bg-indigo-800 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-900/20 transition-all"
+                    className="flex items-center gap-2 h-11 px-6 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-wine-200 transition-all"
                   >
                     <CheckCircle className="w-4 h-4" />
                     {isDirty ? 'Send Edited' : 'Send Draft'}

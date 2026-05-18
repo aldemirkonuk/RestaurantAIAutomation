@@ -1837,33 +1837,18 @@ Shadow stock has been moved to Live Stock.`)
                                                 )}
                                                 {pendingDraftOrderIds.has(order.order_id) && (
                                                   <span
-                                                    className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-indigo-200 transition-colors"
+                                                    className="inline-flex items-center gap-1 text-xs bg-wine-50 text-wine-700 border border-wine-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-wine-100 transition-colors"
                                                     onClick={(e) => {
                                                       e.stopPropagation()
-                                                      const conv = activeConversations.find((c) => c.orderId === order.order_id)
-                                                      if (conv) {
-                                                        setDraftPanelData({
-                                                          conversationId: conv.id,
-                                                          orderId: conv.orderId,
-                                                          restaurantName: activeRestaurantName,
-                                                          orderNumber: conv.orderNumber ?? undefined,
-                                                          wineName: conv.wineName ?? 'Wine',
-                                                          quantity: conv.quantity ?? undefined,
-                                                          providerName: conv.providerName ?? 'Provider',
-                                                          providerEmail: conv.providerEmail ?? '',
-                                                          emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
-                                                          draftContent: conv.draftContent ?? '',
-                                                          disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
-                                                          constraintWarnings: [],
-                                                          roundCount: conv.roundCount ?? 1,
-                                                          timestamp: conv.createdAt,
-                                                        })
-                                                        setIsDraftPanelOpen(true)
-                                                      }
+                                                      setCommsDrawerOrder({
+                                                        orderId: order.order_id,
+                                                        wineName: order.wine_name ?? 'Order',
+                                                        orderStatus: order.status,
+                                                      })
                                                     }}
                                                     title="AI draft ready for review"
                                                   >
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-wine-500 animate-pulse flex-shrink-0" />
                                                     AI Draft Ready
                                                   </span>
                                                 )}
@@ -2561,33 +2546,18 @@ Shadow stock has been moved to Live Stock.`)
                                       </div>
                                       {pendingDraftOrderIds.has(order.order_id) && (
                                         <span
-                                          className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-indigo-200 transition-colors"
+                                          className="inline-flex items-center gap-1 text-xs bg-wine-50 text-wine-700 border border-wine-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-wine-100 transition-colors"
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            const conv = activeConversations.find((c) => c.orderId === order.order_id)
-                                            if (conv) {
-                                              setDraftPanelData({
-                                                conversationId: conv.id,
-                                                orderId: conv.orderId,
-                                                restaurantName: activeRestaurantName,
-                                                orderNumber: conv.orderNumber ?? undefined,
-                                                wineName: conv.wineName ?? 'Wine',
-                                                quantity: conv.quantity ?? undefined,
-                                                providerName: conv.providerName ?? 'Provider',
-                                                providerEmail: conv.providerEmail ?? '',
-                                                emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
-                                                draftContent: conv.draftContent ?? '',
-                                                disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
-                                                constraintWarnings: [],
-                                                roundCount: conv.roundCount ?? 1,
-                                                timestamp: conv.createdAt,
-                                              })
-                                              setIsDraftPanelOpen(true)
-                                            }
+                                            setCommsDrawerOrder({
+                                              orderId: order.order_id,
+                                              wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+                                              orderStatus: order.status,
+                                            })
                                           }}
                                           title="AI draft ready for review"
                                         >
-                                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                          <span className="w-1.5 h-1.5 rounded-full bg-wine-500 animate-pulse flex-shrink-0" />
                                           AI Draft Ready
                                         </span>
                                       )}
