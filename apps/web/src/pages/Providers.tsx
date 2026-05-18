@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -164,7 +164,24 @@ export function Providers() {
   const [showFavoritesOnly, setShowFavoritesOnly]   = useState(false)
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
-  const ratings: Record<string, number>              = (preferences.providerRatings ?? {}) as Record<string, number>
+
+  // Local ratings state — updates immediately for snappy UI. Syncs to remote
+  // preferences async. The useEffect seeds from server data on first load /
+  // hard refresh but never overwrites in-session changes.
+  const [ratings, setLocalRatings] = useState<Record<string, number>>(
+    () => (preferences.providerRatings ?? {}) as Record<string, number>,
+  )
+  useEffect(() => {
+    const serverRatings = (preferences.providerRatings ?? {}) as Record<string, number>
+    // Only seed local state when it is still empty (fresh mount / hard refresh)
+    setLocalRatings(prev => {
+      if (Object.keys(prev).length === 0 && Object.keys(serverRatings).length > 0) {
+        return serverRatings
+      }
+      // Merge server ratings in for any provider the local state hasn't touched
+      return { ...serverRatings, ...prev }
+    })
+  }, [preferences.providerRatings])
 
   const setFavorites = useCallback((updater: (prev: string[]) => string[]) => {
     updatePreferences({ providerFavorites: updater(favorites) })
@@ -175,8 +192,13 @@ export function Providers() {
   }, [notes, updatePreferences])
 
   const setRatings = useCallback((updater: (prev: Record<string, number>) => Record<string, number>) => {
-    updatePreferences({ providerRatings: updater(ratings) })
-  }, [ratings, updatePreferences])
+    setLocalRatings(prev => {
+      const next = updater(prev)
+      // Persist async — never block the UI on this
+      updatePreferences({ providerRatings: next })
+      return next
+    })
+  }, [updatePreferences])
 
   const { data: providers = [], isLoading, isFetching, error, refetch } = useProviders(restaurantId || '', {
     search: searchQuery,
