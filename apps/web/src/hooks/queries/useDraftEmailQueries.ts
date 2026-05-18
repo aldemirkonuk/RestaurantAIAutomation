@@ -31,8 +31,11 @@ export interface ActiveConversationDto {
 }
 
 export function useActiveConversations() {
-  const { user, isAuthenticated } = useAuth()
-  const restaurantId = user?.restaurantId ?? ''
+  const { user, activeRestaurantId, isAuthenticated } = useAuth()
+  // Prefer the runtime-updated activeRestaurantId over the JWT-origin user.restaurantId.
+  // user.restaurantId becomes stale after a restaurant switch; activeRestaurantId always
+  // reflects the current selection and is what the X-Restaurant-Id header sends.
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
   return useQuery({
     queryKey: activeConversationKeys.list(restaurantId),
     queryFn: () =>
