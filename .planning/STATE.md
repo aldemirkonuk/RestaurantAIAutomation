@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
 status: in_progress
-last_updated: "2026-05-12T20:45:00Z"
+last_updated: "2026-05-18T19:43:00.639Z"
 progress:
-  total_phases: 14
-  completed_phases: 9
-  total_plans: 65
-  completed_plans: 61
-  percent: 94
+  total_phases: 17
+  completed_phases: 12
+  total_plans: 81
+  completed_plans: 75
+  percent: 93
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Phase 32 — Provider Outbound Communication Engine. All 7 plans complete (2026-05-14). ProviderCommunicationAgent (742 lines, 13 tests), 20-constraint ConstraintEngine, FuzzyMatcher, NestJS approve/discard/intelligence API, DraftEmailApprovalPanel, IntelBadge pills, PROVINT-04 unknown-sender detection. 50/50 tests passing. Branch: gsd/v2.0-provider-outbound-communication-engine.
+**Current focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0. Railway redeploy needed for backend changes.
 
 ---
 
