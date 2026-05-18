@@ -14,7 +14,7 @@
       "destination": "https://wineopsapi-gateway-production.up.railway.app/api/:path*"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/((?!api/|assets/)(?!.*\\.map$).*)",
       "destination": "/index.html"
     }
   ]

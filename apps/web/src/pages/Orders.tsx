@@ -929,7 +929,14 @@ Shadow stock has been moved to Live Stock.`)
             // but hasn't been loaded into the client cache yet. Fetch all inventory
             // to find it rather than silently skipping this order.
             try {
-              const allInventory = await getInventory(user.restaurantId)
+              const rawInventory = await getInventory(user.restaurantId)
+              // Backend returns snake_case DB fields (master_wine_id, wine_name).
+              // Normalize to camelCase so the find() below can match by wineId.
+              const allInventory = rawInventory.map((inv: any) => ({
+                ...inv,
+                wineId: inv.wineId ?? inv.master_wine_id,
+                wineName: inv.wineName ?? inv.wine_name ?? inv.master_wine_library?.name,
+              }))
               const existing = allInventory.find(
                 (inv: any) =>
                   inv.wineId === item.wineId ||
@@ -938,8 +945,8 @@ Shadow stock has been moved to Live Stock.`)
               if (existing) {
                 inventoryItem = {
                   id: existing.id,
-                  wineId: (existing as any).wineId || item.wineId,
-                  wineName: (existing as any).wineName || item.wineName,
+                  wineId: existing.wineId || item.wineId,
+                  wineName: existing.wineName || item.wineName,
                 }
               } else {
                 failures.push(`Could not create or find inventory for ${item.wineName}`)

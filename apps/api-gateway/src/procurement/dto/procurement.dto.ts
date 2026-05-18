@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum ProcurementOrderStatus {
   PENDING = 'PENDING',
@@ -191,12 +192,14 @@ export class OrderFilterDto {
   sortOrder?: string;
 
   @ApiPropertyOptional({ default: 1 })
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
   page?: number;
 
   @ApiPropertyOptional({ default: 50 })
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
