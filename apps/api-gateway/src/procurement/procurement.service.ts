@@ -160,16 +160,25 @@ export class ProcurementService {
 
     // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
     if (dto.providerId && this.orchestratorService) {
-      // Resolve provider name so the agent can use it in the notification title.
+      // Resolve provider name and restaurant name in parallel.
       let resolvedProviderName = '';
+      let resolvedRestaurantName = '';
       try {
-        const { data: prov } = await this.databaseService.supabase
-          .from('providers')
-          .select('name')
-          .eq('id', dto.providerId)
-          .eq('restaurant_id', restaurantId)
-          .single();
-        resolvedProviderName = (prov as any)?.name || '';
+        const [provResult, restResult] = await Promise.all([
+          this.databaseService.supabase
+            .from('providers')
+            .select('name')
+            .eq('id', dto.providerId)
+            .eq('restaurant_id', restaurantId)
+            .single(),
+          this.databaseService.supabase
+            .from('restaurants')
+            .select('name')
+            .eq('id', restaurantId)
+            .single(),
+        ]);
+        resolvedProviderName = (provResult.data as any)?.name || '';
+        resolvedRestaurantName = (restResult.data as any)?.name || '';
       } catch { /* non-fatal */ }
 
       const draftPayload = {
@@ -182,7 +191,7 @@ export class ProcurementService {
         quantity: order.quantity,
         target_price_per_bottle: dto.quotedPrice ?? null,
         urgency: dto.isEmergency ? 'urgent' : 'normal',
-        restaurant_name: '',
+        restaurant_name: resolvedRestaurantName,
       };
 
       // Primary path: direct HTTP POST to the Python orchestrator.
