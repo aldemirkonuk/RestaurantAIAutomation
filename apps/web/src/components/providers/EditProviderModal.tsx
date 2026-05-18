@@ -22,6 +22,7 @@ import {
   Plus,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
+import { fetchProviderContacts } from '../../services/api/providers'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 import { useAuth } from '../../contexts/AuthContext'
@@ -262,6 +263,33 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       setWineLibrarySearch('')
       setShowCustomInput(false)
       setCustomSpecialtyInput('')
+
+      // Replace placeholder contacts with real ones from the DB
+      let aborted = false
+      fetchProviderContacts(provider.id)
+        .then(dbContacts => {
+          if (aborted || dbContacts.length === 0) return
+          setFormData(prev => ({
+            ...prev,
+            contacts: dbContacts.map(c => {
+              const nameIdx = (c.name || '').indexOf(' ')
+              return {
+                id: c.id,
+                firstName: nameIdx > -1 ? c.name.slice(0, nameIdx) : (c.name || ''),
+                lastName:  nameIdx > -1 ? c.name.slice(nameIdx + 1) : '',
+                role: c.role || 'Sales Rep',
+                phone: c.phone || '',
+                phoneType: 'main_line',
+                email: c.email || '',
+                isPrimary: c.isPrimary ?? false,
+                tag: '',
+              }
+            }),
+          }))
+        })
+        .catch(() => { /* keep buildInitialContacts result silently */ })
+
+      return () => { aborted = true }
     }
   }, [provider, isOpen])
 

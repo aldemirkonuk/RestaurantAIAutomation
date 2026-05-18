@@ -27,6 +27,12 @@ import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider, 
 import { useAuthStore } from '../stores'
 import { useUserPreferences } from '../hooks/useUserPreferences'
 import type { Provider } from '../services/api/providers'
+import {
+  fetchProviderContacts,
+  addProviderContact,
+  updateProviderContact,
+  deleteProviderContact,
+} from '../services/api/providers'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
 import { EditProviderModal, EditProviderData } from '../components/providers/EditProviderModal'
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
@@ -197,7 +203,14 @@ export function Providers() {
   }
 
   const handleEditProvider = async (data: EditProviderData) => {
+    const isFakeContactId = (id: string) =>
+      id.startsWith('new-') ||
+      id.startsWith('admin-') ||
+      id.startsWith('primary-') ||
+      id.startsWith('personnel-')
+
     try {
+      // 1. Update provider-level fields
       await updateProvider.mutateAsync({
         id: data.id,
         name: data.name,
@@ -212,11 +225,49 @@ export function Providers() {
         statesOrRegionsServed: data.deliveryDays,
         notes: data.notes,
         rating: data.rating > 0 ? data.rating : undefined,
-        knownPersonnel: data.contacts.map(c => c.name).filter(Boolean),
+        knownPersonnel: data.contacts
+          .filter(c => !c.isPrimary)
+          .map(c => `${c.firstName} ${c.lastName}`.trim())
+          .filter(Boolean),
         restaurantId: restaurantId || '',
         paymentTerms: data.paymentTerms,
         minimumOrderValue: data.minimumOrder ?? undefined,
       } as any)
+
+      // 2. Sync provider_contacts table
+      const providerId = data.id
+      const existingDbContacts = await fetchProviderContacts(providerId)
+      const existingDbIds = new Set(existingDbContacts.map(c => c.id))
+      const currentRealIds = new Set(
+        data.contacts.filter(c => !isFakeContactId(c.id)).map(c => c.id)
+      )
+
+      // Delete contacts the user removed
+      for (const dbContact of existingDbContacts) {
+        if (!currentRealIds.has(dbContact.id)) {
+          await deleteProviderContact(providerId, dbContact.id)
+        }
+      }
+
+      // Create new contacts or update existing ones
+      for (const contact of data.contacts) {
+        const name = `${contact.firstName} ${contact.lastName}`.trim() || 'Contact'
+        const payload = {
+          name,
+          email: contact.email || '',
+          phone: contact.phone || '',
+          role: contact.role || 'Sales Rep',
+          isPrimary: contact.isPrimary,
+        }
+        if (isFakeContactId(contact.id)) {
+          await addProviderContact(providerId, payload)
+        } else if (existingDbIds.has(contact.id)) {
+          await updateProviderContact(providerId, contact.id, payload)
+        } else {
+          await addProviderContact(providerId, payload)
+        }
+      }
+
       if (data.rating > 0) setRatings(prev => ({ ...prev, [data.id]: data.rating }))
       setEditingProvider(null)
     } catch (err) {
