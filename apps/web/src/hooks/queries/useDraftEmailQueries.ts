@@ -67,13 +67,15 @@ export function useApproveDraft() {
       orderId,
       modifiedContent,
       managerNotes,
+      ccEmails,
     }: {
       orderId: string
       modifiedContent?: string
       managerNotes?: string
+      ccEmails?: string[]
     }) =>
       apiClient
-        .post(`/procurement/orders/${orderId}/approve-draft`, { modifiedContent, managerNotes })
+        .post(`/procurement/orders/${orderId}/approve-draft`, { modifiedContent, managerNotes, ccEmails })
         .then((r) => r.data),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: draftKeys.all })

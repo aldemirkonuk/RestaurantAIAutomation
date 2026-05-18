@@ -876,6 +876,7 @@ export class ProcurementService {
           restaurant_id: restaurantId,
           modified_content: dto.modifiedContent ?? null,
           manager_notes: dto.managerNotes ?? null,
+          cc_emails: dto.ccEmails ?? [],
         },
       );
     }

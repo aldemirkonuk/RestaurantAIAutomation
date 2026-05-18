@@ -1029,7 +1029,7 @@ Shadow stock has been moved to Live Stock.`)
                 orderNumber: fallbackOrder.order_number ?? undefined,
                 wineName: fallbackOrder.wine_name || draft.wineName || draft.wine_name || 'Wine',
                 quantity: fallbackOrder.quantity ?? undefined,
-                providerName: fallbackOrder.provider_name || draft.providerName || draft.provider_name || 'Provider',
+                providerName: draft.provider_name || draft.providerName || (/^[0-9a-f-]{36}$/i.test(fallbackOrder.provider_name ?? '') ? '' : fallbackOrder.provider_name) || 'Provider',
                 providerEmail: draft.providerEmail ?? draft.provider_email ?? '',
                 emailType: draft.emailType ?? draft.outbound_email_type ?? 'PRICE_INQUIRY',
                 draftContent: bodyPart ?? rawContent,
@@ -3288,12 +3288,14 @@ Shadow stock has been moved to Live Stock.`)
       <DraftEmailApprovalPanel
         isOpen={isDraftPanelOpen}
         draftData={draftPanelData}
-        onApprove={async (modifiedContent, managerNotes) => {
+        managerName={user?.name ?? ''}
+        onApprove={async (modifiedContent, managerNotes, ccEmails) => {
           if (!draftPanelData) return
           await approveDraftMutation.mutateAsync({
             orderId: draftPanelData.orderId,
             modifiedContent,
             managerNotes,
+            ccEmails,
           })
           setIsDraftPanelOpen(false)
           setDraftPanelData(null)

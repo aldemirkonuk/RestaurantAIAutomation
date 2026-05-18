@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class ApproveDraftDto {
   @ApiPropertyOptional({ description: 'Modified draft content (omit to approve as-is)' })
@@ -13,4 +13,10 @@ export class ApproveDraftDto {
   @IsString()
   @MaxLength(500)
   managerNotes?: string;
+
+  @ApiPropertyOptional({ description: 'Additional CC email addresses' })
+  @IsOptional()
+  @IsArray()
+  @IsEmail({}, { each: true })
+  ccEmails?: string[];
 }

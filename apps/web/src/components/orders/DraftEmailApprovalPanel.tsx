@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, XCircle, Edit2, Eye, X, Mail, Clock, Hash } from 'lucide-react'
+import { CheckCircle, XCircle, Edit2, Eye, X, Mail, Clock, Hash, Plus } from 'lucide-react'
 
 interface ConstraintWarning {
   code: string
@@ -28,7 +28,8 @@ interface DraftEmailData {
 interface DraftEmailApprovalPanelProps {
   isOpen: boolean
   draftData: DraftEmailData | null
-  onApprove: (modifiedContent?: string, managerNotes?: string) => void
+  managerName?: string
+  onApprove: (modifiedContent?: string, managerNotes?: string, ccEmails?: string[]) => void
   onDiscard: () => void
   onClose: () => void
   isSubmitting?: boolean
@@ -52,6 +53,7 @@ function derivedSubject(data: DraftEmailData): string {
 export function DraftEmailApprovalPanel({
   isOpen,
   draftData,
+  managerName,
   onApprove,
   onDiscard,
   onClose,
@@ -60,14 +62,33 @@ export function DraftEmailApprovalPanel({
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
   const [editedSubject, setEditedSubject] = useState('')
+  const [ccEmails, setCcEmails] = useState<string[]>([])
+  const [ccInput, setCcInput] = useState('')
+  const ccInputRef = useRef<HTMLInputElement>(null)
+
+  const resolveManagerName = (content: string) =>
+    managerName ? content.replace(/\[Manager Name\]/g, managerName) : content
 
   useEffect(() => {
     if (draftData) {
-      setEditedContent(draftData.draftContent)
+      setEditedContent(resolveManagerName(draftData.draftContent))
       setEditedSubject(derivedSubject(draftData))
       setIsEditing(false)
+      setCcEmails([])
+      setCcInput('')
     }
-  }, [draftData])
+  }, [draftData, managerName])
+
+  const addCcEmail = (raw: string) => {
+    const email = raw.trim().toLowerCase()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return
+    if (ccEmails.includes(email)) return
+    setCcEmails((prev) => [...prev, email])
+    setCcInput('')
+  }
+
+  const removeCcEmail = (email: string) =>
+    setCcEmails((prev) => prev.filter((e) => e !== email))
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -81,7 +102,7 @@ export function DraftEmailApprovalPanel({
 
   const badge = draftData ? emailTypeBadge[draftData.emailType] : null
   const isDirty = draftData
-    ? editedContent !== draftData.draftContent || editedSubject !== derivedSubject(draftData)
+    ? editedContent !== resolveManagerName(draftData.draftContent) || editedSubject !== derivedSubject(draftData)
     : false
 
   return (
@@ -157,6 +178,53 @@ export function DraftEmailApprovalPanel({
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">To</p>
                   <p className="text-sm font-semibold text-gray-800 leading-tight">{draftData.providerName}</p>
                   <p className="text-xs text-gray-500 truncate">{draftData.providerEmail}</p>
+                </div>
+
+                {/* CC */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">CC</p>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {ccEmails.map((email) => (
+                      <span
+                        key={email}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700 font-medium max-w-full"
+                      >
+                        <span className="truncate max-w-[100px]">{email}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeCcEmail(email)}
+                          className="flex-shrink-0 text-indigo-400 hover:text-indigo-700 transition-colors"
+                          aria-label={`Remove ${email}`}
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={ccInputRef}
+                      type="email"
+                      value={ccInput}
+                      onChange={(e) => setCcInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault()
+                          addCcEmail(ccInput)
+                        }
+                      }}
+                      placeholder="Add email…"
+                      className="flex-1 min-w-0 text-[11px] text-gray-700 placeholder-gray-300 border border-gray-200 rounded-lg px-2 py-1 focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400 outline-none bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addCcEmail(ccInput)}
+                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-600 transition-colors"
+                      aria-label="Add CC email"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Wine */}
@@ -316,6 +384,7 @@ export function DraftEmailApprovalPanel({
                       onApprove(
                         isDirty ? editedContent : undefined,
                         isDirty ? `Subject: ${editedSubject}` : undefined,
+                        ccEmails.length ? ccEmails : undefined,
                       )
                     }
                     disabled={isSubmitting}
