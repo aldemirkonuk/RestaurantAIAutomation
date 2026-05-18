@@ -1451,7 +1451,16 @@ Shadow stock has been moved to Live Stock.`)
           filterStatus={filterStatus}
           onToggleStatusFilter={toggleStatusFilter}
           activeDraftsCount={activeConversations.length}
-          onActiveDraftsClick={() => setIsActiveConvPanelOpen(true)}
+          onActiveDraftsClick={() => {
+            const first = activeConversations[0]
+            if (first) {
+              setCommsDrawerOrder({
+                orderId: first.orderId,
+                wineName: first.wineName ?? 'Order',
+                orderStatus: 'pending_approval',
+              })
+            }
+          }}
         />
 
          {/* Bulk Actions Bar */}

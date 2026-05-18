@@ -26,7 +26,7 @@ interface OrderSummaryProps {
   filterStatus: string
   onToggleStatusFilter: (status: string) => void
   activeDraftsCount: number
-  onActiveDraftsClick: () => void
+  onActiveDraftsClick: (orderId?: string) => void
 }
 
 export function OrderSummary({
@@ -63,9 +63,9 @@ export function OrderSummary({
             {activeDraftsCount > 0 && (
               <button
                 onClick={(e) => { e.stopPropagation(); onActiveDraftsClick() }}
-                className="mt-2 flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors px-2 py-0.5 rounded-full"
+                className="mt-2 flex items-center gap-1 text-xs bg-wine-50 text-wine-700 border border-wine-200 hover:bg-wine-100 transition-colors px-2 py-0.5 rounded-full"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-wine-500 animate-pulse flex-shrink-0" />
                 {activeDraftsCount} draft{activeDraftsCount !== 1 ? 's' : ''} ready
               </button>
             )}
