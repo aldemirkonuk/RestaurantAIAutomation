@@ -642,20 +642,11 @@ The tab will need:
 
 ## Open Questions
 
-1. **Communications "Send History" tab label collision**
-   - What we know: Existing `'history'` tab exists with label "Send History" showing generic conversations
-   - What's unclear: Should D-03 replace or supplement the existing tab?
-   - Recommendation: Add new `'procurement-history'` tab — preserve existing functionality
+1. **Communications "Send History" tab label collision** (RESOLVED: Added new `'procurement-history'` tab with label "Procurement Emails" alongside the existing `'history'` tab. Existing "Send History" tab preserved untouched. Implemented in plan 34-04 via `Communications.tsx` state union type extension.)
 
-2. **`dispatchCalendarEvent` (line 996) — remove or keep?**
-   - What we know: It's a real-time SSE event (not a DB write); causes phantom calendar entry on calendar page
-   - What's unclear: Does the CalendarPage subscription write to DB or only update local state on this event?
-   - Recommendation: Remove both `dispatchCalendarEvent` AND `createCalendarEvent.mutateAsync` from `handleContactProviders`. The approveDraft calendar creation is the sole source of truth.
+2. **`dispatchCalendarEvent` (line 996) — remove or keep?** (RESOLVED: Both `dispatchCalendarEvent` (line 996) AND `createCalendarEvent.mutateAsync` (line 1009) are removed from `handleContactProviders`. The backend `approveDraft` (procurement.service.ts lines 836–857 — already calls `createCalendarEventForOrder`) is the sole calendar creation path. Implemented in plan 34-01.)
 
-3. **PENDING_APPROVAL badge (D-02) — query strategy**
-   - What we know: `useActiveConversations()` returns all PENDING_APPROVAL conversations; badge needs to know if a specific order_id has one
-   - What's unclear: Should badge derive from the active conversations query result (no extra call) or per-order fetch?
-   - Recommendation: Derive from `useActiveConversations()` result — build a `Set<string>` of order_ids that have PENDING_APPROVAL conversations; badge checks this set. Zero extra API calls.
+3. **PENDING_APPROVAL badge (D-02) — query strategy** (RESOLVED: Badge derives from `useActiveConversations()` result in Orders.tsx — a `pendingDraftOrderIds` Set is built via `useMemo` from the active conversations data. Order card badge checks `pendingDraftOrderIds.has(order.order_id)`. Zero extra API calls. Implemented in plan 34-03.)
 
 ---
 
