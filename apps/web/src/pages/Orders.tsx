@@ -5,7 +5,8 @@ import { Header } from '../components/layout/Header'
 import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
-import { useApproveDraft, useDiscardDraft } from '../hooks/queries/useDraftEmailQueries'
+import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
+import { useApproveDraft, useDiscardDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
   Package,
   Clock,
@@ -249,6 +250,12 @@ export function Orders() {
   const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false)
   const approveDraftMutation = useApproveDraft()
   const discardDraftMutation = useDiscardDraft()
+  const [isActiveConvPanelOpen, setIsActiveConvPanelOpen] = useState(false)
+  const { data: activeConversations = [], isLoading: activeConvLoading } = useActiveConversations()
+  const pendingDraftOrderIds = useMemo(
+    () => new Set(activeConversations.map((c) => c.orderId)),
+    [activeConversations],
+  )
 
   // Single entry-point guard. Pre-empts the wine picker when no vendors exist
   // so the user gets the actionable OrderGuardModal instead of a dead-end
@@ -1444,6 +1451,8 @@ Shadow stock has been moved to Live Stock.`)
           orderAnalytics={orderAnalytics}
           filterStatus={filterStatus}
           onToggleStatusFilter={toggleStatusFilter}
+          activeDraftsCount={activeConversations.length}
+          onActiveDraftsClick={() => setIsActiveConvPanelOpen(true)}
         />
 
          {/* Bulk Actions Bar */}
@@ -1826,6 +1835,37 @@ Shadow stock has been moved to Live Stock.`)
                                                       </span>
                                                     )}
                                                   </>
+                                                )}
+                                                {pendingDraftOrderIds.has(order.order_id) && (
+                                                  <span
+                                                    className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-indigo-200 transition-colors"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      const conv = activeConversations.find((c) => c.orderId === order.order_id)
+                                                      if (conv) {
+                                                        setDraftPanelData({
+                                                          conversationId: conv.id,
+                                                          orderId: conv.orderId,
+                                                          orderNumber: conv.orderNumber ?? undefined,
+                                                          wineName: conv.wineName ?? 'Wine',
+                                                          quantity: conv.quantity ?? undefined,
+                                                          providerName: conv.providerName ?? 'Provider',
+                                                          providerEmail: '',
+                                                          emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
+                                                          draftContent: conv.draftContent ?? '',
+                                                          disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
+                                                          constraintWarnings: [],
+                                                          roundCount: conv.roundCount ?? 1,
+                                                          timestamp: conv.createdAt,
+                                                        })
+                                                        setIsDraftPanelOpen(true)
+                                                      }
+                                                    }}
+                                                    title="AI draft ready for review"
+                                                  >
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                                    AI Draft Ready
+                                                  </span>
                                                 )}
                                               </div>
                                               <p className="text-xs text-gray-500">
@@ -2508,6 +2548,37 @@ Shadow stock has been moved to Live Stock.`)
                                           Order #{order.order_id.slice(0, 8)}
                                         </p>
                                       </div>
+                                      {pendingDraftOrderIds.has(order.order_id) && (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-indigo-200 transition-colors"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            const conv = activeConversations.find((c) => c.orderId === order.order_id)
+                                            if (conv) {
+                                              setDraftPanelData({
+                                                conversationId: conv.id,
+                                                orderId: conv.orderId,
+                                                orderNumber: conv.orderNumber ?? undefined,
+                                                wineName: conv.wineName ?? 'Wine',
+                                                quantity: conv.quantity ?? undefined,
+                                                providerName: conv.providerName ?? 'Provider',
+                                                providerEmail: '',
+                                                emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
+                                                draftContent: conv.draftContent ?? '',
+                                                disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
+                                                constraintWarnings: [],
+                                                roundCount: conv.roundCount ?? 1,
+                                                timestamp: conv.createdAt,
+                                              })
+                                              setIsDraftPanelOpen(true)
+                                            }
+                                          }}
+                                          title="AI draft ready for review"
+                                        >
+                                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                          AI Draft Ready
+                                        </span>
+                                      )}
                                       
                                       {/* Status Badge */}
                                       <span
@@ -3232,6 +3303,37 @@ Shadow stock has been moved to Live Stock.`)
           setDraftPanelData(null)
         }}
         isSubmitting={approveDraftMutation.isPending || discardDraftMutation.isPending}
+      />
+
+      {/* Active Conversations Panel */}
+      <ActiveConversationsPanel
+        isOpen={isActiveConvPanelOpen}
+        onClose={() => setIsActiveConvPanelOpen(false)}
+        conversations={activeConversations}
+        isLoading={activeConvLoading}
+        onViewDraft={(conv: ActiveConversationDto) => {
+          setDraftPanelData({
+            conversationId: conv.id,
+            orderId: conv.orderId,
+            orderNumber: conv.orderNumber ?? undefined,
+            wineName: conv.wineName ?? 'Wine',
+            quantity: conv.quantity ?? undefined,
+            providerName: conv.providerName ?? 'Provider',
+            providerEmail: '',
+            emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
+            draftContent: conv.draftContent ?? '',
+            disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
+            constraintWarnings: [],
+            roundCount: conv.roundCount ?? 1,
+            timestamp: conv.createdAt,
+          })
+          setIsDraftPanelOpen(true)
+          setIsActiveConvPanelOpen(false)
+        }}
+        onApprove={(orderId) => approveDraftMutation.mutate({ orderId })}
+        onDiscard={(orderId) => discardDraftMutation.mutate(orderId)}
+        isApproving={approveDraftMutation.isPending}
+        isDiscarding={discardDraftMutation.isPending}
       />
 
       {/* Legacy Approval Modal - For orders from list */}

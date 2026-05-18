@@ -25,6 +25,8 @@ interface OrderSummaryProps {
   orderAnalytics: OrderAnalytics
   filterStatus: string
   onToggleStatusFilter: (status: string) => void
+  activeDraftsCount: number
+  onActiveDraftsClick: () => void
 }
 
 export function OrderSummary({
@@ -36,6 +38,8 @@ export function OrderSummary({
   orderAnalytics,
   filterStatus,
   onToggleStatusFilter,
+  activeDraftsCount,
+  onActiveDraftsClick,
 }: OrderSummaryProps) {
   return (
     <motion.div
@@ -56,6 +60,15 @@ export function OrderSummary({
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Pending</p>
             <p className="text-3xl font-bold text-yellow-600 mt-1">{pendingCount}</p>
             <p className="text-xs text-gray-500 mt-1">awaiting approval</p>
+            {activeDraftsCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onActiveDraftsClick() }}
+                className="mt-2 flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors px-2 py-0.5 rounded-full"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                {activeDraftsCount} draft{activeDraftsCount !== 1 ? 's' : ''} ready
+              </button>
+            )}
           </div>
           <div className="p-2 bg-yellow-100 rounded-lg">
             <Clock className="w-5 h-5 text-yellow-600" />
