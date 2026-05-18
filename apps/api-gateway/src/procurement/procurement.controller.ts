@@ -156,6 +156,7 @@ export class ProcurementController {
         dto,
       );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Failed to update order',
         HttpStatus.INTERNAL_SERVER_ERROR,

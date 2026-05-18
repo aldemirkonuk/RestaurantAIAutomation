@@ -143,6 +143,11 @@ export class UpdateOrderDto {
   @IsString()
   @IsOptional()
   discrepancyNotes?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  locationId?: string;
 }
 
 export class OrderFilterDto {

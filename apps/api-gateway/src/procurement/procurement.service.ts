@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
@@ -307,6 +307,28 @@ export class ProcurementService {
     orderId: string,
     dto: UpdateOrderDto,
   ): Promise<OrderResponseDto> {
+    // D-06: Block location assignment while order is in a pending state.
+    if (dto.locationId !== undefined) {
+      const BLOCKED_STATUSES = [
+        ProcurementOrderStatus.PENDING,
+        ProcurementOrderStatus.APPROVAL_NEEDED,
+        ProcurementOrderStatus.NEGOTIATING,
+      ];
+      const { data: existing, error: fetchError } = await this.databaseService.supabase
+        .from('procurement_orders')
+        .select('status')
+        .eq('restaurant_id', restaurantId)
+        .eq('id', orderId)
+        .single();
+
+      if (!fetchError && existing && BLOCKED_STATUSES.includes((existing as any).status)) {
+        throw new UnprocessableEntityException({
+          reason: 'order_not_approved',
+          message: 'Location can only be assigned after the order is approved.',
+        });
+      }
+    }
+
     const updatePayload: Record<string, any> = {
       status: dto.status ?? undefined,
       quoted_price: dto.quotedPrice ?? undefined,
@@ -321,6 +343,7 @@ export class ProcurementService {
       price_verified: dto.priceVerified ?? undefined,
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
+      location_id: dto.locationId ?? undefined,
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -367,6 +390,20 @@ export class ProcurementService {
       status: ProcurementOrderStatus.CANCELLED,
       rejectionReason: reason,
     });
+
+    // D-10: Cascade PENDING_APPROVAL conversations to CANCELLED so they don't
+    // appear in the active conversations panel after order cancellation.
+    try {
+      await this.databaseService.supabase
+        .from('procurement_conversations')
+        .update({ status: 'CANCELLED' })
+        .eq('restaurant_id', restaurantId)
+        .eq('order_id', orderId)
+        .eq('status', 'PENDING_APPROVAL');
+      this.logger.log(`Cascaded PENDING_APPROVAL conversations to CANCELLED for order ${orderId}`);
+    } catch (cascadeError: any) {
+      this.logger.warn(`cancelOrder conversation cascade failed (non-fatal): ${cascadeError?.message}`);
+    }
 
     // Cancel any pending calendar delivery event linked to this order.
     await this.cancelCalendarEventForOrder(restaurantId, orderId);
