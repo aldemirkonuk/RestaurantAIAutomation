@@ -32,12 +32,18 @@ export class InventoryService {
       row.glasses_per_bottle_override ??
       (pourSizeMl > 0 ? Math.floor(effectiveBottleSizeMl / pourSizeMl) : undefined);
 
+    // Extract wine name before stripping the nested master_wine_library object.
+    // Prefer the denormalized column; fall back to the joined library row.
+    const wineName: string | null = row.wine_name || row.master_wine_library?.name || null;
+
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
     if (row.restaurants) delete result.restaurants;
 
     return {
       ...result,
+      wineName,
+      wine_name: wineName,
       bottleSizeMl: effectiveBottleSizeMl,
       bottleSizeOz: roundOz(effectiveBottleSizeMl),
       pourSizeMl,
@@ -84,6 +90,17 @@ export class InventoryService {
   async createInventoryItem(restaurantId: string, dto: CreateInventoryItemDto) {
     const client = this.dbService.getClient();
 
+    // Look up the canonical wine name once; used in both the re-activation and INSERT paths.
+    let masterWineName: string | null = null;
+    try {
+      const { data: mw } = await client
+        .from('master_wine_library')
+        .select('name')
+        .eq('id', dto.wineId)
+        .single();
+      masterWineName = mw?.name ?? null;
+    } catch { /* non-fatal — wine_name stays null */ }
+
     // Check if this wine already exists in the restaurant's inventory (active OR soft-deleted)
     const { data: existing } = await client
       .from('restaurant_inventory')
@@ -101,9 +118,10 @@ export class InventoryService {
             is_active: true,
             stock_live: dto.stockLive ?? 0,
             provider_id: dto.providerId || null,
+            ...(masterWineName ? { wine_name: masterWineName } : {}),
           })
           .eq('id', existing.id)
-          .select(`*, master_wine_library (bottle_size_ml), restaurants (default_pour_ml, measurement_unit)`)
+          .select(`*, master_wine_library (name, bottle_size_ml), restaurants (default_pour_ml, measurement_unit)`)
           .single();
 
         if (reactivateError) {
@@ -132,6 +150,7 @@ export class InventoryService {
       threshold_max: dto.thresholdMax || 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
+      wine_name: masterWineName,
     };
     if (dto.saleType !== undefined) insertData.sale_type = dto.saleType;
     if (dto.pourSizeMl !== undefined) insertData.pour_size_ml = dto.pourSizeMl;
@@ -144,7 +163,7 @@ export class InventoryService {
       .insert(insertData)
       .select(`
         *,
-        master_wine_library (bottle_size_ml),
+        master_wine_library (name, bottle_size_ml),
         restaurants (default_pour_ml, measurement_unit)
       `)
       .single();

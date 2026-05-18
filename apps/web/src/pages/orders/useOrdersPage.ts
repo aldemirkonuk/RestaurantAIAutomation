@@ -135,7 +135,9 @@ export function useOrdersPage() {
   const groupedOrders = useMemo(() => {
     const groups: { [key: string]: Order[] } = {}
     sortedOrders.forEach((o) => {
-      const key = groupBy === 'wine' ? resolveOrderWineName(o) : resolveOrderProviderName(o)
+      const key = groupBy === 'wine'
+        ? (resolveOrderWineName(o) ?? 'Unknown Wine')
+        : resolveOrderProviderName(o)
       if (!groups[key]) groups[key] = []
       groups[key].push(o)
     })
