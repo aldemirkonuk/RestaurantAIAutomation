@@ -301,6 +301,25 @@ export class ProcurementController {
     }
   }
 
+  @Get('orders/:id/conversations')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Get all email conversations for a specific order (all statuses)' })
+  @ApiResponse({ status: 200 })
+  async getOrderConversations(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.procurementService.getOrderConversations(user.restaurantId, orderId);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to get order conversations',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get('orders/:id/draft')
   @UseGuards(JwtAuthGuard)
   @Header('Cache-Control', 'no-store')

@@ -1115,4 +1115,54 @@ export class ProcurementService {
       providerName: row.providers?.name ?? null,
     }));
   }
+
+  async getOrderConversations(restaurantId: string, orderId: string): Promise<any[]> {
+    const { data, error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select(`
+        id,
+        order_id,
+        provider_id,
+        outbound_email_type,
+        round_count,
+        created_at,
+        sent_at,
+        status,
+        content,
+        message_text,
+        rolling_summary,
+        constraint_flags,
+        procurement_orders!inner(
+          id, order_number, quantity, quoted_price,
+          inventory:inventory_id(wine_name)
+        ),
+        providers!left(name, contact_email)
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      this.logger.error('getOrderConversations failed', { restaurantId, orderId, error: error.message });
+      throw error;
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      orderId: row.order_id,
+      status: row.status,
+      emailType: row.outbound_email_type,
+      roundCount: row.round_count,
+      createdAt: row.created_at,
+      sentAt: row.sent_at ?? null,
+      draftContent: row.content ?? row.message_text ?? null,
+      rollingSummary: row.rolling_summary ?? null,
+      orderNumber: row.procurement_orders?.order_number ?? null,
+      quantity: row.procurement_orders?.quantity ?? null,
+      quotedPrice: row.procurement_orders?.quoted_price ?? null,
+      wineName: row.procurement_orders?.inventory?.wine_name ?? null,
+      providerName: row.providers?.name ?? null,
+      providerEmail: row.providers?.contact_email ?? null,
+    }));
+  }
 }

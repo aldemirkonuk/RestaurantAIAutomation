@@ -100,6 +100,41 @@ export function useDiscardDraft() {
   })
 }
 
+export interface OrderConversationDto {
+  id: string
+  orderId: string
+  status: string
+  emailType: string
+  roundCount: number
+  createdAt: string
+  sentAt: string | null
+  draftContent: string | null
+  rollingSummary: string | null
+  orderNumber: string | null
+  quantity: number | null
+  quotedPrice: number | null
+  wineName: string | null
+  providerName: string | null
+  providerEmail: string | null
+}
+
+export const orderConversationKeys = {
+  all: ['conversations', 'order'] as const,
+  byOrder: (orderId: string) => [...orderConversationKeys.all, orderId] as const,
+}
+
+export function useOrderConversations(orderId: string | null) {
+  return useQuery({
+    queryKey: orderConversationKeys.byOrder(orderId ?? ''),
+    queryFn: () =>
+      apiClient
+        .get(`/procurement/orders/${orderId}/conversations`)
+        .then((r) => r.data as OrderConversationDto[]),
+    enabled: !!orderId,
+    staleTime: 10_000,
+  })
+}
+
 export function useEditDraft() {
   const queryClient = useQueryClient()
   return useMutation({

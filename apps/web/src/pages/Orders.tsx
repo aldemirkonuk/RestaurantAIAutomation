@@ -6,6 +6,7 @@ import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
+import { CommsThreadDrawer } from '../components/orders/CommsThreadDrawer'
 import { useApproveDraft, useDiscardDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
   Package,
@@ -249,6 +250,7 @@ export function Orders() {
     timestamp: string
   } | null>(null)
   const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false)
+  const [commsDrawerOrder, setCommsDrawerOrder] = useState<{ orderId: string; wineName: string; orderStatus: string } | null>(null)
   const approveDraftMutation = useApproveDraft()
   const discardDraftMutation = useDiscardDraft()
   const [isActiveConvPanelOpen, setIsActiveConvPanelOpen] = useState(false)
@@ -2585,7 +2587,24 @@ Shadow stock has been moved to Live Stock.`)
                                           AI Draft Ready
                                         </span>
                                       )}
-                                      
+
+                                      {/* Comms Thread Button */}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setCommsDrawerOrder({
+                                            orderId: order.order_id,
+                                            wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+                                            orderStatus: order.status,
+                                          })
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-full transition-colors"
+                                        title="View email thread"
+                                      >
+                                        <MessageSquare className="w-3 h-3" />
+                                        Comms
+                                      </button>
+
                                       {/* Status Badge */}
                                       <span
                                         className="ml-auto px-3 py-1 rounded-full text-xs font-semibold"
@@ -3311,6 +3330,38 @@ Shadow stock has been moved to Live Stock.`)
           setDraftPanelData(null)
         }}
         isSubmitting={approveDraftMutation.isPending || discardDraftMutation.isPending}
+      />
+
+      {/* Comms Thread Drawer */}
+      <CommsThreadDrawer
+        orderId={commsDrawerOrder?.orderId ?? null}
+        orderWineName={commsDrawerOrder?.wineName}
+        orderStatus={commsDrawerOrder?.orderStatus}
+        isOpen={!!commsDrawerOrder}
+        onClose={() => setCommsDrawerOrder(null)}
+        onOpenDraftPanel={() => {
+          if (!commsDrawerOrder) return
+          const conv = activeConversations.find((c) => c.orderId === commsDrawerOrder.orderId)
+          if (conv) {
+            setDraftPanelData({
+              conversationId: conv.id,
+              orderId: conv.orderId,
+              restaurantName: activeRestaurantName,
+              orderNumber: conv.orderNumber ?? undefined,
+              wineName: conv.wineName ?? 'Wine',
+              quantity: conv.quantity ?? undefined,
+              providerName: conv.providerName ?? 'Provider',
+              providerEmail: conv.providerEmail ?? '',
+              emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
+              draftContent: conv.draftContent ?? '',
+              disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
+              constraintWarnings: [],
+              roundCount: conv.roundCount ?? 1,
+              timestamp: conv.createdAt,
+            })
+            setIsDraftPanelOpen(true)
+          }
+        }}
       />
 
       {/* Active Conversations Panel */}
