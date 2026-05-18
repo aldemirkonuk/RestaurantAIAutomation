@@ -971,7 +971,7 @@ export class ProcurementService {
   ): Promise<Record<string, any> | null> {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_conversations')
-      .select('id, content, outbound_email_type, constraint_flags, round_count, created_at')
+      .select('id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at')
       .eq('restaurant_id', restaurantId)
       .eq('order_id', orderId)
       .eq('status', 'PENDING_APPROVAL')
@@ -980,7 +980,9 @@ export class ProcurementService {
       .single();
 
     if (error) return null;
-    return data;
+    if (!data) return null;
+    // Normalise: prefer the newer `content` column; fall back to the original `message_text`
+    return { ...data, content: data.content ?? (data as any).message_text ?? null };
   }
 
   // =========================================================================
@@ -1004,6 +1006,7 @@ export class ProcurementService {
         created_at,
         constraint_flags,
         content,
+        message_text,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price,
           inventory:inventory_id(wine_name)
@@ -1027,7 +1030,7 @@ export class ProcurementService {
       roundCount: row.round_count,
       createdAt: row.created_at,
       constraintFlags: row.constraint_flags,
-      draftContent: row.content ?? null,
+      draftContent: row.content ?? row.message_text ?? null,
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,
       quotedPrice: row.procurement_orders?.quoted_price ?? null,

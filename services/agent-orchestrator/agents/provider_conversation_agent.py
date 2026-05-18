@@ -2174,14 +2174,22 @@ class ProviderConversationAgent(BaseAgent):
                 "order_id": order_id,
                 "restaurant_id": restaurant_id,
                 "provider_id": provider_id,
+                # direction and channel are NOT NULL with no default — must be supplied
                 "direction": "outbound",
                 "channel": "email",
-                # "content" is the correct DB column name (was incorrectly "message_text")
+                # message_text is the original NOT NULL column — must always be set
+                "message_text": message_text,
+                # content is the newer nullable alias read by NestJS getPendingDraft /
+                # getActiveConversations; populate both so either SELECT works
                 "content": message_text,
-                # "status" is the Phase 32 workflow column queried by NestJS getActiveConversations
+                # status drives the approval workflow; NestJS filters on PENDING_APPROVAL
                 "status": "PENDING_APPROVAL",
-                # ai summary for human-readable display
-                "ai_summary": f"AI-generated {session.session_type} draft pending manager approval",
+                # conversation_summary exists (nullable text) — use instead of ai_summary
+                # which is NOT a real column in the schema
+                "conversation_summary": (
+                    f"AI-generated {session.session_type} draft pending manager approval"
+                ),
+                "ai_generated": True,
                 # fold LLM metadata into the existing JSONB constraint_flags column
                 "constraint_flags": {
                     "llm_model": self.response_model,
