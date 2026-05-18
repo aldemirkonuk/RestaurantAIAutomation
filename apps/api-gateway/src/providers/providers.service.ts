@@ -450,6 +450,15 @@ export class ProvidersService {
     providerId: string,
     dto: CreateProviderContactDto,
   ): Promise<ProviderContactResponseDto> {
+    // Demote any existing primary contact before inserting a new primary
+    if (dto.isPrimary) {
+      await this.databaseService.supabase
+        .from('provider_contacts')
+        .update({ is_primary: false })
+        .eq('provider_id', providerId)
+        .eq('is_primary', true);
+    }
+
     const payload = {
       provider_id: providerId,
       name: dto.name,

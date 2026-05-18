@@ -33,6 +33,7 @@ import {
   updateProviderContact,
   deleteProviderContact,
 } from '../services/api/providers'
+import { toast } from 'sonner'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
 import { EditProviderModal, EditProviderData } from '../components/providers/EditProviderModal'
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
@@ -209,8 +210,8 @@ export function Providers() {
       id.startsWith('primary-') ||
       id.startsWith('personnel-')
 
+    // ── Step 1: save provider fields ──────────────────────────────────────
     try {
-      // 1. Update provider-level fields
       await updateProvider.mutateAsync({
         id: data.id,
         name: data.name,
@@ -233,46 +234,63 @@ export function Providers() {
         paymentTerms: data.paymentTerms,
         minimumOrderValue: data.minimumOrder ?? undefined,
       } as any)
+    } catch (err) {
+      console.error('Failed to update provider:', err)
+      toast.error('Failed to save provider. Please try again.')
+      return
+    }
 
-      // 2. Sync provider_contacts table
-      const providerId = data.id
+    // Provider fields saved — close the modal immediately
+    if (data.rating > 0) setRatings(prev => ({ ...prev, [data.id]: data.rating }))
+    setEditingProvider(null)
+
+    // ── Step 2: sync provider_contacts (decoupled — never blocks the save) ─
+    const providerId = data.id
+    try {
       const existingDbContacts = await fetchProviderContacts(providerId)
       const existingDbIds = new Set(existingDbContacts.map(c => c.id))
       const currentRealIds = new Set(
         data.contacts.filter(c => !isFakeContactId(c.id)).map(c => c.id)
       )
 
-      // Delete contacts the user removed
-      for (const dbContact of existingDbContacts) {
-        if (!currentRealIds.has(dbContact.id)) {
-          await deleteProviderContact(providerId, dbContact.id)
-        }
-      }
+      // Delete contacts the user removed (parallel)
+      await Promise.all(
+        existingDbContacts
+          .filter(c => !currentRealIds.has(c.id))
+          .map(c => deleteProviderContact(providerId, c.id))
+      )
 
-      // Create new contacts or update existing ones
-      for (const contact of data.contacts) {
-        const name = `${contact.firstName} ${contact.lastName}`.trim() || 'Contact'
-        const payload = {
-          name,
-          email: contact.email || '',
-          phone: contact.phone || '',
-          role: contact.role || 'Sales Rep',
-          isPrimary: contact.isPrimary,
-        }
-        if (isFakeContactId(contact.id)) {
-          await addProviderContact(providerId, payload)
-        } else if (existingDbIds.has(contact.id)) {
-          await updateProviderContact(providerId, contact.id, payload)
-        } else {
-          await addProviderContact(providerId, payload)
-        }
-      }
+      // Create new contacts or update existing ones (parallel)
+      await Promise.all(
+        data.contacts.map(contact => {
+          const name = `${contact.firstName} ${contact.lastName}`.trim() || 'Contact'
+          const payload = {
+            name,
+            email: contact.email || '',
+            phone: contact.phone || '',
+            role: contact.role || 'Sales Rep',
+            isPrimary: contact.isPrimary,
+          }
+          if (isFakeContactId(contact.id) || !existingDbIds.has(contact.id)) {
+            return addProviderContact(providerId, payload)
+          }
+          return updateProviderContact(providerId, contact.id, payload)
+        })
+      )
 
-      if (data.rating > 0) setRatings(prev => ({ ...prev, [data.id]: data.rating }))
-      setEditingProvider(null)
-    } catch (err) {
-      console.error('Failed to update provider:', err)
-      alert('Failed to update provider. Please try again.')
+      if (data.contacts.length > 0) {
+        toast.success('Provider and contacts saved')
+      } else {
+        toast.success('Provider saved')
+      }
+    } catch (err: any) {
+      console.error('Contact sync failed:', err)
+      const reason = err?.response?.status === 401
+        ? 'Session expired — please refresh the page'
+        : err?.response?.status === 404
+          ? 'Contact API not available — please redeploy the backend'
+          : 'Unknown error'
+      toast.warning(`Provider saved, but contacts could not be synced. ${reason}`)
     }
   }
 

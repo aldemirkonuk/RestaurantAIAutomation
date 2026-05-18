@@ -287,7 +287,10 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
             }),
           }))
         })
-        .catch(() => { /* keep buildInitialContacts result silently */ })
+        .catch((err) => {
+          const status = (err as any)?.response?.status
+          console.warn(`[EditProviderModal] fetchProviderContacts failed (${status ?? 'network'}) — using derived contacts`)
+        })
 
       return () => { aborted = true }
     }
