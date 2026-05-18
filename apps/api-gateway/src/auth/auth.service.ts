@@ -22,7 +22,8 @@ export interface JwtPayload {
   sub: string; // user_id
   email: string;
   role: 'owner' | 'manager' | 'staff';
-  restaurantId: string;
+  /** Present on all tokens issued by this API; omit on very old tokens */
+  restaurantId?: string;
   iat?: number;
   exp?: number;
 }

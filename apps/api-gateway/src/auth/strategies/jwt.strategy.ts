@@ -20,12 +20,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException();
     }
 
+    // Tenant for this session must come from the signed JWT. `switchRestaurant`
+    // re-issues tokens with a new `restaurantId` but does not update
+    // `users.restaurant_id` in the database — using the DB column here overwrote
+    // the active restaurant and broke tenant-scoped reads (e.g. getPendingDraft).
+    const restaurantId =
+      payload.restaurantId && String(payload.restaurantId).trim().length > 0
+        ? payload.restaurantId
+        : user.restaurant_id;
+
     return {
       userId: user.user_id,
       email: user.email,
       name: user.name,
       role: user.role,
-      restaurantId: user.restaurant_id,
+      restaurantId,
     };
   }
 }
