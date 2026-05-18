@@ -8,9 +8,10 @@ import { AuthModule } from '../auth/auth.module';
 import { EventsModule } from '../events/events.module';
 import { InventoryLedgerModule } from '../inventory-ledger/inventory-ledger.module';
 import { OrchestratorModule } from '../common/orchestrator/orchestrator.module';
+import { CommunicationsModule } from '../communications/communications.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, EventsModule, InventoryLedgerModule, OrchestratorModule],
+  imports: [DatabaseModule, AuthModule, EventsModule, InventoryLedgerModule, OrchestratorModule, CommunicationsModule],
   controllers: [ProcurementController, RecurringOrdersController],
   providers: [ProcurementService, RecurringOrdersService],
   exports: [ProcurementService, RecurringOrdersService],

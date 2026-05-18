@@ -2588,7 +2588,7 @@ Shadow stock has been moved to Live Stock.`)
                                         </span>
                                       )}
 
-                                      {/* Comms Thread Button */}
+                                      {/* Status Badge — click to open email thread */}
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation()
@@ -2598,23 +2598,15 @@ Shadow stock has been moved to Live Stock.`)
                                             orderStatus: order.status,
                                           })
                                         }}
-                                        className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-full transition-colors"
-                                        title="View email thread"
-                                      >
-                                        <MessageSquare className="w-3 h-3" />
-                                        Comms
-                                      </button>
-
-                                      {/* Status Badge */}
-                                      <span
-                                        className="ml-auto px-3 py-1 rounded-full text-xs font-semibold"
+                                        className="ml-auto px-3 py-1 rounded-full text-xs font-semibold transition-opacity hover:opacity-75"
                                         style={{
                                           backgroundColor: statusConfig.color + '20',
                                           color: statusConfig.color,
                                         }}
+                                        title="View email thread"
                                       >
                                         {statusConfig.label}
-                                      </span>
+                                      </button>
                                     </div>
 
                                     <div className="grid grid-cols-4 gap-4">

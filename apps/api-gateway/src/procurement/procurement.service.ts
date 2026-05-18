@@ -3,6 +3,7 @@ import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
 import { OrchestratorService } from '../common/orchestrator/orchestrator.service';
+import { GmailService } from '../communications/gmail.service';
 import {
   StockType,
   TransactionSource,
@@ -51,6 +52,7 @@ export class ProcurementService {
     private readonly eventsService: EventsService,
     private readonly inventoryLedgerService: InventoryLedgerService,
     @Optional() private readonly orchestratorService?: OrchestratorService,
+    @Optional() private readonly gmailService?: GmailService,
   ) {}
 
   /**
@@ -844,9 +846,30 @@ export class ProcurementService {
     orderId: string,
     dto: ApproveDraftDto,
   ): Promise<{ conversationId: string; sentAt: string }> {
+    // Fetch conversation + provider email before updating
+    const { data: conv, error: fetchError } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id, content, subject, providers!left(name, contact_email), procurement_orders!inner(wine_name, inventory:inventory_id(wine_name))')
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .eq('status', 'PENDING_APPROVAL')
+      .single();
+
+    if (fetchError || !conv) {
+      throw new NotFoundException('No pending draft found for this order');
+    }
+
+    const emailBody = dto.modifiedContent ?? (conv as any).content ?? '';
+    const providerEmail = (conv as any).providers?.contact_email ?? null;
+    const providerName = (conv as any).providers?.name ?? 'Provider';
+    const rawOrder = (conv as any).procurement_orders;
+    const wineName = rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? 'Wine Order';
+    const subject = (conv as any).subject || `Order Request: ${wineName}`;
+    const sentAt = new Date().toISOString();
+
     const updatePayload: Record<string, any> = {
-      status: 'APPROVED',
-      sent_at: new Date().toISOString(),
+      sent_at: sentAt,
+      status: 'SENT',
     };
     if (dto.modifiedContent) {
       updatePayload.content = dto.modifiedContent;
@@ -866,19 +889,26 @@ export class ProcurementService {
       throw error;
     }
 
-    if (this.orchestratorService) {
-      await this.orchestratorService.publishEvent(
-        'provider.events',
-        'provider.draft.approved',
-        {
-          conversation_id: (data as any).id,
-          order_id: orderId,
-          restaurant_id: restaurantId,
-          modified_content: dto.modifiedContent ?? null,
-          manager_notes: dto.managerNotes ?? null,
-          cc_emails: dto.ccEmails ?? [],
-        },
-      );
+    // Send the email directly now that we have the content and provider address
+    if (this.gmailService && providerEmail) {
+      try {
+        const ccAddresses = dto.ccEmails ?? [];
+        const result = await this.gmailService.sendEmail({
+          to: [providerEmail],
+          cc: ccAddresses.length > 0 ? ccAddresses : undefined,
+          subject,
+          html: emailBody,
+        });
+        if (!result.success) {
+          this.logger.error(`Email send failed for order ${orderId}: ${result.error}`);
+        } else {
+          this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId}`);
+        }
+      } catch (e: any) {
+        this.logger.error(`Email send threw for order ${orderId}: ${e?.message}`);
+      }
+    } else if (!providerEmail) {
+      this.logger.warn(`No provider email found for order ${orderId} — email not sent`);
     }
 
     // Create calendar delivery event NOW — only after manager approves the draft email.
