@@ -1597,6 +1597,7 @@ Shadow stock has been moved to Live Stock.`)
                     <option value="approved">Approved</option>
                     <option value="ordered">Ordered</option>
                     <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
 
                   {/* Group By */}
@@ -1648,12 +1649,11 @@ Shadow stock has been moved to Live Stock.`)
             {/* Unified Orders Table */}
             <div className="space-y-4">
               {(() => {
-                // Filter orders based on type, status, and search
-                const filtered = searchFilteredOrders.filter(order => {
-                  const typeMatch = filterOrderType === 'all' || 
+                // Filter orders based on type and order-type (cancelled already excluded by sortedOrdersWithAutoHide)
+                const filtered = sortedOrdersWithAutoHide.filter(order => {
+                  const typeMatch = filterOrderType === 'all' ||
                     (filterOrderType === 'recurring' ? order.isRecurring : !order.isRecurring)
-                  const statusMatch = filterStatus === 'all' || order.status === filterStatus
-                  return typeMatch && statusMatch
+                  return typeMatch
                 })
 
                 // Group orders
