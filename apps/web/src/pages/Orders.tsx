@@ -2590,6 +2590,7 @@ Shadow stock has been moved to Live Stock.`)
 
                                       {/* Status Badge — click to open email thread */}
                                       <button
+                                        type="button"
                                         onClick={(e) => {
                                           e.stopPropagation()
                                           setCommsDrawerOrder({
@@ -2598,13 +2599,15 @@ Shadow stock has been moved to Live Stock.`)
                                             orderStatus: order.status,
                                           })
                                         }}
-                                        className="ml-auto px-3 py-1 rounded-full text-xs font-semibold transition-opacity hover:opacity-75"
+                                        className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer select-none transition-all hover:ring-2 hover:ring-offset-1 active:scale-95"
                                         style={{
                                           backgroundColor: statusConfig.color + '20',
                                           color: statusConfig.color,
+                                          ['--tw-ring-color' as any]: statusConfig.color + '60',
                                         }}
                                         title="View email thread"
                                       >
+                                        <MessageSquare className="w-3 h-3 flex-shrink-0" />
                                         {statusConfig.label}
                                       </button>
                                     </div>
