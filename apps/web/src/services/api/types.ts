@@ -189,6 +189,7 @@ export interface UpdateOrderRequest {
   notes?: string;
   quantity?: number;
   unitPrice?: number;
+  locationId?: string;
 }
 
 // ==================== Wine Types ====================
