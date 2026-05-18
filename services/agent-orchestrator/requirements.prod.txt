@@ -33,6 +33,8 @@ hiredis==2.3.2
 # AI/LLM (POSIntegrationAgent wine matching)
 anthropic>=0.50.0
 google-genai>=1.0.0
+# Legacy `import google.generativeai` (ProcurementAgent, RFQ, menu analyzer, etc.)
+google-generativeai>=0.8.0
 
 # Observability
 sentry-sdk[fastapi]>=2.0.0

@@ -967,7 +967,14 @@ export class ProcurementService {
   ): Promise<Record<string, any> | null> {
     const { data, error } = await this.databaseService.supabase
       .from('procurement_conversations')
-      .select('id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at')
+      .select(`
+        id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
+        providers!left(name, contact_email),
+        procurement_orders!inner(
+          order_number,
+          inventory:inventory_id(wine_name)
+        )
+      `)
       .eq('restaurant_id', restaurantId)
       .eq('order_id', orderId)
       .eq('status', 'PENDING_APPROVAL')
@@ -977,8 +984,15 @@ export class ProcurementService {
 
     if (error) return null;
     if (!data) return null;
-    // Normalise: prefer the newer `content` column; fall back to the original `message_text`
-    return { ...data, content: data.content ?? (data as any).message_text ?? null };
+    const row = data as any;
+    return {
+      ...row,
+      content: row.content ?? row.message_text ?? null,
+      provider_name: row.providers?.name ?? null,
+      provider_email: row.providers?.contact_email ?? null,
+      wine_name: row.procurement_orders?.inventory?.wine_name ?? null,
+      order_number: row.procurement_orders?.order_number ?? null,
+    };
   }
 
   // =========================================================================
@@ -1007,7 +1021,7 @@ export class ProcurementService {
           id, order_number, quantity, quoted_price,
           inventory:inventory_id(wine_name)
         ),
-        providers!left(name)
+        providers!left(name, contact_email)
       `)
       .eq('restaurant_id', restaurantId)
       .eq('status', 'PENDING_APPROVAL')
@@ -1032,6 +1046,7 @@ export class ProcurementService {
       quotedPrice: row.procurement_orders?.quoted_price ?? null,
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
       providerName: row.providers?.name ?? null,
+      providerEmail: row.providers?.contact_email ?? null,
     }));
   }
 

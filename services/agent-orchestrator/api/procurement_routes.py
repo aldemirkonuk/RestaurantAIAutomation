@@ -63,7 +63,9 @@ async def _run_draft_generation(payload: Dict[str, Any]) -> None:
         from core.database import DatabaseClient  # noqa: PLC0415
         from agents.provider_communication_agent import ProviderCommunicationAgent  # noqa: PLC0415
 
-        db = DatabaseClient(settings.supabase_url, settings.supabase_key)
+        redis_url = settings.redis_url or "redis://127.0.0.1:6379"
+        supabase_key = settings.supabase_service_role_key or settings.supabase_key
+        db = DatabaseClient(settings.supabase_url, supabase_key, redis_url)
         await db.connect()
         try:
             agent = ProviderCommunicationAgent(message_bus=None, database=db)

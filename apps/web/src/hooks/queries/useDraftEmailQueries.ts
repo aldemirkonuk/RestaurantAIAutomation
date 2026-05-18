@@ -28,6 +28,7 @@ export interface ActiveConversationDto {
   quotedPrice: number | null
   wineName: string | null
   providerName: string | null
+  providerEmail: string | null
 }
 
 export function useActiveConversations() {
