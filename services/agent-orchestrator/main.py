@@ -25,14 +25,9 @@ _sentry_dsn = os.getenv("SENTRY_DSN")
 _environment = os.getenv("ENVIRONMENT", "development")
 
 if not _sentry_dsn:
-    if _environment == "production":
-        raise ValueError(
-            "SENTRY_DSN is required when ENVIRONMENT=production. "
-            "Set SENTRY_DSN in Railway dashboard environment variables."
-        )
     logging.getLogger(__name__).warning(
         "SENTRY_DSN not set — Sentry disabled. "
-        "(Set ENVIRONMENT=production to fail fast on missing DSN)"
+        "Set SENTRY_DSN in Railway dashboard environment variables to enable error tracking."
     )
 else:
     sentry_sdk.init(

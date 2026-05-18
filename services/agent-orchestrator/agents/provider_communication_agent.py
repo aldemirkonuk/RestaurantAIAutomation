@@ -551,9 +551,13 @@ class ProviderCommunicationAgent(BaseAgent):
                     "order_id": order_id,
                     "provider_id": provider_id,
                     "restaurant_id": restaurant_id,
-                    "direction": "OUTBOUND",
+                    "direction": "outbound",
                     "channel": "email",
+                    # message_text is NOT NULL — must always be present
+                    "message_text": full_draft,
+                    # content is the nullable alias read by NestJS getPendingDraft
                     "content": full_draft,
+                    "ai_generated": True,
                     "status": final_status,
                     "outbound_email_type": email_type,
                     "round_count": 0,
