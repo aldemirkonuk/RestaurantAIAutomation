@@ -49,8 +49,10 @@ async def _run_draft_generation(payload: Dict[str, Any]) -> None:
         if orch is not None:
             agent = orch.agents.get("provider_communication_agent")
             if agent is not None:
-                payload["_routing_key"] = "procurement.order.created"
-                await agent._handle_order_created(payload)
+                # Map NestJS draftPayload to the intent shape _handle_procurement_intent expects
+                if "intent_type" not in payload:
+                    payload["intent_type"] = "negotiate_price"
+                await agent._handle_procurement_intent(payload)
                 logger.info("Draft triggered via running orchestrator agent for order %s", payload.get("order_id"))
                 return
 
@@ -69,8 +71,9 @@ async def _run_draft_generation(payload: Dict[str, Any]) -> None:
         try:
             agent = ProviderCommunicationAgent(message_bus=None, database=db)
             await agent.initialize()
-            payload["_routing_key"] = "procurement.order.created"
-            await agent._handle_order_created(payload)
+            if "intent_type" not in payload:
+                payload["intent_type"] = "negotiate_price"
+            await agent._handle_procurement_intent(payload)
             logger.info("Draft triggered via ephemeral agent (HTTP-only mode) for order %s", payload.get("order_id"))
         finally:
             await db.disconnect()

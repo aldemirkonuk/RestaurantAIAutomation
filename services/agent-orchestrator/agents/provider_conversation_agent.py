@@ -315,6 +315,8 @@ class ProviderConversationAgent(BaseAgent):
             ("conversation.events", "conversation.inbound.voice_transcript"),
             # Intent requests from other agents
             ("procurement.events", "procurement.conversation_request"),
+            # Direct order-created events from NestJS api-gateway
+            ("procurement.events", "procurement.order.created"),
             ("provider.events", "provider.promo_check_requested"),
             ("provider.events", "provider.profile_refresh_requested"),
             ("provider.events", "provider.outreach_scheduled"),
@@ -353,6 +355,13 @@ class ProviderConversationAgent(BaseAgent):
 
             # --- Intent requests from other agents ---
             elif routing_key == "procurement.conversation_request":
+                await self._handle_procurement_intent(payload)
+
+            # --- Direct order creation from NestJS api-gateway ---
+            elif routing_key == "procurement.order.created":
+                # Map the NestJS draftPayload fields to the intent payload shape
+                if "intent_type" not in payload:
+                    payload["intent_type"] = "negotiate_price"
                 await self._handle_procurement_intent(payload)
             elif routing_key == "provider.promo_check_requested":
                 await self._handle_promo_check(payload)
@@ -2167,11 +2176,15 @@ class ProviderConversationAgent(BaseAgent):
                 "provider_id": provider_id,
                 "direction": "outbound",
                 "channel": "email",
-                "message_text": message_text,
-                "ai_generated": True,
-                "llm_model": self.response_model,
-                "detected_intent": session.session_type,
-                "conversation_context": {
+                # "content" is the correct DB column name (was incorrectly "message_text")
+                "content": message_text,
+                # "status" is the Phase 32 workflow column queried by NestJS getActiveConversations
+                "status": "PENDING_APPROVAL",
+                # ai summary for human-readable display
+                "ai_summary": f"AI-generated {session.session_type} draft pending manager approval",
+                # fold LLM metadata into the existing JSONB constraint_flags column
+                "constraint_flags": {
+                    "llm_model": self.response_model,
                     "session_id": session.session_id,
                     "session_type": session.session_type,
                     "intent": session.intent,
@@ -2183,8 +2196,6 @@ class ProviderConversationAgent(BaseAgent):
                         "intent_source": audit.intent_source,
                     },
                 },
-                "manager_approval_status": "pending",
-                "paused_at": datetime.utcnow().isoformat(),
             }
 
             result = self.database.supabase.table("procurement_conversations") \
