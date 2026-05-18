@@ -366,6 +366,27 @@ Plans:
 
 ---
 
+### Phase 34: Order Communications Hub & Procurement Integrity
+**Goal**: Three interconnected improvements that complete the procurement loop: (1) Surface AI conversations where managers need them — a creative active-conversations panel on /orders (launched from the Pending KPI card), and a full send-history thread view on /communications; (2) Enforce procurement integrity — orders in PENDING state must NOT trigger inventory writes or calendar scheduling; those fire only on manager approval (approveDraft); (3) Add a location-assignment guard — assigning a delivery location to a PENDING order raises a 422 error; location can only be set once order reaches APPROVED or later.
+**Depends on**: Phase 32 (DraftEmailApprovalPanel, approveDraft endpoint, procurement_conversations table)
+**Requirements**: COMMS-01..06, PROCINT-01..06
+**Success Criteria** (what must be TRUE):
+  1. Clicking the "Pending" KPI card on /orders opens a slide-in "Active Conversations" panel listing all orders with a PENDING_APPROVAL conversation, with live status indicators
+  2. /communications page has a "Send History" tab showing all COMPLETED/CLOSED/AUTO_SENT conversations with full thread replay (subject, body, provider replies, timestamps)
+  3. Creating an order does NOT write to `restaurant_inventory` stock_live or create any `calendar_events` row; those are deferred to approval
+  4. `POST /procurement/orders/:id/approve-draft` (approveDraft) atomically: transitions order status to APPROVED, updates inventory stock, inserts calendar delivery event
+  5. `PATCH /procurement/orders/:id/location` returns HTTP 422 with `{ reason: 'order_not_approved', message: '...' }` when order status is PENDING, APPROVAL_NEEDED, or NEGOTIATING
+  6. Location can be assigned at APPROVED, CONFIRMED, IN_TRANSIT, or DELIVERED status
+  7. Each order card in /orders shows a "View Draft" badge when a PENDING_APPROVAL conversation exists
+  8. Active conversations panel shows: wine name, provider, draft type, age of draft, quick-approve/discard actions inline
+  9. Send history shows: conversation thread, outcome (approved/discarded/auto-sent), provider name, date, linked order
+  10. `dispatchInventoryUpdate` in handleContactProviders is removed or deferred — no inventory side-effect on order creation
+  11. No regression on existing draft approval flow (approve/edit/discard still works from DraftEmailApprovalPanel)
+  12. Guard is enforced in both backend (422) and frontend (disabled button + tooltip when order is pending)
+**Plans:** TBD
+
+---
+
 ### Phase 28: Onboarding Reform + Menu Import ✓ COMPLETE (2026-05-11)
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
 **Depends on**: Phase 26 (registration flow complete), Phase 27 (vendors discoverable)
