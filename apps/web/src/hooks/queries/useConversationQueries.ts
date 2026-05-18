@@ -180,3 +180,43 @@ export function useRegenerateSummary() {
     },
   })
 }
+
+// ── Phase 34: Procurement Conversation History ─────────────────────────────
+
+export interface ProcurementHistoryItem {
+  id: string
+  orderId: string
+  providerId: string
+  emailType: string
+  status: string
+  roundCount: number
+  createdAt: string
+  sentAt: string
+  draftContent: string
+  constraintFlags: {
+    hard: string[]
+    annotating: string[]
+    soft_warnings: string[]
+    is_sensitive: boolean
+  } | null
+  rollingSummary: string | null
+  orderNumber: string | null
+  quantity: number | null
+  wineName: string | null
+  providerName: string | null
+}
+
+export const procurementHistoryKeys = {
+  all: ['procurement', 'history'] as const,
+}
+
+export function useProcurementConversationHistory() {
+  return useQuery({
+    queryKey: procurementHistoryKeys.all,
+    queryFn: () =>
+      api
+        .get<ProcurementHistoryItem[]>('/procurement/conversations/history')
+        .then((r) => r.data),
+    staleTime: 30_000,
+  })
+}
