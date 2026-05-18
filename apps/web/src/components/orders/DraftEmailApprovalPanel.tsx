@@ -12,6 +12,7 @@ interface DraftEmailData {
   conversationId: string
   orderId: string
   orderNumber?: string
+  restaurantName?: string
   wineName: string
   quantity?: number
   providerName: string
@@ -142,6 +143,14 @@ export function DraftEmailApprovalPanel({
 
               {/* LEFT — meta strip */}
               <div className="w-52 flex-shrink-0 bg-gray-50 border-r border-gray-200 px-4 py-5 flex flex-col gap-5 overflow-y-auto">
+
+                {/* From */}
+                {draftData.restaurantName && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">From</p>
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">{draftData.restaurantName}</p>
+                  </div>
+                )}
 
                 {/* To */}
                 <div>

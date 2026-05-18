@@ -152,7 +152,8 @@ const getRecommendedProviders = (providerList: Provider[]) => {
 }
 
 export function Orders() {
-  const { user } = useAuth()
+  const { user, activeRestaurantId, availableRestaurants } = useAuth()
+  const activeRestaurantName = availableRestaurants.find((b) => b.id === activeRestaurantId)?.name ?? ''
   const { dispatchOrderUpdate, dispatchInventoryUpdate } = useRealtimeDispatch()
   const { pendingReorder, clearPendingReorder } = useUIStore()
   const { measurementUnit } = useRestaurantSettingsStore()
@@ -372,6 +373,7 @@ export function Orders() {
           setDraftPanelData({
             conversationId: payload.metadata?.conversation_id ?? payload.conversation_id ?? draft.id ?? orderId,
             orderId,
+            restaurantName: activeRestaurantName,
             wineName: draft.wine_name ?? payload.metadata?.wine_name ?? '',
             providerName: draft.provider_name ?? payload.metadata?.provider_name ?? '',
             providerEmail: draft.provider_email ?? '',
@@ -1023,6 +1025,7 @@ Shadow stock has been moved to Live Stock.`)
               setDraftPanelData({
                 conversationId,
                 orderId,
+                restaurantName: activeRestaurantName,
                 orderNumber: fallbackOrder.order_number ?? undefined,
                 wineName: fallbackOrder.wine_name || draft.wineName || draft.wine_name || 'Wine',
                 quantity: fallbackOrder.quantity ?? undefined,
@@ -1847,6 +1850,7 @@ Shadow stock has been moved to Live Stock.`)
                                                         setDraftPanelData({
                                                           conversationId: conv.id,
                                                           orderId: conv.orderId,
+                                                          restaurantName: activeRestaurantName,
                                                           orderNumber: conv.orderNumber ?? undefined,
                                                           wineName: conv.wineName ?? 'Wine',
                                                           quantity: conv.quantity ?? undefined,
@@ -2559,6 +2563,7 @@ Shadow stock has been moved to Live Stock.`)
                                               setDraftPanelData({
                                                 conversationId: conv.id,
                                                 orderId: conv.orderId,
+                                                restaurantName: activeRestaurantName,
                                                 orderNumber: conv.orderNumber ?? undefined,
                                                 wineName: conv.wineName ?? 'Wine',
                                                 quantity: conv.quantity ?? undefined,
@@ -3316,6 +3321,7 @@ Shadow stock has been moved to Live Stock.`)
           setDraftPanelData({
             conversationId: conv.id,
             orderId: conv.orderId,
+            restaurantName: activeRestaurantName,
             orderNumber: conv.orderNumber ?? undefined,
             wineName: conv.wineName ?? 'Wine',
             quantity: conv.quantity ?? undefined,
