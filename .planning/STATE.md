@@ -29,6 +29,8 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30
 **Phases deferred:** 23 (Gmail Integration) — `[ ]` in ROADMAP, plans 23-03 + 23-06 remain (Railway OAuth2 credential gate)
 
+**Phase 34 planned:** Order Communications Hub & Procurement Integrity — 4 plans (2 waves) ready to execute (2026-05-18). Wave 1: integrity removals + backend endpoints. Wave 2: ActiveConversationsPanel + Communications history tab.
+
 **Next phase:** Phase 29 — Autonomous Vendor Discovery (paid-tier LLM vendor search)
 
 ### Phase 27 — COMPLETE (2026-05-11)
