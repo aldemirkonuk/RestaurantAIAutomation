@@ -383,7 +383,12 @@ Plans:
   10. `dispatchInventoryUpdate` in handleContactProviders is removed or deferred — no inventory side-effect on order creation
   11. No regression on existing draft approval flow (approve/edit/discard still works from DraftEmailApprovalPanel)
   12. Guard is enforced in both backend (422) and frontend (disabled button + tooltip when order is pending)
-**Plans:** TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 34-01-PLAN.md — Frontend integrity: remove dispatchInventoryUpdate/dispatchCalendarEvent/createCalendarEvent.mutateAsync from handleContactProviders (Wave 1)
+- [ ] 34-02-PLAN.md — Backend: location guard (422) + cancelOrder conversation cascade + GET conversations/active + GET conversations/history (Wave 1)
+- [ ] 34-03-PLAN.md — Active Conversations Panel: slide-in component + useActiveConversations hook + Pending KPI badge + AI Draft Ready order badge (Wave 2)
+- [ ] 34-04-PLAN.md — Communications Send History: 'procurement-history' tab + useProcurementConversationHistory hook + expandable thread replay (Wave 2)
 
 ---
 
