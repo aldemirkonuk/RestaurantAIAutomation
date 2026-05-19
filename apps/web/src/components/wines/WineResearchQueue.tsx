@@ -20,6 +20,7 @@ import {
   Plus,
   Info,
   Lightbulb,
+  Globe,
 } from 'lucide-react'
 
 // Research item interface

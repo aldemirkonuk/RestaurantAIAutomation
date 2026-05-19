@@ -174,6 +174,12 @@ export interface Order {
   wineName?: string;
   wineProducer?: string;
   providerName?: string;
+  orderNumber?: string;
+  recurrence?: {
+    frequency: 'daily' | 'weekly' | 'monthly';
+    interval?: number;
+    nextDate?: string;
+  };
 }
 
 export interface CreateOrderRequest {

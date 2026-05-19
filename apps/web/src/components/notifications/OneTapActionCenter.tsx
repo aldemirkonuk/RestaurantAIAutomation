@@ -229,7 +229,7 @@ function generateRealActions(
   // If API orders are available, use them
   if (ordersToProcess.length > 0) {
     ordersToProcess
-      .filter((o) => o.status === 'approved' || o.status === 'in_transit' || o.status === 'APPROVED')
+      .filter((o) => o.status === 'approved' || o.status === 'in_transit')
       .slice(0, 3)
       .forEach((order, index: number) => {
         const wine = wines.find(w => w.id === order.wineId)

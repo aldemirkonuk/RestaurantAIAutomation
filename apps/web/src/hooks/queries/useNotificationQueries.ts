@@ -82,17 +82,11 @@ export function useUnreadNotifications(userId: string) {
  * Hook to fetch unread notification count
  */
 export function useUnreadCount(userId: string) {
-  const notificationStore = useNotificationStore()
-  
   return useQuery({
     queryKey: queryKeys.notifications.count(userId),
     queryFn: () => fetchUnreadCount(userId),
     enabled: !!userId,
     refetchInterval: 30000, // Refetch every 30 seconds
-    onSuccess: (count) => {
-      // Sync with notification store
-      notificationStore.setUnreadCount(count)
-    },
   })
 }
 
@@ -180,9 +174,7 @@ export function useMarkNotificationsAsRead() {
       toast.success(`${ids.length} notifications marked as read`)
     },
     onError: (error: any) => {
-      toast.error('Failed to mark notifications as read', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to mark notifications as read', error.response?.data?.message || error.message)
     },
   })
 }
@@ -207,9 +199,7 @@ export function useMarkAllNotificationsAsRead() {
       toast.success('All notifications marked as read')
     },
     onError: (error: any) => {
-      toast.error('Failed to mark all as read', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to mark all as read', error.response?.data?.message || error.message)
     },
   })
 }
@@ -245,17 +235,13 @@ export function useArchiveNotification() {
       const isPending = (result as any)?._pending
       
       if (isPending) {
-        toast.info('Archive saved offline', {
-          description: 'Will sync when you\'re back online.',
-        })
+        toast.info('Archive saved offline', 'Will sync when you\'re back online.')
       } else {
         toast.success('Notification archived')
       }
     },
     onError: (error: any) => {
-      toast.error('Failed to archive notification', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to archive notification', error.response?.data?.message || error.message)
     },
   })
 }
@@ -291,9 +277,7 @@ export function useDeleteNotifications() {
       toast.success(`${ids.length} notifications deleted`)
     },
     onError: (error: any) => {
-      toast.error('Failed to delete notifications', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to delete notifications', error.response?.data?.message || error.message)
     },
   })
 }
@@ -314,9 +298,7 @@ export function useDeleteAllReadNotifications() {
       toast.success('All read notifications deleted')
     },
     onError: (error: any) => {
-      toast.error('Failed to delete notifications', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to delete notifications', error.response?.data?.message || error.message)
     },
   })
 }
@@ -341,9 +323,7 @@ export function useUpdateNotificationPreferences() {
       toast.success('Preferences updated')
     },
     onError: (error: any) => {
-      toast.error('Failed to update preferences', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to update preferences', error.response?.data?.message || error.message)
     },
   })
 }
@@ -361,9 +341,7 @@ export function useSendTestNotification() {
       toast.success(`Test ${variables.channel} notification sent`)
     },
     onError: (error: any) => {
-      toast.error('Failed to send test notification', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to send test notification', error.response?.data?.message || error.message)
     },
   })
 }
@@ -381,9 +359,7 @@ export function useSubscribeToPushNotifications() {
       toast.success('Push notifications enabled')
     },
     onError: (error: any) => {
-      toast.error('Failed to enable push notifications', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to enable push notifications', error.response?.data?.message || error.message)
     },
   })
 }
@@ -400,9 +376,7 @@ export function useUnsubscribeFromPushNotifications() {
       toast.success('Push notifications disabled')
     },
     onError: (error: any) => {
-      toast.error('Failed to disable push notifications', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to disable push notifications', error.response?.data?.message || error.message)
     },
   })
 }

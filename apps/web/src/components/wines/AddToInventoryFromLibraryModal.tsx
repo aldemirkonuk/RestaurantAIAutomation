@@ -14,7 +14,7 @@ import {
   Undo2,
   Zap,
   CheckCircle,
-  ChevronDown,
+  Loader2,
 } from 'lucide-react'
 import { Wine as WineType, getWineTypeColor } from '../../data/wineData'
 import { useAuth } from '../../contexts/AuthContext'
@@ -133,7 +133,7 @@ export function AddToInventoryFromLibraryModal({
   const { dispatchInventoryUpdate } = useRealtimeDispatch()
   
   // Get storage locations for cross-page persistence
-  const { locations, assignWineToLocation, getWineLocation } = useStorageLocations()
+  const { locations, locationsLoading, assignWineToLocation, getWineLocation } = useStorageLocations()
 
   const availableProviders = useMemo(() => {
     if (localProviders.length === 0) {
@@ -751,40 +751,113 @@ export function AddToInventoryFromLibraryModal({
 
             {/* Storage Location */}
             <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-              <label className="block text-sm font-medium text-gray-900 mb-3">
-                Storage Location
-              </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-600 z-10" />
-                <select
-                  value={selectedLocationId}
-                  onChange={(e) => setSelectedLocationId(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 border border-emerald-200 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none cursor-pointer"
-                >
-                  <option value="">Select a location...</option>
-                  {locations.map(location => (
-                    <option key={location.id} value={location.id}>
-                      {location.name} ({location.currentCount}/{location.capacity})
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <div className="flex items-center justify-between mb-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  Storage Location
+                </label>
+                {selectedLocationId && (
+                  <button
+                    onClick={() => setSelectedLocationId('')}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-              {selectedLocationId && (
-                <div className="mt-2 text-xs text-emerald-700">
-                  {(() => {
-                    const loc = locations.find(l => l.id === selectedLocationId)
-                    if (!loc) return null
+
+              {locationsLoading ? (
+                <div className="flex items-center justify-center h-14 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+              ) : locations.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-3">
+                  No storage locations configured
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-0.5">
+                  {locations.map((location) => {
+                    const pct =
+                      location.capacity > 0
+                        ? Math.min(100, (location.currentCount / location.capacity) * 100)
+                        : 0
+                    const isFull = location.currentCount >= location.capacity
+                    const isSelected = selectedLocationId === location.id
                     return (
-                      <span>
-                        {loc.description && `${loc.description} • `}
-                        {loc.temperature && `${loc.temperature} • `}
-                        {loc.humidity && `${loc.humidity} humidity`}
-                      </span>
+                      <button
+                        key={location.id}
+                        type="button"
+                        onClick={() => setSelectedLocationId(isSelected ? '' : location.id)}
+                        disabled={isFull && !isSelected}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${
+                          isSelected
+                            ? 'border-emerald-500 bg-white shadow-sm ring-1 ring-emerald-500/20'
+                            : isFull
+                            ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
+                            : 'border-gray-200 bg-white hover:border-emerald-300 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <div
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: location.color }}
+                          />
+                          <span className="text-sm font-medium text-gray-900 truncate flex-1">
+                            {location.name}
+                          </span>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          )}
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1 mb-1.5">
+                          <div
+                            className={`h-1 rounded-full transition-all ${
+                              pct > 90
+                                ? 'bg-red-400'
+                                : pct > 70
+                                ? 'bg-amber-400'
+                                : 'bg-emerald-400'
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-gray-400">
+                            {location.currentCount}/{location.capacity}
+                          </span>
+                          {location.temperature && (
+                            <span className="text-[11px] text-gray-400">
+                              {location.temperature}
+                            </span>
+                          )}
+                        </div>
+                      </button>
                     )
-                  })()}
+                  })}
                 </div>
               )}
+
+              {selectedLocationId && (() => {
+                const loc = locations.find((l) => l.id === selectedLocationId)
+                if (!loc) return null
+                return (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-emerald-100 rounded-lg">
+                    <div
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: loc.color }}
+                    />
+                    <span className="text-xs font-semibold text-emerald-800">{loc.name}</span>
+                    {loc.description && (
+                      <span className="text-xs text-emerald-600 truncate">— {loc.description}</span>
+                    )}
+                    {loc.humidity && (
+                      <span className="ml-auto text-[11px] text-emerald-600 flex-shrink-0">
+                        {loc.humidity}
+                      </span>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Notes */}

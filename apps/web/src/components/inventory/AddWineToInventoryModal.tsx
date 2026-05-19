@@ -152,6 +152,7 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
       price: result.suggestedPrice || 0,
       liveStock: null, // Will be set when added to inventory
       threshold: 10, // Default threshold
+      bottleSizeMl: 750, // Standard bottle size
       provider: {
         name: 'TBD',
         contact: 'N/A',

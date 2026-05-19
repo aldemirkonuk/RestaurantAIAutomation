@@ -139,7 +139,7 @@ export default function CalendarPage() {
     if (enabledTypes.size === Object.keys(EVENT_TYPE_COLORS).length) {
       return eventsForView
     }
-    return eventsForView.filter((e) => enabledTypes.has(e.type))
+    return eventsForView.filter((e) => enabledTypes.has(e.type as string))
   }, [eventsForView, enabledTypes])
 
   // ---- Event handlers ----
@@ -525,7 +525,7 @@ export default function CalendarPage() {
         initialEndDate={modalInitialEndDate}
         existingEvent={editingEvent || undefined}
         eventTypes={eventTypes}
-        providers={providers}
+        providers={providers as any}
       />
 
       <MeetingMemoPrompt

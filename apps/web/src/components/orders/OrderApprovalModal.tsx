@@ -27,6 +27,7 @@ interface OrderApprovalData {
   finalPrice: number
   deliveryEstimate: string
   conversationSummary: string
+  hasNegotiation?: boolean
   conversationId: string
   timestamp: string
   counterOffer?: CounterOffer
@@ -207,15 +208,17 @@ export function OrderApprovalModal({
                   </div>
                 </div>
 
-                {/* Conversation Summary - Collapsed by default if multiple responses */}
-                <details className="mt-3 pt-3 border-t border-gray-200" open={!hasMultipleResponses}>
-                  <summary className="text-sm font-semibold text-gray-700 cursor-pointer uppercase tracking-wide hover:text-wine-600">
-                    Conversation Summary {hasMultipleResponses && '(Click to expand)'}
-                  </summary>
-                  <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 leading-relaxed whitespace-pre-line mt-2 max-h-32 overflow-y-auto">
-                    {orderData.conversationSummary}
-                  </div>
-                </details>
+                {/* Conversation Summary — only visible after provider has replied */}
+                {orderData.hasNegotiation && orderData.conversationSummary && (
+                  <details className="mt-3 pt-3 border-t border-gray-200" open={!hasMultipleResponses}>
+                    <summary className="text-sm font-semibold text-gray-700 cursor-pointer uppercase tracking-wide hover:text-wine-600">
+                      Negotiation Summary {hasMultipleResponses && '(Click to expand)'}
+                    </summary>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 leading-relaxed whitespace-pre-line mt-2 max-h-32 overflow-y-auto">
+                      {orderData.conversationSummary}
+                    </div>
+                  </details>
+                )}
               </div>
 
               {/* Action Buttons Grid - Compact */}

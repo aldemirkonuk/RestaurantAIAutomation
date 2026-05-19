@@ -1013,7 +1013,7 @@ export function Calendar() {
           restaurantId: restaurantId,
           type: 'calendar_reminder',
           title: `✅ Event Confirmed: ${event.title}`,
-          message: `${(eventTypeConfig[event.type] ?? eventTypeConfig.custom).label} on ${formatDateInput(event.date)} has been confirmed.`,
+          message: `${(eventTypeConfig[event.type as EventType] ?? eventTypeConfig.custom).label} on ${formatDateInput(event.date)} has been confirmed.`,
           priority: 'low',
           actionUrl: '/calendar',
           actionLabel: 'View Calendar',
@@ -1272,7 +1272,7 @@ export function Calendar() {
                         {/* Events */}
                         <div className="space-y-1 overflow-hidden">
                           {dayEvents.slice(0, 3).map((event) => {
-                            const TypeIcon = (eventTypeConfig[event.type] ?? eventTypeConfig.custom).icon
+                            const TypeIcon = (eventTypeConfig[event.type as EventType] ?? eventTypeConfig.custom).icon
                             return (
                               <motion.div
                                 key={event.id}
@@ -1301,7 +1301,7 @@ export function Calendar() {
                   {filteredEvents
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                     .map((event) => {
-                      const TypeIcon = (eventTypeConfig[event.type] ?? eventTypeConfig.custom).icon
+                      const TypeIcon = (eventTypeConfig[event.type as EventType] ?? eventTypeConfig.custom).icon
                       const eventDate = new Date(event.date)
                       
                       return (
@@ -1391,7 +1391,7 @@ export function Calendar() {
                 ) : (
                   <div className="space-y-2">
                     {getEventsForDate(selectedDate).map((event) => {
-                      const TypeIcon = (eventTypeConfig[event.type] ?? eventTypeConfig.custom).icon
+                      const TypeIcon = (eventTypeConfig[event.type as EventType] ?? eventTypeConfig.custom).icon
                       return (
                         <div
                           key={event.id}
@@ -1449,7 +1449,7 @@ export function Calendar() {
               <h3 className="font-bold text-gray-900 mb-4">Coming Up</h3>
               <div className="space-y-3">
                 {upcomingEvents.map((event) => {
-                  const TypeIcon = (eventTypeConfig[event.type] ?? eventTypeConfig.custom).icon
+                  const TypeIcon = (eventTypeConfig[event.type as EventType] ?? eventTypeConfig.custom).icon
                   const eventDate = new Date(event.date)
                   const isEventToday = isToday(eventDate)
                   
@@ -1720,7 +1720,7 @@ export function Calendar() {
                       const currentTags = newEvent.entityTags || []
                       if (currentTags.some(t => t.id === entity.id)) return
                       
-                      const updatedTags = [...currentTags, newTag]
+                      const updatedTags = [...currentTags, newTag] as typeof currentTags
                       setNewEvent({
                         ...newEvent,
                         entityTags: updatedTags,
@@ -1958,8 +1958,8 @@ export function Calendar() {
                         return
                       }
                       
-                      const updatedTags = [...currentTags, newTag]
-                      
+                      const updatedTags = [...currentTags, newTag] as typeof currentTags
+
                       setNewEvent({
                         ...newEvent,
                         entityTags: updatedTags,

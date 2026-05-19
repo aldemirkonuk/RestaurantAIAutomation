@@ -177,12 +177,15 @@ export function PlacesAutocomplete({
           ...(iso ? { includedRegionCodes: [iso] } : {}),
         });
 
-        const next: SuggestionRow[] = suggestions.slice(0, 5).map((s) => ({
-          prediction: s.placePrediction,
-          main: s.placePrediction.mainText.text,
-          secondary: s.placePrediction.secondaryText?.text ?? '',
-          types: s.placePrediction.types,
-        }));
+        const next: SuggestionRow[] = suggestions
+          .slice(0, 5)
+          .filter((s) => s.placePrediction != null && s.placePrediction.mainText != null)
+          .map((s) => ({
+            prediction: s.placePrediction!,
+            main: s.placePrediction!.mainText!.text,
+            secondary: s.placePrediction!.secondaryText?.text ?? '',
+            types: s.placePrediction!.types,
+          }));
 
         setRows(next);
         setOpen(next.length > 0);

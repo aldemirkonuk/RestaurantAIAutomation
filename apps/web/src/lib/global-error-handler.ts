@@ -97,7 +97,7 @@ function handleResourceError(event: Event) {
   const target = event.target as HTMLElement
 
   // Only handle resource errors, not general errors
-  if (!target || target === window) {
+  if (!target || (target as unknown) === window) {
     return
   }
 

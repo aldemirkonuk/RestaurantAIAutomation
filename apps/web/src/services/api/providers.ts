@@ -73,6 +73,11 @@ export interface CreateProviderInput {
   statesOrRegionsServed?: string[]
   notes?: string
   restaurantId: string
+  contactPerson?: string
+  accountNumber?: string
+  paymentTerms?: string
+  minimumOrderValue?: number
+  deliverySchedule?: string
 }
 
 export interface UpdateProviderInput extends Partial<CreateProviderInput> {

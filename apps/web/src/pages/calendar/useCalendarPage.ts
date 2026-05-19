@@ -94,7 +94,9 @@ export function useCalendarPage() {
     return expanded.map(event => ({
       ...event,
       date: typeof event.date === 'string' ? parseLocalDate(event.date) : event.date,
-    }))
+      type: (event.type || 'meeting') as EventType,
+      color: event.color || '#3B82F6',
+    })) as CalendarEvent[]
   }, [apiEvents, providerNameById, startDate, endDate])
 
   // Computed values

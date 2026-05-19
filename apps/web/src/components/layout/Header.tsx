@@ -24,35 +24,6 @@ interface HeaderProps {
   subtitle?: string
 }
 
-function BranchButton({ branch, activeId, onSwitch }: { branch: RestaurantBranch; activeId: string | null; onSwitch: (id: string) => void }) {
-  return (
-    <button
-      onClick={() => onSwitch(branch.id)}
-      className={cn(
-        'w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors',
-        branch.id === activeId && 'bg-wine-50'
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className={cn('text-sm font-medium', branch.id === activeId && 'text-wine-700')}>
-            {branch.name}
-          </p>
-          {branch.city && (
-            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-              <MapPin className="w-3 h-3" />
-              {branch.city}
-            </p>
-          )}
-        </div>
-        {branch.id === activeId && (
-          <div className="w-2 h-2 rounded-full bg-wine-500" />
-        )}
-      </div>
-    </button>
-  )
-}
-
 export function Header({ title, subtitle }: HeaderProps) {
   const [showSearch, setShowSearch] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)

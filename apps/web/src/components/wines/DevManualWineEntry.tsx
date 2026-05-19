@@ -192,7 +192,7 @@ export function DevManualWineEntry({ onClose, onWineAdded }: DevManualWineEntryP
         id: wineId,
         name: formData.name!,
         producer: formData.producer!,
-        vintage: formData.vintage,
+        vintage: formData.vintage ?? null,
         price: formData.price!,
         type: formData.type!,
         grape: formData.grape!,

@@ -162,7 +162,7 @@ export function Inventory() {
   const [includeAssigned, setIncludeAssigned] = useState(false)
 
   const winesById = useMemo(() => {
-    const map = new Map<string, Wine>()
+    const map = new Map<string, InventoryItem>()
     mergedInventory.forEach(item => map.set(item.id, item))
     return map
   }, [mergedInventory])
@@ -188,7 +188,7 @@ export function Inventory() {
             shadowStock: isShadow ? nextQuantity : 0,
             lastCounted: new Date().toISOString(),
             isActive: true,
-            inventoryId: payload.metadata?.inventoryId,
+            inventoryId: payload.metadata?.inventoryId as string | undefined,
           }
           return [...prev, newItem]
         } else if (existingIndex !== -1) {
@@ -221,7 +221,7 @@ export function Inventory() {
             shadowStock: isShadow ? qty : 0,
             lastCounted: new Date().toISOString(),
             isActive: true,
-            inventoryId: payload.metadata?.inventoryId,
+            inventoryId: payload.metadata?.inventoryId as string | undefined,
           }
           return [...prev, newItem]
         }
@@ -460,7 +460,7 @@ export function Inventory() {
       wineName: 'All Inventory Items',
       quantity: 0,
       previousQuantity: mergedInventory.reduce((sum, item) => sum + (item.liveStock || 0) + (item.shadowStock || 0), 0),
-      source: 'system',
+      source: 'manual',
       timestamp: new Date().toISOString(),
       metadata: {
         action: 'reset_all_stock',
@@ -564,11 +564,11 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
       const totalInventoryValue = filteredInventory.reduce((sum, item) => sum + (((item.liveStock || 0) + (item.shadowStock || 0)) * item.price), 0)
       const lowStockCount = filteredInventory.filter(item => {
         const status = getStockStatus(item)
-        return status.status === 'low' || status.status === 'critical'
+        return status.label === 'Low' || status.label === 'Critical'
       }).length
       const outOfStockCount = filteredInventory.filter(item => {
-        const status = getStockStatus(item)
-        return status.status === 'out'
+        const stock = item.liveStock || 0
+        return stock === 0
       }).length
 
       metrics = {
@@ -1451,7 +1451,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
         <ManualOverrideModal
           isOpen={!!manualOverrideModal}
           onClose={() => setManualOverrideModal(null)}
-          wine={manualOverrideModal}
+          wine={manualOverrideModal as Wine}
           currentLiveStock={manualOverrideModal.liveStock || 0}
           currentShadowStock={manualOverrideModal.shadowStock || 0}
           onSave={handleManualOverride}
@@ -1577,7 +1577,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
       <StorageLocationManager
         isOpen={showStorageManager}
         onClose={() => setShowStorageManager(false)}
-        inventoryItems={inventory}
+        inventoryItems={inventory as any}
         onSelectLocation={(location) => {
           setSelectedLocationFilter(location.id)
           setShowStorageManager(false)

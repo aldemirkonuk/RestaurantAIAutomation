@@ -170,23 +170,17 @@ export function useCreateProvider() {
       const isPending = (newProvider as any)._pending
       
       if (isPending) {
-        toast.info('Provider saved offline', {
-          description: `${variables.name} will sync when you're back online.`,
-        })
+        toast.info('Provider saved offline', `${variables.name} will sync when you're back online.`)
       } else {
-        toast.success('Provider created', {
-          description: `${newProvider.name} has been added to your providers.`,
-        })
+        toast.success('Provider created', `${newProvider.name} has been added to your providers.`)
       }
     },
     onError: (error: any, _, context) => {
       if (context?.previousProviders) {
         queryClient.setQueryData(queryKeys.providers.lists(), context.previousProviders)
       }
-      
-      toast.error('Failed to create provider', {
-        description: error.response?.data?.message || error.message,
-      })
+
+      toast.error('Failed to create provider', error.response?.data?.message || error.message)
     },
   })
 }
@@ -229,13 +223,9 @@ export function useUpdateProvider() {
       const isPending = (updatedProvider as any)._pending
       
       if (isPending) {
-        toast.info('Changes saved offline', {
-          description: 'Will sync when you\'re back online.',
-        })
+        toast.info('Changes saved offline', 'Will sync when you\'re back online.')
       } else {
-        toast.success('Provider updated', {
-          description: `${updatedProvider.name} has been updated.`,
-        })
+        toast.success('Provider updated', `${updatedProvider.name} has been updated.`)
       }
     },
     onError: (error: any, variables, context) => {
@@ -245,10 +235,8 @@ export function useUpdateProvider() {
       if (context?.previousProvider) {
         queryClient.setQueryData(queryKeys.providers.detail(variables.id), context.previousProvider)
       }
-      
-      toast.error('Failed to update provider', {
-        description: error.response?.data?.message || error.message,
-      })
+
+      toast.error('Failed to update provider', error.response?.data?.message || error.message)
     },
   })
 }
@@ -286,23 +274,17 @@ export function useDeleteProvider() {
       const isPending = (result as any)?._pending
       
       if (isPending) {
-        toast.info('Deletion saved offline', {
-          description: 'Will sync when you\'re back online.',
-        })
+        toast.info('Deletion saved offline', 'Will sync when you\'re back online.')
       } else {
-        toast.success('Provider deleted', {
-          description: 'The provider has been removed from your list.',
-        })
+        toast.success('Provider deleted', 'The provider has been removed from your list.')
       }
     },
     onError: (error: any, _, context) => {
       if (context?.previousProviders) {
         queryClient.setQueryData(queryKeys.providers.lists(), context.previousProviders)
       }
-      
-      toast.error('Failed to delete provider', {
-        description: error.response?.data?.message || error.message,
-      })
+
+      toast.error('Failed to delete provider', error.response?.data?.message || error.message)
     },
   })
 }
@@ -321,14 +303,10 @@ export function useAddProviderContact() {
       // Invalidate provider contacts
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.contacts(variables.providerId) })
       
-      toast.success('Contact added', {
-        description: 'The contact has been added to this provider.',
-      })
+      toast.success('Contact added', 'The contact has been added to this provider.')
     },
     onError: (error: any) => {
-      toast.error('Failed to add contact', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to add contact', error.response?.data?.message || error.message)
     },
   })
 }
@@ -350,9 +328,7 @@ export function useUpdateProviderContact() {
       toast.success('Contact updated')
     },
     onError: (error: any) => {
-      toast.error('Failed to update contact', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to update contact', error.response?.data?.message || error.message)
     },
   })
 }
@@ -374,9 +350,7 @@ export function useDeleteProviderContact() {
       toast.success('Contact deleted')
     },
     onError: (error: any) => {
-      toast.error('Failed to delete contact', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to delete contact', error.response?.data?.message || error.message)
     },
   })
 }
@@ -418,19 +392,13 @@ export function useBulkImportProviders() {
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.lists() })
       
       if (result.failed > 0) {
-        toast.warning('Import completed with errors', {
-          description: `${result.imported} imported, ${result.failed} failed.`,
-        })
+        toast.warning('Import completed with errors', `${result.imported} imported, ${result.failed} failed.`)
       } else {
-        toast.success('Import successful', {
-          description: `${result.imported} providers imported.`,
-        })
+        toast.success('Import successful', `${result.imported} providers imported.`)
       }
     },
     onError: (error: any) => {
-      toast.error('Import failed', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Import failed', error.response?.data?.message || error.message)
     },
   })
 }

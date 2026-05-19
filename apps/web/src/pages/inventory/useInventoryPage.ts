@@ -8,7 +8,7 @@ export interface InventoryItem extends Wine {
   inventoryId?: string
   storageLocation?: string
   location?: string
-  liveStock?: number
+  liveStock: number | null
   shadowStock?: number
   threshold: number
   lastCounted: string | null

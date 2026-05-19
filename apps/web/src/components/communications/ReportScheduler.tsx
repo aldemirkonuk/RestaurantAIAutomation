@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar,
   Clock,
@@ -140,7 +139,7 @@ export function ReportScheduler({ onSchedule, onGenerateNow }: ReportSchedulerPr
   useEffect(() => {
     const defaultTemplate = getDefaultTemplateForReport(config.reportType)
     if (defaultTemplate?.templateId) {
-      setConfig(prev => ({ ...prev, templateId: defaultTemplate.templateId }))
+      setConfig(prev => ({ ...prev, templateId: defaultTemplate.templateId ?? undefined }))
     }
   }, [config.reportType])
 
@@ -150,7 +149,7 @@ export function ReportScheduler({ onSchedule, onGenerateNow }: ReportSchedulerPr
     
     // Dispatch calendar event for cross-page sync
     if (config.frequency !== 'NONE') {
-      const reportTypeInfo = REPORT_TYPES.find(rt => rt.id === config.reportType)
+      const reportTypeInfo = REPORT_TYPES.find(rt => rt.value === config.reportType)
       const eventId = `report-schedule-${Date.now()}`
       const now = new Date()
       
@@ -176,12 +175,12 @@ export function ReportScheduler({ onSchedule, onGenerateNow }: ReportSchedulerPr
       dispatchCalendarEvent({
         type: 'created',
         eventId,
-        title: `${reportTypeInfo?.name || 'Scheduled'} Report`,
+        title: `${reportTypeInfo?.label || 'Scheduled'} Report`,
         eventType: 'recurring',
         date: nextDate.toISOString().split('T')[0],
         startTime: config.deliveryTime,
         allDay: false,
-        description: `Automated ${config.frequency.toLowerCase()} ${reportTypeInfo?.name || config.reportType} report. Format: ${config.format.toUpperCase()}. Channels: ${[
+        description: `Automated ${config.frequency.toLowerCase()} ${reportTypeInfo?.label || config.reportType} report. Format: ${config.format.toUpperCase()}. Channels: ${[
           config.channels.email && 'Email',
           config.channels.sms && 'SMS',
           config.channels.push && 'Push'

@@ -10,7 +10,7 @@ import {
 
 // ==================== Types ====================
 
-export type EntityKind = 'provider' | 'wine_type' | 'label' | 'event' | 'order'
+export type EntityKind = 'provider' | 'wine_type' | 'label' | 'event' | 'order' | 'contact' | 'client'
 
 export interface EntityOption {
   /** Unique identifier */
@@ -77,6 +77,8 @@ function getKindColors(kind: EntityKind): { bg: string; text: string } {
     label: { bg: 'bg-blue-100', text: 'text-blue-700' },
     event: { bg: 'bg-purple-100', text: 'text-purple-700' },
     order: { bg: 'bg-amber-100', text: 'text-amber-700' },
+    contact: { bg: 'bg-cyan-100', text: 'text-cyan-700' },
+    client: { bg: 'bg-indigo-100', text: 'text-indigo-700' },
   }
   return kindColors[kind]
 }
@@ -144,6 +146,8 @@ export function EntityAutocomplete({
       label: [],
       event: [],
       order: [],
+      contact: [],
+      client: [],
     }
 
     filteredOptions.forEach(opt => {
@@ -238,6 +242,8 @@ export function EntityAutocomplete({
       label: 'Labels',
       event: 'Events',
       order: 'Orders',
+      contact: 'Contacts',
+      client: 'Clients',
     }
 
     const hasGroups = Object.values(groupedOptions).some(group => group.length > 0)

@@ -67,8 +67,8 @@ const Providers = lazyWithRefresh(() => import('./pages/Providers'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
-const Calendar = lazyWithRefresh(() => import('./pages/calendar'))
-const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding'))
+const Calendar = lazyWithRefresh(() => import('./pages/Calendar'))
+const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 
 // Dev/Test pages

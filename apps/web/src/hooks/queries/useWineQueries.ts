@@ -5,8 +5,8 @@ import {
   getWineById,
   getWineSuggestions,
   getWinesByIds,
-  type Wine
 } from '../../services/api/wines'
+import type { Wine } from '../../services/api/types'
 
 export function useWines(filters?: {
   search?: string

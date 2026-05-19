@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Upload, RotateCcw } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import { CameraCapture } from '../scanner/CameraCapture'
 import { importMenu, type MenuImportResult } from '../../services/api/menus'
 

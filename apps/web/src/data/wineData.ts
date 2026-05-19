@@ -34,6 +34,7 @@ export interface Wine {
   glassesPerBottle?: number
   glassesPerBottleOverride?: number
   provider: {
+    id?: string
     name: string
     contact: string
     phone: string

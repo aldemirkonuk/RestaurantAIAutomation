@@ -104,6 +104,7 @@ export interface OrderConversationDto {
   id: string
   orderId: string
   status: string
+  direction: 'OUTBOUND' | 'INBOUND'
   emailType: string
   roundCount: number
   createdAt: string

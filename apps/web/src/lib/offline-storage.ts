@@ -130,7 +130,7 @@ async function idbGetAll<T>(storeName: string): Promise<T[]> {
   }
 }
 
-async function idbPut<T>(storeName: string, value: T): Promise<void> {
+async function idbPut<T extends { id?: string; key?: string; entity?: string }>(storeName: string, value: T): Promise<void> {
   try {
     const db = await getDB()
     return new Promise((resolve, reject) => {

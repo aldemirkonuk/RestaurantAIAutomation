@@ -57,6 +57,8 @@ const LOCATIONS_KEY = 'storageLocations'
 const MAPPINGS_KEY = 'storageLocationMappings'
 const WINES_AT_LOCATION_KEY = 'winesAtLocation'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 export function useStorageLocations() {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
@@ -195,11 +197,14 @@ export function useStorageLocations() {
         return updated
       })
 
-      persistToServer('POST', `/storage-locations/${restaurantId}/mappings`, {
-        wineId,
-        locationId,
-        quantity,
-      })
+      // Only hit the server when locationId is a real UUID (not a temp/default ID)
+      if (UUID_RE.test(locationId)) {
+        persistToServer('POST', `/storage-locations/${restaurantId}/mappings`, {
+          wineId,
+          locationId,
+          quantity,
+        })
+      }
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
       queryClient.invalidateQueries({ queryKey: [MAPPINGS_KEY, restaurantId] })
     },
@@ -252,30 +257,49 @@ export function useStorageLocations() {
   )
 
   const addLocation = useCallback(
-    (location: Omit<StorageLocation, 'id'>) => {
-      const newLocation: StorageLocation = {
-        ...location,
-        id: `loc-${Date.now()}`,
-      }
-      setLocations((prev) => [...prev, newLocation])
+    (location: Omit<StorageLocation, 'id'>): StorageLocation => {
+      const tempId = `loc-${Date.now()}`
+      const optimistic: StorageLocation = { ...location, id: tempId }
+      setLocations((prev) => [...prev, optimistic])
 
       if (restaurantId) {
-        persistToServer('POST', `/storage-locations/${restaurantId}`, {
-          name: newLocation.name,
-          description: newLocation.description,
-          capacity: newLocation.capacity,
-          temperature: newLocation.temperature,
-          humidity: newLocation.humidity,
-          notes: newLocation.notes,
-          parent_id: newLocation.parentId,
-          color: newLocation.color,
-          location_type: 'cellar',
-        })
+        apiClient
+          .post(`/storage-locations/${restaurantId}`, {
+            name: location.name,
+            description: location.description,
+            capacity: location.capacity,
+            temperature: location.temperature,
+            humidity: location.humidity,
+            notes: location.notes,
+            parent_id: location.parentId,
+            color: location.color,
+            location_type: 'cellar',
+          })
+          .then(({ data }) => {
+            if (data?.id) {
+              // Replace the temp ID with the real server UUID in both locations and any mappings
+              setLocations((prev) =>
+                prev.map((l) => (l.id === tempId ? mapServerLocation(data) : l)),
+              )
+              setMappings((prev) =>
+                prev.map((m) =>
+                  m.locationId === tempId ? { ...m, locationId: data.id as string } : m,
+                ),
+              )
+            }
+          })
+          .catch(() => {
+            // Remove the optimistic entry if the server rejected it
+            setLocations((prev) => prev.filter((l) => l.id !== tempId))
+          })
+          .finally(() => {
+            queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
+          })
       }
 
-      return newLocation
+      return optimistic
     },
-    [restaurantId, persistToServer, setLocations],
+    [restaurantId, setLocations, setMappings, queryClient],
   )
 
   const updateLocation = useCallback(
@@ -357,6 +381,7 @@ export function useStorageLocations() {
   return {
     locations,
     mappings,
+    locationsLoading: locationsQuery.isLoading,
     getWineLocation,
     getWinesInLocation,
     assignWineToLocation,

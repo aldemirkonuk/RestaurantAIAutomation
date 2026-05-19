@@ -35,13 +35,11 @@ import {
 } from 'lucide-react'
 import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useArchiveNotification, useDeleteNotification } from '../hooks/queries'
 import { useAuthStore } from '../stores'
-import { PageSkeleton, ErrorState } from '../components/ui'
 import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
-import {
-  getUpcomingEventNotifications,
-  EventNotification,
-} from '../utils/eventNotifications'
-import type { Notification, NotificationStatus, NotificationPriority, NotificationType } from '../services/api/notifications'
+import type { Notification, NotificationType } from '../services/api/notifications'
+
+type NotificationStatus = 'unread' | 'read'
+type NotificationPriority = 'low' | 'medium' | 'high' | 'critical'
 
 // Helper function for timestamp formatting
 const formatTimestamp = (timestamp: string) => {
@@ -141,8 +139,8 @@ export function Notifications() {
       if (!aStarred && bStarred) return 1
       
       // Then by priority
-      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 }
-      const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority]
+      const priorityOrder: Record<NotificationPriority, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+      const priorityDiff = (priorityOrder[a.priority as NotificationPriority] ?? 99) - (priorityOrder[b.priority as NotificationPriority] ?? 99)
       if (priorityDiff !== 0) return priorityDiff
       
       // Finally by timestamp
@@ -187,7 +185,7 @@ export function Notifications() {
   const stats = useMemo(() => {
     const safeNotifications = Array.isArray(notifications) ? notifications : []
     const unread = safeNotifications.filter(n => n.status === 'unread').length
-    const urgent = safeNotifications.filter(n => n.priority === 'urgent' && n.status === 'unread').length
+    const urgent = safeNotifications.filter(n => n.priority === 'critical' && n.status === 'unread').length
     const starred = starredNotifications.size
     const today = safeNotifications.filter(n => {
       const notifDate = new Date(n.timestamp)
@@ -266,13 +264,13 @@ export function Notifications() {
   }
 
   const getPriorityColor = (priority: NotificationPriority) => {
-    const colors = {
+    const colors: Record<NotificationPriority, string> = {
       low: 'border-l-gray-300',
       medium: 'border-l-blue-400',
       high: 'border-l-amber-500',
-      urgent: 'border-l-rose-600'
+      critical: 'border-l-rose-600',
     }
-    return colors[priority]
+    return colors[priority] ?? 'border-l-gray-300'
   }
 
   // API wrappers for notification actions (refetch to sync UI)
@@ -576,7 +574,7 @@ export function Notifications() {
             {(['all', 'unread', 'read', 'archived'] as const).map((f) => (
               <button
                 key={f}
-                onClick={() => setFilter(f)}
+                onClick={() => setFilter(f as 'all' | NotificationStatus)}
                 className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
                   filter === f
                     ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
@@ -644,7 +642,7 @@ export function Notifications() {
                     <button
                       onClick={() => {
                         setFilter('unread')
-                        setPriorityFilter('urgent')
+                        setPriorityFilter('critical')
                       }}
                       className="flex-1 px-3 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 text-sm font-medium transition-colors"
                     >
@@ -818,9 +816,9 @@ export function Notifications() {
 
                           <div className="flex items-center gap-1 flex-shrink-0">
                             {/* Priority Badge */}
-                            {notification.priority === 'urgent' && (
+                            {notification.priority === 'critical' && (
                               <span className="px-2 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold mr-2">
-                                URGENT
+                                CRITICAL
                               </span>
                             )}
 

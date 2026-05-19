@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CommsThreadDrawer — Email Client Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #eef0f4;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    /* ── Brand tokens ─────────────────────────────────────────── */
+    :root {
+      --wine-900: #7c1d3c;
+      --wine-800: #901d42;
+      --wine-700: #ac204a;
+      --wine-500: #e14d75;
+      --wine-100: #fce7eb;
+      --wine-50:  #fdf2f4;
+      --surface:  #F7F8F9;
+      --gray-50:  #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-900: #111827;
+      --emerald-600: #059669;
+      --emerald-50:  #ecfdf5;
+      --amber-500: #f59e0b;
+      --amber-50:  #fffbeb;
+      --red-100:  #fee2e2;
+      --red-400:  #f87171;
+      --red-600:  #dc2626;
+    }
+
+    /* ── Drawer shell ─────────────────────────────────────────── */
+    .drawer {
+      width: 480px;
+      min-width: 480px;
+      background: var(--surface);
+      border-radius: 16px;
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.06),
+        0 8px 24px rgba(0,0,0,0.10),
+        0 32px 64px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    .drawer-header {
+      background: linear-gradient(135deg, var(--wine-900) 0%, var(--wine-700) 100%);
+      padding: 20px 20px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .drawer-header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Ccircle cx='30' cy='30' r='28'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .provider-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      border: 2px solid rgba(255,255,255,0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+      backdrop-filter: blur(4px);
+    }
+
+    .header-identity {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .wine-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+      line-height: 1.3;
+      margin-bottom: 3px;
+    }
+
+    .provider-name {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.80);
+      margin-bottom: 1px;
+    }
+
+    .provider-email {
+      font-size: 11.5px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.55);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    .header-status-pill {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.22);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+      backdrop-filter: blur(4px);
+    }
+
+    .status-dot-pulse {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #fbbf24;
+      animation: pulse-amber 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-amber {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.55; transform: scale(0.75); }
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      color: rgba(255,255,255,0.60);
+    }
+
+    .meta-item strong {
+      color: rgba(255,255,255,0.85);
+      font-weight: 600;
+    }
+
+    .meta-divider {
+      width: 1px;
+      height: 12px;
+      background: rgba(255,255,255,0.20);
+    }
+
+    /* ── Thread body ──────────────────────────────────────────── */
+    .thread-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 18px 100px;
+      scroll-behavior: smooth;
+    }
+
+    .thread-body::-webkit-scrollbar { width: 4px; }
+    .thread-body::-webkit-scrollbar-track { background: transparent; }
+    .thread-body::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
+
+    /* ── Timeline ─────────────────────────────────────────────── */
+    .timeline {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .timeline-item {
+      display: flex;
+      gap: 12px;
+      position: relative;
+    }
+
+    .timeline-rail {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+      width: 20px;
+    }
+
+    .timeline-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid;
+      background: var(--surface);
+      flex-shrink: 0;
+      margin-top: 16px;
+      z-index: 1;
+      position: relative;
+    }
+
+    .timeline-line {
+      width: 2px;
+      flex: 1;
+      min-height: 16px;
+    }
+
+    /* Status colors for dots and lines */
+    .status-discarded .timeline-dot  { border-color: var(--red-400); }
+    .status-discarded .timeline-line { background: var(--gray-200); }
+
+    .status-sent .timeline-dot  { border-color: var(--emerald-600); background: var(--emerald-600); }
+    .status-sent .timeline-line { background: var(--gray-200); }
+
+    .status-pending .timeline-dot  { border-color: var(--wine-700); background: var(--wine-700); }
+    .status-pending .timeline-line { background: transparent; }
+
+    /* ── Message card ─────────────────────────────────────────── */
+    .msg-card {
+      flex: 1;
+      min-width: 0;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--gray-100);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.03);
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: box-shadow 0.15s ease;
+    }
+
+    .msg-card:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.05);
+    }
+
+    /* Left border by status */
+    .status-discarded .msg-card { border-left: 3px solid var(--red-400); }
+    .status-sent      .msg-card { border-left: 3px solid var(--emerald-600); }
+    .status-pending   .msg-card { border-left: 3px solid var(--wine-700); }
+
+    .msg-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 14px 10px;
+      border-bottom: 1px solid var(--gray-50);
+      gap: 8px;
+    }
+
+    .msg-card-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    /* Status chip */
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .chip-discarded {
+      background: var(--red-100);
+      color: var(--red-600);
+    }
+
+    .chip-sent {
+      background: var(--emerald-50);
+      color: var(--emerald-600);
+    }
+
+    .chip-pending {
+      background: var(--wine-50);
+      color: var(--wine-700);
+    }
+
+    .chip-icon {
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .ai-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--wine-700);
+      background: var(--wine-50);
+      border: 1px solid var(--wine-100);
+      padding: 2px 7px;
+      border-radius: 10px;
+      letter-spacing: 0.2px;
+    }
+
+    .round-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--gray-400);
+    }
+
+    .expand-btn {
+      background: none;
+      border: 1px solid var(--gray-200);
+      border-radius: 6px;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gray-500);
+      letter-spacing: 1.5px;
+      transition: all 0.12s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .expand-btn:hover {
+      background: var(--gray-50);
+      color: var(--gray-900);
+      border-color: var(--gray-300);
+    }
+
+    .expand-btn svg {
+      transition: transform 0.2s ease;
+    }
+
+    .expand-btn.expanded svg {
+      transform: rotate(180deg);
+    }
+
+    /* ── Email body ───────────────────────────────────────────── */
+    .msg-body-wrap {
+      overflow: hidden;
+      transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .msg-body-wrap.collapsed {
+      max-height: 72px;
+    }
+
+    .msg-body-wrap.expanded {
+      max-height: 700px;
+    }
+
+    .msg-preview {
+      padding: 10px 14px 0;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--gray-600);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .msg-preview.discarded-text {
+      text-decoration: line-through;
+      text-decoration-color: var(--red-400);
+      color: var(--gray-400);
+    }
+
+    .msg-full-body {
+      display: none;
+      padding: 10px 14px 0;
+    }
+
+    .msg-body-wrap.expanded .msg-preview { display: none; }
+    .msg-body-wrap.expanded .msg-full-body { display: block; }
+
+    .email-block {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-100);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 11.5px;
+      line-height: 1.75;
+      color: var(--gray-600);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .email-block.discarded-block {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: var(--gray-400);
+      text-decoration: line-through;
+      text-decoration-color: var(--red-400);
+    }
+
+    .never-delivered {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--red-600);
+      background: var(--red-100);
+      padding: 3px 8px;
+      border-radius: 20px;
+      margin-top: 8px;
+    }
+
+    /* ── Card footer ──────────────────────────────────────────── */
+    .msg-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px 10px;
+      margin-top: 8px;
+    }
+
+    .msg-footer-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .footer-timestamp {
+      font-size: 11px;
+      color: var(--gray-400);
+      font-weight: 400;
+    }
+
+    .footer-sender {
+      font-size: 11px;
+      color: var(--gray-400);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .footer-sender strong {
+      color: var(--gray-600);
+      font-weight: 500;
+    }
+
+    .awaiting-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--emerald-600);
+      background: var(--emerald-50);
+      border: 1px solid #a7f3d0;
+      padding: 2px 7px;
+      border-radius: 20px;
+    }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--gray-200);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      color: var(--gray-400);
+      font-size: 11px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.12s ease;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover {
+      background: var(--gray-50);
+      color: var(--gray-700);
+      border-color: var(--gray-300);
+    }
+
+    .copy-btn.copied {
+      color: var(--emerald-600);
+      border-color: #a7f3d0;
+      background: var(--emerald-50);
+    }
+
+    /* ── Pulse indicator for pending ──────────────────────────── */
+    .pending-pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--wine-700);
+      animation: pulse-wine 2.2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse-wine {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(172,32,74,0.4); }
+      50%       { opacity: 0.7; box-shadow: 0 0 0 5px rgba(172,32,74,0); }
+    }
+
+    /* ── Sticky CTA footer ────────────────────────────────────── */
+    .drawer-cta {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 14px 16px;
+      background: linear-gradient(to top, var(--surface) 70%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .cta-button {
+      width: 100%;
+      background: var(--wine-700);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: all;
+      box-shadow:
+        0 1px 3px rgba(172,32,74,0.25),
+        0 4px 16px rgba(172,32,74,0.30),
+        0 0 0 1px rgba(172,32,74,0.15) inset;
+      transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-button::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 60%;
+      height: 200%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+      transform: skewX(-20deg);
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%   { left: -60%; opacity: 0; }
+      40%  { opacity: 1; }
+      60%  { opacity: 1; }
+      100% { left: 110%; opacity: 0; }
+    }
+
+    .cta-button:hover {
+      background: var(--wine-800);
+      box-shadow:
+        0 2px 6px rgba(172,32,74,0.30),
+        0 8px 24px rgba(172,32,74,0.35),
+        0 0 0 1px rgba(172,32,74,0.18) inset;
+      transform: translateY(-1px);
+    }
+
+    .cta-button:active {
+      transform: translateY(0);
+    }
+
+    .cta-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cta-sparkle {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .cta-arrow {
+      opacity: 0.85;
+    }
+
+    /* ── Divider ──────────────────────────────────────────────── */
+    .thread-divider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 16px;
+      padding-left: 32px;
+    }
+
+    .thread-divider-line {
+      flex: 1;
+      height: 1px;
+      background: var(--gray-100);
+    }
+
+    .thread-divider-text {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--gray-400);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* ── Pending highlight ────────────────────────────────────── */
+    .status-pending .msg-card {
+      box-shadow:
+        0 1px 4px rgba(0,0,0,0.05),
+        0 2px 12px rgba(172,32,74,0.08),
+        0 0 0 1px rgba(172,32,74,0.08);
+    }
+
+    .pending-header-note {
+      font-size: 11px;
+      color: var(--wine-700);
+      background: var(--wine-50);
+      padding: 6px 14px;
+      border-bottom: 1px solid var(--wine-100);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+    }
+
+  </style>
+</head>
+<body>
+
+<div class="drawer">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <div class="drawer-header">
+    <div class="header-top">
+      <div class="provider-avatar">CM</div>
+      <div class="header-identity">
+        <div class="wine-name">Château Margaux 2019</div>
+        <div class="provider-name">Bordeaux Fine Wines Ltd.</div>
+        <div class="provider-email">orders@bordeaux-fine-wines.com</div>
+      </div>
+      <div class="header-status-pill">
+        <div class="status-dot-pulse"></div>
+        Awaiting Reply
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="meta-item">
+        <span>Qty</span>
+        <strong>6 cases</strong>
+      </div>
+      <div class="meta-divider"></div>
+      <div class="meta-item">
+        <span>SKU</span>
+        <strong>BRDX-CM19-750</strong>
+      </div>
+      <div class="meta-divider"></div>
+      <div class="meta-item">
+        <span>3 rounds</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Thread body ────────────────────────────────────────── -->
+  <div class="thread-body">
+    <div class="timeline">
+
+      <!-- ── Round 1: DISCARDED ──────────────────────────────── -->
+      <div class="timeline-item status-discarded">
+        <div class="timeline-rail">
+          <div class="timeline-dot"></div>
+          <div class="timeline-line"></div>
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div class="msg-card">
+            <div class="msg-card-header">
+              <div class="msg-card-header-left">
+                <span class="status-chip chip-discarded">
+                  <span class="chip-icon">✕</span> Discarded
+                </span>
+                <span class="round-label">Round 1</span>
+              </div>
+              <button class="expand-btn" onclick="toggleCard(this, 'body-1')" aria-label="Expand email">
+                · · ·
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div class="msg-body-wrap collapsed" id="body-1">
+              <div class="msg-preview discarded-text">
+                Dear Bordeaux Fine Wines team, I am writing to inquire about the availability of Château Margaux 2019 in 750ml format...
+              </div>
+              <div class="msg-full-body">
+                <div class="email-block discarded-block">Dear Bordeaux Fine Wines team,
+
+I am writing to inquire about the availability of
+Château Margaux 2019 in 750ml format. We would
+like to place an order for 6 cases (72 bottles)
+for delivery to our premises.
+
+Could you please confirm current stock levels and
+your best available pricing for this quantity?
+
+Best regards,
+WineOps Procurement</div>
+                <div style="padding: 6px 0 4px;">
+                  <span class="never-delivered">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
+                      <path d="M6 3.5V6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                      <circle cx="6" cy="8.5" r="0.75" fill="currentColor"/>
+                    </svg>
+                    Never delivered
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="msg-footer">
+              <div class="msg-footer-left">
+                <span class="footer-timestamp">May 12, 2026 · 09:14</span>
+                <span class="footer-sender">by <strong>WineOps AI</strong></span>
+              </div>
+              <button class="copy-btn" onclick="copyEmail(this, 'copy-1')" aria-label="Copy email body">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5 5V4a1.5 1.5 0 011.5-1.5h4A1.5 1.5 0 0112 4v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span id="copy-1">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- divider -->
+      <div class="thread-divider">
+        <div class="thread-divider-line"></div>
+        <div class="thread-divider-text">Revised &amp; sent</div>
+        <div class="thread-divider-line"></div>
+      </div>
+
+      <!-- ── Round 2: SENT ───────────────────────────────────── -->
+      <div class="timeline-item status-sent">
+        <div class="timeline-rail">
+          <div class="timeline-dot"></div>
+          <div class="timeline-line"></div>
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div class="msg-card">
+            <div class="msg-card-header">
+              <div class="msg-card-header-left">
+                <span class="status-chip chip-sent">
+                  <span class="chip-icon">✓</span> Sent
+                </span>
+                <span class="round-label">Round 2</span>
+              </div>
+              <button class="expand-btn" onclick="toggleCard(this, 'body-2')" aria-label="Expand email">
+                · · ·
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div class="msg-body-wrap collapsed" id="body-2">
+              <div class="msg-preview">
+                Subject: Urgent Reorder — Château Margaux 2019 (6 cases). Dear Bordeaux Fine Wines procurement team, following our last allocation...
+              </div>
+              <div class="msg-full-body">
+                <div class="email-block">Subject: Urgent Reorder — Château Margaux 2019 (6 cases)
+
+Dear Bordeaux Fine Wines procurement team,
+
+Following our last allocation in April, we are running
+low on Château Margaux 2019 (750ml) and need to
+secure 6 cases (72 × 750ml) before end of month.
+
+Could you please confirm:
+  1. Current stock availability
+  2. Best pricing at this volume
+  3. Estimated lead time to our warehouse
+
+We have standing terms NET-30 and can issue a
+purchase order same day upon confirmation.
+
+Please reply at your earliest convenience — we have
+a reservation event scheduled for June 4th.
+
+With appreciation,
+— WineOps Procurement System</div>
+              </div>
+            </div>
+            <div class="msg-footer">
+              <div class="msg-footer-left">
+                <span class="footer-timestamp">May 14, 2026 · 11:32</span>
+                <span class="awaiting-tag">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.4"/>
+                    <path d="M6 3.5V6L7.5 7.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  Awaiting reply
+                </span>
+              </div>
+              <button class="copy-btn" onclick="copyEmail(this, 'copy-2')" aria-label="Copy email body">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5 5V4a1.5 1.5 0 011.5-1.5h4A1.5 1.5 0 0112 4v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span id="copy-2">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- divider -->
+      <div class="thread-divider">
+        <div class="thread-divider-line"></div>
+        <div class="thread-divider-text">New AI draft ready</div>
+        <div class="thread-divider-line"></div>
+      </div>
+
+      <!-- ── Round 3: PENDING_APPROVAL ──────────────────────── -->
+      <div class="timeline-item status-pending">
+        <div class="timeline-rail">
+          <div class="timeline-dot"></div>
+          <!-- no line after last item -->
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div class="msg-card">
+            <div class="pending-header-note">
+              <div class="pending-pulse"></div>
+              AI draft ready — review before sending
+            </div>
+            <div class="msg-card-header">
+              <div class="msg-card-header-left">
+                <span class="status-chip chip-pending">
+                  <span class="ai-badge">✦ AI-generated</span>
+                </span>
+                <span class="round-label">Round 3</span>
+              </div>
+              <button class="expand-btn expanded" onclick="toggleCard(this, 'body-3')" aria-label="Collapse email">
+                Collapse
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div class="msg-body-wrap expanded" id="body-3">
+              <div class="msg-preview">
+                Subject: Follow-up: Château Margaux 2019 — Awaiting Confirmation. Dear team at Bordeaux Fine Wines, I hope this message finds...
+              </div>
+              <div class="msg-full-body">
+                <div class="email-block">Subject: Follow-up: Château Margaux 2019 — Awaiting Confirmation
+
+Dear team at Bordeaux Fine Wines,
+
+I hope this message finds you well. We sent our
+initial enquiry on May 14th regarding 6 cases of
+Château Margaux 2019 (750ml) and have not yet
+received a response.
+
+As our June 4th event approaches, confirming this
+allocation has become time-sensitive. We would
+greatly appreciate hearing from you by May 22nd.
+
+To recap our requirements:
+  • Product: Château Margaux 2019 · 750ml
+  • Quantity: 6 cases (72 bottles)
+  • Delivery: Before June 1st, 2026
+  • Terms: NET-30 (existing account #BFW-4421)
+
+If stock is unavailable, we are open to discussing
+alternative Margaux vintages (2018 or 2020).
+
+Thank you for your continued partnership.
+
+Warm regards,
+— WineOps Procurement System
+  on behalf of The Grand Reserve Restaurant</div>
+              </div>
+            </div>
+            <div class="msg-footer">
+              <div class="msg-footer-left">
+                <span class="footer-timestamp">May 18, 2026 · 08:47</span>
+                <span class="footer-sender">by <strong>WineOps AI</strong></span>
+              </div>
+              <button class="copy-btn" onclick="copyEmail(this, 'copy-3')" aria-label="Copy email body">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M5 5V4a1.5 1.5 0 011.5-1.5h4A1.5 1.5 0 0112 4v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span id="copy-3">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /timeline -->
+  </div><!-- /thread-body -->
+
+  <!-- ── Sticky CTA ────────────────────────────────────────── -->
+  <div class="drawer-cta">
+    <button class="cta-button" onclick="handleApprove(this)">
+      <div class="cta-left">
+        <span class="cta-sparkle">✦</span>
+        Review &amp; Approve Draft
+      </div>
+      <svg class="cta-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+</div><!-- /drawer -->
+
+<script>
+  // ── Expand / collapse ─────────────────────────────────────────
+  function toggleCard(btn, bodyId) {
+    const body = document.getElementById(bodyId);
+    const isExpanded = body.classList.contains('expanded');
+
+    if (isExpanded) {
+      body.classList.remove('expanded');
+      body.classList.add('collapsed');
+      btn.classList.remove('expanded');
+      btn.childNodes[0].textContent = '· · · ';
+    } else {
+      body.classList.remove('collapsed');
+      body.classList.add('expanded');
+      btn.classList.add('expanded');
+      btn.childNodes[0].textContent = 'Collapse ';
+    }
+  }
+
+  // ── Copy to clipboard ─────────────────────────────────────────
+  const emailBodies = {
+    'copy-1': `Dear Bordeaux Fine Wines team,
+
+I am writing to inquire about the availability of Château Margaux 2019 in 750ml format. We would like to place an order for 6 cases (72 bottles) for delivery to our premises.
+
+Could you please confirm current stock levels and your best available pricing for this quantity?
+
+Best regards,
+WineOps Procurement`,
+
+    'copy-2': `Subject: Urgent Reorder — Château Margaux 2019 (6 cases)
+
+Dear Bordeaux Fine Wines procurement team,
+
+Following our last allocation in April, we are running low on Château Margaux 2019 (750ml) and need to secure 6 cases (72 × 750ml) before end of month.
+
+Could you please confirm:
+  1. Current stock availability
+  2. Best pricing at this volume
+  3. Estimated lead time to our warehouse
+
+We have standing terms NET-30 and can issue a purchase order same day upon confirmation.
+
+Please reply at your earliest convenience — we have a reservation event scheduled for June 4th.
+
+With appreciation,
+— WineOps Procurement System`,
+
+    'copy-3': `Subject: Follow-up: Château Margaux 2019 — Awaiting Confirmation
+
+Dear team at Bordeaux Fine Wines,
+
+I hope this message finds you well. We sent our initial enquiry on May 14th regarding 6 cases of Château Margaux 2019 (750ml) and have not yet received a response.
+
+As our June 4th event approaches, confirming this allocation has become time-sensitive. We would greatly appreciate hearing from you by May 22nd.
+
+To recap our requirements:
+  • Product: Château Margaux 2019 · 750ml
+  • Quantity: 6 cases (72 bottles)
+  • Delivery: Before June 1st, 2026
+  • Terms: NET-30 (existing account #BFW-4421)
+
+If stock is unavailable, we are open to discussing alternative Margaux vintages (2018 or 2020).
+
+Thank you for your continued partnership.
+
+Warm regards,
+— WineOps Procurement System
+  on behalf of The Grand Reserve Restaurant`
+  };
+
+  function copyEmail(btn, copyId) {
+    const text = emailBodies[copyId];
+    const spanEl = document.getElementById(copyId);
+
+    navigator.clipboard.writeText(text).then(() => {
+      btn.classList.add('copied');
+      spanEl.textContent = 'Copied ✓';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        spanEl.textContent = 'Copy';
+      }, 1500);
+    }).catch(() => {
+      // Fallback for non-secure contexts
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      btn.classList.add('copied');
+      spanEl.textContent = 'Copied ✓';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        spanEl.textContent = 'Copy';
+      }, 1500);
+    });
+  }
+
+  // ── CTA button ────────────────────────────────────────────────
+  function handleApprove(btn) {
+    const original = btn.innerHTML;
+    btn.innerHTML = `
+      <div class="cta-left">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Draft approved — opening compose
+      </div>`;
+    btn.style.background = 'var(--wine-900)';
+    setTimeout(() => {
+      btn.innerHTML = original;
+      btn.style.background = '';
+    }, 2000);
+  }
+</script>
+
+</body>
+</html>

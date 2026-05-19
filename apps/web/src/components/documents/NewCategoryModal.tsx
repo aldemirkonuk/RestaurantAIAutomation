@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -51,7 +51,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 export function NewCategoryModal({ onClose, onSuccess }: NewCategoryModalProps) {
   const [categoryName, setCategoryName] = useState('')
   const [selectedIcon, setSelectedIcon] = useState<CategoryIcon>('FileText')
-  const [selectedColor, setSelectedColor] = useState(CATEGORY_COLORS[0].value)
+  const [selectedColor, setSelectedColor] = useState<string>(CATEGORY_COLORS[0].value)
   const [error, setError] = useState('')
   const [isCreating, setIsCreating] = useState(false)
 
@@ -223,7 +223,8 @@ export function NewCategoryModal({ onClose, onSuccess }: NewCategoryModalProps) 
                 >
                   {(() => {
                     const IconComponent = ICON_MAP[selectedIcon]
-                    return <IconComponent className="w-5 h-5" style={{ color: selectedColor }} />
+                    const IconComp = IconComponent as React.ElementType
+                    return <IconComp className="w-5 h-5" style={{ color: selectedColor }} />
                   })()}
                 </div>
                 <div>

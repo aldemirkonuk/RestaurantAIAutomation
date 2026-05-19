@@ -217,7 +217,7 @@ export function Providers() {
       setFavorites(prev => prev.filter(id => id !== selectedProvider.id))
       setNotes(prev => { const { [selectedProvider.id]: _r, ...rest } = prev; return rest })
       setRatings(prev => { const { [selectedProvider.id]: _r, ...rest } = prev; return rest })
-      await dispatchProviderUpdate({ type: 'removed', providerId: selectedProvider.id, providerName: selectedProvider.name })
+      await dispatchProviderUpdate({ type: 'removed', providerId: selectedProvider.id, providerName: selectedProvider.name, source: 'providers_page', timestamp: new Date().toISOString() })
       setSelectedProvider(null)
     } catch (err) {
       console.error('Failed to remove provider:', err)
@@ -327,7 +327,7 @@ export function Providers() {
     try {
       const result = await createProvider.mutateAsync({
         name: providerData.name,
-        primaryBusinessType: providerData.primaryBusinessType,
+        primaryBusinessType: (providerData.primaryBusinessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
         phone: providerData.phone, email: providerData.email,
         physicalAddress: providerData.address, restaurantId,
         contactPerson: providerData.contactPerson, website: providerData.website,
@@ -335,7 +335,7 @@ export function Providers() {
         winePortfolio: providerData.specialties.join(', '),
         statesOrRegionsServed: providerData.deliveryDays,
         paymentTerms: providerData.paymentTerms,
-        minimumOrderValue: providerData.minimumOrder,
+        minimumOrderValue: providerData.minimumOrder ?? undefined,
         deliverySchedule: providerData.deliveryDays.join(', '),
         notes: `Specialties: ${providerData.specialties.join(', ')}`,
       })

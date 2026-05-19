@@ -181,13 +181,9 @@ export function useCreateCalendarEvent() {
       const isPending = (newEvent as any)._pending
       
       if (isPending) {
-        toast.info('Event saved offline', {
-          description: `${variables.title} will sync when you're back online.`,
-        })
+        toast.info('Event saved offline', `${variables.title} will sync when you're back online.`)
       } else {
-        toast.success('Event created', {
-          description: `${newEvent.title} has been added to your calendar.`,
-        })
+        toast.success('Event created', `${newEvent.title} has been added to your calendar.`)
       }
     },
     onError: (error: any, _newEvent, context) => {
@@ -195,10 +191,8 @@ export function useCreateCalendarEvent() {
       if (context?.previousEvents) {
         queryClient.setQueryData(queryKeys.calendar.all, context.previousEvents)
       }
-      
-      toast.error('Failed to create event', {
-        description: error.response?.data?.message || error.message,
-      })
+
+      toast.error('Failed to create event', error.response?.data?.message || error.message)
     },
   })
 }
@@ -242,9 +236,7 @@ export function useUpdateCalendarEvent() {
       const isPending = (updatedEvent as any)._pending
       
       if (isPending) {
-        toast.info('Changes saved offline', {
-          description: 'Will sync when you\'re back online.',
-        })
+        toast.info('Changes saved offline', 'Will sync when you\'re back online.')
       } else {
         toast.success('Event updated')
       }
@@ -256,10 +248,8 @@ export function useUpdateCalendarEvent() {
       if (context?.previousEvent) {
         queryClient.setQueryData(queryKeys.calendar.event((context.previousEvent as any).id), context.previousEvent)
       }
-      
-      toast.error('Failed to update event', {
-        description: error.response?.data?.message || error.message,
-      })
+
+      toast.error('Failed to update event', error.response?.data?.message || error.message)
     },
   })
 }
@@ -299,9 +289,7 @@ export function useDeleteCalendarEvent() {
       const isPending = (result as any)?._pending
       
       if (isPending) {
-        toast.info('Deletion saved offline', {
-          description: 'Will sync when you\'re back online.',
-        })
+        toast.info('Deletion saved offline', 'Will sync when you\'re back online.')
       } else {
         toast.success('Event deleted')
       }
@@ -310,10 +298,8 @@ export function useDeleteCalendarEvent() {
       if (context?.previousEvents) {
         queryClient.setQueryData(queryKeys.calendar.all, context.previousEvents)
       }
-      
-      toast.error('Failed to delete event', {
-        description: error.response?.data?.message || error.message,
-      })
+
+      toast.error('Failed to delete event', error.response?.data?.message || error.message)
     },
   })
 }
@@ -341,9 +327,7 @@ export function useUpdateEventStatus() {
       toast.success('Status updated')
     },
     onError: (error: any) => {
-      toast.error('Failed to update status', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to update status', error.response?.data?.message || error.message)
     },
   })
 }
@@ -365,9 +349,7 @@ export function useCreateEventType() {
       toast.success('Event type created')
     },
     onError: (error: any) => {
-      toast.error('Failed to create event type', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to create event type', error.response?.data?.message || error.message)
     },
   })
 }
@@ -389,9 +371,7 @@ export function useUpdateEventType() {
       toast.success('Event type updated')
     },
     onError: (error: any) => {
-      toast.error('Failed to update event type', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to update event type', error.response?.data?.message || error.message)
     },
   })
 }
@@ -412,9 +392,7 @@ export function useDeleteEventType() {
       toast.success('Event type deleted')
     },
     onError: (error: any) => {
-      toast.error('Failed to delete event type', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to delete event type', error.response?.data?.message || error.message)
     },
   })
 }
@@ -432,14 +410,10 @@ export function useCreateRecurringEvents() {
       // Invalidate calendar queries
       queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
       
-      toast.success('Recurring events created', {
-        description: `${result.created} events have been added to your calendar.`,
-      })
+      toast.success('Recurring events created', `${result.created} events have been added to your calendar.`)
     },
     onError: (error: any) => {
-      toast.error('Failed to create recurring events', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to create recurring events', error.response?.data?.message || error.message)
     },
   })
 }
@@ -461,9 +435,7 @@ export function useUpdateRecurringEventOccurrence() {
       toast.success('Event occurrence updated')
     },
     onError: (error: any) => {
-      toast.error('Failed to update occurrence', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to update occurrence', error.response?.data?.message || error.message)
     },
   })
 }
@@ -485,9 +457,7 @@ export function useDeleteRecurringEventFuture() {
       toast.success('Future events deleted')
     },
     onError: (error: any) => {
-      toast.error('Failed to delete future events', {
-        description: error.response?.data?.message || error.message,
-      })
+      toast.error('Failed to delete future events', error.response?.data?.message || error.message)
     },
   })
 }

@@ -279,7 +279,7 @@ export function RealtimeProvider({ children, restaurantId = null }: RealtimeProv
       // Notify all registered callbacks
       eventCallbacksRef.current.forEach((callback) => {
         try {
-          callback(event)
+          callback(event as EventRow)
         } catch (err) {
           console.error('[Realtime] Event callback error:', err)
         }
@@ -301,7 +301,7 @@ export function RealtimeProvider({ children, restaurantId = null }: RealtimeProv
         template_change: 'template_change',
       }
 
-      const windowEventName = eventTypeToWindowEvent[event.event_type]
+      const windowEventName = eventTypeToWindowEvent[event.event_type as EventType]
       if (windowEventName) {
         window.dispatchEvent(
           new CustomEvent(windowEventName, {

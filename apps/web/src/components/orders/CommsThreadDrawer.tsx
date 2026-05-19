@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Send, Clock, CheckCircle, Loader2, RefreshCw,
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
-  ArrowRight, MessageSquare, Activity,
+  ArrowRight, MessageSquare, Activity, Mail,
 } from 'lucide-react'
 import { useOrderConversations, type OrderConversationDto } from '../../hooks/queries/useDraftEmailQueries'
 
@@ -80,6 +80,15 @@ const STATUS_CONFIG: Record<string, {
     dotBorder: 'border-gray-300',
     icon: MailOpen,
   },
+  PROVIDER_REPLY: {
+    label: 'Provider Reply',
+    textColor: 'text-blue-700',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    dotBg: 'bg-blue-500',
+    dotBorder: 'border-blue-300',
+    icon: Mail,
+  },
 }
 
 const getStatusConfig = (status: string) =>
@@ -136,7 +145,7 @@ export function CommsThreadDrawer({
 
   const isCancelled = orderStatus === 'cancelled'
   const isDelivered = orderStatus === 'delivered'
-  const pendingConv = conversations.find(c => c.status === 'PENDING_APPROVAL')
+  const pendingConv = conversations.find(c => c.status === 'PENDING_APPROVAL' && c.direction !== 'INBOUND')
   const providerName = conversations[0]?.providerName
   const providerEmail = conversations[0]?.providerEmail
   const sentConvs = conversations.filter(c => ['SENT', 'AUTO_SENT', 'APPROVED', 'COMPLETED', 'CLOSED'].includes(c.status))
@@ -407,11 +416,12 @@ function ThreadEvent({ conv, isLast, isLatest, isCancelled, onOpenDraftPanel, on
   const [open, setOpen] = useState(defaultOpen)
   const [copied, setCopied] = useState(false)
 
-  const cfg = getStatusConfig(conv.status)
+  const isInbound = conv.direction === 'INBOUND'
+  const cfg = getStatusConfig(isInbound ? 'PROVIDER_REPLY' : conv.status)
   const StatusIcon = cfg.icon
-  const isPending = conv.status === 'PENDING_APPROVAL'
+  const isPending = conv.status === 'PENDING_APPROVAL' && !isInbound
   const isDiscarded = conv.status === 'DISCARDED'
-  const isSent = ['SENT', 'AUTO_SENT', 'APPROVED'].includes(conv.status)
+  const isSent = ['SENT', 'AUTO_SENT', 'APPROVED'].includes(conv.status) && !isInbound
   const bodyText = conv.draftContent || conv.rollingSummary || ''
 
   const handleCopy = () => {
@@ -450,7 +460,11 @@ function ThreadEvent({ conv, isLast, isLatest, isCancelled, onOpenDraftPanel, on
               <StatusIcon className="w-2.5 h-2.5" />
               {cfg.label}
             </span>
-            <span className="text-[11px] text-gray-400 font-medium">Round {conv.roundCount}</span>
+            {isInbound ? (
+              <span className="text-[11px] text-blue-600 font-medium">from {conv.providerName || 'Provider'}</span>
+            ) : (
+              <span className="text-[11px] text-gray-400 font-medium">Round {conv.roundCount}</span>
+            )}
             {isPending && (
               <span className="text-[10px] text-wine-500 font-semibold">· Needs review</span>
             )}
@@ -496,6 +510,13 @@ function ThreadEvent({ conv, isLast, isLatest, isCancelled, onOpenDraftPanel, on
                 {/* Footer row */}
                 <div className="flex items-center justify-between px-3 py-2 bg-white border-t border-gray-100">
                   <div className="flex items-center gap-2.5">
+                    {isInbound && (
+                      <span className="flex items-center gap-1 text-[10px] text-blue-600 font-medium">
+                        <Mail className="w-3 h-3" />
+                        {conv.providerEmail ? `from ${conv.providerEmail}` : 'Provider reply received'}
+                        {conv.createdAt && <span className="text-gray-400 ml-1">{fmtDate(conv.createdAt)}</span>}
+                      </span>
+                    )}
                     {isSent && conv.sentAt && (
                       <span className="flex items-center gap-1 text-[10px] text-gray-500">
                         <CheckCircle className="w-3 h-3 text-emerald-500" />

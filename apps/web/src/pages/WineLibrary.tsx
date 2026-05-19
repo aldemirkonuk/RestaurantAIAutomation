@@ -146,7 +146,12 @@ export function WineLibrary() {
     setProviderDropdownOpen(false)
   }, [selectedWine?.id])
 
-  const wineProviders = recommendedProviders.length > 0 ? recommendedProviders : providers
+  const recommendedProvidersArray: Provider[] = Array.isArray(recommendedProviders)
+    ? recommendedProviders
+    : (recommendedProviders as { primary: Provider; alternatives: Provider[] }).primary
+      ? [(recommendedProviders as { primary: Provider; alternatives: Provider[] }).primary, ...(recommendedProviders as { primary: Provider; alternatives: Provider[] }).alternatives]
+      : []
+  const wineProviders: Provider[] = recommendedProvidersArray.length > 0 ? recommendedProvidersArray : providers
   const providerLabel = wineProviders.length > 1 ? 'Providers' : 'Provider'
 
   // Track wine stock updates from Inventory page

@@ -86,6 +86,7 @@ export interface NewProviderData {
   minimumOrder: number | null
   notes: string
   rating: number
+  accountNumber?: string
 }
 
 const WINE_SPECIALTIES = [

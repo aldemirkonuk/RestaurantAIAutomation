@@ -17,7 +17,7 @@ interface NewEventTypeModalProps {
 
 export function NewEventTypeModal({ onClose, onSuccess }: NewEventTypeModalProps) {
   const [eventTypeName, setEventTypeName] = useState('')
-  const [selectedColor, setSelectedColor] = useState(EVENT_TYPE_COLORS[0].value)
+  const [selectedColor, setSelectedColor] = useState<string>(EVENT_TYPE_COLORS[0].value)
   const [error, setError] = useState('')
   const [isCreating, setIsCreating] = useState(false)
 

@@ -140,6 +140,7 @@ interface OrderApprovalData {
   finalPrice: number
   deliveryEstimate: string
   conversationSummary: string
+  hasNegotiation?: boolean
   conversationId: string
   timestamp: string
 }
@@ -238,6 +239,7 @@ export function Orders() {
     conversationId: string
     orderId: string
     orderNumber?: string
+    restaurantName?: string
     wineName: string
     quantity?: number
     providerName: string
@@ -463,8 +465,35 @@ export function Orders() {
   }
 
   const handleApprove = async (order: Order) => {
-    // Convert existing order to approval data format
-    // In real app, this would fetch conversation summary from backend
+    setSelectedOrder(order)
+
+    // Fetch real conversation history for this order
+    let conversations: Array<{
+      id: string
+      direction: string
+      status: string
+      rollingSummary: string | null
+      draftContent: string | null
+      createdAt: string
+    }> = []
+    try {
+      const res = await apiClient.get(`/procurement/orders/${order.order_id}/conversations`)
+      conversations = res.data ?? []
+    } catch {
+      // fall through with empty conversations
+    }
+
+    // Provider has replied when there's at least one INBOUND entry
+    const hasProviderReply = conversations.some(c => c.direction === 'INBOUND')
+
+    // Use rolling summary from the most recent completed outbound round
+    const latestSummary = [...conversations]
+      .reverse()
+      .find(c => c.direction !== 'INBOUND' && c.rollingSummary)
+      ?.rollingSummary ?? ''
+
+    const latestConvId = conversations[0]?.id ?? `CONV-${order.order_id}`
+
     const approvalData: OrderApprovalData = {
       orderId: order.order_id,
       wineName: order.wine_name || 'Unknown Wine',
@@ -473,38 +502,16 @@ export function Orders() {
       proposedPrice: order.suggested_price || 0,
       finalPrice: order.suggested_price || 0,
       deliveryEstimate: '3-5 business days',
-      conversationSummary: `Report on the conversation we had with ${order.provider_name || 'provider'}:
-
-**Order Details:**
-- Wine: ${order.wine_name || 'Unknown'}
-- Quantity Requested: ${order.quantity} bottles
-- Proposed Price: $${(order.suggested_price || 0).toLocaleString()} per bottle
-- Final Agreed Price: $${(order.suggested_price || 0).toLocaleString()} per bottle
-
-**Response:**
-Accepted the offer at $${(order.suggested_price || 0).toLocaleString()} for ${order.wine_name || 'wine'} in ${order.quantity} bottles.
-
-**Additional Information:**
-- Delivery Timeline: 3-5 business days
-- Availability: Confirmed available
-
-**Key Points Discussed:**
-- Provider confirmed availability
-- Standard pricing agreed upon
-- Payment terms: Net 30
-
-**Next Steps:**
-- Manager approval required
-- Order will be processed upon approval`,
-      conversationId: `CONV-${order.order_id}`,
+      conversationSummary: latestSummary,
+      hasNegotiation: hasProviderReply,
+      conversationId: latestConvId,
       timestamp: order.created_at,
     }
-    
+
     setOrderApprovalData(approvalData)
     setAllProviderResponses([approvalData])
     setCurrentApprovalIndex(0)
     setShowOrderApprovalModal(true)
-    setSelectedOrder(order)
   }
 
   const confirmApproval = async (price: number) => {
@@ -1028,7 +1035,7 @@ Shadow stock has been moved to Live Stock.`)
                 conversationId,
                 orderId,
                 restaurantName: activeRestaurantName,
-                orderNumber: fallbackOrder.order_number ?? undefined,
+                orderNumber: (fallbackOrder as any).orderNumber ?? undefined,
                 wineName: fallbackOrder.wine_name || draft.wineName || draft.wine_name || 'Wine',
                 quantity: fallbackOrder.quantity ?? undefined,
                 providerName: draft.provider_name || draft.providerName || (/^[0-9a-f-]{36}$/i.test(fallbackOrder.provider_name ?? '') ? '' : fallbackOrder.provider_name) || 'Provider',

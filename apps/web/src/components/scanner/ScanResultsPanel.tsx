@@ -199,7 +199,7 @@ export function ScanResultsPanel({
             const isExpanded = expandedWineId === wine.id
             const isEditing = editingWineId === wine.id
             const typeColors = (wine.wineType || wine.type)
-              ? getWineTypeColor((wine.wineType || wine.type) as string)
+              ? getWineTypeColor((wine.wineType || wine.type) as 'red' | 'white' | 'sparkling' | 'rose' | 'dessert')
               : { bg: 'bg-gray-100', text: 'text-gray-700' }
 
             return (
@@ -299,9 +299,9 @@ export function ScanResultsPanel({
                             </h4>
                             <div className="flex items-center gap-1">
                               {wine.inMasterLibrary ? (
-                                <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" title="In Master Library" />
+                                <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" aria-label="In Master Library" />
                               ) : (
-                                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" title="New wine" />
+                                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" aria-label="New wine" />
                               )}
                             </div>
                           </div>
