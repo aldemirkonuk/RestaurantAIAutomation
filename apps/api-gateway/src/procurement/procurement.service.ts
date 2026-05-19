@@ -422,8 +422,12 @@ export class ProcurementService {
     // Release shadow stock if the order had already been approved/sent and
     // inventory was reserved (shadow_stock was incremented for this order).
     const preStatus = (preCancelRow as any)?.status ?? '';
-    const RESERVED_STATUSES = ['APPROVED', 'ORDERED', 'CONFIRMED', 'PENDING_APPROVAL'];
-    if (order.inventoryId && order.quantity && RESERVED_STATUSES.includes(preStatus)) {
+    const RESERVED_STATUSES = [
+      ProcurementOrderStatus.APPROVED,
+      ProcurementOrderStatus.CONFIRMED,
+      ProcurementOrderStatus.IN_TRANSIT,
+    ];
+    if (order.inventoryId && order.quantity && RESERVED_STATUSES.includes(preStatus as ProcurementOrderStatus)) {
       await this.releaseOrderShadowStock(restaurantId, order.inventoryId, order.quantity);
     }
 
@@ -462,7 +466,7 @@ export class ProcurementService {
     }
   }
 
-  /** Subtract order quantity from shadow_stock, flooring at 0. Non-fatal. */
+  /** Subtract order quantity from shadow_stock + in_transit_quantity, flooring at 0. Non-fatal. */
   private async releaseOrderShadowStock(
     restaurantId: string,
     inventoryId: string,
@@ -471,23 +475,58 @@ export class ProcurementService {
     try {
       const { data: inv } = await this.databaseService.supabase
         .from('restaurant_inventory')
-        .select('shadow_stock')
+        .select('shadow_stock, in_transit_quantity')
         .eq('restaurant_id', restaurantId)
         .eq('id', inventoryId)
         .single();
 
       if (inv) {
-        const current = (inv as any).shadow_stock ?? 0;
-        const released = Math.max(0, current - quantity);
+        const currentShadow = (inv as any).shadow_stock ?? 0;
+        const currentInTransit = (inv as any).in_transit_quantity ?? 0;
         await this.databaseService.supabase
           .from('restaurant_inventory')
-          .update({ shadow_stock: released })
+          .update({
+            shadow_stock: Math.max(0, currentShadow - quantity),
+            in_transit_quantity: Math.max(0, currentInTransit - quantity),
+          })
           .eq('restaurant_id', restaurantId)
           .eq('id', inventoryId);
-        this.logger.log(`Released ${quantity} shadow stock for inventory ${inventoryId} (${current} → ${released})`);
+        this.logger.log(`Released ${quantity} shadow/in-transit stock for inventory ${inventoryId}`);
       }
     } catch (e: any) {
       this.logger.warn(`releaseOrderShadowStock failed: ${e?.message}`);
+    }
+  }
+
+  /** Add order quantity to shadow_stock + in_transit_quantity (marks stock as "on order"). Non-fatal. */
+  private async reserveOrderShadowStock(
+    restaurantId: string,
+    inventoryId: string,
+    quantity: number,
+  ): Promise<void> {
+    try {
+      const { data: inv } = await this.databaseService.supabase
+        .from('restaurant_inventory')
+        .select('shadow_stock, in_transit_quantity')
+        .eq('restaurant_id', restaurantId)
+        .eq('id', inventoryId)
+        .single();
+
+      if (inv) {
+        const currentShadow = (inv as any).shadow_stock ?? 0;
+        const currentInTransit = (inv as any).in_transit_quantity ?? 0;
+        await this.databaseService.supabase
+          .from('restaurant_inventory')
+          .update({
+            shadow_stock: currentShadow + quantity,
+            in_transit_quantity: currentInTransit + quantity,
+          })
+          .eq('restaurant_id', restaurantId)
+          .eq('id', inventoryId);
+        this.logger.log(`Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`reserveOrderShadowStock failed: ${e?.message}`);
     }
   }
 
@@ -524,6 +563,11 @@ export class ProcurementService {
     };
 
     const order = this.mapOrderRow(orderRow);
+
+    // Reserve shadow stock so managers can see "X bottles on order" before delivery.
+    if (order.inventoryId && order.quantity) {
+      await this.reserveOrderShadowStock(restaurantId, order.inventoryId, order.quantity);
+    }
 
     // NOTE: Calendar event is intentionally NOT created here.
     // It is created in approveDraft(), only after the manager reviews and approves
@@ -599,6 +643,12 @@ export class ProcurementService {
 
     const resolvedQuantity = quantityReceived ?? order.quantity ?? 0;
 
+    if (!order.inventoryId) {
+      this.logger.warn(`markDelivered: order ${orderId} has no inventoryId — stock update skipped`);
+    } else if (resolvedQuantity <= 0) {
+      this.logger.warn(`markDelivered: order ${orderId} resolved quantity is ${resolvedQuantity} — stock update skipped`);
+    }
+
     if (order.inventoryId && resolvedQuantity > 0) {
       const idempotencyKey = `order-delivered:${orderId}`;
       const { data: existingEvent } = await this.databaseService.supabase
@@ -621,19 +671,21 @@ export class ProcurementService {
           if (masterWineId) {
             const { data: currentStock } = await this.databaseService.supabase
               .from('restaurant_inventory')
-              .select('shadow_stock, stock_live')
+              .select('shadow_stock, stock_live, in_transit_quantity')
               .eq('restaurant_id', restaurantId)
               .eq('id', order.inventoryId)
               .single();
 
             const currentShadow = currentStock?.shadow_stock ?? 0;
             const currentLive = currentStock?.stock_live ?? 0;
+            const currentInTransit = currentStock?.in_transit_quantity ?? 0;
 
             await this.databaseService.supabase
               .from('restaurant_inventory')
               .update({
                 shadow_stock: Math.max(0, currentShadow - resolvedQuantity),
                 stock_live: currentLive + resolvedQuantity,
+                in_transit_quantity: Math.max(0, currentInTransit - resolvedQuantity),
               })
               .eq('restaurant_id', restaurantId)
               .eq('id', order.inventoryId);
@@ -1158,6 +1210,7 @@ export class ProcurementService {
         created_at,
         sent_at,
         status,
+        direction,
         content,
         message_text,
         rolling_summary,
@@ -1181,6 +1234,7 @@ export class ProcurementService {
       id: row.id,
       orderId: row.order_id,
       status: row.status,
+      direction: (row.direction ?? 'OUTBOUND') as 'OUTBOUND' | 'INBOUND',
       emailType: row.outbound_email_type,
       roundCount: row.round_count,
       createdAt: row.created_at,

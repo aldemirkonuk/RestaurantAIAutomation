@@ -37,6 +37,7 @@ import { formatVolume } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
 import { useTypedInventorySubscription, InventoryUpdatePayload, useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useInventoryPage, InventoryItem } from './inventory/index'
+import { useCreateInventoryItem } from '../hooks/queries'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { inventoryApi } from '../services/api'
@@ -60,6 +61,7 @@ export function Inventory() {
   const { activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
   const { locations: storageLocations, setLocations: setStorageLocations, getWineLocation, getLocationsWithActualCounts, assignWineToLocation, removeWineFromLocation, mappings } = useStorageLocations()
+  const createInventoryItem = useCreateInventoryItem()
 
   /** Row IDs soft-deleted in this session; keeps row hidden when refetch fails and TanStack restores stale cache */
   const [softDeletedRowIds, setSoftDeletedRowIds] = useState<string[]>([])
@@ -1327,52 +1329,44 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
       <AddWineToInventoryModal
         isOpen={showAddWineModal}
         onClose={() => setShowAddWineModal(false)}
-        onAddWine={(wine, quantity, threshold, storageLocationId) => {
-          console.log('Adding wine to inventory:', wine, quantity, threshold, storageLocationId)
-          
-          // Update storage location count if specified
-          if (storageLocationId) {
-            setStorageLocations(prev => 
-              prev.map(loc => 
-                loc.id === storageLocationId
-                  ? { ...loc, currentCount: loc.currentCount + quantity }
-                  : loc
-              )
-            )
-          }
-          
-          // Add wine to inventory with storage location
-          const newInventoryItem: InventoryItem = {
-            ...wine,
-            inventoryId: `inv-${Date.now()}`,
-            liveStock: quantity,
-            shadowStock: 0,
-            threshold,
-            storageLocation: storageLocationId 
-              ? storageLocations.find(loc => loc.id === storageLocationId)?.name 
-              : undefined,
-            lastCounted: new Date().toISOString(),
-            isActive: true,
-          }
-          
-          setInventory(prev => [...prev, newInventoryItem])
-          
-          // Dispatch inventory update for cross-page sync
-          dispatchInventoryUpdate({
-            type: 'add',
-            wineId: wine.id,
-            wineName: wine.name,
-            quantity,
-            source: 'manual',
-            timestamp: new Date().toISOString(),
-            metadata: {
-              threshold,
+        onAddWine={async (wine, quantity, threshold, storageLocationId, volumeFields) => {
+          try {
+            await createInventoryItem.mutateAsync({
+              wineId: wine.id,
+              stockLive: quantity,
+              thresholdMin: threshold,
               storageLocationId,
-              cost: wine.price,
-            },
-          })
-          
-          setShowAddWineModal(false)
+              bottleSizeMl: volumeFields?.bottleSizeMl,
+              saleType: volumeFields?.saleType,
+              pourSizeMl: volumeFields?.pourSizeMl,
+              menuPriceGlass: volumeFields?.menuPriceGlass,
+            })
+
+            if (storageLocationId) {
+              setStorageLocations(prev =>
+                prev.map(loc =>
+                  loc.id === storageLocationId
+                    ? { ...loc, currentCount: loc.currentCount + quantity }
+                    : loc
+                )
+              )
+            }
+
+            dispatchInventoryUpdate({
+              type: 'add',
+              wineId: wine.id,
+              wineName: wine.name,
+              quantity,
+              source: 'manual',
+              timestamp: new Date().toISOString(),
+              metadata: { threshold, storageLocationId, cost: wine.price },
+            })
+
+            setShowAddWineModal(false)
+          } catch (err: any) {
+            const msg = err?.response?.data?.message || err?.message || 'Failed to add wine to inventory'
+            alert(msg)
+          }
         }}
       />
 

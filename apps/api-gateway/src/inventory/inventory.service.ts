@@ -157,6 +157,7 @@ export class InventoryService {
     if (dto.menuPriceGlass !== undefined) insertData.menu_price_glass = dto.menuPriceGlass;
     if (dto.bottleSizeMl !== undefined) insertData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined) insertData.glasses_per_bottle_override = dto.glassesPerBottleOverride;
+    if (dto.storageLocationId !== undefined) insertData.storage_location_id = dto.storageLocationId;
 
     const { data, error } = await client
       .from('restaurant_inventory')

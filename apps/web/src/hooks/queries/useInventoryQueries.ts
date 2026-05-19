@@ -9,7 +9,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
 import { inventoryApi } from '../../services/api'
-import type { InventoryItem, InventorySummary } from '../../services/api/types'
+import type { InventoryItem, InventorySummary, CreateInventoryItemRequest } from '../../services/api/types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useInventorySubscription } from '../../contexts/RealtimeContext'
 import { useCallback } from 'react'
@@ -169,6 +169,25 @@ export function useUnmappedToastItems() {
     queryFn: () => inventoryApi.getUnmappedToastItems(activeRestaurantId!),
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 120_000,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Mutation: Create inventory item
+// ---------------------------------------------------------------------------
+
+export function useCreateInventoryItem() {
+  const { activeRestaurantId } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: CreateInventoryItemRequest) => {
+      if (!activeRestaurantId) throw new Error('No restaurant selected')
+      return inventoryApi.createInventoryItem(data, activeRestaurantId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
+    },
   })
 }
 
