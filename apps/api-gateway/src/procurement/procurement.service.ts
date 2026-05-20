@@ -901,13 +901,14 @@ export class ProcurementService {
     // Fetch conversation + provider email before updating
     const { data: conv, error: fetchError } = await this.databaseService.supabase
       .from('procurement_conversations')
-      .select('id, content, subject, providers!left(name, contact_email), procurement_orders!inner(wine_name, inventory:inventory_id(wine_name))')
+      .select('id, content, providers!left(name, contact_email), procurement_orders!inner(inventory:inventory_id(wine_name))')
       .eq('restaurant_id', restaurantId)
       .eq('order_id', orderId)
       .eq('status', 'PENDING_APPROVAL')
       .single();
 
     if (fetchError || !conv) {
+      this.logger.error('approveDraft fetch failed', { restaurantId, orderId, fetchError: fetchError?.message });
       throw new NotFoundException('No pending draft found for this order');
     }
 
