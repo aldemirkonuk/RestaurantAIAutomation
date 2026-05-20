@@ -221,7 +221,13 @@ export class AuthService {
         throw new UnauthorizedException('User not found');
       }
 
-      return this.generateTokens(user);
+      // Preserve the restaurant the user had switched to — the refresh token
+      // encodes the scoped restaurantId, but user.restaurant_id is the DB default
+      // (never updated on switch). Without this, every token refresh silently
+      // reverts the tenant to the default restaurant, causing 500s on resources
+      // that belong to the switched-to restaurant.
+      const scopedRestaurantId = payload.restaurantId ?? user.restaurant_id;
+      return this.generateTokens({ ...user, restaurant_id: scopedRestaurantId });
     } catch (error) {
       throw new UnauthorizedException('Invalid refresh token');
     }

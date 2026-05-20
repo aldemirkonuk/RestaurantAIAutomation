@@ -31,7 +31,7 @@ interface DraftEmailApprovalPanelProps {
   managerName?: string
   onApprove: (modifiedContent?: string, managerNotes?: string, ccEmails?: string[]) => void
   onDiscard: () => void
-  onClose: () => void
+  onClose: (dirtyContent?: string) => void
   isSubmitting?: boolean
 }
 
@@ -90,20 +90,21 @@ export function DraftEmailApprovalPanel({
   const removeCcEmail = (email: string) =>
     setCcEmails((prev) => prev.filter((e) => e !== email))
 
+  const isDirty = draftData
+    ? editedContent !== resolveManagerName(draftData.draftContent) || editedSubject !== derivedSubject(draftData)
+    : false
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onClose(isDirty ? editedContent : undefined)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, isDirty, editedContent])
 
   if (!draftData && !isOpen) return null
 
   const badge = draftData ? emailTypeBadge[draftData.emailType] : null
-  const isDirty = draftData
-    ? editedContent !== resolveManagerName(draftData.draftContent) || editedSubject !== derivedSubject(draftData)
-    : false
 
   return (
     <AnimatePresence>
@@ -113,7 +114,7 @@ export function DraftEmailApprovalPanel({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-          onClick={onClose}
+          onClick={() => onClose(isDirty ? editedContent : undefined)}
         >
           <motion.div
             initial={{ scale: 0.96, opacity: 0, y: 16 }}
@@ -151,7 +152,7 @@ export function DraftEmailApprovalPanel({
                 )}
               </div>
               <button
-                onClick={onClose}
+                onClick={() => onClose(isDirty ? editedContent : undefined)}
                 className="text-wine-300 hover:text-white transition-colors p-1 -mr-1"
                 aria-label="Close"
               >

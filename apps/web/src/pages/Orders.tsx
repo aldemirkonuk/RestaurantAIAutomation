@@ -7,7 +7,7 @@ import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
 import { CommsThreadDrawer } from '../components/orders/CommsThreadDrawer'
-import { useApproveDraft, useDiscardDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
+import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
   Package,
   Clock,
@@ -255,6 +255,7 @@ export function Orders() {
   const [commsDrawerOrder, setCommsDrawerOrder] = useState<{ orderId: string; wineName: string; orderStatus: string } | null>(null)
   const approveDraftMutation = useApproveDraft()
   const discardDraftMutation = useDiscardDraft()
+  const editDraftMutation = useEditDraft()
   const [isActiveConvPanelOpen, setIsActiveConvPanelOpen] = useState(false)
   const { data: activeConversations = [], isLoading: activeConvLoading } = useActiveConversations()
   const pendingDraftOrderIds = useMemo(
@@ -3310,7 +3311,10 @@ Shadow stock has been moved to Live Stock.`)
           setIsDraftPanelOpen(false)
           setDraftPanelData(null)
         }}
-        onClose={() => {
+        onClose={(dirtyContent) => {
+          if (dirtyContent && draftPanelData) {
+            editDraftMutation.mutate({ orderId: draftPanelData.orderId, content: dirtyContent })
+          }
           setIsDraftPanelOpen(false)
           setDraftPanelData(null)
         }}
