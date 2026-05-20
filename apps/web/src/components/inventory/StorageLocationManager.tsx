@@ -25,6 +25,7 @@ import {
   Loader2,
   Zap,
   RefreshCw,
+  GripVertical,
 } from 'lucide-react'
 import { useStorageLocations, DEFAULT_LOCATIONS } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
@@ -91,6 +92,7 @@ export function StorageLocationManager({
     updateWineQuantityAtLocation,
     getLocationStats,
     recalculateLocationCounts,
+    setLocations,
   } = useStorageLocations()
 
   const actualLocations = getLocationsWithActualCounts()
@@ -110,6 +112,8 @@ export function StorageLocationManager({
     overflow: number
   } | null>(null)
   const [wineSearchQuery, setWineSearchQuery] = useState('')
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<StorageLocation>>({
     name: '',
     description: '',
@@ -363,16 +367,39 @@ export function StorageLocationManager({
                     key={location.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
+                    whileHover={{ scale: draggedId ? 1 : 1.01 }}
+                    whileTap={{ scale: draggedId ? 1 : 0.99 }}
+                    onDragOver={(e: React.DragEvent) => {
+                      e.preventDefault()
+                      if (location.id !== draggedId) setDragOverId(location.id)
+                    }}
+                    onDragLeave={() => setDragOverId(p => p === location.id ? null : p)}
+                    onDrop={(e: React.DragEvent) => {
+                      e.preventDefault()
+                      if (!draggedId || draggedId === location.id) { setDraggedId(null); setDragOverId(null); return }
+                      setLocations(prev => {
+                        const from = prev.findIndex(l => l.id === draggedId)
+                        const to = prev.findIndex(l => l.id === location.id)
+                        if (from === -1 || to === -1) return prev
+                        const next = [...prev]
+                        const [moved] = next.splice(from, 1)
+                        next.splice(to, 0, moved)
+                        return next
+                      })
+                      setDraggedId(null)
+                      setDragOverId(null)
+                    }}
                     className={`p-4 rounded-xl border-2 transition-all cursor-pointer group ${
-                      editingLocation?.id === location.id
+                      draggedId === location.id
+                        ? 'opacity-40 border-gray-300 bg-gray-50 scale-[0.98]'
+                        : dragOverId === location.id
+                        ? 'border-emerald-400 bg-emerald-50/40 shadow-lg'
+                        : editingLocation?.id === location.id
                         ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100'
                         : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md'
                     }`}
                     onClick={(e) => {
                       e.stopPropagation()
-                      // P3: clicking the active card deselects it
                       if (editingLocation?.id === location.id) {
                         cancelEdit()
                       } else {
@@ -386,8 +413,27 @@ export function StorageLocationManager({
                     }
                   >
                     <div className="flex items-start gap-3">
+                      {/* Drag handle — only this element is draggable to avoid FM type conflicts */}
                       <div
-                        className="w-4 h-4 rounded-full flex-shrink-0 mt-1"
+                        draggable
+                        onDragStart={(e) => {
+                          e.stopPropagation()
+                          setDraggedId(location.id)
+                          e.dataTransfer.effectAllowed = 'move'
+                        }}
+                        onDragEnd={(e) => {
+                          e.stopPropagation()
+                          setDraggedId(null)
+                          setDragOverId(null)
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-shrink-0 mt-0.5 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors"
+                        title="Drag to reorder"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                      <div
+                        className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1"
                         style={{ backgroundColor: location.color }}
                       />
                       <div className="flex-1 min-w-0">
@@ -743,18 +789,32 @@ export function StorageLocationManager({
 
                   {editingLocation && (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h4 className="text-sm font-semibold text-gray-900">Stored Wines</h4>
-                          {/* P1: count comes from server-sourced editingLocationWines, not a broken inventory join */}
-                          <p className="text-xs text-gray-500">
-                            {editingLocationWines.length} wine
-                            {editingLocationWines.length !== 1 ? 's' : ''} assigned here
-                          </p>
+                      {/* Header with live capacity bar */}
+                      <div className="mb-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-900">Stored Wines</h4>
+                            <p className="text-xs text-gray-500">
+                              {editingLocationWines.length} wine
+                              {editingLocationWines.length !== 1 ? 's' : ''} assigned here
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-medium text-gray-500">
+                              {editingLocationWines.reduce((s, w) => s + w.quantity, 0)} / {editingLocation.capacity}
+                            </span>
+                            <p className="text-xs text-gray-400">bottles</p>
+                          </div>
                         </div>
-                        <span className="text-xs font-medium text-gray-500">
-                          Capacity: {editingLocation.capacity}
-                        </span>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.min((editingLocationWines.reduce((s, w) => s + w.quantity, 0) / editingLocation.capacity) * 100, 100)}%`,
+                              backgroundColor: editingLocation.color,
+                            }}
+                          />
+                        </div>
                       </div>
 
                       {/* Currently assigned wines — server-sourced to avoid silent drops */}
@@ -791,9 +851,18 @@ export function StorageLocationManager({
                                 >
                                   <Minus className="w-3 h-3" />
                                 </button>
-                                <span className="text-sm font-semibold text-gray-700 w-6 text-center">
-                                  {wine.quantity}
-                                </span>
+                                <input
+                                  type="number"
+                                  value={wine.quantity}
+                                  min={1}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value)
+                                    if (!isNaN(val) && val >= 1) updateWineQuantityAtLocation(wine.wineId, val)
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-10 text-center text-sm font-semibold text-gray-700 border border-transparent hover:border-gray-300 rounded focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/20 bg-transparent py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  title="Click to edit quantity"
+                                />
                                 <button
                                   onClick={() =>
                                     updateWineQuantityAtLocation(wine.wineId, wine.quantity + 1)
