@@ -234,14 +234,10 @@ export const useAuthStore = create<AuthState>()(
           set({ loading: false })
           return
         }
-        
-        // Set token in axios
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-        
-        try {
-          const response = await api.get('/api/v1/auth/me')
-          const { user, availableRestaurants } = response.data
 
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+
+        const applyUserData = (user: any, availableRestaurants: any[]) => {
           const restaurants = Array.isArray(availableRestaurants) && availableRestaurants.length > 0
             ? availableRestaurants
             : [user.restaurantId]
@@ -253,19 +249,43 @@ export const useAuthStore = create<AuthState>()(
             storedActive && isUuid && restaurants.includes(storedActive)
               ? storedActive
               : user.restaurantId
-
           set({
             user,
             availableRestaurants: restaurants,
             activeRestaurantId: resolvedActive,
-            accessToken: token,
+            accessToken: localStorage.getItem('accessToken'),
             refreshToken: localStorage.getItem('refreshToken'),
             loading: false,
           })
-        } catch (err) {
+        }
+
+        try {
+          const response = await api.get('/api/v1/auth/me')
+          applyUserData(response.data.user, response.data.availableRestaurants)
+        } catch (err: any) {
+          // Access token expired — try refresh before giving up.
+          // Previously we called clearTokens() here which wiped the refresh
+          // token, causing every page query to 401 silently with no recovery.
+          if (err.response?.status === 401) {
+            const storedRefresh = localStorage.getItem('refreshToken')
+            if (storedRefresh) {
+              try {
+                const refreshRes = await api.post('/api/v1/auth/refresh', { refreshToken: storedRefresh })
+                const { accessToken: newAccess, refreshToken: newRefresh } = refreshRes.data
+                get().setTokens(newAccess, newRefresh || storedRefresh)
+                api.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`
+                const retryRes = await api.get('/api/v1/auth/me')
+                applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
+                return
+              } catch {
+                // Refresh token itself is expired/invalid — fall through to clear
+              }
+            }
+          }
           console.error('Failed to load user:', err)
           get().clearTokens()
-          set({ loading: false })
+          set({ user: null, loading: false })
+          window.location.href = '/login'
         }
       },
     }),
