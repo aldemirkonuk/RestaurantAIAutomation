@@ -6,7 +6,7 @@
  * Same public interface as the previous localStorage-based version.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../services/api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -99,6 +99,44 @@ export function useStorageLocations() {
 
   const locations = locationsQuery.data ?? DEFAULT_LOCATIONS
   const mappings = mappingsQuery.data ?? []
+
+  // Seed default locations to DB on first load when server has none.
+  // Without this, assignments to default loc-1..4 are never persisted (UUID guard blocks them)
+  // and a hard refresh wipes all mappings because the server has no record of them.
+  const didSeedRef = useRef(false)
+  useEffect(() => {
+    if (!restaurantId || !isAuthenticated) return
+    if (didSeedRef.current) return
+    if (!locationsQuery.isFetched || locationsQuery.isFetching) return
+    if (!locationsQuery.isSuccess) return
+
+    // All IDs match the hard-coded defaults → server returned empty, fallback was used
+    const allAreDefaults =
+      locations.length === DEFAULT_LOCATIONS.length &&
+      locations.every(l => DEFAULT_LOCATIONS.some(d => d.id === l.id))
+    if (!allAreDefaults) return
+
+    didSeedRef.current = true
+    Promise.all(
+      DEFAULT_LOCATIONS.map(loc =>
+        apiClient.post(`/storage-locations/${restaurantId}`, {
+          name: loc.name,
+          description: loc.description,
+          capacity: loc.capacity,
+          temperature: loc.temperature,
+          humidity: loc.humidity,
+          color: loc.color,
+          location_type: 'cellar',
+        }),
+      ),
+    )
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
+      })
+      .catch(() => {
+        didSeedRef.current = false
+      })
+  }, [locationsQuery.isFetched, locationsQuery.isFetching, locationsQuery.isSuccess, restaurantId, isAuthenticated, locations, queryClient])
 
   const setLocations = useCallback(
     (updater: StorageLocation[] | ((prev: StorageLocation[]) => StorageLocation[])) => {
