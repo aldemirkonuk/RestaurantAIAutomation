@@ -6,6 +6,7 @@ import type { StorageLocation } from '../../hooks/useStorageLocations'
 interface LocationPickerCellProps {
   wineId: string
   quantity: number
+  assignedQty?: number
   locations: StorageLocation[]
   currentLocation: StorageLocation | null
   onAssign: (locationId: string, quantity: number) => void
@@ -15,6 +16,7 @@ interface LocationPickerCellProps {
 export function LocationPickerCell({
   wineId: _wineId,
   quantity,
+  assignedQty,
   locations,
   currentLocation,
   onAssign,
@@ -49,6 +51,11 @@ export function LocationPickerCell({
     setIsLoading(false)
   }
 
+  const unassigned = assignedQty != null ? quantity - assignedQty : null
+  const tooltipText = assignedQty != null
+    ? `${assignedQty} in ${currentLocation?.name ?? 'location'}${unassigned && unassigned > 0 ? ` · ${unassigned} unassigned` : ''} · ${quantity} total`
+    : undefined
+
   return (
     <div ref={ref} className="relative">
       {isLoading ? (
@@ -57,17 +64,28 @@ export function LocationPickerCell({
           <span className="text-xs text-gray-400">Saving...</span>
         </div>
       ) : currentLocation ? (
-        <button
-          onClick={() => setIsOpen((o) => !o)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all max-w-full"
-        >
-          <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: currentLocation.color }}
-          />
-          <span className="truncate text-gray-700">{currentLocation.name}</span>
-          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
-        </button>
+        <div className="flex flex-col gap-0.5">
+          <button
+            onClick={() => setIsOpen((o) => !o)}
+            title={tooltipText}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all max-w-full"
+          >
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ backgroundColor: currentLocation.color }}
+            />
+            <span className="truncate text-gray-700">{currentLocation.name}</span>
+            {assignedQty != null && (
+              <span className="font-semibold text-gray-500 flex-shrink-0">·{assignedQty}</span>
+            )}
+            <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
+          </button>
+          {unassigned != null && unassigned > 0 && (
+            <span className="text-[10px] text-amber-600 font-medium px-1 flex items-center gap-0.5" title={`${unassigned} bottle${unassigned !== 1 ? 's' : ''} have no location assigned`}>
+              <MapPin className="w-2.5 h-2.5" />{unassigned} unassigned
+            </span>
+          )}
+        </div>
       ) : (
         <button
           onClick={() => setIsOpen((o) => !o)}

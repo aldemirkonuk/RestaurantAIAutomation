@@ -1174,6 +1174,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                         <LocationPickerCell
                           wineId={item.id}
                           quantity={(item.liveStock || 0) + (item.shadowStock || 0) || 1}
+                          assignedQty={mappings.find(m => m.wineId === item.id)?.quantity}
                           locations={storageLocations}
                           currentLocation={getWineLocation(item.id)}
                           onAssign={(locationId, qty) => {

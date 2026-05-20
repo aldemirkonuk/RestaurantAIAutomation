@@ -43,6 +43,7 @@ interface StorageLocationManagerProps {
     name: string
     producer: string
     liveStock?: number
+    shadowStock?: number
     storageLocation?: string
     location?: string
   }>
@@ -837,8 +838,12 @@ export function StorageLocationManager({
                                 </p>
                                 <p className="text-xs text-gray-500 truncate">{wine.producer}</p>
                               </div>
+                              {(() => {
+                                const invItem = inventoryItems?.find(i => i.id === wine.wineId)
+                                const maxQty = (invItem?.liveStock || 0) + (invItem?.shadowStock || 0) || Infinity
+                                const atMax = wine.quantity >= maxQty
+                                return (
                               <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                                {/* P2: quantity editor — updateWineQuantityAtLocation was in hook but unreachable */}
                                 <button
                                   onClick={() =>
                                     updateWineQuantityAtLocation(
@@ -851,27 +856,45 @@ export function StorageLocationManager({
                                 >
                                   <Minus className="w-3 h-3" />
                                 </button>
-                                <input
-                                  type="number"
-                                  value={wine.quantity}
-                                  min={1}
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value)
-                                    if (!isNaN(val) && val >= 1) updateWineQuantityAtLocation(wine.wineId, val)
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-10 text-center text-sm font-semibold text-gray-700 border border-transparent hover:border-gray-300 rounded focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/20 bg-transparent py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  title="Click to edit quantity"
-                                />
+                                <div className="flex flex-col items-center">
+                                  <input
+                                    type="number"
+                                    value={wine.quantity}
+                                    min={1}
+                                    max={maxQty === Infinity ? undefined : maxQty}
+                                    onChange={(e) => {
+                                      const val = parseInt(e.target.value)
+                                      if (!isNaN(val) && val >= 1) {
+                                        updateWineQuantityAtLocation(wine.wineId, Math.min(val, maxQty === Infinity ? val : maxQty))
+                                      }
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className={`w-10 text-center text-sm font-semibold border rounded focus:outline-none focus:ring-1 bg-transparent py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                      atMax && maxQty !== Infinity
+                                        ? 'border-amber-300 text-amber-700 focus:border-amber-400 focus:ring-amber-400/20'
+                                        : 'border-transparent hover:border-gray-300 text-gray-700 focus:border-emerald-400 focus:ring-emerald-500/20'
+                                    }`}
+                                    title={maxQty !== Infinity ? `Max ${maxQty} (live + shadow stock)` : 'Click to edit quantity'}
+                                  />
+                                  {maxQty !== Infinity && (
+                                    <span className="text-[9px] text-gray-400 leading-none">/{maxQty}</span>
+                                  )}
+                                </div>
                                 <button
+                                  disabled={atMax && maxQty !== Infinity}
                                   onClick={() =>
                                     updateWineQuantityAtLocation(wine.wineId, wine.quantity + 1)
                                   }
-                                  className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors"
-                                  title="Increase quantity"
+                                  className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title={atMax && maxQty !== Infinity ? `Already at maximum stock (${maxQty})` : 'Increase quantity'}
                                 >
                                   <Plus className="w-3 h-3" />
                                 </button>
+                                {atMax && maxQty !== Infinity && (
+                                  <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 ml-0.5" title="Cannot exceed total stock (live + shadow)">
+                                    max
+                                  </span>
+                                )}
                                 {/* P1: inline confirm for wine removal instead of instant delete */}
                                 {confirmRemoveWineId === wine.wineId ? (
                                   <div className="flex items-center gap-1 ml-1">
@@ -901,6 +924,8 @@ export function StorageLocationManager({
                                   </button>
                                 )}
                               </div>
+                                )
+                              })()}
                             </div>
                           ))}
                         </div>
