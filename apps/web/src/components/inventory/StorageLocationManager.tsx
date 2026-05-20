@@ -3,7 +3,7 @@
  * Allows managers to define and manage custom storage locations for wines
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -26,7 +26,7 @@ import {
   Zap,
   RefreshCw,
 } from 'lucide-react'
-import { useStorageLocations, useWinesAtLocation, DEFAULT_LOCATIONS } from '../../hooks/useStorageLocations'
+import { useStorageLocations, DEFAULT_LOCATIONS } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
 export type { StorageLocation }
 
@@ -119,12 +119,43 @@ export function StorageLocationManager({
     color: DEFAULT_COLORS[0],
   })
 
-  // Left panel: wines for the expanded accordion card (server-sourced)
-  const { wines: expandedWines, isLoading: winesLoading } = useWinesAtLocation(expandedLocationId)
-  // Right panel: wines for the location being edited (server-sourced, avoids silent drops from inventory join)
-  const { wines: editingLocationWines, isLoading: editingWinesLoading } = useWinesAtLocation(
-    editingLocation?.id ?? null,
-  )
+  // Compute wines from the client-side mappings cache — instant, no server round-trip, works for
+  // both real UUID locations and default locations (loc-1…loc-4).
+  const expandedWines = useMemo(() => {
+    if (!expandedLocationId) return []
+    return mappings
+      .filter(m => m.locationId === expandedLocationId)
+      .map(m => {
+        const item = inventoryItems.find(i => i.id === m.wineId)
+        return {
+          wineId: m.wineId,
+          wineName: item?.name ?? m.wineId,
+          producer: item?.producer ?? '',
+          vintage: null as null,
+          quantity: m.quantity,
+          assignedAt: m.assignedAt,
+        }
+      })
+  }, [mappings, expandedLocationId, inventoryItems])
+  const winesLoading = false
+
+  const editingLocationWines = useMemo(() => {
+    if (!editingLocation) return []
+    return mappings
+      .filter(m => m.locationId === editingLocation.id)
+      .map(m => {
+        const item = inventoryItems.find(i => i.id === m.wineId)
+        return {
+          wineId: m.wineId,
+          wineName: item?.name ?? m.wineId,
+          producer: item?.producer ?? '',
+          vintage: null as null,
+          quantity: m.quantity,
+          assignedAt: m.assignedAt,
+        }
+      })
+  }, [mappings, editingLocation, inventoryItems])
+  const editingWinesLoading = false
 
   useEffect(() => {
     onLocationsChangeRef.current?.(locations)

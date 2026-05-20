@@ -419,7 +419,7 @@ export function useWinesAtLocation(locationId: string | null) {
       )
       return Array.isArray(data) ? data : []
     },
-    enabled: !!restaurantId && !!locationId && isAuthenticated,
+    enabled: !!restaurantId && !!locationId && isAuthenticated && UUID_RE.test(locationId ?? ''),
     staleTime: 30_000,
     gcTime: 5 * 60_000,
   })
