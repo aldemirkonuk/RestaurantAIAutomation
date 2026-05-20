@@ -99,6 +99,21 @@ export class GmailService implements OnModuleInit {
       if (!token) throw new Error('No access token returned from Google');
 
       this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+
+      // Resolve the actual sender address from the Gmail profile so the From
+      // header matches the OAuth2-authorized account. Using a mismatched From
+      // (e.g. notifications@wineops.ai when the account is a @gmail.com address)
+      // fails SPF/DKIM alignment and lands in spam.
+      try {
+        const profile = await this.gmail.users.getProfile({ userId: 'me' });
+        if (profile.data.emailAddress) {
+          this.senderEmail = profile.data.emailAddress;
+          this.logger.log(`Gmail sender resolved to: ${this.senderEmail}`);
+        }
+      } catch {
+        this.logger.warn(`Could not resolve Gmail sender email — using configured value: ${this.senderEmail}`);
+      }
+
       this.isConfigured = true;
       this.logger.log('Gmail API initialized via OAuth2');
       return true;
