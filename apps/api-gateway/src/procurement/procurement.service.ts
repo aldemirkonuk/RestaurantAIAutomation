@@ -918,8 +918,32 @@ export class ProcurementService {
     const rawOrder = (conv as any).procurement_orders;
     const wineName = rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? 'Wine Order';
     const subject = (conv as any).subject || `Order Request: ${wineName}`;
-    const sentAt = new Date().toISOString();
 
+    // Send the email BEFORE committing SENT status — if delivery fails the
+    // conversation stays PENDING_APPROVAL and the manager can retry.
+    if (!providerEmail) {
+      throw new BadRequestException(`Provider has no email address — cannot send order email for order ${orderId}`);
+    }
+
+    if (this.gmailService) {
+      const ccAddresses = dto.ccEmails ?? [];
+      const result = await this.gmailService.sendEmail({
+        to: [providerEmail],
+        cc: ccAddresses.length > 0 ? ccAddresses : undefined,
+        subject,
+        html: emailBody,
+      });
+      if (!result.success) {
+        this.logger.error(`Email delivery failed for order ${orderId}: ${result.error}`);
+        throw new BadRequestException(
+          `Email could not be delivered to ${providerEmail}: ${result.error ?? 'unknown error'}. ` +
+          'Check Gmail credentials in Railway env vars (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).',
+        );
+      }
+      this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId}`);
+    }
+
+    const sentAt = new Date().toISOString();
     const updatePayload: Record<string, any> = {
       sent_at: sentAt,
       status: 'SENT',
@@ -938,30 +962,8 @@ export class ProcurementService {
       .single();
 
     if (error) {
-      this.logger.error('approveDraft failed', { restaurantId, orderId, error: error.message });
+      this.logger.error('approveDraft DB update failed after email sent', { restaurantId, orderId, error: error.message });
       throw error;
-    }
-
-    // Send the email directly now that we have the content and provider address
-    if (this.gmailService && providerEmail) {
-      try {
-        const ccAddresses = dto.ccEmails ?? [];
-        const result = await this.gmailService.sendEmail({
-          to: [providerEmail],
-          cc: ccAddresses.length > 0 ? ccAddresses : undefined,
-          subject,
-          html: emailBody,
-        });
-        if (!result.success) {
-          this.logger.error(`Email send failed for order ${orderId}: ${result.error}`);
-        } else {
-          this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId}`);
-        }
-      } catch (e: any) {
-        this.logger.error(`Email send threw for order ${orderId}: ${e?.message}`);
-      }
-    } else if (!providerEmail) {
-      this.logger.warn(`No provider email found for order ${orderId} — email not sent`);
     }
 
     // Create calendar delivery event NOW — only after manager approves the draft email.
