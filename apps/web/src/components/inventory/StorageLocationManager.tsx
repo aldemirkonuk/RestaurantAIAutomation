@@ -36,6 +36,7 @@ interface StorageLocationManagerProps {
   onSelectLocation?: (location: StorageLocation) => void
   onLocationsChange?: (locations: StorageLocation[]) => void
   selectedWineId?: string
+  defaultEditLocationId?: string
   inventoryItems?: Array<{
     id: string
     name: string
@@ -74,6 +75,7 @@ export function StorageLocationManager({
   onSelectLocation,
   onLocationsChange,
   selectedWineId,
+  defaultEditLocationId,
   inventoryItems = [],
   onAutoLocate,
 }: StorageLocationManagerProps) {
@@ -294,6 +296,14 @@ export function StorageLocationManager({
     : winesFilteredBySearch
 
   const stats = getLocationStats()
+
+  // When opened with a specific location (e.g. from sidebar click), auto-open its edit panel
+  useEffect(() => {
+    if (!isOpen || !defaultEditLocationId) return
+    const loc = locations.find(l => l.id === defaultEditLocationId)
+    if (loc) startEdit(loc)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, defaultEditLocationId])
 
   if (!isOpen) return null
 

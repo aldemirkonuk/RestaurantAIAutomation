@@ -153,6 +153,7 @@ export function Inventory() {
   const [includeMetrics, setIncludeMetrics] = useState(false)
   const [showInventoryInsights, setShowInventoryInsights] = useState(true)
   const [showStorageManager, setShowStorageManager] = useState(false)
+  const [storageManagerLocationId, setStorageManagerLocationId] = useState<string | null>(null)
   const [_realtimeUpdates, setRealtimeUpdates] = useState<InventoryUpdatePayload[]>([])
   const [_showRealtimeToast, setShowRealtimeToast] = useState(false)
   const [showResetStockModal, setShowResetStockModal] = useState(false)
@@ -600,11 +601,9 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
     for (const assignment of selected) {
       assignWineToLocation(assignment.wineId, assignment.locationId, assignment.quantity)
     }
-    queryClient.invalidateQueries({ queryKey: ['winesAtLocation', activeRestaurantId ?? ''] })
-    queryClient.invalidateQueries({ queryKey: ['storageLocationMappings', activeRestaurantId ?? ''] })
     setShowAutoLocateModal(false)
     setAutoLocateResult(null)
-  }, [assignWineToLocation, queryClient, activeRestaurantId])
+  }, [assignWineToLocation])
 
   return (
     <div className="min-h-screen">
@@ -693,18 +692,15 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                           <button
                             key={location.id}
                             onClick={() => {
-                              if (selectedLocationFilter === location.id) {
-                                setSelectedLocationFilter(null) // Toggle off if already selected
-                              } else {
-                                setSelectedLocationFilter(location.id) // Filter by this location
-                              }
+                              setStorageManagerLocationId(location.id)
+                              setShowStorageManager(true)
                             }}
                             className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
                               selectedLocationFilter === location.id
                                 ? 'bg-wine-50 border-2 border-wine-500 shadow-md'
                                 : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent hover:border-wine-300'
                             }`}
-                            title={selectedLocationFilter === location.id ? "Click to clear filter" : "Click to filter by this location"}
+                            title="Click to manage this location"
                           >
                             <div className="flex items-center gap-2">
                               <div
@@ -1575,11 +1571,13 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
       {/* Storage Location Manager Modal */}
       <StorageLocationManager
         isOpen={showStorageManager}
-        onClose={() => setShowStorageManager(false)}
+        onClose={() => { setShowStorageManager(false); setStorageManagerLocationId(null) }}
         inventoryItems={inventory as any}
+        defaultEditLocationId={storageManagerLocationId ?? undefined}
         onSelectLocation={(location) => {
           setSelectedLocationFilter(location.id)
           setShowStorageManager(false)
+          setStorageManagerLocationId(null)
         }}
         onLocationsChange={(updatedLocations) => {
           setStorageLocations(updatedLocations)
