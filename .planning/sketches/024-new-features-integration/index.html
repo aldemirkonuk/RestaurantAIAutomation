@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>024 — New Features Integration</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: var(--color-bg); color: var(--color-text); padding-top: 48px; }
+    .variant { display: none; min-height: 100vh; }
+    .variant.active { display: block; }
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: #1a1a2e; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 16px; display: flex; gap: 6px; align-items: center;
+    }
+    #variant-nav span { color: rgba(255,255,255,0.4); font-size: 11px; margin-right: 6px; font-family: monospace; }
+    .variant-tab { padding: 5px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); cursor: pointer; font-size: 12px; transition: all 0.15s; }
+    .variant-tab:hover { background: rgba(255,255,255,0.12); color: white; }
+    .variant-tab.active { background: var(--color-primary,#CD2D5B); border-color: var(--color-primary); color: white; }
+    .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; font-family: var(--font-body); display:inline-flex;align-items:center;gap:5px; }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(205,45,91,0.3); }
+    .btn-sm { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 5px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; transition: all 0.15s; font-family: var(--font-body); }
+    .btn-sm:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .fill-bar { height: 5px; border-radius: 3px; background: #f0f0f0; }
+    .fill-bar-inner { height: 100%; border-radius: 3px; }
+
+    /* ─── VARIANT A: HEALTH DASHBOARD ─── */
+    .a-layout { display: grid; grid-template-columns: 1fr 340px; height: calc(100vh - 48px); }
+    .a-main { overflow-y: auto; }
+    .a-page-header { padding: 20px 24px 16px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; }
+    .a-page-title { font-size: 20px; font-weight: 700; font-family: var(--font-display); }
+    .a-health-banner { margin: 16px; background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%); border: 1px solid #fde68a; border-radius: 14px; padding: 16px 20px; display: flex; align-items: flex-start; gap: 14px; }
+    .a-health-icon { font-size: 28px; }
+    .a-health-title { font-size: 14px; font-weight: 700; color: #92400e; margin-bottom: 6px; }
+    .a-health-items { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .a-health-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #78350f; }
+    .a-health-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .a-health-actions { display: flex; gap: 6px; align-self: center; }
+    .a-health-btn { padding: 7px 14px; background: #d97706; color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; font-family: var(--font-body); }
+    .a-health-btn:hover { background: #b45309; }
+
+    .a-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 16px; }
+    .a-loc-card { background: var(--color-surface); border-radius: 12px; border: 1px solid var(--color-border); overflow: hidden; cursor: pointer; transition: all 0.2s; }
+    .a-loc-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+    .a-loc-strip { height: 4px; }
+    .a-loc-body { padding: 14px; }
+    .a-loc-row1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .a-loc-name { font-weight: 700; font-size: 14px; font-family: var(--font-display); }
+    .a-loc-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+    .a-loc-bar-wrap { margin-bottom: 8px; }
+    .a-loc-bar-row { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    .a-loc-meta { display: flex; gap: 10px; font-size: 11px; color: #6b7280; }
+    .a-loc-trend { margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+    .a-trend-label { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .a-sparkline { display: flex; align-items: flex-end; gap: 3px; height: 32px; }
+    .a-spark-bar { flex: 1; border-radius: 2px; transition: height 0.3s; }
+
+    /* Health sidebar */
+    .a-sidebar { background: #1a0a0f; border-left: 1px solid rgba(255,255,255,0.06); overflow-y: auto; display: flex; flex-direction: column; }
+    .a-sidebar-header { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .a-sidebar-title { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.07em; display: flex; align-items: center; gap: 6px; }
+    .a-sidebar-section { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .a-sidebar-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
+    .a-kpi { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .a-kpi-label { font-size: 12px; color: rgba(255,255,255,0.6); }
+    .a-kpi-val { font-size: 16px; font-weight: 800; font-family: 'Plus Jakarta Sans',sans-serif; color: white; }
+    .a-kpi-val.ok { color: #4ade80; }
+    .a-kpi-val.warn { color: #fbbf24; }
+    .a-kpi-val.danger { color: #f87171; }
+    .a-alert-card { background: rgba(255,255,255,0.06); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08); cursor: pointer; transition: background 0.15s; }
+    .a-alert-card:hover { background: rgba(255,255,255,0.1); }
+    .a-alert-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .a-alert-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .a-alert-title { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.85); }
+    .a-alert-desc { font-size: 11px; color: rgba(255,255,255,0.45); }
+    .a-report-btn { margin: 16px 20px; padding: 10px; background: rgba(205,45,91,0.15); border: 1px solid rgba(205,45,91,0.3); border-radius: 10px; color: #f4a9ba; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; font-family: var(--font-body); }
+    .a-report-btn:hover { background: rgba(205,45,91,0.25); }
+
+    /* ─── VARIANT B: AI SIDEBAR ─── */
+    .b-layout { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 48px); }
+    .b-main { overflow-y: auto; }
+    .b-page-header { padding: 20px 24px 16px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px; }
+    .b-page-title { font-size: 20px; font-weight: 700; font-family: var(--font-display); flex: 1; }
+    .b-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 16px; }
+    .b-card { background: var(--color-surface); border-radius: 12px; border: 1px solid var(--color-border); overflow: hidden; cursor: pointer; transition: all 0.2s; }
+    .b-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .b-strip { height: 3px; }
+    .b-card-body { padding: 14px; }
+    .b-card-row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .b-card-name { font-weight: 700; font-size: 14px; font-family: var(--font-display); }
+    .b-bar-wrap { margin-bottom: 8px; }
+    .b-bar-row { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    .b-meta { display: flex; gap: 10px; font-size: 11px; color: #6b7280; }
+    .b-card-footer { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f0f0; }
+
+    /* AI Sidebar */
+    .b-ai-panel { background: #0f172a; border-left: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; overflow: hidden; }
+    .b-ai-header { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 10px; }
+    .b-ai-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #CD2D5B, #7c1d3c); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .b-ai-title { font-size: 14px; font-weight: 700; color: white; }
+    .b-ai-subtitle { font-size: 11px; color: rgba(255,255,255,0.4); }
+    .b-ai-summary { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .b-ai-summary-text { font-size: 12px; color: rgba(255,255,255,0.65); line-height: 1.6; }
+    .b-ai-summary-text strong { color: white; }
+    .b-ai-assignments { flex: 1; overflow-y: auto; padding: 12px 16px; }
+    .b-ai-section-title { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; }
+    .b-assign-item { background: rgba(255,255,255,0.06); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.07); display: flex; gap: 10px; align-items: flex-start; cursor: pointer; transition: all 0.15s; }
+    .b-assign-item:hover { background: rgba(255,255,255,0.1); }
+    .b-assign-item.selected { border-color: rgba(205,45,91,0.4); background: rgba(205,45,91,0.08); }
+    .b-assign-cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: transparent; flex-shrink: 0; margin-top: 1px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; transition: all 0.15s; }
+    .b-assign-cb.checked { background: var(--color-primary); border-color: var(--color-primary); }
+    .b-assign-info { flex: 1; min-width: 0; }
+    .b-assign-wine { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .b-assign-arrow { font-size: 11px; color: rgba(255,255,255,0.4); margin: 2px 0; }
+    .b-assign-loc { font-size: 11px; color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 5px; }
+    .b-assign-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .b-assign-reason { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 3px; font-style: italic; }
+    .b-ai-actions { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; gap: 8px; }
+    .b-ai-btn-primary { flex: 1; padding: 10px; background: var(--color-primary); border: none; border-radius: 8px; color: white; font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--font-body); transition: all 0.15s; }
+    .b-ai-btn-primary:hover { background: var(--color-primary-hover); }
+    .b-ai-btn-sec { padding: 10px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 12px; cursor: pointer; font-family: var(--font-body); transition: all 0.15s; }
+    .b-ai-btn-sec:hover { background: rgba(255,255,255,0.12); }
+
+    /* ─── VARIANT C: QR + QUICK-ADD PANEL ─── */
+    .c-layout { display: grid; grid-template-columns: 1fr 320px; height: calc(100vh - 48px); }
+    .c-main { overflow-y: auto; }
+    .c-page-header { padding: 16px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px; }
+    .c-page-title { font-size: 20px; font-weight: 700; font-family: var(--font-display); flex: 1; }
+    .c-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 16px; }
+    .c-card { background: var(--color-surface); border-radius: 12px; border: 1px solid var(--color-border); overflow: hidden; cursor: pointer; transition: all 0.2s; }
+    .c-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .c-strip { height: 3px; }
+    .c-card-body { padding: 14px; }
+    .c-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .c-card-name { font-weight: 700; font-size: 14px; font-family: var(--font-display); }
+    .c-bar-row { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    .c-card-meta { display: flex; gap: 10px; font-size: 11px; color: #6b7280; margin-top: 8px; }
+    .c-qr-btn { display: flex; align-items: center; gap: 4px; font-size: 10px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 3px 8px; cursor: pointer; transition: all 0.15s; font-family: var(--font-body); color: #6b7280; margin-top: 8px; width: fit-content; }
+    .c-qr-btn:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+
+    /* QR + Quick-Add Panel */
+    .c-panel { background: var(--color-surface); border-left: 1px solid var(--color-border); display: flex; flex-direction: column; overflow: hidden; }
+    .c-panel-tabs { display: flex; border-bottom: 1px solid var(--color-border); }
+    .c-panel-tab { flex: 1; padding: 12px; text-align: center; font-size: 12px; font-weight: 600; cursor: pointer; color: #9ca3af; transition: all 0.15s; border-bottom: 2px solid transparent; }
+    .c-panel-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .c-panel-tab:hover:not(.active) { color: var(--color-text); }
+    .c-panel-content { flex: 1; overflow-y: auto; display: none; }
+    .c-panel-content.active { display: block; }
+
+    /* QR tab */
+    .c-qr-section { padding: 16px; border-bottom: 1px solid var(--color-border); }
+    .c-qr-select { margin-bottom: 10px; }
+    .c-qr-select select { width: 100%; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 13px; font-family: var(--font-body); background: var(--color-bg); outline: none; cursor: pointer; }
+    .c-qr-code-mock { width: 160px; height: 160px; border: 2px solid var(--color-border); border-radius: 12px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; background: white; position: relative; overflow: hidden; }
+    .c-qr-pattern { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; width: 120px; height: 120px; }
+    .c-qr-cell { border-radius: 1px; }
+    .c-qr-label { text-align: center; font-size: 11px; color: #9ca3af; margin-bottom: 12px; }
+    .c-qr-actions { display: flex; gap: 6px; }
+    .c-qr-action-btn { flex: 1; padding: 8px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 8px; font-size: 11px; font-weight: 600; color: #4b5563; cursor: pointer; text-align: center; transition: all 0.15s; font-family: var(--font-body); }
+    .c-qr-action-btn:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+    .c-qr-all { padding: 12px 16px; }
+    .c-qr-all-title { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .c-qr-loc-item { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+    .c-qr-loc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .c-qr-loc-name { font-size: 12px; font-weight: 500; flex: 1; }
+    .c-qr-dl { font-size: 10px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 7px; color: #6b7280; cursor: pointer; transition: all 0.15s; }
+    .c-qr-dl:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+
+    /* Quick-Add tab */
+    .c-qa-form { padding: 16px; }
+    .c-qa-title { font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+    .c-form-group { margin-bottom: 12px; }
+    .c-form-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; display: block; }
+    .c-form-input { width: 100%; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 13px; font-family: var(--font-body); background: var(--color-bg); outline: none; transition: border-color 0.15s; }
+    .c-form-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(205,45,91,0.1); }
+    .c-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .c-form-select { width: 100%; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 13px; font-family: var(--font-body); background: var(--color-bg); outline: none; cursor: pointer; }
+    .c-loc-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+    .c-loc-pill { padding: 5px 10px; border-radius: 99px; border: 1px solid var(--color-border); font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 0.15s; background: white; }
+    .c-loc-pill.active { background: var(--color-primary-light); border-color: var(--color-primary-medium); color: var(--color-primary); font-weight: 600; }
+    .c-loc-pill-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .c-submit-btn { width: 100%; padding: 11px; background: var(--color-primary); color: white; border: none; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-body); transition: all 0.15s; margin-top: 4px; }
+    .c-submit-btn:hover { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(205,45,91,0.3); }
+
+    /* Activity tab */
+    .c-activity { padding: 14px 16px; }
+    .c-activity-title { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+    .c-activity-item { display: flex; gap: 10px; margin-bottom: 12px; }
+    .c-act-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+    .c-act-info { flex: 1; }
+    .c-act-action { font-size: 12px; font-weight: 500; }
+    .c-act-detail { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+    .c-act-time { font-size: 10px; color: #d1d5db; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span>024 NEW FEATURES</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Health Dashboard</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: AI Auto-Locate Panel</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: QR + Quick-Add Panel</button>
+</div>
+
+<!-- ══ VARIANT A: HEALTH DASHBOARD SIDEBAR ══ -->
+<div id="variant-a" class="variant active">
+  <div class="a-layout">
+    <div class="a-main">
+      <div class="a-page-header">
+        <div>
+          <div class="a-page-title">Storage Locations</div>
+          <div style="font-size:12px;color:#9ca3af;margin-top:2px">Health check · Last scan 4 min ago</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="showToast('Auto-Locate…')">✦ Auto-Locate</button>
+          <button class="btn btn-primary" onclick="showToast('Add Location…')">+ Location</button>
+        </div>
+      </div>
+
+      <!-- Alert Banner -->
+      <div class="a-health-banner">
+        <div class="a-health-icon">⚠️</div>
+        <div class="a-health-items">
+          <div class="a-health-title">2 Locations Need Attention</div>
+          <div class="a-health-item"><div class="a-health-dot" style="background:#DC2626"></div>Overflow Storage is at 102% capacity — move or reallocate 10+ bottles</div>
+          <div class="a-health-item"><div class="a-health-dot" style="background:#d97706"></div>Main Cellar approaching threshold (85%) — consider reordering patterns</div>
+        </div>
+        <div class="a-health-actions">
+          <button class="a-health-btn" onclick="showToast('✦ Auto-Locate resolving overflow…')">✦ Auto-Fix</button>
+        </div>
+      </div>
+
+      <!-- Location Cards with Trend Sparklines -->
+      <div class="a-grid">
+        <div class="a-loc-card" onclick="showToast('Main Cellar detail…')">
+          <div class="a-loc-strip" style="background:#7c1d3c"></div>
+          <div class="a-loc-body">
+            <div class="a-loc-row1">
+              <div class="a-loc-name">Main Cellar</div>
+              <span class="badge" style="background:#fffbeb;color:#d97706;font-size:10px">⚠ 85%</span>
+            </div>
+            <div class="a-loc-bar-wrap">
+              <div class="a-loc-bar-row"><span>847 / 1,000</span><span>153 free</span></div>
+              <div class="fill-bar"><div class="fill-bar-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+            </div>
+            <div class="a-loc-meta"><span>🌡 55°F</span><span>💧 70%</span><span>41 SKUs</span></div>
+            <div class="a-loc-trend">
+              <div class="a-trend-label">7-day fill history</div>
+              <div class="a-sparkline">
+                <div class="a-spark-bar" style="height:52%;background:#d4a5b3"></div>
+                <div class="a-spark-bar" style="height:58%;background:#c88a9f"></div>
+                <div class="a-spark-bar" style="height:63%;background:#bc6f8b"></div>
+                <div class="a-spark-bar" style="height:70%;background:#b05477"></div>
+                <div class="a-spark-bar" style="height:75%;background:#a43963"></div>
+                <div class="a-spark-bar" style="height:80%;background:#981e4f"></div>
+                <div class="a-spark-bar" style="height:85%;background:#7c1d3c"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="a-loc-card" onclick="showToast('Bar Stock detail…')">
+          <div class="a-loc-strip" style="background:#CD2D5B"></div>
+          <div class="a-loc-body">
+            <div class="a-loc-row1">
+              <div class="a-loc-name">Bar Stock</div>
+              <span class="badge" style="background:#ecfdf5;color:#059669;font-size:10px">✓ Healthy</span>
+            </div>
+            <div class="a-loc-bar-wrap">
+              <div class="a-loc-bar-row"><span>42 / 150</span><span>108 free</span></div>
+              <div class="fill-bar"><div class="fill-bar-inner" style="width:28%;background:#CD2D5B"></div></div>
+            </div>
+            <div class="a-loc-meta"><span>🌡 58°F</span><span>💧 Ambient</span><span>18 SKUs</span></div>
+            <div class="a-loc-trend">
+              <div class="a-trend-label">7-day fill history</div>
+              <div class="a-sparkline">
+                <div class="a-spark-bar" style="height:45%;background:#e8b0bc"></div>
+                <div class="a-spark-bar" style="height:40%;background:#dda0b0"></div>
+                <div class="a-spark-bar" style="height:35%;background:#d290a4"></div>
+                <div class="a-spark-bar" style="height:38%;background:#c78098"></div>
+                <div class="a-spark-bar" style="height:32%;background:#bc708c"></div>
+                <div class="a-spark-bar" style="height:30%;background:#CD2D5B"></div>
+                <div class="a-spark-bar" style="height:28%;background:#CD2D5B"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="a-loc-card" onclick="showToast('VIP Reserve detail…')">
+          <div class="a-loc-strip" style="background:#d97706"></div>
+          <div class="a-loc-body">
+            <div class="a-loc-row1">
+              <div class="a-loc-name">VIP Reserve</div>
+              <span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px">🔒 48%</span>
+            </div>
+            <div class="a-loc-bar-wrap">
+              <div class="a-loc-bar-row"><span>48 / 100</span><span>52 free</span></div>
+              <div class="fill-bar"><div class="fill-bar-inner" style="width:48%;background:#d97706"></div></div>
+            </div>
+            <div class="a-loc-meta"><span>🌡 53°F</span><span>💧 75%</span><span>28 SKUs</span></div>
+            <div class="a-loc-trend">
+              <div class="a-trend-label">7-day fill history</div>
+              <div class="a-sparkline">
+                <div class="a-spark-bar" style="height:55%;background:#f0c580"></div>
+                <div class="a-spark-bar" style="height:52%;background:#ebb870"></div>
+                <div class="a-spark-bar" style="height:50%;background:#e6ab60"></div>
+                <div class="a-spark-bar" style="height:48%;background:#d97706"></div>
+                <div class="a-spark-bar" style="height:47%;background:#d97706"></div>
+                <div class="a-spark-bar" style="height:48%;background:#d97706"></div>
+                <div class="a-spark-bar" style="height:48%;background:#d97706"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="a-loc-card" style="border-color:#fecaca" onclick="showToast('Overflow detail…')">
+          <div class="a-loc-strip" style="background:#DC2626"></div>
+          <div class="a-loc-body">
+            <div class="a-loc-row1">
+              <div class="a-loc-name">Overflow Storage</div>
+              <span class="badge" style="background:#fef2f2;color:#DC2626;font-size:10px">⚠ 102%</span>
+            </div>
+            <div class="a-loc-bar-wrap">
+              <div class="a-loc-bar-row"><span style="color:#DC2626;font-weight:600">610 / 600</span><span>-10 over!</span></div>
+              <div class="fill-bar"><div class="fill-bar-inner" style="width:100%;background:#DC2626"></div></div>
+            </div>
+            <div class="a-loc-meta"><span>🌡 Unctrl.</span><span>34 SKUs</span></div>
+            <div class="a-loc-trend">
+              <div class="a-trend-label">7-day fill history</div>
+              <div class="a-sparkline">
+                <div class="a-spark-bar" style="height:60%;background:#fca5a5"></div>
+                <div class="a-spark-bar" style="height:70%;background:#f87171"></div>
+                <div class="a-spark-bar" style="height:75%;background:#ef4444"></div>
+                <div class="a-spark-bar" style="height:80%;background:#DC2626"></div>
+                <div class="a-spark-bar" style="height:88%;background:#DC2626"></div>
+                <div class="a-spark-bar" style="height:95%;background:#DC2626"></div>
+                <div class="a-spark-bar" style="height:100%;background:#DC2626"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Health Dashboard Sidebar -->
+    <div class="a-sidebar">
+      <div class="a-sidebar-header">
+        <div class="a-sidebar-title">📊 Health Monitor</div>
+      </div>
+      <div class="a-sidebar-section">
+        <div class="a-sidebar-section-title">Cellar Health</div>
+        <div class="a-kpi"><span class="a-kpi-label">Overall Utilization</span><span class="a-kpi-val warn">73%</span></div>
+        <div class="a-kpi"><span class="a-kpi-label">Critical Locations</span><span class="a-kpi-val danger">1</span></div>
+        <div class="a-kpi"><span class="a-kpi-label">Warning Locations</span><span class="a-kpi-val warn">1</span></div>
+        <div class="a-kpi"><span class="a-kpi-label">Healthy Locations</span><span class="a-kpi-val ok">2</span></div>
+      </div>
+      <div class="a-sidebar-section">
+        <div class="a-sidebar-section-title">Active Alerts</div>
+        <div class="a-alert-card" onclick="showToast('Overflow alert detail…')">
+          <div class="a-alert-card-top">
+            <div class="a-alert-dot" style="background:#f87171"></div>
+            <div class="a-alert-title">Overflow at 102%</div>
+          </div>
+          <div class="a-alert-desc">610 bottles in 600-capacity location. Move 10+ bottles immediately.</div>
+        </div>
+        <div class="a-alert-card" onclick="showToast('Main Cellar alert detail…')">
+          <div class="a-alert-card-top">
+            <div class="a-alert-dot" style="background:#fbbf24"></div>
+            <div class="a-alert-title">Main Cellar nearing full</div>
+          </div>
+          <div class="a-alert-desc">At 85%. High fill rate trend — may hit capacity within 2 weeks.</div>
+        </div>
+      </div>
+      <div class="a-sidebar-section">
+        <div class="a-sidebar-section-title">Temperature Status</div>
+        <div class="a-kpi"><span class="a-kpi-label">Main Cellar 55°F</span><span class="a-kpi-val ok">✓ OK</span></div>
+        <div class="a-kpi"><span class="a-kpi-label">Bar Stock 58°F</span><span class="a-kpi-val ok">✓ OK</span></div>
+        <div class="a-kpi"><span class="a-kpi-label">VIP Reserve 53°F</span><span class="a-kpi-val ok">✓ OK</span></div>
+        <div class="a-kpi"><span class="a-kpi-label">Overflow</span><span class="a-kpi-val warn">Uncontrolled</span></div>
+      </div>
+      <button class="a-report-btn" onclick="showToast('Generating health report PDF…')">↓ Export Health Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VARIANT B: AI AUTO-LOCATE PANEL ══ -->
+<div id="variant-b" class="variant">
+  <div class="b-layout">
+    <div class="b-main">
+      <div class="b-page-header">
+        <div class="b-page-title">Storage Locations</div>
+        <span style="font-size:11px;color:#9ca3af">47 wines unassigned · AI suggests optimal placement</span>
+        <button class="btn btn-sm" onclick="showToast('Export…')">↓ Export</button>
+        <button class="btn btn-primary" onclick="showToast('Add Location…')">+ Location</button>
+      </div>
+      <div class="b-grid">
+        <div class="b-card" onclick="showToast('Main Cellar…')">
+          <div class="b-strip" style="background:#7c1d3c"></div>
+          <div class="b-card-body">
+            <div class="b-card-row1"><div class="b-card-name">Main Cellar</div><span class="badge" style="background:#fffbeb;color:#d97706;font-size:10px">85%</span></div>
+            <div class="b-bar-row"><span>847 / 1,000</span><span>153 free</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+            <div class="b-meta"><span>🌡 55°F</span><span>41 SKUs</span></div>
+            <div class="b-card-footer">
+              <div style="font-size:10px;background:#ecfdf5;color:#059669;border-radius:99px;padding:2px 7px;font-weight:700">Good for Reds</div>
+              <button class="btn-sm" onclick="event.stopPropagation();showToast('View wines…')">View</button>
+            </div>
+          </div>
+        </div>
+        <div class="b-card" onclick="showToast('Bar Stock…')">
+          <div class="b-strip" style="background:#CD2D5B"></div>
+          <div class="b-card-body">
+            <div class="b-card-row1"><div class="b-card-name">Bar Stock</div><span class="badge" style="background:#ecfdf5;color:#059669;font-size:10px">28%</span></div>
+            <div class="b-bar-row"><span>42 / 150</span><span>108 free</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:28%;background:#CD2D5B"></div></div>
+            <div class="b-meta"><span>🌡 58°F</span><span>18 SKUs</span></div>
+            <div class="b-card-footer">
+              <div style="font-size:10px;background:#eff6ff;color:#0284c7;border-radius:99px;padding:2px 7px;font-weight:700">Good for Rosé</div>
+              <button class="btn-sm" onclick="event.stopPropagation();showToast('View wines…')">View</button>
+            </div>
+          </div>
+        </div>
+        <div class="b-card" onclick="showToast('VIP Reserve…')">
+          <div class="b-strip" style="background:#d97706"></div>
+          <div class="b-card-body">
+            <div class="b-card-row1"><div class="b-card-name">VIP Reserve</div><span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px">48%</span></div>
+            <div class="b-bar-row"><span>48 / 100</span><span>52 free</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:48%;background:#d97706"></div></div>
+            <div class="b-meta"><span>🌡 53°F</span><span>28 SKUs</span></div>
+            <div class="b-card-footer">
+              <div style="font-size:10px;background:#f0fdf4;color:#059669;border-radius:99px;padding:2px 7px;font-weight:700">Good for Whites</div>
+              <button class="btn-sm" onclick="event.stopPropagation();showToast('View wines…')">View</button>
+            </div>
+          </div>
+        </div>
+        <div class="b-card" style="border-color:#fecaca" onclick="showToast('Overflow…')">
+          <div class="b-strip" style="background:#DC2626"></div>
+          <div class="b-card-body">
+            <div class="b-card-row1"><div class="b-card-name">Overflow Storage</div><span class="badge" style="background:#fef2f2;color:#DC2626;font-size:10px">⚠ 102%</span></div>
+            <div class="b-bar-row"><span style="color:#DC2626;font-weight:600">610 / 600</span><span>Over!</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:100%;background:#DC2626"></div></div>
+            <div class="b-meta"><span>🌡 —</span><span>34 SKUs</span></div>
+            <div class="b-card-footer">
+              <div style="font-size:10px;background:#fef2f2;color:#DC2626;border-radius:99px;padding:2px 7px;font-weight:700">⚠ Overcapacity</div>
+              <button class="btn-sm" onclick="event.stopPropagation();showToast('Move wines…')">Move</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Auto-Locate Panel -->
+    <div class="b-ai-panel">
+      <div class="b-ai-header">
+        <div class="b-ai-icon">✦</div>
+        <div>
+          <div class="b-ai-title">AI Auto-Locate</div>
+          <div class="b-ai-subtitle">Optimal placement for 47 unassigned wines</div>
+        </div>
+      </div>
+      <div class="b-ai-summary">
+        <div class="b-ai-summary-text">
+          Analyzed <strong>47 unassigned wines</strong> across temperature zones and capacity.
+          Found optimal placements for <strong>44 wines</strong>. 3 wines need manual review (capacity constraints).
+        </div>
+      </div>
+      <div class="b-ai-assignments">
+        <div class="b-ai-section-title">Suggested Assignments (44)</div>
+        <div class="b-assign-item selected" onclick="toggleAssign(this)">
+          <div class="b-assign-cb checked">✓</div>
+          <div class="b-assign-info">
+            <div class="b-assign-wine">Barolo Riserva 2016 × 6</div>
+            <div class="b-assign-arrow">→</div>
+            <div class="b-assign-loc"><div class="b-assign-dot" style="background:#7c1d3c"></div> Main Cellar</div>
+            <div class="b-assign-reason">Red wine · temp match 60–65°F · 153 bottles available</div>
+          </div>
+        </div>
+        <div class="b-assign-item selected" onclick="toggleAssign(this)">
+          <div class="b-assign-cb checked">✓</div>
+          <div class="b-assign-info">
+            <div class="b-assign-wine">Chablis Premier Cru 2021 × 12</div>
+            <div class="b-assign-arrow">→</div>
+            <div class="b-assign-loc"><div class="b-assign-dot" style="background:#d97706"></div> VIP Reserve</div>
+            <div class="b-assign-reason">White wine · temp match 45–55°F · 52 bottles available</div>
+          </div>
+        </div>
+        <div class="b-assign-item selected" onclick="toggleAssign(this)">
+          <div class="b-assign-cb checked">✓</div>
+          <div class="b-assign-info">
+            <div class="b-assign-wine">Whispering Angel Rosé 2023 × 18</div>
+            <div class="b-assign-arrow">→</div>
+            <div class="b-assign-loc"><div class="b-assign-dot" style="background:#CD2D5B"></div> Bar Stock</div>
+            <div class="b-assign-reason">Rosé wine · service location · 108 bottles available</div>
+          </div>
+        </div>
+        <div class="b-assign-item" onclick="toggleAssign(this)">
+          <div class="b-assign-cb">✓</div>
+          <div class="b-assign-info">
+            <div class="b-assign-wine">Brunello di Montalcino 2015 × 4</div>
+            <div class="b-assign-arrow">→</div>
+            <div class="b-assign-loc"><div class="b-assign-dot" style="background:#7c1d3c"></div> Main Cellar</div>
+            <div class="b-assign-reason">Red wine · premium Italian · long-aging candidate</div>
+          </div>
+        </div>
+        <div class="b-assign-item" onclick="toggleAssign(this)">
+          <div class="b-assign-cb">✓</div>
+          <div class="b-assign-info">
+            <div class="b-assign-wine">Bollinger Special Cuvée NV × 24</div>
+            <div class="b-assign-arrow">→</div>
+            <div class="b-assign-loc"><div class="b-assign-dot" style="background:#d97706"></div> VIP Reserve</div>
+            <div class="b-assign-reason">Sparkling · premium · temp match</div>
+          </div>
+        </div>
+        <div style="padding:8px 0;font-size:11px;color:rgba(255,255,255,0.3);text-align:center">+ 39 more assignments</div>
+        <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;padding-top:12px">
+          <div class="b-ai-section-title" style="color:#f87171">Needs Manual Review (3)</div>
+          <div class="b-assign-item" style="border-color:rgba(248,113,113,0.2);background:rgba(248,113,113,0.05)" onclick="showToast('Manual review needed…')">
+            <div class="b-assign-info">
+              <div class="b-assign-wine" style="color:#f87171">Petrus 2000 × 1</div>
+              <div class="b-assign-reason" style="color:rgba(248,113,113,0.6)">No location meets all criteria (price tier + temp + humidity)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="b-ai-actions">
+        <button class="b-ai-btn-primary" onclick="showToast('✓ Applying 3 selected assignments…')">Apply Selected (3)</button>
+        <button class="b-ai-btn-sec" onclick="showToast('Applying all 44…')">Apply All 44</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VARIANT C: QR + QUICK-ADD PANEL ══ -->
+<div id="variant-c" class="variant">
+  <div class="c-layout">
+    <div class="c-main">
+      <div class="c-page-header">
+        <div class="c-page-title">Storage Locations</div>
+        <span style="font-size:11px;color:#9ca3af">4 locations · Tap ⊞ QR to get scannable code for any location</span>
+        <button class="btn btn-primary" onclick="showToast('Add Location…')">+ Location</button>
+      </div>
+      <div class="c-grid">
+        <div class="c-card" onclick="selectLocation('main-cellar', 'Main Cellar', '#7c1d3c')">
+          <div class="c-strip" style="background:#7c1d3c"></div>
+          <div class="c-card-body">
+            <div class="c-card-top"><div class="c-card-name">Main Cellar</div><span class="badge" style="background:#fffbeb;color:#d97706;font-size:10px">85%</span></div>
+            <div class="c-bar-row"><span>847 / 1,000</span><span>153 free</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+            <div class="c-card-meta"><span>🌡 55°F</span><span>💧 70%</span><span>41 SKUs</span></div>
+            <div class="c-qr-btn" onclick="event.stopPropagation();selectLocation('main-cellar','Main Cellar','#7c1d3c');switchTab('qr')">⊞ QR Code for this location</div>
+          </div>
+        </div>
+        <div class="c-card" onclick="selectLocation('bar-stock', 'Bar Stock', '#CD2D5B')">
+          <div class="c-strip" style="background:#CD2D5B"></div>
+          <div class="c-card-body">
+            <div class="c-card-top"><div class="c-card-name">Bar Stock</div><span class="badge" style="background:#ecfdf5;color:#059669;font-size:10px">28%</span></div>
+            <div class="c-bar-row"><span>42 / 150</span><span>108 free</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:28%;background:#CD2D5B"></div></div>
+            <div class="c-card-meta"><span>🌡 58°F</span><span>18 SKUs</span></div>
+            <div class="c-qr-btn" onclick="event.stopPropagation();selectLocation('bar-stock','Bar Stock','#CD2D5B');switchTab('qr')">⊞ QR Code for this location</div>
+          </div>
+        </div>
+        <div class="c-card" onclick="selectLocation('vip-reserve', 'VIP Reserve', '#d97706')">
+          <div class="c-strip" style="background:#d97706"></div>
+          <div class="c-card-body">
+            <div class="c-card-top"><div class="c-card-name">VIP Reserve</div><span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px">48%</span></div>
+            <div class="c-bar-row"><span>48 / 100</span><span>52 free</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:48%;background:#d97706"></div></div>
+            <div class="c-card-meta"><span>🌡 53°F</span><span>28 SKUs</span></div>
+            <div class="c-qr-btn" onclick="event.stopPropagation();selectLocation('vip-reserve','VIP Reserve','#d97706');switchTab('qr')">⊞ QR Code for this location</div>
+          </div>
+        </div>
+        <div class="c-card" style="border-color:#fecaca" onclick="selectLocation('overflow', 'Overflow Storage', '#DC2626')">
+          <div class="c-strip" style="background:#DC2626"></div>
+          <div class="c-card-body">
+            <div class="c-card-top"><div class="c-card-name">Overflow Storage</div><span class="badge" style="background:#fef2f2;color:#DC2626;font-size:10px">⚠ 102%</span></div>
+            <div class="c-bar-row"><span style="color:#DC2626;font-weight:600">610 / 600</span><span>Over!</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:100%;background:#DC2626"></div></div>
+            <div class="c-card-meta"><span>🌡 —</span><span>34 SKUs</span></div>
+            <div class="c-qr-btn" onclick="event.stopPropagation();selectLocation('overflow','Overflow Storage','#DC2626');switchTab('qr')">⊞ QR Code for this location</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QR + Quick-Add Right Panel -->
+    <div class="c-panel">
+      <div class="c-panel-tabs">
+        <div class="c-panel-tab active" onclick="switchTab('qr')">⊞ QR Codes</div>
+        <div class="c-panel-tab" onclick="switchTab('add')">+ Quick Add</div>
+        <div class="c-panel-tab" onclick="switchTab('activity')">📋 Activity</div>
+      </div>
+
+      <!-- QR Tab -->
+      <div class="c-panel-content active" id="tab-qr">
+        <div class="c-qr-section">
+          <div class="c-qr-select">
+            <select id="qr-loc-select" onchange="updateQRLocation()">
+              <option value="main-cellar">Main Cellar</option>
+              <option value="bar-stock">Bar Stock</option>
+              <option value="vip-reserve">VIP Reserve</option>
+              <option value="overflow">Overflow Storage</option>
+            </select>
+          </div>
+          <!-- QR Code mock -->
+          <div class="c-qr-code-mock">
+            <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px;width:130px;height:130px;" id="qr-grid">
+            </div>
+          </div>
+          <div class="c-qr-label" id="qr-label">Scan to open Main Cellar · WineOps AI</div>
+          <div class="c-qr-actions">
+            <button class="c-qr-action-btn" onclick="showToast('Downloading PNG…')">↓ PNG</button>
+            <button class="c-qr-action-btn" onclick="showToast('Printing label…')">⎙ Print</button>
+            <button class="c-qr-action-btn" onclick="showToast('Copying link…')">⎘ Link</button>
+          </div>
+        </div>
+        <div class="c-qr-all">
+          <div class="c-qr-all-title">All Location QR Codes</div>
+          <div class="c-qr-loc-item" onclick="showToast('Downloading Main Cellar QR…')">
+            <div class="c-qr-loc-dot" style="background:#7c1d3c"></div>
+            <div class="c-qr-loc-name">Main Cellar</div>
+            <div class="c-qr-dl">↓ PNG</div>
+          </div>
+          <div class="c-qr-loc-item" onclick="showToast('Downloading Bar Stock QR…')">
+            <div class="c-qr-loc-dot" style="background:#CD2D5B"></div>
+            <div class="c-qr-loc-name">Bar Stock</div>
+            <div class="c-qr-dl">↓ PNG</div>
+          </div>
+          <div class="c-qr-loc-item" onclick="showToast('Downloading VIP Reserve QR…')">
+            <div class="c-qr-loc-dot" style="background:#d97706"></div>
+            <div class="c-qr-loc-name">VIP Reserve</div>
+            <div class="c-qr-dl">↓ PNG</div>
+          </div>
+          <div class="c-qr-loc-item" onclick="showToast('Downloading Overflow QR…')">
+            <div class="c-qr-loc-dot" style="background:#6b7280"></div>
+            <div class="c-qr-loc-name">Overflow Storage</div>
+            <div class="c-qr-dl">↓ PNG</div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="c-qr-action-btn" style="width:100%;background:var(--color-primary);color:white;border-color:var(--color-primary)" onclick="showToast('Downloading all QR codes as ZIP…')">↓ Download All as ZIP</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Add Tab -->
+      <div class="c-panel-content" id="tab-add">
+        <div class="c-qa-form">
+          <div class="c-qa-title">Quick Add Wine</div>
+          <div class="c-form-group">
+            <label class="c-form-label">Wine Name</label>
+            <input class="c-form-input" type="text" placeholder="e.g. Château Pichon Baron 2015" id="wine-name-input">
+          </div>
+          <div class="c-form-row">
+            <div class="c-form-group">
+              <label class="c-form-label">Producer</label>
+              <input class="c-form-input" type="text" placeholder="e.g. Pichon Baron">
+            </div>
+            <div class="c-form-group">
+              <label class="c-form-label">Vintage</label>
+              <input class="c-form-input" type="text" placeholder="2015">
+            </div>
+          </div>
+          <div class="c-form-row">
+            <div class="c-form-group">
+              <label class="c-form-label">Type</label>
+              <select class="c-form-select">
+                <option>Red</option><option>White</option><option>Sparkling</option><option>Rosé</option><option>Dessert</option>
+              </select>
+            </div>
+            <div class="c-form-group">
+              <label class="c-form-label">Quantity</label>
+              <input class="c-form-input" type="number" value="1" min="1">
+            </div>
+          </div>
+          <div class="c-form-group">
+            <label class="c-form-label">Storage Location</label>
+            <div class="c-loc-pills">
+              <div class="c-loc-pill active" onclick="selectLocPill(this)"><div class="c-loc-pill-dot" style="background:#7c1d3c"></div>Main Cellar</div>
+              <div class="c-loc-pill" onclick="selectLocPill(this)"><div class="c-loc-pill-dot" style="background:#CD2D5B"></div>Bar Stock</div>
+              <div class="c-loc-pill" onclick="selectLocPill(this)"><div class="c-loc-pill-dot" style="background:#d97706"></div>VIP Reserve</div>
+              <div class="c-loc-pill" onclick="selectLocPill(this)" style="color:#DC2626;border-color:#fecaca;opacity:0.7" title="At capacity"><div class="c-loc-pill-dot" style="background:#DC2626"></div>Overflow ⚠</div>
+            </div>
+          </div>
+          <button class="c-submit-btn" onclick="quickAdd()">Add to Main Cellar</button>
+        </div>
+      </div>
+
+      <!-- Activity Tab -->
+      <div class="c-panel-content" id="tab-activity">
+        <div class="c-activity">
+          <div class="c-activity-title">Recent Activity</div>
+          <div class="c-activity-item">
+            <div class="c-act-icon" style="background:#fdf2f4">🍾</div>
+            <div class="c-act-info">
+              <div class="c-act-action">Added Château Margaux 2018 × 1</div>
+              <div class="c-act-detail">→ Main Cellar · by Marco T.</div>
+              <div class="c-act-time">2 min ago</div>
+            </div>
+          </div>
+          <div class="c-activity-item">
+            <div class="c-act-icon" style="background:#f0fdf4">⇄</div>
+            <div class="c-act-info">
+              <div class="c-act-action">Moved Krug Grande Cuvée × 6</div>
+              <div class="c-act-detail">Overflow → Bar Stock · AI Auto-Locate</div>
+              <div class="c-act-time">18 min ago</div>
+            </div>
+          </div>
+          <div class="c-activity-item">
+            <div class="c-act-icon" style="background:#fffbeb">⊞</div>
+            <div class="c-act-info">
+              <div class="c-act-action">QR scan — Cloudy Bay SB 2022 × 3</div>
+              <div class="c-act-detail">→ VIP Reserve · by Sofia A.</div>
+              <div class="c-act-time">34 min ago</div>
+            </div>
+          </div>
+          <div class="c-activity-item">
+            <div class="c-act-icon" style="background:#fdf2f4">✦</div>
+            <div class="c-act-info">
+              <div class="c-act-action">Auto-Locate ran — 12 wines assigned</div>
+              <div class="c-act-detail">AI placed new delivery across 3 locations</div>
+              <div class="c-act-time">1h ago</div>
+            </div>
+          </div>
+          <div class="c-activity-item">
+            <div class="c-act-icon" style="background:#fdf2f4">🍾</div>
+            <div class="c-act-info">
+              <div class="c-act-action">Added Opus One 2019 × 12</div>
+              <div class="c-act-detail">→ VIP Reserve · by Admin</div>
+              <div class="c-act-time">2h ago</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sketch Toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:6px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-weight:600;font-size:11px;opacity:0.7;letter-spacing:0.05em">024 — NEW FEATURES</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(1280)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">1280</button>
+    <button onclick="setViewport(null)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">Full</button>
+  </div>
+</div>
+
+<div id="global-toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:white;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all 0.3s;pointer-events:none;z-index:9997;white-space:nowrap;"></div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.style.display='none');
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-'+id).style.display='block';
+  btn.classList.add('active');
+}
+function showToast(msg) {
+  const t=document.getElementById('global-toast');
+  t.textContent=msg; t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)';
+  setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(-50%) translateY(20px)';},2200);
+}
+function toggleAssign(el) {
+  const cb = el.querySelector('.b-assign-cb');
+  el.classList.toggle('selected');
+  cb.classList.toggle('checked');
+  const count = document.querySelectorAll('.b-assign-item.selected').length;
+  document.querySelector('.b-ai-btn-primary').textContent = 'Apply Selected ('+count+')';
+}
+function switchTab(id) {
+  document.querySelectorAll('.c-panel-content').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.c-panel-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  const tabs = document.querySelectorAll('.c-panel-tab');
+  if(id==='qr') tabs[0].classList.add('active');
+  if(id==='add') tabs[1].classList.add('active');
+  if(id==='activity') tabs[2].classList.add('active');
+}
+function selectLocation(id, name, color) {
+  showToast(name+' selected');
+}
+function selectLocPill(el) {
+  document.querySelectorAll('.c-loc-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  const loc = el.textContent.trim();
+  document.querySelector('.c-submit-btn').textContent = 'Add to '+loc;
+}
+function quickAdd() {
+  const name = document.getElementById('wine-name-input').value || 'New Wine';
+  showToast('✓ '+name+' added to location');
+  document.getElementById('wine-name-input').value = '';
+}
+function updateQRLocation() {
+  const val = document.getElementById('qr-loc-select').value;
+  const names = {'main-cellar':'Main Cellar','bar-stock':'Bar Stock','vip-reserve':'VIP Reserve','overflow':'Overflow Storage'};
+  document.getElementById('qr-label').textContent = 'Scan to open '+names[val]+' · WineOps AI';
+}
+// Generate fake QR pattern
+function generateQR() {
+  const grid = document.getElementById('qr-grid');
+  if(!grid) return;
+  // Simplified QR visual — just random dark/light cells
+  const pattern = [
+    [1,1,1,1,1,1,1,0,0,1],[1,0,0,0,0,0,1,0,1,0],[1,0,1,1,1,0,1,1,0,1],
+    [1,0,1,1,1,0,1,0,1,1],[1,0,1,1,1,0,1,1,0,0],[1,0,0,0,0,0,1,0,0,1],
+    [1,1,1,1,1,1,1,0,1,0],[0,0,0,0,0,0,0,1,0,1],[1,1,0,1,0,1,1,0,1,0],
+    [0,1,1,0,1,0,0,1,0,1]
+  ];
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = 'repeat(10,1fr)';
+  grid.style.gap = '1.5px';
+  grid.style.width = '120px';
+  grid.style.height = '120px';
+  for(let r=0;r<10;r++) for(let c=0;c<10;c++) {
+    const cell = document.createElement('div');
+    cell.style.borderRadius='1px';
+    cell.style.background = pattern[r][c] ? '#1a0a0f' : 'white';
+    grid.appendChild(cell);
+  }
+}
+generateQR();
+function setViewport(w) { document.body.style.maxWidth=w?w+'px':''; document.body.style.margin=w?'0 auto':''; }
+</script>
+</body>
+</html>

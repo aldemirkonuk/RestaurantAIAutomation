@@ -9,6 +9,7 @@ import {
   X,
   MapPin,
   Plus,
+  Minus,
   Trash2,
   Check,
   FolderTree,
@@ -23,6 +24,7 @@ import {
   ChevronRight,
   Loader2,
   Zap,
+  RefreshCw,
 } from 'lucide-react'
 import { useStorageLocations, useWinesAtLocation, DEFAULT_LOCATIONS } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
@@ -56,14 +58,14 @@ export function saveStorageLocations(_locations: StorageLocation[]) {
 }
 
 const DEFAULT_COLORS = [
-  '#be123c', // Rose
-  '#f59e0b', // Amber
-  '#10b981', // Emerald
-  '#3b82f6', // Blue
-  '#8b5cf6', // Purple
-  '#ec4899', // Pink
-  '#6366f1', // Indigo
-  '#14b8a6', // Teal
+  '#be123c',
+  '#f59e0b',
+  '#10b981',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#6366f1',
+  '#14b8a6',
 ]
 
 export function StorageLocationManager({
@@ -71,18 +73,34 @@ export function StorageLocationManager({
   onClose,
   onSelectLocation,
   onLocationsChange,
-  // selectedWineId unused — kept in props interface for future use
+  selectedWineId,
   inventoryItems = [],
   onAutoLocate,
 }: StorageLocationManagerProps) {
-  const { locations, setLocations, getLocationsWithActualCounts, mappings, assignWineToLocation, removeWineFromLocation } = useStorageLocations()
+  const {
+    locations,
+    getLocationsWithActualCounts,
+    mappings,
+    assignWineToLocation,
+    removeWineFromLocation,
+    addLocation,
+    updateLocation,
+    deleteLocation,
+    updateWineQuantityAtLocation,
+    getLocationStats,
+    recalculateLocationCounts,
+  } = useStorageLocations()
+
   const actualLocations = getLocationsWithActualCounts()
   const onLocationsChangeRef = useRef(onLocationsChange)
   onLocationsChangeRef.current = onLocationsChange
+
   const [expandedLocationId, setExpandedLocationId] = useState<string | null>(null)
-  const { wines: expandedWines, isLoading: winesLoading } = useWinesAtLocation(expandedLocationId)
   const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  // Inline confirmation states — replaces window.confirm() for locations, adds it for wine removal
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmRemoveWineId, setConfirmRemoveWineId] = useState<string | null>(null)
   const [capacityWarning, setCapacityWarning] = useState<{
     show: boolean
     newCapacity: number
@@ -101,37 +119,57 @@ export function StorageLocationManager({
     color: DEFAULT_COLORS[0],
   })
 
+  // Left panel: wines for the expanded accordion card (server-sourced)
+  const { wines: expandedWines, isLoading: winesLoading } = useWinesAtLocation(expandedLocationId)
+  // Right panel: wines for the location being edited (server-sourced, avoids silent drops from inventory join)
+  const { wines: editingLocationWines, isLoading: editingWinesLoading } = useWinesAtLocation(
+    editingLocation?.id ?? null,
+  )
+
   useEffect(() => {
     onLocationsChangeRef.current?.(locations)
   }, [locations])
 
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      capacity: 100,
+      currentCount: 0,
+      temperature: '',
+      humidity: '',
+      notes: '',
+      // Cycle through colors deterministically rather than randomly
+      color: DEFAULT_COLORS[locations.length % DEFAULT_COLORS.length],
+    })
+    setConfirmRemoveWineId(null)
+  }
+
+  // P0: use addLocation hook so creates are persisted to the server
   const handleCreate = () => {
     if (!formData.name) return
-    
-    const newLocation: StorageLocation = {
-      id: `loc-${Date.now()}`,
+    addLocation({
       name: formData.name,
       description: formData.description,
       capacity: formData.capacity || 100,
-      currentCount: 0, // New locations always start at 0 (count managed via wine movements)
+      currentCount: 0,
       temperature: formData.temperature,
       humidity: formData.humidity,
       notes: formData.notes,
+      parentId: formData.parentId,
       color: formData.color || DEFAULT_COLORS[0],
-    }
-    
-    setLocations([...locations, newLocation])
+    })
     setIsCreating(false)
     resetForm()
   }
 
+  // P0: use updateLocation hook so edits are persisted to the server
   const handleUpdate = (forceCapacity = false) => {
     if (!editingLocation || !formData.name) return
 
     const newCapacity = formData.capacity || editingLocation.capacity
     const currentCount = editingLocation.currentCount
 
-    // Validate capacity change: warn if new capacity < current count
     if (!forceCapacity && newCapacity < currentCount) {
       setCapacityWarning({
         show: true,
@@ -141,32 +179,34 @@ export function StorageLocationManager({
       })
       return
     }
-    
-    // Preserve currentCount from the existing location (not editable via form)
-    setLocations(locations.map(loc => 
-      loc.id === editingLocation.id
-        ? {
-            ...loc,
-            name: formData.name!,
-            description: formData.description,
-            capacity: newCapacity,
-            currentCount: loc.currentCount, // Always preserve actual count
-            temperature: formData.temperature,
-            humidity: formData.humidity,
-            notes: formData.notes,
-            color: formData.color || loc.color,
-          }
-        : loc
-    ))
+
+    updateLocation(editingLocation.id, {
+      name: formData.name,
+      description: formData.description,
+      capacity: newCapacity,
+      temperature: formData.temperature,
+      humidity: formData.humidity,
+      notes: formData.notes,
+      parentId: formData.parentId,
+      color: formData.color || editingLocation.color,
+    })
     setEditingLocation(null)
     setCapacityWarning(null)
     resetForm()
   }
 
+  // P0 + P1: use deleteLocation hook (cleans up mappings too); show inline confirm instead of window.confirm
   const handleDelete = (id: string) => {
-    if (confirm('Delete this storage location?')) {
-      setLocations(locations.filter(loc => loc.id !== id))
+    setConfirmDeleteId(id)
+  }
+
+  const confirmDelete = (id: string) => {
+    deleteLocation(id)
+    if (editingLocation?.id === id) {
+      setEditingLocation(null)
+      resetForm()
     }
+    setConfirmDeleteId(null)
   }
 
   const startEdit = (location: StorageLocation) => {
@@ -179,59 +219,50 @@ export function StorageLocationManager({
       temperature: location.temperature,
       humidity: location.humidity,
       notes: location.notes,
+      parentId: location.parentId,
       color: location.color,
     })
     setIsCreating(false)
+    setConfirmRemoveWineId(null)
+    setConfirmDeleteId(null)
   }
 
   const startCreate = () => {
     setIsCreating(true)
     setEditingLocation(null)
     resetForm()
-  }
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      capacity: 100,
-      currentCount: 0,
-      temperature: '',
-      humidity: '',
-      notes: '',
-      color: DEFAULT_COLORS[Math.floor(Math.random() * DEFAULT_COLORS.length)],
-    })
+    setConfirmDeleteId(null)
   }
 
   const cancelEdit = () => {
     setEditingLocation(null)
     setIsCreating(false)
+    setConfirmDeleteId(null)
     resetForm()
   }
 
-  // Wines available to assign to the editing location (from inventoryItems prop, excluding already-assigned)
+  // Wines available to assign: uses mappings cache for the exclusion check (updates immediately after assign)
   const winesAvailableToAssign = inventoryItems.filter(item => {
     if (!editingLocation) return false
-    const alreadyHere = mappings.find(m => m.wineId === item.id && m.locationId === editingLocation.id)
-    return !alreadyHere
+    return !mappings.find(m => m.wineId === item.id && m.locationId === editingLocation.id)
   })
+
   const winesFilteredBySearch = wineSearchQuery.trim()
-    ? winesAvailableToAssign.filter(item =>
-        item.name.toLowerCase().includes(wineSearchQuery.toLowerCase()) ||
-        item.producer.toLowerCase().includes(wineSearchQuery.toLowerCase())
+    ? winesAvailableToAssign.filter(
+        item =>
+          item.name.toLowerCase().includes(wineSearchQuery.toLowerCase()) ||
+          item.producer.toLowerCase().includes(wineSearchQuery.toLowerCase()),
       )
     : winesAvailableToAssign
 
-  // Wines currently assigned to the editing location (from actual mappings)
-  const winesAtThisLocation = editingLocation
-    ? mappings
-        .filter(m => m.locationId === editingLocation.id)
-        .map(m => {
-          const invItem = inventoryItems.find(i => i.id === m.wineId)
-          return invItem ? { ...invItem, mappingQuantity: m.quantity } : null
-        })
-        .filter(Boolean) as Array<typeof inventoryItems[0] & { mappingQuantity: number }>
-    : []
+  // P3: sort selectedWineId to top so the target wine is always immediately visible
+  const winesForDisplay = selectedWineId
+    ? [...winesFilteredBySearch].sort((a, b) =>
+        a.id === selectedWineId ? -1 : b.id === selectedWineId ? 1 : 0,
+      )
+    : winesFilteredBySearch
+
+  const stats = getLocationStats()
 
   if (!isOpen) return null
 
@@ -299,11 +330,19 @@ export function StorageLocationManager({
                         : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md'
                     }`}
                     onClick={(e) => {
-                      e.stopPropagation() // Prevent modal from closing
-                      // Always enter edit mode when clicking the card
-                      startEdit(location)
+                      e.stopPropagation()
+                      // P3: clicking the active card deselects it
+                      if (editingLocation?.id === location.id) {
+                        cancelEdit()
+                      } else {
+                        startEdit(location)
+                      }
                     }}
-                    title="Click to edit location"
+                    title={
+                      editingLocation?.id === location.id
+                        ? 'Click to close'
+                        : 'Click to edit location'
+                    }
                   >
                     <div className="flex items-start gap-3">
                       <div
@@ -314,28 +353,49 @@ export function StorageLocationManager({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <h4 className="font-semibold text-gray-900">{location.name}</h4>
-                            {/* Visual indicator that card is clickable */}
                             {!onSelectLocation && (
                               <span className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                Click to edit
+                                {editingLocation?.id === location.id ? 'Click to close' : 'Click to edit'}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-1">
-                            {/* Removed Select button - selection happens automatically on card click if onSelectLocation exists */}
-                            {/* Removed edit button - click anywhere on card to edit */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDelete(location.id); }}
-                              className="p-1.5 hover:bg-rose-100 rounded-lg transition-colors"
-                              title="Delete location"
-                            >
-                              <Trash2 className="w-4 h-4 text-rose-500" />
-                            </button>
+                            {/* P1: inline confirm replaces window.confirm() */}
+                            {confirmDeleteId === location.id ? (
+                              <div
+                                className="flex items-center gap-1"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <span className="text-xs text-rose-700 font-medium">Delete?</span>
+                                <button
+                                  onClick={() => confirmDelete(location.id)}
+                                  className="px-1.5 py-0.5 text-xs bg-rose-600 text-white rounded font-medium hover:bg-rose-700 transition-colors"
+                                >
+                                  Yes
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="px-1.5 py-0.5 text-xs border border-gray-200 text-gray-600 rounded font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(location.id) }}
+                                className="p-1.5 hover:bg-rose-100 rounded-lg transition-colors"
+                                title="Delete location"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-500" />
+                              </button>
+                            )}
                           </div>
                         </div>
+
                         {location.description && (
                           <p className="text-sm text-gray-500 mt-1">{location.description}</p>
                         )}
+
                         <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                           <span className="flex items-center gap-1">
                             <Package className="w-3.5 h-3.5" />
@@ -348,6 +408,7 @@ export function StorageLocationManager({
                             </span>
                           )}
                         </div>
+
                         {/* Capacity bar */}
                         <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div
@@ -378,7 +439,7 @@ export function StorageLocationManager({
                           <span>Wines stored here</span>
                         </button>
 
-                        {/* Expanded wine list */}
+                        {/* Expanded wine list — server-sourced via useWinesAtLocation */}
                         {expandedLocationId === location.id && (
                           <div className="mt-2 border-t border-gray-100 pt-2">
                             {winesLoading ? (
@@ -406,7 +467,10 @@ export function StorageLocationManager({
                                         </span>
                                       )}
                                     </div>
-                                    <span className="ml-2 flex-shrink-0 text-xs font-semibold text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: location.color }}>
+                                    <span
+                                      className="ml-2 flex-shrink-0 text-xs font-semibold text-white px-1.5 py-0.5 rounded-full"
+                                      style={{ backgroundColor: location.color }}
+                                    >
                                       {wine.quantity}
                                     </span>
                                   </div>
@@ -470,6 +534,30 @@ export function StorageLocationManager({
                     />
                   </div>
 
+                  {/* P2: parentId field — hierarchy was modeled in data layer but unreachable from UI */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Parent Location
+                    </label>
+                    <select
+                      value={formData.parentId || ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, parentId: e.target.value || undefined })
+                      }
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      style={{ color: '#1f2937' }}
+                    >
+                      <option value="">None (top-level)</option>
+                      {locations
+                        .filter(l => l.id !== editingLocation?.id)
+                        .map(l => (
+                          <option key={l.id} value={l.id}>
+                            {l.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -481,7 +569,6 @@ export function StorageLocationManager({
                         onChange={(e) => {
                           const val = parseInt(e.target.value) || 0
                           setFormData({ ...formData, capacity: val })
-                          // Clear warning if capacity is now valid
                           if (capacityWarning && val >= capacityWarning.currentCount) {
                             setCapacityWarning(null)
                           }
@@ -523,10 +610,11 @@ export function StorageLocationManager({
                             Capacity Below Current Count
                           </p>
                           <p className="text-xs text-amber-700 mt-1">
-                            This location has <strong>{capacityWarning.currentCount}</strong> bottles 
+                            This location has <strong>{capacityWarning.currentCount}</strong> bottles
                             but you're setting capacity to <strong>{capacityWarning.newCapacity}</strong>.{' '}
-                            <strong>{capacityWarning.overflow}</strong> bottle{capacityWarning.overflow !== 1 ? 's' : ''} would 
-                            need to be relocated to another storage location.
+                            <strong>{capacityWarning.overflow}</strong> bottle
+                            {capacityWarning.overflow !== 1 ? 's' : ''} would need to be relocated
+                            to another storage location.
                           </p>
                           <div className="flex items-center gap-2 mt-2">
                             <button
@@ -586,7 +674,9 @@ export function StorageLocationManager({
                           key={color}
                           onClick={() => setFormData({ ...formData, color })}
                           className={`w-8 h-8 rounded-full transition-transform ${
-                            formData.color === color ? 'ring-2 ring-offset-2 ring-gray-900 scale-110' : 'hover:scale-105'
+                            formData.color === color
+                              ? 'ring-2 ring-offset-2 ring-gray-900 scale-110'
+                              : 'hover:scale-105'
                           }`}
                           style={{ backgroundColor: color }}
                         />
@@ -613,8 +703,10 @@ export function StorageLocationManager({
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <h4 className="text-sm font-semibold text-gray-900">Stored Wines</h4>
+                          {/* P1: count comes from server-sourced editingLocationWines, not a broken inventory join */}
                           <p className="text-xs text-gray-500">
-                            {winesAtThisLocation.length} wine{winesAtThisLocation.length !== 1 ? 's' : ''} assigned here
+                            {editingLocationWines.length} wine
+                            {editingLocationWines.length !== 1 ? 's' : ''} assigned here
                           </p>
                         </div>
                         <span className="text-xs font-medium text-gray-500">
@@ -622,29 +714,85 @@ export function StorageLocationManager({
                         </span>
                       </div>
 
-                      {/* Currently assigned wines */}
-                      {winesAtThisLocation.length > 0 && (
-                        <div className="space-y-1.5 max-h-32 overflow-y-auto mb-3">
-                          {winesAtThisLocation.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-200">
+                      {/* Currently assigned wines — server-sourced to avoid silent drops */}
+                      {editingWinesLoading ? (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400 py-2 mb-3">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Loading wines…</span>
+                        </div>
+                      ) : editingLocationWines.length > 0 ? (
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto mb-3">
+                          {editingLocationWines.map((wine) => (
+                            <div
+                              key={wine.wineId}
+                              className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-200"
+                            >
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                                <p className="text-xs text-gray-500 truncate">{item.producer}</p>
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {wine.wineName}
+                                  {wine.vintage ? ` ${wine.vintage}` : ''}
+                                </p>
+                                <p className="text-xs text-gray-500 truncate">{wine.producer}</p>
                               </div>
-                              <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                                <span className="text-sm font-semibold text-gray-700">{item.mappingQuantity}</span>
+                              <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                {/* P2: quantity editor — updateWineQuantityAtLocation was in hook but unreachable */}
                                 <button
-                                  onClick={() => removeWineFromLocation(item.id)}
-                                  className="p-1 hover:bg-rose-100 rounded text-gray-400 hover:text-rose-600 transition-colors"
-                                  title="Remove from location"
+                                  onClick={() =>
+                                    updateWineQuantityAtLocation(
+                                      wine.wineId,
+                                      Math.max(1, wine.quantity - 1),
+                                    )
+                                  }
+                                  className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors"
+                                  title="Decrease quantity"
                                 >
-                                  <X className="w-3.5 h-3.5" />
+                                  <Minus className="w-3 h-3" />
                                 </button>
+                                <span className="text-sm font-semibold text-gray-700 w-6 text-center">
+                                  {wine.quantity}
+                                </span>
+                                <button
+                                  onClick={() =>
+                                    updateWineQuantityAtLocation(wine.wineId, wine.quantity + 1)
+                                  }
+                                  className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors"
+                                  title="Increase quantity"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                                {/* P1: inline confirm for wine removal instead of instant delete */}
+                                {confirmRemoveWineId === wine.wineId ? (
+                                  <div className="flex items-center gap-1 ml-1">
+                                    <button
+                                      onClick={() => {
+                                        removeWineFromLocation(wine.wineId)
+                                        setConfirmRemoveWineId(null)
+                                      }}
+                                      className="px-1.5 py-0.5 text-xs bg-rose-600 text-white rounded font-medium hover:bg-rose-700 transition-colors"
+                                    >
+                                      Remove
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmRemoveWineId(null)}
+                                      className="px-1.5 py-0.5 text-xs border border-gray-200 text-gray-600 rounded font-medium hover:bg-gray-50 transition-colors"
+                                    >
+                                      Keep
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmRemoveWineId(wine.wineId)}
+                                    className="p-1 hover:bg-rose-100 rounded text-gray-400 hover:text-rose-600 transition-colors ml-1"
+                                    title="Remove from location"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           ))}
                         </div>
-                      )}
+                      ) : null}
 
                       {/* Wine picker / assign new wines */}
                       <div>
@@ -653,7 +801,11 @@ export function StorageLocationManager({
                             type="text"
                             value={wineSearchQuery}
                             onChange={(e) => setWineSearchQuery(e.target.value)}
-                            placeholder={inventoryItems.length === 0 ? 'No inventory wines loaded' : 'Search wines to assign…'}
+                            placeholder={
+                              inventoryItems.length === 0
+                                ? 'No inventory wines loaded'
+                                : 'Search wines to assign…'
+                            }
                             disabled={inventoryItems.length === 0}
                             className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
                             style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
@@ -665,21 +817,34 @@ export function StorageLocationManager({
                           <p className="text-xs text-gray-400 italic text-center py-2">
                             Open Inventory to load wines, then re-open this modal.
                           </p>
-                        ) : winesFilteredBySearch.length === 0 ? (
+                        ) : winesForDisplay.length === 0 ? (
                           <p className="text-xs text-gray-400 italic text-center py-2">
-                            {wineSearchQuery ? 'No wines match your search.' : 'All inventory wines are already assigned here.'}
+                            {wineSearchQuery
+                              ? 'No wines match your search.'
+                              : 'All inventory wines are already assigned here.'}
                           </p>
                         ) : (
                           <div className="space-y-1 max-h-36 overflow-y-auto">
-                            {winesFilteredBySearch.slice(0, 20).map((item) => (
-                              <div key={item.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-gray-200 hover:border-emerald-300 transition-colors">
+                            {/* P3: limit raised from 20 to 50; selectedWineId highlighted and sorted first */}
+                            {winesForDisplay.slice(0, 50).map((item) => (
+                              <div
+                                key={item.id}
+                                className={`flex items-center justify-between rounded-lg px-3 py-1.5 border transition-colors ${
+                                  item.id === selectedWineId
+                                    ? 'bg-emerald-50 border-emerald-300'
+                                    : 'bg-white border-gray-200 hover:border-emerald-300'
+                                }`}
+                              >
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-medium text-gray-900 truncate">{item.name}</p>
+                                  <p className="text-xs font-medium text-gray-900 truncate">
+                                    {item.name}
+                                  </p>
                                   <p className="text-xs text-gray-400 truncate">{item.producer}</p>
                                 </div>
                                 <button
                                   onClick={() => {
-                                    assignWineToLocation(item.id, editingLocation.id, item.liveStock || 1)
+                                    // P0: assign 1 bottle, not the entire liveStock
+                                    assignWineToLocation(item.id, editingLocation.id, 1)
                                     setWineSearchQuery('')
                                   }}
                                   className="ml-2 flex-shrink-0 px-2 py-1 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition-colors"
@@ -688,9 +853,9 @@ export function StorageLocationManager({
                                 </button>
                               </div>
                             ))}
-                            {winesFilteredBySearch.length > 20 && (
+                            {winesForDisplay.length > 50 && (
                               <p className="text-xs text-gray-400 text-center py-1">
-                                {winesFilteredBySearch.length - 20} more — refine your search
+                                {winesForDisplay.length - 50} more — refine your search
                               </p>
                             )}
                           </div>
@@ -706,13 +871,10 @@ export function StorageLocationManager({
                     >
                       Cancel
                     </button>
-                    {/* Show Select button if in selection mode */}
                     {onSelectLocation && editingLocation && !isCreating && (
                       <button
                         onClick={() => {
-                          if (editingLocation) {
-                            onSelectLocation(editingLocation)
-                          }
+                          if (editingLocation) onSelectLocation(editingLocation)
                         }}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                       >
@@ -721,7 +883,7 @@ export function StorageLocationManager({
                       </button>
                     )}
                     <button
-                      onClick={() => isCreating ? handleCreate() : handleUpdate()}
+                      onClick={() => (isCreating ? handleCreate() : handleUpdate())}
                       disabled={!formData.name}
                       className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
@@ -744,17 +906,28 @@ export function StorageLocationManager({
 
           {/* Footer */}
           <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between gap-3">
-            <p className="text-sm text-gray-500">
-              {locations.length} location{locations.length !== 1 ? 's' : ''} •{' '}
-              {actualLocations.reduce((sum, l) => sum + l.currentCount, 0)} bottles stored
-            </p>
+            <div className="flex items-center gap-3">
+              {/* P2: show utilization % from getLocationStats() */}
+              <p className="text-sm text-gray-500">
+                {locations.length} location{locations.length !== 1 ? 's' : ''} •{' '}
+                {actualLocations.reduce((sum, l) => sum + l.currentCount, 0)} bottles •{' '}
+                {stats.utilizationRate}% utilized
+              </p>
+              {/* P2: expose recalculateLocationCounts so drift can be manually resolved */}
+              <button
+                onClick={recalculateLocationCounts}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                title="Sync bottle counts with actual wine mappings"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Sync
+              </button>
+            </div>
             <div className="flex items-center gap-2">
               {onAutoLocate && (
+                // P1: removed onClose() — no reason to close modal after triggering auto-locate
                 <button
-                  onClick={() => {
-                    onAutoLocate()
-                    onClose()
-                  }}
+                  onClick={onAutoLocate}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm"
                   title="Auto-assign wines to optimal storage locations"
                 >

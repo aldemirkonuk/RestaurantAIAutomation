@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>021 — Location Card Design</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: var(--color-bg); color: var(--color-text); padding-top: 48px; }
+    .variant { display: none; min-height: 100vh; }
+    .variant.active { display: block; }
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: #1a1a2e; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 16px; display: flex; gap: 6px; align-items: center;
+    }
+    #variant-nav span { color: rgba(255,255,255,0.4); font-size: 11px; margin-right: 6px; font-family: monospace; }
+    .variant-tab {
+      padding: 5px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); cursor: pointer;
+      font-size: 12px; font-family: var(--font-body); transition: all 0.15s;
+    }
+    .variant-tab:hover { background: rgba(255,255,255,0.12); color: white; }
+    .variant-tab.active { background: var(--color-primary,#CD2D5B); border-color: var(--color-primary); color: white; }
+
+    .canvas { padding: 32px; }
+    .canvas-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-text-muted); margin-bottom: 24px; }
+    .cards-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .cards-row-label { font-size: 12px; color: var(--color-text-muted); margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); }
+    .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; font-family: var(--font-body); }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-sm { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 5px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+    .btn-sm:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .fill-bar { height: 5px; border-radius: 3px; background: #f0f0f0; overflow: hidden; }
+    .fill-bar-inner { height: 100%; border-radius: 3px; transition: width 0.5s; }
+
+    /* ──────── VARIANT A: MINIMAL CLEAN ──────── */
+    .a-card {
+      width: 260px; background: var(--color-surface); border-radius: 12px;
+      border: 1px solid var(--color-border); overflow: hidden;
+      transition: all 0.2s; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .a-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.1); transform: translateY(-2px); }
+    .a-accent { height: 3px; }
+    .a-card-body { padding: 16px; }
+    .a-row1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .a-name { font-size: 15px; font-weight: 700; color: var(--color-text); font-family: var(--font-display); }
+    .a-pct { font-size: 22px; font-weight: 800; font-family: var(--font-display); }
+    .a-bar-wrap { margin-bottom: 14px; }
+    .a-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-muted); margin-bottom: 5px; }
+    .a-meta { display: flex; gap: 12px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; }
+    .a-meta-item { display: flex; align-items: center; gap: 4px; }
+    .a-actions { display: flex; gap: 6px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.05); }
+
+    /* ──────── VARIANT B: DATA RICH ──────── */
+    .b-card {
+      width: 300px; background: var(--color-surface); border-radius: 14px;
+      border: 1px solid var(--color-border); overflow: hidden;
+      transition: all 0.2s; cursor: pointer; box-shadow: var(--shadow-sm);
+    }
+    .b-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+    .b-header { padding: 16px 16px 0; display: flex; align-items: center; gap: 10px; }
+    .b-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .b-name { font-size: 15px; font-weight: 700; flex: 1; font-family: var(--font-display); }
+    .b-status { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; }
+    .b-big-bar { padding: 12px 16px; }
+    .b-bar-num { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .b-bar-current { font-size: 28px; font-weight: 800; font-family: var(--font-display); }
+    .b-bar-cap { font-size: 13px; color: var(--color-text-muted); }
+    .b-fill { height: 8px; border-radius: 4px; background: #f0f0f0; }
+    .b-fill-inner { height: 100%; border-radius: 4px; }
+    .b-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--color-border); border-top: 1px solid var(--color-border); }
+    .b-stat { padding: 10px 12px; background: var(--color-surface); }
+    .b-stat-val { font-size: 16px; font-weight: 700; font-family: var(--font-display); color: var(--color-text); }
+    .b-stat-label { font-size: 10px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+    .b-mini-wines { padding: 10px 16px; background: var(--color-bg); border-top: 1px solid var(--color-border); }
+    .b-mini-wine-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); margin-bottom: 6px; }
+    .b-mini-wine-item { display: flex; justify-content: space-between; font-size: 12px; color: var(--color-text-secondary); padding: 3px 0; }
+    .b-mini-wine-qty { font-weight: 600; color: var(--color-text); }
+    .b-footer { padding: 10px 16px; display: flex; gap: 6px; border-top: 1px solid var(--color-border); }
+
+    /* ──────── VARIANT C: VISUAL / AMBIENT ──────── */
+    .c-card {
+      width: 240px; border-radius: 16px; overflow: hidden;
+      transition: all 0.25s; cursor: pointer; position: relative;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    }
+    .c-card:hover { transform: translateY(-4px) scale(1.01); box-shadow: 0 12px 40px rgba(0,0,0,0.18); }
+    .c-bg { padding: 20px; color: white; position: relative; overflow: hidden; min-height: 160px; }
+    .c-bg::after { content:''; position:absolute; bottom:-30px; right:-30px; width:120px; height:120px; border-radius:50%; background:rgba(255,255,255,0.07); }
+    .c-bg::before { content:''; position:absolute; top:-20px; left:60%; width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,0.04); }
+    .c-icon { font-size: 28px; margin-bottom: 10px; position: relative; z-index: 1; }
+    .c-name { font-size: 17px; font-weight: 800; font-family: var(--font-display); position: relative; z-index: 1; margin-bottom: 4px; }
+    .c-desc { font-size: 11px; opacity: 0.7; position: relative; z-index: 1; margin-bottom: 16px; }
+    .c-big-pct { font-size: 44px; font-weight: 800; font-family: var(--font-display); line-height: 1; position: relative; z-index: 1; margin-bottom: 4px; }
+    .c-pct-label { font-size: 11px; opacity: 0.7; position: relative; z-index: 1; }
+    .c-bar-strip { height: 6px; background: rgba(255,255,255,0.2); }
+    .c-bar-strip-inner { height: 100%; background: rgba(255,255,255,0.7); transition: width 0.5s; }
+    .c-footer { background: var(--color-surface); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+    .c-footer-meta { font-size: 12px; color: var(--color-text-muted); }
+    .c-footer-meta strong { color: var(--color-text); font-size: 13px; display: block; }
+    .c-footer-actions { display: flex; gap: 4px; }
+    .c-chip { font-size: 10px; padding: 3px 8px; border-radius: 99px; border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text-secondary); cursor: pointer; transition: all 0.15s; }
+    .c-chip:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+  </style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span>021 CARD</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Minimal Clean</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Data Rich</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Visual / Ambient</button>
+</div>
+
+<!-- ══ VARIANT A: MINIMAL CLEAN ══ -->
+<div id="variant-a" class="variant active">
+  <div class="canvas">
+    <div class="canvas-title">Variant A — Minimal Clean · Every element earns its place</div>
+
+    <div class="cards-row-label">Default state — 4 locations</div>
+    <div class="cards-row">
+
+      <!-- Main Cellar — Near Full -->
+      <div class="a-card">
+        <div class="a-accent" style="background:#7c1d3c"></div>
+        <div class="a-card-body">
+          <div class="a-row1">
+            <span class="a-name">Main Cellar</span>
+            <span class="a-pct" style="color:#7c1d3c">85%</span>
+          </div>
+          <div class="a-bar-wrap">
+            <div class="a-bar-label"><span>847 bottles</span><span>1,000 cap</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:85%;background:#7c1d3c"></div></div>
+          </div>
+          <div class="a-meta">
+            <div class="a-meta-item">🌡 55°F</div>
+            <div class="a-meta-item">💧 70%</div>
+            <div class="a-meta-item"><span style="background:#fffbeb;color:#d97706;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">⚠ Near Full</span></div>
+          </div>
+          <div class="a-actions">
+            <button class="btn-sm" onclick="showToast('Viewing Main Cellar wines…')">View wines</button>
+            <button class="btn-sm" onclick="showToast('Add wine to Main Cellar…')">+ Add</button>
+            <button class="btn-sm" style="margin-left:auto" onclick="showToast('QR Code for Main Cellar')">⊞ QR</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bar Stock — Healthy -->
+      <div class="a-card">
+        <div class="a-accent" style="background:#CD2D5B"></div>
+        <div class="a-card-body">
+          <div class="a-row1">
+            <span class="a-name">Bar Stock</span>
+            <span class="a-pct" style="color:#CD2D5B">28%</span>
+          </div>
+          <div class="a-bar-wrap">
+            <div class="a-bar-label"><span>42 bottles</span><span>150 cap</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:28%;background:#CD2D5B"></div></div>
+          </div>
+          <div class="a-meta">
+            <div class="a-meta-item">🌡 58°F</div>
+            <div class="a-meta-item">💧 Ambient</div>
+            <div class="a-meta-item"><span style="background:#ecfdf5;color:#059669;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">✓ Healthy</span></div>
+          </div>
+          <div class="a-actions">
+            <button class="btn-sm" onclick="showToast('Viewing Bar Stock wines…')">View wines</button>
+            <button class="btn-sm" onclick="showToast('Add wine to Bar Stock…')">+ Add</button>
+            <button class="btn-sm" style="margin-left:auto" onclick="showToast('QR Code for Bar Stock')">⊞ QR</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIP Reserve -->
+      <div class="a-card">
+        <div class="a-accent" style="background:#d97706"></div>
+        <div class="a-card-body">
+          <div class="a-row1">
+            <span class="a-name">VIP Reserve</span>
+            <span class="a-pct" style="color:#d97706">48%</span>
+          </div>
+          <div class="a-bar-wrap">
+            <div class="a-bar-label"><span>48 bottles</span><span>100 cap</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:48%;background:#d97706"></div></div>
+          </div>
+          <div class="a-meta">
+            <div class="a-meta-item">🌡 53°F</div>
+            <div class="a-meta-item">💧 75%</div>
+            <div class="a-meta-item"><span style="background:#f3f4f6;color:#4b5563;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">🔒 Restricted</span></div>
+          </div>
+          <div class="a-actions">
+            <button class="btn-sm" onclick="showToast('Viewing VIP Reserve wines…')">View wines</button>
+            <button class="btn-sm" onclick="showToast('Add wine to VIP Reserve…')">+ Add</button>
+            <button class="btn-sm" style="margin-left:auto" onclick="showToast('QR Code for VIP Reserve')">⊞ QR</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overflow — Critical -->
+      <div class="a-card" style="border-color:#fecaca">
+        <div class="a-accent" style="background:#DC2626"></div>
+        <div class="a-card-body">
+          <div class="a-row1">
+            <span class="a-name">Overflow Storage</span>
+            <span class="a-pct" style="color:#DC2626">102%</span>
+          </div>
+          <div class="a-bar-wrap">
+            <div class="a-bar-label"><span style="color:#DC2626;font-weight:600">610 bottles</span><span>600 cap</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:100%;background:#DC2626"></div></div>
+          </div>
+          <div class="a-meta">
+            <div class="a-meta-item">🌡 Unctrl.</div>
+            <div class="a-meta-item"><span style="background:#fef2f2;color:#DC2626;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">⚠ Overcapacity</span></div>
+          </div>
+          <div class="a-actions">
+            <button class="btn-sm" onclick="showToast('Viewing Overflow wines…')">View wines</button>
+            <button class="btn-sm" style="color:#DC2626;border-color:#fecaca" onclick="showToast('Bulk move out of Overflow…')">⇄ Move out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards-row-label" style="margin-top:32px">Hover state on Main Cellar — actions revealed</div>
+    <div class="cards-row">
+      <div class="a-card" style="box-shadow:0 8px 24px rgba(0,0,0,0.1);transform:translateY(-2px);border-color:#f4a9ba">
+        <div class="a-accent" style="background:#7c1d3c"></div>
+        <div class="a-card-body">
+          <div class="a-row1">
+            <span class="a-name">Main Cellar</span>
+            <span class="a-pct" style="color:#7c1d3c">85%</span>
+          </div>
+          <div class="a-bar-wrap">
+            <div class="a-bar-label"><span>847 bottles</span><span>1,000 cap</span></div>
+            <div class="fill-bar"><div class="fill-bar-inner" style="width:85%;background:#7c1d3c"></div></div>
+          </div>
+          <div class="a-meta">
+            <div class="a-meta-item">🌡 55°F</div>
+            <div class="a-meta-item">💧 70%</div>
+            <div class="a-meta-item"><span style="background:#fffbeb;color:#d97706;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">⚠ Near Full</span></div>
+          </div>
+          <div class="a-actions">
+            <button class="btn-sm" onclick="showToast('Viewing wines…')">View wines</button>
+            <button class="btn-sm" onclick="showToast('Add wine…')">+ Add</button>
+            <button class="btn-sm" onclick="showToast('Bulk move…')">⇄ Move</button>
+            <button class="btn-sm" onclick="showToast('QR Code')">⊞ QR</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:20px;color:var(--color-text-muted);font-size:13px;align-self:center;max-width:220px">
+        On hover: additional actions slide in (Move, QR). Keeps resting state clean — only View + Add visible by default.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VARIANT B: DATA RICH ══ -->
+<div id="variant-b" class="variant">
+  <div class="canvas">
+    <div class="canvas-title">Variant B — Data Rich · Full context visible at a glance, no drilling required</div>
+
+    <div class="cards-row-label">All 4 locations</div>
+    <div class="cards-row">
+      <!-- Main Cellar -->
+      <div class="b-card">
+        <div class="b-header">
+          <div class="b-dot" style="background:#7c1d3c"></div>
+          <div class="b-name">Main Cellar</div>
+          <div class="b-status" style="background:#fffbeb;color:#d97706">⚠ Near Full</div>
+        </div>
+        <div class="b-big-bar">
+          <div class="b-bar-num">
+            <span class="b-bar-current" style="color:#7c1d3c">847</span>
+            <span class="b-bar-cap">/ 1,000 bottles</span>
+          </div>
+          <div class="b-fill"><div class="b-fill-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+        </div>
+        <div class="b-stats">
+          <div class="b-stat"><div class="b-stat-val">55°F</div><div class="b-stat-label">Temp</div></div>
+          <div class="b-stat"><div class="b-stat-val">70%</div><div class="b-stat-label">Humidity</div></div>
+          <div class="b-stat"><div class="b-stat-val">41</div><div class="b-stat-label">Wine SKUs</div></div>
+        </div>
+        <div class="b-mini-wines">
+          <div class="b-mini-wine-title">Top wines</div>
+          <div class="b-mini-wine-item"><span>Château Margaux 2018</span><span class="b-mini-wine-qty">24</span></div>
+          <div class="b-mini-wine-item"><span>Krug Grande Cuvée NV</span><span class="b-mini-wine-qty">36</span></div>
+          <div class="b-mini-wine-item"><span>Cloudy Bay SB 2022</span><span class="b-mini-wine-qty">48</span></div>
+        </div>
+        <div class="b-footer">
+          <button class="btn-sm" onclick="showToast('Viewing Main Cellar…')">View All</button>
+          <button class="btn-sm" onclick="showToast('Add wine…')">+ Wine</button>
+          <button class="btn-sm" onclick="showToast('Bulk move from Cellar…')">⇄ Move</button>
+          <button class="btn-sm" onclick="showToast('QR Code')">⊞ QR</button>
+        </div>
+      </div>
+
+      <!-- Bar Stock -->
+      <div class="b-card">
+        <div class="b-header">
+          <div class="b-dot" style="background:#CD2D5B"></div>
+          <div class="b-name">Bar Stock</div>
+          <div class="b-status" style="background:#ecfdf5;color:#059669">✓ Healthy</div>
+        </div>
+        <div class="b-big-bar">
+          <div class="b-bar-num">
+            <span class="b-bar-current" style="color:#CD2D5B">42</span>
+            <span class="b-bar-cap">/ 150 bottles</span>
+          </div>
+          <div class="b-fill"><div class="b-fill-inner" style="width:28%;background:#CD2D5B"></div></div>
+        </div>
+        <div class="b-stats">
+          <div class="b-stat"><div class="b-stat-val">58°F</div><div class="b-stat-label">Temp</div></div>
+          <div class="b-stat"><div class="b-stat-val">Amb.</div><div class="b-stat-label">Humidity</div></div>
+          <div class="b-stat"><div class="b-stat-val">18</div><div class="b-stat-label">Wine SKUs</div></div>
+        </div>
+        <div class="b-mini-wines">
+          <div class="b-mini-wine-title">Top wines</div>
+          <div class="b-mini-wine-item"><span>Whispering Angel Rosé</span><span class="b-mini-wine-qty">12</span></div>
+          <div class="b-mini-wine-item"><span>Kim Crawford SB 2023</span><span class="b-mini-wine-qty">8</span></div>
+          <div class="b-mini-wine-item"><span>Santa Margherita PG</span><span class="b-mini-wine-qty">6</span></div>
+        </div>
+        <div class="b-footer">
+          <button class="btn-sm" onclick="showToast('Viewing Bar Stock…')">View All</button>
+          <button class="btn-sm" onclick="showToast('Add wine…')">+ Wine</button>
+          <button class="btn-sm" onclick="showToast('QR Code')">⊞ QR</button>
+        </div>
+      </div>
+
+      <!-- VIP Reserve -->
+      <div class="b-card">
+        <div class="b-header">
+          <div class="b-dot" style="background:#d97706"></div>
+          <div class="b-name">VIP Reserve</div>
+          <div class="b-status" style="background:#fef3c7;color:#92400e">🔒 Restricted</div>
+        </div>
+        <div class="b-big-bar">
+          <div class="b-bar-num">
+            <span class="b-bar-current" style="color:#d97706">48</span>
+            <span class="b-bar-cap">/ 100 bottles</span>
+          </div>
+          <div class="b-fill"><div class="b-fill-inner" style="width:48%;background:#d97706"></div></div>
+        </div>
+        <div class="b-stats">
+          <div class="b-stat"><div class="b-stat-val">53°F</div><div class="b-stat-label">Temp</div></div>
+          <div class="b-stat"><div class="b-stat-val">75%</div><div class="b-stat-label">Humidity</div></div>
+          <div class="b-stat"><div class="b-stat-val">28</div><div class="b-stat-label">Wine SKUs</div></div>
+        </div>
+        <div class="b-mini-wines">
+          <div class="b-mini-wine-title">Top wines</div>
+          <div class="b-mini-wine-item"><span>Opus One 2019</span><span class="b-mini-wine-qty">12</span></div>
+          <div class="b-mini-wine-item"><span>DRC La Tâche 2020</span><span class="b-mini-wine-qty">6</span></div>
+          <div class="b-mini-wine-item"><span>Screaming Eagle 2018</span><span class="b-mini-wine-qty">3</span></div>
+        </div>
+        <div class="b-footer">
+          <button class="btn-sm" onclick="showToast('Viewing VIP Reserve…')">View All</button>
+          <button class="btn-sm" onclick="showToast('Add wine…')">+ Wine</button>
+          <button class="btn-sm" onclick="showToast('QR Code')">⊞ QR</button>
+        </div>
+      </div>
+
+      <!-- Overflow CRITICAL -->
+      <div class="b-card" style="border-color:#fecaca">
+        <div class="b-header">
+          <div class="b-dot" style="background:#DC2626"></div>
+          <div class="b-name">Overflow Storage</div>
+          <div class="b-status" style="background:#fef2f2;color:#DC2626">⚠ Over!</div>
+        </div>
+        <div class="b-big-bar">
+          <div class="b-bar-num">
+            <span class="b-bar-current" style="color:#DC2626">610</span>
+            <span class="b-bar-cap">/ 600 bottles</span>
+          </div>
+          <div class="b-fill"><div class="b-fill-inner" style="width:100%;background:#DC2626"></div></div>
+        </div>
+        <div class="b-stats">
+          <div class="b-stat"><div class="b-stat-val" style="font-size:12px">—</div><div class="b-stat-label">Temp</div></div>
+          <div class="b-stat"><div class="b-stat-val" style="font-size:12px">—</div><div class="b-stat-label">Humidity</div></div>
+          <div class="b-stat"><div class="b-stat-val">34</div><div class="b-stat-label">Wine SKUs</div></div>
+        </div>
+        <div class="b-mini-wines" style="background:#fef2f2">
+          <div class="b-mini-wine-title" style="color:#DC2626">⚠ Action needed — move 10+ bottles</div>
+          <div class="b-mini-wine-item"><span>Assorted Reds (bulk)</span><span class="b-mini-wine-qty">280</span></div>
+          <div class="b-mini-wine-item"><span>Receiving — unchecked</span><span class="b-mini-wine-qty">180</span></div>
+        </div>
+        <div class="b-footer">
+          <button class="btn-sm" onclick="showToast('Bulk move from Overflow…')" style="color:#DC2626;border-color:#fecaca">⇄ Move Out</button>
+          <button class="btn-sm" onclick="showToast('Auto-locate will find best spots…')">✦ Auto-Locate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VARIANT C: VISUAL / AMBIENT ══ -->
+<div id="variant-c" class="variant">
+  <div class="canvas">
+    <div class="canvas-title">Variant C — Visual / Ambient · Color tells the story, numbers confirm it</div>
+
+    <div class="cards-row-label">4 locations — each has its own identity</div>
+    <div class="cards-row">
+      <!-- Main Cellar -->
+      <div class="c-card">
+        <div class="c-bg" style="background:linear-gradient(135deg, #3d1020 0%, #7c1d3c 60%, #a0254e 100%)">
+          <div class="c-icon">🍷</div>
+          <div class="c-name">Main Cellar</div>
+          <div class="c-desc">Primary · Temperature controlled</div>
+          <div class="c-big-pct">85%</div>
+          <div class="c-pct-label">847 of 1,000 bottles</div>
+        </div>
+        <div class="c-bar-strip"><div class="c-bar-strip-inner" style="width:85%"></div></div>
+        <div class="c-footer">
+          <div class="c-footer-meta">
+            <strong>⚠ Near Full</strong>
+            🌡 55°F · 💧 70%
+          </div>
+          <div class="c-footer-actions">
+            <div class="c-chip" onclick="showToast('View wines…')">View</div>
+            <div class="c-chip" onclick="showToast('Add wine…')">Add</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bar Stock -->
+      <div class="c-card">
+        <div class="c-bg" style="background:linear-gradient(135deg, #7c1030 0%, #CD2D5B 60%, #e05070 100%)">
+          <div class="c-icon">🥂</div>
+          <div class="c-name">Bar Stock</div>
+          <div class="c-desc">Active service · Rotating</div>
+          <div class="c-big-pct">28%</div>
+          <div class="c-pct-label">42 of 150 bottles</div>
+        </div>
+        <div class="c-bar-strip"><div class="c-bar-strip-inner" style="width:28%"></div></div>
+        <div class="c-footer">
+          <div class="c-footer-meta">
+            <strong style="color:#059669">✓ Healthy</strong>
+            🌡 58°F · 💧 Ambient
+          </div>
+          <div class="c-footer-actions">
+            <div class="c-chip" onclick="showToast('View wines…')">View</div>
+            <div class="c-chip" onclick="showToast('Add wine…')">Add</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIP Reserve -->
+      <div class="c-card">
+        <div class="c-bg" style="background:linear-gradient(135deg, #78350f 0%, #d97706 60%, #f59e0b 100%)">
+          <div class="c-icon">👑</div>
+          <div class="c-name">VIP Reserve</div>
+          <div class="c-desc">Premium · Restricted access</div>
+          <div class="c-big-pct">48%</div>
+          <div class="c-pct-label">48 of 100 bottles</div>
+        </div>
+        <div class="c-bar-strip"><div class="c-bar-strip-inner" style="width:48%"></div></div>
+        <div class="c-footer">
+          <div class="c-footer-meta">
+            <strong>🔒 Restricted</strong>
+            🌡 53°F · 💧 75%
+          </div>
+          <div class="c-footer-actions">
+            <div class="c-chip" onclick="showToast('View wines…')">View</div>
+            <div class="c-chip" onclick="showToast('Add wine…')">Add</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overflow CRITICAL -->
+      <div class="c-card">
+        <div class="c-bg" style="background:linear-gradient(135deg, #7f1d1d 0%, #DC2626 60%, #ef4444 100%)">
+          <div class="c-icon">⚠️</div>
+          <div class="c-name">Overflow Storage</div>
+          <div class="c-desc">Bulk receiving · Uncontrolled</div>
+          <div class="c-big-pct">102%</div>
+          <div class="c-pct-label">610 of 600 bottles — OVER</div>
+        </div>
+        <div class="c-bar-strip"><div class="c-bar-strip-inner" style="width:100%"></div></div>
+        <div class="c-footer">
+          <div class="c-footer-meta">
+            <strong style="color:#DC2626">⚠ Overcapacity</strong>
+            Move 10+ bottles out
+          </div>
+          <div class="c-footer-actions">
+            <div class="c-chip" onclick="showToast('Move out wines…')">Move</div>
+            <div class="c-chip" onclick="showToast('Auto-Locate…')">AI</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add new -->
+      <div style="width:240px;border:2px dashed var(--color-border);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:240px;cursor:pointer;color:var(--color-text-muted);font-size:13px;gap:6px;transition:all 0.2s" onmouseenter="this.style.borderColor='var(--color-primary)';this.style.color='var(--color-primary)'" onmouseleave="this.style.borderColor='var(--color-border)';this.style.color='var(--color-text-muted)'" onclick="showToast('Add Location…')">
+        <div style="font-size:32px;font-weight:200">+</div>
+        <div style="font-size:12px">New Location</div>
+      </div>
+    </div>
+
+    <div class="cards-row-label" style="margin-top:32px">Annotation: color system mapping</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--color-text-secondary)">
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;border-radius:50%;background:#7c1d3c"></div> Deep burgundy → Primary / Main</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;border-radius:50%;background:#CD2D5B"></div> Brand rose → Active service</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;border-radius:50%;background:#d97706"></div> Amber → Premium / VIP</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;border-radius:50%;background:#DC2626"></div> Red → Alert / Overcapacity</div>
+      <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;border-radius:50%;background:#6b7280"></div> Gray → Neutral / Uncontrolled</div>
+    </div>
+  </div>
+</div>
+
+<!-- Sketch Toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:8px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-weight:600;font-size:11px;opacity:0.7;letter-spacing:0.05em">021 — CARD DESIGN</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(375)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">📱</button>
+    <button onclick="setViewport(768)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">📟</button>
+    <button onclick="setViewport(null)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">🖥</button>
+  </div>
+</div>
+
+<div id="global-toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:white;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all 0.3s;pointer-events:none;z-index:9997;white-space:nowrap;"></div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).style.display = 'block';
+  btn.classList.add('active');
+}
+function showToast(msg) {
+  const t = document.getElementById('global-toast');
+  t.textContent = msg; t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)';
+  setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(-50%) translateY(20px)';}, 2000);
+}
+function setViewport(w) { document.body.style.maxWidth=w?w+'px':''; document.body.style.margin=w?'0 auto':''; }
+</script>
+</body>
+</html>

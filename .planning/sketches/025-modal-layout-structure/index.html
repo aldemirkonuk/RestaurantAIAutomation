@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>025 — Modal Layout Structure</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#e8eaed;color:#111827;padding-top:48px}
+.variant{display:none;min-height:100vh;padding:32px;align-items:center;justify-content:center}
+.variant.active{display:flex;flex-direction:column;gap:16px}
+#variant-nav{position:fixed;top:0;left:0;right:0;z-index:9998;background:#1a1a2e;border-bottom:1px solid rgba(255,255,255,.08);padding:8px 16px;display:flex;gap:6px;align-items:center}
+#variant-nav span{color:rgba(255,255,255,.4);font-size:11px;margin-right:6px;font-family:monospace}
+.vt{padding:5px 14px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);cursor:pointer;font-size:12px;transition:all .15s}
+.vt:hover{background:rgba(255,255,255,.12);color:#fff}
+.vt.active{background:#CD2D5B;border-color:#CD2D5B;color:#fff}
+.label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#666;text-align:center}
+
+/* ── SHARED MODAL CHROME ── */
+.overlay{background:rgba(0,0,0,.55);backdrop-filter:blur(4px);border-radius:16px;padding:20px;display:flex;align-items:center;justify-content:center;width:100%}
+.modal{background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.2);overflow:hidden;display:flex;flex-direction:column;width:100%}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #f0f0f0}
+.modal-header-left{display:flex;align-items:center;gap:10px}
+.modal-icon{width:36px;height:36px;background:#CD2D5B;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex-shrink:0}
+.modal-title{font-size:17px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;color:#111827}
+.modal-sub{font-size:12px;color:#9ca3af;margin-top:1px}
+.close-btn{width:32px;height:32px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;color:#6b7280;transition:all .15s}
+.close-btn:hover{background:#f3f4f6;color:#111}
+.modal-footer{padding:12px 20px;border-top:1px solid #f0f0f0;background:#f9fafb;display:flex;align-items:center;justify-content:space-between}
+.footer-info{font-size:12px;color:#9ca3af}
+.footer-actions{display:flex;gap:8px}
+.btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px}
+.btn-wine{background:#CD2D5B;color:#fff}.btn-wine:hover{background:#ac204a;transform:translateY(-1px)}
+.btn-ghost{background:#f3f4f6;color:#374151;border:1px solid #e5e7eb}.btn-ghost:hover{background:#e5e7eb}
+.btn-outline{background:#fff;color:#374151;border:1px solid #e5e7eb}.btn-outline:hover{background:#f9fafb}
+.btn-sm{padding:5px 10px;font-size:11px;border-radius:6px}
+
+/* ── SHARED PIECES ── */
+.loc-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.fill-bar{height:5px;border-radius:3px;background:#f0f0f0;overflow:hidden}
+.fill-inner{height:100%;border-radius:3px}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700}
+.tag-warn{background:#fffbeb;color:#d97706}
+.tag-ok{background:#ecfdf5;color:#059669}
+.tag-danger{background:#fef2f2;color:#DC2626}
+.field-label{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px}
+.field-input{width:100%;padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;outline:none;transition:border-color .15s;color:#111827}
+.field-input:focus{border-color:#CD2D5B;box-shadow:0 0 0 3px rgba(205,45,91,.1)}
+.field-input[disabled]{background:#f9fafb;color:#9ca3af;cursor:not-allowed}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-group{margin-bottom:12px}
+
+/* ── LOCATION CARD (shared across variants) ── */
+.loc-card{background:#fff;border:2px solid #e5e7eb;border-radius:12px;padding:12px 14px;cursor:pointer;transition:all .2s;margin-bottom:8px}
+.loc-card:hover{border-color:#f4a9ba;background:#fdf9fa}
+.loc-card.selected{border-color:#CD2D5B;background:#fdf2f4}
+.loc-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.loc-card-name{font-size:13px;font-weight:700;flex:1;font-family:'Plus Jakarta Sans',sans-serif}
+.loc-card-actions{display:flex;gap:4px;opacity:0;transition:opacity .15s}
+.loc-card:hover .loc-card-actions{opacity:1}
+.loc-card.selected .loc-card-actions{opacity:1}
+.icon-btn{width:26px;height:26px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;color:#9ca3af;transition:all .15s}
+.icon-btn:hover{background:#fef2f2;color:#DC2626;border-color:#fecaca}
+.icon-btn.edit:hover{background:#fdf2f4;color:#CD2D5B;border-color:#f4a9ba}
+.loc-meta{display:flex;gap:10px;font-size:11px;color:#6b7280;margin-bottom:6px}
+.expand-btn{display:flex;align-items:center;gap:4px;font-size:11px;color:#9ca3af;cursor:pointer;background:none;border:none;padding:0;transition:color .15s}
+.expand-btn:hover{color:#CD2D5B}
+.wines-list{margin-top:6px;border-top:1px solid #f0f0f0;padding-top:6px}
+.wine-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0;font-size:11px}
+.wine-qty{font-weight:700;color:#fff;padding:1px 7px;border-radius:99px;font-size:10px}
+
+/* ── FORM SECTION ── */
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin-bottom:10px}
+.color-picker{display:flex;gap:6px;flex-wrap:wrap}
+.color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s}
+.color-swatch.active{border-color:#1a1a2e;transform:scale(1.15)}
+.color-swatch:hover:not(.active){transform:scale(1.1)}
+.capacity-warn{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:10px}
+.capacity-warn-title{font-weight:700;color:#92400e;margin-bottom:3px}
+.capacity-warn-text{color:#78350f;margin-bottom:6px;line-height:1.5}
+
+/* ── WINE ASSIGNMENT ── */
+.wine-assign-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:5px;transition:border-color .15s}
+.wine-assign-item:hover{border-color:#f4a9ba}
+.wine-info{flex:1;min-width:0}
+.wine-name-sm{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wine-producer-sm{font-size:10px;color:#9ca3af}
+.assign-btn{padding:4px 10px;background:#CD2D5B;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .15s;font-family:'DM Sans',sans-serif;white-space:nowrap}
+.assign-btn:hover{background:#ac204a}
+.remove-btn{width:22px;height:22px;border-radius:5px;border:none;background:#fef2f2;color:#DC2626;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0}
+.remove-btn:hover{background:#fecaca}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#9ca3af;gap:8px;text-align:center;padding:32px}
+.empty-icon{font-size:40px;opacity:.4}
+
+/* ─────────────────────────────────────────
+   VARIANT A  — 3-COLUMN  (list | form | wines)
+──────────────────────────────────────────── */
+.a-modal{max-width:960px;max-height:82vh}
+.a-body{display:grid;grid-template-columns:220px 1fr 260px;flex:1;overflow:hidden}
+.a-col{overflow-y:auto;display:flex;flex-direction:column}
+.a-list-col{border-right:1px solid #f0f0f0;padding:14px}
+.a-form-col{padding:20px;background:#fafafa;border-right:1px solid #f0f0f0}
+.a-wines-col{padding:14px;background:#fff}
+.a-wines-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.a-wines-search{width:100%;padding:6px 10px 6px 28px;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;background:#f9fafb;outline:none;margin-bottom:8px}
+.a-search-wrap{position:relative;margin-bottom:8px}
+.a-search-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:12px;color:#9ca3af}
+.a-wines-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:10px;gap:0}
+.a-wtab{flex:1;padding:6px;text-align:center;font-size:11px;font-weight:600;cursor:pointer;color:#9ca3af;border-bottom:2px solid transparent;transition:all .15s}
+.a-wtab.active{color:#CD2D5B;border-bottom-color:#CD2D5B}
+
+/* ─────────────────────────────────────────
+   VARIANT B  — WIDER 2-PANEL + INLINE WINE SECTION
+──────────────────────────────────────────── */
+.b-modal{max-width:860px;max-height:80vh}
+.b-body{display:grid;grid-template-columns:260px 1fr;flex:1;overflow:hidden}
+.b-list-col{border-right:1px solid #f0f0f0;padding:14px;overflow-y:auto}
+.b-right-col{display:flex;flex-direction:column;overflow:hidden}
+.b-right-scroll{flex:1;overflow-y:auto;padding:20px}
+.b-wines-section{border-top:1px solid #f0f0f0;padding:16px 20px;background:#f9fafb}
+.b-wines-section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.b-wines-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:160px;overflow-y:auto}
+.b-wine-chip{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;transition:border-color .15s}
+.b-wine-chip:hover{border-color:#f4a9ba}
+.b-tabs{display:flex;border-bottom:1px solid #f0f0f0}
+.b-tab{padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;color:#9ca3af;border-bottom:2px solid transparent;transition:all .15s}
+.b-tab.active{color:#CD2D5B;border-bottom-color:#CD2D5B}
+
+/* ─────────────────────────────────────────
+   VARIANT C — FULL-SIDE DRAWER
+──────────────────────────────────────────── */
+.c-drawer-wrap{display:flex;align-items:stretch;width:100%;max-width:1000px;max-height:84vh;background:transparent;gap:12px}
+.c-list-panel{width:280px;flex-shrink:0;background:#fff;border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden}
+.c-detail-panel{flex:1;background:#fff;border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden}
+.c-list-header{padding:16px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between}
+.c-list-title{font-size:14px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif}
+.c-list-scroll{flex:1;overflow-y:auto;padding:10px}
+.c-detail-header{padding:16px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:10px}
+.c-detail-scroll{flex:1;overflow-y:auto;padding:20px}
+.c-detail-footer{padding:12px 20px;border-top:1px solid #f0f0f0;background:#f9fafb;display:flex;gap:8px;justify-content:flex-end}
+.c-wines-split{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;padding-top:16px;border-top:1px solid #f0f0f0}
+.c-sub-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin-bottom:8px}
+.c-wines-scroll{max-height:200px;overflow-y:auto}
+</style>
+</head>
+<body>
+<div id="variant-nav">
+  <span>025 MODAL</span>
+  <button class="vt active" onclick="sv('a',this)">A: 3-Column</button>
+  <button class="vt" onclick="sv('b',this)">B: Wider 2-Panel + Docked Wines</button>
+  <button class="vt" onclick="sv('c',this)">C: Side-by-Side Panels</button>
+</div>
+
+<!-- ══════════════ VARIANT A: 3-COLUMN ══════════════ -->
+<div id="va" class="variant active">
+  <div class="label">A — 3-Column · List | Edit Form | Wine Assignment (always visible, no drilling)</div>
+  <div class="overlay">
+    <div class="modal a-modal">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-icon">📍</div>
+          <div>
+            <div class="modal-title">Storage Locations</div>
+            <div class="modal-sub">4 locations · 1,547 bottles stored</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-wine btn-sm" onclick="t('✦ Auto-Locate opening…')">✦ Auto-Locate</button>
+          <button class="close-btn" onclick="t('Modal closed')">✕</button>
+        </div>
+      </div>
+
+      <div class="a-body" style="flex:1">
+        <!-- Col 1: List -->
+        <div class="a-col a-list-col">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Locations</div>
+            <button class="btn btn-wine btn-sm" onclick="t('Add location…')">+ New</button>
+          </div>
+
+          <div class="loc-card selected" onclick="t('Main Cellar selected')">
+            <div class="loc-card-top">
+              <div class="loc-dot" style="background:#7c1d3c"></div>
+              <div class="loc-card-name">Main Cellar</div>
+              <div class="loc-card-actions">
+                <button class="icon-btn" onclick="event.stopPropagation();t('Delete Main Cellar?')">🗑</button>
+              </div>
+            </div>
+            <div class="loc-meta"><span>📦 847/1,000</span><span>🌡 55°F</span><span>💧 70%</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+            <div style="margin-top:4px"><span class="badge tag-warn">⚠ Near Full</span></div>
+          </div>
+
+          <div class="loc-card" onclick="t('Bar Stock selected')">
+            <div class="loc-card-top">
+              <div class="loc-dot" style="background:#CD2D5B"></div>
+              <div class="loc-card-name">Bar Stock</div>
+              <div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div>
+            </div>
+            <div class="loc-meta"><span>📦 42/150</span><span>🌡 58°F</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:28%;background:#CD2D5B"></div></div>
+            <div style="margin-top:4px"><span class="badge tag-ok">✓ Healthy</span></div>
+          </div>
+
+          <div class="loc-card" onclick="t('VIP Reserve selected')">
+            <div class="loc-card-top">
+              <div class="loc-dot" style="background:#d97706"></div>
+              <div class="loc-card-name">VIP Reserve</div>
+              <div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div>
+            </div>
+            <div class="loc-meta"><span>📦 48/100</span><span>🌡 53°F</span><span>💧 75%</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:48%;background:#d97706"></div></div>
+          </div>
+
+          <div class="loc-card" style="border-color:#fecaca" onclick="t('Overflow selected')">
+            <div class="loc-card-top">
+              <div class="loc-dot" style="background:#DC2626"></div>
+              <div class="loc-card-name">Overflow Storage</div>
+              <div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div>
+            </div>
+            <div class="loc-meta"><span>📦 610/600</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:100%;background:#DC2626"></div></div>
+            <div style="margin-top:4px"><span class="badge tag-danger">⚠ Overcapacity</span></div>
+          </div>
+        </div>
+
+        <!-- Col 2: Edit Form -->
+        <div class="a-col a-form-col">
+          <div class="section-title">Edit Location — Main Cellar</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid #e5e7eb">
+            <div class="loc-dot" style="background:#7c1d3c;width:14px;height:14px"></div>
+            <span style="font-weight:700;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif">Main Cellar</span>
+            <span class="badge tag-warn" style="margin-left:auto">⚠ 85%</span>
+          </div>
+
+          <div class="form-group">
+            <label class="field-label">Location Name *</label>
+            <input class="field-input" value="Main Cellar" oninput="t('Name updated')">
+          </div>
+          <div class="form-group">
+            <label class="field-label">Description</label>
+            <input class="field-input" value="Primary wine storage · Temperature controlled">
+          </div>
+          <div class="field-row form-group">
+            <div>
+              <label class="field-label">Capacity (bottles)</label>
+              <input class="field-input" type="number" value="1000">
+            </div>
+            <div>
+              <label class="field-label">Current Count 🔒</label>
+              <input class="field-input" type="number" value="847" disabled>
+              <div style="font-size:10px;color:#9ca3af;margin-top:3px">Updated via wine movements</div>
+            </div>
+          </div>
+          <div class="field-row form-group">
+            <div>
+              <label class="field-label">Temperature</label>
+              <input class="field-input" value="55°F">
+            </div>
+            <div>
+              <label class="field-label">Humidity</label>
+              <input class="field-input" value="70%">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Color</label>
+            <div class="color-picker">
+              <div class="color-swatch active" style="background:#7c1d3c" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#CD2D5B" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#f59e0b" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#10b981" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#3b82f6" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#8b5cf6" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#ec4899" onclick="t('Color selected')"></div>
+              <div class="color-swatch" style="background:#14b8a6" onclick="t('Color selected')"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Notes</label>
+            <textarea class="field-input" rows="2" style="resize:none">Long-term aging reds and whites. Check temp weekly.</textarea>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:auto;padding-top:8px">
+            <button class="btn btn-ghost" style="flex:1" onclick="t('Cancelled')">Cancel</button>
+            <button class="btn btn-wine" style="flex:1" onclick="t('✓ Saved Main Cellar')">💾 Save</button>
+          </div>
+        </div>
+
+        <!-- Col 3: Wine Assignment -->
+        <div class="a-col a-wines-col">
+          <div class="a-wines-tabs">
+            <div class="a-wtab active" onclick="switchWineTab(this,'assigned')">Assigned (41)</div>
+            <div class="a-wtab" onclick="switchWineTab(this,'add')">Add Wines</div>
+          </div>
+
+          <div id="a-assigned">
+            <div class="a-search-wrap">
+              <span class="a-search-icon">🔍</span>
+              <input class="a-wines-search" style="margin:0" placeholder="Filter assigned wines…">
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Château Margaux 2018</div><div class="wine-producer-sm">Bordeaux, France</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">24</span>
+              <button class="remove-btn" onclick="t('Removed Château Margaux from Main Cellar')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Krug Grande Cuvée NV</div><div class="wine-producer-sm">Champagne, France</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">36</span>
+              <button class="remove-btn" onclick="t('Removed Krug')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Cloudy Bay SB 2022</div><div class="wine-producer-sm">Marlborough, NZ</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">48</span>
+              <button class="remove-btn" onclick="t('Removed Cloudy Bay')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Sassicaia 2017</div><div class="wine-producer-sm">Bolgheri, Italy</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">18</span>
+              <button class="remove-btn" onclick="t('Removed Sassicaia')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Romanée-Conti 2020</div><div class="wine-producer-sm">Burgundy, France</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">6</span>
+              <button class="remove-btn" onclick="t('Removed DRC')">✕</button>
+            </div>
+            <div style="text-align:center;font-size:11px;color:#9ca3af;padding:8px 0">+ 36 more wines</div>
+          </div>
+
+          <div id="a-addwines" style="display:none">
+            <div class="a-search-wrap">
+              <span class="a-search-icon">🔍</span>
+              <input class="a-wines-search" style="margin:0" placeholder="Search inventory to assign…" oninput="filterWines(this.value)">
+            </div>
+            <div id="a-wine-results">
+              <div class="wine-assign-item">
+                <div class="wine-info"><div class="wine-name-sm">Barolo Riserva 2016</div><div class="wine-producer-sm">Piedmont, Italy</div></div>
+                <button class="assign-btn" onclick="t('Barolo assigned to Main Cellar ✓')">Assign</button>
+              </div>
+              <div class="wine-assign-item">
+                <div class="wine-info"><div class="wine-name-sm">Chablis Premier Cru 2021</div><div class="wine-producer-sm">Burgundy, France</div></div>
+                <button class="assign-btn" onclick="t('Chablis assigned ✓')">Assign</button>
+              </div>
+              <div class="wine-assign-item">
+                <div class="wine-info"><div class="wine-name-sm">Bollinger Special Cuvée</div><div class="wine-producer-sm">Champagne, France</div></div>
+                <button class="assign-btn" onclick="t('Bollinger assigned ✓')">Assign</button>
+              </div>
+              <div class="wine-assign-item">
+                <div class="wine-info"><div class="wine-name-sm">Whispering Angel Rosé 2023</div><div class="wine-producer-sm">Provence, France</div></div>
+                <button class="assign-btn" onclick="t('Rosé assigned ✓')">Assign</button>
+              </div>
+            </div>
+            <div style="font-size:10px;color:#9ca3af;text-align:center;margin-top:4px">Showing 4 of 47 unassigned wines</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="footer-info">4 locations · 1,547 bottles · 73% utilized</span>
+        <div class="footer-actions">
+          <button class="btn btn-ghost" onclick="t('Modal closed')">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ VARIANT B: WIDER 2-PANEL + DOCKED WINE SECTION ══════════════ -->
+<div id="vb" class="variant">
+  <div class="label">B — Wider 2-Panel · Location list left, form + docked wine section stacked right</div>
+  <div class="overlay">
+    <div class="modal b-modal">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-icon">📍</div>
+          <div><div class="modal-title">Storage Locations</div><div class="modal-sub">4 locations · 1,547 bottles stored</div></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-wine btn-sm" onclick="t('Auto-Locate…')">✦ Auto-Locate</button>
+          <button class="close-btn" onclick="t('Closed')">✕</button>
+        </div>
+      </div>
+
+      <div class="b-body" style="flex:1;display:grid;grid-template-columns:260px 1fr;overflow:hidden">
+        <!-- Left: list -->
+        <div class="b-list-col">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Your Locations</div>
+            <button class="btn btn-wine btn-sm" onclick="t('Add location…')">+ Add</button>
+          </div>
+          <div class="loc-card selected" onclick="t('Main Cellar')">
+            <div class="loc-card-top">
+              <div class="loc-dot" style="background:#7c1d3c"></div>
+              <div class="loc-card-name">Main Cellar</div>
+              <div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div>
+            </div>
+            <div class="loc-meta"><span>📦 847/1,000</span><span>🌡 55°F</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+            <div style="margin-top:5px"><span class="badge tag-warn">⚠ Near Full</span></div>
+          </div>
+          <div class="loc-card" onclick="t('Bar Stock')">
+            <div class="loc-card-top"><div class="loc-dot" style="background:#CD2D5B"></div><div class="loc-card-name">Bar Stock</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+            <div class="loc-meta"><span>📦 42/150</span><span>🌡 58°F</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:28%;background:#CD2D5B"></div></div>
+            <div style="margin-top:5px"><span class="badge tag-ok">✓ Healthy</span></div>
+          </div>
+          <div class="loc-card" onclick="t('VIP Reserve')">
+            <div class="loc-card-top"><div class="loc-dot" style="background:#d97706"></div><div class="loc-card-name">VIP Reserve</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+            <div class="loc-meta"><span>📦 48/100</span><span>🌡 53°F</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:48%;background:#d97706"></div></div>
+          </div>
+          <div class="loc-card" style="border-color:#fecaca" onclick="t('Overflow')">
+            <div class="loc-card-top"><div class="loc-dot" style="background:#DC2626"></div><div class="loc-card-name">Overflow Storage</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+            <div class="loc-meta"><span>📦 610/600</span></div>
+            <div class="fill-bar"><div class="fill-inner" style="width:100%;background:#DC2626"></div></div>
+            <div style="margin-top:5px"><span class="badge tag-danger">⚠ Overcapacity</span></div>
+          </div>
+        </div>
+
+        <!-- Right: form + docked wine section -->
+        <div class="b-right-col">
+          <!-- Tab bar -->
+          <div class="b-tabs">
+            <div class="b-tab active" onclick="bSwitchTab(this,'b-details')">📋 Details</div>
+            <div class="b-tab" onclick="bSwitchTab(this,'b-wines')">🍾 Wines (41)</div>
+          </div>
+
+          <!-- Details tab -->
+          <div id="b-details" class="b-right-scroll">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;background:#fdf2f4;border-radius:10px;border:1px solid #f4a9ba">
+              <div class="loc-dot" style="background:#7c1d3c;width:14px;height:14px"></div>
+              <div style="font-weight:700;font-size:15px;font-family:'Plus Jakarta Sans',sans-serif;flex:1">Main Cellar</div>
+              <span class="badge tag-warn">⚠ 847/1,000</span>
+              <div class="fill-bar" style="width:80px"><div class="fill-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+            </div>
+            <div class="field-row" style="margin-bottom:12px">
+              <div><label class="field-label">Location Name *</label><input class="field-input" value="Main Cellar"></div>
+              <div><label class="field-label">Description</label><input class="field-input" value="Primary wine storage"></div>
+            </div>
+            <div class="field-row" style="margin-bottom:12px">
+              <div><label class="field-label">Capacity (bottles)</label><input class="field-input" type="number" value="1000"></div>
+              <div><label class="field-label">Current Count 🔒</label><input class="field-input" value="847" disabled><div style="font-size:10px;color:#9ca3af;margin-top:2px">Updated via wine movements</div></div>
+            </div>
+            <div class="field-row" style="margin-bottom:12px">
+              <div><label class="field-label">Temperature</label><input class="field-input" value="55°F"></div>
+              <div><label class="field-label">Humidity</label><input class="field-input" value="70%"></div>
+            </div>
+            <div style="margin-bottom:12px">
+              <label class="field-label">Color</label>
+              <div class="color-picker">
+                <div class="color-swatch active" style="background:#7c1d3c" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#CD2D5B" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#f59e0b" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#10b981" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#3b82f6" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#8b5cf6" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#ec4899" onclick="t('Color')"></div>
+                <div class="color-swatch" style="background:#14b8a6" onclick="t('Color')"></div>
+              </div>
+            </div>
+            <div style="margin-bottom:12px">
+              <label class="field-label">Notes</label>
+              <textarea class="field-input" rows="2" style="resize:none">Long-term aging reds and whites. Check temp weekly.</textarea>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-ghost" style="flex:1" onclick="t('Cancelled')">Cancel</button>
+              <button class="btn btn-wine" style="flex:1" onclick="t('✓ Saved')">💾 Save Changes</button>
+            </div>
+          </div>
+
+          <!-- Wines tab (hidden by default) -->
+          <div id="b-wines" class="b-right-scroll" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:700">Wines in Main Cellar <span style="font-weight:400;color:#9ca3af">(41)</span></div>
+              <div style="display:flex;gap:6px">
+                <input class="field-input" style="width:200px;padding:6px 10px;font-size:12px" placeholder="🔍 Search wines…">
+                <button class="btn btn-wine btn-sm" onclick="t('Add wine…')">+ Assign</button>
+              </div>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Château Margaux 2018</div><div class="wine-producer-sm">Bordeaux</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">24</span>
+              <button class="remove-btn" onclick="t('Removed')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Krug Grande Cuvée NV</div><div class="wine-producer-sm">Champagne</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">36</span>
+              <button class="remove-btn" onclick="t('Removed')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Cloudy Bay SB 2022</div><div class="wine-producer-sm">Marlborough</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">48</span>
+              <button class="remove-btn" onclick="t('Removed')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Sassicaia 2017</div><div class="wine-producer-sm">Tuscany</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">18</span>
+              <button class="remove-btn" onclick="t('Removed')">✕</button>
+            </div>
+            <div class="wine-assign-item">
+              <div class="wine-info"><div class="wine-name-sm">Romanée-Conti 2020</div><div class="wine-producer-sm">Burgundy</div></div>
+              <span class="wine-qty" style="background:#7c1d3c">6</span>
+              <button class="remove-btn" onclick="t('Removed')">✕</button>
+            </div>
+            <div style="text-align:center;font-size:11px;color:#9ca3af;padding:10px">+ 36 more wines in this location</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="footer-info">4 locations · 1,547 bottles</span>
+        <div class="footer-actions"><button class="btn btn-ghost" onclick="t('Closed')">Close</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ VARIANT C: SIDE-BY-SIDE PANELS ══════════════ -->
+<div id="vc" class="variant">
+  <div class="label">C — Side-by-Side Panels · Two independent cards; detail panel has form + wines split view</div>
+  <div style="display:flex;align-items:flex-start;justify-content:center;width:100%;gap:12px;max-width:1020px;max-height:84vh">
+
+    <!-- Left: Location List Card -->
+    <div class="c-list-panel">
+      <div class="c-list-header">
+        <div class="c-list-title">📍 Storage Locations</div>
+        <button class="btn btn-wine btn-sm" onclick="t('Add location…')">+ New</button>
+      </div>
+      <div class="c-list-scroll">
+        <div class="loc-card selected" onclick="t('Main Cellar')">
+          <div class="loc-card-top"><div class="loc-dot" style="background:#7c1d3c"></div><div class="loc-card-name">Main Cellar</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+          <div class="loc-meta"><span>📦 847/1,000</span><span>🌡 55°F</span></div>
+          <div class="fill-bar"><div class="fill-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+          <div style="margin-top:5px"><span class="badge tag-warn">⚠ Near Full</span></div>
+        </div>
+        <div class="loc-card" onclick="t('Bar Stock')">
+          <div class="loc-card-top"><div class="loc-dot" style="background:#CD2D5B"></div><div class="loc-card-name">Bar Stock</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+          <div class="loc-meta"><span>📦 42/150</span><span>🌡 58°F</span></div>
+          <div class="fill-bar"><div class="fill-inner" style="width:28%;background:#CD2D5B"></div></div>
+          <div style="margin-top:5px"><span class="badge tag-ok">✓</span></div>
+        </div>
+        <div class="loc-card" onclick="t('VIP Reserve')">
+          <div class="loc-card-top"><div class="loc-dot" style="background:#d97706"></div><div class="loc-card-name">VIP Reserve</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+          <div class="loc-meta"><span>📦 48/100</span><span>🌡 53°F</span></div>
+          <div class="fill-bar"><div class="fill-inner" style="width:48%;background:#d97706"></div></div>
+        </div>
+        <div class="loc-card" style="border-color:#fecaca" onclick="t('Overflow')">
+          <div class="loc-card-top"><div class="loc-dot" style="background:#DC2626"></div><div class="loc-card-name">Overflow Storage</div><div class="loc-card-actions"><button class="icon-btn" onclick="event.stopPropagation();t('Delete?')">🗑</button></div></div>
+          <div class="loc-meta"><span>📦 610/600</span></div>
+          <div class="fill-bar"><div class="fill-inner" style="width:100%;background:#DC2626"></div></div>
+          <div style="margin-top:5px"><span class="badge tag-danger">⚠ Over</span></div>
+        </div>
+      </div>
+      <div style="padding:10px;border-top:1px solid #f0f0f0">
+        <div style="font-size:11px;color:#9ca3af;text-align:center">4 locations · 1,547 bottles · 73% utilized</div>
+        <button class="btn btn-wine btn-sm" style="width:100%;margin-top:8px;justify-content:center" onclick="t('✦ Auto-Locate…')">✦ Auto-Locate</button>
+      </div>
+    </div>
+
+    <!-- Right: Detail Panel -->
+    <div class="c-detail-panel" style="flex:1">
+      <div class="c-detail-header">
+        <div class="loc-dot" style="background:#7c1d3c;width:14px;height:14px"></div>
+        <div style="flex:1">
+          <div style="font-size:17px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif">Main Cellar</div>
+          <div style="font-size:11px;color:#9ca3af">Primary wine storage · Temperature controlled</div>
+        </div>
+        <span class="badge tag-warn">⚠ 85%</span>
+        <button class="close-btn" onclick="t('Panel closed — back to list')">✕</button>
+      </div>
+
+      <div class="c-detail-scroll">
+        <!-- Inline form -->
+        <div class="field-row" style="margin-bottom:12px">
+          <div><label class="field-label">Name *</label><input class="field-input" value="Main Cellar"></div>
+          <div><label class="field-label">Description</label><input class="field-input" value="Primary wine storage"></div>
+        </div>
+        <div class="field-row" style="margin-bottom:12px">
+          <div><label class="field-label">Capacity</label><input class="field-input" type="number" value="1000"></div>
+          <div><label class="field-label">Count 🔒</label><input class="field-input" value="847" disabled></div>
+        </div>
+        <div class="field-row" style="margin-bottom:12px">
+          <div><label class="field-label">Temperature</label><input class="field-input" value="55°F"></div>
+          <div><label class="field-label">Humidity</label><input class="field-input" value="70%"></div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label class="field-label">Color</label>
+          <div class="color-picker">
+            <div class="color-swatch active" style="background:#7c1d3c"></div>
+            <div class="color-swatch" style="background:#CD2D5B"></div>
+            <div class="color-swatch" style="background:#f59e0b"></div>
+            <div class="color-swatch" style="background:#10b981"></div>
+            <div class="color-swatch" style="background:#3b82f6"></div>
+            <div class="color-swatch" style="background:#8b5cf6"></div>
+            <div class="color-swatch" style="background:#ec4899"></div>
+            <div class="color-swatch" style="background:#14b8a6"></div>
+          </div>
+        </div>
+        <div style="margin-bottom:0">
+          <label class="field-label">Notes</label>
+          <textarea class="field-input" rows="2" style="resize:none">Long-term aging. Check temp weekly.</textarea>
+        </div>
+
+        <!-- Wine assignment split below form -->
+        <div class="c-wines-split">
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div class="c-sub-title">Assigned Wines (41)</div>
+            </div>
+            <input class="field-input" style="font-size:11px;padding:5px 8px;margin-bottom:6px" placeholder="🔍 Filter…">
+            <div class="c-wines-scroll">
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Château Margaux 2018</div><div class="wine-producer-sm">Bordeaux</div></div>
+                <span class="wine-qty" style="background:#7c1d3c">24</span>
+                <button class="remove-btn" onclick="t('Removed')">✕</button>
+              </div>
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Krug Grande Cuvée NV</div><div class="wine-producer-sm">Champagne</div></div>
+                <span class="wine-qty" style="background:#7c1d3c">36</span>
+                <button class="remove-btn" onclick="t('Removed')">✕</button>
+              </div>
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Cloudy Bay SB 2022</div><div class="wine-producer-sm">Marlborough</div></div>
+                <span class="wine-qty" style="background:#7c1d3c">48</span>
+                <button class="remove-btn" onclick="t('Removed')">✕</button>
+              </div>
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Sassicaia 2017</div><div class="wine-producer-sm">Tuscany</div></div>
+                <span class="wine-qty" style="background:#7c1d3c">18</span>
+                <button class="remove-btn" onclick="t('Removed')">✕</button>
+              </div>
+              <div style="font-size:10px;color:#9ca3af;text-align:center;padding:4px">+37 more</div>
+            </div>
+          </div>
+          <div>
+            <div class="c-sub-title">Add Wines from Inventory</div>
+            <input class="field-input" style="font-size:11px;padding:5px 8px;margin-bottom:6px" placeholder="🔍 Search inventory…">
+            <div class="c-wines-scroll">
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Barolo Riserva 2016</div><div class="wine-producer-sm">Piedmont</div></div>
+                <button class="assign-btn" onclick="t('Barolo assigned ✓')">+ Assign</button>
+              </div>
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Chablis Premier Cru 2021</div><div class="wine-producer-sm">Burgundy</div></div>
+                <button class="assign-btn" onclick="t('Chablis assigned ✓')">+ Assign</button>
+              </div>
+              <div class="wine-assign-item" style="padding:5px 8px">
+                <div class="wine-info"><div class="wine-name-sm">Bollinger Cuvée NV</div><div class="wine-producer-sm">Champagne</div></div>
+                <button class="assign-btn" onclick="t('Bollinger assigned ✓')">+ Assign</button>
+              </div>
+              <div style="font-size:10px;color:#9ca3af;text-align:center;padding:4px">47 unassigned wines</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="c-detail-footer">
+        <button class="btn btn-ghost" onclick="t('Cancelled')">Cancel</button>
+        <button class="btn btn-wine" onclick="t('✓ Saved Main Cellar')">💾 Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sketch Toolbar -->
+<div style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,.75);color:#fff;padding:10px 14px;border-radius:10px;opacity:.35;transition:opacity .2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.35'">
+  <div style="font-weight:600;font-size:11px;opacity:.7;letter-spacing:.05em;margin-bottom:6px">025 — MODAL LAYOUT</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:3px 6px;font-size:11px;width:100%"><option value="default">Default Theme</option></select>
+</div>
+<div id="gt" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all .3s;pointer-events:none;z-index:9997;white-space:nowrap;"></div>
+
+<script>
+function sv(id,btn){
+  document.querySelectorAll('.variant').forEach(v=>v.style.display='none');
+  document.querySelectorAll('.vt').forEach(b=>b.classList.remove('active'));
+  document.getElementById('v'+id).style.display='flex';
+  btn.classList.add('active');
+}
+function t(msg){
+  const el=document.getElementById('gt');
+  el.textContent=msg;el.style.opacity='1';el.style.transform='translateX(-50%) translateY(0)';
+  setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(-50%) translateY(20px)';},2000);
+}
+function switchWineTab(btn,show){
+  document.querySelectorAll('.a-wtab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('a-assigned').style.display=show==='assigned'?'block':'none';
+  document.getElementById('a-addwines').style.display=show==='add'?'block':'none';
+}
+function bSwitchTab(btn,show){
+  document.querySelectorAll('.b-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('b-details').style.display=show==='b-details'?'block':'none';
+  document.getElementById('b-wines').style.display=show==='b-wines'?'block':'none';
+}
+</script>
+</body>
+</html>

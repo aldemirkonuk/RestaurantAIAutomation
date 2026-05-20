@@ -1,16 +1,19 @@
 import { useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { X, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { OnboardingProgress } from '../../services/api/menus'
+import type { RefObject } from 'react'
 
 interface GettingStartedPanelProps {
   progress: OnboardingProgress
+  anchorRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
   onDismiss: () => void
 }
 
-export function GettingStartedPanel({ progress, onClose, onDismiss }: GettingStartedPanelProps) {
+export function GettingStartedPanel({ progress, anchorRef, onClose, onDismiss }: GettingStartedPanelProps) {
   const navigate = useNavigate()
 
   const tasks = [
@@ -60,12 +63,17 @@ export function GettingStartedPanel({ progress, onClose, onDismiss }: GettingSta
 
   const completedCount = tasks.filter((t) => t.done).length
 
-  return (
+  const rect = anchorRef.current?.getBoundingClientRect()
+  const top = rect ? rect.top : 0
+  const left = rect ? rect.right + 8 : 0
+
+  return createPortal(
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="absolute top-0 left-full ml-2 w-64 bg-white rounded-2xl shadow-xl border-l-4 border-[#722F37] z-50 overflow-hidden"
+      style={{ top, left }}
+      className="fixed w-64 bg-white rounded-2xl shadow-xl border-l-4 border-[#722F37] z-50 overflow-hidden"
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-100">
@@ -125,6 +133,7 @@ export function GettingStartedPanel({ progress, onClose, onDismiss }: GettingSta
           Don't show again
         </button>
       </div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   )
 }

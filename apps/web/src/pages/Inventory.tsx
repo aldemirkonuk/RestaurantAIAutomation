@@ -1342,14 +1342,13 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
               menuPriceGlass: volumeFields?.menuPriceGlass,
             })
 
+            // Create the wine-location mapping so getWineLocation() works and the
+            // LocationPickerCell reflects the chosen location immediately.
+            // assignWineToLocation handles both the mappings entry and currentCount —
+            // the old manual setStorageLocations call was a partial update that skipped
+            // the mapping and caused double-count if the user later re-assigned.
             if (storageLocationId) {
-              setStorageLocations(prev =>
-                prev.map(loc =>
-                  loc.id === storageLocationId
-                    ? { ...loc, currentCount: loc.currentCount + quantity }
-                    : loc
-                )
-              )
+              assignWineToLocation(wine.id, storageLocationId, quantity)
             }
 
             dispatchInventoryUpdate({

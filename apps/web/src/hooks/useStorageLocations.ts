@@ -206,7 +206,6 @@ export function useStorageLocations() {
         })
       }
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
-      queryClient.invalidateQueries({ queryKey: [MAPPINGS_KEY, restaurantId] })
     },
     [setMappings, setLocations, persistToServer, restaurantId],
   )
@@ -227,7 +226,6 @@ export function useStorageLocations() {
 
       persistToServer('DELETE', `/storage-locations/${restaurantId}/mappings/${wineId}`)
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
-      queryClient.invalidateQueries({ queryKey: [MAPPINGS_KEY, restaurantId] })
     },
     [mappings, setMappings, setLocations, persistToServer, restaurantId],
   )

@@ -23,3 +23,10 @@ Premium B2B SaaS onboarding for restaurant operators. The visual language is Str
 | 009 | provider-card-design | How much should a card surface at rest — actions, portfolio info, or relationship status? | A — Action-First | providers, card, grid, actions, ux |
 | 010 | provider-detail-modal | What's the right modal anatomy — centered sheet, right drawer, or bottom 2-col sheet? | A — Centered Sheet | providers, modal, detail, ux, interaction |
 | 016 | communications-templates | Should the templates page be a browsable library, a split panel editor, or an activity-first feed? | null | communications, templates, email, sms, library, feed |
+| 020 | storage-location-layout | What layout philosophy fits 2-person AND 50-person teams — card grid, list+detail, or dashboard-first? | null | storage, layout, grid, list-detail, dashboard |
+| 021 | location-card-design | How much does a location card surface at rest — minimal, data-rich, or visual/ambient? | null | storage, card, minimal, data-rich, visual |
+| 022 | mobile-cellar-view | How does a cellar staff member on mobile interact — quick scan hub, compact list, or location focus? | null | storage, mobile, cellar-staff, scan, qr |
+| 023 | power-user-enterprise | How do power users manage 10–20+ locations — dense table, zone tree, or kanban columns? | null | storage, enterprise, bulk, table, tree, kanban |
+| 024 | new-features-integration | How do new features (health, AI auto-locate, QR/quick-add) integrate without adding noise? | null | storage, ai, qr, health, auto-locate, new-features |
+| 025 | modal-layout-structure | How should the modal divide space between location list, edit form, and wine assignment? | null | storage, modal, layout, wine-assignment, split-pane, tabs |
+| 026 | wine-assignment-ux | How should wine assignment (view, search, add, remove) work inside the modal without crowding the form? | null | storage, modal, wine-assignment, drawer, inline, accordion, ux |

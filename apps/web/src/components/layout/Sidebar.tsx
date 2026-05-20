@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -72,6 +72,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const [showChecklist, setShowChecklist] = useState(false)
+  const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const location = useLocation()
   const { user, logout } = useAuth()
   const { progress, update } = useOnboardingProgress()
@@ -269,6 +270,7 @@ export function Sidebar() {
         {showChecklistItem && (
           <div className="relative mt-4">
             <button
+              ref={checklistButtonRef}
               onClick={() => setShowChecklist(!showChecklist)}
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left',
@@ -296,6 +298,7 @@ export function Sidebar() {
               {showChecklist && progress && (
                 <GettingStartedPanel
                   progress={progress}
+                  anchorRef={checklistButtonRef}
                   onClose={() => setShowChecklist(false)}
                   onDismiss={() => {
                     update({ checklist_dismissed: true })

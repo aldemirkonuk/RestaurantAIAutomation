@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>023 — Power User Enterprise View</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: var(--color-bg); color: var(--color-text); padding-top: 48px; }
+    .variant { display: none; min-height: 100vh; }
+    .variant.active { display: block; }
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: #1a1a2e; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 16px; display: flex; gap: 6px; align-items: center;
+    }
+    #variant-nav span { color: rgba(255,255,255,0.4); font-size: 11px; margin-right: 6px; font-family: monospace; }
+    .variant-tab { padding: 5px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); cursor: pointer; font-size: 12px; transition: all 0.15s; }
+    .variant-tab:hover { background: rgba(255,255,255,0.12); color: white; }
+    .variant-tab.active { background: var(--color-primary,#CD2D5B); border-color: var(--color-primary); color: white; }
+    .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; font-family: var(--font-body); display:inline-flex;align-items:center;gap:5px; }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-sm { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 5px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; transition: all 0.15s; font-family: var(--font-body); }
+    .btn-sm:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+    .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+
+    /* ─── VARIANT A: DENSE TABLE ─── */
+    .a-header { padding: 16px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px; }
+    .a-title { font-size: 17px; font-weight: 700; font-family: var(--font-display); flex: 1; }
+    .a-toolbar { padding: 8px 12px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; gap: 6px; align-items: center; }
+    .a-search { padding: 5px 10px 5px 28px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 12px; background: var(--color-bg); font-family: var(--font-body); outline: none; width: 200px; }
+    .a-search-wrap { position: relative; }
+    .a-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #9ca3af; }
+    .a-chip { padding: 4px 10px; border-radius: 99px; border: 1px solid var(--color-border); font-size: 11px; cursor: pointer; background: white; color: #6b7280; transition: all 0.12s; }
+    .a-chip:hover, .a-chip.on { background: var(--color-primary-light); color: var(--color-primary); border-color: var(--color-primary-medium); }
+    .a-spacer { flex: 1; }
+    .a-kbd { font-family: var(--font-mono); font-size: 10px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 3px; padding: 1px 5px; color: #6b7280; }
+
+    .a-table-wrap { overflow-x: auto; }
+    .a-table { width: 100%; border-collapse: collapse; }
+    .a-table thead th {
+      position: sticky; top: 48px; background: var(--color-bg); z-index: 10;
+      text-align: left; font-size: 10px; font-weight: 700; color: #9ca3af;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 8px 10px; border-bottom: 1px solid var(--color-border);
+      cursor: pointer; white-space: nowrap; user-select: none;
+    }
+    .a-table thead th:hover { color: var(--color-text); }
+    .a-table thead th.sort { color: var(--color-primary); }
+    .a-table tr { transition: background 0.1s; }
+    .a-table tbody tr:hover td { background: var(--color-primary-light); }
+    .a-table tbody tr.selected td { background: #fdf2f4; }
+    .a-table td { padding: 7px 10px; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 12px; vertical-align: middle; white-space: nowrap; }
+    .a-check { width: 14px; height: 14px; cursor: pointer; accent-color: var(--color-primary); }
+    .a-name-cell { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .a-loc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .a-desc { color: #9ca3af; font-size: 11px; font-weight: 400; }
+    .a-bar-mini { width: 80px; height: 5px; border-radius: 3px; background: #f0f0f0; display: inline-block; position: relative; vertical-align: middle; }
+    .a-bar-mini-inner { height: 100%; border-radius: 3px; position: absolute; left: 0; top: 0; }
+    .a-pct { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+    .a-temp { font-size: 11px; color: #6b7280; }
+    .a-row-actions { display: flex; gap: 3px; opacity: 0; transition: opacity 0.15s; }
+    .a-table tbody tr:hover .a-row-actions { opacity: 1; }
+    .a-bulk-bar { padding: 8px 16px; background: #1e293b; color: white; display: flex; align-items: center; gap: 10px; font-size: 12px; position: sticky; bottom: 0; }
+    .a-bulk-btn { padding: 5px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white; cursor: pointer; font-size: 11px; font-family: var(--font-body); transition: background 0.15s; }
+    .a-bulk-btn:hover { background: rgba(255,255,255,0.2); }
+    .a-sum-row td { font-weight: 700; background: var(--color-bg) !important; border-top: 2px solid var(--color-border); }
+
+    /* ─── VARIANT B: ZONE TREE ─── */
+    .b-layout { display: grid; grid-template-columns: 260px 1fr; height: calc(100vh - 48px); }
+    .b-tree { background: var(--color-surface); border-right: 1px solid var(--color-border); overflow-y: auto; }
+    .b-tree-header { padding: 14px 16px; border-bottom: 1px solid var(--color-border); }
+    .b-tree-title { font-size: 12px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .b-tree-search { width: 100%; padding: 5px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 12px; font-family: var(--font-body); background: var(--color-bg); outline: none; }
+    .b-zone { padding: 4px 8px; }
+    .b-zone-header { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; cursor: pointer; transition: all 0.12s; margin-bottom: 2px; }
+    .b-zone-header:hover { background: var(--color-surface-secondary); }
+    .b-zone-toggle { font-size: 10px; color: #9ca3af; width: 12px; }
+    .b-zone-name { font-size: 13px; font-weight: 700; flex: 1; }
+    .b-zone-count { font-size: 10px; color: #9ca3af; font-family: var(--font-mono); }
+    .b-zone-bar { height: 3px; border-radius: 2px; background: #f0f0f0; margin: 0 8px 4px; }
+    .b-zone-bar-inner { height: 100%; border-radius: 2px; }
+    .b-section { padding-left: 16px; }
+    .b-section-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; transition: all 0.12s; margin-bottom: 1px; }
+    .b-section-item:hover { background: var(--color-surface-secondary); }
+    .b-section-item.active { background: var(--color-primary-light); }
+    .b-section-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .b-section-name { font-size: 12px; font-weight: 500; flex: 1; }
+    .b-section-pct { font-size: 10px; font-family: var(--font-mono); color: #6b7280; font-weight: 700; }
+    .b-shelf-item { padding-left: 28px; }
+    .b-shelf-item .b-section-item { background: transparent; }
+    .b-shelf-item .b-section-name { font-size: 11px; color: #6b7280; font-weight: 400; }
+
+    .b-detail { display: flex; flex-direction: column; overflow: hidden; background: var(--color-bg); }
+    .b-detail-header { padding: 16px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px; }
+    .b-breadcrumb { font-size: 11px; color: #9ca3af; display: flex; align-items: center; gap: 4px; }
+    .b-breadcrumb a { color: #9ca3af; cursor: pointer; text-decoration: none; }
+    .b-breadcrumb a:hover { color: var(--color-primary); }
+    .b-detail-content { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .b-stats-row { display: flex; gap: 12px; margin-bottom: 16px; }
+    .b-stat { background: var(--color-surface); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--color-border); flex: 1; }
+    .b-stat-val { font-size: 24px; font-weight: 800; font-family: var(--font-display); }
+    .b-stat-label { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+    .b-sub-table { width: 100%; border-collapse: collapse; background: var(--color-surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--color-border); }
+    .b-sub-table th { text-align: left; font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-bg); }
+    .b-sub-table td { padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 12px; }
+    .b-sub-table tr:last-child td { border-bottom: none; }
+    .b-sub-table tr:hover td { background: var(--color-primary-light); }
+    .b-add-zone { margin: 8px; padding: 8px; border: 1px dashed var(--color-border); border-radius: 8px; text-align: center; cursor: pointer; font-size: 11px; color: #9ca3af; transition: all 0.15s; }
+    .b-add-zone:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }
+
+    /* ─── VARIANT C: KANBAN ZONES ─── */
+    .c-header { padding: 14px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px; }
+    .c-title { font-size: 17px; font-weight: 700; font-family: var(--font-display); flex: 1; }
+    .c-board { display: flex; gap: 12px; padding: 16px; overflow-x: auto; min-height: calc(100vh - 100px); align-items: flex-start; }
+    .c-board::-webkit-scrollbar { height: 6px; }
+    .c-board::-webkit-scrollbar-track { background: transparent; }
+    .c-board::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    .c-col { width: 240px; flex-shrink: 0; background: var(--color-surface-secondary); border-radius: 12px; overflow: hidden; border: 1px solid var(--color-border); }
+    .c-col.alert { border-color: #fecaca; }
+    .c-col-header { padding: 12px 14px; display: flex; align-items: center; gap: 8px; }
+    .c-col-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .c-col-name { font-size: 13px; font-weight: 700; flex: 1; font-family: var(--font-display); }
+    .c-col-count { font-size: 10px; background: white; border-radius: 99px; padding: 2px 8px; border: 1px solid var(--color-border); color: #6b7280; font-weight: 700; }
+    .c-col-bar { height: 4px; margin: 0 14px 10px; border-radius: 2px; background: #e5e7eb; }
+    .c-col-bar-inner { height: 100%; border-radius: 2px; }
+    .c-col-meta { padding: 0 14px 10px; font-size: 11px; color: #9ca3af; display: flex; gap: 10px; }
+    .c-cards-area { padding: 0 8px 8px; min-height: 120px; }
+    .c-wine-card {
+      background: white; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px;
+      border: 1px solid #e5e7eb; cursor: grab; transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .c-wine-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-1px); }
+    .c-wine-card:active { cursor: grabbing; transform: rotate(1deg) scale(1.02); }
+    .c-wine-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .c-wine-sub { font-size: 10px; color: #9ca3af; margin-bottom: 6px; }
+    .c-wine-footer { display: flex; align-items: center; justify-content: space-between; }
+    .c-wine-type { font-size: 10px; padding: 1px 6px; border-radius: 99px; font-weight: 600; }
+    .c-wine-qty { font-size: 13px; font-weight: 800; font-family: 'Plus Jakarta Sans',sans-serif; }
+    .c-add-card { border: 1px dashed #d1d5db; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; font-size: 11px; color: #9ca3af; transition: all 0.15s; margin-bottom: 6px; }
+    .c-add-card:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }
+    .c-col-footer { padding: 8px 14px 12px; border-top: 1px solid #e5e7eb; }
+    .c-col-cap { font-size: 11px; color: #9ca3af; text-align: center; }
+    .c-add-col { width: 220px; flex-shrink: 0; border: 2px dashed #d1d5db; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; cursor: pointer; color: #9ca3af; font-size: 13px; gap: 6px; transition: all 0.2s; }
+    .c-add-col:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }
+  </style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span>023 ENTERPRISE</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Dense Table</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Zone Tree</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Kanban Zones</button>
+</div>
+
+<!-- ══ VARIANT A: DENSE TABLE ══ -->
+<div id="variant-a" class="variant active">
+  <div class="a-header">
+    <div class="a-title">Storage Locations</div>
+    <span style="font-size:11px;color:#9ca3af;font-family:monospace">14 locations · 8,240 bottles · 71% utilized</span>
+    <button class="btn btn-sm" onclick="showToast('Auto-Locate engine…')">✦ Auto-Locate</button>
+    <button class="btn btn-sm" onclick="showToast('Export CSV…')">↓ Export</button>
+    <button class="btn btn-primary" onclick="showToast('Add Location form…')">+ Location</button>
+  </div>
+  <div class="a-toolbar">
+    <div class="a-search-wrap">
+      <span class="a-search-icon">⌕</span>
+      <input class="a-search" type="text" placeholder="Filter locations…">
+    </div>
+    <button class="a-chip on" onclick="toggleChip(this)">All Zones</button>
+    <button class="a-chip" onclick="toggleChip(this)">⚠ Alerts Only</button>
+    <button class="a-chip" onclick="toggleChip(this)">Cold (≤55°F)</button>
+    <button class="a-chip" onclick="toggleChip(this)">Restricted</button>
+    <div class="a-spacer"></div>
+    <span style="font-size:11px;color:#9ca3af">Select all: <span class="a-kbd">⌘A</span> · Move: <span class="a-kbd">M</span> · Delete: <span class="a-kbd">⌫</span></span>
+  </div>
+
+  <div class="a-table-wrap">
+    <table class="a-table">
+      <thead>
+        <tr>
+          <th style="width:32px"><input type="checkbox" class="a-check" onchange="toggleAllRows(this)"></th>
+          <th class="sort">Location ↑</th>
+          <th>Zone</th>
+          <th>Bottles</th>
+          <th>Capacity</th>
+          <th>Fill</th>
+          <th>Temp</th>
+          <th>Humidity</th>
+          <th>SKUs</th>
+          <th>Status</th>
+          <th style="width:100px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="a-tbody">
+        <tr onclick="selectRow(this)">
+          <td><input type="checkbox" class="a-check"></td>
+          <td><div class="a-name-cell"><div class="a-loc-dot" style="background:#7c1d3c"></div>Main Cellar <span class="a-desc">A-1</span></div></td>
+          <td><span class="badge" style="background:#f3f4f6;color:#4b5563">Primary</span></td>
+          <td>847</td><td>1,000</td>
+          <td><span class="a-bar-mini"><span class="a-bar-mini-inner" style="width:84.7%;background:#7c1d3c"></span></span> <span class="a-pct" style="color:#d97706">85%</span></td>
+          <td class="a-temp">55°F</td><td class="a-temp">70%</td><td>41</td>
+          <td><span class="badge" style="background:#fffbeb;color:#d97706">⚠ Near Full</span></td>
+          <td><div class="a-row-actions"><button class="btn-sm" onclick="event.stopPropagation();showToast('Edit…')">✎</button><button class="btn-sm" onclick="event.stopPropagation();showToast('QR…')">⊞</button><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wines…')">⇄</button></div></td>
+        </tr>
+        <tr onclick="selectRow(this)">
+          <td><input type="checkbox" class="a-check"></td>
+          <td><div class="a-name-cell"><div class="a-loc-dot" style="background:#CD2D5B"></div>Bar Stock <span class="a-desc">B-1</span></div></td>
+          <td><span class="badge" style="background:#f3f4f6;color:#4b5563">Service</span></td>
+          <td>42</td><td>150</td>
+          <td><span class="a-bar-mini"><span class="a-bar-mini-inner" style="width:28%;background:#CD2D5B"></span></span> <span class="a-pct" style="color:#059669">28%</span></td>
+          <td class="a-temp">58°F</td><td class="a-temp">—</td><td>18</td>
+          <td><span class="badge" style="background:#ecfdf5;color:#059669">✓ Healthy</span></td>
+          <td><div class="a-row-actions"><button class="btn-sm" onclick="event.stopPropagation();showToast('Edit…')">✎</button><button class="btn-sm" onclick="event.stopPropagation();showToast('QR…')">⊞</button><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wines…')">⇄</button></div></td>
+        </tr>
+        <tr onclick="selectRow(this)">
+          <td><input type="checkbox" class="a-check"></td>
+          <td><div class="a-name-cell"><div class="a-loc-dot" style="background:#d97706"></div>VIP Reserve <span class="a-desc">V-1</span></div></td>
+          <td><span class="badge" style="background:#fef3c7;color:#92400e">VIP</span></td>
+          <td>48</td><td>100</td>
+          <td><span class="a-bar-mini"><span class="a-bar-mini-inner" style="width:48%;background:#d97706"></span></span> <span class="a-pct">48%</span></td>
+          <td class="a-temp">53°F</td><td class="a-temp">75%</td><td>28</td>
+          <td><span class="badge" style="background:#fef3c7;color:#92400e">🔒 Restricted</span></td>
+          <td><div class="a-row-actions"><button class="btn-sm" onclick="event.stopPropagation();showToast('Edit…')">✎</button><button class="btn-sm" onclick="event.stopPropagation();showToast('QR…')">⊞</button><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wines…')">⇄</button></div></td>
+        </tr>
+        <tr onclick="selectRow(this)" style="">
+          <td><input type="checkbox" class="a-check"></td>
+          <td><div class="a-name-cell"><div class="a-loc-dot" style="background:#DC2626"></div>Overflow Storage <span class="a-desc">O-1</span></div></td>
+          <td><span class="badge" style="background:#f3f4f6;color:#4b5563">Bulk</span></td>
+          <td style="color:#DC2626;font-weight:700">610</td><td>600</td>
+          <td><span class="a-bar-mini"><span class="a-bar-mini-inner" style="width:100%;background:#DC2626"></span></span> <span class="a-pct" style="color:#DC2626">102%</span></td>
+          <td class="a-temp">—</td><td class="a-temp">—</td><td>34</td>
+          <td><span class="badge" style="background:#fef2f2;color:#DC2626">⚠ Overcapacity</span></td>
+          <td><div class="a-row-actions"><button class="btn-sm" style="color:#DC2626;border-color:#fecaca" onclick="event.stopPropagation();showToast('Move out…')">⇄ Move</button><button class="btn-sm" onclick="event.stopPropagation();showToast('AI…')">✦</button></div></td>
+        </tr>
+        <tr onclick="selectRow(this)">
+          <td><input type="checkbox" class="a-check"></td>
+          <td><div class="a-name-cell"><div class="a-loc-dot" style="background:#7c3aed"></div>Red Wine Cave <span class="a-desc">C-1</span></div></td>
+          <td><span class="badge" style="background:#f3f4f6;color:#4b5563">Primary</span></td>
+          <td>380</td><td>500</td>
+          <td><span class="a-bar-mini"><span class="a-bar-mini-inner" style="width:76%;background:#7c3aed"></span></span> <span class="a-pct">76%</span></td>
+          <td class="a-temp">60°F</td><td class="a-temp">65%</td><td>52</td>
+          <td><span class="badge" style="background:#f3f4f6;color:#4b5563">Normal</span></td>
+          <td><div class="a-row-actions"><button class="btn-sm" onclick="event.stopPropagation();showToast('Edit…')">✎</button><button class="btn-sm" onclick="event.stopPropagation();showToast('QR…')">⊞</button><button class="btn-sm" onclick="event.stopPropagation();showToast('Move…')">⇄</button></div></td>
+        </tr>
+        <tr onclick="selectRow(this)">
+          <td><input type="checkbox" class="a-check"></td>
+          <td><div class="a-name-cell"><div class="a-loc-dot" style="background:#0284c7"></div>White/Sparkling Fridge <span class="a-desc">F-1</span></div></td>
+          <td><span class="badge" style="background:#eff6ff;color:#0284c7">Cold</span></td>
+          <td>210</td><td>300</td>
+          <td><span class="a-bar-mini"><span class="a-bar-mini-inner" style="width:70%;background:#0284c7"></span></span> <span class="a-pct">70%</span></td>
+          <td class="a-temp">45°F</td><td class="a-temp">80%</td><td>31</td>
+          <td><span class="badge" style="background:#ecfdf5;color:#059669">✓ Healthy</span></td>
+          <td><div class="a-row-actions"><button class="btn-sm" onclick="event.stopPropagation();showToast('Edit…')">✎</button><button class="btn-sm" onclick="event.stopPropagation();showToast('QR…')">⊞</button><button class="btn-sm" onclick="event.stopPropagation();showToast('Move…')">⇄</button></div></td>
+        </tr>
+        <tr class="a-sum-row">
+          <td></td>
+          <td colspan="2"><strong>6 locations shown</strong></td>
+          <td><strong>2,137</strong></td>
+          <td><strong>2,650</strong></td>
+          <td colspan="3"><span class="a-pct">80.6% avg</span></td>
+          <td><strong>204</strong></td>
+          <td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div id="a-bulk-bar" class="a-bulk-bar" style="display:none">
+      <span id="a-selected-count">2 locations selected</span>
+      <button class="a-bulk-btn" onclick="showToast('Bulk move wines…')">⇄ Bulk Move</button>
+      <button class="a-bulk-btn" onclick="showToast('Merge locations…')">⊕ Merge</button>
+      <button class="a-bulk-btn" onclick="showToast('Export selected…')">↓ Export</button>
+      <button class="a-bulk-btn" onclick="showToast('Delete selected…')" style="color:#fca5a5">✕ Delete</button>
+      <div style="flex:1"></div>
+      <button class="a-bulk-btn" onclick="clearSelection()">✕ Clear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VARIANT B: ZONE TREE ══ -->
+<div id="variant-b" class="variant">
+  <div class="b-layout">
+    <!-- Zone Tree Sidebar -->
+    <div class="b-tree">
+      <div class="b-tree-header">
+        <div class="b-tree-title">Zones & Sections</div>
+        <input class="b-tree-search" type="text" placeholder="Search…">
+      </div>
+
+      <!-- Zone: Primary Cellars -->
+      <div class="b-zone">
+        <div class="b-zone-header" onclick="toggleZone(this)">
+          <span class="b-zone-toggle">▾</span>
+          <span class="b-zone-name">Primary Cellars</span>
+          <span class="b-zone-count">847/1000</span>
+        </div>
+        <div class="b-zone-bar"><div class="b-zone-bar-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+        <div class="b-section" id="zone1-sections">
+          <div class="b-section-item active" onclick="selectSection(this, 'Main Cellar')">
+            <div class="b-section-dot" style="background:#7c1d3c"></div>
+            <div class="b-section-name">Main Cellar</div>
+            <div class="b-section-pct" style="color:#d97706">85%</div>
+          </div>
+          <div class="b-shelf-item">
+            <div class="b-section-item" onclick="selectSection(this, 'Main Cellar · Row A')">
+              <div class="b-section-dot" style="background:#f0e0e5"></div>
+              <div class="b-section-name">Row A (Reds)</div>
+              <div class="b-section-pct">90%</div>
+            </div>
+          </div>
+          <div class="b-shelf-item">
+            <div class="b-section-item" onclick="selectSection(this, 'Main Cellar · Row B')">
+              <div class="b-section-dot" style="background:#f0e0e5"></div>
+              <div class="b-section-name">Row B (Mixed)</div>
+              <div class="b-section-pct">78%</div>
+            </div>
+          </div>
+          <div class="b-section-item" onclick="selectSection(this, 'Red Wine Cave')">
+            <div class="b-section-dot" style="background:#7c3aed"></div>
+            <div class="b-section-name">Red Wine Cave</div>
+            <div class="b-section-pct">76%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zone: Bar & Service -->
+      <div class="b-zone">
+        <div class="b-zone-header" onclick="toggleZone(this)">
+          <span class="b-zone-toggle">▾</span>
+          <span class="b-zone-name">Bar & Service</span>
+          <span class="b-zone-count">42/150</span>
+        </div>
+        <div class="b-zone-bar"><div class="b-zone-bar-inner" style="width:28%;background:#CD2D5B"></div></div>
+        <div class="b-section">
+          <div class="b-section-item" onclick="selectSection(this, 'Bar Stock')">
+            <div class="b-section-dot" style="background:#CD2D5B"></div>
+            <div class="b-section-name">Bar Stock</div>
+            <div class="b-section-pct" style="color:#059669">28%</div>
+          </div>
+          <div class="b-section-item" onclick="selectSection(this, 'Speed Well')">
+            <div class="b-section-dot" style="background:#f87171"></div>
+            <div class="b-section-name">Speed Well</div>
+            <div class="b-section-pct">45%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zone: Premium -->
+      <div class="b-zone">
+        <div class="b-zone-header" onclick="toggleZone(this)">
+          <span class="b-zone-toggle">▾</span>
+          <span class="b-zone-name">Premium Reserves</span>
+          <span class="b-zone-count">48/100</span>
+        </div>
+        <div class="b-zone-bar"><div class="b-zone-bar-inner" style="width:48%;background:#d97706"></div></div>
+        <div class="b-section">
+          <div class="b-section-item" onclick="selectSection(this, 'VIP Reserve')">
+            <div class="b-section-dot" style="background:#d97706"></div>
+            <div class="b-section-name">VIP Reserve</div>
+            <div class="b-section-pct">48%</div>
+          </div>
+          <div class="b-section-item" onclick="selectSection(this, 'Allocated & Futures')">
+            <div class="b-section-dot" style="background:#f59e0b"></div>
+            <div class="b-section-name">Allocated & Futures</div>
+            <div class="b-section-pct">60%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zone: Overflow -->
+      <div class="b-zone">
+        <div class="b-zone-header" onclick="toggleZone(this)" style="color:var(--color-danger)">
+          <span class="b-zone-toggle">▾</span>
+          <span class="b-zone-name">Overflow</span>
+          <span class="b-zone-count" style="color:var(--color-danger)">610/600 ⚠</span>
+        </div>
+        <div class="b-zone-bar"><div class="b-zone-bar-inner" style="width:100%;background:#DC2626"></div></div>
+        <div class="b-section">
+          <div class="b-section-item" onclick="selectSection(this, 'Overflow Storage')" style="border-radius:6px;border:1px solid #fecaca;background:#fef2f2">
+            <div class="b-section-dot" style="background:#DC2626"></div>
+            <div class="b-section-name">Overflow Storage</div>
+            <div class="b-section-pct" style="color:#DC2626">102%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="b-add-zone" onclick="showToast('Add Zone…')">+ Add Zone</div>
+    </div>
+
+    <!-- Detail Panel -->
+    <div class="b-detail">
+      <div class="b-detail-header">
+        <div style="flex:1">
+          <div class="b-breadcrumb">
+            <a onclick="showToast('All Zones')">All Zones</a> ›
+            <a onclick="showToast('Primary Cellars')">Primary Cellars</a> ›
+            <strong style="color:var(--color-text)">Main Cellar</strong>
+          </div>
+          <div style="font-size:18px;font-weight:700;font-family:var(--font-display);margin-top:4px;display:flex;align-items:center;gap:8px">
+            <div style="width:10px;height:10px;border-radius:50%;background:#7c1d3c"></div>
+            Main Cellar
+            <span class="badge" style="background:#fffbeb;color:#d97706">⚠ 85%</span>
+          </div>
+        </div>
+        <button class="btn-sm" onclick="showToast('Add subsection…')">+ Subsection</button>
+        <button class="btn-sm" onclick="showToast('Move wines from here…')">⇄ Bulk Move</button>
+        <button class="btn btn-primary" onclick="showToast('Add wine…')">+ Wine</button>
+      </div>
+      <div class="b-detail-content">
+        <div class="b-stats-row">
+          <div class="b-stat"><div class="b-stat-val" style="color:#7c1d3c">847</div><div class="b-stat-label">Bottles</div></div>
+          <div class="b-stat"><div class="b-stat-val">153</div><div class="b-stat-label">Available</div></div>
+          <div class="b-stat"><div class="b-stat-val">55°F</div><div class="b-stat-label">Temperature</div></div>
+          <div class="b-stat"><div class="b-stat-val">70%</div><div class="b-stat-label">Humidity</div></div>
+          <div class="b-stat"><div class="b-stat-val">41</div><div class="b-stat-label">Wine SKUs</div></div>
+        </div>
+        <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em">Wines in Main Cellar</div>
+          <button class="btn-sm" onclick="showToast('Add wine to this section…')">+ Add Wine</button>
+        </div>
+        <table class="b-sub-table">
+          <thead><tr><th>Wine</th><th>Type</th><th>Vintage</th><th>Qty</th><th>Move</th></tr></thead>
+          <tbody>
+            <tr onclick="showToast('Château Margaux detail…')"><td><strong>Château Margaux</strong><br><span style="font-size:11px;color:#9ca3af">Bordeaux</span></td><td><span class="badge" style="background:#fef2f2;color:#7c1d3c">Red</span></td><td>2018</td><td><strong>24</strong></td><td><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wine…')">⇄</button></td></tr>
+            <tr onclick="showToast('Krug detail…')"><td><strong>Krug Grande Cuvée</strong><br><span style="font-size:11px;color:#9ca3af">Champagne</span></td><td><span class="badge" style="background:#fffbeb;color:#d97706">Spkl</span></td><td>NV</td><td><strong>36</strong></td><td><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wine…')">⇄</button></td></tr>
+            <tr onclick="showToast('Cloudy Bay detail…')"><td><strong>Cloudy Bay SB</strong><br><span style="font-size:11px;color:#9ca3af">Marlborough</span></td><td><span class="badge" style="background:#f0fdf4;color:#059669">White</span></td><td>2022</td><td><strong>48</strong></td><td><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wine…')">⇄</button></td></tr>
+            <tr onclick="showToast('Sassicaia detail…')"><td><strong>Sassicaia</strong><br><span style="font-size:11px;color:#9ca3af">Tuscany</span></td><td><span class="badge" style="background:#fef2f2;color:#7c1d3c">Red</span></td><td>2017</td><td><strong>18</strong></td><td><button class="btn-sm" onclick="event.stopPropagation();showToast('Move wine…')">⇄</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VARIANT C: KANBAN ZONES ══ -->
+<div id="variant-c" class="variant">
+  <div class="c-header">
+    <div class="c-title">Storage Locations</div>
+    <span style="font-size:11px;color:#9ca3af">Drag wines between locations to move them</span>
+    <div style="flex:1"></div>
+    <button class="btn btn-sm" onclick="showToast('✦ AI Auto-Locate…')">✦ Auto-Locate</button>
+    <button class="btn btn-primary" onclick="showToast('Add Location…')">+ Location</button>
+  </div>
+
+  <div class="c-board">
+    <!-- Main Cellar -->
+    <div class="c-col">
+      <div class="c-col-header">
+        <div class="c-col-dot" style="background:#7c1d3c"></div>
+        <div class="c-col-name">Main Cellar</div>
+        <div class="c-col-count" style="background:#fffbeb;color:#d97706;border-color:#fde68a">⚠ 85%</div>
+      </div>
+      <div class="c-col-bar"><div class="c-col-bar-inner" style="width:84.7%;background:#7c1d3c"></div></div>
+      <div class="c-col-meta"><span>🌡 55°F</span><span>💧 70%</span><span>41 SKUs</span></div>
+      <div class="c-cards-area">
+        <div class="c-wine-card" draggable="true" onclick="showToast('Château Margaux detail…')">
+          <div class="c-wine-name">Château Margaux 2018</div>
+          <div class="c-wine-sub">Bordeaux, France</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fef2f2;color:#7c1d3c">Red</span>
+            <span class="c-wine-qty" style="color:#7c1d3c">24</span>
+          </div>
+        </div>
+        <div class="c-wine-card" draggable="true" onclick="showToast('Krug detail…')">
+          <div class="c-wine-name">Krug Grande Cuvée NV</div>
+          <div class="c-wine-sub">Champagne, France</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fffbeb;color:#d97706">Sparkling</span>
+            <span class="c-wine-qty" style="color:#d97706">36</span>
+          </div>
+        </div>
+        <div class="c-wine-card" draggable="true" onclick="showToast('Sassicaia detail…')">
+          <div class="c-wine-name">Sassicaia 2017</div>
+          <div class="c-wine-sub">Bolgheri, Tuscany</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fef2f2;color:#7c1d3c">Red</span>
+            <span class="c-wine-qty" style="color:#7c1d3c">18</span>
+          </div>
+        </div>
+        <div class="c-add-card" onclick="showToast('Add wine to Main Cellar…')">+ Add Wine</div>
+      </div>
+      <div class="c-col-footer">
+        <div class="c-col-cap">847 / 1,000 bottles</div>
+      </div>
+    </div>
+
+    <!-- Bar Stock -->
+    <div class="c-col">
+      <div class="c-col-header">
+        <div class="c-col-dot" style="background:#CD2D5B"></div>
+        <div class="c-col-name">Bar Stock</div>
+        <div class="c-col-count" style="background:#ecfdf5;color:#059669;border-color:#a7f3d0">✓ 28%</div>
+      </div>
+      <div class="c-col-bar"><div class="c-col-bar-inner" style="width:28%;background:#CD2D5B"></div></div>
+      <div class="c-col-meta"><span>🌡 58°F</span><span>💧 Amb.</span><span>18 SKUs</span></div>
+      <div class="c-cards-area">
+        <div class="c-wine-card" draggable="true" onclick="showToast('Whispering Angel detail…')">
+          <div class="c-wine-name">Whispering Angel Rosé 2022</div>
+          <div class="c-wine-sub">Provence, France</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fdf2f4;color:#CD2D5B">Rosé</span>
+            <span class="c-wine-qty" style="color:#CD2D5B">12</span>
+          </div>
+        </div>
+        <div class="c-wine-card" draggable="true" onclick="showToast('Kim Crawford detail…')">
+          <div class="c-wine-name">Kim Crawford SB 2023</div>
+          <div class="c-wine-sub">Marlborough, NZ</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#f0fdf4;color:#059669">White</span>
+            <span class="c-wine-qty" style="color:#059669">8</span>
+          </div>
+        </div>
+        <div class="c-add-card" onclick="showToast('Add wine to Bar Stock…')">+ Add Wine</div>
+      </div>
+      <div class="c-col-footer"><div class="c-col-cap">42 / 150 bottles</div></div>
+    </div>
+
+    <!-- VIP Reserve -->
+    <div class="c-col">
+      <div class="c-col-header">
+        <div class="c-col-dot" style="background:#d97706"></div>
+        <div class="c-col-name">VIP Reserve</div>
+        <div class="c-col-count" style="background:#fef3c7;color:#92400e;border-color:#fde68a">🔒 48%</div>
+      </div>
+      <div class="c-col-bar"><div class="c-col-bar-inner" style="width:48%;background:#d97706"></div></div>
+      <div class="c-col-meta"><span>🌡 53°F</span><span>💧 75%</span><span>28 SKUs</span></div>
+      <div class="c-cards-area">
+        <div class="c-wine-card" draggable="true" onclick="showToast('Opus One detail…')">
+          <div class="c-wine-name">Opus One 2019</div>
+          <div class="c-wine-sub">Napa Valley, CA</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fef2f2;color:#7c1d3c">Red</span>
+            <span class="c-wine-qty" style="color:#d97706">12</span>
+          </div>
+        </div>
+        <div class="c-wine-card" draggable="true" onclick="showToast('DRC detail…')">
+          <div class="c-wine-name">Romanée-Conti 2020</div>
+          <div class="c-wine-sub">Burgundy, France</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fef2f2;color:#7c1d3c">Red</span>
+            <span class="c-wine-qty" style="color:#d97706">6</span>
+          </div>
+        </div>
+        <div class="c-add-card" onclick="showToast('Add wine to VIP Reserve…')">+ Add Wine</div>
+      </div>
+      <div class="c-col-footer"><div class="c-col-cap">48 / 100 bottles</div></div>
+    </div>
+
+    <!-- Overflow CRITICAL -->
+    <div class="c-col alert">
+      <div class="c-col-header">
+        <div class="c-col-dot" style="background:#DC2626"></div>
+        <div class="c-col-name">Overflow Storage</div>
+        <div class="c-col-count" style="background:#fef2f2;color:#DC2626;border-color:#fecaca">⚠ 102%</div>
+      </div>
+      <div class="c-col-bar"><div class="c-col-bar-inner" style="width:100%;background:#DC2626"></div></div>
+      <div class="c-col-meta"><span>🌡 Unctrl.</span><span>34 SKUs</span></div>
+      <div class="c-cards-area" style="background:#fef9f9">
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;color:#DC2626">
+          ⚠ Over capacity by 10 bottles. Drag wines to other locations or use <strong>Auto-Locate</strong>.
+          <button class="btn-sm" style="color:white;background:#DC2626;border-color:#DC2626;margin-top:6px;width:100%" onclick="showToast('✦ AI Auto-Locate — finding best spots for overflow bottles…')">✦ Auto-Locate</button>
+        </div>
+        <div class="c-wine-card" draggable="true" style="border-color:#fecaca" onclick="showToast('Bulk reds detail…')">
+          <div class="c-wine-name">Assorted Reds (bulk)</div>
+          <div class="c-wine-sub">Mixed regions</div>
+          <div class="c-wine-footer">
+            <span class="c-wine-type" style="background:#fef2f2;color:#7c1d3c">Red</span>
+            <span class="c-wine-qty" style="color:#DC2626">280</span>
+          </div>
+        </div>
+      </div>
+      <div class="c-col-footer"><div class="c-col-cap" style="color:#DC2626;font-weight:700">610 / 600 bottles</div></div>
+    </div>
+
+    <!-- Add new location column -->
+    <div class="c-add-col" onclick="showToast('Add new Storage Location…')">
+      <div style="font-size:28px;font-weight:200">+</div>
+      <div>Add Location</div>
+    </div>
+  </div>
+</div>
+
+<!-- Sketch Toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.75);color:white;padding:10px 14px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;flex-direction:column;gap:6px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <div style="font-weight:600;font-size:11px;opacity:0.7;letter-spacing:0.05em">023 — ENTERPRISE</div>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:3px 6px;font-size:11px;">
+    <option value="default">Default Theme</option>
+  </select>
+  <div style="display:flex;gap:4px;">
+    <button onclick="setViewport(1280)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">1280</button>
+    <button onclick="setViewport(null)" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:4px;font-size:10px;cursor:pointer;">Full</button>
+  </div>
+</div>
+
+<div id="global-toast" style="position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:white;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:all 0.3s;pointer-events:none;z-index:9997;white-space:nowrap;"></div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.style.display='none');
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-'+id).style.display='block';
+  btn.classList.add('active');
+}
+function showToast(msg) {
+  const t=document.getElementById('global-toast');
+  t.textContent=msg; t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)';
+  setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(-50%) translateY(20px)';},2000);
+}
+function toggleChip(el) { el.classList.toggle('on'); }
+function selectRow(row) {
+  row.classList.toggle('selected');
+  const sel = document.querySelectorAll('.a-table .selected').length;
+  const bar = document.getElementById('a-bulk-bar');
+  bar.style.display = sel > 0 ? 'flex' : 'none';
+  document.getElementById('a-selected-count').textContent = sel + ' location' + (sel!==1?'s':'') + ' selected';
+}
+function toggleAllRows(cb) {
+  document.querySelectorAll('.a-table tbody tr:not(.a-sum-row)').forEach(r => {
+    if(cb.checked) r.classList.add('selected'); else r.classList.remove('selected');
+    r.querySelector('.a-check').checked = cb.checked;
+  });
+  const bar = document.getElementById('a-bulk-bar');
+  bar.style.display = cb.checked ? 'flex' : 'none';
+  if(cb.checked) document.getElementById('a-selected-count').textContent = '6 locations selected';
+}
+function clearSelection() {
+  document.querySelectorAll('.a-table .selected').forEach(r => r.classList.remove('selected'));
+  document.querySelectorAll('.a-check').forEach(c => c.checked = false);
+  document.getElementById('a-bulk-bar').style.display='none';
+}
+function toggleZone(header) {
+  const next = header.parentElement.querySelector('.b-section');
+  if(next) { next.style.display = next.style.display==='none'?'block':'none'; header.querySelector('.b-zone-toggle').textContent = next.style.display==='none'?'▸':'▾'; }
+}
+function selectSection(el, name) {
+  document.querySelectorAll('.b-section-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  showToast('Loading: '+name);
+}
+function setViewport(w) { document.body.style.maxWidth=w?w+'px':''; document.body.style.margin=w?'0 auto':''; }
+</script>
+</body>
+</html>
