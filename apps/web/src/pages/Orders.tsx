@@ -3303,9 +3303,15 @@ Shadow stock has been moved to Live Stock.`)
               managerNotes,
               ccEmails,
             })
-          } finally {
             setIsDraftPanelOpen(false)
             setDraftPanelData(null)
+          } catch (err: any) {
+            // 4xx = email delivery explicitly failed — keep modal open for retry
+            // Network/5xx = response lost but email may have sent — close anyway
+            if (!err?.response?.status || err.response.status >= 500) {
+              setIsDraftPanelOpen(false)
+              setDraftPanelData(null)
+            }
           }
         }}
         onDiscard={async () => {
