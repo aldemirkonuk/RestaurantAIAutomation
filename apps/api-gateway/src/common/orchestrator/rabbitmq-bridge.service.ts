@@ -17,6 +17,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
+import { DatabaseService } from '../../database/database.service';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -37,6 +38,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly websocketGateway: WebsocketGateway,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -209,6 +211,13 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         exchange: 'procurement.events',
         routingKey: 'procurement.order.completed',
         handler: (msg) => this.handleOrderStatusChanged(msg, 'COMPLETED'),
+      },
+
+      // --- Inbound email events ---
+      {
+        exchange: 'email.events',
+        routingKey: 'email.inbound.received',
+        handler: (msg) => this.handleInboundEmail(msg),
       },
 
       // --- Vendor / conversation events ---
@@ -500,6 +509,128 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       message: payload.message || payload.violation_type || 'Data integrity issue detected',
       type: 'error',
     });
+  }
+
+  // ===========================================================================
+  // INBOUND EMAIL HANDLER (NestJS fallback — stores to DB without Python agent)
+  // ===========================================================================
+
+  private async handleInboundEmail(msg: any): Promise<void> {
+    const payload = msg?.payload || msg;
+    const from: string = payload.from || '';
+    const subject: string = payload.subject || '';
+    const body: string = payload.body || '';
+    const gmailThreadId: string = payload.gmail_thread_id || '';
+    const gmailMessageId: string = payload.gmail_message_id || '';
+    const messageIdHeader: string = payload.message_id_header || '';
+    const inReplyTo: string = payload.in_reply_to || '';
+    const references: string = payload.references || '';
+    const receivedAt: string = payload.received_at || new Date().toISOString();
+
+    const emailMatch = from.match(/<([^>]+)>/) || [null, from.trim()];
+    const senderEmail = emailMatch[1]?.toLowerCase();
+    if (!senderEmail) return;
+
+    try {
+      // 1. Find provider by email
+      const { data: providers } = await this.databaseService.supabase
+        .from('providers')
+        .select('id, restaurant_id')
+        .ilike('contact_email', senderEmail)
+        .limit(1);
+      const provider = providers?.[0];
+      if (!provider) {
+        this.logger.warn(`handleInboundEmail: no provider found for ${senderEmail}`);
+        return;
+      }
+
+      // 2. Match order via gmail_thread_id on existing outbound conversation
+      let orderId: string | null = null;
+      let threadId: string | null = null;
+      let restaurantId: string = provider.restaurant_id;
+
+      if (gmailThreadId) {
+        const { data: outbound } = await this.databaseService.supabase
+          .from('procurement_conversations')
+          .select('id, order_id, thread_id, restaurant_id')
+          .eq('gmail_thread_id', gmailThreadId)
+          .limit(1);
+        if (outbound?.[0]) {
+          orderId = outbound[0].order_id;
+          threadId = outbound[0].thread_id;
+          restaurantId = outbound[0].restaurant_id || restaurantId;
+        }
+      }
+
+      if (!restaurantId) {
+        this.logger.warn('handleInboundEmail: could not determine restaurant_id');
+        return;
+      }
+
+      // 3. Deduplicate — skip if same gmail_message_id already stored
+      if (gmailMessageId) {
+        const { data: existing } = await this.databaseService.supabase
+          .from('procurement_conversations')
+          .select('id')
+          .eq('gmail_message_id', gmailMessageId)
+          .limit(1);
+        if (existing?.length) {
+          this.logger.log(`handleInboundEmail: already stored gmail_message_id=${gmailMessageId}, skipping`);
+          return;
+        }
+      }
+
+      // 4. Store inbound row
+      const { data: inserted, error } = await this.databaseService.supabase
+        .from('procurement_conversations')
+        .insert({
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          provider_id: provider.id,
+          direction: 'inbound',
+          channel: 'email',
+          message_text: `Subject: ${subject}\n\n${body}`,
+          ai_generated: false,
+          received_at: receivedAt,
+          delivery_status: 'delivered',
+          thread_id: threadId,
+          gmail_thread_id: gmailThreadId || null,
+          gmail_message_id: gmailMessageId || null,
+          message_id: messageIdHeader || null,
+          email_headers: { from, subject, message_id: messageIdHeader, in_reply_to: inReplyTo, references, gmail_thread_id: gmailThreadId },
+          confidence_score: orderId ? 1.0 : null,
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        this.logger.error(`handleInboundEmail: DB insert failed — ${error.message}`);
+        return;
+      }
+
+      this.logger.log(`handleInboundEmail: stored inbound row ${inserted.id} (order=${orderId}, thread=${gmailThreadId})`);
+
+      // 5. Notify frontend
+      this.websocketGateway.emitRestaurantNotification(restaurantId, {
+        id: inserted.id,
+        title: `New vendor email: ${subject.substring(0, 60)}`,
+        message: `Reply received from ${senderEmail}`,
+        type: 'info',
+        action_url: orderId ? `/orders?order=${orderId}` : undefined,
+      });
+
+      if (orderId) {
+        this.websocketGateway.emitConversationUpdated(restaurantId, {
+          conversation_id: inserted.id,
+          order_id: orderId,
+          provider_id: provider.id,
+          direction: 'inbound',
+          channel: 'email',
+        });
+      }
+    } catch (err: any) {
+      this.logger.error(`handleInboundEmail: unexpected error — ${err?.message}`);
+    }
   }
 
   // ===========================================================================
