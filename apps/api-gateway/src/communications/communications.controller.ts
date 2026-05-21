@@ -904,10 +904,13 @@ export class CommunicationsController {
 
       this.logger.log(`Fetched ${newMessages.length} new messages`);
 
-      // Filter for inbound messages (not sent by us)
+      // Filter for inbound messages (not sent by us).
+      // Use the resolved Gmail sender (set from profile on init) so this works
+      // regardless of what GMAIL_SENDER_EMAIL is set to in env vars.
       const senderEmail =
+        this.gmailService.getSenderEmail() ||
         this.configService.get<string>('GMAIL_SENDER_EMAIL') ||
-        'notifications@wineops.ai';
+        'wineops.ai@gmail.com';
 
       for (const msg of newMessages) {
         const headers = msg.payload?.headers || [];

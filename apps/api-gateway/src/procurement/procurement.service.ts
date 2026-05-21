@@ -935,6 +935,9 @@ export class ProcurementService {
       throw new BadRequestException(`Provider has no email address — cannot send order email for order ${orderId}`);
     }
 
+    let gmailMessageId: string | undefined;
+    let gmailThreadId: string | undefined;
+
     if (this.gmailService) {
       const ccAddresses = dto.ccEmails ?? [];
       const result = await this.gmailService.sendEmail({
@@ -950,13 +953,17 @@ export class ProcurementService {
           'Check Gmail credentials in Railway env vars (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).',
         );
       }
-      this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId}`);
+      gmailMessageId = result.messageId;
+      gmailThreadId = result.threadId;
+      this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId} — threadId: ${gmailThreadId}`);
     }
 
     const sentAt = new Date().toISOString();
     const updatePayload: Record<string, any> = {
       sent_at: sentAt,
       status: 'SENT',
+      ...(gmailMessageId && { gmail_message_id: gmailMessageId }),
+      ...(gmailThreadId && { gmail_thread_id: gmailThreadId }),
     };
     if (dto.modifiedContent) {
       updatePayload.content = dto.modifiedContent;

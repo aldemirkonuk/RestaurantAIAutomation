@@ -639,4 +639,11 @@ This is an automated alert from WineOps AI.
   isReady(): boolean {
     return this.isConfigured;
   }
+
+  /**
+   * The resolved sender email address (set from Gmail profile on first send)
+   */
+  getSenderEmail(): string {
+    return this.senderEmail;
+  }
 }
