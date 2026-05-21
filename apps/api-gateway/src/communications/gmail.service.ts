@@ -175,7 +175,7 @@ export class GmailService implements OnModuleInit {
         success: true,
         messageId: result.data.id || undefined,
         threadId: result.data.threadId || undefined,
-        rfc822MessageId: generatedMessageId,
+        rfc822MessageId: options.messageIdHeader || undefined,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
