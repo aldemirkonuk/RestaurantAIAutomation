@@ -997,4 +997,102 @@ export class CommunicationsController {
       service: 'gmail-watch',
     };
   }
+
+  /**
+   * Force-fetch recent Gmail messages and route them through the inbound pipeline.
+   * Bypasses Pub/Sub — directly lists INBOX messages from the last N minutes.
+   * Use this to recover missed replies (e.g. after a redeploy reset the historyId).
+   */
+  @Public()
+  @Post('/webhooks/gmail/force-fetch')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Force-fetch recent inbound Gmail messages',
+    description: 'Directly queries Gmail INBOX for messages in the last N minutes and routes them through the email parsing pipeline. Use after missed pushes.',
+  })
+  async forceGmailFetch(@Body() body?: { minutesBack?: number }): Promise<any> {
+    if (!this.gmailWatchService.isReady()) {
+      return { status: 'error', error: 'Gmail Watch not configured' };
+    }
+
+    const minutesBack = body?.minutesBack ?? 60;
+    const afterEpoch = Math.floor((Date.now() - minutesBack * 60 * 1000) / 1000);
+
+    this.logger.log(`Force-fetching Gmail messages from last ${minutesBack} minutes`);
+
+    try {
+      const messages = await (this.gmailWatchService as any).gmail?.users.messages.list({
+        userId: 'me',
+        labelIds: ['INBOX'],
+        q: `after:${afterEpoch}`,
+        maxResults: 20,
+      });
+
+      const ids: string[] = (messages?.data?.messages || []).map((m: any) => m.id);
+      if (!ids.length) {
+        return { status: 'ok', fetched: 0, processed: 0 };
+      }
+
+      const senderEmail =
+        this.gmailService.getSenderEmail() ||
+        this.configService.get<string>('GMAIL_SENDER_EMAIL') ||
+        '';
+
+      let processed = 0;
+      for (const id of ids) {
+        const fullMsg = await this.gmailWatchService.getMessage(id);
+        if (!fullMsg) continue;
+
+        const headers = fullMsg.payload?.headers || [];
+        const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value || '';
+        const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value || '';
+        const messageIdHeader = headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || '';
+        const inReplyTo = headers.find((h) => h.name?.toLowerCase() === 'in-reply-to')?.value || '';
+        const references = headers.find((h) => h.name?.toLowerCase() === 'references')?.value || '';
+
+        if (senderEmail && from.includes(senderEmail)) continue;
+
+        let bodyText = '';
+        const parts = fullMsg.payload?.parts || [];
+        for (const part of parts) {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            bodyText = Buffer.from(part.body.data, 'base64url').toString('utf-8');
+            break;
+          }
+        }
+        if (!bodyText && fullMsg.payload?.body?.data) {
+          bodyText = Buffer.from(fullMsg.payload.body.data, 'base64url').toString('utf-8');
+        }
+
+        try {
+          await this.orchestratorService.publishEvent('email.events', 'email.inbound.received', {
+            gmail_message_id: fullMsg.id,
+            gmail_thread_id: fullMsg.threadId,
+            from,
+            subject,
+            body: bodyText,
+            message_id_header: messageIdHeader,
+            in_reply_to: inReplyTo,
+            references,
+            received_at: new Date().toISOString(),
+            headers: Object.fromEntries(
+              headers.filter((h) => h.name && h.value).map((h) => [h.name!.toLowerCase(), h.value]),
+            ),
+          });
+          processed++;
+          this.logger.log(`Force-fetched inbound email: from=${from}, subject=${subject}, gmail_id=${fullMsg.id}`);
+        } catch (pubErr) {
+          this.logger.error(`Failed to publish force-fetched email: ${pubErr}`);
+        }
+      }
+
+      // Update historyId to current so next push notification works correctly
+      await this.gmailWatchService.startWatch();
+
+      return { status: 'ok', fetched: ids.length, processed };
+    } catch (err: any) {
+      this.logger.error(`Force-fetch failed: ${err?.message}`);
+      return { status: 'error', error: err?.message };
+    }
+  }
 }
