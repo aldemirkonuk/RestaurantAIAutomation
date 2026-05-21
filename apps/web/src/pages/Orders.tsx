@@ -3296,14 +3296,17 @@ Shadow stock has been moved to Live Stock.`)
         managerName={user?.name ?? ''}
         onApprove={async (modifiedContent, managerNotes, ccEmails) => {
           if (!draftPanelData) return
-          await approveDraftMutation.mutateAsync({
-            orderId: draftPanelData.orderId,
-            modifiedContent,
-            managerNotes,
-            ccEmails,
-          })
-          setIsDraftPanelOpen(false)
-          setDraftPanelData(null)
+          try {
+            await approveDraftMutation.mutateAsync({
+              orderId: draftPanelData.orderId,
+              modifiedContent,
+              managerNotes,
+              ccEmails,
+            })
+          } finally {
+            setIsDraftPanelOpen(false)
+            setDraftPanelData(null)
+          }
         }}
         onDiscard={async () => {
           if (!draftPanelData) return

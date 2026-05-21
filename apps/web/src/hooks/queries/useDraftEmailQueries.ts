@@ -81,6 +81,7 @@ export function useApproveDraft() {
       queryClient.invalidateQueries({ queryKey: draftKeys.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
       queryClient.invalidateQueries({ queryKey: activeConversationKeys.all })
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.all })
     },
   })
 }

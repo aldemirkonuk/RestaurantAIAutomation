@@ -65,6 +65,7 @@ export function DraftEmailApprovalPanel({
   const [ccEmails, setCcEmails] = useState<string[]>([])
   const [ccInput, setCcInput] = useState('')
   const ccInputRef = useRef<HTMLInputElement>(null)
+  const sendingRef = useRef(false)
 
   const resolveManagerName = (content: string) =>
     managerName ? content.replace(/\[Manager Name\]/g, managerName) : content
@@ -76,6 +77,7 @@ export function DraftEmailApprovalPanel({
       setIsEditing(false)
       setCcEmails([])
       setCcInput('')
+      sendingRef.current = false
     }
   }, [draftData, managerName])
 
@@ -381,13 +383,15 @@ export function DraftEmailApprovalPanel({
                   {/* Send */}
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      if (sendingRef.current || isSubmitting) return
+                      sendingRef.current = true
                       onApprove(
                         isDirty ? editedContent : undefined,
                         isDirty ? `Subject: ${editedSubject}` : undefined,
                         ccEmails.length ? ccEmails : undefined,
                       )
-                    }
+                    }}
                     disabled={isSubmitting}
                     aria-disabled={isSubmitting}
                     className="flex items-center gap-2 h-11 px-6 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-wine-200 transition-all"
