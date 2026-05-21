@@ -912,12 +912,22 @@ export class ProcurementService {
       throw new NotFoundException('No pending draft found for this order');
     }
 
-    const emailBody = dto.modifiedContent ?? (conv as any).content ?? '';
+    const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? '';
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const providerName = (conv as any).providers?.name ?? 'Provider';
     const rawOrder = (conv as any).procurement_orders;
     const wineName = rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? 'Wine Order';
     const subject = (conv as any).subject || `Order Request: ${wineName}`;
+
+    // Convert plain-text content to HTML so paragraph breaks and line breaks
+    // render correctly. If the content already contains HTML tags, pass it as-is.
+    const isHtml = /<[a-z][\s\S]*>/i.test(rawEmailBody);
+    const emailHtml = isHtml
+      ? rawEmailBody
+      : rawEmailBody
+          .split(/\n\n+/)
+          .map(p => `<p style="margin:0 0 1em 0">${p.replace(/\n/g, '<br>')}</p>`)
+          .join('');
 
     // Send the email BEFORE committing SENT status — if delivery fails the
     // conversation stays PENDING_APPROVAL and the manager can retry.
@@ -931,7 +941,7 @@ export class ProcurementService {
         to: [providerEmail],
         cc: ccAddresses.length > 0 ? ccAddresses : undefined,
         subject,
-        html: emailBody,
+        html: emailHtml,
       });
       if (!result.success) {
         this.logger.error(`Email delivery failed for order ${orderId}: ${result.error}`);
