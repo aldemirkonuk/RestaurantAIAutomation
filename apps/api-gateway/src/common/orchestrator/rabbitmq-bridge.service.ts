@@ -451,6 +451,17 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       type: this.mapNotificationType(payload.urgency || payload.type),
       action_url: payload.action_url,
     });
+
+    // For inbound vendor emails, also push a conversation:updated event so the
+    // CommsThreadDrawer refetches the thread without requiring a manual refresh.
+    if (payload.type === 'vendor_email' && (payload.order_id || payload.provider_id)) {
+      this.websocketGateway.emitConversationUpdated(restaurantId, {
+        order_id: payload.order_id,
+        provider_id: payload.provider_id,
+        direction: 'inbound',
+        channel: 'email',
+      });
+    }
   }
 
   private handleReportGenerated(msg: any): void {

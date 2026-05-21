@@ -199,7 +199,7 @@ class EmailParsingAgent(BaseAgent):
 
         # Step 7: Generate/update thread summary
         if matched_thread_id:
-            await self._generate_thread_summary(matched_thread_id)
+            await self._generate_thread_summary(matched_thread_id, restaurant_id)
 
         # Step 8: Route to ProcurementAgent if matched with high confidence
         if matched_order_id and confidence >= 0.7:
@@ -410,7 +410,7 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
 
     # ── Thread Summarization ─────────────────────────────────────────
 
-    async def _generate_thread_summary(self, thread_id: str) -> None:
+    async def _generate_thread_summary(self, thread_id: str, restaurant_id: Optional[str] = None) -> None:
         """Generate an AI summary of the entire conversation thread"""
         try:
             # Load all messages in the thread
@@ -500,10 +500,11 @@ Respond with ONLY valid JSON:
             # Publish summary update event
             try:
                 await self.message_bus.publish(
-                    "notification.events",
+                    "conversation.events",
                     "conversation.summary.updated",
                     {
                         "thread_id": thread_id,
+                        "restaurant_id": restaurant_id,
                         "message_count": len(messages),
                         "summary": summary[:500],
                         "updated_at": now,
