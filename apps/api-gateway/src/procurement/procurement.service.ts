@@ -937,6 +937,7 @@ export class ProcurementService {
 
     let gmailMessageId: string | undefined;
     let gmailThreadId: string | undefined;
+    let rfc822MessageId: string | undefined;
 
     if (this.gmailService) {
       const ccAddresses = dto.ccEmails ?? [];
@@ -955,6 +956,7 @@ export class ProcurementService {
       }
       gmailMessageId = result.messageId;
       gmailThreadId = result.threadId;
+      rfc822MessageId = result.rfc822MessageId;
       this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId} — threadId: ${gmailThreadId}`);
     }
 
@@ -964,6 +966,7 @@ export class ProcurementService {
       status: 'SENT',
       ...(gmailMessageId && { gmail_message_id: gmailMessageId }),
       ...(gmailThreadId && { gmail_thread_id: gmailThreadId }),
+      ...(rfc822MessageId && { message_id: rfc822MessageId }),
     };
     if (dto.modifiedContent) {
       updatePayload.content = dto.modifiedContent;

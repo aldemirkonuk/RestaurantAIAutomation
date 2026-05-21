@@ -48,6 +48,7 @@ export interface EmailResult {
   success: boolean;
   messageId?: string;
   threadId?: string;
+  rfc822MessageId?: string;
   error?: string;
 }
 
@@ -174,6 +175,7 @@ export class GmailService implements OnModuleInit {
         success: true,
         messageId: result.data.id || undefined,
         threadId: result.data.threadId || undefined,
+        rfc822MessageId: generatedMessageId,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

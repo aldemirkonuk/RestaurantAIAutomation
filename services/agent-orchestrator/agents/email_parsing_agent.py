@@ -95,14 +95,28 @@ class EmailParsingAgent(BaseAgent):
             self.logger.warning(f"Could not extract email from sender: {sender}")
             return
 
-        # Step 1: Try header-based thread matching
+        # Step 1: Try thread matching (gmail_thread_id first, then headers)
         matched_order_id = None
         matched_thread_id = None
         parent_db_id = None
         confidence = 1.0
         match_method = "none"
 
-        if in_reply_to or references:
+        # Step 1a: Match by Gmail thread ID — most reliable since we store it on send
+        if gmail_thread_id:
+            match_result = await self._match_by_gmail_thread_id(gmail_thread_id)
+            if match_result:
+                matched_order_id = match_result["order_id"]
+                matched_thread_id = match_result["thread_id"]
+                parent_db_id = match_result["parent_id"]
+                confidence = 1.0
+                match_method = "gmail_thread"
+                self.logger.info(
+                    f"Gmail thread match: order={matched_order_id}, thread={matched_thread_id}"
+                )
+
+        # Step 1b: Fall back to In-Reply-To / References header matching
+        if not matched_order_id and (in_reply_to or references):
             match_result = await self._match_by_headers(in_reply_to, references)
             if match_result:
                 matched_order_id = match_result["order_id"]
@@ -240,6 +254,25 @@ class EmailParsingAgent(BaseAgent):
             )
 
     # ── Header-Based Thread Matching ──────────────────────────────────
+
+    async def _match_by_gmail_thread_id(
+        self, gmail_thread_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Match by Gmail thread ID stored on the outbound conversation row"""
+        try:
+            result = await self.db.supabase.table("procurement_conversations").select(
+                "id, order_id, thread_id"
+            ).eq("gmail_thread_id", gmail_thread_id).limit(1).execute()
+            if result.data:
+                row = result.data[0]
+                return {
+                    "order_id": row.get("order_id"),
+                    "thread_id": row.get("thread_id"),
+                    "parent_id": row.get("id"),
+                }
+        except Exception as e:
+            self.logger.error(f"Gmail thread ID match lookup failed: {e}")
+        return None
 
     async def _match_by_headers(
         self, in_reply_to: str, references: str
@@ -504,17 +537,12 @@ Respond with ONLY valid JSON:
             if result.data:
                 return result.data[0].get("id")
 
-            # Fallback: search providers table directly
-            result = await self.db.supabase.table("providers").select("id, primary_contact").execute()
-            for p in result.data or []:
-                contact = p.get("primary_contact") or {}
-                if isinstance(contact, str):
-                    try:
-                        contact = json.loads(contact)
-                    except Exception:
-                        contact = {}
-                if contact.get("email", "").lower() == email.lower():
-                    return p["id"]
+            # Fallback: search contact_email column directly
+            result = await self.db.supabase.table("providers").select(
+                "id, contact_email"
+            ).ilike("contact_email", email).limit(1).execute()
+            if result.data:
+                return result.data[0].get("id")
             return None
         except Exception:
             return None
