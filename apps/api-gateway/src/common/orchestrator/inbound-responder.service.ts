@@ -687,8 +687,11 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       const vendorPrice = this.toNum(sameQtyOffer?.price_per_bottle);
 
       const currentStatus = String(order.status || '').toUpperCase();
-      const terminal = ['CONFIRMED', 'APPROVED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'FAILED'];
-      if (terminal.includes(currentStatus)) return; // don't rewind a committed order
+      // ORDERED (CONFIRMED) and beyond are terminal — don't rewind a placed order.
+      // APPROVED is intentionally NOT terminal here: a matching vendor receipt
+      // should still advance an approved order to ORDERED.
+      const terminal = ['CONFIRMED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'FAILED'];
+      if (terminal.includes(currentStatus)) return;
 
       const accepted =
         analysis.intent === 'price_acceptance' ||
@@ -700,8 +703,30 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       };
       if (vendorPrice != null) update.negotiated_price = vendorPrice;
 
-      if (accepted && autonomyFull && vendorPrice != null) {
-        update.status = 'CONFIRMED';
+      // Receipt verification: the vendor is acknowledging OUR order (e.g. "confirmed,
+      // shipping Monday"). If it doesn't contradict what we approved (any stated
+      // price/qty must match), advance APPROVED -> ORDERED (CONFIRMED). A stated term
+      // that DOESN'T match leaves the order in APPROVED for the manager to review.
+      const isVerification =
+        analysis.deal_kind === 'verification' || analysis.intent === 'order_confirmation';
+      const approvedPrice = this.toNum(order.final_price) ?? this.toNum(order.negotiated_price);
+      const receiptQty = this.toNum(sameQtyOffer?.quantity);
+      const priceContradicts =
+        approvedPrice != null && vendorPrice != null && Math.abs(vendorPrice - approvedPrice) > 0.01;
+      const qtyContradicts =
+        orderedQty > 0 && receiptQty != null && receiptQty !== orderedQty;
+      const receiptMatches = isVerification && !priceContradicts && !qtyContradicts;
+
+      if (currentStatus === 'APPROVED') {
+        if (receiptMatches) {
+          update.status = 'CONFIRMED'; // -> UI "ordered"
+          update.confirmed_at = new Date().toISOString();
+        }
+        // Otherwise stay APPROVED — a mismatched/unclear receipt needs manager review.
+      } else if (accepted && autonomyFull && vendorPrice != null) {
+        // Vendor accepted our terms and full autonomy is on: we agree the deal, but
+        // this is APPROVED (not yet placed) until a matching receipt arrives.
+        update.status = 'APPROVED';
         update.final_price = vendorPrice;
       } else if (currentStatus === 'PENDING' || currentStatus === 'APPROVAL_NEEDED') {
         update.status = 'NEGOTIATING';

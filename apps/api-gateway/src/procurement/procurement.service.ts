@@ -1611,8 +1611,14 @@ export class ProcurementService {
     const quantity = opts.quantity ?? (order as any).quantity;
     const finalPrice = opts.finalPrice ?? null;
 
+    // "Confirmed by us" = we accepted the deal and are emailing the vendor to
+    // confirm. That lands the order in APPROVED — NOT ORDERED. It only advances to
+    // ORDERED (CONFIRMED) once the vendor sends back a receipt/order-confirmation
+    // whose terms match ours (handled in InboundResponder.syncOrderState), or the
+    // manager clicks "Mark as Ordered".
     const update: Record<string, any> = {
-      status: ProcurementOrderStatus.CONFIRMED,
+      status: ProcurementOrderStatus.APPROVED,
+      approved_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString(),
     };
     if (finalPrice != null) {

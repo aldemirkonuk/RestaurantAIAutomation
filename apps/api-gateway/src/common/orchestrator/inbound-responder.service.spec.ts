@@ -148,4 +148,70 @@ describe('InboundResponderService (deterministic core)', () => {
       expect(svc().isAutoReplyLike(null)).toBe(false);
     });
   });
+
+  describe('syncOrderState — lifecycle (confirmed→APPROVED, matching receipt→ORDERED)', () => {
+    // Capture the payload passed to supabase.update() so we can assert on the
+    // status transition without a real DB.
+    const withCapturingDb = () => {
+      const captured: { update?: Record<string, any> } = {};
+      const supabase = {
+        from: () => ({
+          update: (payload: Record<string, any>) => {
+            captured.update = payload;
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+        }),
+      };
+      const s = new InboundResponderService({} as any, { supabase } as any, {} as any);
+      return { s: s as any, captured };
+    };
+
+    const acceptanceAnalysis = (overrides: Record<string, any> = {}) =>
+      baseAnalysis({
+        intent: 'price_acceptance',
+        deal_kind: 'offer',
+        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: 'bottle', conditions: '', quote: '' }],
+        ...overrides,
+      });
+
+    it('vendor accepts under full autonomy → APPROVED, never straight to ORDERED (CONFIRMED)', async () => {
+      const { s, captured } = withCapturingDb();
+      const order = { id: 'o1', status: 'NEGOTIATING', quantity: 6, final_price: null, negotiated_price: null };
+      await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, /* autonomyFull */ true);
+      expect(captured.update?.status).toBe('APPROVED');
+      expect(captured.update?.final_price).toBe(1050);
+    });
+
+    it('APPROVED order + matching verification receipt → ORDERED (CONFIRMED)', async () => {
+      const { s, captured } = withCapturingDb();
+      const order = { id: 'o2', status: 'APPROVED', quantity: 6, final_price: 1050, negotiated_price: 1050 };
+      const receipt = acceptanceAnalysis({
+        intent: 'order_confirmation',
+        deal_kind: 'verification',
+        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: 'bottle', conditions: '', quote: 'confirmed, shipping Monday' }],
+      });
+      await s.syncOrderState(order, receipt, 1090, 6, /* autonomyFull */ false);
+      expect(captured.update?.status).toBe('CONFIRMED');
+      expect(captured.update?.confirmed_at).toBeDefined();
+    });
+
+    it('APPROVED order + receipt that CONTRADICTS our price → stays APPROVED (needs manager review)', async () => {
+      const { s, captured } = withCapturingDb();
+      const order = { id: 'o3', status: 'APPROVED', quantity: 6, final_price: 1050, negotiated_price: 1050 };
+      const mismatchedReceipt = acceptanceAnalysis({
+        intent: 'order_confirmation',
+        deal_kind: 'verification',
+        vendor_offers: [{ price_per_bottle: 1200, quantity: 6, unit: 'bottle', conditions: '', quote: 'confirmed at 1200' }],
+      });
+      await s.syncOrderState(order, mismatchedReceipt, 1090, 6, false);
+      expect(captured.update?.status).toBeUndefined(); // no lifecycle advance
+    });
+
+    it('already ORDERED (CONFIRMED) is terminal → no update at all', async () => {
+      const { s, captured } = withCapturingDb();
+      const order = { id: 'o4', status: 'CONFIRMED', quantity: 6, final_price: 1050 };
+      await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
+      expect(captured.update).toBeUndefined();
+    });
+  });
 });

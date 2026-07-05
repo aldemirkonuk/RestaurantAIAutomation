@@ -465,56 +465,6 @@ export function Orders() {
     return configs[status] || configs.pending_approval
   }
 
-  const handleApprove = async (order: Order) => {
-    setSelectedOrder(order)
-
-    // Fetch real conversation history for this order
-    let conversations: Array<{
-      id: string
-      direction: string
-      status: string
-      rollingSummary: string | null
-      draftContent: string | null
-      createdAt: string
-    }> = []
-    try {
-      const res = await apiClient.get(`/procurement/orders/${order.order_id}/conversations`)
-      conversations = res.data ?? []
-    } catch {
-      // fall through with empty conversations
-    }
-
-    // Provider has replied when there's at least one INBOUND entry
-    const hasProviderReply = conversations.some(c => c.direction === 'INBOUND')
-
-    // Use rolling summary from the most recent completed outbound round
-    const latestSummary = [...conversations]
-      .reverse()
-      .find(c => c.direction !== 'INBOUND' && c.rollingSummary)
-      ?.rollingSummary ?? ''
-
-    const latestConvId = conversations[0]?.id ?? `CONV-${order.order_id}`
-
-    const approvalData: OrderApprovalData = {
-      orderId: order.order_id,
-      wineName: order.wine_name || 'Unknown Wine',
-      quantity: order.quantity,
-      providerName: order.provider_name || 'Unknown Provider',
-      proposedPrice: order.suggested_price || 0,
-      finalPrice: order.suggested_price || 0,
-      deliveryEstimate: '3-5 business days',
-      conversationSummary: latestSummary,
-      hasNegotiation: hasProviderReply,
-      conversationId: latestConvId,
-      timestamp: order.created_at,
-    }
-
-    setOrderApprovalData(approvalData)
-    setAllProviderResponses([approvalData])
-    setCurrentApprovalIndex(0)
-    setShowOrderApprovalModal(true)
-  }
-
   const confirmApproval = async (price: number) => {
     try {
       if (selectedOrder && isUuid(selectedOrder.order_id)) {
@@ -2041,7 +1991,11 @@ Shadow stock has been moved to Live Stock.`)
                                                   <Button
                                                     size="sm"
                                                     variant="default"
-                                                    onClick={() => handleApprove(order)}
+                                                    onClick={() => setCommsDrawerOrder({
+                                                      orderId: order.order_id,
+                                                      wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+                                                      orderStatus: order.status,
+                                                    })}
                                                     className="bg-green-600 hover:bg-green-700"
                                                   >
                                                     <CheckCircle className="w-4 h-4 mr-1" />
@@ -2643,7 +2597,11 @@ Shadow stock has been moved to Live Stock.`)
                                       <Button
                                         size="sm"
                                         variant="default"
-                                        onClick={() => handleApprove(order)}
+                                        onClick={() => setCommsDrawerOrder({
+                                          orderId: order.order_id,
+                                          wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+                                          orderStatus: order.status,
+                                        })}
                                         className="bg-green-600 hover:bg-green-700"
                                       >
                                         <CheckCircle className="w-4 h-4 mr-1" />

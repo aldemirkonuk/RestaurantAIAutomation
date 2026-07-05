@@ -299,8 +299,14 @@ export function useConfirmDeal() {
         .post(`/procurement/orders/${orderId}/confirm-deal`, { finalPrice, quantity, sendConfirmation })
         .then((r) => r.data as { confirmed: boolean; sentConfirmation: boolean }),
     onSettled: (_d, _e, variables) => {
+      // Confirming a deal discards any pending AI draft server-side, so the draft
+      // and the sidebar's active-conversation list must refetch too — otherwise the
+      // just-resolved draft lingers on screen after the confirmation is sent.
       queryClient.invalidateQueries({ queryKey: dealProposalKeys.byOrder(variables.orderId) })
       queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(variables.orderId) })
+      queryClient.invalidateQueries({ queryKey: draftKeys.byOrder(variables.orderId) })
+      queryClient.invalidateQueries({ queryKey: draftKeys.all })
+      queryClient.invalidateQueries({ queryKey: activeConversationKeys.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
     },
   })
@@ -316,6 +322,8 @@ export function useDismissDeal() {
     onSettled: (_d, _e, orderId) => {
       queryClient.invalidateQueries({ queryKey: dealProposalKeys.byOrder(orderId) })
       queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) })
+      queryClient.invalidateQueries({ queryKey: draftKeys.byOrder(orderId) })
+      queryClient.invalidateQueries({ queryKey: activeConversationKeys.all })
     },
   })
 }
