@@ -214,6 +214,30 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Fetch a single attachment's bytes (base64url) by messageId + attachmentId.
+   * Returns null if the service isn't configured or the fetch fails.
+   */
+  async getAttachment(
+    messageId: string,
+    attachmentId: string,
+  ): Promise<string | null> {
+    if (!this.isConfigured) return null;
+    try {
+      const res = await this.gmail.users.messages.attachments.get({
+        userId: 'me',
+        messageId,
+        id: attachmentId,
+      });
+      return res.data.data || null; // base64url-encoded bytes
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch attachment ${attachmentId} on message ${messageId}: ${error}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Get a specific message by ID with full content
    */
   async getMessage(messageId: string): Promise<gmail_v1.Schema$Message | null> {

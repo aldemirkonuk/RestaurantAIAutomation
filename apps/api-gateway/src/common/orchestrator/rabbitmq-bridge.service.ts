@@ -522,6 +522,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const from: string = payload.from || '';
     const subject: string = payload.subject || '';
     const body: string = payload.body || '';
+    const attachments: Array<{ filename: string; mime_type: string; data: string }> =
+      Array.isArray(payload.attachments) ? payload.attachments : [];
     const gmailThreadId: string = payload.gmail_thread_id || '';
     const gmailMessageId: string = payload.gmail_message_id || '';
     const messageIdHeader: string = payload.message_id_header || '';
@@ -643,6 +645,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           inboundRfc822MessageId: messageIdHeader || null,
           inboundReferences: references || null,
           inboundSubject: subject || null,
+          inboundAttachments: attachments,
         });
       }
     } catch (err: any) {

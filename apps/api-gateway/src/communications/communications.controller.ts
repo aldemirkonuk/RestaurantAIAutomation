@@ -937,21 +937,18 @@ export class CommunicationsController {
           `Inbound email: from=${from}, subject=${subject}, gmailId=${msg.id}`,
         );
 
-        // Extract plain text body
-        let bodyText = '';
-        const parts = msg.payload?.parts || [];
-        for (const part of parts) {
-          if (part.mimeType === 'text/plain' && part.body?.data) {
-            bodyText = Buffer.from(part.body.data, 'base64url').toString(
-              'utf-8',
-            );
-            break;
-          }
-        }
+        // Extract body (recursively — the text nests under multipart when an
+        // attachment is present) plus any image/PDF attachments (e.g. a receipt).
+        const { text: extractedText, attachmentRefs } = this.extractEmailContent(msg.payload);
+        let bodyText = extractedText;
         if (!bodyText && msg.payload?.body?.data) {
-          bodyText = Buffer.from(msg.payload.body.data, 'base64url').toString(
-            'utf-8',
-          );
+          bodyText = Buffer.from(msg.payload.body.data, 'base64url').toString('utf-8');
+        }
+        const attachments = attachmentRefs.length
+          ? await this.collectAttachments(msg.id!, attachmentRefs)
+          : [];
+        if (attachments.length) {
+          bodyText = `${bodyText}\n\n[Attachments: ${attachments.map((a) => a.filename).join(', ')}]`.trim();
         }
 
         // Publish to RabbitMQ for EmailParsingAgent to process
@@ -962,6 +959,7 @@ export class CommunicationsController {
             from,
             subject,
             body: bodyText,
+            attachments,
             message_id_header: messageId,
             in_reply_to: inReplyTo,
             references,
@@ -1052,16 +1050,16 @@ export class CommunicationsController {
 
         if (senderEmail && from.includes(senderEmail)) continue;
 
-        let bodyText = '';
-        const parts = fullMsg.payload?.parts || [];
-        for (const part of parts) {
-          if (part.mimeType === 'text/plain' && part.body?.data) {
-            bodyText = Buffer.from(part.body.data, 'base64url').toString('utf-8');
-            break;
-          }
-        }
+        const { text: extractedText, attachmentRefs } = this.extractEmailContent(fullMsg.payload);
+        let bodyText = extractedText;
         if (!bodyText && fullMsg.payload?.body?.data) {
           bodyText = Buffer.from(fullMsg.payload.body.data, 'base64url').toString('utf-8');
+        }
+        const attachments = attachmentRefs.length
+          ? await this.collectAttachments(fullMsg.id!, attachmentRefs)
+          : [];
+        if (attachments.length) {
+          bodyText = `${bodyText}\n\n[Attachments: ${attachments.map((a) => a.filename).join(', ')}]`.trim();
         }
 
         try {
@@ -1071,6 +1069,7 @@ export class CommunicationsController {
             from,
             subject,
             body: bodyText,
+            attachments,
             message_id_header: messageIdHeader,
             in_reply_to: inReplyTo,
             references,
@@ -1094,5 +1093,79 @@ export class CommunicationsController {
       this.logger.error(`Force-fetch failed: ${err?.message}`);
       return { status: 'error', error: err?.message };
     }
+  }
+
+  /**
+   * Recursively walk a Gmail MIME tree to pull the best text body and list any
+   * image/PDF attachments. When an email carries an attachment the text nests one
+   * or more levels deep (multipart/mixed → multipart/alternative → text/plain), so
+   * a flat scan of the top-level parts misses it and yields an empty body — which
+   * is what broke inbound emails that included a confirmation/receipt image.
+   */
+  private extractEmailContent(payload: any): {
+    text: string;
+    attachmentRefs: Array<{ filename: string; mimeType: string; attachmentId: string }>;
+  } {
+    let text = '';
+    let html = '';
+    const attachmentRefs: Array<{ filename: string; mimeType: string; attachmentId: string }> = [];
+
+    const walk = (part: any): void => {
+      if (!part) return;
+      const mimeType: string = part.mimeType || '';
+      const data = part.body?.data;
+      if (mimeType === 'text/plain' && data && !text) {
+        text = Buffer.from(data, 'base64url').toString('utf-8');
+      } else if (mimeType === 'text/html' && data && !html) {
+        html = Buffer.from(data, 'base64url').toString('utf-8');
+      } else if (
+        (mimeType.startsWith('image/') || mimeType === 'application/pdf') &&
+        part.body?.attachmentId
+      ) {
+        attachmentRefs.push({
+          filename: part.filename || 'attachment',
+          mimeType,
+          attachmentId: part.body.attachmentId,
+        });
+      }
+      for (const child of part.parts || []) walk(child);
+    };
+    walk(payload);
+
+    // No text/plain anywhere → render the HTML part down to text so we never
+    // hand the AI an empty body.
+    if (!text && html) {
+      text = html
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    return { text, attachmentRefs };
+  }
+
+  /**
+   * Fetch bytes for image/PDF attachments and return them base64-encoded for the
+   * vision model. Caps count and per-file size to keep the RabbitMQ event lean.
+   */
+  private async collectAttachments(
+    messageId: string,
+    refs: Array<{ filename: string; mimeType: string; attachmentId: string }>,
+  ): Promise<Array<{ filename: string; mime_type: string; data: string }>> {
+    const MAX_ATTACHMENTS = 3;
+    const MAX_B64_LEN = 7_000_000; // ~5 MB raw
+    const out: Array<{ filename: string; mime_type: string; data: string }> = [];
+    for (const ref of refs.slice(0, MAX_ATTACHMENTS)) {
+      const b64url = await this.gmailWatchService.getAttachment(messageId, ref.attachmentId);
+      if (!b64url) continue;
+      if (b64url.length > MAX_B64_LEN) {
+        this.logger.warn(`Skipping oversized attachment ${ref.filename} (${b64url.length} b64 chars)`);
+        continue;
+      }
+      // Gmail returns base64url; the Anthropic API expects standard base64.
+      const data = b64url.replace(/-/g, '+').replace(/_/g, '/');
+      out.push({ filename: ref.filename, mime_type: ref.mimeType, data });
+    }
+    return out;
   }
 }

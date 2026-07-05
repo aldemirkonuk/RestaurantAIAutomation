@@ -54,6 +54,8 @@ interface InboundContext {
   /** RFC822 References chain from the vendor email, if any. */
   inboundReferences?: string | null;
   inboundSubject?: string | null;
+  /** Image/PDF attachments on the vendor email (e.g. a receipt), for the vision model. */
+  inboundAttachments?: Array<{ filename: string; mime_type: string; data: string }>;
   /** Optional steering hint for a manual "regenerate" (e.g. "firmer", "warmer"). */
   instruction?: string;
 }
@@ -200,6 +202,7 @@ export class InboundResponderService {
         transcript,
         instruction: ctx.instruction,
         firstName,
+        attachments: ctx.inboundAttachments || [],
       });
       if (!analysis) {
         this.logger.warn(`Responder: LLM produced no usable analysis for order ${ctx.orderId}.`);
@@ -390,6 +393,7 @@ export class InboundResponderService {
       transcript: string;
       instruction?: string;
       firstName?: string;
+      attachments?: Array<{ filename: string; mime_type: string; data: string }>;
     },
   ): Promise<Analysis | null> {
     const targetLine =
@@ -401,6 +405,16 @@ export class InboundResponderService {
       : '';
     const greetName = (input.firstName && input.firstName.trim()) ? input.firstName.trim() : '';
 
+    // Only image/PDF attachments can be shown to the vision model.
+    const visionAttachments = (input.attachments || []).filter(
+      (a) => a.mime_type?.startsWith('image/') || a.mime_type === 'application/pdf',
+    );
+    const attachLine = visionAttachments.length
+      ? `\nATTACHMENTS: The supplier attached ${visionAttachments.length} file(s) (${visionAttachments
+          .map((a) => a.filename)
+          .join(', ')}), provided below as image/document blocks. Read them carefully — they are often an order confirmation or receipt stating the final price, quantity, and delivery date. Factor their contents into your analysis, vendor_offers, delivery_estimate, and special_conditions.\n`
+      : '';
+
     const prompt = `You are the procurement assistant for a restaurant wine program, replying to a wine supplier by email on the manager's behalf.
 
 ORDER CONTEXT
@@ -411,7 +425,7 @@ ORDER CONTEXT
 
 CONVERSATION SO FAR (oldest first)
 ${input.transcript}
-${steerLine}
+${steerLine}${attachLine}
 YOUR JOB
 1. Understand the supplier's most recent message: their intent, tone, and every concrete offer (price per bottle, quantity, conditions, promotions).
 2. Decide the best next move toward our target, then write the reply email body.
@@ -449,22 +463,37 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   "special_conditions": ["short plain phrases for non-standard terms, e.g. 'Delivery delayed — only Monday'"]
 }`;
 
+    // Text prompt first, then any receipt/confirmation images or PDFs as blocks.
+    const content: any[] = [{ type: 'text', text: prompt }];
+    let hasPdf = false;
+    for (const a of visionAttachments) {
+      if (a.mime_type === 'application/pdf') {
+        hasPdf = true;
+        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.data } });
+      } else {
+        content.push({ type: 'image', source: { type: 'base64', media_type: a.mime_type, data: a.data } });
+      }
+    }
+
     try {
+      const headers: Record<string, string> = {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      };
+      if (hasPdf) headers['anthropic-beta'] = 'pdfs-2024-09-25';
+
       const response = await axios.post(
         ANTHROPIC_API_URL,
         {
           model: NEGOTIATION_MODEL,
           max_tokens: 1500,
           temperature: 0.4,
-          messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+          messages: [{ role: 'user', content }],
         },
         {
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          timeout: 45_000,
+          headers,
+          timeout: 60_000,
         },
       );
 
