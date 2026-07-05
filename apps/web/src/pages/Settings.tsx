@@ -39,6 +39,7 @@ import { Header } from '../components/layout/Header';
 import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../services/api/settings';
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
+import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
 import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
@@ -68,10 +69,11 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'locations', 'measurement', 'features', 'calendar'] as const;
+const SECTION_IDS = ['team', 'email', 'locations', 'measurement', 'features', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
+  email: 'Email',
   locations: 'Locations',
   measurement: 'Measurement',
   features: 'Features',
@@ -1022,6 +1024,9 @@ export default function Settings() {
             anchorRef={teamInviteAnchorRef}
           />
         )}
+
+        {/* ── Email sign-off ── */}
+        <EmailSenderSettings />
 
         {/* ── Locations & Chains — owner only ── */}
         {user?.role === 'owner' && (

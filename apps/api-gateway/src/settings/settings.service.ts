@@ -143,6 +143,9 @@ export class SettingsService {
       enable_visual_verification: true,
       enable_predictive_analytics: true,
       enable_ai_negotiation: true,
+      // Autonomous auto-send stays OFF by default — manager approves every reply
+      // until they explicitly flip this on per restaurant.
+      enable_ai_autonomous_send: false,
       enable_sommelier_ai: true,
       enable_voice_agent: true,
       enable_menu_analyzer: true,

@@ -22,6 +22,10 @@ export class FeatureFlagsDto {
   @IsBoolean()
   enable_ai_negotiation: boolean;
 
+  @ApiProperty({ description: 'Enable autonomous auto-send of AI vendor replies (default off)' })
+  @IsBoolean()
+  enable_ai_autonomous_send: boolean;
+
   @ApiProperty({ description: 'Enable sommelier AI feature' })
   @IsBoolean()
   enable_sommelier_ai: boolean;
@@ -116,6 +120,11 @@ export class UpdateFeatureFlagsDto {
   @IsOptional()
   @IsBoolean()
   enable_ai_negotiation?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enable autonomous auto-send of AI vendor replies (default off)' })
+  @IsOptional()
+  @IsBoolean()
+  enable_ai_autonomous_send?: boolean;
 
   @ApiPropertyOptional({ description: 'Enable sommelier AI feature' })
   @IsOptional()

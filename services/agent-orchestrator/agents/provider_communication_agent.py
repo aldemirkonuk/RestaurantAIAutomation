@@ -184,9 +184,12 @@ class ProviderCommunicationAgent(BaseAgent):
         "Describe wine precisely (name, vintage, style). Tone: curious, friendly. Max 100 words.\n\n"
 
         "STRUCTURE (all types)\n"
-        "1. Greeting — use first name when known, company name otherwise.\n"
+        "1. Greeting — address the recipient by their contact first name if provided; "
+        "otherwise the company name. Never open with a bare 'Hello,' or 'Hi there,' when a name is available.\n"
         "2. Body — 2-3 focused sentences matching the type rules above.\n"
-        "3. Close — one line, sign off as [Manager Name].\n\n"
+        "3. Close — one line. End with 'Best regards,' followed by the sender/restaurant name "
+        "if provided in the context; otherwise just 'Best regards,'. "
+        "NEVER write a literal placeholder such as [Manager Name] or [Your Name].\n\n"
 
         "HARD RULES (never violate)\n"
         "• Return ONLY valid JSON: {\"subject\": \"...\", \"body\": \"...\"} — no markdown, no preamble.\n"
