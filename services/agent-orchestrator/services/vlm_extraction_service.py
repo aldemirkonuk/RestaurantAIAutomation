@@ -517,10 +517,10 @@ class GeminiFlashCrawlerExtractor:
 
     def _get_client(self):
         if self._client is None:
-            api_key = os.getenv("GOOGLE_API_KEY")
+            api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise RuntimeError(
-                    "GOOGLE_API_KEY not set — cannot initialize GeminiFlashCrawlerExtractor"
+                    "GEMINI_API_KEY not set — cannot initialize GeminiFlashCrawlerExtractor"
                 )
             self._client = _genai.Client(api_key=api_key)
         return self._client

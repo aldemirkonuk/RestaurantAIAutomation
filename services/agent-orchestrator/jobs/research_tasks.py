@@ -493,7 +493,7 @@ async def _extract_field_candidates(
 
     # ── Google Gemini Flash path (default / fallback for "flash" tier) ──
     if not settings.google_api_key:
-        logger.debug("GOOGLE_API_KEY not configured — skipping Gemini extraction for %s", field_name)
+        logger.debug("GEMINI_API_KEY not configured — skipping Gemini extraction for %s", field_name)
         return []
 
     try:

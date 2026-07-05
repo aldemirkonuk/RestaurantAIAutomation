@@ -59,7 +59,7 @@ def get_gemini_client() -> "genai.Client":
             )
         settings = Settings()
         if not settings.google_api_key:
-            logger.warning("GOOGLE_API_KEY not set — Gemini calls will fail")
+            logger.warning("GEMINI_API_KEY not set — Gemini calls will fail")
         _gemini_client = genai.Client(api_key=settings.google_api_key)
         logger.info("GeminiFlash client initialized (google-genai new SDK)")
     return _gemini_client

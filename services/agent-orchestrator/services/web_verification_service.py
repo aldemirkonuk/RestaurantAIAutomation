@@ -165,7 +165,7 @@ async def parse_search_results(
     """
     settings = get_settings()
     if not settings.google_api_key:
-        logger.warning("parse_search_results: GOOGLE_API_KEY not configured — skipping")
+        logger.warning("parse_search_results: GEMINI_API_KEY not configured — skipping")
         return None
     if not snippets:
         logger.debug("parse_search_results: no snippets provided — skipping")

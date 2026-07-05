@@ -58,7 +58,7 @@ class EmailParsingAgent(BaseAgent):
                 self.gemini_model = genai.GenerativeModel("gemini-pro")
                 self.logger.info("Gemini Pro initialized for email parsing")
             else:
-                self.logger.warning("GOOGLE_API_KEY not set — LLM features disabled")
+                self.logger.warning("GEMINI_API_KEY not set — LLM features disabled")
 
     def get_subscribed_routing_keys(self) -> List[Tuple[str, str]]:
         return [

@@ -8,7 +8,7 @@ Tests the live end-to-end flow:
 
 Run from services/agent-orchestrator/:
     export SERPER_API_KEY=...
-    export GOOGLE_API_KEY=...
+    export GEMINI_API_KEY=...
     python scripts/smoke_test_web_verification.py
 """
 
@@ -22,11 +22,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import os
 
 serper_key = os.environ.get("SERPER_API_KEY")
-google_key = os.environ.get("GOOGLE_API_KEY")
-missing = [k for k, v in [("SERPER_API_KEY", serper_key), ("GOOGLE_API_KEY", google_key)] if not v]
+gemini_key = os.environ.get("GEMINI_API_KEY")
+missing = [k for k, v in [("SERPER_API_KEY", serper_key), ("GEMINI_API_KEY", gemini_key)] if not v]
 if missing:
     print(f"ERROR: Missing required env vars: {', '.join(missing)}")
-    print("Set them and retry: export SERPER_API_KEY=... GOOGLE_API_KEY=...")
+    print("Set them and retry: export SERPER_API_KEY=... GEMINI_API_KEY=...")
     sys.exit(1)
 
 import asyncio
@@ -80,7 +80,7 @@ async def main():
     print('='*60)
     # Override google_api_key in settings before calling parse_search_results.
     # get_settings() is lru_cache'd — set the env var so the cached instance picks it up.
-    os.environ["GOOGLE_API_KEY"] = google_key  # already set but ensure it propagates
+    os.environ["GEMINI_API_KEY"] = gemini_key  # already set but ensure it propagates
     from config.settings import get_settings
     get_settings.cache_clear()  # clear lru_cache so new env var is picked up
 
@@ -92,7 +92,7 @@ async def main():
         vintage=VINTAGE,
     )
     if verification is None:
-        print("ERROR: Gemini returned None. Check GOOGLE_API_KEY and model availability.")
+        print("ERROR: Gemini returned None. Check GEMINI_API_KEY and model availability.")
         sys.exit(1)
 
     non_null = {k: v for k, v in verification.model_dump().items() if v is not None}

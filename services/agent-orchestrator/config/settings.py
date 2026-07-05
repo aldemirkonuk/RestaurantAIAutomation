@@ -30,7 +30,7 @@ class Settings:
         self.cv_menu_model_path: str = self.yolo_model_path   # alias used by scan_routes.py
         self.cv_yolov8_mock_mode: bool = False                # D-07: no mock for YOLO path
         # Agent config used by _get_menu_agent() in scan_routes.py
-        self.google_api_key: Optional[str] = os.getenv("GOOGLE_API_KEY")
+        self.google_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
         self.cv_ocr_languages: str = os.getenv("CV_OCR_LANGUAGES", "en")
         self.mock_llm: bool = os.getenv("MOCK_LLM", "false").lower() == "true"
         # Email credentials for cost alerts (Phase 5 — COST-02, COST-03)

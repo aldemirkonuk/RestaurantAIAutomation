@@ -57,8 +57,8 @@ async def test_client_lazy_init_and_model():
     # Verify lazy init raises without API key
     extractor = GeminiFlashCrawlerExtractor()
     with patch.dict("os.environ", {}, clear=True):
-        os.environ.pop("GOOGLE_API_KEY", None)
-        with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+        os.environ.pop("GEMINI_API_KEY", None)
+        with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
             extractor._get_client()
 
     # Verify correct model string
@@ -368,5 +368,5 @@ async def test_non_duplicate_wine_inserted(tmp_path, monkeypatch):
 
 @pytest.mark.integration
 async def test_integration_live_crawl():
-    """Live integration: crawl real URL, verify >= 1 wine extracted. Run with GOOGLE_API_KEY set."""
+    """Live integration: crawl real URL, verify >= 1 wine extracted. Run with GEMINI_API_KEY set."""
     pytest.skip("Integration test — run manually with: pytest -m integration -s")
