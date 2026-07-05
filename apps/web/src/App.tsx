@@ -36,7 +36,8 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { PageLoader } from './components/ui/page-loader'
-import { SyncStatus, OfflineBanner } from './components/ui/SyncStatus'
+// SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
+import { OfflineBanner } from './components/ui/SyncStatus'
 
 // Layout
 import { DashboardLayout } from './components/layout/DashboardLayout'
@@ -210,8 +211,9 @@ function App() {
                 {/* Offline Banner - shows at top when offline */}
                 <OfflineBanner />
                 
-                {/* Sync Status Indicator - floating at bottom right */}
+                {/* Sync Status Indicator - disabled (was floating bottom-right)
                 <SyncStatus position="bottom-right" />
+                */}
               </WebSocketProvider>
             </AuthProvider>
           </ToastProvider>
