@@ -258,6 +258,149 @@ export class ProcurementController {
     }
   }
 
+  @Post('orders/:id/generate-ai-reply')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Run the autonomous responder on the latest inbound vendor reply',
+    description:
+      'Understands the most recent vendor reply for this order and stages a one-tap-approve AI draft. ' +
+      'Used to process replies that predate the feature or to recover missed ones.',
+  })
+  @ApiResponse({ status: 200, description: 'Responder triggered (draft staged asynchronously)' })
+  async generateAiReply(
+    @Param('id') orderId: string,
+    @Body() body: { instruction?: string; regenerate?: boolean },
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ triggered: boolean; draftId?: string; needsApproval?: boolean; autoSendScheduled?: boolean; reason?: string }> {
+    try {
+      return await this.procurementService.generateAiReply(user.restaurantId, orderId, {
+        instruction: body?.instruction,
+        regenerate: body?.regenerate,
+      });
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to generate AI reply',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('orders/:id/manual-reply')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Send a manager-written threaded reply to the provider' })
+  @ApiResponse({ status: 200, description: 'Manual reply sent and recorded on the thread' })
+  async manualReply(
+    @Param('id') orderId: string,
+    @Body() body: { content: string; ccEmails?: string[] },
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    try {
+      return await this.procurementService.manualReply(
+        user.restaurantId,
+        orderId,
+        body?.content,
+        body?.ccEmails,
+      );
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to send manual reply',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('orders/:id/ai-pause')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Pause or resume AI autonomy for this order' })
+  @ApiResponse({ status: 200 })
+  async setAiPaused(
+    @Param('id') orderId: string,
+    @Body() body: { paused: boolean },
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ paused: boolean }> {
+    try {
+      return await this.procurementService.setOrderAiPaused(user.restaurantId, orderId, !!body?.paused);
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to update AI pause state',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('orders/:id/cancel-scheduled-send')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Undo a scheduled auto-send (revert it to a one-tap-approval draft)' })
+  @ApiResponse({ status: 200 })
+  async cancelScheduledSend(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ cancelled: boolean }> {
+    try {
+      return await this.procurementService.cancelScheduledSend(user.restaurantId, orderId);
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || 'Failed to cancel scheduled send',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('orders/:id/deal-proposal')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get the latest AI-detected deal proposal for this order (or null)' })
+  @ApiResponse({ status: 200 })
+  async getDealProposal(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<Record<string, any> | null> {
+    try {
+      return await this.procurementService.getDealProposal(user.restaurantId, orderId);
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Failed to load deal proposal', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post('orders/:id/confirm-deal')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Confirm an AI-detected deal: commit the order and optionally email the vendor' })
+  @ApiResponse({ status: 200 })
+  async confirmDeal(
+    @Param('id') orderId: string,
+    @Body() body: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
+    try {
+      return await this.procurementService.confirmDeal(user.restaurantId, orderId, {
+        finalPrice: body?.finalPrice,
+        quantity: body?.quantity,
+        sendConfirmation: body?.sendConfirmation,
+      });
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(error.message || 'Failed to confirm deal', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post('orders/:id/dismiss-deal')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Decline an AI-detected deal without committing (order stays in negotiation)' })
+  @ApiResponse({ status: 200 })
+  async dismissDeal(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ dismissed: boolean }> {
+    try {
+      return await this.procurementService.dismissDeal(user.restaurantId, orderId);
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Failed to dismiss deal', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Post('orders/:id/discard-draft')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Discard AI email draft without sending' })

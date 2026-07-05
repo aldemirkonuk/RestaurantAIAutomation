@@ -9,9 +9,10 @@ import { EventsModule } from '../events/events.module';
 import { InventoryLedgerModule } from '../inventory-ledger/inventory-ledger.module';
 import { OrchestratorModule } from '../common/orchestrator/orchestrator.module';
 import { CommunicationsModule } from '../communications/communications.module';
+import { WebsocketModule } from '../websocket/websocket.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, EventsModule, InventoryLedgerModule, OrchestratorModule, CommunicationsModule],
+  imports: [DatabaseModule, AuthModule, EventsModule, InventoryLedgerModule, OrchestratorModule, CommunicationsModule, WebsocketModule],
   controllers: [ProcurementController, RecurringOrdersController],
   providers: [ProcurementService, RecurringOrdersService],
   exports: [ProcurementService, RecurringOrdersService],

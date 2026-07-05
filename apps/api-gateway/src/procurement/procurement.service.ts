@@ -1,9 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { DatabaseService } from '../database/database.service';
 import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
 import { OrchestratorService } from '../common/orchestrator/orchestrator.service';
+import { InboundResponderService } from '../common/orchestrator/inbound-responder.service';
 import { GmailService } from '../communications/gmail.service';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 import {
   StockType,
   TransactionSource,
@@ -53,7 +56,82 @@ export class ProcurementService {
     private readonly inventoryLedgerService: InventoryLedgerService,
     @Optional() private readonly orchestratorService?: OrchestratorService,
     @Optional() private readonly gmailService?: GmailService,
+    @Optional() private readonly inboundResponder?: InboundResponderService,
+    @Optional() private readonly websocketGateway?: WebsocketGateway,
   ) {}
+
+  /**
+   * Manually (re)run the autonomous responder for an order's most recent inbound
+   * vendor reply: understand it, decide the next move, and stage a one-tap-approve
+   * draft. Used to process replies that arrived before this feature existed and
+   * to recover any that slipped through the live pipeline.
+   */
+  async generateAiReply(
+    restaurantId: string,
+    orderId: string,
+    opts?: { instruction?: string; regenerate?: boolean },
+  ): Promise<{ triggered: boolean; draftId?: string; needsApproval?: boolean; autoSendScheduled?: boolean; reason?: string }> {
+    if (!this.inboundResponder) {
+      return { triggered: false, reason: 'Responder service unavailable' };
+    }
+
+    // Confirm the order belongs to this restaurant.
+    const { data: order } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .select('id, provider_id')
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId)
+      .single();
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // Regenerate: clear any waiting/scheduled draft so the responder writes a fresh one.
+    if (opts?.regenerate) {
+      await this.databaseService.supabase
+        .from('procurement_conversations')
+        .update({ status: 'DISCARDED', scheduled_send_at: null })
+        .eq('restaurant_id', restaurantId)
+        .eq('order_id', orderId)
+        .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED']);
+    }
+
+    // Find the most recent inbound vendor reply for this order.
+    const { data: inbound } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id, provider_id, gmail_thread_id, message_id, email_headers')
+      .eq('order_id', orderId)
+      .eq('direction', 'inbound')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!inbound) {
+      return { triggered: false, reason: 'No inbound vendor reply found for this order' };
+    }
+
+    const row = inbound as any;
+    const headers = (row.email_headers ?? {}) as Record<string, any>;
+    const result = await this.inboundResponder.analyzeAndDraftReply({
+      inboundConversationId: row.id,
+      orderId,
+      restaurantId,
+      providerId: row.provider_id || (order as any).provider_id,
+      gmailThreadId: row.gmail_thread_id || null,
+      inboundRfc822MessageId: row.message_id || headers.message_id || null,
+      inboundReferences: headers.references || null,
+      inboundSubject: headers.subject || null,
+      instruction: opts?.instruction,
+    });
+
+    return {
+      triggered: result.drafted,
+      draftId: result.draftId,
+      needsApproval: result.needsApproval,
+      autoSendScheduled: result.autoSendScheduled,
+      reason: result.reason,
+    };
+  }
 
   /**
    * Emit order_change event for cross-page sync
@@ -901,7 +979,7 @@ export class ProcurementService {
     // Fetch conversation + provider email before updating
     const { data: conv, error: fetchError } = await this.databaseService.supabase
       .from('procurement_conversations')
-      .select('id, content, providers!left(name, contact_email), procurement_orders!inner(inventory:inventory_id(wine_name))')
+      .select('id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact), procurement_orders!inner(inventory:inventory_id(wine_name))')
       .eq('restaurant_id', restaurantId)
       .eq('order_id', orderId)
       .eq('status', 'PENDING_APPROVAL')
@@ -912,22 +990,30 @@ export class ProcurementService {
       throw new NotFoundException('No pending draft found for this order');
     }
 
+    // Gate: don't send a draft that's stale because a newer vendor reply just
+    // arrived and is still being analyzed.
+    if (await this.newerReplyStillAnalyzing(orderId, (conv as any).created_at)) {
+      throw new BadRequestException(
+        'A newer vendor reply just arrived and the AI is still reading it. Please wait a moment and review the updated draft before sending.',
+      );
+    }
+
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? '';
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const providerName = (conv as any).providers?.name ?? 'Provider';
     const rawOrder = (conv as any).procurement_orders;
     const wineName = rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? 'Wine Order';
-    const subject = (conv as any).subject || `Order Request: ${wineName}`;
 
-    // Convert plain-text content to HTML so paragraph breaks and line breaks
-    // render correctly. If the content already contains HTML tags, pass it as-is.
-    const isHtml = /<[a-z][\s\S]*>/i.test(rawEmailBody);
-    const emailHtml = isHtml
-      ? rawEmailBody
-      : rawEmailBody
-          .split(/\n\n+/)
-          .map(p => `<p style="margin:0 0 1em 0">${p.replace(/\n/g, '<br>')}</p>`)
-          .join('');
+    // Reply-threading metadata. AI-generated replies (and any draft created as a
+    // reply to an inbound vendor email) carry the original Gmail thread id plus
+    // the RFC822 In-Reply-To / References so the approved email lands in the same
+    // thread instead of starting a new one. Initial outbound drafts have none of
+    // these, so the email is sent fresh exactly as before.
+    const emailHeaders = ((conv as any).email_headers ?? {}) as Record<string, any>;
+    const subject = emailHeaders.subject || (conv as any).subject || `Order Request: ${wineName}`;
+    const replyThreadId = (conv as any).gmail_thread_id || undefined;
+    const replyInReplyTo = emailHeaders.in_reply_to || undefined;
+    const replyReferences = emailHeaders.references || undefined;
 
     // Send the email BEFORE committing SENT status — if delivery fails the
     // conversation stays PENDING_APPROVAL and the manager can retry.
@@ -935,28 +1021,19 @@ export class ProcurementService {
       throw new BadRequestException(`Provider has no email address — cannot send order email for order ${orderId}`);
     }
 
-    let gmailMessageId: string | undefined;
-    let gmailThreadId: string | undefined;
-    let rfc822MessageId: string | undefined;
-
-    if (this.gmailService) {
-      const ccAddresses = dto.ccEmails ?? [];
-      const result = await this.gmailService.sendEmail({
-        to: [providerEmail],
-        cc: ccAddresses.length > 0 ? ccAddresses : undefined,
-        subject,
-        html: emailHtml,
-      });
-      if (!result.success) {
-        this.logger.error(`Email delivery failed for order ${orderId}: ${result.error}`);
-        throw new BadRequestException(
-          `Email could not be delivered to ${providerEmail}: ${result.error ?? 'unknown error'}. ` +
-          'Check Gmail credentials in Railway env vars (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).',
-        );
-      }
-      gmailMessageId = result.messageId;
-      gmailThreadId = result.threadId;
-      rfc822MessageId = result.rfc822MessageId;
+    const emailHtml = this.buildEmailHtml(rawEmailBody);
+    const { gmailMessageId, gmailThreadId, rfc822MessageId } = await this.sendProviderEmail({
+      to: providerEmail,
+      cc: dto.ccEmails,
+      subject,
+      html: emailHtml,
+      threadId: replyThreadId,
+      inReplyTo: replyInReplyTo,
+      references: replyReferences,
+      recipientFirstName: this.resolveFirstName((conv as any).providers),
+      senderName: await this.resolveSenderName(restaurantId),
+    });
+    if (gmailThreadId) {
       this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId} — threadId: ${gmailThreadId}`);
     }
 
@@ -1009,6 +1086,625 @@ export class ProcurementService {
     }
 
     return { conversationId: (data as any).id, sentAt: (data as any).sent_at };
+  }
+
+  // =========================================================================
+  // SHARED EMAIL DELIVERY
+  // =========================================================================
+
+  /** Convert plain-text body to simple HTML (paragraph/line breaks); pass HTML through. */
+  private buildEmailHtml(rawBody: string): string {
+    const body = rawBody ?? '';
+    const isHtml = /<[a-z][\s\S]*>/i.test(body);
+    return isHtml
+      ? body
+      : body.split(/\n\n+/).map((p) => `<p style="margin:0 0 1em 0">${p.replace(/\n/g, '<br>')}</p>`).join('');
+  }
+
+  /** Provider first name: contact_first_name → primary_contact.name → company name. */
+  private resolveFirstName(provider: any): string {
+    if (!provider) return '';
+    const direct = (provider.contact_first_name || '').toString().trim();
+    if (direct) return direct.split(/\s+/)[0];
+    const pc = provider.primary_contact;
+    const pcName = (pc && typeof pc === 'object' ? (pc as any).name : '') || '';
+    if (String(pcName).trim()) return String(pcName).trim().split(/\s+/)[0];
+    const company = (provider.name || '').toString().trim();
+    if (company) return company.split(/\s+/)[0];
+    return '';
+  }
+
+  /** Rewrite a leading generic greeting ("Hi there,", "Hello,", "Hi Acme,") to use the first name. */
+  private personalizeGreeting(html: string, firstName?: string): string {
+    if (!html || !firstName || !firstName.trim()) return html;
+    const name = firstName.trim();
+    return html.replace(/(^|>)(\s*)(hi|hello|hey|dear)\b[^,<]*,/i, `$1$2Hi ${name},`);
+  }
+
+  /**
+   * Final polish applied to every outbound email at send time: personalize the
+   * greeting AND replace unfilled signature placeholders ("[Manager Name]",
+   * "[Your Name]", etc.) with the real sender name. This is the safety net that
+   * cleans up whatever the draft generator (Python agent or LLM) produced.
+   */
+  private applyEmailPlaceholders(html: string, firstName?: string, senderName?: string): string {
+    let out = this.personalizeGreeting(html, firstName);
+    const sig = (senderName || '').trim();
+    // Replace any leftover [Manager Name] / [Your Name] / [Name] / [Signature] placeholder.
+    out = out.replace(/\[\s*(manager\s*name|your\s*name|name|signature|manager)\s*\]/gi, sig);
+    return out;
+  }
+
+  /**
+   * Resolve the outbound sender/signature name for a restaurant. Precedence:
+   * a configured 'sender_identity' template (manager-set) → branding display name
+   * → restaurant name. Drives the [Manager Name] signature substitution.
+   */
+  private async resolveSenderName(restaurantId: string): Promise<string> {
+    try {
+      const { data: t } = await this.databaseService.supabase
+        .from('communication_templates')
+        .select('body')
+        .eq('restaurant_id', restaurantId)
+        .eq('type', 'sender_identity')
+        .eq('is_active', true)
+        .maybeSingle();
+      const configured = String((t as any)?.body || '').trim();
+      if (configured) return configured.split('\n')[0].trim();
+
+      const { data: b } = await this.databaseService.supabase
+        .from('restaurant_branding')
+        .select('display_name')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+      if ((b as any)?.display_name && String((b as any).display_name).trim()) {
+        return String((b as any).display_name).trim();
+      }
+      const { data: r } = await this.databaseService.supabase
+        .from('restaurants')
+        .select('name')
+        .eq('id', restaurantId)
+        .maybeSingle();
+      return String((r as any)?.name || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /** Send a provider email (threaded when reply metadata is supplied). Throws on failure. */
+  private async sendProviderEmail(params: {
+    to: string;
+    cc?: string[];
+    subject: string;
+    html: string;
+    threadId?: string;
+    inReplyTo?: string;
+    references?: string;
+    recipientFirstName?: string;
+    senderName?: string;
+  }): Promise<{ gmailMessageId?: string; gmailThreadId?: string; rfc822MessageId?: string }> {
+    if (!this.gmailService) return {};
+    const result = await this.gmailService.sendEmail({
+      to: [params.to],
+      cc: params.cc && params.cc.length > 0 ? params.cc : undefined,
+      subject: params.subject,
+      html: this.applyEmailPlaceholders(params.html, params.recipientFirstName, params.senderName),
+      threadId: params.threadId,
+      inReplyTo: params.inReplyTo,
+      references: params.references,
+    });
+    if (!result.success) {
+      throw new BadRequestException(
+        `Email could not be delivered to ${params.to}: ${result.error ?? 'unknown error'}. ` +
+          'Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).',
+      );
+    }
+    return {
+      gmailMessageId: result.messageId,
+      gmailThreadId: result.threadId,
+      rfc822MessageId: result.rfc822MessageId,
+    };
+  }
+
+  private emitConvUpdate(restaurantId: string, orderId: string, providerId: string | null, conversationId: string): void {
+    try {
+      this.websocketGateway?.emitConversationUpdated(restaurantId, {
+        conversation_id: conversationId,
+        order_id: orderId,
+        provider_id: providerId || undefined,
+        direction: 'outbound',
+        channel: 'email',
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  // =========================================================================
+  // AUTONOMOUS AUTO-SEND (2-minute undo window)
+  // =========================================================================
+
+  /**
+   * Every 30s, deliver AI replies whose 2-minute undo window has elapsed. Claims
+   * each row atomically (so cancels and overlapping ticks can't double-send), and
+   * on any failure reverts the reply to a normal one-tap-approval draft.
+   */
+  @Interval(30000)
+  async processScheduledAutoSends(): Promise<void> {
+    if (!this.gmailService) return;
+    let due: any[] = [];
+    try {
+      const { data } = await this.databaseService.supabase
+        .from('procurement_conversations')
+        .select('id, order_id, restaurant_id, provider_id, content, message_text, gmail_thread_id, email_headers')
+        .eq('status', 'AUTO_SEND_SCHEDULED')
+        .lte('scheduled_send_at', new Date().toISOString())
+        .limit(20);
+      due = (data as any[]) || [];
+    } catch (e: any) {
+      this.logger.warn(`processScheduledAutoSends query failed: ${e?.message}`);
+      return;
+    }
+    if (!due.length) return;
+
+    for (const row of due) {
+      // Atomic claim — only one worker wins; a cancel (which flips status) loses the race.
+      const { data: claimed } = await this.databaseService.supabase
+        .from('procurement_conversations')
+        .update({ status: 'AUTO_SENDING' })
+        .eq('id', row.id)
+        .eq('status', 'AUTO_SEND_SCHEDULED')
+        .select('id')
+        .maybeSingle();
+      if (!claimed) continue;
+
+      try {
+        const { data: order } = await this.databaseService.supabase
+          .from('procurement_orders')
+          .select('id, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)')
+          .eq('id', row.order_id)
+          .single();
+        const providerEmail = (order as any)?.providers?.contact_email ?? null;
+        const wineName = (order as any)?.restaurant_inventory?.wine_name ?? 'Wine Order';
+
+        // Respect a late pause, and never send without a recipient.
+        if ((order as any)?.ai_autonomy_paused === true || !providerEmail) {
+          await this.revertScheduledToDraft(row.id, !providerEmail ? 'no provider email' : 'order paused');
+          continue;
+        }
+
+        const headers = (row.email_headers ?? {}) as Record<string, any>;
+        const ids = await this.sendProviderEmail({
+          to: providerEmail,
+          subject: headers.subject || `Re: Order Request: ${wineName}`,
+          html: this.buildEmailHtml(row.content ?? row.message_text ?? ''),
+          threadId: row.gmail_thread_id || undefined,
+          inReplyTo: headers.in_reply_to || undefined,
+          references: headers.references || undefined,
+          recipientFirstName: this.resolveFirstName((order as any)?.providers),
+          senderName: await this.resolveSenderName(row.restaurant_id),
+        });
+
+        await this.databaseService.supabase
+          .from('procurement_conversations')
+          .update({
+            status: 'AUTO_SENT',
+            sent_at: new Date().toISOString(),
+            scheduled_send_at: null,
+            ...(ids.gmailMessageId && { gmail_message_id: ids.gmailMessageId }),
+            ...(ids.gmailThreadId && { gmail_thread_id: ids.gmailThreadId }),
+            ...(ids.rfc822MessageId && { message_id: ids.rfc822MessageId }),
+          })
+          .eq('id', row.id);
+
+        this.logger.log(`Auto-sent reply ${row.id} for order ${row.order_id} to ${providerEmail}`);
+        try {
+          this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
+            id: row.id,
+            title: 'AI auto-sent a vendor reply',
+            message: `Reply sent to ${providerEmail}.`,
+            type: 'success',
+            action_url: `/orders?order=${row.order_id}`,
+          });
+        } catch {
+          /* best-effort */
+        }
+        this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
+      } catch (e: any) {
+        this.logger.error(`Auto-send failed for ${row.id} (order ${row.order_id}): ${e?.message}`);
+        await this.revertScheduledToDraft(row.id, 'send failed');
+        try {
+          this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
+            id: row.id,
+            title: 'AI auto-send failed — needs your approval',
+            message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
+            type: 'warning',
+            action_url: `/orders?order=${row.order_id}`,
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+  }
+
+  private async revertScheduledToDraft(conversationId: string, reason: string): Promise<void> {
+    await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ status: 'PENDING_APPROVAL', scheduled_send_at: null })
+      .eq('id', conversationId);
+    this.logger.log(`Auto-send reverted to PENDING_APPROVAL for ${conversationId} (${reason}).`);
+  }
+
+  /** Undo a scheduled auto-send: revert it to a normal draft for one-tap approval. */
+  async cancelScheduledSend(restaurantId: string, orderId: string): Promise<{ cancelled: boolean }> {
+    const { data } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ status: 'PENDING_APPROVAL', scheduled_send_at: null })
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .eq('status', 'AUTO_SEND_SCHEDULED')
+      .select('id');
+    const cancelled = !!(data && (data as any[]).length);
+    if (cancelled) this.logger.log(`Manager cancelled scheduled auto-send for order ${orderId}.`);
+    return { cancelled };
+  }
+
+  // =========================================================================
+  // MANUAL REPLY + AI PAUSE
+  // =========================================================================
+
+  /** Manager writes and sends their own threaded reply (bypasses the AI draft). */
+  async manualReply(
+    restaurantId: string,
+    orderId: string,
+    content: string,
+    ccEmails?: string[],
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('Reply content cannot be empty');
+    }
+
+    const { data: order } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .select('id, provider_id, providers!left(contact_email), restaurant_inventory:inventory_id(wine_name)')
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId)
+      .single();
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    const providerEmail = (order as any)?.providers?.contact_email ?? null;
+    const wineName = (order as any)?.restaurant_inventory?.wine_name ?? 'Wine Order';
+    if (!providerEmail) {
+      throw new BadRequestException('Provider has no email address — cannot send reply');
+    }
+
+    // Thread to the vendor's latest inbound message if there is one.
+    const { data: lastInbound } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('gmail_thread_id, message_id, email_headers')
+      .eq('order_id', orderId)
+      .eq('direction', 'inbound')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
+    const subject = inHeaders.subject || `Re: Order Request: ${wineName}`;
+    const threadId = (lastInbound as any)?.gmail_thread_id || undefined;
+    const inReplyTo = (lastInbound as any)?.message_id || inHeaders.message_id || undefined;
+    const references = inHeaders.references || undefined;
+
+    const ids = await this.sendProviderEmail({
+      to: providerEmail,
+      cc: ccEmails,
+      subject,
+      html: this.buildEmailHtml(content),
+      threadId,
+      inReplyTo,
+      references,
+    });
+
+    const sentAt = new Date().toISOString();
+    const { data: inserted, error } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .insert({
+        order_id: orderId,
+        restaurant_id: restaurantId,
+        provider_id: (order as any).provider_id,
+        direction: 'outbound',
+        channel: 'email',
+        content,
+        message_text: content,
+        ai_generated: false,
+        status: 'SENT',
+        sent_at: sentAt,
+        outbound_email_type: 'MANUAL_REPLY',
+        gmail_thread_id: ids.gmailThreadId || threadId || null,
+        gmail_message_id: ids.gmailMessageId || null,
+        message_id: ids.rfc822MessageId || null,
+        email_headers: { subject, in_reply_to: inReplyTo || null, references: references || null },
+      })
+      .select('id, sent_at')
+      .single();
+    if (error) {
+      this.logger.error(`manualReply insert failed for order ${orderId}: ${error.message}`);
+      throw error;
+    }
+
+    // A manual reply supersedes any waiting AI draft for this order.
+    await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ status: 'DISCARDED', scheduled_send_at: null })
+      .eq('order_id', orderId)
+      .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED']);
+
+    this.emitConvUpdate(restaurantId, orderId, (order as any).provider_id, (inserted as any).id);
+    return { conversationId: (inserted as any).id, sentAt: (inserted as any).sent_at };
+  }
+
+  /** Pause or resume AI autonomy for a single order (manager grabs the wheel). */
+  async setOrderAiPaused(restaurantId: string, orderId: string, paused: boolean): Promise<{ paused: boolean }> {
+    const { data, error } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .update({ ai_autonomy_paused: paused })
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId)
+      .select('id');
+    if (error) throw error;
+    if (!data || (data as any[]).length === 0) throw new NotFoundException(`Order ${orderId} not found`);
+    this.logger.log(`AI autonomy ${paused ? 'paused' : 'resumed'} for order ${orderId}.`);
+    return { paused };
+  }
+
+  // =========================================================================
+  // DEAL APPROVAL (AI-detected offer / verification → one-tap confirm)
+  // =========================================================================
+
+  /**
+   * Per-vendor earned trust. Manager decides every deal until a vendor's
+   * relationship health (rating + completed-order history) crosses a threshold;
+   * then clean deals may auto-confirm for that vendor. New vendors are never eligible.
+   */
+  async getVendorTrust(
+    restaurantId: string,
+    providerId: string,
+  ): Promise<{ score: number; eligible: boolean; completedOrders: number }> {
+    try {
+      const { data: provider } = await this.databaseService.supabase
+        .from('providers')
+        .select('rating')
+        .eq('id', providerId)
+        .maybeSingle();
+      const { count } = await this.databaseService.supabase
+        .from('procurement_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .eq('provider_id', providerId)
+        .in('status', ['CONFIRMED', 'DELIVERED', 'COMPLETED']);
+      const completedOrders = count ?? 0;
+      const ratingScore = Math.min(1, Number((provider as any)?.rating ?? 0) / 5);
+      const historyScore = Math.min(1, completedOrders / 5);
+      const score = Math.round((ratingScore * 0.5 + historyScore * 0.5) * 100) / 100;
+      const eligible = completedOrders >= 3 && score >= 0.7;
+      return { score, eligible, completedOrders };
+    } catch {
+      return { score: 0, eligible: false, completedOrders: 0 };
+    }
+  }
+
+  /**
+   * Approve-gating guard: true if a vendor reply newer than `draftCreatedAt` exists
+   * but the AI hasn't analyzed it yet (detected_intent null) AND it arrived within the
+   * last 10 minutes. Blocks acting on a now-stale draft/deal while the AI is still
+   * reading the latest reply — but won't lock forever if analysis permanently failed.
+   */
+  private async newerReplyStillAnalyzing(orderId: string, draftCreatedAt?: string | null): Promise<boolean> {
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    let q = this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id')
+      .eq('order_id', orderId)
+      .eq('direction', 'inbound')
+      .is('detected_intent', null)
+      .gt('created_at', tenMinAgo);
+    if (draftCreatedAt) q = q.gt('created_at', draftCreatedAt);
+    const { data } = await q.limit(1);
+    return !!(data && (data as any[]).length);
+  }
+
+  /** Latest unresolved AI deal proposal for an order (drives the approval modal). */
+  async getDealProposal(restaurantId: string, orderId: string): Promise<Record<string, any> | null> {
+    const { data: order } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .select('id, status, provider_id, providers!left(name)')
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId)
+      .maybeSingle();
+    if (!order) return null;
+    const terminal = ['CONFIRMED', 'APPROVED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'FAILED'];
+    if (terminal.includes(String((order as any).status || '').toUpperCase())) return null;
+
+    const { data: rows } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id, conversation_context, rolling_summary, created_at')
+      .eq('order_id', orderId)
+      .eq('direction', 'inbound')
+      .order('created_at', { ascending: false })
+      .limit(6);
+
+    const row = (rows || []).find(
+      (r: any) => r.conversation_context?.deal_proposal && !r.conversation_context?.deal_resolved_at,
+    );
+    if (!row) return null;
+
+    const proposal = (row as any).conversation_context.deal_proposal;
+    const trust = await this.getVendorTrust(restaurantId, (order as any).provider_id);
+    return {
+      orderId,
+      conversationId: (row as any).id,
+      providerName: proposal.providerName || (order as any).providers?.name || 'Provider',
+      wineName: proposal.wineName,
+      quantity: proposal.quantity,
+      proposedPrice: proposal.proposedPrice,
+      finalPrice: proposal.finalPrice,
+      deliveryEstimate: proposal.deliveryEstimate,
+      conditions: proposal.conditions,
+      specialConditions: proposal.specialConditions || [],
+      sourceQuote: proposal.sourceQuote,
+      conversationSummary: proposal.summary || (row as any).rolling_summary || '',
+      dealKind: proposal.dealKind,
+      urgency: proposal.urgency,
+      confidence: proposal.confidence,
+      timestamp: proposal.detectedAt || (row as any).created_at,
+      trust,
+    };
+  }
+
+  /** Mark the latest deal proposal on an order resolved so the modal stops showing it. */
+  private async resolveLatestDealProposal(orderId: string, resolution: string): Promise<void> {
+    const { data: rows } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id, conversation_context')
+      .eq('order_id', orderId)
+      .eq('direction', 'inbound')
+      .order('created_at', { ascending: false })
+      .limit(6);
+    const row = (rows || []).find(
+      (r: any) => r.conversation_context?.deal_proposal && !r.conversation_context?.deal_resolved_at,
+    );
+    if (!row) return;
+    const ctx = { ...((row as any).conversation_context || {}) };
+    ctx.deal_resolved_at = new Date().toISOString();
+    ctx.deal_resolution = resolution;
+    await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ conversation_context: ctx })
+      .eq('id', (row as any).id);
+  }
+
+  /**
+   * Manager confirms an AI-detected deal: commit the order to CONFIRMED at the
+   * (possibly edited) terms and, by default, send the vendor a confirmation email.
+   */
+  async confirmDeal(
+    restaurantId: string,
+    orderId: string,
+    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+  ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
+    const { data: order } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .select('id, provider_id, quantity, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)')
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId)
+      .single();
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    // Gate: don't commit terms while a newer reply is still being analyzed.
+    if (await this.newerReplyStillAnalyzing(orderId, null)) {
+      throw new BadRequestException(
+        'A newer vendor reply just arrived and the AI is still reading it. Please review the updated terms before confirming.',
+      );
+    }
+
+    const providerEmail = (order as any)?.providers?.contact_email ?? null;
+    const greetName = this.resolveFirstName((order as any)?.providers) || 'there';
+    const wineName = (order as any)?.restaurant_inventory?.wine_name ?? 'the wine';
+    const quantity = opts.quantity ?? (order as any).quantity;
+    const finalPrice = opts.finalPrice ?? null;
+
+    const update: Record<string, any> = {
+      status: ProcurementOrderStatus.CONFIRMED,
+      confirmed_at: new Date().toISOString(),
+    };
+    if (finalPrice != null) {
+      update.negotiated_price = finalPrice;
+      update.final_price = finalPrice;
+    }
+    if (opts.quantity != null) update.quantity = opts.quantity;
+
+    const { error: upErr } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .update(update)
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId);
+    if (upErr) throw upErr;
+
+    // Send the vendor a confirmation (manager-authorized, so commitment language is fine).
+    let sentConfirmation = false;
+    if (opts.sendConfirmation !== false && providerEmail) {
+      try {
+        const { data: lastInbound } = await this.databaseService.supabase
+          .from('procurement_conversations')
+          .select('gmail_thread_id, message_id, email_headers')
+          .eq('order_id', orderId)
+          .eq('direction', 'inbound')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
+        const subject = inHeaders.subject || `Re: Order Confirmation: ${wineName}`;
+        const priceLine = finalPrice != null ? ` at $${Number(finalPrice).toFixed(2)} per bottle` : '';
+        const body =
+          `Hi ${greetName},\n\n` +
+          `We'd like to confirm our order: ${quantity} bottles of ${wineName}${priceLine}. ` +
+          `Please send an order confirmation along with the expected delivery date.\n\n` +
+          `Thank you!`;
+        const ids = await this.sendProviderEmail({
+          to: providerEmail,
+          subject,
+          html: this.buildEmailHtml(body),
+          threadId: (lastInbound as any)?.gmail_thread_id || undefined,
+          inReplyTo: (lastInbound as any)?.message_id || inHeaders.message_id || undefined,
+          references: inHeaders.references || undefined,
+          senderName: await this.resolveSenderName(restaurantId),
+        });
+        await this.databaseService.supabase.from('procurement_conversations').insert({
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          provider_id: (order as any).provider_id,
+          direction: 'outbound',
+          channel: 'email',
+          content: body,
+          message_text: body,
+          ai_generated: false,
+          status: 'SENT',
+          sent_at: new Date().toISOString(),
+          outbound_email_type: 'ORDER_CONFIRMATION',
+          gmail_thread_id: ids.gmailThreadId || (lastInbound as any)?.gmail_thread_id || null,
+          gmail_message_id: ids.gmailMessageId || null,
+          message_id: ids.rfc822MessageId || null,
+          email_headers: { subject },
+        });
+        sentConfirmation = true;
+      } catch (e: any) {
+        this.logger.warn(`confirmDeal: confirmation email failed for order ${orderId}: ${e?.message}`);
+      }
+    }
+
+    // Resolve the proposal + clear any waiting drafts; the deal is done.
+    await this.resolveLatestDealProposal(orderId, 'confirmed');
+    await this.databaseService.supabase
+      .from('procurement_conversations')
+      .update({ status: 'DISCARDED', scheduled_send_at: null })
+      .eq('order_id', orderId)
+      .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED']);
+
+    this.emitConvUpdate(restaurantId, orderId, (order as any).provider_id, orderId);
+    this.logger.log(`Deal confirmed for order ${orderId} (price=${finalPrice ?? 'unchanged'}, qty=${quantity}, emailed=${sentConfirmation}).`);
+    return { confirmed: true, sentConfirmation };
+  }
+
+  /** Decline an AI-detected deal without committing — order stays in negotiation. */
+  async dismissDeal(restaurantId: string, orderId: string): Promise<{ dismissed: boolean }> {
+    const { data: order } = await this.databaseService.supabase
+      .from('procurement_orders')
+      .select('id')
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId)
+      .maybeSingle();
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    await this.resolveLatestDealProposal(orderId, 'dismissed');
+    this.emitConvUpdate(restaurantId, orderId, null, orderId);
+    return { dismissed: true };
   }
 
   async discardDraft(
@@ -1238,8 +1934,13 @@ export class ProcurementService {
         message_text,
         rolling_summary,
         constraint_flags,
+        scheduled_send_at,
+        detected_intent,
+        detected_sentiment,
+        ai_generated,
+        conversation_context,
         procurement_orders!inner(
-          id, order_number, quantity, quoted_price,
+          id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
         ),
         providers!left(name, contact_email)
@@ -1257,16 +1958,26 @@ export class ProcurementService {
       id: row.id,
       orderId: row.order_id,
       status: row.status,
-      direction: (row.direction ?? 'OUTBOUND') as 'OUTBOUND' | 'INBOUND',
+      // DB stores direction lowercase ('inbound'/'outbound'); the UI compares
+      // against uppercase, so normalize here or inbound replies render as rounds.
+      direction: String(row.direction ?? 'outbound').toUpperCase() as 'OUTBOUND' | 'INBOUND',
       emailType: row.outbound_email_type,
       roundCount: row.round_count,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? null,
+      scheduledSendAt: row.scheduled_send_at ?? null,
       draftContent: row.content ?? row.message_text ?? null,
       rollingSummary: row.rolling_summary ?? null,
+      constraintFlags: row.constraint_flags ?? null,
+      detectedIntent: row.detected_intent ?? null,
+      detectedSentiment: row.detected_sentiment ?? null,
+      aiGenerated: row.ai_generated ?? null,
+      specialConditions: row.conversation_context?.analysis?.special_conditions ?? [],
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,
       quotedPrice: row.procurement_orders?.quoted_price ?? null,
+      orderStatus: row.procurement_orders?.status ?? null,
+      aiPaused: row.procurement_orders?.ai_autonomy_paused ?? false,
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
       providerName: row.providers?.name ?? null,
       providerEmail: row.providers?.contact_email ?? null,

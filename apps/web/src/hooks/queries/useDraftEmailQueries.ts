@@ -86,6 +86,34 @@ export function useApproveDraft() {
   })
 }
 
+/**
+ * Trigger the autonomous responder on an order's latest inbound vendor reply.
+ * The backend understands the reply and stages a one-tap-approve AI draft, then
+ * resolves once the draft exists — so invalidating here surfaces it immediately.
+ */
+export function useGenerateAiReply() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/generate-ai-reply`)
+        .then(
+          (r) =>
+            r.data as {
+              triggered: boolean
+              draftId?: string
+              needsApproval?: boolean
+              reason?: string
+            },
+        ),
+    onSettled: (_data, _error, orderId) => {
+      queryClient.invalidateQueries({ queryKey: draftKeys.all })
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) })
+      queryClient.invalidateQueries({ queryKey: activeConversationKeys.all })
+    },
+  })
+}
+
 export function useDiscardDraft() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -110,11 +138,19 @@ export interface OrderConversationDto {
   roundCount: number
   createdAt: string
   sentAt: string | null
+  scheduledSendAt?: string | null
   draftContent: string | null
   rollingSummary: string | null
+  constraintFlags?: any
+  detectedIntent?: string | null
+  detectedSentiment?: string | null
+  aiGenerated?: boolean | null
+  specialConditions?: string[]
   orderNumber: string | null
   quantity: number | null
   quotedPrice: number | null
+  orderStatus?: string | null
+  aiPaused?: boolean
   wineName: string | null
   providerName: string | null
   providerEmail: string | null
@@ -134,6 +170,153 @@ export function useOrderConversations(orderId: string | null) {
         .then((r) => r.data as OrderConversationDto[]),
     enabled: !!orderId,
     staleTime: 10_000,
+    // Keep the live undo countdown / auto-send status fresh while the drawer is open.
+    refetchInterval: 15_000,
+  })
+}
+
+/** Manager writes & sends their own threaded reply (bypasses the AI draft). */
+export function useManualReply() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ orderId, content, ccEmails }: { orderId: string; content: string; ccEmails?: string[] }) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/manual-reply`, { content, ccEmails })
+        .then((r) => r.data),
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(variables.orderId) })
+      queryClient.invalidateQueries({ queryKey: draftKeys.all })
+      queryClient.invalidateQueries({ queryKey: activeConversationKeys.all })
+    },
+  })
+}
+
+/** Pause/resume AI autonomy for one order (grab the wheel). */
+export function useToggleAiPaused() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ orderId, paused }: { orderId: string; paused: boolean }) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/ai-pause`, { paused })
+        .then((r) => r.data as { paused: boolean }),
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(variables.orderId) })
+    },
+  })
+}
+
+/** Undo a scheduled auto-send (revert it to a one-tap-approval draft). */
+export function useCancelScheduledSend() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/cancel-scheduled-send`)
+        .then((r) => r.data as { cancelled: boolean }),
+    onSettled: (_d, _e, orderId) => {
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) })
+      queryClient.invalidateQueries({ queryKey: draftKeys.all })
+    },
+  })
+}
+
+/** Ask the AI to rewrite the current draft (optionally with a tone/steering hint). */
+export function useRegenerateDraft() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ orderId, instruction }: { orderId: string; instruction?: string }) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/generate-ai-reply`, { regenerate: true, instruction })
+        .then((r) => r.data as { triggered: boolean; reason?: string }),
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(variables.orderId) })
+      queryClient.invalidateQueries({ queryKey: draftKeys.byOrder(variables.orderId) })
+    },
+  })
+}
+
+/** Pull recent Gmail replies on demand (recovers any the live watch missed). */
+export function useForceFetchReplies() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient
+        .post('/communications/webhooks/gmail/force-fetch')
+        .then((r) => r.data as { processed?: number; fetched?: number }),
+    onSettled: (_d, _e, _v) => {
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.all })
+      queryClient.invalidateQueries({ queryKey: ['deal-proposal'] })
+      queryClient.invalidateQueries({ queryKey: draftKeys.all })
+    },
+  })
+}
+
+export interface DealProposalDto {
+  orderId: string
+  conversationId: string
+  providerName: string
+  wineName: string
+  quantity: number
+  proposedPrice: number
+  finalPrice: number
+  deliveryEstimate: string
+  conditions: string
+  specialConditions: string[]
+  sourceQuote: string
+  conversationSummary: string
+  dealKind: 'offer' | 'verification'
+  urgency: 'normal' | 'urgent'
+  confidence: number
+  timestamp: string
+  trust: { score: number; eligible: boolean; completedOrders: number }
+}
+
+export const dealProposalKeys = {
+  byOrder: (orderId: string) => ['deal-proposal', orderId] as const,
+}
+
+/** Latest AI-detected deal proposal for an order (null when none pending). */
+export function useDealProposal(orderId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: dealProposalKeys.byOrder(orderId ?? ''),
+    queryFn: () =>
+      apiClient
+        .get(`/procurement/orders/${orderId}/deal-proposal`)
+        .then((r) => (r.data ?? null) as DealProposalDto | null),
+    enabled: !!orderId && enabled,
+    staleTime: 10_000,
+    refetchInterval: 20_000,
+  })
+}
+
+export function useConfirmDeal() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ orderId, finalPrice, quantity, sendConfirmation }: {
+      orderId: string; finalPrice?: number; quantity?: number; sendConfirmation?: boolean
+    }) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/confirm-deal`, { finalPrice, quantity, sendConfirmation })
+        .then((r) => r.data as { confirmed: boolean; sentConfirmation: boolean }),
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({ queryKey: dealProposalKeys.byOrder(variables.orderId) })
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(variables.orderId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
+    },
+  })
+}
+
+export function useDismissDeal() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      apiClient
+        .post(`/procurement/orders/${orderId}/dismiss-deal`)
+        .then((r) => r.data as { dismissed: boolean }),
+    onSettled: (_d, _e, orderId) => {
+      queryClient.invalidateQueries({ queryKey: dealProposalKeys.byOrder(orderId) })
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) })
+    },
   })
 }
 

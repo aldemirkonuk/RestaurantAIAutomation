@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { DatabaseService } from '../../database/database.service';
+import { InboundResponderService } from './inbound-responder.service';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -39,6 +40,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly websocketGateway: WebsocketGateway,
     private readonly databaseService: DatabaseService,
+    private readonly inboundResponder: InboundResponderService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -626,6 +628,21 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           provider_id: provider.id,
           direction: 'inbound',
           channel: 'email',
+        });
+
+        // 6. Hand off to the autonomous responder: understand the reply, decide
+        //    the next move, and stage a one-tap-approve draft. Fire-and-forget —
+        //    the responder swallows its own errors so inbound storage is never
+        //    blocked by LLM latency or failures.
+        void this.inboundResponder.analyzeAndDraftReply({
+          inboundConversationId: inserted.id,
+          orderId,
+          restaurantId,
+          providerId: provider.id,
+          gmailThreadId: gmailThreadId || null,
+          inboundRfc822MessageId: messageIdHeader || null,
+          inboundReferences: references || null,
+          inboundSubject: subject || null,
         });
       }
     } catch (err: any) {

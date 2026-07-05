@@ -1,11 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useToast } from '../../contexts/ToastContext'
 import {
   X, Send, Clock, CheckCircle, Loader2, RefreshCw,
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
-  ArrowRight, MessageSquare, Activity, Mail,
+  ArrowRight, MessageSquare, Activity, Mail, Pause, Play, Bot, PenLine, XCircle,
+  AlertTriangle, MailSearch,
 } from 'lucide-react'
-import { useOrderConversations, type OrderConversationDto } from '../../hooks/queries/useDraftEmailQueries'
+import {
+  useOrderConversations,
+  useGenerateAiReply,
+  useManualReply,
+  useToggleAiPaused,
+  useCancelScheduledSend,
+  useRegenerateDraft,
+  useDealProposal,
+  useConfirmDeal,
+  useDismissDeal,
+  useForceFetchReplies,
+  orderConversationKeys,
+  dealProposalKeys,
+  type OrderConversationDto,
+} from '../../hooks/queries/useDraftEmailQueries'
+import { DealApprovalModal } from './DealApprovalModal'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, {
@@ -52,6 +70,24 @@ const STATUS_CONFIG: Record<string, {
     dotBg: 'bg-emerald-500',
     dotBorder: 'border-emerald-300',
     icon: Send,
+  },
+  AUTO_SEND_SCHEDULED: {
+    label: 'Auto-sending',
+    textColor: 'text-amber-700',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    dotBg: 'bg-amber-500',
+    dotBorder: 'border-amber-300',
+    icon: Clock,
+  },
+  AUTO_SENDING: {
+    label: 'Sending…',
+    textColor: 'text-amber-700',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    dotBg: 'bg-amber-500',
+    dotBorder: 'border-amber-300',
+    icon: Loader2,
   },
   APPROVED: {
     label: 'Sent',
@@ -141,14 +177,170 @@ export function CommsThreadDrawer({
   onOpenDraftPanel,
 }: CommsThreadDrawerProps) {
   const [activeTab, setActiveTab] = useState<'thread' | 'activity'>('thread')
+  const [replyError, setReplyError] = useState<string | null>(null)
+  const [showManualComposer, setShowManualComposer] = useState(false)
+  const [manualText, setManualText] = useState('')
   const { data: conversations = [], isLoading } = useOrderConversations(isOpen ? orderId : null)
+  const generateAiReply = useGenerateAiReply()
+  const manualReply = useManualReply()
+  const toggleAiPaused = useToggleAiPaused()
+  const cancelScheduledSend = useCancelScheduledSend()
+  const regenerateDraft = useRegenerateDraft()
 
   const isCancelled = orderStatus === 'cancelled'
   const isDelivered = orderStatus === 'delivered'
   const pendingConv = conversations.find(c => c.status === 'PENDING_APPROVAL' && c.direction !== 'INBOUND')
+  const scheduledConv = conversations.find(c => c.status === 'AUTO_SEND_SCHEDULED' && c.direction !== 'INBOUND')
+  const aiPaused = conversations[0]?.aiPaused ?? false
   const providerName = conversations[0]?.providerName
   const providerEmail = conversations[0]?.providerEmail
   const sentConvs = conversations.filter(c => ['SENT', 'AUTO_SENT', 'APPROVED', 'COMPLETED', 'CLOSED'].includes(c.status))
+
+  // The latest message being a vendor reply (with no AI draft waiting yet) is the
+  // cue that it's our move — surface a one-tap "Draft AI Reply" action.
+  const latestConv = conversations[conversations.length - 1]
+  const awaitingReply =
+    !!latestConv && latestConv.direction === 'INBOUND' && !pendingConv && !scheduledConv && !isCancelled && !isDelivered
+
+  // Live countdown for the 2-minute auto-send undo window.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!scheduledConv?.scheduledSendAt) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [scheduledConv?.scheduledSendAt])
+  const secondsToAutoSend = scheduledConv?.scheduledSendAt
+    ? Math.max(0, Math.round((new Date(scheduledConv.scheduledSendAt).getTime() - now) / 1000))
+    : 0
+
+  const busy = generateAiReply.isPending || regenerateDraft.isPending || manualReply.isPending
+
+  const handleDraftAiReply = () => {
+    if (!orderId) return
+    setReplyError(null)
+    generateAiReply.mutate(orderId, {
+      onSuccess: (res) => {
+        if (!res.triggered && res.reason) setReplyError(res.reason)
+      },
+      onError: () => setReplyError('Could not draft a reply. Please try again.'),
+    })
+  }
+
+  const handleRegenerate = () => {
+    if (!orderId) return
+    setReplyError(null)
+    regenerateDraft.mutate({ orderId }, {
+      onSuccess: (res) => {
+        if (!res.triggered && res.reason) setReplyError(res.reason)
+      },
+      onError: () => setReplyError('Could not regenerate the draft. Please try again.'),
+    })
+  }
+
+  const handleTogglePause = () => {
+    if (!orderId) return
+    toggleAiPaused.mutate({ orderId, paused: !aiPaused })
+  }
+
+  const handleCancelScheduled = () => {
+    if (!orderId) return
+    cancelScheduledSend.mutate(orderId)
+  }
+
+  const handleSendManual = () => {
+    if (!orderId || !manualText.trim()) return
+    setReplyError(null)
+    manualReply.mutate(
+      { orderId, content: manualText.trim() },
+      {
+        onSuccess: () => { setManualText(''); setShowManualComposer(false) },
+        onError: () => setReplyError('Could not send your reply. Please try again.'),
+      },
+    )
+  }
+
+  // ── AI deal proposal (offer / verification → approval modal) ──────────────
+  const { data: dealProposal } = useDealProposal(isOpen ? orderId : null)
+  const confirmDeal = useConfirmDeal()
+  const dismissDeal = useDismissDeal()
+  const [showDealModal, setShowDealModal] = useState(false)
+  const [autoOpenedDealId, setAutoOpenedDealId] = useState<string | null>(null)
+
+  // Urgent deals (limited stock / expiring promo) pop the modal automatically — once.
+  useEffect(() => {
+    if (dealProposal?.urgency === 'urgent' && dealProposal.conversationId !== autoOpenedDealId) {
+      setShowDealModal(true)
+      setAutoOpenedDealId(dealProposal.conversationId)
+    }
+  }, [dealProposal?.conversationId, dealProposal?.urgency, autoOpenedDealId])
+
+  const handleConfirmDeal = (finalPrice: number, quantity: number) => {
+    if (!orderId) return
+    confirmDeal.mutate(
+      { orderId, finalPrice, quantity, sendConfirmation: true },
+      { onSuccess: () => setShowDealModal(false) },
+    )
+  }
+  const handleDismissDeal = () => {
+    if (!orderId) return
+    dismissDeal.mutate(orderId, { onSuccess: () => setShowDealModal(false) })
+  }
+  const handleAskForMore = () => {
+    if (!orderId) return
+    setShowDealModal(false)
+    dismissDeal.mutate(orderId)
+    regenerateDraft.mutate({
+      orderId,
+      instruction: 'Politely ask the vendor to clarify or confirm the remaining details (final price, quantity, and delivery timing) before we commit.',
+    })
+  }
+
+  // ── Live refresh + reply notifications + capture fallback ─────────────────
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const forceFetch = useForceFetchReplies()
+
+  // When the bridge emits a conversation update, refetch this order's thread + deal.
+  useEffect(() => {
+    if (!orderId) return
+    const onChange = () => {
+      queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) })
+      queryClient.invalidateQueries({ queryKey: dealProposalKeys.byOrder(orderId) })
+    }
+    window.addEventListener('conversation_change', onChange)
+    return () => window.removeEventListener('conversation_change', onChange)
+  }, [orderId, queryClient])
+
+  // Toast the moment a new vendor reply lands in this thread.
+  const prevInboundCount = useRef<number | null>(null)
+  useEffect(() => {
+    const inboundCount = conversations.filter(c => c.direction === 'INBOUND').length
+    if (prevInboundCount.current !== null && inboundCount > prevInboundCount.current) {
+      toast.info(`New reply from ${providerName || 'the provider'} — the AI is reading it now.`)
+    }
+    prevInboundCount.current = inboundCount
+  }, [conversations.length])
+
+  const handleCheckReplies = () => {
+    forceFetch.mutate(undefined, {
+      onSuccess: (res) => {
+        const n = res?.processed ?? res?.fetched ?? 0
+        toast.info(n ? `Pulled ${n} new message${n === 1 ? '' : 's'}.` : 'No new replies yet.')
+      },
+      onError: () => toast.error('Could not check for replies. Try again.'),
+    })
+  }
+
+  // ── Approve-gating: act only on the latest, summarized reply ──────────────
+  const latestInbound = [...conversations].reverse().find(c => c.direction === 'INBOUND')
+  const latestInboundAnalyzed = !!latestInbound?.detectedIntent
+  // A pending draft is stale if a newer inbound reply hasn't been analyzed yet.
+  const pendingStale = !!pendingConv && conversations.some(c =>
+    c.direction === 'INBOUND' && !c.detectedIntent &&
+    new Date(c.createdAt).getTime() > new Date(pendingConv.createdAt).getTime(),
+  )
+  // Latest message is a reply the AI hasn't summarized yet (no draft/deal staged).
+  const awaitingAnalysis = !!latestInbound && !latestInboundAnalyzed && !pendingConv && !scheduledConv && !dealProposal && !isCancelled && !isDelivered
 
   return (
     <>
@@ -240,6 +432,30 @@ export function CommsThreadDrawer({
                   )}
                 </div>
               </div>
+
+              {/* AI autonomy control — pause/resume the AI for this order */}
+              {!isCancelled && !isDelivered && conversations.length > 0 && (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-medium">
+                    <Bot className={`w-3 h-3 ${aiPaused ? 'text-gray-400' : 'text-wine-600'}`} />
+                    <span className={aiPaused ? 'text-gray-400' : 'text-wine-700'}>
+                      {aiPaused ? 'AI paused for this order' : 'AI is handling this order'}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleTogglePause}
+                    disabled={toggleAiPaused.isPending}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors disabled:opacity-60 ${
+                      aiPaused
+                        ? 'bg-wine-50 border-wine-200 text-wine-700 hover:bg-wine-100'
+                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {aiPaused ? <><Play className="w-3 h-3" /> Resume AI</> : <><Pause className="w-3 h-3" /> Pause AI</>}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ── Tab bar ── */}
@@ -258,11 +474,25 @@ export function CommsThreadDrawer({
                 <span className="text-[11px] text-gray-500 font-medium">
                   {conversations.length} round{conversations.length !== 1 ? 's' : ''} · {sentConvs.length} sent
                 </span>
-                {orderId && (
-                  <span className="text-[10px] font-mono font-semibold text-gray-500 bg-gray-200 rounded px-1.5 py-0.5">
-                    #{orderId.slice(0, 8)}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {!isCancelled && !isDelivered && (
+                    <button
+                      type="button"
+                      onClick={handleCheckReplies}
+                      disabled={forceFetch.isPending}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-wine-700 disabled:opacity-60 transition-colors"
+                      title="Pull any new vendor replies from email"
+                    >
+                      {forceFetch.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MailSearch className="w-3 h-3" />}
+                      Check for replies
+                    </button>
+                  )}
+                  {orderId && (
+                    <span className="text-[10px] font-mono font-semibold text-gray-500 bg-gray-200 rounded px-1.5 py-0.5">
+                      #{orderId.slice(0, 8)}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
@@ -286,28 +516,185 @@ export function CommsThreadDrawer({
               )}
             </div>
 
-            {/* ── Sticky CTA ── */}
-            <AnimatePresence>
-              {pendingConv && !isCancelled && (
-                <motion.div
-                  initial={{ y: 56, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 56, opacity: 0 }}
-                  transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-                  className="flex-shrink-0 px-4 py-3.5 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
+            {/* ── AI deal CTA (offer / verification ready to confirm) ── */}
+            {dealProposal && !isCancelled && !isDelivered && (
+              <div className="flex-shrink-0 px-4 py-3 bg-wine-50 border-t border-wine-200">
+                <button
+                  type="button"
+                  onClick={() => setShowDealModal(true)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-wine-200"
                 >
-                  <button
-                    type="button"
-                    onClick={() => { onClose(); setTimeout(onOpenDraftPanel, 150) }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-wine-200"
-                  >
-                    <Sparkles className="w-4 h-4 flex-shrink-0" />
-                    Review & Approve Draft
-                    <ArrowRight className="w-4 h-4 ml-auto opacity-60 flex-shrink-0" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <Sparkles className="w-4 h-4 flex-shrink-0" />
+                  {dealProposal.dealKind === 'verification' ? 'Vendor confirmed — verify the order' : 'AI found an offer to confirm'}
+                  <ArrowRight className="w-4 h-4 ml-auto opacity-60 flex-shrink-0" />
+                </button>
+                <p className="mt-1.5 text-[10px] text-center text-wine-700/80">
+                  {dealProposal.providerName} · {dealProposal.quantity} bottles · ${dealProposal.finalPrice.toFixed(2)}/bottle
+                  {dealProposal.urgency === 'urgent' ? ' · time-sensitive' : ''}
+                </p>
+              </div>
+            )}
+
+            {/* ── Sticky footer: composer / auto-send countdown / CTAs ── */}
+            {!isCancelled && !isDelivered && (
+              <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+                {showManualComposer ? (
+                  /* ── Manual reply composer ── */
+                  <div className="px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700">
+                        <PenLine className="w-3.5 h-3.5 text-wine-600" /> Your reply to {providerName || 'the provider'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setShowManualComposer(false); setManualText('') }}
+                        className="text-gray-400 hover:text-gray-600"
+                        aria-label="Close composer"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      value={manualText}
+                      onChange={(e) => setManualText(e.target.value)}
+                      rows={5}
+                      autoFocus
+                      placeholder="Write your message to the provider… (sent in the same email thread)"
+                      aria-label="Manual reply body"
+                      className="w-full text-[12px] leading-relaxed text-gray-800 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-wine-200 focus:border-wine-300 resize-none"
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSendManual}
+                        disabled={!manualText.trim() || manualReply.isPending}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
+                      >
+                        {manualReply.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {manualReply.isPending ? 'Sending…' : 'Send reply'}
+                      </button>
+                    </div>
+                    {replyError && <p className="mt-1.5 text-[10px] text-center text-red-500 font-medium">{replyError}</p>}
+                  </div>
+                ) : scheduledConv ? (
+                  /* ── Auto-send countdown (undo window) ── */
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-2">
+                      <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin flex-shrink-0" />
+                      <span className="text-[11px] font-medium text-amber-800">
+                        AI is auto-sending this reply in {secondsToAutoSend}s
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelScheduled}
+                      disabled={cancelScheduledSend.isPending}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-sm font-semibold rounded-xl transition-colors disabled:opacity-60"
+                    >
+                      {cancelScheduledSend.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                      Cancel &amp; review instead
+                    </button>
+                    <p className="mt-1.5 text-[10px] text-center text-gray-400">
+                      Cancelling keeps it as a draft for you to edit and approve.
+                    </p>
+                  </div>
+                ) : (pendingStale || awaitingAnalysis) ? (
+                  /* ── Gate: reply received but not yet summarized ── */
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-wine-50 border border-wine-200">
+                      <Loader2 className="w-4 h-4 text-wine-600 animate-spin flex-shrink-0" />
+                      <span className="text-[12px] font-medium text-wine-800">AI is reading the latest reply…</span>
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-center text-gray-400">
+                      {pendingStale
+                        ? 'A newer reply arrived — approval is paused until it’s summarized.'
+                        : 'You can approve once the AI has summarized this reply.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCheckReplies}
+                      disabled={forceFetch.isPending}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60 transition-colors"
+                    >
+                      {forceFetch.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MailSearch className="w-3.5 h-3.5" />} Check again
+                    </button>
+                  </div>
+                ) : pendingConv ? (
+                  /* ── AI draft awaiting approval ── */
+                  <div className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => { onClose(); setTimeout(onOpenDraftPanel, 150) }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-wine-200"
+                    >
+                      <Sparkles className="w-4 h-4 flex-shrink-0" />
+                      Review &amp; Approve Draft
+                      <ArrowRight className="w-4 h-4 ml-auto opacity-60 flex-shrink-0" />
+                    </button>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRegenerate}
+                        disabled={busy}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60 transition-colors"
+                      >
+                        {regenerateDraft.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Regenerate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowManualComposer(true)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        <PenLine className="w-3.5 h-3.5" /> Write your own
+                      </button>
+                    </div>
+                    {replyError && <p className="mt-1.5 text-[10px] text-center text-red-500 font-medium">{replyError}</p>}
+                  </div>
+                ) : awaitingReply ? (
+                  /* ── Vendor replied; offer to draft or write ── */
+                  <div className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={handleDraftAiReply}
+                      disabled={busy}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-70 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-wine-200"
+                    >
+                      {generateAiReply.isPending ? (
+                        <><Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> AI is reading the reply &amp; drafting…</>
+                      ) : (
+                        <><Sparkles className="w-4 h-4 flex-shrink-0" /> Draft AI Reply <ArrowRight className="w-4 h-4 ml-auto opacity-60 flex-shrink-0" /></>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowManualComposer(true)}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <PenLine className="w-3.5 h-3.5" /> Write your own reply
+                    </button>
+                    <p className="mt-1.5 text-[10px] text-center leading-snug">
+                      {replyError ? (
+                        <span className="text-red-500 font-medium">{replyError}</span>
+                      ) : (
+                        <span className="text-gray-400">AI reads the vendor&rsquo;s reply and writes the next message for you.</span>
+                      )}
+                    </p>
+                  </div>
+                ) : (conversations.length > 0 && providerEmail) ? (
+                  /* ── Idle (awaiting vendor): let the manager write proactively ── */
+                  <div className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowManualComposer(true)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <PenLine className="w-3.5 h-3.5" /> Write a reply
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             {/* ── Cancelled footer ── */}
             {isCancelled && conversations.length > 0 && (
@@ -329,6 +716,17 @@ export function CommsThreadDrawer({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AI deal-approval modal (offer / verification) */}
+      <DealApprovalModal
+        isOpen={showDealModal}
+        deal={dealProposal ?? null}
+        onConfirm={handleConfirmDeal}
+        onDismiss={handleDismissDeal}
+        onAskForMore={handleAskForMore}
+        onClose={() => setShowDealModal(false)}
+        isSubmitting={confirmDeal.isPending || dismissDeal.isPending}
+      />
     </>
   )
 }
@@ -504,6 +902,20 @@ function ThreadEvent({ conv, isLast, isLatest, isCancelled, onOpenDraftPanel, on
                 ) : (
                   <div className="px-3 py-2.5 bg-gray-50">
                     <p className="text-[11px] text-gray-400 italic">No content recorded</p>
+                  </div>
+                )}
+
+                {/* Special conditions the AI flagged (delivery delays, substitutions, etc.) */}
+                {conv.specialConditions && conv.specialConditions.length > 0 && (
+                  <div className="px-3 py-2 bg-amber-50 border-t border-amber-100">
+                    <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-800 mb-1">
+                      <AlertTriangle className="w-3 h-3" /> Heads up
+                    </div>
+                    <ul className="space-y-0.5">
+                      {conv.specialConditions.map((c, i) => (
+                        <li key={i} className="text-[10.5px] text-amber-800 flex gap-1"><span aria-hidden>•</span><span>{c}</span></li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
