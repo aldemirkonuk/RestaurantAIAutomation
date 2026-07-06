@@ -17,7 +17,10 @@ interface DraftEmailData {
   quantity?: number
   providerName: string
   providerEmail: string
-  emailType: 'PRICE_INQUIRY' | 'DEMAND_OFFER' | 'PROMO_INQUIRY' | 'WINE_INQUIRY'
+  // Free-form: the backend emits a growing set of outbound_email_type values
+  // (negotiation replies, confirmations, manual replies). Unknown values fall
+  // back to a neutral badge rather than crashing.
+  emailType: string
   draftContent: string
   disclaimer: string
   constraintWarnings: ConstraintWarning[]
@@ -35,18 +38,27 @@ interface DraftEmailApprovalPanelProps {
   isSubmitting?: boolean
 }
 
-const emailTypeBadge: Record<
-  DraftEmailData['emailType'],
-  { label: string; bg: string; text: string; dot: string }
-> = {
+type EmailBadge = { label: string; bg: string; text: string; dot: string }
+
+const EMAIL_TYPE_FALLBACK: EmailBadge = { label: 'Email', bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' }
+
+const emailTypeBadge: Record<string, EmailBadge> = {
   PRICE_INQUIRY: { label: 'Price Inquiry', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-400' },
   DEMAND_OFFER: { label: 'Demand Offer', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
   PROMO_INQUIRY: { label: 'Promo Inquiry', bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
   WINE_INQUIRY: { label: 'Wine Inquiry', bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-400' },
+  COUNTER_OFFER: { label: 'Counter Offer', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-400' },
+  CLARIFICATION: { label: 'Clarification', bg: 'bg-sky-50', text: 'text-sky-700', dot: 'bg-sky-400' },
+  ACCEPTANCE_CONFIRM_REQUEST: { label: 'Acceptance', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-400' },
+  ESCALATION: { label: 'Escalation', bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-400' },
+  ORDER_CONFIRMATION: { label: 'Order Confirmation', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-400' },
+  MANUAL_REPLY: { label: 'Manual Reply', bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' },
 }
 
+const badgeFor = (emailType: string): EmailBadge => emailTypeBadge[emailType] ?? EMAIL_TYPE_FALLBACK
+
 function derivedSubject(data: DraftEmailData): string {
-  const typeLabel = emailTypeBadge[data.emailType].label
+  const typeLabel = badgeFor(data.emailType).label
   return `${data.wineName} — ${typeLabel}`
 }
 
@@ -106,7 +118,7 @@ export function DraftEmailApprovalPanel({
 
   if (!draftData && !isOpen) return null
 
-  const badge = draftData ? emailTypeBadge[draftData.emailType] : null
+  const badge = draftData ? badgeFor(draftData.emailType) : null
 
   return (
     <AnimatePresence>

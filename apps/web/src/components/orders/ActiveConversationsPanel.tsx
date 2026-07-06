@@ -16,6 +16,12 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   DEMAND_OFFER: 'Demand Offer',
   PROMO_INQUIRY: 'Promo Inquiry',
   WINE_INQUIRY: 'Wine Inquiry',
+  COUNTER_OFFER: 'Counter Offer',
+  CLARIFICATION: 'Clarification',
+  ACCEPTANCE_CONFIRM_REQUEST: 'Acceptance',
+  ESCALATION: 'Escalation',
+  ORDER_CONFIRMATION: 'Order Confirmation',
+  MANUAL_REPLY: 'Manual Reply',
 }
 
 interface ActiveConversationsPanelProps {
