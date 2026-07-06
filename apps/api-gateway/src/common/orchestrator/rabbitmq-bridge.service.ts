@@ -19,6 +19,7 @@ import * as amqplib from 'amqplib';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { DatabaseService } from '../../database/database.service';
 import { InboundResponderService } from './inbound-responder.service';
+import { deriveTransportSignals } from './email-triage';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -530,6 +531,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const inReplyTo: string = payload.in_reply_to || '';
     const references: string = payload.references || '';
     const receivedAt: string = payload.received_at || new Date().toISOString();
+    // Transport/auth signals (bulk, list, auto-submitted, SPF/DKIM/DMARC) derived from the
+    // full header map the ingestion path already publishes on payload.headers. Captured now
+    // for triage classification + sender verification — nothing gates on them yet (shadow phase).
+    const rawHeaders =
+      payload.headers && typeof payload.headers === 'object' ? payload.headers : {};
+    const transportSignals = deriveTransportSignals(rawHeaders, from);
 
     const emailMatch = from.match(/<([^>]+)>/) || [null, from.trim()];
     const senderEmail = emailMatch[1]?.toLowerCase();
@@ -601,7 +608,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           gmail_thread_id: gmailThreadId || null,
           gmail_message_id: gmailMessageId || null,
           message_id: messageIdHeader || null,
-          email_headers: { from, subject, message_id: messageIdHeader, in_reply_to: inReplyTo, references, gmail_thread_id: gmailThreadId },
+          email_headers: { from, subject, message_id: messageIdHeader, in_reply_to: inReplyTo, references, gmail_thread_id: gmailThreadId, transport: transportSignals },
           confidence_score: orderId ? 1.0 : null,
         })
         .select('id')
