@@ -251,6 +251,31 @@ export function useForceFetchReplies() {
   })
 }
 
+export interface DiscountTierDto {
+  threshold_qty: number | null
+  unit: string | null
+  discount_pct: number | null
+  discount_amount: number | null
+}
+
+export interface CommercialTermsDto {
+  currency: string | null
+  currency_ambiguous: boolean
+  unit_price: number | null
+  case_price: number | null
+  bottles_per_case: number | null
+  min_order_qty: number | null
+  min_order_unit: string | null
+  discount_tiers: DiscountTierDto[]
+  tax_status: 'included' | 'excluded' | 'unknown'
+  tax_rate_pct: number | null
+  price_valid_until: string | null
+  payment_terms: string | null
+  delivery_lead_time: string | null
+  stock_status: 'in_stock' | 'limited' | 'allocation' | 'out_of_stock' | null
+  stock_qty_available: number | null
+}
+
 export interface DealProposalDto {
   orderId: string
   conversationId: string
@@ -262,6 +287,7 @@ export interface DealProposalDto {
   deliveryEstimate: string
   conditions: string
   specialConditions: string[]
+  commercialTerms?: CommercialTermsDto | null
   sourceQuote: string
   conversationSummary: string
   dealKind: 'offer' | 'verification'

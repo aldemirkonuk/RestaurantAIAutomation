@@ -5,6 +5,7 @@ import {
   AlertTriangle, ChevronDown, ShieldCheck, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import type { DealProposalDto } from '../../hooks/queries/useDraftEmailQueries'
+import { CommercialTermsPanel } from './CommercialTermsPanel'
 
 interface DealApprovalModalProps {
   isOpen: boolean
@@ -75,6 +76,7 @@ export function DealApprovalModal({
               {/* Deal terms card */}
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <h3 className="text-base font-bold text-gray-900 mb-3 leading-snug">{deal.wineName}</h3>
+                {deal.commercialTerms && <CommercialTermsPanel terms={deal.commercialTerms} orderQty={qty} />}
                 <div className="space-y-2 text-sm">
                   <Row label="Provider" value={deal.providerName} />
                   <div className="flex items-center justify-between">

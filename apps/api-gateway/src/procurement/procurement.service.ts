@@ -1549,6 +1549,7 @@ export class ProcurementService {
       deliveryEstimate: proposal.deliveryEstimate,
       conditions: proposal.conditions,
       specialConditions: proposal.specialConditions || [],
+      commercialTerms: proposal.commercialTerms ?? null,
       sourceQuote: proposal.sourceQuote,
       conversationSummary: proposal.summary || (row as any).rolling_summary || '',
       dealKind: proposal.dealKind,
