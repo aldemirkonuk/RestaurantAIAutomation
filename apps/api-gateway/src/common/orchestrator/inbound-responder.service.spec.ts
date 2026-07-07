@@ -84,6 +84,40 @@ describe('InboundResponderService (deterministic core)', () => {
       expect(flags.needs_approval).toBe(false);
       expect(flags.reasons).toHaveLength(0);
     });
+
+    const cleanOffer = (reply_body: string) =>
+      baseAnalysis({
+        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: 'bottle', conditions: '', quote: '' }],
+        reply_body,
+      });
+
+    it('flags sender_unverified when transport auth fails, forcing approval', () => {
+      const flags = svc().computeGuardrails(
+        cleanOffer('Sounds good — I will confirm with my manager and follow up.'),
+        1090, 6, 0, { senderVerified: false },
+      );
+      expect(flags.sender_unverified).toBe(true);
+      expect(flags.reasons).toContain('sender_unverified');
+      expect(flags.needs_approval).toBe(true);
+    });
+
+    it('does not flag sender_unverified when transport is verified or absent', () => {
+      const verified = svc().computeGuardrails(
+        cleanOffer('Great, I will confirm with my manager.'), 1090, 6, 0, { senderVerified: true },
+      );
+      expect(verified.sender_unverified).toBe(false);
+      const absent = svc().computeGuardrails(cleanOffer('Great, I will confirm with my manager.'), 1090, 6, 0);
+      expect(absent.sender_unverified).toBe(false);
+    });
+
+    it('detects a French commitment phrase (multilingual UCC guardrail)', () => {
+      const flags = svc().computeGuardrails(
+        baseAnalysis({ reply_body: 'Merci — nous acceptons votre offre pour les six bouteilles.' }),
+        1090, 6, 1,
+      );
+      expect(flags.commitment_language).toBe(true);
+      expect(flags.reasons).toContain('commitment_language');
+    });
   });
 
   describe('parseAnalysis', () => {
@@ -102,6 +136,35 @@ describe('InboundResponderService (deterministic core)', () => {
 
     it('returns null on non-JSON', () => {
       expect(svc().parseAnalysis('I cannot help with that.')).toBeNull();
+    });
+
+    it('parses shadow classification fields when present', () => {
+      const raw = JSON.stringify(
+        baseAnalysis({
+          email_class: 'promotion',
+          is_automated: true,
+          requires_reply: false,
+          injection_suspected: true,
+        }),
+      );
+      const parsed = svc().parseAnalysis(raw);
+      expect(parsed.email_class).toBe('promotion');
+      expect(parsed.is_automated).toBe(true);
+      expect(parsed.requires_reply).toBe(false);
+      expect(parsed.injection_suspected).toBe(true);
+    });
+
+    it('defaults classification safely when the model omits it', () => {
+      const parsed = svc().parseAnalysis(JSON.stringify(baseAnalysis()));
+      expect(parsed.email_class).toBe('other'); // unknown/absent → other
+      expect(parsed.is_automated).toBe(false);
+      expect(parsed.requires_reply).toBe(true); // absent → we still consider replying
+      expect(parsed.injection_suspected).toBe(false);
+    });
+
+    it('coerces an unknown email_class to other', () => {
+      const parsed = svc().parseAnalysis(JSON.stringify(baseAnalysis({ email_class: 'bogus' })));
+      expect(parsed.email_class).toBe('other');
     });
   });
 

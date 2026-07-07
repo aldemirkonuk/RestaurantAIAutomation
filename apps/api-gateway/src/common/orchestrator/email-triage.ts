@@ -177,3 +177,26 @@ export function looksPromotional(subject: string | null | undefined, body: strin
 export function transportImpliesNoReply(signals: TransportSignals): boolean {
   return signals.bulk || signals.listMail || signals.autoSubmitted || signals.noReplyFrom;
 }
+
+/**
+ * The reply gate. Returns a human reason to SKIP drafting an outbound reply, or `null` when
+ * a reply is appropriate. Deliberately high-precision: it only suppresses cases where replying
+ * is clearly wrong (injection, bulk/automated transport, or a class that never warrants a
+ * reply). `negotiation_reply` and the ambiguous `other` still draft — so a mis-classification
+ * degrades to "manager approves an extra draft", never to "we silently drop a real reply".
+ */
+export function replySkipReason(input: {
+  emailClass: EmailClass;
+  injectionSuspected: boolean;
+  transport?: TransportSignals | null;
+}): string | null {
+  if (input.injectionSuspected) return 'possible prompt injection — quarantined for manager review';
+  if (input.transport && transportImpliesNoReply(input.transport)) {
+    return 'transport signals mark this as bulk / automated / no-reply';
+  }
+  const noReplyClasses: EmailClass[] = [
+    'order_confirmation', 'promotion', 'catalogue_offer', 'automated_transactional', 'bounce_autoreply',
+  ];
+  if (noReplyClasses.includes(input.emailClass)) return `classified as ${input.emailClass} — no reply needed`;
+  return null; // negotiation_reply or other → draft as before
+}

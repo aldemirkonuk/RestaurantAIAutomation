@@ -653,6 +653,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           inboundReferences: references || null,
           inboundSubject: subject || null,
           inboundAttachments: attachments,
+          transportSignals,
         });
       }
     } catch (err: any) {

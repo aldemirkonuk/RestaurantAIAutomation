@@ -3,6 +3,7 @@ import {
   extractEmailAddress,
   looksPromotional,
   transportImpliesNoReply,
+  replySkipReason,
 } from './email-triage';
 
 describe('email-triage', () => {
@@ -133,6 +134,40 @@ describe('email-triage', () => {
     });
     it('is false for empty input', () => {
       expect(looksPromotional('', '')).toBe(false);
+    });
+  });
+
+  describe('replySkipReason (the reply gate)', () => {
+    const cleanTransport = deriveTransportSignals({
+      from: 'jean@vin-vendor.fr',
+      'authentication-results': 'mx; dkim=pass; dmarc=pass',
+    });
+
+    it('allows a genuine negotiation reply (returns null)', () => {
+      expect(
+        replySkipReason({ emailClass: 'negotiation_reply', injectionSuspected: false, transport: cleanTransport }),
+      ).toBeNull();
+    });
+
+    it('allows the ambiguous "other" class rather than dropping it', () => {
+      expect(replySkipReason({ emailClass: 'other', injectionSuspected: false, transport: cleanTransport })).toBeNull();
+    });
+
+    it('skips promotions, catalogues, confirmations, automated and bounces', () => {
+      for (const c of ['promotion', 'catalogue_offer', 'order_confirmation', 'automated_transactional', 'bounce_autoreply'] as const) {
+        expect(replySkipReason({ emailClass: c, injectionSuspected: false, transport: cleanTransport })).toContain(c);
+      }
+    });
+
+    it('skips on suspected injection regardless of class', () => {
+      expect(
+        replySkipReason({ emailClass: 'negotiation_reply', injectionSuspected: true, transport: cleanTransport }),
+      ).toMatch(/injection/i);
+    });
+
+    it('skips when transport marks the mail bulk/automated, even if class looks like a reply', () => {
+      const bulk = deriveTransportSignals({ from: 'news@vendor.com', precedence: 'bulk', 'list-unsubscribe': '<x>' });
+      expect(replySkipReason({ emailClass: 'negotiation_reply', injectionSuspected: false, transport: bulk })).toMatch(/bulk/i);
     });
   });
 });
