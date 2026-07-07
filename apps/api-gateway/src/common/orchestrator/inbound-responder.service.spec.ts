@@ -1,4 +1,5 @@
 import { InboundResponderService } from './inbound-responder.service';
+import { parseCommercialTerms } from './commercial-terms';
 
 /**
  * Unit tests for the deterministic core of the autonomous inbound responder:
@@ -117,6 +118,29 @@ describe('InboundResponderService (deterministic core)', () => {
       );
       expect(flags.commitment_language).toBe(true);
       expect(flags.reasons).toContain('commitment_language');
+    });
+
+    it('surfaces commercial-terms guardrails (MOQ not met + tax unknown on a concrete deal)', () => {
+      const analysis = baseAnalysis({
+        deal_ready: true,
+        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: 'bottle', conditions: '', quote: '' }],
+        reply_body: 'Noted — I will check with my manager and follow up.',
+        commercial_terms: parseCommercialTerms({ unit_price: 1050, min_order_qty: 12, tax_status: 'unknown' }),
+      });
+      const flags = svc().computeGuardrails(analysis, 1090, 6, 0);
+      expect(flags.reasons).toEqual(expect.arrayContaining(['moq_not_met', 'tax_status_unknown']));
+      expect(flags.needs_approval).toBe(true);
+    });
+
+    it('does not raise tax_status_unknown when there is no concrete deal yet', () => {
+      const analysis = baseAnalysis({
+        deal_ready: false,
+        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: 'bottle', conditions: '', quote: '' }],
+        reply_body: 'Noted — I will check with my manager and follow up.',
+        commercial_terms: parseCommercialTerms({ unit_price: 1050, tax_status: 'unknown' }),
+      });
+      const flags = svc().computeGuardrails(analysis, 1090, 6, 0);
+      expect(flags.reasons).not.toContain('tax_status_unknown');
     });
   });
 

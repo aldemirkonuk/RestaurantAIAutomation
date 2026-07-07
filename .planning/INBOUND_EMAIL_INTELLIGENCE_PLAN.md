@@ -434,6 +434,13 @@ output can, by itself, cause a send, a commitment, or an order-state change.**
   manager-approved draft — never a silently-dropped reply.
 - **Verified:** `tsc --noEmit` clean; **44 orchestrator tests pass** (26 new). All changes guarded (try/catch, safe
   defaults); code-side guardrails stay authoritative over any LLM output.
-- ⏭ **Still open (each its own PR):** structured `commercial_terms` extraction (§2), promotions → `provider_promotions`
+- ✅ **§2 commercial terms** — new pure `commercial-terms.ts` (parse + normalize currency/money/tax + validate:
+  case↔unit cross-check, MOQ, tax-unknown, currency ambiguity). Responder now extracts `commercial_terms`
+  (currency, unit/case price, bottles/case, MOQ, discount tiers, tax status, valid-until, payment/delivery, stock)
+  into the analysis + `conversation_context`, includes them in the deal proposal, and adds guardrail reasons
+  `price_inconsistent` / `moq_not_met` / `currency_ambiguous` / `tax_status_unknown` (the last only on a concrete
+  deal). Verified: `tsc` clean; **55 orchestrator tests pass** (11 new). Backend only — deal-modal UI rows for the
+  terms are the follow-up.
+- ⏭ **Still open (each its own PR):** deal-modal UI rows for commercial terms, promotions → `provider_promotions`
   + Promotions UI (§5), the Inbound Triage Card + attachment viewer (§4/D2), sender-trust store + auto-suspend (D5),
   and persisting the auto-send cron's notifications (extend A8 to `procurement.service`).
