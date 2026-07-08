@@ -164,3 +164,27 @@ addressing.
 - Address = opaque token `r-xxxx@in.wineops.ai` (friendly alias optional).
 - Migration = dual-run Gmail + new domain, then cut over (not a hard switch).
 - Outbound unification in Phase 3 (Reply-To-only interim acceptable).
+
+---
+
+## 9. Build log
+
+### Phase 0 — SHIPPED & LIVE (commit `a21a6c5`, 2026-07-08)
+- Migration `20260708150000_p0_prospects_hardening.sql` applied to `exzueerziesmczwlhomd`: nullable `restaurant_id`, `capture_reason`/`attachments`/`gmail_message_id`/`gmail_thread_id`/`body_preview`, triage dedup index, gmail-id idempotency index, `UNIQUE(restaurant_id, lower(contact_email))` on providers.
+- Backend: `resolveAttribution()` (triage instead of guess), gmail-id idempotency, promote dedup, `listUnattributed`/`attachmentsFor`/`restore`; operator-only `/prospects/triage`.
+- Frontend: provenance chips, view-message + attachments (signed URLs), undo-on-dismiss, confirm-on-add, distinct error-vs-empty states, `?tab=prospects` deep link, naming cleanup.
+
+### Phases 1–3 — BUILT, CODE-COMPLETE, DORMANT pending infra (2026-07-08)
+All config-gated; no-op until `INBOUND_EMAIL_DOMAIN` + `INBOUND_WEBHOOK_SECRET` are set. Legacy Gmail path unchanged (dual-run).
+- **Phase 1**: migration `20260708160000_p1_restaurant_inbound_addresses.sql` (applied); `InboundAddressService` (`inbound-address.service.ts`) — provision/resolve opaque `r-<token>@INBOUND_EMAIL_DOMAIN`; `InboundEmailController` (`inbound-email.controller.ts`) — `POST /api/v1/webhooks/inbound-email`, secret-gated, parses Postmark + generic payloads, resolves recipient → restaurant_id, publishes `email.inbound.received`.
+- **Phase 2**: `rabbitmq-bridge.service.ts` `handleInboundEmail` consumes `restaurant_id` from the event; provider lookup scoped by tenant (kills global `limit(1)` misrouting); `prospects.captureFromColdEmail` accepts explicit `restaurantId` for deterministic attribution; unresolved recipient → triage.
+- **Phase 3**: `procurement.service.ts` `sendProviderEmail` sets `Reply-To` = restaurant's dedicated inbound address (via `InboundAddressService`) on all 4 vendor-send paths (interim; From stays shared Gmail until the sending domain is verified).
+
+### Activation checklist (your infra actions)
+1. Register inbound domain (e.g. `in.wineops.ai`); set MX at the chosen provider (Postmark recommended) + SPF/DKIM/DMARC.
+2. Point the provider's inbound webhook at `POST /api/v1/webhooks/inbound-email` with the shared secret.
+3. Set env on api-gateway: `INBOUND_EMAIL_DOMAIN`, `INBOUND_WEBHOOK_SECRET`, `INBOUND_EMAIL_PROVIDER` (optional label). Addresses auto-provision per restaurant on first outbound/lookup.
+
+### Deferred
+- **Phase 4 (full per-tenant RLS)** and **Phase 5 (multi-restaurant chip UX)** — not yet built.
+- **CI**: pre-existing ruff/black/eslint-config debt + Security-Scan `security-events` permission bug — deferred per owner.

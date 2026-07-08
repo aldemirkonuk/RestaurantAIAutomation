@@ -106,11 +106,19 @@ export class ProspectsService {
     gmailMessageId?: string | null;
     gmailThreadId?: string | null;
     bodyPreview?: string | null;
+    /**
+     * Phase 2 — deterministic attribution. When the dedicated-domain inbound webhook resolved
+     * the recipient address to a restaurant, it is passed here and used directly (no guessing).
+     * When null/absent we fall back to resolveAttribution() (DEFAULT/sole restaurant, else triage).
+     */
+    restaurantId?: string | null;
   }): Promise<CaptureResult> {
     const domain = this.domainOf(params.senderEmail);
     if (!domain) return { captured: false };
 
-    const attribution = await this.resolveAttribution();
+    const attribution: Attribution = params.restaurantId
+      ? { kind: 'attributed', id: params.restaurantId }
+      : await this.resolveAttribution();
     if (attribution.kind === 'none') {
       // No restaurant exists at all — nothing to attribute to. Loud, not silent.
       this.logger.warn(`PROSPECT_DROP_NO_RESTAURANT domain=${domain} — no restaurant exists to attribute a cold email to.`);

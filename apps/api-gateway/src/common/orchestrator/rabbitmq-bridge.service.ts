@@ -547,13 +547,23 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const senderEmail = emailMatch[1]?.toLowerCase();
     if (!senderEmail) return;
 
+    // Phase 2 — transport-derived attribution. The dedicated-domain webhook stamps the event
+    // with the restaurant it resolved from the recipient address. When present we use it as the
+    // source of truth (deterministic) and SCOPE the provider lookup to that tenant, which kills
+    // the global limit(1) cross-tenant misrouting. When absent (legacy Gmail path) we fall back
+    // to the prior behaviour: unscoped match, and triage-safe attribution for cold email.
+    const restaurantIdFromEvent: string | null = payload.restaurant_id || null;
+
     try {
-      // 1. Find provider by email
-      const { data: providers } = await this.databaseService.supabase
+      // 1. Find provider by email (scoped to the attributed restaurant when we know it).
+      let providerQuery = this.databaseService.supabase
         .from('providers')
         .select('id, restaurant_id, name')
-        .ilike('contact_email', senderEmail)
-        .limit(1);
+        .ilike('contact_email', senderEmail);
+      if (restaurantIdFromEvent) {
+        providerQuery = providerQuery.eq('restaurant_id', restaurantIdFromEvent);
+      }
+      const { data: providers } = await providerQuery.limit(1);
       const provider = providers?.[0];
       if (!provider) {
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
@@ -585,6 +595,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             gmailMessageId: gmailMessageId || null,
             gmailThreadId: gmailThreadId || null,
             bodyPreview: body,
+            // Deterministic when the dedicated-domain webhook resolved the tenant; otherwise
+            // null → captureFromColdEmail falls back to triage-safe attribution.
+            restaurantId: restaurantIdFromEvent,
           });
           // Digest/notify parity with promotions — only for a NEW, attributed prospect. Triage
           // rows belong to no tenant, so there is no one to notify (they are logged instead).

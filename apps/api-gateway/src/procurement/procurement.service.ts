@@ -5,6 +5,7 @@ import { EventsService } from '../events/events.service';
 import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
 import { OrchestratorService } from '../common/orchestrator/orchestrator.service';
 import { InboundResponderService } from '../common/orchestrator/inbound-responder.service';
+import { InboundAddressService } from '../common/orchestrator/inbound-address.service';
 import { GmailService } from '../communications/gmail.service';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import {
@@ -58,6 +59,7 @@ export class ProcurementService {
     @Optional() private readonly gmailService?: GmailService,
     @Optional() private readonly inboundResponder?: InboundResponderService,
     @Optional() private readonly websocketGateway?: WebsocketGateway,
+    @Optional() private readonly inboundAddress?: InboundAddressService,
   ) {}
 
   /**
@@ -1033,6 +1035,7 @@ export class ProcurementService {
       cc: dto.ccEmails,
       subject,
       html: emailHtml,
+      restaurantId,
       threadId: replyThreadId,
       inReplyTo: replyInReplyTo,
       references: replyReferences,
@@ -1188,8 +1191,17 @@ export class ProcurementService {
     references?: string;
     recipientFirstName?: string;
     senderName?: string;
+    restaurantId?: string;
   }): Promise<{ gmailMessageId?: string; gmailThreadId?: string; rfc822MessageId?: string }> {
     if (!this.gmailService) return {};
+    // Phase 3 — outbound unification (interim). When the restaurant has a dedicated inbound
+    // address (INBOUND_EMAIL_DOMAIN configured), set Reply-To to it so vendor replies come back
+    // to a per-restaurant address and attribute deterministically via the inbound webhook.
+    // No-op until the domain is provisioned, so the shared-Gmail path is unaffected.
+    const replyTo =
+      params.restaurantId && this.inboundAddress
+        ? (await this.inboundAddress.addressFor(params.restaurantId)) || undefined
+        : undefined;
     const result = await this.gmailService.sendEmail({
       to: [params.to],
       cc: params.cc && params.cc.length > 0 ? params.cc : undefined,
@@ -1198,6 +1210,7 @@ export class ProcurementService {
       threadId: params.threadId,
       inReplyTo: params.inReplyTo,
       references: params.references,
+      replyTo,
     });
     if (!result.success) {
       throw new BadRequestException(
@@ -1313,6 +1326,7 @@ export class ProcurementService {
           to: providerEmail,
           subject: headers.subject || `Re: Order Request: ${wineName}`,
           html: this.buildEmailHtml(row.content ?? row.message_text ?? ''),
+          restaurantId: row.restaurant_id,
           threadId: row.gmail_thread_id || undefined,
           inReplyTo: headers.in_reply_to || undefined,
           references: headers.references || undefined,
@@ -1449,6 +1463,7 @@ export class ProcurementService {
       cc: ccEmails,
       subject,
       html: this.buildEmailHtml(content),
+      restaurantId,
       threadId,
       inReplyTo,
       references,
@@ -1771,6 +1786,7 @@ export class ProcurementService {
           to: providerEmail,
           subject,
           html: this.buildEmailHtml(body),
+          restaurantId,
           threadId: (lastInbound as any)?.gmail_thread_id || undefined,
           inReplyTo: (lastInbound as any)?.message_id || inHeaders.message_id || undefined,
           references: inHeaders.references || undefined,
