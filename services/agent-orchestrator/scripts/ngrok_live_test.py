@@ -32,21 +32,23 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 # Attempt to use httpx or fall back to urllib
 try:
     import httpx
+
     HTTP_CLIENT = "httpx"
 except ImportError:
     import urllib.request
     import urllib.error
+
     HTTP_CLIENT = "urllib"
 
 
 # ---------------------------------------------------------------------------
 # Sample Toast payload for smoke-testing the pipeline
 # ---------------------------------------------------------------------------
+
 
 def make_test_payload(restaurant_guid: str, order_guid: str = None) -> dict:
     """Build a realistic Toast webhook payload for a single wine bottle sale."""
@@ -96,6 +98,7 @@ def sign_payload(payload_bytes: bytes, secret: str) -> str:
 # HTTP helpers (httpx or urllib fallback)
 # ---------------------------------------------------------------------------
 
+
 def post_json(url: str, payload: dict, headers: dict = None) -> dict:
     """POST JSON and return parsed response."""
     body = json.dumps(payload).encode()
@@ -137,6 +140,7 @@ def get_json(url: str) -> dict:
 # Test steps
 # ---------------------------------------------------------------------------
 
+
 def step_health_check(base_url: str) -> bool:
     """Verify the FastAPI app is reachable via ngrok."""
     print(f"\n[1/4] Health check: {base_url}/health")
@@ -174,10 +178,14 @@ def step_smoke_test_webhook(base_url: str, restaurant_guid: str, secret: str) ->
         print(f"      OK — webhook accepted: {result['body']}")
         return True
     elif result["status_code"] == 503:
-        print("      FAIL (503) — agents not running. Check RabbitMQ connection in app logs.")
+        print(
+            "      FAIL (503) — agents not running. Check RabbitMQ connection in app logs."
+        )
         return False
     elif result["status_code"] == 401:
-        print("      FAIL (401) — HMAC verification failed. Check TOAST_WEBHOOK_SECRET matches .env.")
+        print(
+            "      FAIL (401) — HMAC verification failed. Check TOAST_WEBHOOK_SECRET matches .env."
+        )
         return False
     else:
         print(f"      FAIL — {result['status_code']}: {result['body']}")
@@ -186,7 +194,8 @@ def step_smoke_test_webhook(base_url: str, restaurant_guid: str, secret: str) ->
 
 def step_print_toast_dashboard_instructions(ngrok_url: str):
     """Print step-by-step instructions for wiring Toast dashboard."""
-    print("""
+    print(
+        """
 [3/4] Toast Dashboard Setup (manual — ngrok URL changes each session)
       ---------------------------------------------------------------
       1. Open: https://www.toasttab.com/restaurants/admin/settings/webhooks
@@ -202,12 +211,16 @@ def step_print_toast_dashboard_instructions(ngrok_url: str):
 
       Note: ngrok free-tier URLs are ephemeral — repeat step 2 each session.
       Paid ngrok accounts can use a fixed subdomain (ngrok http --subdomain=wineops 8000).
-""".format(url=ngrok_url))
+""".format(
+            url=ngrok_url
+        )
+    )
 
 
 def step_print_historical_import_instructions(base_url: str, restaurant_guid: str):
     """Print curl commands for importing historical Toast orders."""
-    print(f"""
+    print(
+        f"""
 [4/4] Historical Order Import (optional — requires live Toast API credentials)
       -------------------------------------------------------------------------
       Set TOAST_CLIENT_ID, TOAST_CLIENT_SECRET, TOAST_RESTAURANT_GUID in .env, then:
@@ -231,12 +244,14 @@ for order in orders:
     subprocess.run(['curl', '-s', '-X', 'POST', '{base_url}/api/v1/pos/webhook/toast', '-H', 'Content-Type: application/json', '-d', json.dumps(payload)])
     print('Imported:', order.get('guid'))
 "
-""")
+"""
+    )
 
 
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -249,7 +264,9 @@ def main():
     )
     parser.add_argument(
         "--restaurant-guid",
-        default=os.getenv("TOAST_RESTAURANT_GUID", "e5d6d489-25fa-4082-9cad-3e9e74225517"),
+        default=os.getenv(
+            "TOAST_RESTAURANT_GUID", "e5d6d489-25fa-4082-9cad-3e9e74225517"
+        ),
         help="Toast restaurant GUID (defaults to TOAST_RESTAURANT_GUID env var)",
     )
     parser.add_argument(
@@ -270,7 +287,9 @@ def main():
 
     if not args.secret:
         print("\nWARNING: TOAST_WEBHOOK_SECRET is not set.")
-        print("Either set it in services/agent-orchestrator/.env or pass --secret <value>.")
+        print(
+            "Either set it in services/agent-orchestrator/.env or pass --secret <value>."
+        )
         print("The app must be running with MOCK_POS=false for HMAC to be verified.\n")
 
     ok1 = step_health_check(base_url)
@@ -285,9 +304,13 @@ def main():
     print("\n" + "=" * 60)
     if ok2:
         print("LIVE TEST READY — webhook pipeline is working end-to-end.")
-        print("Share the ngrok URL with the restaurant owner to configure Toast dashboard.")
+        print(
+            "Share the ngrok URL with the restaurant owner to configure Toast dashboard."
+        )
     else:
-        print("SMOKE TEST FAILED — check app logs and fix before sharing with restaurant.")
+        print(
+            "SMOKE TEST FAILED — check app logs and fix before sharing with restaurant."
+        )
     print("=" * 60)
     sys.exit(0 if ok2 else 1)
 

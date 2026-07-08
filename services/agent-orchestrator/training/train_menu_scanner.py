@@ -26,9 +26,13 @@ def main():
     parser.add_argument("--epochs", type=int, default=150, help="Training epochs")
     parser.add_argument("--imgsz", type=int, default=1280, help="Image size (px)")
     parser.add_argument("--batch", type=int, default=8, help="Batch size")
-    parser.add_argument("--device", type=str, default="0", help="Device: '0' for GPU, 'cpu' for CPU")
+    parser.add_argument(
+        "--device", type=str, default="0", help="Device: '0' for GPU, 'cpu' for CPU"
+    )
     parser.add_argument("--model", type=str, default="yolov8m.pt", help="Base model")
-    parser.add_argument("--patience", type=int, default=25, help="Early-stopping patience")
+    parser.add_argument(
+        "--patience", type=int, default=25, help="Early-stopping patience"
+    )
     parser.add_argument("--name", type=str, default="menu_scanner_v1", help="Run name")
     args = parser.parse_args()
 
@@ -36,7 +40,9 @@ def main():
     data_yaml = DATASET_DIR / "data.yaml"
     if not data_yaml.exists():
         print(f"ERROR: Dataset config not found at {data_yaml}")
-        print("Please annotate your menu images and export from Roboflow in YOLOv8 format.")
+        print(
+            "Please annotate your menu images and export from Roboflow in YOLOv8 format."
+        )
         sys.exit(1)
 
     train_dir = DATASET_DIR / "images" / "train"
@@ -49,7 +55,9 @@ def main():
     print(f"Dataset: {data_yaml}")
     print(f"Training images: {len(train_images)}")
     print(f"Base model: {args.model}")
-    print(f"Config: epochs={args.epochs}, imgsz={args.imgsz}, batch={args.batch}, device={args.device}")
+    print(
+        f"Config: epochs={args.epochs}, imgsz={args.imgsz}, batch={args.batch}, device={args.device}"
+    )
     print()
 
     from ultralytics import YOLO
@@ -67,14 +75,14 @@ def main():
         name=args.name,
         # ----- Augmentation (menu-optimised) -----
         augment=True,
-        mosaic=0.5,           # Lower mosaic - menus lose spatial structure at high mosaic
-        mixup=0.0,            # No mixup - destroys text readability
-        degrees=5.0,          # Slight rotation only (menus are mostly upright)
+        mosaic=0.5,  # Lower mosaic - menus lose spatial structure at high mosaic
+        mixup=0.0,  # No mixup - destroys text readability
+        degrees=5.0,  # Slight rotation only (menus are mostly upright)
         translate=0.1,
         scale=0.3,
-        perspective=0.0005,   # Slight perspective for phone camera angles
-        flipud=0.0,           # NEVER flip menus vertically
-        fliplr=0.0,           # NEVER flip menus horizontally
+        perspective=0.0005,  # Slight perspective for phone camera angles
+        flipud=0.0,  # NEVER flip menus vertically
+        fliplr=0.0,  # NEVER flip menus horizontally
         hsv_h=0.015,
         hsv_s=0.2,
         hsv_v=0.3,
@@ -90,7 +98,9 @@ def main():
     print(f"mAP50-95: {map50_95:.4f}  (target >= 0.75)")
 
     if map50 < 0.90:
-        print(f"WARNING: mAP50 {map50:.4f} below 90% target. Consider more data or longer training.")
+        print(
+            f"WARNING: mAP50 {map50:.4f} below 90% target. Consider more data or longer training."
+        )
     else:
         print("PASS: mAP50 meets target.")
 
@@ -105,9 +115,14 @@ def main():
     print(f"TorchScript exported to: {torchscript_path}")
 
     # Copy best.pt to models/ directory
-    best_pt = Path(results.save_dir) / "weights" / "best.pt" if hasattr(results, 'save_dir') else None
+    best_pt = (
+        Path(results.save_dir) / "weights" / "best.pt"
+        if hasattr(results, "save_dir")
+        else None
+    )
     if best_pt and best_pt.exists():
         import shutil
+
         dest = OUTPUT_DIR / f"{args.name}.pt"
         shutil.copy2(best_pt, dest)
         print(f"Best weights copied to: {dest}")

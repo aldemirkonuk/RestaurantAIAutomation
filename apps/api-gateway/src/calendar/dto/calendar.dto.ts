@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString,
   IsOptional,
@@ -12,58 +12,58 @@ import {
   Max,
   ValidateNested,
   IsObject,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+} from "class-validator";
+import { Type } from "class-transformer";
 
 // ============================================================================
 // ENUMS
 // ============================================================================
 
 export enum RecurrenceFrequency {
-  DAILY = 'daily',
-  WEEKLY = 'weekly',
-  MONTHLY = 'monthly',
-  YEARLY = 'yearly',
-  CUSTOM = 'custom',
+  DAILY = "daily",
+  WEEKLY = "weekly",
+  MONTHLY = "monthly",
+  YEARLY = "yearly",
+  CUSTOM = "custom",
 }
 
 export enum RecurrenceEndType {
-  NEVER = 'never',
-  AFTER_COUNT = 'after_count',
-  ON_DATE = 'on_date',
+  NEVER = "never",
+  AFTER_COUNT = "after_count",
+  ON_DATE = "on_date",
 }
 
 export enum CalendarEventStatus {
-  PENDING = 'pending',
-  APPROVED = 'approved',
-  DISMISSED = 'dismissed',
-  COMPLETED = 'completed',
-  CANCELLED = 'cancelled',
+  PENDING = "pending",
+  APPROVED = "approved",
+  DISMISSED = "dismissed",
+  COMPLETED = "completed",
+  CANCELLED = "cancelled",
 }
 
 export enum CalendarEventType {
-  DELIVERY = 'delivery',
-  ORDER = 'order',
-  MEETING = 'meeting',
-  INVENTORY = 'inventory',
-  TASTING = 'tasting',
-  REMINDER = 'reminder',
-  RECURRING = 'recurring',
-  CUSTOM = 'custom',
-  PROVIDER_BIRTHDAY = 'provider_birthday',
-  HOLIDAY = 'holiday',
-  DELIVERY_ETA = 'delivery_eta',
-  PROVIDER_UNAVAILABLE = 'provider_unavailable',
-  INVENTORY_COUNT = 'inventory_count',
-  HIGH_VOLUME_EXPECTED = 'high_volume_expected',
+  DELIVERY = "delivery",
+  ORDER = "order",
+  MEETING = "meeting",
+  INVENTORY = "inventory",
+  TASTING = "tasting",
+  REMINDER = "reminder",
+  RECURRING = "recurring",
+  CUSTOM = "custom",
+  PROVIDER_BIRTHDAY = "provider_birthday",
+  HOLIDAY = "holiday",
+  DELIVERY_ETA = "delivery_eta",
+  PROVIDER_UNAVAILABLE = "provider_unavailable",
+  INVENTORY_COUNT = "inventory_count",
+  HIGH_VOLUME_EXPECTED = "high_volume_expected",
 }
 
 export enum CalendarEventSource {
-  MANUAL = 'manual',
-  AI_DETECTED = 'ai_detected',
-  SYSTEM_GENERATED = 'system_generated',
-  ORDER = 'order',
-  COMMUNICATIONS = 'communications',
+  MANUAL = "manual",
+  AI_DETECTED = "ai_detected",
+  SYSTEM_GENERATED = "system_generated",
+  ORDER = "order",
+  COMMUNICATIONS = "communications",
 }
 
 // ============================================================================
@@ -82,27 +82,30 @@ export class RecurrenceRuleDto {
   @IsOptional()
   interval?: number;
 
-  @ApiPropertyOptional({ description: 'Days of week (0=Sunday, 6=Saturday)', type: [Number] })
+  @ApiPropertyOptional({
+    description: "Days of week (0=Sunday, 6=Saturday)",
+    type: [Number],
+  })
   @IsArray()
   @IsInt({ each: true })
   @IsOptional()
   daysOfWeek?: number[];
 
-  @ApiPropertyOptional({ description: 'Day of month (1-31)' })
+  @ApiPropertyOptional({ description: "Day of month (1-31)" })
   @IsInt()
   @Min(1)
   @Max(31)
   @IsOptional()
   dayOfMonth?: number;
 
-  @ApiPropertyOptional({ description: 'Week of month (1-5)' })
+  @ApiPropertyOptional({ description: "Week of month (1-5)" })
   @IsInt()
   @Min(1)
   @Max(5)
   @IsOptional()
   weekOfMonth?: number;
 
-  @ApiPropertyOptional({ description: 'Month of year (1-12)' })
+  @ApiPropertyOptional({ description: "Month of year (1-12)" })
   @IsInt()
   @Min(1)
   @Max(12)
@@ -113,13 +116,15 @@ export class RecurrenceRuleDto {
   @IsEnum(RecurrenceEndType)
   endType: RecurrenceEndType;
 
-  @ApiPropertyOptional({ description: 'Number of occurrences (if endType is after_count)' })
+  @ApiPropertyOptional({
+    description: "Number of occurrences (if endType is after_count)",
+  })
   @IsInt()
   @Min(1)
   @IsOptional()
   endAfterCount?: number;
 
-  @ApiPropertyOptional({ description: 'End date (if endType is on_date)' })
+  @ApiPropertyOptional({ description: "End date (if endType is on_date)" })
   @IsDateString()
   @IsOptional()
   endOnDate?: string;
@@ -143,11 +148,11 @@ export class CreateCalendarEventDto {
   @IsEnum(CalendarEventType)
   eventType: CalendarEventType;
 
-  @ApiProperty({ description: 'Event date (YYYY-MM-DD)' })
+  @ApiProperty({ description: "Event date (YYYY-MM-DD)" })
   @IsDateString()
   eventDate: string;
 
-  @ApiPropertyOptional({ description: 'End date for multi-day events' })
+  @ApiPropertyOptional({ description: "End date for multi-day events" })
   @IsDateString()
   @IsOptional()
   eventDateEnd?: string;
@@ -157,12 +162,12 @@ export class CreateCalendarEventDto {
   @IsOptional()
   allDay?: boolean;
 
-  @ApiPropertyOptional({ description: 'Event time (HH:MM)' })
+  @ApiPropertyOptional({ description: "Event time (HH:MM)" })
   @IsString()
   @IsOptional()
   eventTime?: string;
 
-  @ApiPropertyOptional({ description: 'Event end time (HH:MM)' })
+  @ApiPropertyOptional({ description: "Event end time (HH:MM)" })
   @IsString()
   @IsOptional()
   eventTimeEnd?: string;
@@ -177,12 +182,18 @@ export class CreateCalendarEventDto {
   @IsOptional()
   orderId?: string;
 
-  @ApiPropertyOptional({ enum: CalendarEventSource, default: CalendarEventSource.MANUAL })
+  @ApiPropertyOptional({
+    enum: CalendarEventSource,
+    default: CalendarEventSource.MANUAL,
+  })
   @IsEnum(CalendarEventSource)
   @IsOptional()
   source?: CalendarEventSource;
 
-  @ApiPropertyOptional({ enum: CalendarEventStatus, default: CalendarEventStatus.PENDING })
+  @ApiPropertyOptional({
+    enum: CalendarEventStatus,
+    default: CalendarEventStatus.PENDING,
+  })
   @IsEnum(CalendarEventStatus)
   @IsOptional()
   status?: CalendarEventStatus;
@@ -204,7 +215,7 @@ export class CreateCalendarEventDto {
   @IsOptional()
   color?: string;
 
-  @ApiPropertyOptional({ description: 'Recurrence rule for recurring events' })
+  @ApiPropertyOptional({ description: "Recurrence rule for recurring events" })
   @ValidateNested()
   @Type(() => RecurrenceRuleDto)
   @IsOptional()
@@ -251,7 +262,7 @@ export class UpdateCalendarEventDto {
   @IsOptional()
   eventTime?: string;
 
-  @ApiPropertyOptional({ description: 'Event end time (HH:MM)' })
+  @ApiPropertyOptional({ description: "Event end time (HH:MM)" })
   @IsString()
   @IsOptional()
   eventTimeEnd?: string;
@@ -278,10 +289,10 @@ export class UpdateCalendarEventDto {
   @IsOptional()
   color?: string;
 
-  @ApiPropertyOptional({ description: 'For recurring events: update scope' })
-  @IsEnum(['this', 'this_and_future', 'all'])
+  @ApiPropertyOptional({ description: "For recurring events: update scope" })
+  @IsEnum(["this", "this_and_future", "all"])
   @IsOptional()
-  updateScope?: 'this' | 'this_and_future' | 'all';
+  updateScope?: "this" | "this_and_future" | "all";
 }
 
 // ============================================================================
@@ -289,12 +300,12 @@ export class UpdateCalendarEventDto {
 // ============================================================================
 
 export class GetCalendarEventsQueryDto {
-  @ApiPropertyOptional({ description: 'Start date (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: "Start date (YYYY-MM-DD)" })
   @IsDateString()
   @IsOptional()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'End date (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: "End date (YYYY-MM-DD)" })
   @IsDateString()
   @IsOptional()
   endDate?: string;
@@ -403,7 +414,7 @@ export class CalendarEventResponseDto {
   @ApiPropertyOptional()
   eventTime?: string;
 
-  @ApiPropertyOptional({ description: 'Event end time (HH:MM)' })
+  @ApiPropertyOptional({ description: "Event end time (HH:MM)" })
   eventTimeEnd?: string;
 
   @ApiPropertyOptional()
@@ -540,9 +551,12 @@ export class UpdateEventStatusDto {
 // ============================================================================
 
 export class ICalTokenResponseDto {
-  @ApiProperty({ description: '64-char hex token', example: 'abc123...' })
+  @ApiProperty({ description: "64-char hex token", example: "abc123..." })
   token: string;
 
-  @ApiProperty({ description: 'Full subscription URL', example: '/api/v1/calendar/feed/abc123.ics' })
+  @ApiProperty({
+    description: "Full subscription URL",
+    example: "/api/v1/calendar/feed/abc123.ics",
+  })
   feedUrl: string;
 }

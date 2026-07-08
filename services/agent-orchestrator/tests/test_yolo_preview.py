@@ -3,7 +3,7 @@ Phase 3: YOLO 2-class Preview — Test Suite
 Covers YOLO-01 through YOLO-05.
 Run: cd services/agent-orchestrator && python -m pytest tests/test_yolo_preview.py -v --tb=short
 """
-import asyncio
+
 import base64
 import io
 import time
@@ -15,12 +15,12 @@ from PIL import Image
 
 # Real best.pt path for tests that need actual model inference
 BEST_PT_PATH = str(
-    Path(__file__).parents[3]
-    / "datasets/wine_menus_2class/runs/train2/weights/best.pt"
+    Path(__file__).parents[3] / "datasets/wine_menus_2class/runs/train2/weights/best.pt"
 )
 
 try:
     import ultralytics  # noqa: F401
+
     _ultralytics_available = True
 except ImportError:
     _ultralytics_available = False
@@ -43,6 +43,7 @@ def _make_synthetic_frame(width: int = 1280, height: int = 720) -> str:
 def _make_agent(model_path: str):
     """Construct a bare MenuAnalyzerAgent for testing (no message_bus, no database)."""
     from agents.menu_analyzer_agent import MenuAnalyzerAgent
+
     return MenuAnalyzerAgent(
         agent_name="test_agent",
         message_bus=None,
@@ -56,17 +57,19 @@ def _make_agent(model_path: str):
 
 # --- YOLO-01 -------------------------------------------------------------------
 
+
 @_skip_model
 async def test_yolo_model_loads():
     """YOLO-01: 2-class best.pt loads in MenuAnalyzerAgent.initialize()."""
     agent = _make_agent(BEST_PT_PATH)
     await agent.initialize()
-    assert agent.yolo_model is not None, (
-        "yolo_model should be loaded when best.pt exists"
-    )
+    assert (
+        agent.yolo_model is not None
+    ), "yolo_model should be loaded when best.pt exists"
 
 
 # --- YOLO-02 -------------------------------------------------------------------
+
 
 @_skip_model
 async def test_inference_latency():
@@ -81,12 +84,13 @@ async def test_inference_latency():
     await agent.detect_boxes(frame_b64, confidence=0.3)
     elapsed = time.perf_counter() - start
 
-    assert elapsed < 0.200, (
-        f"Inference took {elapsed:.3f}s — must be under 0.200s on CPU"
-    )
+    assert (
+        elapsed < 0.200
+    ), f"Inference took {elapsed:.3f}s — must be under 0.200s on CPU"
 
 
 # --- YOLO-03 -------------------------------------------------------------------
+
 
 @_skip_model
 async def test_box_labels():
@@ -99,17 +103,19 @@ async def test_box_labels():
 
     # Whether boxes are empty or not, validate schema of any returned box
     for box in boxes:
-        assert box["label"] in ("wine_entry", "section_header"), (
-            f"Unexpected label: {box['label']}"
-        )
-        assert 0.0 <= box["confidence"] <= 1.0, (
-            f"Confidence out of range: {box['confidence']}"
-        )
+        assert box["label"] in (
+            "wine_entry",
+            "section_header",
+        ), f"Unexpected label: {box['label']}"
+        assert (
+            0.0 <= box["confidence"] <= 1.0
+        ), f"Confidence out of range: {box['confidence']}"
         for key in ("x1", "y1", "x2", "y2"):
             assert 0.0 <= box[key] <= 1.0, f"{key} not normalized: {box[key]}"
 
 
 # --- YOLO-04 -------------------------------------------------------------------
+
 
 async def test_no_extraction_triggered():
     """YOLO-04: detect_boxes() never calls field parser or wine matcher."""
@@ -121,8 +127,9 @@ async def test_no_extraction_triggered():
     mock_field_parser = MagicMock()
     mock_wine_matcher = MagicMock()
 
-    with patch.object(agent, "_get_field_parser", mock_field_parser), \
-         patch.object(agent, "_get_wine_matcher", mock_wine_matcher):
+    with patch.object(agent, "_get_field_parser", mock_field_parser), patch.object(
+        agent, "_get_wine_matcher", mock_wine_matcher
+    ):
         result = await agent.detect_boxes(_make_synthetic_frame(), confidence=0.3)
 
     assert result == [], "Expected empty list when model is None"
@@ -132,17 +139,16 @@ async def test_no_extraction_triggered():
 
 # --- YOLO-05 -------------------------------------------------------------------
 
+
 async def test_model_missing_graceful():
     """YOLO-05: Missing model file — agent starts, logs warning, returns []."""
     agent = _make_agent("nonexistent/path/to/best.pt")
     await agent.initialize()
 
-    assert agent.yolo_model is None, (
-        "yolo_model must be None when model file does not exist"
-    )
+    assert (
+        agent.yolo_model is None
+    ), "yolo_model must be None when model file does not exist"
 
     frame_b64 = _make_synthetic_frame()
     boxes = await agent.detect_boxes(frame_b64)
-    assert boxes == [], (
-        "detect_boxes() must return [] when yolo_model is None"
-    )
+    assert boxes == [], "detect_boxes() must return [] when yolo_model is None"

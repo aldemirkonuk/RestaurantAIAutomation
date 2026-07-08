@@ -1,111 +1,119 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class InventorySummaryDto {
-  @ApiProperty({ description: 'Total number of inventory items' })
+  @ApiProperty({ description: "Total number of inventory items" })
   totalItems: number;
 
-  @ApiProperty({ description: 'Total number of bottles in stock' })
+  @ApiProperty({ description: "Total number of bottles in stock" })
   totalBottles: number;
 
-  @ApiProperty({ description: 'Number of low stock items' })
+  @ApiProperty({ description: "Number of low stock items" })
   lowStockCount: number;
 
-  @ApiProperty({ description: 'Number of critical (zero stock) items' })
+  @ApiProperty({ description: "Number of critical (zero stock) items" })
   criticalCount: number;
 
-  @ApiProperty({ description: 'Number of healthy stock items' })
+  @ApiProperty({ description: "Number of healthy stock items" })
   healthyCount: number;
 }
 
 export class OrderSummaryDto {
-  @ApiProperty({ description: 'Orders awaiting approval' })
+  @ApiProperty({ description: "Orders awaiting approval" })
   pending: any[];
 
-  @ApiProperty({ description: 'Orders in transit' })
+  @ApiProperty({ description: "Orders in transit" })
   inTransit: any[];
 
-  @ApiProperty({ description: 'Total pending orders count' })
+  @ApiProperty({ description: "Total pending orders count" })
   pendingCount: number;
 
-  @ApiProperty({ description: 'Total in transit count' })
+  @ApiProperty({ description: "Total in transit count" })
   inTransitCount: number;
 }
 
 export class NotificationSummaryDto {
-  @ApiProperty({ description: 'Recent notifications' })
+  @ApiProperty({ description: "Recent notifications" })
   recent: any[];
 
-  @ApiProperty({ description: 'Unread count' })
+  @ApiProperty({ description: "Unread count" })
   unreadCount: number;
 }
 
 export class ReportSummaryDto {
-  @ApiPropertyOptional({ description: 'Latest report' })
+  @ApiPropertyOptional({ description: "Latest report" })
   latest: any | null;
 
-  @ApiPropertyOptional({ description: 'Last generated date' })
+  @ApiPropertyOptional({ description: "Last generated date" })
   lastGeneratedAt: string | null;
 }
 
 export class CalendarSummaryDto {
-  @ApiProperty({ description: 'Upcoming events in the next 7 days' })
+  @ApiProperty({ description: "Upcoming events in the next 7 days" })
   upcoming: any[];
 
-  @ApiProperty({ description: 'Number of events today' })
+  @ApiProperty({ description: "Number of events today" })
   todayCount: number;
 
-  @ApiProperty({ description: 'Number of delivery events this week' })
+  @ApiProperty({ description: "Number of delivery events this week" })
   deliveriesThisWeek: number;
 }
 
 export class RevenueSummaryDto {
-  @ApiProperty({ description: 'Total revenue from delivered orders (all time)' })
+  @ApiProperty({
+    description: "Total revenue from delivered orders (all time)",
+  })
   totalRevenue: number;
 
-  @ApiProperty({ description: 'Revenue this month' })
+  @ApiProperty({ description: "Revenue this month" })
   monthlyRevenue: number;
 
-  @ApiProperty({ description: 'Total bottles delivered' })
+  @ApiProperty({ description: "Total bottles delivered" })
   totalBottlesDelivered: number;
 
-  @ApiProperty({ description: 'Revenue by month [{month, revenue, bottles}]' })
+  @ApiProperty({ description: "Revenue by month [{month, revenue, bottles}]" })
   revenueByMonth: any[];
 }
 
 export class ServiceErrorDto {
-  @ApiProperty({ description: 'Service name that failed' })
+  @ApiProperty({ description: "Service name that failed" })
   service: string;
 
-  @ApiProperty({ description: 'Error message' })
+  @ApiProperty({ description: "Error message" })
   message: string;
 }
 
 export class DashboardSummaryDto {
-  @ApiProperty({ description: 'Inventory summary', type: InventorySummaryDto })
+  @ApiProperty({ description: "Inventory summary", type: InventorySummaryDto })
   inventory: InventorySummaryDto | null;
 
-  @ApiProperty({ description: 'Orders summary', type: OrderSummaryDto })
+  @ApiProperty({ description: "Orders summary", type: OrderSummaryDto })
   orders: OrderSummaryDto | null;
 
-  @ApiProperty({ description: 'Notifications summary', type: NotificationSummaryDto })
+  @ApiProperty({
+    description: "Notifications summary",
+    type: NotificationSummaryDto,
+  })
   notifications: NotificationSummaryDto | null;
 
-  @ApiProperty({ description: 'Reports summary', type: ReportSummaryDto })
+  @ApiProperty({ description: "Reports summary", type: ReportSummaryDto })
   reports: ReportSummaryDto | null;
 
-  @ApiProperty({ description: 'Calendar summary', type: CalendarSummaryDto })
+  @ApiProperty({ description: "Calendar summary", type: CalendarSummaryDto })
   calendar: CalendarSummaryDto | null;
 
-  @ApiProperty({ description: 'Revenue summary', type: RevenueSummaryDto })
+  @ApiProperty({ description: "Revenue summary", type: RevenueSummaryDto })
   revenue: RevenueSummaryDto | null;
 
-  @ApiProperty({ description: 'List of service errors', type: [ServiceErrorDto] })
+  @ApiProperty({
+    description: "List of service errors",
+    type: [ServiceErrorDto],
+  })
   errors: ServiceErrorDto[];
 
-  @ApiProperty({ description: 'Timestamp of the response' })
+  @ApiProperty({ description: "Timestamp of the response" })
   timestamp: string;
 
-  @ApiProperty({ description: 'Whether all services responded successfully' })
+  @ApiProperty({ description: "Whether all services responded successfully" })
   allServicesHealthy: boolean;
 }
 

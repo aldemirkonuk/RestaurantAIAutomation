@@ -1,8 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { google, gmail_v1 } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
-import * as nodemailer from 'nodemailer';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { google, gmail_v1 } from "googleapis";
+import { OAuth2Client } from "google-auth-library";
+import * as nodemailer from "nodemailer";
 import {
   lowStockAlertTemplate,
   weeklyReportTemplate,
@@ -28,7 +28,7 @@ import {
   type EventPrepData,
   type CustomReminderData,
   getSeverityLabel,
-} from './email-templates';
+} from "./email-templates";
 
 export interface EmailOptions {
   to: string[];
@@ -59,24 +59,34 @@ export class GmailService implements OnModuleInit {
   private gmail: gmail_v1.Gmail;
   private senderEmail: string;
   private isConfigured = false;
-  private gmailCredentials: { clientId: string; clientSecret: string; refreshToken: string } | null = null;
+  private gmailCredentials: {
+    clientId: string;
+    clientSecret: string;
+    refreshToken: string;
+  } | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
-    const clientId = this.configService.get<string>('GMAIL_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('GMAIL_CLIENT_SECRET');
-    const refreshToken = this.configService.get<string>('GMAIL_REFRESH_TOKEN');
-    this.senderEmail = this.configService.get<string>('GMAIL_SENDER_EMAIL') || 'notifications@wineops.ai';
+    const clientId = this.configService.get<string>("GMAIL_CLIENT_ID");
+    const clientSecret = this.configService.get<string>("GMAIL_CLIENT_SECRET");
+    const refreshToken = this.configService.get<string>("GMAIL_REFRESH_TOKEN");
+    this.senderEmail =
+      this.configService.get<string>("GMAIL_SENDER_EMAIL") ||
+      "notifications@wineops.ai";
 
     if (!clientId || !clientSecret || !refreshToken) {
-      this.logger.warn('Gmail credentials not configured. Email sending will be mocked.');
+      this.logger.warn(
+        "Gmail credentials not configured. Email sending will be mocked.",
+      );
       return;
     }
 
     // Defer googleapis loading to first sendEmail() — the 187MB package blocks the event loop for 60-90s
     this.gmailCredentials = { clientId, clientSecret, refreshToken };
-    this.logger.log('Gmail API deferred — will initialize on first send (fast startup).');
+    this.logger.log(
+      "Gmail API deferred — will initialize on first send (fast startup).",
+    );
   }
 
   private async ensureGmailReady(): Promise<boolean> {
@@ -91,39 +101,44 @@ export class GmailService implements OnModuleInit {
       this.oauth2Client.setCredentials({ refresh_token: refreshToken });
 
       const tokenTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('getAccessToken timed out after 10s')), 10000),
+        setTimeout(
+          () => reject(new Error("getAccessToken timed out after 10s")),
+          10000,
+        ),
       );
       const { token } = await Promise.race([
         this.oauth2Client.getAccessToken(),
         tokenTimeout,
       ]);
-      if (!token) throw new Error('No access token returned from Google');
+      if (!token) throw new Error("No access token returned from Google");
 
-      this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+      this.gmail = google.gmail({ version: "v1", auth: this.oauth2Client });
 
       // Resolve the actual sender address from the Gmail profile so the From
       // header matches the OAuth2-authorized account. Using a mismatched From
       // (e.g. notifications@wineops.ai when the account is a @gmail.com address)
       // fails SPF/DKIM alignment and lands in spam.
       try {
-        const profile = await this.gmail.users.getProfile({ userId: 'me' });
+        const profile = await this.gmail.users.getProfile({ userId: "me" });
         if (profile.data.emailAddress) {
           this.senderEmail = profile.data.emailAddress;
           this.logger.log(`Gmail sender resolved to: ${this.senderEmail}`);
         }
       } catch {
-        this.logger.warn(`Could not resolve Gmail sender email — using configured value: ${this.senderEmail}`);
+        this.logger.warn(
+          `Could not resolve Gmail sender email — using configured value: ${this.senderEmail}`,
+        );
       }
 
       this.isConfigured = true;
-      this.logger.log('Gmail API initialized via OAuth2');
+      this.logger.log("Gmail API initialized via OAuth2");
       return true;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       const responseData = (error as any)?.response?.data;
       this.logger.error(
         `Gmail OAuth2 failed: ${msg}` +
-        (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ''),
+          (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ""),
       );
       this.gmailCredentials = null;
       return false;
@@ -134,18 +149,19 @@ export class GmailService implements OnModuleInit {
    * Send an email via Gmail API
    */
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
-    this.logger.log(`Sending email to: ${options.to.join(', ')}`);
+    this.logger.log(`Sending email to: ${options.to.join(", ")}`);
     this.logger.log(`Subject: ${options.subject}`);
 
-    if (!await this.ensureGmailReady()) {
+    if (!(await this.ensureGmailReady())) {
       try {
         return await this.smtpSendEmail(options);
       } catch (smtpError) {
-        const smtpMsg = smtpError instanceof Error ? smtpError.message : String(smtpError);
+        const smtpMsg =
+          smtpError instanceof Error ? smtpError.message : String(smtpError);
         this.logger.error(
           `SMTP fallback also failed: ${smtpMsg}. ` +
-          'Fix GMAIL_REFRESH_TOKEN (run scripts/gmail-reauth.js) ' +
-          'or set a valid GMAIL_APP_PASSWORD (Google App Password).',
+            "Fix GMAIL_REFRESH_TOKEN (run scripts/gmail-reauth.js) " +
+            "or set a valid GMAIL_APP_PASSWORD (Google App Password).",
         );
         return { success: false, error: `Email delivery failed: ${smtpMsg}` };
       }
@@ -154,10 +170,10 @@ export class GmailService implements OnModuleInit {
     try {
       const message = this.createMimeMessage(options);
       const encodedMessage = Buffer.from(message)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
 
       const requestBody: any = { raw: encodedMessage };
       if (options.threadId) {
@@ -165,11 +181,13 @@ export class GmailService implements OnModuleInit {
       }
 
       const result = await this.gmail.users.messages.send({
-        userId: 'me',
+        userId: "me",
         requestBody,
       });
 
-      this.logger.log(`Email sent successfully. Message ID: ${result.data.id}, Thread ID: ${result.data.threadId}`);
+      this.logger.log(
+        `Email sent successfully. Message ID: ${result.data.id}, Thread ID: ${result.data.threadId}`,
+      );
 
       return {
         success: true,
@@ -178,13 +196,14 @@ export class GmailService implements OnModuleInit {
         rfc822MessageId: options.messageIdHeader || undefined,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       const httpStatus = (error as any)?.status ?? (error as any)?.code;
       const responseData = (error as any)?.response?.data;
       this.logger.error(
         `Failed to send email via Gmail API: ${errorMessage}` +
-        (httpStatus ? ` [HTTP ${httpStatus}]` : '') +
-        (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ''),
+          (httpStatus ? ` [HTTP ${httpStatus}]` : "") +
+          (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ""),
       );
 
       return {
@@ -208,11 +227,11 @@ export class GmailService implements OnModuleInit {
     estimatedDelivery?: string;
   }): Promise<EmailResult> {
     const severity = getSeverityLabel(data.currentStock, data.threshold);
-    
+
     // Use the new template system
     const html = lowStockAlertTemplate(data);
 
-    const daysUntilStockout = data.avgDailySales 
+    const daysUntilStockout = data.avgDailySales
       ? Math.ceil(data.currentStock / data.avgDailySales)
       : null;
 
@@ -221,10 +240,10 @@ ${severity} ALERT: ${data.wineName}
 
 Current Stock: ${data.currentStock} bottles
 Threshold: ${data.threshold} bottles
-${daysUntilStockout ? `Days Until Stockout: ~${daysUntilStockout} days` : ''}
+${daysUntilStockout ? `Days Until Stockout: ~${daysUntilStockout} days` : ""}
 
-${data.recommendedQty ? `Recommended Action: Order ${data.recommendedQty} bottles from ${data.preferredSupplier || 'preferred supplier'}` : ''}
-${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ''}
+${data.recommendedQty ? `Recommended Action: Order ${data.recommendedQty} bottles from ${data.preferredSupplier || "preferred supplier"}` : ""}
+${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ""}
 
 This is an automated alert from WineOps AI.
     `.trim();
@@ -277,12 +296,12 @@ This is an automated alert from WineOps AI.
       totalInventoryValue?: number;
     };
     alerts: Array<{
-      type: 'low_stock' | 'delivery' | 'order' | 'expiring';
+      type: "low_stock" | "delivery" | "order" | "expiring";
       title: string;
       message: string;
     }>;
     actionItems?: Array<{
-      priority: 'high' | 'medium' | 'low';
+      priority: "high" | "medium" | "low";
       description: string;
     }>;
   }): Promise<EmailResult> {
@@ -306,12 +325,17 @@ This is an automated alert from WineOps AI.
     totalAmount: number;
     requestedBy: string;
     requestedAt: Date | string;
-    urgency?: 'normal' | 'high' | 'critical';
+    urgency?: "normal" | "high" | "critical";
     notes?: string;
   }): Promise<EmailResult> {
     const html = orderApprovalTemplate(data);
 
-    const urgencyPrefix = data.urgency === 'critical' ? 'URGENT: ' : data.urgency === 'high' ? 'Action Required: ' : '';
+    const urgencyPrefix =
+      data.urgency === "critical"
+        ? "URGENT: "
+        : data.urgency === "high"
+          ? "Action Required: "
+          : "";
 
     return this.sendEmail({
       to: data.to,
@@ -329,17 +353,17 @@ This is an automated alert from WineOps AI.
     providerName: string;
     deliveryDate: Date | string;
     items: Array<{ name: string; quantity: number; received?: number }>;
-    status: 'scheduled' | 'in_transit' | 'delivered' | 'partial';
+    status: "scheduled" | "in_transit" | "delivered" | "partial";
     trackingNumber?: string;
     notes?: string;
   }): Promise<EmailResult> {
     const html = deliveryNotificationTemplate(data);
 
     const statusLabels = {
-      scheduled: 'Delivery Scheduled',
-      in_transit: 'Delivery In Transit',
-      delivered: 'Delivery Complete',
-      partial: 'Partial Delivery',
+      scheduled: "Delivery Scheduled",
+      in_transit: "Delivery In Transit",
+      delivered: "Delivery Complete",
+      partial: "Partial Delivery",
     };
 
     return this.sendEmail({
@@ -416,7 +440,12 @@ This is an automated alert from WineOps AI.
     notes?: string;
   }): Promise<EmailResult> {
     const html = paymentDueTemplate(data);
-    const urgencyPrefix = data.daysUntilDue <= 1 ? 'URGENT: ' : data.daysUntilDue <= 3 ? 'Reminder: ' : '';
+    const urgencyPrefix =
+      data.daysUntilDue <= 1
+        ? "URGENT: "
+        : data.daysUntilDue <= 3
+          ? "Reminder: "
+          : "";
 
     return this.sendEmail({
       to: data.to,
@@ -462,7 +491,12 @@ This is an automated alert from WineOps AI.
     eventTime?: string;
     guestCount?: number;
     eventType?: string;
-    wineRequirements?: Array<{ name: string; quantityNeeded: number; currentStock: number; shortfall: number }>;
+    wineRequirements?: Array<{
+      name: string;
+      quantityNeeded: number;
+      currentStock: number;
+      shortfall: number;
+    }>;
     totalBottlesNeeded?: number;
     estimatedCost?: number;
     organizer?: string;
@@ -470,11 +504,12 @@ This is an automated alert from WineOps AI.
     notes?: string;
   }): Promise<EmailResult> {
     const html = eventPrepTemplate(data);
-    const hasShortfalls = data.wineRequirements?.some(w => w.shortfall > 0) ?? false;
+    const hasShortfalls =
+      data.wineRequirements?.some((w) => w.shortfall > 0) ?? false;
 
     return this.sendEmail({
       to: data.to,
-      subject: `${hasShortfalls ? 'ACTION NEEDED: ' : ''}Event Prep - ${data.eventName}`,
+      subject: `${hasShortfalls ? "ACTION NEEDED: " : ""}Event Prep - ${data.eventName}`,
       html,
     });
   }
@@ -491,7 +526,7 @@ This is an automated alert from WineOps AI.
     scheduledDate?: Date | string;
     scheduledTime?: string;
     createdBy?: string;
-    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    priority?: "low" | "medium" | "high" | "urgent";
     actionItems?: string[];
     relatedLinks?: Array<{ label: string; url: string }>;
     isRecurring?: boolean;
@@ -499,7 +534,12 @@ This is an automated alert from WineOps AI.
     notes?: string;
   }): Promise<EmailResult> {
     const html = customReminderTemplate(data);
-    const priorityPrefix = data.priority === 'urgent' ? 'URGENT: ' : data.priority === 'high' ? 'Important: ' : '';
+    const priorityPrefix =
+      data.priority === "urgent"
+        ? "URGENT: "
+        : data.priority === "high"
+          ? "Important: "
+          : "";
 
     return this.sendEmail({
       to: data.to,
@@ -513,35 +553,39 @@ This is an automated alert from WineOps AI.
    */
   private createMimeMessage(options: EmailOptions): string {
     const boundary = `boundary_${Date.now()}`;
-    const generatedMessageId = options.messageIdHeader || `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
-    
+    const generatedMessageId =
+      options.messageIdHeader ||
+      `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
+
     const headers = [
       `From: WineOps AI <${this.senderEmail}>`,
-      `To: ${options.to.join(', ')}`,
-      options.cc?.length ? `Cc: ${options.cc.join(', ')}` : '',
-      options.bcc?.length ? `Bcc: ${options.bcc.join(', ')}` : '',
-      options.replyTo ? `Reply-To: ${options.replyTo}` : '',
+      `To: ${options.to.join(", ")}`,
+      options.cc?.length ? `Cc: ${options.cc.join(", ")}` : "",
+      options.bcc?.length ? `Bcc: ${options.bcc.join(", ")}` : "",
+      options.replyTo ? `Reply-To: ${options.replyTo}` : "",
       `Message-ID: ${generatedMessageId}`,
-      options.inReplyTo ? `In-Reply-To: ${options.inReplyTo}` : '',
-      options.references ? `References: ${options.references}` : '',
+      options.inReplyTo ? `In-Reply-To: ${options.inReplyTo}` : "",
+      options.references ? `References: ${options.references}` : "",
       `Subject: ${options.subject}`,
-      'MIME-Version: 1.0',
+      "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    ].filter(Boolean).join('\r\n');
+    ]
+      .filter(Boolean)
+      .join("\r\n");
 
     const textPart = options.text || this.htmlToPlainText(options.html);
-    
+
     const body = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
-      '',
+      "",
       textPart,
       `--${boundary}`,
       'Content-Type: text/html; charset="UTF-8"',
-      '',
+      "",
       options.html,
       `--${boundary}--`,
-    ].join('\r\n');
+    ].join("\r\n");
 
     return `${headers}\r\n\r\n${body}`;
   }
@@ -551,14 +595,14 @@ This is an automated alert from WineOps AI.
    */
   private htmlToPlainText(html: string): string {
     return html
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/\s+/g, ' ')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
       .trim();
   }
 
@@ -571,24 +615,27 @@ This is an automated alert from WineOps AI.
     // Fall back to process.env directly — ConfigService may not inherit it in all
     // NestJS test module contexts (same issue as GMAIL_ACCESS_TOKEN for OAuth2).
     const user =
-      this.configService.get<string>('GMAIL_USER') ||
-      process.env.GMAIL_USER;
+      this.configService.get<string>("GMAIL_USER") || process.env.GMAIL_USER;
     const pass =
-      this.configService.get<string>('GMAIL_APP_PASSWORD') ||
+      this.configService.get<string>("GMAIL_APP_PASSWORD") ||
       process.env.GMAIL_APP_PASSWORD;
 
     if (!user || !pass) {
       this.logger.error(
-        'Gmail OAuth2 failed and no SMTP fallback configured ' +
-        '(set GMAIL_USER + GMAIL_APP_PASSWORD). Email NOT sent.',
+        "Gmail OAuth2 failed and no SMTP fallback configured " +
+          "(set GMAIL_USER + GMAIL_APP_PASSWORD). Email NOT sent.",
       );
-      return { success: false, error: 'No email delivery method available — OAuth failed and SMTP not configured' };
+      return {
+        success: false,
+        error:
+          "No email delivery method available — OAuth failed and SMTP not configured",
+      };
     }
 
     this.logger.log(`Gmail OAuth2 unavailable — sending via SMTP (${user})`);
 
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: "smtp.gmail.com",
       port: 587,
       secure: false,
       auth: { user, pass },
@@ -596,9 +643,9 @@ This is an automated alert from WineOps AI.
 
     const info = await transporter.sendMail({
       from: `"WineOps AI" <${this.senderEmail}>`,
-      to: options.to.join(', '),
-      cc: options.cc?.length ? options.cc.join(', ') : undefined,
-      bcc: options.bcc?.length ? options.bcc.join(', ') : undefined,
+      to: options.to.join(", "),
+      cc: options.cc?.length ? options.cc.join(", ") : undefined,
+      bcc: options.bcc?.length ? options.bcc.join(", ") : undefined,
       subject: options.subject,
       html: options.html,
       text: options.text || this.htmlToPlainText(options.html),
@@ -618,11 +665,12 @@ This is an automated alert from WineOps AI.
     restaurantCity?: string;
     frontendBaseUrl?: string;
   }): Promise<EmailResult> {
-    const base = data.frontendBaseUrl || 'https://restaurant-ai-automation-web.vercel.app';
+    const base =
+      data.frontendBaseUrl || "https://restaurant-ai-automation-web.vercel.app";
     const html = onboardingEmailTemplate({
       ownerName: data.ownerName,
       restaurantName: data.restaurantName,
-      restaurantCity: data.restaurantCity || '',
+      restaurantCity: data.restaurantCity || "",
       dashboardUrl: `${base}/dashboard`,
       settingsUrl: `${base}/settings`,
       inviteUrl: `${base}/settings?tab=team`,

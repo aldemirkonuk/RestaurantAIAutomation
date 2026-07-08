@@ -32,6 +32,7 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 # RESPONSE MODELS
 # =============================================================================
 
+
 class PerRestaurantMarkup(BaseModel):
     restaurant_id: Optional[str] = None
     markup_ratio: Optional[float] = None
@@ -51,11 +52,13 @@ class WineScoresResponse(BaseModel):
 # HELPER
 # =============================================================================
 
+
 def _get_supabase():
     """Return Supabase client. Returns None if not configured (graceful degradation)."""
     try:
         from supabase import create_client
         from config.settings import get_settings
+
         settings = get_settings()
         return create_client(settings.supabase_url, settings.supabase_key)
     except Exception as exc:
@@ -66,6 +69,7 @@ def _get_supabase():
 # =============================================================================
 # ENDPOINT
 # =============================================================================
+
 
 @router.get("/wine/{wine_id}/scores", response_model=WineScoresResponse)
 async def get_wine_scores(wine_id: str) -> WineScoresResponse:
@@ -135,7 +139,9 @@ async def get_wine_scores(wine_id: str) -> WineScoresResponse:
         wine_name=wine.get("name"),
         critic_scores=critic_scores,
         retail_price_avg=wine.get("retail_price_avg"),
-        scores_last_updated_at=str(scores_last_updated) if scores_last_updated else None,
+        scores_last_updated_at=(
+            str(scores_last_updated) if scores_last_updated else None
+        ),
         per_restaurant_markup=per_restaurant,
     )
 
@@ -143,6 +149,7 @@ async def get_wine_scores(wine_id: str) -> WineScoresResponse:
 # =============================================================================
 # TEMPORAL ANALYTICS MODELS (Phase 11 TEMP-07, TEMP-08)
 # =============================================================================
+
 
 class TrendingWineItem(BaseModel):
     wine_id: str
@@ -201,6 +208,7 @@ _PERIOD_MAP = {"30d": 30, "60d": 60, "90d": 90}
 # TEMPORAL ANALYTICS ENDPOINTS
 # =============================================================================
 
+
 @router.get("/trends", response_model=TrendsResponse)
 async def get_trends(
     metro: Optional[str] = None,
@@ -247,7 +255,9 @@ async def get_trends(
                     .in_("restaurant_id", list(metro_rest_ids))
                     .execute()
                 )
-                metro_hashes = {row["signature_hash"] for row in (roster_resp.data or [])}
+                metro_hashes = {
+                    row["signature_hash"] for row in (roster_resp.data or [])
+                }
 
                 if metro_hashes:
                     sub_resp = (
@@ -274,7 +284,9 @@ async def get_trends(
     try:
         tw_resp = (
             supabase.table("trending_wines")
-            .select("wine_id, trend_score, delta, restaurant_count_end, burst_detected_at")
+            .select(
+                "wine_id, trend_score, delta, restaurant_count_end, burst_detected_at"
+            )
             .eq("window_days", window_days)
             .order("trend_score", desc=True)
             .limit(100)
@@ -297,7 +309,7 @@ async def get_trends(
                 .in_("id", wine_ids_in_result)
                 .execute()
             )
-            for row in (meta_resp.data or []):
+            for row in meta_resp.data or []:
                 wine_names[row["id"]] = row.get("name") or ""
                 wine_meta[row["id"]] = row
         except Exception:
@@ -307,9 +319,15 @@ async def get_trends(
     trending_up: List[TrendingWineItem] = []
     trending_down: List[TrendingWineItem] = []
 
-    cat_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: {"additions": 0, "removals": 0})
-    grape_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: {"additions": 0, "removals": 0})
-    region_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: {"additions": 0, "removals": 0})
+    cat_counts: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {"additions": 0, "removals": 0}
+    )
+    grape_counts: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {"additions": 0, "removals": 0}
+    )
+    region_counts: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {"additions": 0, "removals": 0}
+    )
 
     for row in tw_rows:
         wine_id = row["wine_id"]
@@ -414,7 +432,11 @@ async def get_wine_timeline(wine_id: str) -> WineTimelineResponse:
             if row.get("signature_hash")
         ]
     except Exception as exc:
-        logger.warning("get_wine_timeline: could not resolve signature_hashes for %s: %s", wine_id, exc)
+        logger.warning(
+            "get_wine_timeline: could not resolve signature_hashes for %s: %s",
+            wine_id,
+            exc,
+        )
 
     restaurants_carrying = 0
     try:
@@ -444,8 +466,12 @@ async def get_wine_timeline(wine_id: str) -> WineTimelineResponse:
             )
             roster_rows = roster_resp.data or []
             if roster_rows:
-                first_seens = [r["first_seen_at"] for r in roster_rows if r.get("first_seen_at")]
-                last_seens = [r["last_seen_at"] for r in roster_rows if r.get("last_seen_at")]
+                first_seens = [
+                    r["first_seen_at"] for r in roster_rows if r.get("first_seen_at")
+                ]
+                last_seens = [
+                    r["last_seen_at"] for r in roster_rows if r.get("last_seen_at")
+                ]
                 if first_seens:
                     first_seen_at = min(first_seens)
                 if last_seens:

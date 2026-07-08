@@ -2,8 +2,9 @@
 Unit tests for ConstraintEngine (D-32-14).
 Tests validate all hard constraint categories and annotating constraints.
 """
+
 import pytest
-from services.constraint_engine import get_constraint_engine, ConstraintResult
+from services.constraint_engine import get_constraint_engine
 
 
 @pytest.fixture
@@ -29,7 +30,9 @@ def test_hard_c02_commitment_guard_blocks(ce):
 
 
 def test_hard_c02_interest_not_commitment_passes(ce):
-    r = ce.check_hard_constraints("We're interested in 6 cases of Burgundy — what's your price?")
+    r = ce.check_hard_constraints(
+        "We're interested in 6 cases of Burgundy — what's your price?"
+    )
     assert "C-02" not in r.triggered_hard
 
 
@@ -47,31 +50,41 @@ def test_hard_c19_three_tier_blocks(ce):
 
 
 def test_hard_c03_quantity_cap_blocks(ce):
-    r = ce.check_hard_constraints("Interested in wine", quantity=10.0, order_quantity=4.0)
+    r = ce.check_hard_constraints(
+        "Interested in wine", quantity=10.0, order_quantity=4.0
+    )
     assert r.blocked is True
     assert "C-03" in r.triggered_hard
 
 
 def test_hard_c03_quantity_within_cap_passes(ce):
-    r = ce.check_hard_constraints("Interested in wine", quantity=5.0, order_quantity=4.0)
+    r = ce.check_hard_constraints(
+        "Interested in wine", quantity=5.0, order_quantity=4.0
+    )
     assert "C-03" not in r.triggered_hard
 
 
 def test_hard_c05_round_limit_blocks(ce):
-    r = ce.check_hard_constraints("Interested in wine delivery", round_count=6, max_rounds=6)
+    r = ce.check_hard_constraints(
+        "Interested in wine delivery", round_count=6, max_rounds=6
+    )
     assert r.blocked is True
     assert "C-05" in r.triggered_hard
 
 
 def test_annotating_c09_stale_price(ce):
-    r = ce.check_annotating_constraints(stale_price=True, stale_price_date="2026-04-01", last_price=45.0)
+    r = ce.check_annotating_constraints(
+        stale_price=True, stale_price_date="2026-04-01", last_price=45.0
+    )
     assert r.blocked is False
     assert "C-09" in r.triggered_annotating
     assert any("C-09" in a["code"] for a in r.annotations)
 
 
 def test_annotating_c14_outstanding_invoice(ce):
-    r = ce.check_annotating_constraints(outstanding_invoice=True, invoice_number="INV-1042")
+    r = ce.check_annotating_constraints(
+        outstanding_invoice=True, invoice_number="INV-1042"
+    )
     assert r.blocked is False
     assert "C-14" in r.triggered_annotating
 

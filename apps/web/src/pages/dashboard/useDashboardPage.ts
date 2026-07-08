@@ -229,7 +229,9 @@ export function useDashboardPage() {
         if (data?.daily?.length > 0) {
           setCalendarRevenueData(data.daily.map(d => ({ date: d.date, orders: d.order_count, bottles: d.bottles_sold, revenue: d.revenue })))
         }
-      } catch {}
+      } catch {
+        /* calendar revenue optional — dashboard still renders without it */
+      }
     }
     fetchCalendarRevenue()
   }, [calendarMonth, restaurantId])

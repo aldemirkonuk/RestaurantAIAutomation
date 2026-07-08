@@ -61,19 +61,24 @@ class SpendLogger:
         try:
             settings = get_settings()
             if not settings.supabase_url or not settings.supabase_key:
-                logger.debug("SpendLogger: Supabase not configured — skipping spend log")
+                logger.debug(
+                    "SpendLogger: Supabase not configured — skipping spend log"
+                )
                 return
             from supabase import create_client
+
             supabase = create_client(settings.supabase_url, settings.supabase_key)
-            supabase.table("api_spend").insert({
-                "provider": provider,
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cost_usd": cost_usd,
-                "restaurant_id": restaurant_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }).execute()
+            supabase.table("api_spend").insert(
+                {
+                    "provider": provider,
+                    "model": model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cost_usd": cost_usd,
+                    "restaurant_id": restaurant_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            ).execute()
         except Exception as exc:
             # NEVER re-raise — a spend logging failure must not crash the pipeline
             logger.warning(f"SpendLogger.log() failed (non-fatal): {exc}")

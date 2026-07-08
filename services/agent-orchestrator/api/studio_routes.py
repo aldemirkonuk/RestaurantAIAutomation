@@ -66,22 +66,33 @@ class PromoteRequest(BaseModel):
 @studio_router.post("/sessions")
 def create_session(
     body: SessionCreateRequest,
-    user: dict = Depends(require_studio_role("developer", "certified_contributor", "review_admin")),
+    user: dict = Depends(
+        require_studio_role("developer", "certified_contributor", "review_admin")
+    ),
 ):
     """Start a new onboarding session — records actor, source type, and optional scan_session_id."""
     if body.source_type not in ("pdf_upload", "url_crawl", "manual_seed"):
-        raise HTTPException(status_code=422, detail="source_type must be pdf_upload, url_crawl, or manual_seed")
+        raise HTTPException(
+            status_code=422,
+            detail="source_type must be pdf_upload, url_crawl, or manual_seed",
+        )
     supabase = _get_supabase()
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not available")
     try:
-        resp = supabase.table("onboarding_sessions").insert({
-            "actor_id": user["sub"],
-            "source_type": body.source_type,
-            "source_ref": body.source_ref,
-            "scan_session_id": body.scan_session_id,
-            "status": "active",
-        }).execute()
+        resp = (
+            supabase.table("onboarding_sessions")
+            .insert(
+                {
+                    "actor_id": user["sub"],
+                    "source_type": body.source_type,
+                    "source_ref": body.source_ref,
+                    "scan_session_id": body.scan_session_id,
+                    "status": "active",
+                }
+            )
+            .execute()
+        )
         return {"session": resp.data[0] if resp.data else {}}
     except Exception as exc:
         logger.error("create_session failed: %s", exc)
@@ -92,7 +103,9 @@ def create_session(
 @studio_router.get("/sessions/{session_id}")
 def get_session_timeline(
     session_id: str,
-    user: dict = Depends(require_studio_role("developer", "certified_contributor", "review_admin")),
+    user: dict = Depends(
+        require_studio_role("developer", "certified_contributor", "review_admin")
+    ),
 ):
     """
     GET /api/v1/studio/sessions/{id} — returns full session timeline (DEVUI-08).
@@ -116,8 +129,13 @@ def get_session_timeline(
 
         # T-13-12: enforce visibility
         role = _get_primary_studio_role(user)
-        if session["actor_id"] != user["sub"] and role not in ("review_admin", "developer"):
-            raise HTTPException(status_code=403, detail="Not authorized to view this session")
+        if session["actor_id"] != user["sub"] and role not in (
+            "review_admin",
+            "developer",
+        ):
+            raise HTTPException(
+                status_code=403, detail="Not authorized to view this session"
+            )
 
         events_resp = (
             supabase.table("override_events")
@@ -142,7 +160,9 @@ def get_session_timeline(
 @studio_router.post("/overrides")
 def submit_override(
     body: OverrideRequest,
-    user: dict = Depends(require_studio_role("developer", "certified_contributor", "review_admin")),
+    user: dict = Depends(
+        require_studio_role("developer", "certified_contributor", "review_admin")
+    ),
 ):
     """
     Submit a field override. Implements D-12/D-13 promotion policy.
@@ -176,7 +196,9 @@ def submit_override(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("submit_override: fetch submission %s failed: %s", body.submission_id, exc)
+        logger.error(
+            "submit_override: fetch submission %s failed: %s", body.submission_id, exc
+        )
         raise HTTPException(status_code=503, detail="Failed to fetch submission")
 
     # D-07 server-side reason enforcement
@@ -194,7 +216,9 @@ def submit_override(
     else:
         # certified_contributor — check promotion_policy
         ur_rows = _get_user_studio_roles(supabase, user["sub"])
-        cc_role = next((r for r in ur_rows if r["role"] == "certified_contributor"), None)
+        cc_role = next(
+            (r for r in ur_rows if r["role"] == "certified_contributor"), None
+        )
         if cc_role and cc_role.get("promotion_policy") == "auto_promote":
             promotion_status = "auto_promoted"
         else:
@@ -202,19 +226,25 @@ def submit_override(
 
     # D-15: always log to override_events first
     try:
-        ov_resp = supabase.table("override_events").insert({
-            "session_id": body.session_id,
-            "submission_id": body.submission_id,
-            "actor_id": user["sub"],
-            "field_name": body.field_name,
-            "old_value": old_value,
-            "new_value": body.new_value,
-            "old_confidence": old_confidence,
-            "reason": body.reason,
-            "citation_url": body.citation_url,
-            "citation_snippet": body.citation_snippet,
-            "promotion_status": promotion_status,
-        }).execute()
+        ov_resp = (
+            supabase.table("override_events")
+            .insert(
+                {
+                    "session_id": body.session_id,
+                    "submission_id": body.submission_id,
+                    "actor_id": user["sub"],
+                    "field_name": body.field_name,
+                    "old_value": old_value,
+                    "new_value": body.new_value,
+                    "old_confidence": old_confidence,
+                    "reason": body.reason,
+                    "citation_url": body.citation_url,
+                    "citation_snippet": body.citation_snippet,
+                    "promotion_status": promotion_status,
+                }
+            )
+            .execute()
+        )
         override_id = ov_resp.data[0]["id"] if ov_resp.data else None
     except Exception as exc:
         logger.error("submit_override: override_events insert failed: %s", exc)
@@ -223,11 +253,23 @@ def submit_override(
     # If auto_promoted, apply immediately to field_confidence (DEVUI-06)
     if promotion_status == "auto_promoted":
         try:
-            _apply_override_to_submission(supabase, body.submission_id, body.field_name, body.new_value, user["sub"])
+            _apply_override_to_submission(
+                supabase,
+                body.submission_id,
+                body.field_name,
+                body.new_value,
+                user["sub"],
+            )
         except Exception as exc:
-            logger.error("submit_override: _apply_override_to_submission failed: %s", exc)
+            logger.error(
+                "submit_override: _apply_override_to_submission failed: %s", exc
+            )
             # Non-fatal for the response — override is logged, promotion failed
-            return {"status": "logged_apply_failed", "override_id": override_id, "detail": str(exc)}
+            return {
+                "status": "logged_apply_failed",
+                "override_id": override_id,
+                "detail": str(exc),
+            }
 
         # T-14-08: attempt library promotion — non-fatal if it fails
         try:
@@ -265,7 +307,12 @@ def get_approval_queue(
             .range(offset, offset + min(limit, 100) - 1)
             .execute()
         )
-        return {"queue": rows_resp.data or [], "total": total, "limit": limit, "offset": offset}
+        return {
+            "queue": rows_resp.data or [],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
     except Exception as exc:
         logger.error("get_approval_queue failed: %s", exc)
         raise HTTPException(status_code=503, detail="Database query failed")
@@ -283,25 +330,40 @@ def decide_override(
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not available")
 
-    ov_resp = supabase.table("override_events").select("*").eq("id", override_id).maybe_single().execute()
+    ov_resp = (
+        supabase.table("override_events")
+        .select("*")
+        .eq("id", override_id)
+        .maybe_single()
+        .execute()
+    )
     if not ov_resp.data:
         raise HTTPException(status_code=404, detail="Override not found")
     ov = ov_resp.data
     if ov["promotion_status"] != "pending":
-        raise HTTPException(status_code=409, detail=f"Override already decided: {ov['promotion_status']}")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Override already decided: {ov['promotion_status']}",
+        )
 
     approved = body.decision == "approved"
-    supabase.table("override_events").update({
-        "promotion_status": "approved" if approved else "rejected",
-        "approved_by": user["sub"],
-        "approval_note": body.note,
-        "decided_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", override_id).execute()
+    supabase.table("override_events").update(
+        {
+            "promotion_status": "approved" if approved else "rejected",
+            "approved_by": user["sub"],
+            "approval_note": body.note,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", override_id).execute()
 
     if approved:
         try:
             _apply_override_to_submission(
-                supabase, ov["submission_id"], ov["field_name"], ov["new_value"], ov["actor_id"]
+                supabase,
+                ov["submission_id"],
+                ov["field_name"],
+                ov["new_value"],
+                ov["actor_id"],
             )
         except Exception as exc:
             logger.error("decide_override: apply failed: %s", exc)
@@ -314,12 +376,15 @@ def decide_override(
 
     # D-12: update trust counter for certified_contributors
     from config.settings import get_settings
+
     threshold = get_settings().trust_level_threshold
     actor_roles = _get_user_studio_roles(supabase, ov["actor_id"])
     role_names = [r["role"] for r in actor_roles]
     if "certified_contributor" in role_names and "developer" not in role_names:
         try:
-            check_and_update_trust(supabase, ov["actor_id"], approved, threshold=threshold)
+            check_and_update_trust(
+                supabase, ov["actor_id"], approved, threshold=threshold
+            )
         except Exception as exc:
             logger.warning("decide_override: trust update failed (non-fatal): %s", exc)
 
@@ -337,13 +402,23 @@ def create_invite(
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not available")
     try:
-        resp = supabase.table("invite_tokens").insert({
-            "role": body.role,
-            "created_by": user["sub"],
-            "target_email": body.target_email,
-        }).execute()
+        resp = (
+            supabase.table("invite_tokens")
+            .insert(
+                {
+                    "role": body.role,
+                    "created_by": user["sub"],
+                    "target_email": body.target_email,
+                }
+            )
+            .execute()
+        )
         row = resp.data[0] if resp.data else {}
-        return {"token": row.get("token"), "role": row.get("role"), "expires_at": row.get("expires_at")}
+        return {
+            "token": row.get("token"),
+            "role": row.get("role"),
+            "expires_at": row.get("expires_at"),
+        }
     except Exception as exc:
         logger.error("create_invite failed: %s", exc)
         raise HTTPException(status_code=503, detail="Failed to create invite token")
@@ -353,7 +428,9 @@ def create_invite(
 @studio_router.post("/invite/redeem")
 def redeem_invite(
     body: RedeemRequest,
-    user: dict = Depends(require_studio_role("developer", "certified_contributor", "review_admin")),
+    user: dict = Depends(
+        require_studio_role("developer", "certified_contributor", "review_admin")
+    ),
 ):
     """
     POST /api/v1/studio/invite/redeem — consume invite token, grant role (D-03, D-04).
@@ -381,20 +458,27 @@ def redeem_invite(
             raise HTTPException(status_code=410, detail="Invite token has expired")
 
         # Mark token used
-        supabase.table("invite_tokens").update({
-            "used_at": datetime.now(timezone.utc).isoformat(),
-            "used_by": user["sub"],
-        }).eq("id", tok["id"]).execute()
+        supabase.table("invite_tokens").update(
+            {
+                "used_at": datetime.now(timezone.utc).isoformat(),
+                "used_by": user["sub"],
+            }
+        ).eq("id", tok["id"]).execute()
 
         # Insert role — D-04: granted_by = token creator, not self
-        supabase.table("user_roles").insert({
-            "user_id": user["sub"],
-            "role": tok["role"],
-            "granted_by": tok["created_by"],
-        }).execute()
+        supabase.table("user_roles").insert(
+            {
+                "user_id": user["sub"],
+                "role": tok["role"],
+                "granted_by": tok["created_by"],
+            }
+        ).execute()
 
         logger.info("Redeemed invite for user=%s role=%s", user["sub"], tok["role"])
-        return {"role_granted": tok["role"], "message": f"Role '{tok['role']}' granted successfully"}
+        return {
+            "role_granted": tok["role"],
+            "message": f"Role '{tok['role']}' granted successfully",
+        }
     except HTTPException:
         raise
     except Exception as exc:
@@ -420,7 +504,9 @@ def get_studio_metrics(
     try:
         ov_resp = (
             supabase.table("override_events")
-            .select("promotion_status, created_at, decided_at, actor_id, field_name, submission_id")
+            .select(
+                "promotion_status, created_at, decided_at, actor_id, field_name, submission_id"
+            )
             .limit(10000)
             .execute()
         )
@@ -437,37 +523,44 @@ def get_studio_metrics(
 
         total = len(overrides)
         approved = sum(1 for o in overrides if o["promotion_status"] == "approved")
-        auto_promoted = sum(1 for o in overrides if o["promotion_status"] == "auto_promoted")
+        auto_promoted = sum(
+            1 for o in overrides if o["promotion_status"] == "auto_promoted"
+        )
         rejected = sum(1 for o in overrides if o["promotion_status"] == "rejected")
         pending = sum(1 for o in overrides if o["promotion_status"] == "pending")
         acceptance_rate = (approved + auto_promoted) / total if total > 0 else 0.0
 
         # SC-9: post-override correction rate — fraction of overridden fields later corrected
-        correction_keys = {
-            (c["submission_id"], c["field_name"]) for c in corrections
-        }
+        correction_keys = {(c["submission_id"], c["field_name"]) for c in corrections}
         corrected_overrides = sum(
-            1 for o in overrides
+            1
+            for o in overrides
             if (o.get("submission_id"), o.get("field_name")) in correction_keys
         )
-        post_override_correction_rate = corrected_overrides / total if total > 0 else 0.0
+        post_override_correction_rate = (
+            corrected_overrides / total if total > 0 else 0.0
+        )
 
         # Approval latency p50 — only for manually decided overrides
         latencies = []
         for o in overrides:
             if o.get("created_at") and o.get("decided_at"):
                 try:
-                    created = datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
-                    decided = datetime.fromisoformat(o["decided_at"].replace("Z", "+00:00"))
+                    created = datetime.fromisoformat(
+                        o["created_at"].replace("Z", "+00:00")
+                    )
+                    decided = datetime.fromisoformat(
+                        o["decided_at"].replace("Z", "+00:00")
+                    )
                     latencies.append((decided - created).total_seconds() / 3600.0)
                 except Exception:
                     pass
         latencies.sort()
         n = len(latencies)
         avg_approval_latency_hours = (
-            (latencies[n // 2 - 1] + latencies[n // 2]) / 2 if n % 2 == 0 and n > 0
-            else latencies[n // 2] if n > 0
-            else 0.0
+            (latencies[n // 2 - 1] + latencies[n // 2]) / 2
+            if n % 2 == 0 and n > 0
+            else latencies[n // 2] if n > 0 else 0.0
         )
 
         # Active contributors: distinct actors with any override in last 30 days
@@ -478,7 +571,9 @@ def get_studio_metrics(
             .gte("created_at", thirty_days_ago)
             .execute()
         )
-        active_contributors_count = len({row["actor_id"] for row in (contrib_resp.data or [])})
+        active_contributors_count = len(
+            {row["actor_id"] for row in (contrib_resp.data or [])}
+        )
 
         return {
             "total_overrides": total,
@@ -512,7 +607,11 @@ def get_my_roles(
     from config.settings import get_settings
 
     if not authorization or not authorization.startswith("Bearer "):
-        return {"roles": [], "promotion_policy": "queue", "consecutive_approved_overrides": 0}
+        return {
+            "roles": [],
+            "promotion_policy": "queue",
+            "consecutive_approved_overrides": 0,
+        }
     token = authorization.removeprefix("Bearer ")
     secret = get_settings().supabase_jwt_secret
     try:
@@ -520,12 +619,20 @@ def get_my_roles(
             token, secret, algorithms=["HS256"], options={"verify_aud": False}
         )
     except Exception:
-        return {"roles": [], "promotion_policy": "queue", "consecutive_approved_overrides": 0}
+        return {
+            "roles": [],
+            "promotion_policy": "queue",
+            "consecutive_approved_overrides": 0,
+        }
 
     user_id = payload.get("sub")
     supabase = _get_supabase()
     if not supabase or not user_id:
-        return {"roles": [], "promotion_policy": "queue", "consecutive_approved_overrides": 0}
+        return {
+            "roles": [],
+            "promotion_policy": "queue",
+            "consecutive_approved_overrides": 0,
+        }
 
     try:
         resp = (
@@ -547,10 +654,18 @@ def get_my_roles(
         )
         promotion_policy = primary["promotion_policy"] if primary else "queue"
         consecutive = primary["consecutive_approved_overrides"] if primary else 0
-        return {"roles": roles, "promotion_policy": promotion_policy, "consecutive_approved_overrides": consecutive}
+        return {
+            "roles": roles,
+            "promotion_policy": promotion_policy,
+            "consecutive_approved_overrides": consecutive,
+        }
     except Exception as exc:
         logger.error("get_my_roles failed for user %s: %s", user_id, exc)
-        return {"roles": [], "promotion_policy": "queue", "consecutive_approved_overrides": 0}
+        return {
+            "roles": [],
+            "promotion_policy": "queue",
+            "consecutive_approved_overrides": 0,
+        }
 
 
 # --- GET /contributors ---
@@ -615,9 +730,9 @@ def enable_contributor(
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not available")
     try:
-        supabase.table("user_roles").update(
-            {"revoked_at": None}
-        ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
+        supabase.table("user_roles").update({"revoked_at": None}).eq(
+            "user_id", user_id
+        ).eq("role", "certified_contributor").execute()
         logger.info("review_admin %s enabled contributor %s", user["sub"], user_id)
         return {"enabled": True, "user_id": user_id}
     except Exception as exc:
@@ -684,7 +799,9 @@ def promote_to_library(
 
     # Validate minimum required data
     if not wine_name or not str(wine_name).strip():
-        raise HTTPException(status_code=422, detail="Submission has no wine_name — cannot promote")
+        raise HTTPException(
+            status_code=422, detail="Submission has no wine_name — cannot promote"
+        )
 
     # Parse numeric fields
     try:
@@ -706,7 +823,11 @@ def promote_to_library(
     name_lower = str(wine_name).strip().lower()
     producer_lower = str(producer).strip().lower() if producer else ""
     try:
-        dedup_query = supabase.table("master_wine_library").select("id, name").ilike("name", name_lower)
+        dedup_query = (
+            supabase.table("master_wine_library")
+            .select("id, name")
+            .ilike("name", name_lower)
+        )
         if vintage is not None:
             dedup_query = dedup_query.eq("vintage", vintage)
         if producer_lower:
@@ -716,7 +837,7 @@ def promote_to_library(
             existing = dedup_resp.data[0]
             raise HTTPException(
                 status_code=409,
-                detail=f"Wine already exists in library",
+                detail="Wine already exists in library",
                 headers={"X-Existing-Wine-Id": existing["id"]},
             )
     except HTTPException:
@@ -754,24 +875,42 @@ def promote_to_library(
 
     # Step 5: insert into master_wine_library
     try:
-        insert_resp = supabase.table("master_wine_library").insert(insert_payload).execute()
+        insert_resp = (
+            supabase.table("master_wine_library").insert(insert_payload).execute()
+        )
         new_id = insert_resp.data[0]["id"] if insert_resp.data else insert_payload["id"]
     except Exception as exc:
         err_str = str(exc)
         # If insert fails due to unknown columns (promoted_by/promoted_at/submission_id), retry without them
-        if any(col in err_str for col in ("promoted_by", "promoted_at", "submission_id")):
-            logger.warning("promote_to_library: retrying insert without audit columns: %s", exc)
+        if any(
+            col in err_str for col in ("promoted_by", "promoted_at", "submission_id")
+        ):
+            logger.warning(
+                "promote_to_library: retrying insert without audit columns: %s", exc
+            )
             for col in ("promoted_by", "promoted_at", "submission_id"):
                 insert_payload.pop(col, None)
             try:
-                insert_resp = supabase.table("master_wine_library").insert(insert_payload).execute()
-                new_id = insert_resp.data[0]["id"] if insert_resp.data else insert_payload["id"]
+                insert_resp = (
+                    supabase.table("master_wine_library")
+                    .insert(insert_payload)
+                    .execute()
+                )
+                new_id = (
+                    insert_resp.data[0]["id"]
+                    if insert_resp.data
+                    else insert_payload["id"]
+                )
             except Exception as exc2:
                 logger.error("promote_to_library: insert failed on retry: %s", exc2)
-                raise HTTPException(status_code=503, detail="Failed to insert into master_wine_library")
+                raise HTTPException(
+                    status_code=503, detail="Failed to insert into master_wine_library"
+                )
         else:
             logger.error("promote_to_library: insert failed: %s", exc)
-            raise HTTPException(status_code=503, detail="Failed to insert into master_wine_library")
+            raise HTTPException(
+                status_code=503, detail="Failed to insert into master_wine_library"
+            )
 
     # Step 6: mark submission as promoted (non-fatal if column missing)
     try:
@@ -779,9 +918,17 @@ def promote_to_library(
             {"promoted_to_library": True}
         ).eq("id", body.submission_id).execute()
     except Exception as exc:
-        logger.warning("promote_to_library: could not update promoted_to_library flag (non-fatal): %s", exc)
+        logger.warning(
+            "promote_to_library: could not update promoted_to_library flag (non-fatal): %s",
+            exc,
+        )
 
-    logger.info("promote_to_library: promoted submission %s → wine %s by %s", body.submission_id, new_id, promoted_by)
+    logger.info(
+        "promote_to_library: promoted submission %s → wine %s by %s",
+        body.submission_id,
+        new_id,
+        promoted_by,
+    )
     return {"status": "promoted", "wine_id": new_id, "name": str(wine_name).strip()}
 
 

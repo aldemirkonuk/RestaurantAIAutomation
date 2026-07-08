@@ -46,25 +46,41 @@ def _build_supabase(table_map: dict) -> MagicMock:
 # Quality Pipeline Tests
 # ===========================================================================
 
+
 class TestQualityPipeline:
 
     def test_review_queue_returns_pending_fields_grouped_by_wine(self, test_client):
         """GET /quality/review-queue groups 3 pending rows into 2 grouped submission items."""
         queue_rows = [
             {
-                "id": REVIEW_ID_1, "submission_id": SUBMISSION_UUID_A, "field_name": "region",
-                "current_value": "Unknown", "confidence": 0.60, "source": "inferred",
-                "status": "pending", "created_at": "2026-01-01",
+                "id": REVIEW_ID_1,
+                "submission_id": SUBMISSION_UUID_A,
+                "field_name": "region",
+                "current_value": "Unknown",
+                "confidence": 0.60,
+                "source": "inferred",
+                "status": "pending",
+                "created_at": "2026-01-01",
             },
             {
-                "id": REVIEW_ID_2, "submission_id": SUBMISSION_UUID_A, "field_name": "vintage",
-                "current_value": "2018", "confidence": 0.65, "source": "inferred",
-                "status": "pending", "created_at": "2026-01-01",
+                "id": REVIEW_ID_2,
+                "submission_id": SUBMISSION_UUID_A,
+                "field_name": "vintage",
+                "current_value": "2018",
+                "confidence": 0.65,
+                "source": "inferred",
+                "status": "pending",
+                "created_at": "2026-01-01",
             },
             {
-                "id": REVIEW_ID_3, "submission_id": SUBMISSION_UUID_B, "field_name": "producer",
-                "current_value": "Unknown Producer", "confidence": 0.55, "source": "inferred",
-                "status": "pending", "created_at": "2026-01-01",
+                "id": REVIEW_ID_3,
+                "submission_id": SUBMISSION_UUID_B,
+                "field_name": "producer",
+                "current_value": "Unknown Producer",
+                "confidence": 0.55,
+                "source": "inferred",
+                "status": "pending",
+                "created_at": "2026-01-01",
             },
         ]
         sub_rows = [
@@ -87,15 +103,21 @@ class TestQualityPipeline:
         ]
 
         frq_mock = MagicMock()
-        frq_mock.select.return_value.eq.return_value.order.return_value.range.return_value.execute.return_value.data = queue_rows
+        frq_mock.select.return_value.eq.return_value.order.return_value.range.return_value.execute.return_value.data = (
+            queue_rows
+        )
 
         sub_mock = MagicMock()
-        sub_mock.select.return_value.in_.return_value.execute.return_value.data = sub_rows
+        sub_mock.select.return_value.in_.return_value.execute.return_value.data = (
+            sub_rows
+        )
 
-        sb = _build_supabase({
-            "field_review_queue": frq_mock,
-            "master_wine_library_submissions": sub_mock,
-        })
+        sb = _build_supabase(
+            {
+                "field_review_queue": frq_mock,
+                "master_wine_library_submissions": sub_mock,
+            }
+        )
 
         with patch("api.quality_routes._get_supabase", return_value=sb):
             resp = test_client.get("/api/v1/quality/review-queue")
@@ -104,11 +126,13 @@ class TestQualityPipeline:
         body = resp.json()
         assert body["total"] == 2, f"Expected 2 grouped items, got {body['total']}"
 
-        item_a = next((i for i in body["items"] if i["submission_id"] == SUBMISSION_UUID_A), None)
-        assert item_a is not None, "Submission A not in response"
-        assert len(item_a["pending_fields"]) == 2, (
-            f"Expected 2 pending_fields for submission A, got {len(item_a['pending_fields'])}"
+        item_a = next(
+            (i for i in body["items"] if i["submission_id"] == SUBMISSION_UUID_A), None
         )
+        assert item_a is not None, "Submission A not in response"
+        assert (
+            len(item_a["pending_fields"]) == 2
+        ), f"Expected 2 pending_fields for submission A, got {len(item_a['pending_fields'])}"
 
     def test_review_queue_patch_correction_promotes_to_library(self, test_client):
         """PATCH /quality/review-queue/{id} with corrections → 0 pending → promoted_to_library=True."""
@@ -116,8 +140,16 @@ class TestQualityPipeline:
             "id": SUBMISSION_UUID_A,
             "payload": {"wine_name": "Barolo Riserva"},
             "field_confidence": {
-                "wine_name": {"value": "Barolo Riserva", "confidence": 0.95, "source": "visible"},
-                "region": {"value": "Unknown", "confidence": 0.65, "source": "inferred"},
+                "wine_name": {
+                    "value": "Barolo Riserva",
+                    "confidence": 0.95,
+                    "source": "visible",
+                },
+                "region": {
+                    "value": "Unknown",
+                    "confidence": 0.65,
+                    "source": "inferred",
+                },
             },
             "status": "pending_review",
             "auto_blocked": False,
@@ -133,32 +165,44 @@ class TestQualityPipeline:
         }
 
         sub_mock = MagicMock()
-        sub_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = submission_data
+        sub_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            submission_data
+        )
         sub_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
 
         frq_mock = MagicMock()
         # 0 remaining pending fields after correction
-        frq_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value.count = 0
+        frq_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value.count = (
+            0
+        )
 
         lib_mock = MagicMock()
-        lib_mock.insert.return_value.execute.return_value.data = [{"id": str(uuid.uuid4())}]
+        lib_mock.insert.return_value.execute.return_value.data = [
+            {"id": str(uuid.uuid4())}
+        ]
 
         corr_mock = MagicMock()
         corr_mock.insert.return_value.execute.return_value.data = [{}]
 
-        sb = _build_supabase({
-            "master_wine_library_submissions": sub_mock,
-            "field_review_queue": frq_mock,
-            "master_wine_library": lib_mock,
-            "field_corrections": corr_mock,
-        })
+        sb = _build_supabase(
+            {
+                "master_wine_library_submissions": sub_mock,
+                "field_review_queue": frq_mock,
+                "master_wine_library": lib_mock,
+                "field_corrections": corr_mock,
+            }
+        )
 
-        with patch("api.quality_routes._get_supabase", return_value=sb), \
-             patch("api.quality_routes.should_auto_block", return_value=False):
+        with patch("api.quality_routes._get_supabase", return_value=sb), patch(
+            "api.quality_routes.should_auto_block", return_value=False
+        ):
 
             resp = test_client.patch(
                 f"/api/v1/quality/review-queue/{SUBMISSION_UUID_A}",
-                json={"corrections": {"region": "Piedmont"}, "corrected_by": "reviewer@test.com"},
+                json={
+                    "corrections": {"region": "Piedmont"},
+                    "corrected_by": "reviewer@test.com",
+                },
             )
 
         assert resp.status_code == 200, resp.text
@@ -173,36 +217,54 @@ class TestQualityPipeline:
             "id": SUBMISSION_UUID_B,
             "payload": {},
             "field_confidence": {
-                "region": {"value": "Unknown", "confidence": 0.60, "source": "inferred"},
+                "region": {
+                    "value": "Unknown",
+                    "confidence": 0.60,
+                    "source": "inferred",
+                },
                 "vintage": {"value": None, "confidence": 0.55, "source": "inferred"},
             },
             "status": "pending_review",
             "auto_blocked": False,
             "restaurant_id": "rest-001",
-            "grape_family": {}, "wine_structure": {}, "sensory_profile": {},
-            "practical_attributes": {}, "region_hierarchy": {}, "critic_scores": {},
+            "grape_family": {},
+            "wine_structure": {},
+            "sensory_profile": {},
+            "practical_attributes": {},
+            "region_hierarchy": {},
+            "critic_scores": {},
             "winemaking_details": {},
         }
 
         sub_mock = MagicMock()
-        sub_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = submission_data
+        sub_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            submission_data
+        )
         sub_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
 
         frq_mock = MagicMock()
         # 1 remaining pending field → do NOT promote
-        frq_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value.count = 1
+        frq_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value.count = (
+            1
+        )
 
-        sb = _build_supabase({
-            "master_wine_library_submissions": sub_mock,
-            "field_review_queue": frq_mock,
-        })
+        sb = _build_supabase(
+            {
+                "master_wine_library_submissions": sub_mock,
+                "field_review_queue": frq_mock,
+            }
+        )
 
-        with patch("api.quality_routes._get_supabase", return_value=sb), \
-             patch("api.quality_routes.should_auto_block", return_value=False):
+        with patch("api.quality_routes._get_supabase", return_value=sb), patch(
+            "api.quality_routes.should_auto_block", return_value=False
+        ):
 
             resp = test_client.patch(
                 f"/api/v1/quality/review-queue/{SUBMISSION_UUID_B}",
-                json={"corrections": {"region": "Tuscany"}, "corrected_by": "reviewer@test.com"},
+                json={
+                    "corrections": {"region": "Tuscany"},
+                    "corrected_by": "reviewer@test.com",
+                },
             )
 
         assert resp.status_code == 200, resp.text
@@ -238,15 +300,21 @@ class TestQualityPipeline:
         ]
 
         thresh_mock = MagicMock()
-        thresh_mock.select.return_value.order.return_value.execute.return_value.data = thresholds
+        thresh_mock.select.return_value.order.return_value.execute.return_value.data = (
+            thresholds
+        )
 
         cal_mock = MagicMock()
-        cal_mock.select.return_value.order.return_value.execute.return_value.data = cal_stats
+        cal_mock.select.return_value.order.return_value.execute.return_value.data = (
+            cal_stats
+        )
 
-        sb = _build_supabase({
-            "confidence_thresholds": thresh_mock,
-            "field_calibration": cal_mock,
-        })
+        sb = _build_supabase(
+            {
+                "confidence_thresholds": thresh_mock,
+                "field_calibration": cal_mock,
+            }
+        )
 
         with patch("api.quality_routes._get_supabase", return_value=sb):
             resp = test_client.get("/api/v1/quality/calibration")
@@ -264,12 +332,15 @@ class TestQualityPipeline:
 # Research API Tests
 # ===========================================================================
 
+
 class TestResearchAPI:
 
     def test_research_metrics_handles_empty_tables(self, test_client):
         """GET /research/metrics with all empty tables → all metric values are 0 / 0.0."""
         stats_mock = MagicMock()
-        stats_mock.select.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        stats_mock.select.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
         cit_mock = MagicMock()
         cit_mock.select.return_value.limit.return_value.execute.return_value.data = []
@@ -278,14 +349,18 @@ class TestResearchAPI:
         runs_mock.select.return_value.limit.return_value.execute.return_value.data = []
 
         corr_mock = MagicMock()
-        corr_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = []
+        corr_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
-        sb = _build_supabase({
-            "research_run_stats": stats_mock,
-            "evidence_citations": cit_mock,
-            "research_runs": runs_mock,
-            "field_corrections": corr_mock,
-        })
+        sb = _build_supabase(
+            {
+                "research_run_stats": stats_mock,
+                "evidence_citations": cit_mock,
+                "research_runs": runs_mock,
+                "field_corrections": corr_mock,
+            }
+        )
 
         with patch("api.research_routes._get_supabase", return_value=sb):
             resp = test_client.get("/api/v1/research/metrics")
@@ -305,15 +380,25 @@ class TestResearchAPI:
         """GET /research/metrics with populated tables → promotion_rate=0.7, tier_mix A=50% B=50%."""
         stat_rows = [
             {
-                "fields_targeted": 10, "fields_filled": 7, "fields_conflicted": 1,
-                "null_rate_before": 0.80, "null_rate_after": 0.10,
-                "time_to_fill_hours": 2.0, "attempts": 12, "cost_usd": 0.05,
+                "fields_targeted": 10,
+                "fields_filled": 7,
+                "fields_conflicted": 1,
+                "null_rate_before": 0.80,
+                "null_rate_after": 0.10,
+                "time_to_fill_hours": 2.0,
+                "attempts": 12,
+                "cost_usd": 0.05,
                 "regression_blocked_count": 0,
             },
             {
-                "fields_targeted": 10, "fields_filled": 7, "fields_conflicted": 0,
-                "null_rate_before": 0.70, "null_rate_after": 0.05,
-                "time_to_fill_hours": 1.5, "attempts": 11, "cost_usd": 0.04,
+                "fields_targeted": 10,
+                "fields_filled": 7,
+                "fields_conflicted": 0,
+                "null_rate_before": 0.70,
+                "null_rate_after": 0.05,
+                "time_to_fill_hours": 1.5,
+                "attempts": 11,
+                "cost_usd": 0.04,
                 "regression_blocked_count": 0,
             },
         ]
@@ -325,23 +410,31 @@ class TestResearchAPI:
         ]
 
         stats_mock = MagicMock()
-        stats_mock.select.return_value.order.return_value.limit.return_value.execute.return_value.data = stat_rows
+        stats_mock.select.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+            stat_rows
+        )
 
         cit_mock = MagicMock()
-        cit_mock.select.return_value.limit.return_value.execute.return_value.data = cit_rows
+        cit_mock.select.return_value.limit.return_value.execute.return_value.data = (
+            cit_rows
+        )
 
         runs_mock = MagicMock()
         runs_mock.select.return_value.limit.return_value.execute.return_value.data = []
 
         corr_mock = MagicMock()
-        corr_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = []
+        corr_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
-        sb = _build_supabase({
-            "research_run_stats": stats_mock,
-            "evidence_citations": cit_mock,
-            "research_runs": runs_mock,
-            "field_corrections": corr_mock,
-        })
+        sb = _build_supabase(
+            {
+                "research_run_stats": stats_mock,
+                "evidence_citations": cit_mock,
+                "research_runs": runs_mock,
+                "field_corrections": corr_mock,
+            }
+        )
 
         with patch("api.research_routes._get_supabase", return_value=sb):
             resp = test_client.get("/api/v1/research/metrics")
@@ -349,9 +442,9 @@ class TestResearchAPI:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         # 14 filled / 20 targeted = 0.7
-        assert body["quality"]["promotion_rate"] == 0.7, (
-            f"Expected promotion_rate=0.7, got {body['quality']['promotion_rate']}"
-        )
+        assert (
+            body["quality"]["promotion_rate"] == 0.7
+        ), f"Expected promotion_rate=0.7, got {body['quality']['promotion_rate']}"
         # 2 tier-A + 2 tier-B out of 4 = 50% / 50%
         tier_mix = body["quality"]["source_tier_mix"]
         assert tier_mix["A"] == 50.0
@@ -374,17 +467,21 @@ class TestResearchAPI:
 
         # Correct key with mock DB and Celery task → 200
         runs_mock = MagicMock()
-        runs_mock.select.return_value.eq.return_value.execute.return_value.count = 0  # no running
+        runs_mock.select.return_value.eq.return_value.execute.return_value.count = (
+            0  # no running
+        )
 
         subs_mock = MagicMock()
         subs_mock.select.return_value.is_.return_value.limit.return_value.execute.return_value.data = [
             {"id": SUBMISSION_UUID_A}
         ]
 
-        sb = _build_supabase({
-            "research_runs": runs_mock,
-            "master_wine_library_submissions": subs_mock,
-        })
+        sb = _build_supabase(
+            {
+                "research_runs": runs_mock,
+                "master_wine_library_submissions": subs_mock,
+            }
+        )
 
         task_mock = MagicMock()
         task_mock.delay = MagicMock()
@@ -392,8 +489,9 @@ class TestResearchAPI:
         old_key = os.environ.get("ADMIN_API_KEY")
         try:
             os.environ["ADMIN_API_KEY"] = ADMIN_API_KEY_TEST
-            with patch("api.research_routes._get_supabase", return_value=sb), \
-                 patch("jobs.research_tasks.research_agent_task", task_mock):
+            with patch("api.research_routes._get_supabase", return_value=sb), patch(
+                "jobs.research_tasks.research_agent_task", task_mock
+            ):
                 r3 = test_client.post(
                     "/api/v1/research/trigger",
                     json={"batch_size": 1},
@@ -439,11 +537,16 @@ class TestResearchAPI:
 # Analytics API Tests
 # ===========================================================================
 
+
 class TestAnalyticsAPI:
 
     def test_wine_scores_returns_critic_data(self, test_client):
         """GET /analytics/wine/{uuid}/scores returns critic_scores and per_restaurant_markup."""
-        critic_scores = {"robert_parker": 95, "wine_spectator": 93, "jancis_robinson": 18}
+        critic_scores = {
+            "robert_parker": 95,
+            "wine_spectator": 93,
+            "jancis_robinson": 18,
+        }
         wine_data = {
             "id": WINE_UUID,
             "name": "Opus One 2019",
@@ -460,15 +563,21 @@ class TestAnalyticsAPI:
         ]
 
         lib_mock = MagicMock()
-        lib_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = wine_data
+        lib_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            wine_data
+        )
 
         inv_mock = MagicMock()
-        inv_mock.select.return_value.eq.return_value.execute.return_value.data = inventory_rows
+        inv_mock.select.return_value.eq.return_value.execute.return_value.data = (
+            inventory_rows
+        )
 
-        sb = _build_supabase({
-            "master_wine_library": lib_mock,
-            "restaurant_inventory": inv_mock,
-        })
+        sb = _build_supabase(
+            {
+                "master_wine_library": lib_mock,
+                "restaurant_inventory": inv_mock,
+            }
+        )
 
         with patch("api.analytics_routes._get_supabase", return_value=sb):
             resp = test_client.get(f"/api/v1/analytics/wine/{WINE_UUID}/scores")
@@ -526,15 +635,21 @@ class TestAnalyticsAPI:
         ]
 
         tw_mock = MagicMock()
-        tw_mock.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = tw_rows
+        tw_mock.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+            tw_rows
+        )
 
         lib_mock = MagicMock()
-        lib_mock.select.return_value.in_.return_value.execute.return_value.data = wine_meta_rows
+        lib_mock.select.return_value.in_.return_value.execute.return_value.data = (
+            wine_meta_rows
+        )
 
-        sb = _build_supabase({
-            "trending_wines": tw_mock,
-            "master_wine_library": lib_mock,
-        })
+        sb = _build_supabase(
+            {
+                "trending_wines": tw_mock,
+                "master_wine_library": lib_mock,
+            }
+        )
 
         with patch("api.analytics_routes._get_supabase", return_value=sb):
             resp = test_client.get("/api/v1/analytics/trends?period=90d")
@@ -591,18 +706,24 @@ class TestAnalyticsAPI:
         }
 
         roster_mock = MagicMock()
-        roster_mock.select.return_value.in_.return_value.execute.return_value.data = roster_rows
+        roster_mock.select.return_value.in_.return_value.execute.return_value.data = (
+            roster_rows
+        )
 
         changes_mock = MagicMock()
-        changes_mock.select.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value.data = changes_rows
+        changes_mock.select.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+            changes_rows
+        )
 
-        sb = _build_supabase({
-            "master_wine_library": lib_mock,
-            "master_wine_library_submissions": subs_mock,
-            "wine_popularity": pop_mock,
-            "restaurant_wine_roster": roster_mock,
-            "menu_changes": changes_mock,
-        })
+        sb = _build_supabase(
+            {
+                "master_wine_library": lib_mock,
+                "master_wine_library_submissions": subs_mock,
+                "wine_popularity": pop_mock,
+                "restaurant_wine_roster": roster_mock,
+                "menu_changes": changes_mock,
+            }
+        )
 
         with patch("api.analytics_routes._get_supabase", return_value=sb):
             resp = test_client.get(f"/api/v1/analytics/wine/{WINE_UUID}/timeline")
@@ -612,7 +733,9 @@ class TestAnalyticsAPI:
         assert body["wine_id"] == WINE_UUID
         assert body["wine_name"] == "Barolo Riserva 2016"
         assert body["restaurants_currently_carrying"] == 5
-        assert body["first_seen_at"] is not None, "first_seen_at should be populated from roster"
-        assert len(body["price_history"]) == 2, (
-            f"Expected 2 price_history entries, got {len(body['price_history'])}"
-        )
+        assert (
+            body["first_seen_at"] is not None
+        ), "first_seen_at should be populated from roster"
+        assert (
+            len(body["price_history"]) == 2
+        ), f"Expected 2 price_history entries, got {len(body['price_history'])}"

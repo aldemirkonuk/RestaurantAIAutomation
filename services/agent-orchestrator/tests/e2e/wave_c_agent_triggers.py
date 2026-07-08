@@ -20,12 +20,10 @@ CI: Runs in parallel with Wave B (pytest -n 2 wave_b wave_c — see e2e-prod.yml
 import asyncio
 import json
 import os
-from typing import Optional
 
 import aio_pika
 import httpx
 import pytest
-from e2e.conftest_prod import get_with_retry
 
 pytestmark = pytest.mark.prod_e2e
 
@@ -52,30 +50,22 @@ AGENT_ROUTING_KEYS: dict[str, tuple[str, str]] = {
     # fall back to default exchange + direct queue name.
     # Actual orchestrator key is "pos_integration_agent" (orchestrator.py:134).
     "pos_integration": ("", "queue.pos_integration_agent.pos_test"),
-
     # buffer_manager subscribes to ("pos.events", "pos.sale.completed")
     # "pos.events" is declared in message_bus._setup_exchanges — use topic routing.
     "buffer_manager": ("pos.events", "pos.sale.completed"),
-
     # inventory_engine subscribes to ("stock.events", "stock.evaluated")
     "inventory_engine": ("stock.events", "stock.evaluated"),
-
     # inequality_detector subscribes to ("stock.events", "stock.state.changed")
     "inequality_detector": ("stock.events", "stock.state.changed"),
-
     # state_invariant_enforcer subscribes to ("pos.events", "#") — wildcard.
     # Any routing key on pos.events will be received.
     "state_invariant_enforcer": ("pos.events", "pos.e2e.test_probe"),
-
     # notification_agent subscribes to ("stock.events", "stock.threshold.breached")
     "notification": ("stock.events", "stock.threshold.breached"),
-
     # procurement_agent subscribes to ("procurement.events", "procurement.manual_order_request")
     "procurement": ("procurement.events", "procurement.manual_order_request"),
-
     # calendar_agent subscribes to ("system.control", "system.schedule.daily_check")
     "calendar": ("system.control", "system.schedule.daily_check"),
-
     # reporting_agent subscribes to ("reporting.events", "reporting.generate_on_demand_report")
     # "reporting.events" NOT declared in message_bus._setup_exchanges →
     # fall back to default exchange + direct queue name.
@@ -103,6 +93,7 @@ def make_test_payload(agent_name: str) -> dict:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def rabbitmq_url() -> str:
     """RABBITMQ_URL from env — skips entire Wave C if not set."""
@@ -127,6 +118,7 @@ async def rabbitmq_connection(rabbitmq_url: str) -> "aio_pika.RobustConnection":
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def publish_test_message(
     connection: "aio_pika.RobustConnection",
@@ -203,6 +195,7 @@ async def check_agent_still_healthy(
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
+
 
 class TestAgentTriggers:
     """Wave C: Publish test message to each agent, verify no crash (TEST-PROD-03)."""

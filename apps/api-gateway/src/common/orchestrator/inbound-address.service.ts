@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
-import { DatabaseService } from '../../database/database.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { randomBytes } from "crypto";
+import { DatabaseService } from "../../database/database.service";
 
 /**
  * InboundAddressService — Phase 1 dedicated-domain inbound addressing.
@@ -26,17 +26,19 @@ export class InboundAddressService {
 
   /** Configured inbound domain (e.g. "in.wineops.ai"), or null when the feature is off. */
   domain(): string | null {
-    const d = (this.configService.get<string>('INBOUND_EMAIL_DOMAIN') || '').trim().toLowerCase();
+    const d = (this.configService.get<string>("INBOUND_EMAIL_DOMAIN") || "")
+      .trim()
+      .toLowerCase();
     return d || null;
   }
 
   /** Bare, lowercased email address from a raw value or `Name <a@b.com>`. */
   normalize(raw: string | null | undefined): string {
-    const s = (raw ?? '').toString().trim().toLowerCase();
-    if (!s) return '';
+    const s = (raw ?? "").toString().trim().toLowerCase();
+    if (!s) return "";
     const angled = s.match(/<([^>]+)>/);
     const addr = (angled ? angled[1] : s).trim();
-    return addr.includes('@') ? addr : '';
+    return addr.includes("@") ? addr : "";
   }
 
   /** The active inbound address for a restaurant, provisioning one on first use. */
@@ -44,10 +46,10 @@ export class InboundAddressService {
     if (!this.domain() || !restaurantId) return null;
     try {
       const { data } = await this.databaseService.supabase
-        .from('restaurant_inbound_addresses')
-        .select('address')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true)
+        .from("restaurant_inbound_addresses")
+        .select("address")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
         .limit(1)
         .maybeSingle();
       if ((data as any)?.address) return (data as any).address;
@@ -61,30 +63,33 @@ export class InboundAddressService {
   async provision(restaurantId: string): Promise<string | null> {
     const domain = this.domain();
     if (!domain || !restaurantId) return null;
-    const token = `r-${randomBytes(4).toString('hex')}`;
+    const token = `r-${randomBytes(4).toString("hex")}`;
     const address = `${token}@${domain}`;
     try {
       const { error } = await this.databaseService.supabase
-        .from('restaurant_inbound_addresses')
+        .from("restaurant_inbound_addresses")
         .insert({
           restaurant_id: restaurantId,
           address,
           token,
-          provider: this.configService.get<string>('INBOUND_EMAIL_PROVIDER') || null,
+          provider:
+            this.configService.get<string>("INBOUND_EMAIL_PROVIDER") || null,
           is_active: true,
         });
       if (error) {
         // Already provisioned (unique index) or raced — return the existing active address.
         const { data } = await this.databaseService.supabase
-          .from('restaurant_inbound_addresses')
-          .select('address')
-          .eq('restaurant_id', restaurantId)
-          .eq('is_active', true)
+          .from("restaurant_inbound_addresses")
+          .select("address")
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true)
           .limit(1)
           .maybeSingle();
         return (data as any)?.address ?? null;
       }
-      this.logger.log(`Provisioned inbound address ${address} for restaurant ${restaurantId}.`);
+      this.logger.log(
+        `Provisioned inbound address ${address} for restaurant ${restaurantId}.`,
+      );
       return address;
     } catch (e: any) {
       this.logger.warn(`provision failed for ${restaurantId}: ${e?.message}`);
@@ -101,14 +106,16 @@ export class InboundAddressService {
   ): Promise<string | null> {
     if (!this.domain()) return null;
     const list = Array.isArray(recipients) ? recipients : [recipients];
-    const addrs = Array.from(new Set(list.map((r) => this.normalize(r)).filter(Boolean)));
+    const addrs = Array.from(
+      new Set(list.map((r) => this.normalize(r)).filter(Boolean)),
+    );
     if (!addrs.length) return null;
     try {
       const { data } = await this.databaseService.supabase
-        .from('restaurant_inbound_addresses')
-        .select('restaurant_id, address')
-        .in('address', addrs)
-        .eq('is_active', true)
+        .from("restaurant_inbound_addresses")
+        .select("restaurant_id, address")
+        .in("address", addrs)
+        .eq("is_active", true)
         .limit(1);
       const row = (data as any[])?.[0];
       return row?.restaurant_id ?? null;

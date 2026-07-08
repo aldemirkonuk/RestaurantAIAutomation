@@ -80,12 +80,17 @@ def normalize_bottle_volume(raw: str) -> Optional[int]:
 # OUTPUT SCHEMA (25 fields)
 # =============================================================================
 
+
 class WineParsedFields(BaseModel):
     """Structured output for a single detected wine entry."""
 
     # --- Core Identification (always attempt) ---
-    wine_name: str = Field(default="Unknown Wine", description="Primary wine name / cuvée")
-    producer: Optional[str] = Field(default=None, description="Winery / estate / producer name")
+    wine_name: str = Field(
+        default="Unknown Wine", description="Primary wine name / cuvée"
+    )
+    producer: Optional[str] = Field(
+        default=None, description="Winery / estate / producer name"
+    )
     vintage: Optional[int] = Field(default=None, description="Harvest year")
     wine_type: Optional[str] = Field(
         default=None,
@@ -94,9 +99,15 @@ class WineParsedFields(BaseModel):
 
     # --- Origin ---
     country: Optional[str] = Field(default=None, description="Country of origin")
-    region: Optional[str] = Field(default=None, description="Wine region (e.g. Bordeaux)")
-    sub_region: Optional[str] = Field(default=None, description="Sub-region (e.g. Pauillac)")
-    appellation: Optional[str] = Field(default=None, description="Official appellation (e.g. AOC Pauillac)")
+    region: Optional[str] = Field(
+        default=None, description="Wine region (e.g. Bordeaux)"
+    )
+    sub_region: Optional[str] = Field(
+        default=None, description="Sub-region (e.g. Pauillac)"
+    )
+    appellation: Optional[str] = Field(
+        default=None, description="Official appellation (e.g. AOC Pauillac)"
+    )
     appellation_class: Optional[str] = Field(
         default=None,
         description="Appellation system: DOC, DOCG, AOC, AOP, AVA, DO, DOCA, etc.",
@@ -111,8 +122,12 @@ class WineParsedFields(BaseModel):
 
     # --- Pricing ---
     price: Optional[float] = Field(default=None, description="Listed price")
-    price_currency: Optional[str] = Field(default=None, description="USD, EUR, TRY, GBP, etc.")
-    serving_type: Optional[str] = Field(default=None, description="glass | bottle | carafe")
+    price_currency: Optional[str] = Field(
+        default=None, description="USD, EUR, TRY, GBP, etc."
+    )
+    serving_type: Optional[str] = Field(
+        default=None, description="glass | bottle | carafe"
+    )
 
     # --- Structure ---
     body: Optional[str] = Field(default=None, description="light | medium | full")
@@ -120,13 +135,19 @@ class WineParsedFields(BaseModel):
 
     # --- Additional ---
     alcohol_pct: Optional[float] = Field(default=None, description="Alcohol %")
-    bottle_volume: Optional[str] = Field(default=None, description="750ml, 375ml, 1.5L, etc.")
+    bottle_volume: Optional[str] = Field(
+        default=None, description="750ml, 375ml, 1.5L, etc."
+    )
     bottle_size_ml: Optional[int] = Field(
         default=None,
         description="Bottle volume in ml. Normalized from text like '750ml', '1.5L', '25.4oz'. Standard bottle = 750.",
     )
-    tasting_notes: Optional[str] = Field(default=None, description="Flavour description")
-    food_pairings: Optional[List[str]] = Field(default=None, description="Pairing suggestions")
+    tasting_notes: Optional[str] = Field(
+        default=None, description="Flavour description"
+    )
+    food_pairings: Optional[List[str]] = Field(
+        default=None, description="Pairing suggestions"
+    )
     rating: Optional[str] = Field(default=None, description="Score (e.g. '92pts WS')")
     classification: Optional[str] = Field(
         default=None,
@@ -149,8 +170,13 @@ class WineParsedFields(BaseModel):
     )
 
     # --- Governance (set after parsing) ---
-    library_tier: Optional[int] = Field(default=None, description="0=Canonical, 1=Auto-Validated, 2=Web-Enriched, 3=Provisional, 4=Unresolved")
-    canonical_name_verified: bool = Field(default=False, description="True if name matched canonical library entry")
+    library_tier: Optional[int] = Field(
+        default=None,
+        description="0=Canonical, 1=Auto-Validated, 2=Web-Enriched, 3=Provisional, 4=Unresolved",
+    )
+    canonical_name_verified: bool = Field(
+        default=False, description="True if name matched canonical library entry"
+    )
 
 
 # =============================================================================
@@ -219,6 +245,7 @@ Return ONLY valid JSON matching this exact schema (no markdown fences):
 # REGEX-BASED FALLBACK PARSER
 # =============================================================================
 
+
 class RegexWineParser:
     """Fallback parser using regex when Gemini is unavailable."""
 
@@ -233,7 +260,9 @@ class RegexWineParser:
         (re.compile(r"([\d,]+\.?\d{0,2})\s*TL\b"), "TRY"),
         (re.compile(r"([\d,]+\.?\d{0,2})\s*TRY\b"), "TRY"),
     ]
-    _ALCOHOL_RE = re.compile(r"(\d{1,2}(?:\.\d)?)\s*%\s*(?:abv|alc|vol)?", re.IGNORECASE)
+    _ALCOHOL_RE = re.compile(
+        r"(\d{1,2}(?:\.\d)?)\s*%\s*(?:abv|alc|vol)?", re.IGNORECASE
+    )
     _VOLUME_RE = re.compile(
         r"\b(\d{3,4})\s*ml\b|\b(\d+(?:\.\d+)?)\s*[lL]\b|\b(\d+(?:\.\d+)?)\s*oz\b|\b(375|750)\b",
         re.IGNORECASE,
@@ -291,9 +320,7 @@ class RegexWineParser:
                 fields["field_sources"]["bottle_size_ml"] = "ocr_extracted"
 
         # Wine type from section header or text
-        wine_type = normalizer.infer_wine_type(
-            (section_header or "") + " " + corrected
-        )
+        wine_type = normalizer.infer_wine_type((section_header or "") + " " + corrected)
         if wine_type:
             fields["wine_type"] = wine_type
             if section_header and normalizer.infer_wine_type(section_header):
@@ -318,17 +345,23 @@ class RegexWineParser:
         # Sanitise: remove SQL/script-injection artefacts and non-printable chars.
         # We keep letters, digits, spaces, and common wine-label punctuation.
         name_text = re.sub(
-            r"[;'\"`<>\\]|"                        # SQL/HTML injection chars
-            r"--[^\n]*|"                            # SQL line comments (-- ...)
+            r"[;'\"`<>\\]|"  # SQL/HTML injection chars
+            r"--[^\n]*|"  # SQL line comments (-- ...)
             r"\b(?:drop|table|insert|update|delete|select|union|exec|script|"
             r"truncate|alter|create|database|schema)\b",  # SQL keywords
-            " ", name_text, flags=re.IGNORECASE,
+            " ",
+            name_text,
+            flags=re.IGNORECASE,
         )
-        name_text = re.sub(r"[^\x20-\x7Eàáâãäåæçèéêëìíîïðñòóôõöùúûüýÿ"
-                           r"ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖÙÚÛÜÝŸ"
-                           r"ğĞışİöÖüÜçÇ"           # Turkish chars
-                           r"αβγδεζηθ"              # Greek (extend as needed)
-                           r"]", " ", name_text)
+        name_text = re.sub(
+            r"[^\x20-\x7Eàáâãäåæçèéêëìíîïðñòóôõöùúûüýÿ"
+            r"ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖÙÚÛÜÝŸ"
+            r"ğĞışİöÖüÜçÇ"  # Turkish chars
+            r"αβγδεζηθ"  # Greek (extend as needed)
+            r"]",
+            " ",
+            name_text,
+        )
         name_text = re.sub(r"\s+", " ", name_text).strip()
         # Hard cap: wine names longer than 120 chars after cleanup are truncated
         name_text = name_text[:120]
@@ -342,7 +375,10 @@ class RegexWineParser:
                 r"[;'\"`<>\\]|--[^\n]*|"
                 r"\b(?:drop|table|insert|update|delete|select|union|exec|script|"
                 r"truncate|alter|create|database|schema)\b",
-                " ", ocr_text, flags=re.IGNORECASE)
+                " ",
+                ocr_text,
+                flags=re.IGNORECASE,
+            )
             safe_fallback = re.sub(r"[\r\n\t]+", " ", safe_fallback)
             safe_fallback = re.sub(r"\s+", " ", safe_fallback).strip()[:80]
             fields["wine_name"] = safe_fallback or "Unknown Wine"
@@ -360,7 +396,9 @@ class RegexWineParser:
                             continue
                     if key == "price" and isinstance(val, str):
                         try:
-                            val = float(val.replace(",", "").replace("$", "").replace("€", ""))
+                            val = float(
+                                val.replace(",", "").replace("$", "").replace("€", "")
+                            )
                         except ValueError:
                             continue
                     fields[key] = val
@@ -376,6 +414,7 @@ class RegexWineParser:
 # =============================================================================
 # MAIN PARSER CLASS
 # =============================================================================
+
 
 class WineFieldParser:
     """
@@ -507,7 +546,7 @@ class WineFieldParser:
             hints_parts = []
             for key, val in yolo_detections.items():
                 if val:
-                    hints_parts.append(f"  - {key}: \"{val}\"")
+                    hints_parts.append(f'  - {key}: "{val}"')
             if hints_parts:
                 yolo_block = "YOLO detection hints:\n" + "\n".join(hints_parts)
                 effective_normalized = f"{effective_normalized}\n\n{yolo_block}"
@@ -553,25 +592,63 @@ class WineFieldParser:
             # WineParsedFields expects flat values with separate dicts for
             # field_confidences and field_sources.
             SCHEMA_FIELDS = {
-                "wine_name", "producer", "vintage", "wine_type", "country", "region",
-                "sub_region", "appellation", "appellation_class", "grape_variety",
-                "is_blend", "price", "price_currency", "serving_type", "body",
-                "sweetness", "alcohol_pct", "bottle_volume", "bottle_size_ml",
-                "tasting_notes", "food_pairings", "rating", "classification",
-                "appellation_tier", "acidity", "tannins", "texture", "finish",
-                "primary_aromas", "secondary_aromas", "tertiary_aromas",
-                "quality_level", "classification_name", "classification_system",
-                "reserve_status", "vintage_quality", "farming", "aging_vessel",
-                "aging_duration", "serving_temp_celsius", "glass_type",
-                "decanting_recommended", "aging_potential_years", "rating_ws",
-                "rating_rp", "rating_jr",
+                "wine_name",
+                "producer",
+                "vintage",
+                "wine_type",
+                "country",
+                "region",
+                "sub_region",
+                "appellation",
+                "appellation_class",
+                "grape_variety",
+                "is_blend",
+                "price",
+                "price_currency",
+                "serving_type",
+                "body",
+                "sweetness",
+                "alcohol_pct",
+                "bottle_volume",
+                "bottle_size_ml",
+                "tasting_notes",
+                "food_pairings",
+                "rating",
+                "classification",
+                "appellation_tier",
+                "acidity",
+                "tannins",
+                "texture",
+                "finish",
+                "primary_aromas",
+                "secondary_aromas",
+                "tertiary_aromas",
+                "quality_level",
+                "classification_name",
+                "classification_system",
+                "reserve_status",
+                "vintage_quality",
+                "farming",
+                "aging_vessel",
+                "aging_duration",
+                "serving_temp_celsius",
+                "glass_type",
+                "decanting_recommended",
+                "aging_potential_years",
+                "rating_ws",
+                "rating_rp",
+                "rating_jr",
             }
             field_confidences: Dict[str, float] = {}
             field_sources: Dict[str, str] = {}
             flat_data: Dict[str, Any] = {}
 
             for key, raw_val in data.items():
-                if key in SCHEMA_FIELDS and isinstance(raw_val, dict) and "value" in raw_val:
+                if (
+                    key in SCHEMA_FIELDS
+                    and isinstance(raw_val, dict)
+                    and "value" in raw_val
+                ):
                     # Nested object — extract value, confidence, source
                     flat_data[key] = raw_val.get("value")
                     if "confidence" in raw_val:
@@ -688,7 +765,15 @@ class WineFieldParser:
                         continue
                 elif target_key == "price":
                     try:
-                        cleaned = str(yolo_value).replace(",", "").replace("$", "").replace("€", "").replace("£", "").replace("₺", "").strip()
+                        cleaned = (
+                            str(yolo_value)
+                            .replace(",", "")
+                            .replace("$", "")
+                            .replace("€", "")
+                            .replace("£", "")
+                            .replace("₺", "")
+                            .strip()
+                        )
                         data[target_key] = float(cleaned)
                     except ValueError:
                         continue

@@ -17,7 +17,7 @@ Thresholds:
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from services.text_normalizer import get_normalizer
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # FUZZY MATCHING ALGORITHMS (canonical single implementation)
 # =============================================================================
+
 
 def levenshtein_distance(s1: str, s2: str) -> int:
     """Levenshtein edit distance."""
@@ -107,9 +108,26 @@ def jaro_winkler_similarity(s1: str, s2: str) -> float:
 def token_overlap_score(s1: str, s2: str) -> float:
     """Token-based Jaccard overlap (0.0 – 1.0)."""
     stop_words = {
-        "the", "de", "di", "du", "le", "la", "les", "des", "and",
-        "wine", "wines", "estate", "vineyard", "vineyards", "winery",
-        "chateau", "domaine", "tenuta", "bodega", "weingut",
+        "the",
+        "de",
+        "di",
+        "du",
+        "le",
+        "la",
+        "les",
+        "des",
+        "and",
+        "wine",
+        "wines",
+        "estate",
+        "vineyard",
+        "vineyards",
+        "winery",
+        "chateau",
+        "domaine",
+        "tenuta",
+        "bodega",
+        "weingut",
     }
     tokens1 = set(s1.lower().split()) - stop_words
     tokens2 = set(s2.lower().split()) - stop_words
@@ -127,12 +145,19 @@ def token_overlap_score(s1: str, s2: str) -> float:
 # MATCH RESULT MODEL
 # =============================================================================
 
+
 class WineMatch:
     """A single wine match result."""
 
     __slots__ = (
-        "wine_id", "name", "producer", "vintage", "wine_type",
-        "similarity_score", "match_type", "match_phase",
+        "wine_id",
+        "name",
+        "producer",
+        "vintage",
+        "wine_type",
+        "similarity_score",
+        "match_type",
+        "match_phase",
     )
 
     def __init__(
@@ -171,6 +196,7 @@ class WineMatch:
 # =============================================================================
 # MAIN MATCHER CLASS
 # =============================================================================
+
 
 class WineMatcher:
     """
@@ -227,16 +253,26 @@ class WineMatcher:
         """
         norm = self._normalizer.normalize(wine_name)
         normalized_name = norm["normalized"]
-        normalized_producer = self._normalizer.normalize_for_matching(producer) if producer else None
+        normalized_producer = (
+            self._normalizer.normalize_for_matching(producer) if producer else None
+        )
 
         # ---- Phase 1: User library first (if restaurant_id) ----
         if restaurant_id and self.supabase:
             user_matches = await self._search_user_library(
-                restaurant_id, wine_name, producer, vintage, limit=10,
+                restaurant_id,
+                wine_name,
+                producer,
+                vintage,
+                limit=10,
             )
             if user_matches:
                 scored = self._score_candidates(
-                    user_matches, normalized_name, normalized_producer, vintage, limit,
+                    user_matches,
+                    normalized_name,
+                    normalized_producer,
+                    vintage,
+                    limit,
                 )
                 if scored and scored[0].similarity_score >= self.AUTO_MATCH_THRESHOLD:
                     return self._build_result(scored, phase="user_library", auto=True)
@@ -257,7 +293,11 @@ class WineMatcher:
         # ---- Phase 2: Fuzzy string scoring ----
         if vector_candidates:
             scored = self._score_candidates(
-                vector_candidates, normalized_name, normalized_producer, vintage, limit,
+                vector_candidates,
+                normalized_name,
+                normalized_producer,
+                vintage,
+                limit,
             )
             if scored and scored[0].similarity_score >= self.AUTO_MATCH_THRESHOLD:
                 return self._build_result(scored, phase="fuzzy", auto=True)
@@ -271,14 +311,18 @@ class WineMatcher:
                 timeout=20.0,
             )
         except asyncio.TimeoutError:
-            logger.warning(f"AI enrichment timed out for '{wine_name}' — returning null enrichment")
+            logger.warning(
+                f"AI enrichment timed out for '{wine_name}' — returning null enrichment"
+            )
             enrichment = None
 
         return {
             "matched": False,
             "auto_accepted": False,
             "best_match": None,
-            "candidates": [m.to_dict() for m in scored] if vector_candidates and scored else [],
+            "candidates": (
+                [m.to_dict() for m in scored] if vector_candidates and scored else []
+            ),
             "enrichment": enrichment,
             "phase_reached": "enrichment",
         }
@@ -286,7 +330,9 @@ class WineMatcher:
     # ---- Phase 1: Search methods ----
 
     async def _vector_search(
-        self, wine_name: str, limit: int = 50,
+        self,
+        wine_name: str,
+        limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """pgvector cosine similarity search."""
         if not self.supabase:
@@ -301,7 +347,9 @@ class WineMatcher:
             return []
 
     async def _text_search(
-        self, wine_name: str, limit: int = 50,
+        self,
+        wine_name: str,
+        limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """PostgreSQL full-text search on search_vector column."""
         if not self.supabase:
@@ -320,7 +368,9 @@ class WineMatcher:
             return []
 
     async def _ilike_search(
-        self, wine_name: str, limit: int = 50,
+        self,
+        wine_name: str,
+        limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """Fallback: case-insensitive LIKE search on first token."""
         if not self.supabase:
@@ -530,9 +580,12 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
 
             # Capture grounding metadata if available
             try:
-                if hasattr(response, 'candidates') and response.candidates:
+                if hasattr(response, "candidates") and response.candidates:
                     candidate = response.candidates[0]
-                    if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                    if (
+                        hasattr(candidate, "grounding_metadata")
+                        and candidate.grounding_metadata
+                    ):
                         data["_grounding_sources"] = str(candidate.grounding_metadata)
             except Exception:
                 pass
@@ -556,6 +609,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
         """Fallback enrichment without grounding (uses legacy genai if new SDK fails)."""
         try:
             import google.generativeai as genai
+
             genai.configure(api_key=self.google_api_key)
             model = genai.GenerativeModel("gemini-pro")
 
@@ -568,7 +622,9 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             prompt = f"""You are a master sommelier. Research this wine: "{wine_desc}"
 Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region, grape_variety, tasting_notes, food_pairings, confidence."""
 
-            response = model.generate_content(prompt, generation_config={"temperature": 0.1})
+            response = model.generate_content(
+                prompt, generation_config={"temperature": 0.1}
+            )
             result_text = response.text.strip()
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0].strip()

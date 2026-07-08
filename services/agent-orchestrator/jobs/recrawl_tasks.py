@@ -8,6 +8,7 @@ Tasks:
                              from crawl_schedule and fans out crawl_and_diff_task.
   crawl_and_diff_task     — Per-restaurant: crawl → diff → update schedule.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,6 +34,7 @@ FREQUENCY_DAYS = {"weekly": 7, "biweekly": 14, "monthly": 30}
 # BEAT TASK: select due restaurants and fan out
 # =============================================================================
 
+
 @celery_app.task(name="recrawl.scheduled")
 def scheduled_recrawl_task() -> Dict[str, Any]:
     """
@@ -43,6 +45,7 @@ def scheduled_recrawl_task() -> Dict[str, Any]:
     NEVER does the crawl inline — always fans out to crawl_and_diff_task.delay().
     """
     from supabase import create_client
+
     supabase = create_client(settings.supabase_url, settings.supabase_key)
 
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -66,6 +69,7 @@ def scheduled_recrawl_task() -> Dict[str, Any]:
 # =============================================================================
 # WORKER TASK: crawl one restaurant and run diff
 # =============================================================================
+
 
 @celery_app.task(
     name="recrawl.crawl_and_diff",
@@ -95,7 +99,7 @@ def crawl_and_diff_task(self, restaurant_id: str) -> Optional[Dict[str, Any]]:
         return asyncio.run(_crawl_and_diff_async(restaurant_id))
     except Exception as exc:
         retry_num = self.request.retries
-        countdown = 60 * (2 ** retry_num)
+        countdown = 60 * (2**retry_num)
         if retry_num >= self.max_retries - 1:
             # Final failure — mark error in crawl_schedule
             try:
@@ -104,7 +108,8 @@ def crawl_and_diff_task(self, restaurant_id: str) -> Optional[Dict[str, Any]]:
                 pass
             logger.error(
                 "crawl_and_diff_task: max retries reached for restaurant_id=%s: %s",
-                restaurant_id, exc,
+                restaurant_id,
+                exc,
             )
             return None
         raise self.retry(exc=exc, countdown=countdown)
@@ -115,6 +120,7 @@ def crawl_and_diff_task(self, restaurant_id: str) -> Optional[Dict[str, Any]]:
 # =============================================================================
 # ASYNC HELPER
 # =============================================================================
+
 
 async def _crawl_and_diff_async(restaurant_id: str) -> Dict[str, Any]:
     """Async body of crawl_and_diff_task. Called via asyncio.run()."""
@@ -162,7 +168,9 @@ async def _crawl_and_diff_async(restaurant_id: str) -> Dict[str, Any]:
 
     # Crawl
     crawler = WebCrawlerService()
-    result = await crawler.crawl_restaurant(website_url=website_url, restaurant_name=restaurant_name)
+    result = await crawler.crawl_restaurant(
+        website_url=website_url, restaurant_name=restaurant_name
+    )
 
     # Run diff (result.wines populated by patched _persist_crawled_wines)
     diff_service = MenuDiffService(supabase)
@@ -190,18 +198,21 @@ async def _crawl_and_diff_async(restaurant_id: str) -> Dict[str, Any]:
 # SCHEDULE HELPERS
 # =============================================================================
 
+
 def _update_crawl_schedule(supabase: Any, restaurant_id: str, frequency: str) -> None:
     """Update last_crawled_at, next_crawl_at, and reset consecutive_failures to 0."""
     days = FREQUENCY_DAYS.get(frequency, 7)
     now = datetime.now(timezone.utc)
     next_crawl = (now + timedelta(days=days)).isoformat()
     try:
-        supabase.table("crawl_schedule").update({
-            "last_crawled_at": now.isoformat(),
-            "next_crawl_at": next_crawl,
-            "consecutive_failures": 0,
-            "status": "active",
-        }).eq("restaurant_id", restaurant_id).execute()
+        supabase.table("crawl_schedule").update(
+            {
+                "last_crawled_at": now.isoformat(),
+                "next_crawl_at": next_crawl,
+                "consecutive_failures": 0,
+                "status": "active",
+            }
+        ).eq("restaurant_id", restaurant_id).execute()
     except Exception as exc:
         logger.error("_update_crawl_schedule: failed for %s: %s", restaurant_id, exc)
 
@@ -209,6 +220,7 @@ def _update_crawl_schedule(supabase: Any, restaurant_id: str, frequency: str) ->
 def _mark_crawl_error(restaurant_id: str, consecutive_inc: bool = False) -> None:
     """Increment consecutive_failures; set status='error' after CONSECUTIVE_FAILURE_THRESHOLD."""
     from supabase import create_client
+
     supabase = create_client(settings.supabase_url, settings.supabase_key)
     try:
         resp = (
@@ -223,9 +235,11 @@ def _mark_crawl_error(restaurant_id: str, consecutive_inc: bool = False) -> None
         current = resp.data.get("consecutive_failures") or 0
         new_count = current + (1 if consecutive_inc else 0)
         new_status = "error" if new_count >= CONSECUTIVE_FAILURE_THRESHOLD else "active"
-        supabase.table("crawl_schedule").update({
-            "consecutive_failures": new_count,
-            "status": new_status,
-        }).eq("restaurant_id", restaurant_id).execute()
+        supabase.table("crawl_schedule").update(
+            {
+                "consecutive_failures": new_count,
+                "status": new_status,
+            }
+        ).eq("restaurant_id", restaurant_id).execute()
     except Exception as exc:
         logger.error("_mark_crawl_error: failed for %s: %s", restaurant_id, exc)

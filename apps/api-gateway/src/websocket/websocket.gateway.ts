@@ -20,12 +20,12 @@ import {
   ConnectedSocket,
   MessageBody,
   WsException,
-} from '@nestjs/websockets';
-import { Logger, Injectable, UseGuards } from '@nestjs/common';
-import { Server, Socket } from 'socket.io';
-import { Interval } from '@nestjs/schedule';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+} from "@nestjs/websockets";
+import { Logger, Injectable, UseGuards } from "@nestjs/common";
+import { Server, Socket } from "socket.io";
+import { Interval } from "@nestjs/schedule";
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -57,7 +57,7 @@ interface LowStockAlertPayload {
   wine_name: string;
   stock_after: number;
   threshold: number;
-  urgency: 'low' | 'medium' | 'high' | 'critical';
+  urgency: "low" | "medium" | "high" | "critical";
   estimated_stockout_days: number;
 }
 
@@ -75,7 +75,7 @@ interface NotificationPayload {
   id: string;
   title: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
+  type: "info" | "success" | "warning" | "error";
   action_url?: string;
 }
 
@@ -148,18 +148,18 @@ class TokenBucketRateLimiter {
       // Vercel production + all preview deployments
       /^https:\/\/.*\.vercel\.app$/,
       // Explicit production URL as a string fallback
-      'https://restaurant-ai-automation-web.vercel.app',
+      "https://restaurant-ai-automation-web.vercel.app",
       // Allow FRONTEND_URL env var if set (supports custom domains)
-      ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : []),
+      ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : []),
       // Local dev
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
     ],
     credentials: true,
   },
-  namespace: '/ws',
-  transports: ['websocket', 'polling'],
+  namespace: "/ws",
+  transports: ["websocket", "polling"],
   pingInterval: 25000,
   pingTimeout: 60000,
 })
@@ -199,14 +199,14 @@ export class WebsocketGateway
   // =========================================================================
 
   afterInit(server: Server): void {
-    this.logger.log('🚀 WebSocket Gateway initialized');
+    this.logger.log("🚀 WebSocket Gateway initialized");
     // Adapter error handling can be added here if needed for distributed deployments
   }
 
   handleConnection(client: Socket): void {
     const { userId, restaurantId } = this.extractAuthContext(client);
     if (!userId) {
-      client.emit('error', 'Unauthorized');
+      client.emit("error", "Unauthorized");
       client.disconnect(true);
       return;
     }
@@ -225,7 +225,10 @@ export class WebsocketGateway
     // Initialize rate limiter
     this.rateLimiters.set(
       client.id,
-      new TokenBucketRateLimiter(this.RATE_LIMIT_TOKENS, this.RATE_LIMIT_REFILL),
+      new TokenBucketRateLimiter(
+        this.RATE_LIMIT_TOKENS,
+        this.RATE_LIMIT_REFILL,
+      ),
     );
 
     this.logger.log(
@@ -233,8 +236,8 @@ export class WebsocketGateway
     );
 
     // Send welcome message
-    client.emit('connection:success', {
-      message: 'Connected to WineOps AI',
+    client.emit("connection:success", {
+      message: "Connected to WineOps AI",
       clientId: client.id,
       serverTime: new Date().toISOString(),
       config: {
@@ -252,7 +255,7 @@ export class WebsocketGateway
 
   handleDisconnect(client: Socket): void {
     const metadata = this.clients.get(client.id);
-    const userId = metadata?.userId || 'unknown';
+    const userId = metadata?.userId || "unknown";
 
     // Cleanup
     this.clients.delete(client.id);
@@ -267,34 +270,34 @@ export class WebsocketGateway
   // SUBSCRIPTION HANDLERS
   // =========================================================================
 
-  @SubscribeMessage('subscribe:restaurant')
+  @SubscribeMessage("subscribe:restaurant")
   handleSubscribeRestaurant(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { restaurantId: string },
   ): { success: boolean; room?: string; error?: string } {
     // Rate limiting
     if (!this.checkRateLimit(client.id)) {
-      return { success: false, error: 'Rate limit exceeded' };
+      return { success: false, error: "Rate limit exceeded" };
     }
 
     // Validate
     if (!data?.restaurantId) {
-      return { success: false, error: 'Restaurant ID required' };
+      return { success: false, error: "Restaurant ID required" };
     }
 
     const metadata = this.clients.get(client.id);
     if (!metadata) {
-      return { success: false, error: 'Client not registered' };
+      return { success: false, error: "Client not registered" };
     }
 
     // Enforce tenant scope
     if (metadata.restaurantId && metadata.restaurantId !== data.restaurantId) {
-      return { success: false, error: 'Unauthorized restaurant subscription' };
+      return { success: false, error: "Unauthorized restaurant subscription" };
     }
 
     // Check room limit
     if (metadata.subscribedRooms.size >= this.MAX_ROOMS_PER_CLIENT) {
-      return { success: false, error: 'Maximum room subscriptions reached' };
+      return { success: false, error: "Maximum room subscriptions reached" };
     }
 
     const room = `restaurant:${data.restaurantId}`;
@@ -309,13 +312,13 @@ export class WebsocketGateway
     return { success: true, room };
   }
 
-  @SubscribeMessage('unsubscribe:restaurant')
+  @SubscribeMessage("unsubscribe:restaurant")
   handleUnsubscribeRestaurant(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { restaurantId: string },
   ): { success: boolean; room?: string } {
     if (!this.checkRateLimit(client.id)) {
-      throw new WsException('Rate limit exceeded');
+      throw new WsException("Rate limit exceeded");
     }
 
     const metadata = this.clients.get(client.id);
@@ -334,14 +337,14 @@ export class WebsocketGateway
     return { success: true, room };
   }
 
-  @SubscribeMessage('ping')
+  @SubscribeMessage("ping")
   handlePing(@ConnectedSocket() client: Socket): void {
     const metadata = this.clients.get(client.id);
     if (metadata) {
       metadata.lastActivity = new Date();
     }
 
-    client.emit('heartbeat', { timestamp: new Date().toISOString() });
+    client.emit("heartbeat", { timestamp: new Date().toISOString() });
   }
 
   // =========================================================================
@@ -354,12 +357,12 @@ export class WebsocketGateway
   emitStockUpdate(restaurantId: string, data: StockUpdatePayload): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'StockUpdated',
+      event: "StockUpdated",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'stock:updated', payload);
+    this.emitToRoom(room, "stock:updated", payload);
     this.logger.debug(`📤 stock:updated → ${room}`);
   }
 
@@ -369,12 +372,12 @@ export class WebsocketGateway
   emitLowStockAlert(restaurantId: string, data: LowStockAlertPayload): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'LowStockAlert',
+      event: "LowStockAlert",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'stock:low', payload);
+    this.emitToRoom(room, "stock:low", payload);
     this.logger.warn(`🚨 stock:low → ${room} (${data.wine_name})`);
   }
 
@@ -384,12 +387,12 @@ export class WebsocketGateway
   emitOrderCreated(restaurantId: string, data: OrderPayload): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'OrderCreated',
+      event: "OrderCreated",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'order:created', payload);
+    this.emitToRoom(room, "order:created", payload);
     this.logger.log(`📋 order:created → ${room}`);
   }
 
@@ -399,12 +402,12 @@ export class WebsocketGateway
   emitOrderStatusChanged(restaurantId: string, data: OrderPayload): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'OrderStatusChanged',
+      event: "OrderStatusChanged",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'order:status_changed', payload);
+    this.emitToRoom(room, "order:status_changed", payload);
     this.logger.log(`📋 order:status_changed → ${room} (${data.status})`);
   }
 
@@ -414,12 +417,12 @@ export class WebsocketGateway
   emitNotification(managerId: string, data: NotificationPayload): void {
     const room = `manager:${managerId}`;
     const payload = {
-      event: 'NewNotification',
+      event: "NewNotification",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'notification:new', payload);
+    this.emitToRoom(room, "notification:new", payload);
     this.logger.log(`🔔 notification:new → ${room}`);
   }
 
@@ -432,12 +435,12 @@ export class WebsocketGateway
   ): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'NewNotification',
+      event: "NewNotification",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'notification:new', payload);
+    this.emitToRoom(room, "notification:new", payload);
     this.logger.log(`🔔 notification:new → ${room}`);
   }
 
@@ -447,12 +450,12 @@ export class WebsocketGateway
   emitReportReady(restaurantId: string, data: ReportPayload): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'ReportReady',
+      event: "ReportReady",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'report:ready', payload);
+    this.emitToRoom(room, "report:ready", payload);
     this.logger.log(`📊 report:ready → ${room}`);
   }
 
@@ -462,12 +465,12 @@ export class WebsocketGateway
   emitCalendarEventCreated(restaurantId: string, data: any): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'CalendarEventCreated',
+      event: "CalendarEventCreated",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'calendar:event_created', payload);
+    this.emitToRoom(room, "calendar:event_created", payload);
     this.logger.debug(`📅 calendar:event_created → ${room}`);
   }
 
@@ -477,12 +480,12 @@ export class WebsocketGateway
   emitCalendarEventUpdated(restaurantId: string, data: any): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'CalendarEventUpdated',
+      event: "CalendarEventUpdated",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'calendar:event_updated', payload);
+    this.emitToRoom(room, "calendar:event_updated", payload);
     this.logger.debug(`📅 calendar:event_updated → ${room}`);
   }
 
@@ -492,12 +495,12 @@ export class WebsocketGateway
   emitConversationUpdated(restaurantId: string, data: any): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'ConversationUpdated',
+      event: "ConversationUpdated",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'conversation:updated', payload);
+    this.emitToRoom(room, "conversation:updated", payload);
     this.logger.debug(`💬 conversation:updated → ${room}`);
   }
 
@@ -507,12 +510,12 @@ export class WebsocketGateway
   emitConversationSummaryUpdated(restaurantId: string, data: any): void {
     const room = `restaurant:${restaurantId}`;
     const payload = {
-      event: 'ConversationSummaryUpdated',
+      event: "ConversationSummaryUpdated",
       data,
       timestamp: new Date().toISOString(),
     };
 
-    this.emitToRoom(room, 'conversation:summary_updated', payload);
+    this.emitToRoom(room, "conversation:summary_updated", payload);
     this.logger.debug(`💬 conversation:summary_updated → ${room}`);
   }
 
@@ -521,7 +524,7 @@ export class WebsocketGateway
    */
   broadcastSystemMessage(
     message: string,
-    level: 'info' | 'warning' | 'error' = 'info',
+    level: "info" | "warning" | "error" = "info",
   ): void {
     const payload = {
       message,
@@ -529,7 +532,7 @@ export class WebsocketGateway
       timestamp: new Date().toISOString(),
     };
 
-    this.server.emit('system:message', payload);
+    this.server.emit("system:message", payload);
     this.totalMessagesSent++;
 
     this.logger.log(`📢 System broadcast: ${message} (${level})`);
@@ -544,7 +547,10 @@ export class WebsocketGateway
    */
   getStats(): GatewayMetrics {
     const rooms = this.server?.sockets?.adapter?.rooms;
-    const roomCount = rooms ? Array.from(rooms.keys()).filter((r) => r.startsWith('restaurant:')).length : 0;
+    const roomCount = rooms
+      ? Array.from(rooms.keys()).filter((r) => r.startsWith("restaurant:"))
+          .length
+      : 0;
 
     return {
       totalConnections: this.clients.size,
@@ -553,9 +559,7 @@ export class WebsocketGateway
       totalMessagesSent: this.totalMessagesSent,
       rateLimitedRequests: this.rateLimitedRequests,
       roomCount,
-      uptimeSeconds: Math.floor(
-        (Date.now() - this.startTime.getTime()) / 1000,
-      ),
+      uptimeSeconds: Math.floor((Date.now() - this.startTime.getTime()) / 1000),
     };
   }
 
@@ -585,7 +589,7 @@ export class WebsocketGateway
    */
   healthCheck(): { status: string; connections: number; uptime: number } {
     return {
-      status: 'healthy',
+      status: "healthy",
       connections: this.clients.size,
       uptime: Math.floor((Date.now() - this.startTime.getTime()) / 1000),
     };
@@ -640,16 +644,17 @@ export class WebsocketGateway
     return metadata?.userId || client.id;
   }
 
-  private extractAuthContext(
-    client: Socket,
-  ): { userId: string | null; restaurantId: string | null } {
+  private extractAuthContext(client: Socket): {
+    userId: string | null;
+    restaurantId: string | null;
+  } {
     const token = this.extractAuthToken(client);
     if (token) {
       try {
         const payload = this.jwtService.verify(token, {
           secret:
-            this.configService.get<string>('JWT_SECRET') ||
-            'your-secret-key-change-in-production',
+            this.configService.get<string>("JWT_SECRET") ||
+            "your-secret-key-change-in-production",
         }) as { sub?: string; restaurantId?: string };
 
         return {
@@ -657,11 +662,13 @@ export class WebsocketGateway
           restaurantId: payload?.restaurantId || null,
         };
       } catch (error) {
-        this.logger.warn(`⚠️ Invalid WebSocket token: ${error?.message || error}`);
+        this.logger.warn(
+          `⚠️ Invalid WebSocket token: ${error?.message || error}`,
+        );
       }
     }
 
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== "production") {
       const fallbackUserId =
         client.handshake.auth?.userId ||
         client.handshake.query?.userId?.toString() ||
@@ -676,7 +683,7 @@ export class WebsocketGateway
     const token = client.handshake.auth?.token;
     if (token) return token;
     const header = client.handshake.headers?.authorization;
-    if (typeof header === 'string' && header.startsWith('Bearer ')) {
+    if (typeof header === "string" && header.startsWith("Bearer ")) {
       return header.slice(7);
     }
     return null;

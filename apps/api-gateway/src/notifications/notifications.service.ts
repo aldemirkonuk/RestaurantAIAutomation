@@ -1,9 +1,15 @@
-import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
-import { CommunicationsService } from '../communications/communications.service';
-import { GmailService } from '../communications/gmail.service';
-import { DatabaseService } from '../database/database.service';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  Optional,
+  forwardRef,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { CommunicationsService } from "../communications/communications.service";
+import { GmailService } from "../communications/gmail.service";
+import { DatabaseService } from "../database/database.service";
 
 export interface NotificationPayload {
   type: string;
@@ -31,9 +37,11 @@ export class NotificationsService {
     private readonly websocketGateway: WebsocketGateway,
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
-    @Optional() @Inject(forwardRef(() => CommunicationsService))
+    @Optional()
+    @Inject(forwardRef(() => CommunicationsService))
     private readonly communicationsService?: CommunicationsService,
-    @Optional() @Inject(forwardRef(() => GmailService))
+    @Optional()
+    @Inject(forwardRef(() => GmailService))
     private readonly gmailService?: GmailService,
   ) {
     this.initWebPush();
@@ -45,35 +53,46 @@ export class NotificationsService {
   private initWebPush(): void {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const webPush = require('web-push');
-      
-      const vapidPublicKey = this.configService.get<string>('VAPID_PUBLIC_KEY');
-      const vapidPrivateKey = this.configService.get<string>('VAPID_PRIVATE_KEY');
-      const vapidSubject = this.configService.get<string>('VAPID_SUBJECT', 'mailto:admin@wineops.ai');
+      const webPush = require("web-push");
+
+      const vapidPublicKey = this.configService.get<string>("VAPID_PUBLIC_KEY");
+      const vapidPrivateKey =
+        this.configService.get<string>("VAPID_PRIVATE_KEY");
+      const vapidSubject = this.configService.get<string>(
+        "VAPID_SUBJECT",
+        "mailto:admin@wineops.ai",
+      );
 
       if (vapidPublicKey && vapidPrivateKey) {
         webPush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
         this.webPush = webPush;
-        this.logger.log('Web Push initialized with VAPID keys');
+        this.logger.log("Web Push initialized with VAPID keys");
       } else {
-        this.logger.warn('VAPID keys not configured - Web Push notifications disabled');
+        this.logger.warn(
+          "VAPID keys not configured - Web Push notifications disabled",
+        );
       }
     } catch (err) {
-      this.logger.warn(`Web Push initialization failed (web-push may not be installed): ${err?.message}`);
+      this.logger.warn(
+        `Web Push initialization failed (web-push may not be installed): ${err?.message}`,
+      );
     }
   }
 
   /**
    * Send notification to specific user
    */
-  async sendToUser(userId: string, payload: NotificationPayload): Promise<void> {
+  async sendToUser(
+    userId: string,
+    payload: NotificationPayload,
+  ): Promise<void> {
     this.logger.log(`Sending notification to user ${userId}: ${payload.title}`);
-    
+
     // Send via WebSocket (for real-time delivery)
     this.websocketGateway.server
       .to(`user:${userId}`)
-      .emit('notification:new', payload);
-    
+      .emit("notification:new", payload);
+
     // Also send via Web Push API if user has subscription
     await this.sendWebPush(userId, payload);
   }
@@ -81,7 +100,10 @@ export class NotificationsService {
   /**
    * Send Web Push notification to a user's registered push subscriptions
    */
-  async sendWebPush(userId: string, payload: NotificationPayload): Promise<void> {
+  async sendWebPush(
+    userId: string,
+    payload: NotificationPayload,
+  ): Promise<void> {
     if (!this.webPush) {
       return; // Web Push not configured
     }
@@ -89,10 +111,10 @@ export class NotificationsService {
     try {
       // Fetch push subscriptions for this user from DB
       const { data: subscriptions, error } = await this.databaseService.supabase
-        .from('notification_preferences')
-        .select('push_subscription')
-        .eq('user_id', userId)
-        .not('push_subscription', 'is', null);
+        .from("notification_preferences")
+        .select("push_subscription")
+        .eq("user_id", userId)
+        .not("push_subscription", "is", null);
 
       if (error || !subscriptions || subscriptions.length === 0) {
         return; // No subscriptions found
@@ -101,8 +123,8 @@ export class NotificationsService {
       const pushPayload = JSON.stringify({
         title: payload.title,
         body: payload.body,
-        icon: '/icons/wineops-192.png',
-        badge: '/icons/wineops-badge.png',
+        icon: "/icons/wineops-192.png",
+        badge: "/icons/wineops-badge.png",
         data: payload.data,
         requireInteraction: payload.requireInteraction,
         actions: payload.actions,
@@ -114,16 +136,20 @@ export class NotificationsService {
 
         try {
           await this.webPush.sendNotification(sub, pushPayload);
-          this.logger.debug(`Web push sent to ${sub.endpoint.substring(0, 50)}...`);
+          this.logger.debug(
+            `Web push sent to ${sub.endpoint.substring(0, 50)}...`,
+          );
         } catch (pushErr: any) {
           if (pushErr?.statusCode === 410 || pushErr?.statusCode === 404) {
             // Subscription expired or invalid - clean up
-            this.logger.warn(`Push subscription expired for user ${userId}, cleaning up`);
+            this.logger.warn(
+              `Push subscription expired for user ${userId}, cleaning up`,
+            );
             await this.databaseService.supabase
-              .from('notification_preferences')
+              .from("notification_preferences")
               .update({ push_subscription: null })
-              .eq('user_id', userId)
-              .eq('push_subscription->>endpoint', sub.endpoint);
+              .eq("user_id", userId)
+              .eq("push_subscription->>endpoint", sub.endpoint);
           } else {
             this.logger.warn(`Web push failed: ${pushErr?.message}`);
           }
@@ -143,16 +169,21 @@ export class NotificationsService {
   ): Promise<{ success: boolean }> {
     try {
       const { error } = await this.databaseService.supabase
-        .from('notification_preferences')
-        .upsert({
-          user_id: userId,
-          push_subscription: subscription,
-          push_enabled: true,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
+        .from("notification_preferences")
+        .upsert(
+          {
+            user_id: userId,
+            push_subscription: subscription,
+            push_enabled: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
 
       if (error) {
-        this.logger.error(`Failed to register push subscription: ${error.message}`);
+        this.logger.error(
+          `Failed to register push subscription: ${error.message}`,
+        );
         return { success: false };
       }
 
@@ -174,10 +205,10 @@ export class NotificationsService {
     this.logger.log(
       `Sending notification to restaurant ${restaurantId}: ${payload.title}`,
     );
-    
+
     this.websocketGateway.server
       .to(`restaurant:${restaurantId}`)
-      .emit('notification:new', payload);
+      .emit("notification:new", payload);
   }
 
   /**
@@ -192,10 +223,10 @@ export class NotificationsService {
     price?: number;
   }): Promise<void> {
     const payload: NotificationPayload = {
-      type: 'order_approval',
-      title: '🍷 New Order Awaiting Approval',
+      type: "order_approval",
+      title: "🍷 New Order Awaiting Approval",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}${
-        data.price ? ` ($${data.price.toFixed(2)}/bottle)` : ''
+        data.price ? ` ($${data.price.toFixed(2)}/bottle)` : ""
       }`,
       data: {
         orderId: data.orderId,
@@ -206,8 +237,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: 'approve', title: '✅ Approve' },
-        { action: 'view', title: '👁️ View Details' },
+        { action: "approve", title: "✅ Approve" },
+        { action: "view", title: "👁️ View Details" },
       ],
     };
 
@@ -228,11 +259,11 @@ export class NotificationsService {
     managerPhone?: string;
   }): Promise<void> {
     const severity =
-      data.currentStock <= data.threshold * 0.5 ? 'Critical' : 'Low Stock';
-    const emoji = data.currentStock <= data.threshold * 0.5 ? '🚨' : '⚠️';
+      data.currentStock <= data.threshold * 0.5 ? "Critical" : "Low Stock";
+    const emoji = data.currentStock <= data.threshold * 0.5 ? "🚨" : "⚠️";
 
     const payload: NotificationPayload = {
-      type: 'low_stock',
+      type: "low_stock",
       title: `${emoji} ${severity}: ${data.wineName}`,
       body: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
       data: {
@@ -244,8 +275,8 @@ export class NotificationsService {
       },
       requireInteraction: data.currentStock <= data.threshold * 0.5,
       actions: [
-        { action: 'reorder', title: '🛒 Reorder Now' },
-        { action: 'view', title: '📊 View Inventory' },
+        { action: "reorder", title: "🛒 Reorder Now" },
+        { action: "view", title: "📊 View Inventory" },
       ],
     };
 
@@ -286,8 +317,8 @@ export class NotificationsService {
     providerName: string;
   }): Promise<void> {
     const payload: NotificationPayload = {
-      type: 'delivery',
-      title: '📦 Delivery Arrived',
+      type: "delivery",
+      title: "📦 Delivery Arrived",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}`,
       data: {
         orderId: data.orderId,
@@ -297,8 +328,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: 'confirm', title: '✅ Confirm Receipt' },
-        { action: 'view', title: '👁️ View Order' },
+        { action: "confirm", title: "✅ Confirm Receipt" },
+        { action: "view", title: "👁️ View Order" },
       ],
     };
 
@@ -318,11 +349,11 @@ export class NotificationsService {
   }): Promise<void> {
     const priceDiff = data.currentPrice - data.proposedPrice;
     const percentage = ((priceDiff / data.currentPrice) * 100).toFixed(1);
-    const direction = priceDiff > 0 ? 'lower' : 'higher';
+    const direction = priceDiff > 0 ? "lower" : "higher";
 
     const payload: NotificationPayload = {
-      type: 'price_negotiation',
-      title: '💰 New Price Offer',
+      type: "price_negotiation",
+      title: "💰 New Price Offer",
       body: `${data.providerName} offered $${data.proposedPrice.toFixed(2)}/bottle for ${
         data.wineName
       } (${Math.abs(Number(percentage))}% ${direction})`,
@@ -335,8 +366,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: 'accept', title: '✅ Accept' },
-        { action: 'negotiate', title: '↔️ Counter' },
+        { action: "accept", title: "✅ Accept" },
+        { action: "negotiate", title: "↔️ Counter" },
       ],
     };
 
@@ -350,23 +381,23 @@ export class NotificationsService {
     restaurantId: string;
     title: string;
     message: string;
-    severity: 'info' | 'warning' | 'error';
+    severity: "info" | "warning" | "error";
   }): Promise<void> {
     const emoji = {
-      info: 'ℹ️',
-      warning: '⚠️',
-      error: '🚨',
+      info: "ℹ️",
+      warning: "⚠️",
+      error: "🚨",
     }[data.severity];
 
     const payload: NotificationPayload = {
-      type: 'system_alert',
+      type: "system_alert",
       title: `${emoji} ${data.title}`,
       body: data.message,
       data: {
         severity: data.severity,
       },
-      requireInteraction: data.severity === 'error',
-      actions: [{ action: 'view', title: '👁️ View Details' }],
+      requireInteraction: data.severity === "error",
+      actions: [{ action: "view", title: "👁️ View Details" }],
     };
 
     await this.sendToRestaurant(data.restaurantId, payload);
@@ -384,7 +415,9 @@ export class NotificationsService {
     cc?: string[];
     bcc?: string[];
   }): Promise<{ success: boolean; messageId: string }> {
-    this.logger.log(`📧 Sending email to: ${data.to.join(', ')} — ${data.subject}`);
+    this.logger.log(
+      `📧 Sending email to: ${data.to.join(", ")} — ${data.subject}`,
+    );
 
     if (this.gmailService) {
       const result = await this.gmailService.sendEmail({
@@ -395,13 +428,20 @@ export class NotificationsService {
         cc: data.cc,
         bcc: data.bcc,
       });
-      this.logger.log(`✅ Email ${result.success ? 'sent' : 'failed'} — MessageID: ${result.messageId}`);
-      return { success: result.success, messageId: result.messageId ?? `err-${Date.now()}` };
+      this.logger.log(
+        `✅ Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
+      );
+      return {
+        success: result.success,
+        messageId: result.messageId ?? `err-${Date.now()}`,
+      };
     }
 
     // Fallback mock (no GmailService available)
     const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    this.logger.warn(`⚠ GmailService not available — email mocked. MessageID: ${messageId}`);
+    this.logger.warn(
+      `⚠ GmailService not available — email mocked. MessageID: ${messageId}`,
+    );
     return { success: true, messageId };
   }
 
@@ -416,21 +456,21 @@ export class NotificationsService {
     type: string;
     title: string;
     message: string;
-    priority?: 'low' | 'medium' | 'high' | 'critical';
+    priority?: "low" | "medium" | "high" | "critical";
     actionUrl?: string;
     actionLabel?: string;
     metadata?: Record<string, any>;
   }) {
     const { data: row, error } = await this.databaseService.supabase
-      .from('notifications')
+      .from("notifications")
       .insert({
         user_id: data.userId,
         restaurant_id: data.restaurantId,
         type: data.type,
         title: data.title,
         message: data.message,
-        priority: data.priority ?? 'medium',
-        status: 'unread',
+        priority: data.priority ?? "medium",
+        status: "unread",
         action_url: data.actionUrl,
         action_label: data.actionLabel,
         metadata: data.metadata ?? {},
@@ -449,7 +489,7 @@ export class NotificationsService {
     // Emit real-time event so the frontend inbox updates instantly
     this.websocketGateway.server
       .to(`user:${data.userId}`)
-      .emit('notification:new', {
+      .emit("notification:new", {
         type: data.type,
         title: data.title,
         body: data.message,
@@ -497,28 +537,28 @@ export class NotificationsService {
     const offset = (page - 1) * limit;
 
     let query = this.databaseService.supabase
-      .from('notifications')
-      .select('*', { count: 'exact' })
-      .eq('user_id', params.userId);
+      .from("notifications")
+      .select("*", { count: "exact" })
+      .eq("user_id", params.userId);
 
     if (params.restaurantId) {
-      query = query.eq('restaurant_id', params.restaurantId);
+      query = query.eq("restaurant_id", params.restaurantId);
     }
     if (params.type) {
-      query = query.eq('type', params.type);
+      query = query.eq("type", params.type);
     }
     if (params.status) {
-      query = query.eq('status', params.status);
+      query = query.eq("status", params.status);
     }
     if (params.dateFrom) {
-      query = query.gte('created_at', params.dateFrom);
+      query = query.gte("created_at", params.dateFrom);
     }
     if (params.dateTo) {
-      query = query.lte('created_at', params.dateTo);
+      query = query.lte("created_at", params.dateTo);
     }
 
     const { data, error, count } = await query
-      .order('created_at', { ascending: false })
+      .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) {
@@ -543,17 +583,17 @@ export class NotificationsService {
     const limit = params.limit || 50;
 
     let query = this.databaseService.supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', params.userId)
-      .eq('status', 'unread');
+      .from("notifications")
+      .select("*")
+      .eq("user_id", params.userId)
+      .eq("status", "unread");
 
     if (params.restaurantId) {
-      query = query.eq('restaurant_id', params.restaurantId);
+      query = query.eq("restaurant_id", params.restaurantId);
     }
 
     const { data, error } = await query
-      .order('created_at', { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(limit);
 
     if (error) {
@@ -569,13 +609,13 @@ export class NotificationsService {
     restaurantId?: string;
   }): Promise<number> {
     let query = this.databaseService.supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', params.userId)
-      .eq('status', 'unread');
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", params.userId)
+      .eq("status", "unread");
 
     if (params.restaurantId) {
-      query = query.eq('restaurant_id', params.restaurantId);
+      query = query.eq("restaurant_id", params.restaurantId);
     }
 
     const { count, error } = await query;
@@ -591,9 +631,9 @@ export class NotificationsService {
   async markAsRead(id: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
-      .from('notifications')
-      .update({ status: 'read', read_at: now })
-      .eq('id', id)
+      .from("notifications")
+      .update({ status: "read", read_at: now })
+      .eq("id", id)
       .select()
       .single();
 
@@ -608,10 +648,10 @@ export class NotificationsService {
   async markBulkAsRead(ids: string[]): Promise<number> {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
-      .from('notifications')
-      .update({ status: 'read', read_at: now })
-      .in('id', ids)
-      .select('id');
+      .from("notifications")
+      .update({ status: "read", read_at: now })
+      .in("id", ids)
+      .select("id");
 
     if (error) {
       this.logger.error(`markBulkAsRead error: ${error.message}`);
@@ -628,16 +668,16 @@ export class NotificationsService {
     const now = new Date().toISOString();
 
     let query = this.databaseService.supabase
-      .from('notifications')
-      .update({ status: 'read', read_at: now })
-      .eq('user_id', params.userId)
-      .eq('status', 'unread');
+      .from("notifications")
+      .update({ status: "read", read_at: now })
+      .eq("user_id", params.userId)
+      .eq("status", "unread");
 
     if (params.restaurantId) {
-      query = query.eq('restaurant_id', params.restaurantId);
+      query = query.eq("restaurant_id", params.restaurantId);
     }
 
-    const { data, error } = await query.select('id');
+    const { data, error } = await query.select("id");
 
     if (error) {
       this.logger.error(`markAllAsRead error: ${error.message}`);
@@ -650,9 +690,9 @@ export class NotificationsService {
   async archiveNotification(id: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
-      .from('notifications')
-      .update({ status: 'archived', archived_at: now })
-      .eq('id', id)
+      .from("notifications")
+      .update({ status: "archived", archived_at: now })
+      .eq("id", id)
       .select()
       .single();
 
@@ -666,9 +706,9 @@ export class NotificationsService {
 
   async deleteNotification(id: string): Promise<void> {
     const { error } = await this.databaseService.supabase
-      .from('notifications')
+      .from("notifications")
       .delete()
-      .eq('id', id);
+      .eq("id", id);
 
     if (error) {
       this.logger.error(`deleteNotification error: ${error.message}`);
@@ -678,10 +718,10 @@ export class NotificationsService {
 
   async deleteBulk(ids: string[]): Promise<number> {
     const { data, error } = await this.databaseService.supabase
-      .from('notifications')
+      .from("notifications")
       .delete()
-      .in('id', ids)
-      .select('id');
+      .in("id", ids)
+      .select("id");
 
     if (error) {
       this.logger.error(`deleteBulk error: ${error.message}`);
@@ -693,11 +733,11 @@ export class NotificationsService {
 
   async deleteAllRead(userId: string): Promise<number> {
     const { data, error } = await this.databaseService.supabase
-      .from('notifications')
+      .from("notifications")
       .delete()
-      .eq('user_id', userId)
-      .eq('status', 'read')
-      .select('id');
+      .eq("user_id", userId)
+      .eq("status", "read")
+      .select("id");
 
     if (error) {
       this.logger.error(`deleteAllRead error: ${error.message}`);
@@ -712,11 +752,11 @@ export class NotificationsService {
     sinceDate.setDate(sinceDate.getDate() - days);
 
     const { data, error } = await this.databaseService.supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('created_at', sinceDate.toISOString())
-      .order('created_at', { ascending: false });
+      .from("notifications")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("created_at", sinceDate.toISOString())
+      .order("created_at", { ascending: false });
 
     if (error) {
       this.logger.error(`getNotificationHistory error: ${error.message}`);
@@ -747,8 +787,8 @@ export class NotificationsService {
       categories,
       quietHours: {
         enabled: row.quiet_hours_enabled ?? false,
-        startTime: row.quiet_hours_start || '22:00',
-        endTime: row.quiet_hours_end || '08:00',
+        startTime: row.quiet_hours_start || "22:00",
+        endTime: row.quiet_hours_end || "08:00",
       },
       updatedAt: row.updated_at,
     };
@@ -756,9 +796,9 @@ export class NotificationsService {
 
   async getPreferences(userId: string) {
     const { data, error } = await this.databaseService.supabase
-      .from('notification_preferences')
-      .select('*')
-      .eq('user_id', userId)
+      .from("notification_preferences")
+      .select("*")
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (error) {
@@ -781,8 +821,8 @@ export class NotificationsService {
         },
         quietHours: {
           enabled: false,
-          startTime: '22:00',
-          endTime: '08:00',
+          startTime: "22:00",
+          endTime: "08:00",
         },
         updatedAt: null,
       };
@@ -807,14 +847,18 @@ export class NotificationsService {
     if (params.email !== undefined) updateData.email_enabled = params.email;
     if (params.push !== undefined) updateData.push_enabled = params.push;
     if (params.sms !== undefined) updateData.sms_enabled = params.sms;
-    if (params.categories !== undefined) updateData.categories = params.categories;
-    if (params.quietHours?.enabled !== undefined) updateData.quiet_hours_enabled = params.quietHours.enabled;
-    if (params.quietHours?.startTime !== undefined) updateData.quiet_hours_start = params.quietHours.startTime;
-    if (params.quietHours?.endTime !== undefined) updateData.quiet_hours_end = params.quietHours.endTime;
+    if (params.categories !== undefined)
+      updateData.categories = params.categories;
+    if (params.quietHours?.enabled !== undefined)
+      updateData.quiet_hours_enabled = params.quietHours.enabled;
+    if (params.quietHours?.startTime !== undefined)
+      updateData.quiet_hours_start = params.quietHours.startTime;
+    if (params.quietHours?.endTime !== undefined)
+      updateData.quiet_hours_end = params.quietHours.endTime;
 
     const { data, error } = await this.databaseService.supabase
-      .from('notification_preferences')
-      .upsert(updateData, { onConflict: 'user_id' })
+      .from("notification_preferences")
+      .upsert(updateData, { onConflict: "user_id" })
       .select()
       .single();
 
@@ -830,19 +874,23 @@ export class NotificationsService {
   // PUSH SUBSCRIPTION MANAGEMENT
   // =========================================================================
 
-  async unregisterPushSubscription(userId: string): Promise<{ success: boolean }> {
+  async unregisterPushSubscription(
+    userId: string,
+  ): Promise<{ success: boolean }> {
     try {
       const { error } = await this.databaseService.supabase
-        .from('notification_preferences')
+        .from("notification_preferences")
         .update({
           push_subscription: null,
           push_enabled: false,
           updated_at: new Date().toISOString(),
         })
-        .eq('user_id', userId);
+        .eq("user_id", userId);
 
       if (error) {
-        this.logger.error(`Failed to unregister push subscription: ${error.message}`);
+        this.logger.error(
+          `Failed to unregister push subscription: ${error.message}`,
+        );
         return { success: false };
       }
 
@@ -854,4 +902,3 @@ export class NotificationsService {
     }
   }
 }
-

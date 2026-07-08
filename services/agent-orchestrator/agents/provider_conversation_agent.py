@@ -118,9 +118,14 @@ RULES:
 Generate the message:"""
 
 COMMITMENT_PATTERNS = [
-    r"\bwill take\b", r"\bwould like to order\b", r"\bplease confirm our order\b",
-    r"\bwe'?ll proceed with\b", r"\bwe accept\b", r"\bconfirm \d+ cases?\b",
-    r"\blet'?s go ahead\b", r"\bsending payment\b",
+    r"\bwill take\b",
+    r"\bwould like to order\b",
+    r"\bplease confirm our order\b",
+    r"\bwe'?ll proceed with\b",
+    r"\bwe accept\b",
+    r"\bconfirm \d+ cases?\b",
+    r"\blet'?s go ahead\b",
+    r"\bsending payment\b",
 ]
 
 SUMMARY_PROMPT = """Summarize this conversation session in exactly 3 lines:
@@ -143,8 +148,15 @@ ONBOARDING_QUESTIONS = [
 ]
 
 KNOWLEDGE_CATEGORIES = [
-    "company", "people", "wine_portfolio", "promotion", "pricing",
-    "logistics", "financial", "relationship", "compliance",
+    "company",
+    "people",
+    "wine_portfolio",
+    "promotion",
+    "pricing",
+    "logistics",
+    "financial",
+    "relationship",
+    "compliance",
 ]
 
 
@@ -152,9 +164,11 @@ KNOWLEDGE_CATEGORIES = [
 # DATA CLASSES
 # =============================================================================
 
+
 @dataclass
 class ConversationSession:
     """In-memory representation of an active provider session"""
+
     session_id: str
     provider_id: str
     restaurant_id: str
@@ -171,6 +185,7 @@ class ConversationSession:
 @dataclass
 class ExtractionResult:
     """Structured output from intelligence extraction"""
+
     promotions: List[Dict] = field(default_factory=list)
     price_changes: List[Dict] = field(default_factory=list)
     availability: List[Dict] = field(default_factory=list)
@@ -215,6 +230,7 @@ class ExtractionResult:
 @dataclass
 class AuditEntry:
     """Tracks what context informed a generated message"""
+
     memories_retrieved: List[str] = field(default_factory=list)
     profile_data_used: List[str] = field(default_factory=list)
     style_adaptations: List[str] = field(default_factory=list)
@@ -226,6 +242,7 @@ class AuditEntry:
 # =============================================================================
 # PROVIDER CONVERSATION AGENT
 # =============================================================================
+
 
 class ProviderConversationAgent(BaseAgent):
     """
@@ -268,7 +285,9 @@ class ProviderConversationAgent(BaseAgent):
         self.email_composer = EmailComposerService(
             database=None,  # set during initialize() when database is ready
             config={
-                "api_gateway_url": config.get("api_gateway_url", "http://localhost:3001"),
+                "api_gateway_url": config.get(
+                    "api_gateway_url", "http://localhost:3001"
+                ),
                 "google_api_key": self.google_api_key,
                 "llm_model": self.response_model,
                 "mock_mode": self.mock_mode,
@@ -291,6 +310,7 @@ class ProviderConversationAgent(BaseAgent):
         else:
             try:
                 import google.generativeai as genai
+
                 genai.configure(api_key=self.google_api_key)
                 self.llm_client = genai.GenerativeModel(self.extraction_model)
                 self.logger.info("Gemini client initialized for extraction/response")
@@ -350,7 +370,9 @@ class ProviderConversationAgent(BaseAgent):
         try:
             # --- Inbound provider messages ---
             if routing_key.startswith("conversation.inbound."):
-                channel = routing_key.split(".")[-1]  # email, sms, whatsapp, voice_transcript
+                channel = routing_key.split(".")[
+                    -1
+                ]  # email, sms, whatsapp, voice_transcript
                 await self._handle_inbound_message(payload, channel)
 
             # --- Intent requests from other agents ---
@@ -409,13 +431,15 @@ class ProviderConversationAgent(BaseAgent):
     # 1. COMMUNICATION GATEWAY
     # =========================================================================
 
-    async def _handle_inbound_message(self, payload: Dict[str, Any], channel: str) -> None:
+    async def _handle_inbound_message(
+        self, payload: Dict[str, Any], channel: str
+    ) -> None:
         """Process an inbound message from a provider via any channel."""
         provider_id = payload.get("provider_id")
         restaurant_id = payload.get("restaurant_id")
         message_text = payload.get("message_text", "")
-        sender = payload.get("sender", "")
-        thread_id = payload.get("thread_id")
+        payload.get("sender", "")
+        payload.get("thread_id")
 
         if not provider_id or not message_text:
             self.logger.warning("Inbound message missing provider_id or message_text")
@@ -437,12 +461,14 @@ class ProviderConversationAgent(BaseAgent):
 
             # Update session with inbound message
             session.turn_count += 1
-            session.messages.append({
-                "role": "provider",
-                "text": message_text,
-                "channel": channel,
-                "timestamp": datetime.utcnow().isoformat(),
-            })
+            session.messages.append(
+                {
+                    "role": "provider",
+                    "text": message_text,
+                    "channel": channel,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
             # --- Intelligence Extraction Pipeline ---
             extraction = await self._extract_intelligence(message_text, provider_id)
@@ -492,7 +518,9 @@ class ProviderConversationAgent(BaseAgent):
 
             # --- Check if this is a response to a procurement intent ---
             if session.intent.get("intent_type") == "negotiate_price":
-                await self._relay_procurement_response(session, extraction, message_text)
+                await self._relay_procurement_response(
+                    session, extraction, message_text
+                )
 
             # --- Detect leverage signals ---
             if extraction.leverage_signals:
@@ -651,30 +679,34 @@ class ProviderConversationAgent(BaseAgent):
     async def _handle_promo_check(self, payload: Dict[str, Any]) -> None:
         """Proactively ask a provider about current promotions."""
         provider_id = payload.get("provider_id")
-        restaurant_id = payload.get("restaurant_id")
+        payload.get("restaurant_id")
 
         if not provider_id:
             return
 
-        await self._handle_scheduled_outreach({
-            **payload,
-            "outreach_type": "promo_discovery",
-            "topic": "current promotions, seasonal offers, and volume discounts",
-        })
+        await self._handle_scheduled_outreach(
+            {
+                **payload,
+                "outreach_type": "promo_discovery",
+                "topic": "current promotions, seasonal offers, and volume discounts",
+            }
+        )
 
     async def _handle_profile_refresh(self, payload: Dict[str, Any]) -> None:
         """Request updated profile information from a provider."""
         provider_id = payload.get("provider_id")
-        restaurant_id = payload.get("restaurant_id")
+        payload.get("restaurant_id")
 
         if not provider_id:
             return
 
-        await self._handle_scheduled_outreach({
-            **payload,
-            "outreach_type": "general_inquiry",
-            "topic": "updated pricing, delivery schedules, new wines in portfolio",
-        })
+        await self._handle_scheduled_outreach(
+            {
+                **payload,
+                "outreach_type": "general_inquiry",
+                "topic": "updated pricing, delivery schedules, new wines in portfolio",
+            }
+        )
 
     # =========================================================================
     # 2. SESSION MANAGER
@@ -702,13 +734,15 @@ class ProviderConversationAgent(BaseAgent):
 
         # Check DB for active sessions
         try:
-            result = self.database.supabase.table("provider_conversation_sessions") \
-                .select("*") \
-                .eq("provider_id", provider_id) \
-                .in_("status", ["active", "waiting_response", "paused_for_approval"]) \
-                .order("created_at", desc=True) \
-                .limit(1) \
+            result = (
+                self.database.supabase.table("provider_conversation_sessions")
+                .select("*")
+                .eq("provider_id", provider_id)
+                .in_("status", ["active", "waiting_response", "paused_for_approval"])
+                .order("created_at", desc=True)
+                .limit(1)
                 .execute()
+            )
 
             if result.data:
                 row = result.data[0]
@@ -741,12 +775,18 @@ class ProviderConversationAgent(BaseAgent):
                 "initiated_by": initiated_by,
                 "intent": intent or {},
                 "context": {},
-                "topic_stack": [intent.get("intent_type", session_type)] if intent else [session_type],
+                "topic_stack": (
+                    [intent.get("intent_type", session_type)]
+                    if intent
+                    else [session_type]
+                ),
                 "turn_count": 0,
             }
-            result = self.database.supabase.table("provider_conversation_sessions") \
-                .insert(insert_data) \
+            result = (
+                self.database.supabase.table("provider_conversation_sessions")
+                .insert(insert_data)
                 .execute()
+            )
 
             session_id = result.data[0]["id"] if result.data else None
             if not session_id:
@@ -760,7 +800,11 @@ class ProviderConversationAgent(BaseAgent):
                 session_type=session_type,
                 initiated_by=initiated_by,
                 intent=intent or {},
-                topic_stack=[intent.get("intent_type", session_type)] if intent else [session_type],
+                topic_stack=(
+                    [intent.get("intent_type", session_type)]
+                    if intent
+                    else [session_type]
+                ),
             )
             self._active_sessions[cache_key] = session
             return session
@@ -788,21 +832,28 @@ class ProviderConversationAgent(BaseAgent):
                 "topic_stack": session.topic_stack,
                 "turn_count": session.turn_count,
                 "last_provider_message": next(
-                    (m["text"] for m in reversed(session.messages) if m["role"] == "provider"),
+                    (
+                        m["text"]
+                        for m in reversed(session.messages)
+                        if m["role"] == "provider"
+                    ),
                     None,
                 ),
                 "last_agent_message": next(
-                    (m["text"] for m in reversed(session.messages) if m["role"] == "restaurant"),
+                    (
+                        m["text"]
+                        for m in reversed(session.messages)
+                        if m["role"] == "restaurant"
+                    ),
                     None,
                 ),
             }
             if session.status == "completed":
                 update_data["completed_at"] = datetime.utcnow().isoformat()
 
-            self.database.supabase.table("provider_conversation_sessions") \
-                .update(update_data) \
-                .eq("id", session.session_id) \
-                .execute()
+            self.database.supabase.table("provider_conversation_sessions").update(
+                update_data
+            ).eq("id", session.session_id).execute()
         except Exception as e:
             self.logger.error(f"Error persisting session {session.session_id}: {e}")
 
@@ -815,14 +866,13 @@ class ProviderConversationAgent(BaseAgent):
         session.context["summary"] = summary
 
         try:
-            self.database.supabase.table("provider_conversation_sessions") \
-                .update({
+            self.database.supabase.table("provider_conversation_sessions").update(
+                {
                     "status": "completed",
                     "summary": summary,
                     "completed_at": datetime.utcnow().isoformat(),
-                }) \
-                .eq("id", session.session_id) \
-                .execute()
+                }
+            ).eq("id", session.session_id).execute()
         except Exception as e:
             self.logger.error(f"Error completing session: {e}")
 
@@ -861,7 +911,7 @@ class ProviderConversationAgent(BaseAgent):
             prompt = (
                 f"{EXTRACTION_SYSTEM_PROMPT}\n\n"
                 f"PROVIDER ID: {provider_id}\n"
-                f"MESSAGE:\n\"{message_text}\"\n\n"
+                f'MESSAGE:\n"{message_text}"\n\n'
                 f"EXTRACTED JSON:"
             )
 
@@ -895,30 +945,40 @@ class ProviderConversationAgent(BaseAgent):
         score = 0.0
         lower = message_text.lower()
 
-        if any(w in lower for w in ["happy", "great", "excellent", "pleased", "discount", "promo"]):
+        if any(
+            w in lower
+            for w in ["happy", "great", "excellent", "pleased", "discount", "promo"]
+        ):
             sentiment = "positive"
             score = 0.6
-        elif any(w in lower for w in ["sorry", "unfortunately", "cannot", "unavailable", "increase"]):
+        elif any(
+            w in lower
+            for w in ["sorry", "unfortunately", "cannot", "unavailable", "increase"]
+        ):
             sentiment = "negative"
             score = -0.5
 
         promos = []
         if any(w in lower for w in ["discount", "promo", "% off", "deal", "special"]):
-            promos.append({
-                "name": "Extracted promo",
-                "type": "volume_discount",
-                "discount_percentage": None,
-                "conditions": {},
-                "applicable_wines": [],
-            })
+            promos.append(
+                {
+                    "name": "Extracted promo",
+                    "type": "volume_discount",
+                    "discount_percentage": None,
+                    "conditions": {},
+                    "applicable_wines": [],
+                }
+            )
 
         price_changes = []
-        price_match = re.search(r'\$\s*(\d+(?:\.\d{2})?)', message_text)
+        price_match = re.search(r"\$\s*(\d+(?:\.\d{2})?)", message_text)
         if price_match:
-            price_changes.append({
-                "wine_name": "Unknown",
-                "new_price": float(price_match.group(1)),
-            })
+            price_changes.append(
+                {
+                    "wine_name": "Unknown",
+                    "new_price": float(price_match.group(1)),
+                }
+            )
 
         return ExtractionResult(
             promotions=promos,
@@ -943,7 +1003,9 @@ class ProviderConversationAgent(BaseAgent):
 
         promos = []
         if any(w in lower for w in ["discount", "promo", "promotion", "% off", "deal"]):
-            promos.append({"name": "Detected promotion (fallback)", "type": "volume_discount"})
+            promos.append(
+                {"name": "Detected promotion (fallback)", "type": "volume_discount"}
+            )
 
         availability = []
         if any(w in lower for w in ["out of stock", "unavailable", "sold out"]):
@@ -1006,21 +1068,25 @@ class ProviderConversationAgent(BaseAgent):
                 elif extraction.relationship_signals:
                     importance = 0.4
 
-            result = self.database.supabase.table("conversation_embeddings") \
-                .insert({
-                    "provider_id": provider_id,
-                    "restaurant_id": restaurant_id,
-                    "session_id": session_id,
-                    "message_text": message_text,
-                    "role": role,
-                    "channel": channel,
-                    "embedding": embedding,
-                    "extracted_entities": entities,
-                    "extracted_intents": intents,
-                    "importance_score": importance,
-                    "language": language,
-                }) \
+            result = (
+                self.database.supabase.table("conversation_embeddings")
+                .insert(
+                    {
+                        "provider_id": provider_id,
+                        "restaurant_id": restaurant_id,
+                        "session_id": session_id,
+                        "message_text": message_text,
+                        "role": role,
+                        "channel": channel,
+                        "embedding": embedding,
+                        "extracted_entities": entities,
+                        "extracted_intents": intents,
+                        "importance_score": importance,
+                        "language": language,
+                    }
+                )
                 .execute()
+            )
 
             return result.data[0]["id"] if result.data else None
 
@@ -1061,12 +1127,14 @@ class ProviderConversationAgent(BaseAgent):
     ) -> List[Dict[str, Any]]:
         """Fallback: get recent messages when vector search is unavailable."""
         try:
-            result = self.database.supabase.table("conversation_embeddings") \
-                .select("message_text, role, channel, importance_score, created_at") \
-                .eq("provider_id", provider_id) \
-                .order("created_at", desc=True) \
-                .limit(limit) \
+            result = (
+                self.database.supabase.table("conversation_embeddings")
+                .select("message_text, role, channel, importance_score, created_at")
+                .eq("provider_id", provider_id)
+                .order("created_at", desc=True)
+                .limit(limit)
                 .execute()
+            )
             return result.data if result.data else []
         except Exception:
             return []
@@ -1076,11 +1144,13 @@ class ProviderConversationAgent(BaseAgent):
         if self.mock_mode:
             # Return a deterministic mock embedding based on text hash
             import hashlib
+
             hash_bytes = hashlib.sha384(text.encode()).digest()
             return [float(b) / 255.0 for b in hash_bytes]
 
         try:
             import google.generativeai as genai
+
             result = genai.embed_content(
                 model=f"models/{self.embedding_model}",
                 content=text,
@@ -1090,6 +1160,7 @@ class ProviderConversationAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Embedding generation failed: {e}")
             import hashlib
+
             hash_bytes = hashlib.sha384(text.encode()).digest()
             return [float(b) / 255.0 for b in hash_bytes]
 
@@ -1247,9 +1318,9 @@ class ProviderConversationAgent(BaseAgent):
                     "payload": {
                         "provider_id": provider_id,
                         "knowledge_ids": knowledge_ids,
-                        "categories_updated": list(set(
-                            k.split(":")[0] for k in knowledge_ids if ":" in k
-                        )),
+                        "categories_updated": list(
+                            set(k.split(":")[0] for k in knowledge_ids if ":" in k)
+                        ),
                     },
                 },
             )
@@ -1273,57 +1344,75 @@ class ProviderConversationAgent(BaseAgent):
         """
         try:
             # Check for existing fact with same category+subcategory+label
-            existing = self.database.supabase.table("provider_knowledge") \
-                .select("id, attributes, version, confidence") \
-                .eq("provider_id", provider_id) \
-                .eq("category", category) \
-                .eq("subcategory", subcategory) \
-                .eq("label", label) \
-                .eq("is_active", True) \
-                .limit(1) \
+            existing = (
+                self.database.supabase.table("provider_knowledge")
+                .select("id, attributes, version, confidence")
+                .eq("provider_id", provider_id)
+                .eq("category", category)
+                .eq("subcategory", subcategory)
+                .eq("label", label)
+                .eq("is_active", True)
+                .limit(1)
                 .execute()
+            )
 
             if existing.data:
                 old = existing.data[0]
                 old_attrs = old.get("attributes", {})
 
                 # Contradiction detection
-                contradiction = self._detect_contradiction(old_attrs, attributes, category)
+                contradiction = self._detect_contradiction(
+                    old_attrs, attributes, category
+                )
 
                 if contradiction and contradiction["severity"] == "high":
                     # Flag for manager review
                     await self._flag_contradiction(
-                        provider_id, restaurant_id, category, subcategory,
-                        label, old_attrs, attributes, source_message,
+                        provider_id,
+                        restaurant_id,
+                        category,
+                        subcategory,
+                        label,
+                        old_attrs,
+                        attributes,
+                        source_message,
                     )
 
                 # Update with version history
-                result = self.database.supabase.table("provider_knowledge") \
-                    .update({
-                        "attributes": attributes,
-                        "confidence": confidence,
-                        "previous_value": old_attrs,
-                        "source_message_text": source_message[:500],
-                        "version": old.get("version", 1) + 1,
-                    }) \
-                    .eq("id", old["id"]) \
+                result = (
+                    self.database.supabase.table("provider_knowledge")
+                    .update(
+                        {
+                            "attributes": attributes,
+                            "confidence": confidence,
+                            "previous_value": old_attrs,
+                            "source_message_text": source_message[:500],
+                            "version": old.get("version", 1) + 1,
+                        }
+                    )
+                    .eq("id", old["id"])
                     .execute()
+                )
 
                 return old["id"]
             else:
                 # Insert new knowledge
-                result = self.database.supabase.table("provider_knowledge") \
-                    .insert({
-                        "provider_id": provider_id,
-                        "restaurant_id": restaurant_id,
-                        "category": category,
-                        "subcategory": subcategory,
-                        "label": label,
-                        "attributes": attributes,
-                        "confidence": confidence,
-                        "source_message_text": source_message[:500],
-                    }) \
+                result = (
+                    self.database.supabase.table("provider_knowledge")
+                    .insert(
+                        {
+                            "provider_id": provider_id,
+                            "restaurant_id": restaurant_id,
+                            "category": category,
+                            "subcategory": subcategory,
+                            "label": label,
+                            "attributes": attributes,
+                            "confidence": confidence,
+                            "source_message_text": source_message[:500],
+                        }
+                    )
                     .execute()
+                )
 
                 return result.data[0]["id"] if result.data else None
 
@@ -1346,7 +1435,9 @@ class ProviderConversationAgent(BaseAgent):
         new_price = new_attrs.get("new_price") or new_attrs.get("price")
         if old_price and new_price:
             try:
-                diff_pct = abs(float(new_price) - float(old_price)) / float(old_price) * 100
+                diff_pct = (
+                    abs(float(new_price) - float(old_price)) / float(old_price) * 100
+                )
                 if diff_pct > 10:
                     return {
                         "field": "price",
@@ -1426,23 +1517,29 @@ class ProviderConversationAgent(BaseAgent):
     ) -> Dict[str, Any]:
         """Load the full Digital Twin for a provider."""
         try:
-            result = self.database.supabase.table("provider_knowledge") \
-                .select("category, subcategory, label, attributes, confidence, verified") \
-                .eq("provider_id", provider_id) \
-                .eq("is_active", True) \
-                .order("category") \
+            result = (
+                self.database.supabase.table("provider_knowledge")
+                .select(
+                    "category, subcategory, label, attributes, confidence, verified"
+                )
+                .eq("provider_id", provider_id)
+                .eq("is_active", True)
+                .order("category")
                 .execute()
+            )
 
             twin: Dict[str, List[Dict]] = {}
-            for row in (result.data or []):
+            for row in result.data or []:
                 cat = row["category"]
-                twin.setdefault(cat, []).append({
-                    "label": row["label"],
-                    "subcategory": row.get("subcategory"),
-                    "attributes": row["attributes"],
-                    "confidence": row["confidence"],
-                    "verified": row["verified"],
-                })
+                twin.setdefault(cat, []).append(
+                    {
+                        "label": row["label"],
+                        "subcategory": row.get("subcategory"),
+                        "attributes": row["attributes"],
+                        "confidence": row["confidence"],
+                        "verified": row["verified"],
+                    }
+                )
 
             return twin
         except Exception as e:
@@ -1452,14 +1549,16 @@ class ProviderConversationAgent(BaseAgent):
     async def _load_style_profile(self, provider_id: str) -> Dict[str, Any]:
         """Load the communication style profile for a provider."""
         try:
-            result = self.database.supabase.table("provider_knowledge") \
-                .select("attributes") \
-                .eq("provider_id", provider_id) \
-                .eq("category", "relationship") \
-                .eq("subcategory", "communication_style") \
-                .eq("is_active", True) \
-                .limit(1) \
+            result = (
+                self.database.supabase.table("provider_knowledge")
+                .select("attributes")
+                .eq("provider_id", provider_id)
+                .eq("category", "relationship")
+                .eq("subcategory", "communication_style")
+                .eq("is_active", True)
+                .limit(1)
                 .execute()
+            )
 
             if result.data:
                 return result.data[0].get("attributes", {})
@@ -1493,35 +1592,49 @@ class ProviderConversationAgent(BaseAgent):
             promo_name = promo.get("name", "Unnamed Promotion")
             promo_type = promo.get("type", "volume_discount")
             valid_types = [
-                "volume_discount", "seasonal", "bundle", "loyalty", "closeout",
-                "new_vintage", "free_shipping", "sample", "early_payment", "referral",
+                "volume_discount",
+                "seasonal",
+                "bundle",
+                "loyalty",
+                "closeout",
+                "new_vintage",
+                "free_shipping",
+                "sample",
+                "early_payment",
+                "referral",
             ]
             if promo_type not in valid_types:
                 promo_type = "volume_discount"
 
             try:
                 # Check if promo already exists
-                existing = self.database.supabase.table("provider_promotions") \
-                    .select("id, status") \
-                    .eq("provider_id", provider_id) \
-                    .eq("name", promo_name) \
-                    .eq("status", "active") \
-                    .limit(1) \
+                existing = (
+                    self.database.supabase.table("provider_promotions")
+                    .select("id, status")
+                    .eq("provider_id", provider_id)
+                    .eq("name", promo_name)
+                    .eq("status", "active")
+                    .limit(1)
                     .execute()
+                )
 
                 if existing.data:
                     # Update existing promo
-                    self.database.supabase.table("provider_promotions") \
-                        .update({
+                    self.database.supabase.table("provider_promotions").update(
+                        {
                             "conditions": promo.get("conditions", {}),
                             "discount_value": {
-                                "type": "percentage" if promo.get("discount_percentage") else "fixed",
-                                "value": promo.get("discount_percentage") or promo.get("discount_fixed"),
+                                "type": (
+                                    "percentage"
+                                    if promo.get("discount_percentage")
+                                    else "fixed"
+                                ),
+                                "value": promo.get("discount_percentage")
+                                or promo.get("discount_fixed"),
                             },
                             "source_message_text": source_message[:500],
-                        }) \
-                        .eq("id", existing.data[0]["id"]) \
-                        .execute()
+                        }
+                    ).eq("id", existing.data[0]["id"]).execute()
                 else:
                     # Insert new promo
                     insert_data = {
@@ -1532,8 +1645,13 @@ class ProviderConversationAgent(BaseAgent):
                         "description": promo.get("description"),
                         "conditions": promo.get("conditions", {}),
                         "discount_value": {
-                            "type": "percentage" if promo.get("discount_percentage") else "fixed",
-                            "value": promo.get("discount_percentage") or promo.get("discount_fixed"),
+                            "type": (
+                                "percentage"
+                                if promo.get("discount_percentage")
+                                else "fixed"
+                            ),
+                            "value": promo.get("discount_percentage")
+                            or promo.get("discount_fixed"),
                         },
                         "applicable_wines": promo.get("applicable_wines", []),
                         "start_date": promo.get("start_date"),
@@ -1542,9 +1660,9 @@ class ProviderConversationAgent(BaseAgent):
                         "status": "active",
                         "source_message_text": source_message[:500],
                     }
-                    self.database.supabase.table("provider_promotions") \
-                        .insert(insert_data) \
-                        .execute()
+                    self.database.supabase.table("provider_promotions").insert(
+                        insert_data
+                    ).execute()
 
                     # Publish promo discovered event
                     await self.publish(
@@ -1570,7 +1688,7 @@ class ProviderConversationAgent(BaseAgent):
                             "event_type": "NewPromoAlert",
                             "payload": {
                                 "restaurant_id": restaurant_id,
-                                "title": f"New promotion from provider",
+                                "title": "New promotion from provider",
                                 "message": f"Discovered: {promo_name} ({promo_type})",
                                 "urgency": "medium",
                                 "provider_id": provider_id,
@@ -1586,11 +1704,13 @@ class ProviderConversationAgent(BaseAgent):
     ) -> List[Dict[str, Any]]:
         """Get all active promotions for a provider."""
         try:
-            result = self.database.supabase.table("provider_promotions") \
-                .select("*") \
-                .eq("provider_id", provider_id) \
-                .eq("status", "active") \
+            result = (
+                self.database.supabase.table("provider_promotions")
+                .select("*")
+                .eq("provider_id", provider_id)
+                .eq("status", "active")
                 .execute()
+            )
             return result.data or []
         except Exception:
             return []
@@ -1598,15 +1718,21 @@ class ProviderConversationAgent(BaseAgent):
     async def _check_expiring_promos(self) -> None:
         """Check for promotions expiring soon and alert manager."""
         try:
-            cutoff = (datetime.utcnow() + timedelta(days=self.promo_alert_days)).date().isoformat()
-            result = self.database.supabase.table("provider_promotions") \
-                .select("*, providers(name)") \
-                .eq("status", "active") \
-                .lte("end_date", cutoff) \
-                .is_("alerted_at", "null") \
+            cutoff = (
+                (datetime.utcnow() + timedelta(days=self.promo_alert_days))
+                .date()
+                .isoformat()
+            )
+            result = (
+                self.database.supabase.table("provider_promotions")
+                .select("*, providers(name)")
+                .eq("status", "active")
+                .lte("end_date", cutoff)
+                .is_("alerted_at", "null")
                 .execute()
+            )
 
-            for promo in (result.data or []):
+            for promo in result.data or []:
                 await self.publish(
                     exchange_name="provider.events",
                     routing_key="provider.promo.expiring_soon",
@@ -1638,10 +1764,9 @@ class ProviderConversationAgent(BaseAgent):
                 )
 
                 # Mark as alerted
-                self.database.supabase.table("provider_promotions") \
-                    .update({"alerted_at": datetime.utcnow().isoformat()}) \
-                    .eq("id", promo["id"]) \
-                    .execute()
+                self.database.supabase.table("provider_promotions").update(
+                    {"alerted_at": datetime.utcnow().isoformat()}
+                ).eq("id", promo["id"]).execute()
 
         except Exception as e:
             self.logger.error(f"Error checking expiring promos: {e}")
@@ -1702,9 +1827,7 @@ class ProviderConversationAgent(BaseAgent):
                     "Reference shared history naturally. Avoid formal boilerplate."
                 )
             else:
-                tone_instruction = (
-                    "Use a professional but friendly tone appropriate for a business relationship."
-                )
+                tone_instruction = "Use a professional but friendly tone appropriate for a business relationship."
 
             # Build prompt
             twin_summary = json.dumps(digital_twin, indent=2, default=str)[:2000]
@@ -1714,13 +1837,15 @@ class ProviderConversationAgent(BaseAgent):
                 for m in recent_messages
             )
             mem_text = "\n".join(
-                f"- {m.get('message_text', '')[:200]}"
-                for m in memories[:5]
+                f"- {m.get('message_text', '')[:200]}" for m in memories[:5]
             )
-            promo_text = "\n".join(
-                f"- {p.get('name', 'Unknown')}: {p.get('description', '')}"
-                for p in active_promos[:5]
-            ) or "No active promotions"
+            promo_text = (
+                "\n".join(
+                    f"- {p.get('name', 'Unknown')}: {p.get('description', '')}"
+                    for p in active_promos[:5]
+                )
+                or "No active promotions"
+            )
 
             prompt = RESPONSE_SYSTEM_PROMPT.format(
                 provider_digital_twin_summary=twin_summary,
@@ -1812,10 +1937,10 @@ class ProviderConversationAgent(BaseAgent):
 
         if intent_type == "onboarding":
             return (
-                f"Hi, great to connect! We're excited to start working together. "
-                f"To get things rolling, could you share a bit about your wine portfolio "
-                f"and any current promotions? Also helpful: delivery schedules, "
-                f"minimum order requirements, and payment terms. Looking forward to it!"
+                "Hi, great to connect! We're excited to start working together. "
+                "To get things rolling, could you share a bit about your wine portfolio "
+                "and any current promotions? Also helpful: delivery schedules, "
+                "minimum order requirements, and payment terms. Looking forward to it!"
             )
 
         return (
@@ -1864,27 +1989,32 @@ class ProviderConversationAgent(BaseAgent):
             response = await haiku.messages.create(
                 model=settings.haiku_model,
                 max_tokens=100,
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        f"Original draft:\n{original_draft[:500]}\n\n"
-                        f"Manager edited to:\n{edited_draft[:500]}\n\n"
-                        "In one sentence (max 20 words), what communication preference does "
-                        "this edit reveal? Format: 'tone: ...' or 'style: ...' or 'avoid: ...'"
-                    ),
-                }],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Original draft:\n{original_draft[:500]}\n\n"
+                            f"Manager edited to:\n{edited_draft[:500]}\n\n"
+                            "In one sentence (max 20 words), what communication preference does "
+                            "this edit reveal? Format: 'tone: ...' or 'style: ...' or 'avoid: ...'"
+                        ),
+                    }
+                ],
             )
             preference = response.content[0].text.strip() if response.content else ""
             if preference:
                 # Append to conversation_context.manager_instructions[] on active session
-                self.database.supabase.rpc("jsonb_array_append", {
-                    "table_name": "provider_conversation_sessions",
-                    "column_name": "conversation_context",
-                    "key": "manager_instructions",
-                    "value": preference,
-                    "restaurant_id": restaurant_id,
-                    "provider_id": provider_id,
-                }).execute()
+                self.database.supabase.rpc(
+                    "jsonb_array_append",
+                    {
+                        "table_name": "provider_conversation_sessions",
+                        "column_name": "conversation_context",
+                        "key": "manager_instructions",
+                        "value": preference,
+                        "restaurant_id": restaurant_id,
+                        "provider_id": provider_id,
+                    },
+                ).execute()
         except Exception as e:
             self.logger.warning(f"Learning loop preference extraction failed: {e}")
 
@@ -1906,8 +2036,7 @@ class ProviderConversationAgent(BaseAgent):
 
         try:
             transcript = "\n".join(
-                f"[{m.get('role', '?')}] {m.get('text', '')}"
-                for m in session.messages
+                f"[{m.get('role', '?')}] {m.get('text', '')}" for m in session.messages
             )
 
             prompt = SUMMARY_PROMPT.format(conversation_transcript=transcript[:3000])
@@ -1938,8 +2067,8 @@ class ProviderConversationAgent(BaseAgent):
     ) -> None:
         """Record sentiment data point for trend tracking."""
         try:
-            self.database.supabase.table("provider_sentiment_history") \
-                .insert({
+            self.database.supabase.table("provider_sentiment_history").insert(
+                {
                     "provider_id": provider_id,
                     "restaurant_id": restaurant_id,
                     "session_id": session_id,
@@ -1947,8 +2076,8 @@ class ProviderConversationAgent(BaseAgent):
                     "sentiment_score": extraction.sentiment_score,
                     "detected_emotions": extraction.detected_emotions,
                     "trigger_context": extraction.urgency,
-                }) \
-                .execute()
+                }
+            ).execute()
 
         except Exception as e:
             self.logger.error(f"Error recording sentiment: {e}")
@@ -1961,14 +2090,20 @@ class ProviderConversationAgent(BaseAgent):
     ) -> None:
         """Check if provider sentiment is declining and alert if needed."""
         try:
-            result = self.database.supabase.table("provider_sentiment_history") \
-                .select("sentiment_score") \
-                .eq("provider_id", provider_id) \
-                .order("created_at", desc=True) \
-                .limit(10) \
+            result = (
+                self.database.supabase.table("provider_sentiment_history")
+                .select("sentiment_score")
+                .eq("provider_id", provider_id)
+                .order("created_at", desc=True)
+                .limit(10)
                 .execute()
+            )
 
-            scores = [r["sentiment_score"] for r in (result.data or []) if r.get("sentiment_score") is not None]
+            scores = [
+                r["sentiment_score"]
+                for r in (result.data or [])
+                if r.get("sentiment_score") is not None
+            ]
 
             if len(scores) >= 5:
                 recent_avg = sum(scores[:5]) / 5
@@ -2041,13 +2176,12 @@ class ProviderConversationAgent(BaseAgent):
                 )
 
                 # Update session with follow-up info
-                self.database.supabase.table("provider_conversation_sessions") \
-                    .update({
+                self.database.supabase.table("provider_conversation_sessions").update(
+                    {
                         "follow_up_scheduled_at": expected_date,
                         "follow_up_reason": description,
-                    }) \
-                    .eq("id", session_id) \
-                    .execute()
+                    }
+                ).eq("id", session_id).execute()
 
                 await self.publish(
                     exchange_name="conversation.events",
@@ -2070,7 +2204,7 @@ class ProviderConversationAgent(BaseAgent):
         """Handle a follow-up that is now due."""
         provider_id = payload.get("provider_id")
         restaurant_id = payload.get("restaurant_id")
-        session_id = payload.get("session_id")
+        payload.get("session_id")
         reason = payload.get("description", "Scheduled follow-up")
 
         if not provider_id:
@@ -2078,12 +2212,14 @@ class ProviderConversationAgent(BaseAgent):
 
         self.logger.info(f"Follow-up due for provider {provider_id}: {reason}")
 
-        await self._handle_scheduled_outreach({
-            "provider_id": provider_id,
-            "restaurant_id": restaurant_id,
-            "outreach_type": "order_followup",
-            "topic": reason,
-        })
+        await self._handle_scheduled_outreach(
+            {
+                "provider_id": provider_id,
+                "restaurant_id": restaurant_id,
+                "outreach_type": "order_followup",
+                "topic": reason,
+            }
+        )
 
     # =========================================================================
     # 11. PROVIDER ONBOARDING FLOW
@@ -2206,9 +2342,11 @@ class ProviderConversationAgent(BaseAgent):
                 },
             }
 
-            result = self.database.supabase.table("procurement_conversations") \
-                .insert(convo_data) \
+            result = (
+                self.database.supabase.table("procurement_conversations")
+                .insert(convo_data)
                 .execute()
+            )
 
             conversation_id = result.data[0]["id"] if result.data else None
 
@@ -2233,8 +2371,16 @@ class ProviderConversationAgent(BaseAgent):
                             "session_type": session.session_type,
                             "notification_channels": {"push": True, "onetap": True},
                             "actions": [
-                                {"id": "approve", "label": "Approve & Send", "style": "primary"},
-                                {"id": "edit", "label": "Edit Message", "style": "secondary"},
+                                {
+                                    "id": "approve",
+                                    "label": "Approve & Send",
+                                    "style": "primary",
+                                },
+                                {
+                                    "id": "edit",
+                                    "label": "Edit Message",
+                                    "style": "secondary",
+                                },
                                 {"id": "reject", "label": "Reject", "style": "danger"},
                             ],
                         },
@@ -2255,34 +2401,44 @@ class ProviderConversationAgent(BaseAgent):
             return
 
         try:
-            convo = self.database.supabase.table("procurement_conversations") \
-                .select("*") \
-                .eq("id", conversation_id) \
-                .single() \
+            convo = (
+                self.database.supabase.table("procurement_conversations")
+                .select("*")
+                .eq("id", conversation_id)
+                .single()
                 .execute()
+            )
 
             if not convo.data:
                 return
 
             convo_data = convo.data
-            final_message = convo_data.get("manager_approved_message") or convo_data["message_text"]
+            final_message = (
+                convo_data.get("manager_approved_message") or convo_data["message_text"]
+            )
             provider_id = convo_data["provider_id"]
 
             # Send the message
-            provider = self.database.supabase.table("providers") \
-                .select("name, primary_contact") \
-                .eq("id", provider_id) \
-                .single() \
+            provider = (
+                self.database.supabase.table("providers")
+                .select("name, primary_contact")
+                .eq("id", provider_id)
+                .single()
                 .execute()
+            )
 
             channel = convo_data.get("channel", "email")
             order_id = convo_data.get("order_id")
             order_data = {}
             if order_id:
                 try:
-                    order_result = self.database.supabase.table("procurement_orders") \
-                        .select("id, wine_name, quantity, target_price_per_bottle") \
-                        .eq("id", order_id).single().execute()
+                    order_result = (
+                        self.database.supabase.table("procurement_orders")
+                        .select("id, wine_name, quantity, target_price_per_bottle")
+                        .eq("id", order_id)
+                        .single()
+                        .execute()
+                    )
                     order_data = order_result.data or {}
                 except Exception:
                     pass
@@ -2297,21 +2453,19 @@ class ProviderConversationAgent(BaseAgent):
             )
 
             # Update conversation record
-            self.database.supabase.table("procurement_conversations") \
-                .update({
+            self.database.supabase.table("procurement_conversations").update(
+                {
                     "manager_approval_status": "approved",
                     "resumed_at": datetime.utcnow().isoformat(),
-                }) \
-                .eq("id", conversation_id) \
-                .execute()
+                }
+            ).eq("id", conversation_id).execute()
 
             # Update session status
             session_id = convo_data.get("conversation_context", {}).get("session_id")
             if session_id:
-                self.database.supabase.table("provider_conversation_sessions") \
-                    .update({"status": "waiting_response"}) \
-                    .eq("id", session_id) \
-                    .execute()
+                self.database.supabase.table("provider_conversation_sessions").update(
+                    {"status": "waiting_response"}
+                ).eq("id", session_id).execute()
 
                 cache_key = f"session:{provider_id}"
                 if cache_key in self._active_sessions:
@@ -2329,13 +2483,12 @@ class ProviderConversationAgent(BaseAgent):
             return
 
         try:
-            self.database.supabase.table("procurement_conversations") \
-                .update({
+            self.database.supabase.table("procurement_conversations").update(
+                {
                     "manager_approval_status": "rejected",
                     "resumed_at": datetime.utcnow().isoformat(),
-                }) \
-                .eq("id", conversation_id) \
-                .execute()
+                }
+            ).eq("id", conversation_id).execute()
 
             self.logger.info(f"Conversation {conversation_id} rejected by manager")
         except Exception as e:
@@ -2349,16 +2502,17 @@ class ProviderConversationAgent(BaseAgent):
             return
 
         try:
-            self.database.supabase.table("procurement_conversations") \
-                .update({
+            self.database.supabase.table("procurement_conversations").update(
+                {
                     "manager_approved_message": modified_message,
                     "manager_approval_status": "modified",
-                }) \
-                .eq("id", conversation_id) \
-                .execute()
+                }
+            ).eq("id", conversation_id).execute()
 
             # Treat as approved with modified text
-            await self._handle_conversation_approved({"conversation_id": conversation_id})
+            await self._handle_conversation_approved(
+                {"conversation_id": conversation_id}
+            )
         except Exception as e:
             self.logger.error(f"Error handling modified conversation: {e}")
 
@@ -2386,7 +2540,9 @@ class ProviderConversationAgent(BaseAgent):
 
         if channel in ("sms", "whatsapp"):
             phone = contact.get("phone", "")
-            self.logger.info(f"[{channel.upper()}] To {provider_name} ({phone}): {message[:80]}...")
+            self.logger.info(
+                f"[{channel.upper()}] To {provider_name} ({phone}): {message[:80]}..."
+            )
             return {"success": True, "channel": channel}
 
         # --- Email channel: compose HTML and send via gateway ---
@@ -2398,12 +2554,16 @@ class ProviderConversationAgent(BaseAgent):
         # Load conversation history for threading
         history = []
         try:
-            result = self.database.supabase.table("procurement_conversations") \
-                .select("message_id, email_headers, direction, message_text, sent_at, received_at, created_at") \
-                .eq("provider_id", provider_id) \
-                .order("created_at", desc=True) \
-                .limit(10) \
+            result = (
+                self.database.supabase.table("procurement_conversations")
+                .select(
+                    "message_id, email_headers, direction, message_text, sent_at, received_at, created_at"
+                )
+                .eq("provider_id", provider_id)
+                .order("created_at", desc=True)
+                .limit(10)
                 .execute()
+            )
             history = result.data or []
         except Exception as e:
             self.logger.debug(f"Could not load history for threading: {e}")
@@ -2417,15 +2577,20 @@ class ProviderConversationAgent(BaseAgent):
         payload = EmailPayload(
             to=[vendor_email],
             subject=f"Regarding {order_data.get('wine_name', 'your wines')} — {provider_name}",
-            body_html=self.email_composer._wrap_html(message, {
-                "order_number": order_data.get("id", ""),
-                "order_id": order_data.get("id", ""),
-            }),
+            body_html=self.email_composer._wrap_html(
+                message,
+                {
+                    "order_number": order_data.get("id", ""),
+                    "order_id": order_data.get("id", ""),
+                },
+            ),
             body_text=message,
         )
 
         # Resolve threading from history
-        thread_id, in_reply_to, references = self.email_composer._resolve_threading(history)
+        thread_id, in_reply_to, references = self.email_composer._resolve_threading(
+            history
+        )
         payload.thread_id = thread_id
         payload.in_reply_to = in_reply_to
         payload.references = references
@@ -2435,23 +2600,26 @@ class ProviderConversationAgent(BaseAgent):
 
         # Store outbound message_id and email_headers for future thread matching
         if send_result.get("success") and conversation_id:
-            outbound_message_id = f"<wineops-{datetime.utcnow().timestamp()}@wineops.ai>"
+            outbound_message_id = (
+                f"<wineops-{datetime.utcnow().timestamp()}@wineops.ai>"
+            )
             try:
-                self.database.supabase.table("procurement_conversations") \
-                    .update({
+                self.database.supabase.table("procurement_conversations").update(
+                    {
                         "message_id": outbound_message_id,
-                        "email_headers": json.dumps({
-                            "message_id": outbound_message_id,
-                            "gmail_message_id": send_result.get("message_id"),
-                            "gmail_thread_id": send_result.get("thread_id"),
-                            "in_reply_to": in_reply_to or "",
-                            "references": references or "",
-                        }),
+                        "email_headers": json.dumps(
+                            {
+                                "message_id": outbound_message_id,
+                                "gmail_message_id": send_result.get("message_id"),
+                                "gmail_thread_id": send_result.get("thread_id"),
+                                "in_reply_to": in_reply_to or "",
+                                "references": references or "",
+                            }
+                        ),
                         "delivery_status": "sent",
                         "sent_at": datetime.utcnow().isoformat(),
-                    }) \
-                    .eq("id", conversation_id) \
-                    .execute()
+                    }
+                ).eq("id", conversation_id).execute()
             except Exception as e:
                 self.logger.error(f"Failed to update conversation headers: {e}")
 
@@ -2460,7 +2628,11 @@ class ProviderConversationAgent(BaseAgent):
             f"sent={send_result.get('success')}, "
             f"messageId={send_result.get('message_id')}"
         )
-        return {"success": send_result.get("success", False), "channel": "email", **send_result}
+        return {
+            "success": send_result.get("success", False),
+            "channel": "email",
+            **send_result,
+        }
 
     # =========================================================================
     # 13b. SCARCITY AUTO-REPLY (bypasses manager approval)
@@ -2481,12 +2653,18 @@ class ProviderConversationAgent(BaseAgent):
         if not provider_id:
             return
 
-        self.logger.info(f"Scarcity auto-reply for provider {provider_id}, wine={wine_name}")
+        self.logger.info(
+            f"Scarcity auto-reply for provider {provider_id}, wine={wine_name}"
+        )
 
         try:
-            provider_result = self.database.supabase.table("providers") \
-                .select("name, primary_contact") \
-                .eq("id", provider_id).single().execute()
+            provider_result = (
+                self.database.supabase.table("providers")
+                .select("name, primary_contact")
+                .eq("id", provider_id)
+                .single()
+                .execute()
+            )
             provider_data = provider_result.data or {}
         except Exception:
             provider_data = {}
@@ -2518,7 +2696,9 @@ class ProviderConversationAgent(BaseAgent):
 
         if not auto_send:
             # Route to approval flow instead of auto-sending
-            self.logger.info(f"Scarcity auto-reply routed to approval for provider {provider_id}")
+            self.logger.info(
+                f"Scarcity auto-reply routed to approval for provider {provider_id}"
+            )
             return
 
         send_result = await self._send_message(
@@ -2555,7 +2735,9 @@ class ProviderConversationAgent(BaseAgent):
             priority=8,
         )
 
-        self.logger.info(f"Scarcity auto-hold sent to {provider_data.get('name', provider_id)}: {send_result}")
+        self.logger.info(
+            f"Scarcity auto-hold sent to {provider_data.get('name', provider_id)}: {send_result}"
+        )
 
     # =========================================================================
     # 14. RELAY TO PROCUREMENT AGENT
@@ -2578,7 +2760,7 @@ class ProviderConversationAgent(BaseAgent):
 
         if extraction.price_changes:
             parsed_price = extraction.price_changes[0].get("new_price")
-            target = session.intent.get("target_price", 0)
+            session.intent.get("target_price", 0)
             max_acceptable = session.intent.get("max_acceptable_price", float("inf"))
 
             if parsed_price and parsed_price <= max_acceptable:
@@ -2637,9 +2819,7 @@ class ProviderConversationAgent(BaseAgent):
 
             # Run every 6 hours
             try:
-                await asyncio.wait_for(
-                    self._shutdown_event.wait(), timeout=21600
-                )
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=21600)
                 break  # Shutdown requested
             except asyncio.TimeoutError:
                 continue
@@ -2647,7 +2827,9 @@ class ProviderConversationAgent(BaseAgent):
     async def _check_relationship_health(self) -> None:
         """Alert when providers haven't been contacted recently."""
         try:
-            cutoff = (datetime.utcnow() - timedelta(days=self.relationship_alert_days)).isoformat()
+            cutoff = (
+                datetime.utcnow() - timedelta(days=self.relationship_alert_days)
+            ).isoformat()
 
             # Find providers with no recent sessions
             result = self.database.supabase.rpc(
@@ -2657,18 +2839,22 @@ class ProviderConversationAgent(BaseAgent):
 
             # Fallback if RPC doesn't exist: query directly
             if not result.data:
-                result = self.database.supabase.table("providers") \
-                    .select("id, name, restaurant_id") \
-                    .eq("is_active", True) \
+                result = (
+                    self.database.supabase.table("providers")
+                    .select("id, name, restaurant_id")
+                    .eq("is_active", True)
                     .execute()
+                )
 
                 for provider in (result.data or [])[:20]:
-                    sessions = self.database.supabase.table("provider_conversation_sessions") \
-                        .select("id") \
-                        .eq("provider_id", provider["id"]) \
-                        .gte("created_at", cutoff) \
-                        .limit(1) \
+                    sessions = (
+                        self.database.supabase.table("provider_conversation_sessions")
+                        .select("id")
+                        .eq("provider_id", provider["id"])
+                        .gte("created_at", cutoff)
+                        .limit(1)
                         .execute()
+                    )
 
                     if not sessions.data:
                         await self.publish(
@@ -2693,11 +2879,9 @@ class ProviderConversationAgent(BaseAgent):
         """Mark expired promotions."""
         try:
             today = datetime.utcnow().date().isoformat()
-            self.database.supabase.table("provider_promotions") \
-                .update({"status": "expired"}) \
-                .eq("status", "active") \
-                .lt("end_date", today) \
-                .execute()
+            self.database.supabase.table("provider_promotions").update(
+                {"status": "expired"}
+            ).eq("status", "active").lt("end_date", today).execute()
         except Exception as e:
             self.logger.error(f"Error expiring promos: {e}")
 
@@ -2705,7 +2889,9 @@ class ProviderConversationAgent(BaseAgent):
     # LEVEL 4: DB CONTEXT INJECTION (D-19)
     # =========================================================================
 
-    async def _get_db_context_for_prompt(self, provider_id: str, restaurant_id: str) -> dict:
+    async def _get_db_context_for_prompt(
+        self, provider_id: str, restaurant_id: str
+    ) -> dict:
         """
         Fetch DB-persisted context for Haiku prompt injection (D-19).
         Survives session restart unlike in-memory context.
@@ -2719,13 +2905,15 @@ class ProviderConversationAgent(BaseAgent):
         }
         try:
             # Last 3 interactions from procurement_conversations (persisted)
-            convs = (self.database.supabase.table("procurement_conversations")
-                     .select("direction, message_text, created_at")
-                     .eq("provider_id", provider_id)
-                     .eq("restaurant_id", restaurant_id)
-                     .order("created_at", desc=True)
-                     .limit(3)
-                     .execute())
+            convs = (
+                self.database.supabase.table("procurement_conversations")
+                .select("direction, message_text, created_at")
+                .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
+                .order("created_at", desc=True)
+                .limit(3)
+                .execute()
+            )
             if convs.data:
                 parts = [
                     f"[{r['direction'].upper()}] {r['message_text'][:200]} "
@@ -2738,11 +2926,13 @@ class ProviderConversationAgent(BaseAgent):
 
         try:
             # Open orders
-            orders = (self.database.supabase.table("procurement_orders")
-                      .select("wine_name, quantity, status, notes")
-                      .eq("provider_id", provider_id)
-                      .in_("status", ["pending", "approved", "ordered", "negotiating"])
-                      .execute())
+            orders = (
+                self.database.supabase.table("procurement_orders")
+                .select("wine_name, quantity, status, notes")
+                .eq("provider_id", provider_id)
+                .in_("status", ["pending", "approved", "ordered", "negotiating"])
+                .execute()
+            )
             if orders.data:
                 parts = [
                     f"{r['wine_name']} ×{r['quantity']} [{r['status']}]"
@@ -2754,42 +2944,54 @@ class ProviderConversationAgent(BaseAgent):
 
         try:
             # Credit terms: negotiation_facts WHERE commitment_type='AGREEMENT' AND fact_field ILIKE '%payment%'
-            facts = (self.database.supabase.table("negotiation_facts")
-                     .select("fact_field, fact_value")
-                     .eq("provider_id", provider_id)
-                     .eq("commitment_type", "AGREEMENT")
-                     .ilike("fact_field", "%payment%")
-                     .limit(1)
-                     .execute())
+            facts = (
+                self.database.supabase.table("negotiation_facts")
+                .select("fact_field, fact_value")
+                .eq("provider_id", provider_id)
+                .eq("commitment_type", "AGREEMENT")
+                .ilike("fact_field", "%payment%")
+                .limit(1)
+                .execute()
+            )
             if facts.data:
                 f = facts.data[0]
                 ctx["credit_terms"] = f"{f['fact_field']}: {f['fact_value']}"
             else:
                 # Fallback to providers.notes + close_relationship
-                prov = (self.database.supabase.table("providers")
-                        .select("notes, close_relationship")
-                        .eq("id", provider_id)
-                        .maybe_single()
-                        .execute())
+                prov = (
+                    self.database.supabase.table("providers")
+                    .select("notes, close_relationship")
+                    .eq("id", provider_id)
+                    .maybe_single()
+                    .execute()
+                )
                 if prov.data:
                     if prov.data.get("notes"):
                         ctx["credit_terms"] = f"Notes: {prov.data['notes'][:200]}"
-                    ctx["close_relationship"] = bool(prov.data.get("close_relationship", False))
+                    ctx["close_relationship"] = bool(
+                        prov.data.get("close_relationship", False)
+                    )
         except Exception as e:
             self.logger.warning(f"_get_db_context: credit_terms query failed: {e}")
 
         # Fetch close_relationship if not already set above
         if not ctx["close_relationship"]:
             try:
-                prov_cr = (self.database.supabase.table("providers")
-                           .select("close_relationship")
-                           .eq("id", provider_id)
-                           .maybe_single()
-                           .execute())
+                prov_cr = (
+                    self.database.supabase.table("providers")
+                    .select("close_relationship")
+                    .eq("id", provider_id)
+                    .maybe_single()
+                    .execute()
+                )
                 if prov_cr.data:
-                    ctx["close_relationship"] = bool(prov_cr.data.get("close_relationship", False))
+                    ctx["close_relationship"] = bool(
+                        prov_cr.data.get("close_relationship", False)
+                    )
             except Exception as e:
-                self.logger.warning(f"_get_db_context: close_relationship query failed: {e}")
+                self.logger.warning(
+                    f"_get_db_context: close_relationship query failed: {e}"
+                )
 
         return ctx
 
@@ -2800,11 +3002,13 @@ class ProviderConversationAgent(BaseAgent):
     async def _get_provider_name(self, provider_id: str) -> str:
         """Get provider name by ID."""
         try:
-            result = self.database.supabase.table("providers") \
-                .select("name") \
-                .eq("id", provider_id) \
-                .single() \
+            result = (
+                self.database.supabase.table("providers")
+                .select("name")
+                .eq("id", provider_id)
+                .single()
                 .execute()
+            )
             return result.data.get("name", "Unknown") if result.data else "Unknown"
         except Exception:
             return "Unknown"

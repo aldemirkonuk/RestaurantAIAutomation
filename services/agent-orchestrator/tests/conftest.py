@@ -8,7 +8,7 @@ import os
 import sys
 import pytest
 import asyncio
-from typing import Generator, AsyncGenerator
+from typing import Generator
 from unittest.mock import MagicMock, AsyncMock
 
 # ---------------------------------------------------------------------------
@@ -18,8 +18,10 @@ from unittest.mock import MagicMock, AsyncMock
 # but providing a module-level stub here ensures patch() works in tests.
 # ---------------------------------------------------------------------------
 import importlib
+
 if importlib.util.find_spec("weasyprint") is None or True:
     import types as _types
+
     _wp_stub = _types.ModuleType("weasyprint")
     _wp_stub.HTML = MagicMock()  # type: ignore[attr-defined]
     sys.modules.setdefault("weasyprint", _wp_stub)
@@ -43,7 +45,7 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 def mock_supabase_client() -> MagicMock:
     """Create a mock Supabase client."""
     client = MagicMock()
-    
+
     # Mock common methods
     client.table = MagicMock(return_value=client)
     client.select = MagicMock(return_value=client)
@@ -52,7 +54,7 @@ def mock_supabase_client() -> MagicMock:
     client.delete = MagicMock(return_value=client)
     client.eq = MagicMock(return_value=client)
     client.execute = AsyncMock(return_value=MagicMock(data=[], error=None))
-    
+
     return client
 
 
@@ -60,13 +62,13 @@ def mock_supabase_client() -> MagicMock:
 def mock_redis_client() -> MagicMock:
     """Create a mock Redis client."""
     client = MagicMock()
-    
+
     client.get = AsyncMock(return_value=None)
     client.set = AsyncMock(return_value=True)
     client.delete = AsyncMock(return_value=True)
     client.exists = AsyncMock(return_value=False)
     client.expire = AsyncMock(return_value=True)
-    
+
     return client
 
 
@@ -75,12 +77,12 @@ def mock_rabbitmq_connection() -> MagicMock:
     """Create a mock RabbitMQ connection."""
     connection = MagicMock()
     channel = MagicMock()
-    
+
     connection.channel = MagicMock(return_value=channel)
     channel.basic_publish = MagicMock()
     channel.basic_consume = MagicMock()
     channel.queue_declare = MagicMock()
-    
+
     return connection
 
 

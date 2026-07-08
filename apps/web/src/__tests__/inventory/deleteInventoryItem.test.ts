@@ -48,7 +48,7 @@ describe('deleteInventoryItem API', () => {
   })
 
   it('propagates API errors to the caller', async () => {
-    ;(apiClient.delete as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (apiClient.delete as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Not Found')
     )
 

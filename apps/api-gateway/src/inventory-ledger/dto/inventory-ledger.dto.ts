@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString,
   IsOptional,
@@ -10,40 +10,40 @@ import {
   IsObject,
   Min,
   Max,
-} from 'class-validator';
+} from "class-validator";
 
 // ============================================================================
 // ENUMS
 // ============================================================================
 
 export enum TransactionType {
-  SALE = 'sale',
-  PURCHASE = 'purchase',
-  ADJUSTMENT = 'adjustment',
-  TRANSFER = 'transfer',
-  WASTE = 'waste',
-  RETURN = 'return',
-  COMP = 'comp',
-  RECONCILIATION = 'reconciliation',
-  INITIAL = 'initial',
-  CORRECTION = 'correction',
+  SALE = "sale",
+  PURCHASE = "purchase",
+  ADJUSTMENT = "adjustment",
+  TRANSFER = "transfer",
+  WASTE = "waste",
+  RETURN = "return",
+  COMP = "comp",
+  RECONCILIATION = "reconciliation",
+  INITIAL = "initial",
+  CORRECTION = "correction",
 }
 
 export enum TransactionSource {
-  POS = 'pos',
-  MANUAL = 'manual',
-  ORDER = 'order',
-  MOBILE_COUNT = 'mobile_count',
-  RECONCILIATION = 'reconciliation',
-  SYSTEM = 'system',
-  IMPORT = 'import',
-  API = 'api',
+  POS = "pos",
+  MANUAL = "manual",
+  ORDER = "order",
+  MOBILE_COUNT = "mobile_count",
+  RECONCILIATION = "reconciliation",
+  SYSTEM = "system",
+  IMPORT = "import",
+  API = "api",
 }
 
 export enum StockType {
-  LIVE = 'live',
-  SHADOW = 'shadow',
-  RESERVED = 'reserved',
+  LIVE = "live",
+  SHADOW = "shadow",
+  RESERVED = "reserved",
 }
 
 // ============================================================================
@@ -51,11 +51,11 @@ export enum StockType {
 // ============================================================================
 
 export class CreateInventoryTransactionDto {
-  @ApiProperty({ description: 'Inventory item ID' })
+  @ApiProperty({ description: "Inventory item ID" })
   @IsUUID()
   inventoryId: string;
 
-  @ApiProperty({ description: 'Wine ID' })
+  @ApiProperty({ description: "Wine ID" })
   @IsUUID()
   wineId: string;
 
@@ -67,7 +67,9 @@ export class CreateInventoryTransactionDto {
   @IsEnum(TransactionSource)
   source: TransactionSource;
 
-  @ApiProperty({ description: 'Quantity change (positive = increase, negative = decrease)' })
+  @ApiProperty({
+    description: "Quantity change (positive = increase, negative = decrease)",
+  })
   @IsInt()
   quantityChange: number;
 
@@ -76,52 +78,56 @@ export class CreateInventoryTransactionDto {
   @IsOptional()
   stockType?: StockType;
 
-  @ApiPropertyOptional({ description: 'Reference type (e.g., order, pos_transaction)' })
+  @ApiPropertyOptional({
+    description: "Reference type (e.g., order, pos_transaction)",
+  })
   @IsString()
   @IsOptional()
   referenceType?: string;
 
-  @ApiPropertyOptional({ description: 'Reference ID' })
+  @ApiPropertyOptional({ description: "Reference ID" })
   @IsUUID()
   @IsOptional()
   referenceId?: string;
 
-  @ApiPropertyOptional({ description: 'POS transaction ID' })
+  @ApiPropertyOptional({ description: "POS transaction ID" })
   @IsString()
   @IsOptional()
   posTransactionId?: string;
 
-  @ApiPropertyOptional({ description: 'Procurement order ID' })
+  @ApiPropertyOptional({ description: "Procurement order ID" })
   @IsUUID()
   @IsOptional()
   orderId?: string;
 
-  @ApiPropertyOptional({ description: 'Source location ID (for transfers)' })
+  @ApiPropertyOptional({ description: "Source location ID (for transfers)" })
   @IsUUID()
   @IsOptional()
   fromLocationId?: string;
 
-  @ApiPropertyOptional({ description: 'Destination location ID (for transfers)' })
+  @ApiPropertyOptional({
+    description: "Destination location ID (for transfers)",
+  })
   @IsUUID()
   @IsOptional()
   toLocationId?: string;
 
-  @ApiPropertyOptional({ description: 'Unit cost at time of transaction' })
+  @ApiPropertyOptional({ description: "Unit cost at time of transaction" })
   @IsNumber()
   @IsOptional()
   unitCost?: number;
 
-  @ApiPropertyOptional({ description: 'Reason for the transaction' })
+  @ApiPropertyOptional({ description: "Reason for the transaction" })
   @IsString()
   @IsOptional()
   reason?: string;
 
-  @ApiPropertyOptional({ description: 'Additional notes' })
+  @ApiPropertyOptional({ description: "Additional notes" })
   @IsString()
   @IsOptional()
   notes?: string;
 
-  @ApiPropertyOptional({ description: 'Additional metadata' })
+  @ApiPropertyOptional({ description: "Additional metadata" })
   @IsObject()
   @IsOptional()
   metadata?: Record<string, unknown>;
@@ -132,12 +138,12 @@ export class CreateInventoryTransactionDto {
 // ============================================================================
 
 export class GetTransactionsQueryDto {
-  @ApiPropertyOptional({ description: 'Filter by inventory item ID' })
+  @ApiPropertyOptional({ description: "Filter by inventory item ID" })
   @IsUUID()
   @IsOptional()
   inventoryId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by wine ID' })
+  @ApiPropertyOptional({ description: "Filter by wine ID" })
   @IsUUID()
   @IsOptional()
   wineId?: string;
@@ -152,12 +158,12 @@ export class GetTransactionsQueryDto {
   @IsOptional()
   source?: TransactionSource;
 
-  @ApiPropertyOptional({ description: 'Start date (ISO)' })
+  @ApiPropertyOptional({ description: "Start date (ISO)" })
   @IsDateString()
   @IsOptional()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'End date (ISO)' })
+  @ApiPropertyOptional({ description: "End date (ISO)" })
   @IsDateString()
   @IsOptional()
   endDate?: string;
@@ -177,7 +183,7 @@ export class GetTransactionsQueryDto {
 }
 
 export class GetBalanceAtQueryDto {
-  @ApiProperty({ description: 'Point in time (ISO timestamp)' })
+  @ApiProperty({ description: "Point in time (ISO timestamp)" })
   @IsDateString()
   asOf: string;
 
@@ -333,7 +339,7 @@ export class BulkTransactionDto {
   @ApiProperty({ type: [CreateInventoryTransactionDto] })
   transactions: CreateInventoryTransactionDto[];
 
-  @ApiPropertyOptional({ description: 'Correlation ID for all transactions' })
+  @ApiPropertyOptional({ description: "Correlation ID for all transactions" })
   @IsString()
   @IsOptional()
   correlationId?: string;

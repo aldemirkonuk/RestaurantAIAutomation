@@ -36,12 +36,16 @@ def _ensure_grape_cache(supabase) -> Dict[str, str]:
     if _GRAPE_CACHE is not None:
         return _GRAPE_CACHE
     try:
-        resp = supabase.table("grape_varieties").select("name,canonical_name,aliases,color").execute()
+        resp = (
+            supabase.table("grape_varieties")
+            .select("name,canonical_name,aliases,color")
+            .execute()
+        )
         cache: Dict[str, str] = {}
-        for row in (resp.data or []):
+        for row in resp.data or []:
             cache[row["name"].lower()] = row["canonical_name"]
             cache[row["canonical_name"].lower()] = row["canonical_name"]
-            for alias in (row.get("aliases") or []):
+            for alias in row.get("aliases") or []:
                 cache[alias.lower()] = row["canonical_name"]
         _GRAPE_CACHE = cache
         return cache
@@ -131,7 +135,9 @@ def lookup_appellation_rules(appellation_name: str) -> Optional[Dict[str, Any]]:
         )
         return resp.data[0] if resp.data else None
     except Exception as exc:
-        logger.warning("lookup_appellation_rules failed for %r: %s", appellation_name, exc)
+        logger.warning(
+            "lookup_appellation_rules failed for %r: %s", appellation_name, exc
+        )
         return None
 
 
@@ -200,7 +206,9 @@ def get_region_ancestors(region_id: str) -> List[Dict[str, Any]]:
             current_id = row["parent_id"]
         return ancestors
     except Exception as exc:
-        logger.warning("get_region_ancestors failed for region_id=%r: %s", region_id, exc)
+        logger.warning(
+            "get_region_ancestors failed for region_id=%r: %s", region_id, exc
+        )
         return []
 
 

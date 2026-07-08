@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Set, Tuple
 
 from core.base_agent import BaseAgent
 
@@ -34,12 +34,16 @@ class StateInvariantEnforcerAgent(BaseAgent):
         # Detection windows
         self.window_seconds = config.get("window_seconds", 120)
         self.max_repeats = config.get("max_repeats", 3)
-        self.double_write_window_seconds = config.get("double_write_window_seconds", 300)
+        self.double_write_window_seconds = config.get(
+            "double_write_window_seconds", 300
+        )
         self.enable_opus_review = config.get("enable_opus_review", True)
 
         # In-memory tracking
         self._recent_events: Dict[str, datetime] = {}
-        self._recent_event_types: Dict[Tuple[str, str], deque[datetime]] = defaultdict(deque)
+        self._recent_event_types: Dict[Tuple[str, str], deque[datetime]] = defaultdict(
+            deque
+        )
         self._event_id_queue: deque[Tuple[str, datetime]] = deque()
 
         # Fields that could carry tenant IDs
@@ -75,7 +79,9 @@ class StateInvariantEnforcerAgent(BaseAgent):
 
         event_id = message.get("event_id")
         event_type = message.get("event_type", "unknown.event")
-        correlation_id = message.get("correlation_id") or message.get("payload", {}).get("correlation_id")
+        correlation_id = message.get("correlation_id") or message.get(
+            "payload", {}
+        ).get("correlation_id")
         source_agent = message.get("source_agent")
         payload = message.get("payload", {})
 
@@ -164,7 +170,9 @@ class StateInvariantEnforcerAgent(BaseAgent):
         provider = (payload.get("llm_provider") or "").lower()
         return "opus" in model or ("claude" in provider and "opus" in model)
 
-    async def _log_opus_review(self, message: Dict[str, Any], payload: Dict[str, Any]) -> None:
+    async def _log_opus_review(
+        self, message: Dict[str, Any], payload: Dict[str, Any]
+    ) -> None:
         await self._write_audit_log(
             action="opus_review_required",
             message=message,
@@ -229,18 +237,20 @@ class StateInvariantEnforcerAgent(BaseAgent):
             if not self.database.supabase:
                 return
 
-            await self.database.supabase.table("system_audit_log").insert({
-                "actor_type": "agent",
-                "actor_id": self.agent_name,
-                "action": action,
-                "entity_type": "event",
-                "entity_id": message.get("event_id"),
-                "changes": details,
-                "metadata": {
-                    "event_type": message.get("event_type"),
-                    "source_agent": message.get("source_agent"),
-                    "correlation_id": message.get("correlation_id"),
-                },
-            }).execute()
+            await self.database.supabase.table("system_audit_log").insert(
+                {
+                    "actor_type": "agent",
+                    "actor_id": self.agent_name,
+                    "action": action,
+                    "entity_type": "event",
+                    "entity_id": message.get("event_id"),
+                    "changes": details,
+                    "metadata": {
+                        "event_type": message.get("event_type"),
+                        "source_agent": message.get("source_agent"),
+                        "correlation_id": message.get("correlation_id"),
+                    },
+                }
+            ).execute()
         except Exception as e:
             self.logger.warning(f"Audit log failed: {e}")

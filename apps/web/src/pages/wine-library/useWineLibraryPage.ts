@@ -237,7 +237,7 @@ export function useWineLibraryPage() {
           aVal = a.liveStock || 0
           bVal = b.liveStock || 0
           break
-        case 'type':
+        case 'type': {
           const typeOrder = ['red', 'white', 'rose', 'sparkling']
           const primaryType = typeOrder[typeSortCycle]
           const aIsPrimary = a.type === primaryType ? 0 : 1
@@ -250,6 +250,7 @@ export function useWineLibraryPage() {
             bVal = TYPE_ORDER.indexOf(b.type)
           }
           break
+        }
         case 'country':
           aVal = a.country
           bVal = b.country

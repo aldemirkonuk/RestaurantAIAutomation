@@ -5,11 +5,12 @@ Covers IMGX-01 through IMGX-06 and extract_pdf() document block.
 All Playwright page interactions are mocked via AsyncMock.
 All extractor calls are mocked to avoid live API calls.
 """
+
 import json
 import pytest
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Path setup: allow importing from services/agent-orchestrator
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -21,6 +22,7 @@ from services.web_crawler import WebCrawlerService, CrawlResult, ContentType
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------
+
 
 def make_crawler() -> WebCrawlerService:
     """Return a WebCrawlerService with no supabase (dedup fails open)."""
@@ -39,7 +41,9 @@ def make_mock_page(total_height: int = 1800) -> AsyncMock:
         return ""
 
     page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
-    page.screenshot = AsyncMock(return_value=b"\xff\xd8\xff" + b"0" * 100)  # JPEG magic bytes
+    page.screenshot = AsyncMock(
+        return_value=b"\xff\xd8\xff" + b"0" * 100
+    )  # JPEG magic bytes
     page.set_viewport_size = AsyncMock()
     page.query_selector_all = AsyncMock(return_value=[])
     page.inner_text = AsyncMock(return_value="")
@@ -49,7 +53,15 @@ def make_mock_page(total_height: int = 1800) -> AsyncMock:
 def make_extraction_result(wines=None):
     """Return a mock ClaudeExtractionResult with given wines."""
     from services.claude_vision_extractor import ClaudeExtractionResult
-    w = wines or [{"wine_name": "Chateau Test", "vintage": 2020, "completeness_score": 0.8, "needs_review": False}]
+
+    w = wines or [
+        {
+            "wine_name": "Chateau Test",
+            "vintage": 2020,
+            "completeness_score": 0.8,
+            "needs_review": False,
+        }
+    ]
     return ClaudeExtractionResult(
         scan_session_id="test-session-id",
         wines=w,
@@ -62,6 +74,7 @@ def make_extraction_result(wines=None):
 # ---------------------------------------------------------------------------
 # IMGX-02: _take_viewport_chunks returns jpeg bytes
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_take_viewport_chunks_returns_jpeg_bytes():
@@ -85,6 +98,7 @@ async def test_take_viewport_chunks_returns_jpeg_bytes():
 # IMGX-01: image_menu_detected set to True on IMAGE_ONLY path
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_image_only_sets_detected():
     """_handle_image_menu sets result.image_menu_detected=True."""
@@ -98,15 +112,15 @@ async def test_image_only_sets_detected():
 
     mock_extraction = make_extraction_result()
 
-    with patch(
-        "services.web_crawler.get_claude_vision_extractor"
-    ) as mock_factory:
+    with patch("services.web_crawler.get_claude_vision_extractor") as mock_factory:
         mock_extractor = MagicMock()
         mock_extractor.extract_menu = AsyncMock(return_value=mock_extraction)
         mock_factory.return_value = mock_extractor
 
         with patch.object(crawler, "_persist_crawled_wines"):
-            await crawler._handle_image_menu(page, result, "Tredita", "https://tredita.com/menus/")
+            await crawler._handle_image_menu(
+                page, result, "Tredita", "https://tredita.com/menus/"
+            )
 
     assert result.image_menu_detected is True
 
@@ -114,6 +128,7 @@ async def test_image_only_sets_detected():
 # ---------------------------------------------------------------------------
 # IMGX-03: extract_menu called with base64 strings, not bytes
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_extract_menu_called_with_b64_strings():
@@ -128,15 +143,15 @@ async def test_extract_menu_called_with_b64_strings():
         captured_pages.extend(pages)
         return make_extraction_result()
 
-    with patch(
-        "services.web_crawler.get_claude_vision_extractor"
-    ) as mock_factory:
+    with patch("services.web_crawler.get_claude_vision_extractor") as mock_factory:
         mock_extractor = MagicMock()
         mock_extractor.extract_menu = capture_extract_menu
         mock_factory.return_value = mock_extractor
 
         with patch.object(crawler, "_persist_crawled_wines"):
-            await crawler._handle_image_menu(page, result, "Test", "https://example.com")
+            await crawler._handle_image_menu(
+                page, result, "Test", "https://example.com"
+            )
 
     assert len(captured_pages) >= 1
     for page_arg in captured_pages:
@@ -146,6 +161,7 @@ async def test_extract_menu_called_with_b64_strings():
 # ---------------------------------------------------------------------------
 # IMGX-04 + IMGX-05: _persist_crawled_wines called with source_type="image_menu"
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_persist_called_with_image_menu_source_type():
@@ -159,15 +175,17 @@ async def test_persist_called_with_image_menu_source_type():
     def capture_persist(wines, restaurant_name, source_url, source_type="crawled"):
         persist_calls.append({"wines": wines, "source_type": source_type})
 
-    with patch(
-        "services.web_crawler.get_claude_vision_extractor"
-    ) as mock_factory:
+    with patch("services.web_crawler.get_claude_vision_extractor") as mock_factory:
         mock_extractor = MagicMock()
         mock_extractor.extract_menu = AsyncMock(return_value=make_extraction_result())
         mock_factory.return_value = mock_extractor
 
-        with patch.object(crawler, "_persist_crawled_wines", side_effect=capture_persist):
-            await crawler._handle_image_menu(page, result, "Test", "https://example.com")
+        with patch.object(
+            crawler, "_persist_crawled_wines", side_effect=capture_persist
+        ):
+            await crawler._handle_image_menu(
+                page, result, "Test", "https://example.com"
+            )
 
     assert len(persist_calls) == 1
     assert persist_calls[0]["source_type"] == "image_menu"
@@ -177,6 +195,7 @@ async def test_persist_called_with_image_menu_source_type():
 # IMGX-06: Existing HTML_MENU path (wines > 0) still persists with source_type="crawled"
 # ---------------------------------------------------------------------------
 
+
 def test_html_menu_source_type_is_crawled(tmp_path, monkeypatch):
     """_persist_crawled_wines with no source_type writes data_enrichment.source_type='crawled'."""
     import services.web_crawler as wc_module
@@ -185,12 +204,21 @@ def test_html_menu_source_type_is_crawled(tmp_path, monkeypatch):
     monkeypatch.setattr(wc_module, "RESTAURANT_MENUS_DIR", tmp_path)
 
     crawler = make_crawler()
-    wines = [{"wine_name": "Test Wine", "vintage": 2020, "primary_type": "red", "country": "France"}]
+    wines = [
+        {
+            "wine_name": "Test Wine",
+            "vintage": 2020,
+            "primary_type": "red",
+            "country": "France",
+        }
+    ]
     crawler._persist_crawled_wines(wines, "TestRest", "https://example.com")
 
     jsonl_files = list(tmp_path.glob("*.jsonl"))
     assert len(jsonl_files) == 1
-    records = [json.loads(line) for line in jsonl_files[0].read_text().splitlines() if line]
+    records = [
+        json.loads(line) for line in jsonl_files[0].read_text().splitlines() if line
+    ]
     assert len(records) == 1
     assert records[0]["data_enrichment"]["source_type"] == "crawled"
 
@@ -198,6 +226,7 @@ def test_html_menu_source_type_is_crawled(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # extract_pdf document block test
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_extract_pdf_uses_document_content_block():
@@ -207,7 +236,11 @@ async def test_extract_pdf_uses_document_content_block():
     extractor = ClaudeVisionExtractor()
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text='{"wines": [], "page_notes": "test", "total_wines_extracted": 0}')]
+    mock_response.content = [
+        MagicMock(
+            text='{"wines": [], "page_notes": "test", "total_wines_extracted": 0}'
+        )
+    ]
     mock_response.usage.input_tokens = 100
     mock_response.usage.output_tokens = 50
 

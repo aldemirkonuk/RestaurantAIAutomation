@@ -8,6 +8,7 @@ Tests the async persistence logic in isolation:
 Note: haiku_enrich_task (the Celery task wrapper) is not tested here —
 it requires a running Celery worker with broker. That is covered by manual-only.
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,13 +17,22 @@ pytestmark = pytest.mark.asyncio
 
 def _make_enrichment_result(wine_id="test-uuid"):
     from services.haiku_enrichment_service import EnrichmentResult
+
     return EnrichmentResult(
         wine_id=wine_id,
         field_confidence={
             "region": {"value": "Burgundy", "confidence": 0.95, "source": "knowledge"},
             "country": {"value": "France", "confidence": 0.95, "source": "knowledge"},
-            "grape_variety": {"value": "Pinot Noir", "confidence": 0.90, "source": "knowledge"},
-            "producer_bio": {"value": "Historic Burgundy estate.", "confidence": 0.80, "source": "knowledge"},
+            "grape_variety": {
+                "value": "Pinot Noir",
+                "confidence": 0.90,
+                "source": "knowledge",
+            },
+            "producer_bio": {
+                "value": "Historic Burgundy estate.",
+                "confidence": 0.80,
+                "source": "knowledge",
+            },
         },
     )
 
@@ -45,7 +55,9 @@ async def test_enrich_async_persists_ai_enriched_true():
     mock_supabase, mock_table = _make_mock_supabase()
 
     with patch("jobs.haiku_tasks._get_supabase_client", return_value=mock_supabase):
-        with patch("services.haiku_enrichment_service.HaikuEnrichmentService") as mock_cls:
+        with patch(
+            "services.haiku_enrichment_service.HaikuEnrichmentService"
+        ) as mock_cls:
             mock_cls.return_value.enrich = AsyncMock(return_value=mock_result)
             result = await _enrich_async("test-uuid", "Château Latour", "2018")
 
@@ -68,7 +80,9 @@ async def test_enrich_async_skips_supabase_when_result_none():
     mock_supabase, _ = _make_mock_supabase()
 
     with patch("jobs.haiku_tasks._get_supabase_client", return_value=mock_supabase):
-        with patch("services.haiku_enrichment_service.HaikuEnrichmentService") as mock_cls:
+        with patch(
+            "services.haiku_enrichment_service.HaikuEnrichmentService"
+        ) as mock_cls:
             mock_cls.return_value.enrich = AsyncMock(return_value=None)
             result = await _enrich_async("test-uuid", "Château Latour", "2018")
 

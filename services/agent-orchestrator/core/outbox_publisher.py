@@ -37,12 +37,14 @@ class OutboxPublisher:
         Returns the number of successfully published messages.
         """
         try:
-            result = self.database.supabase.table("outbox") \
-                .select("*") \
-                .eq("published", False) \
-                .order("created_at", desc=False) \
-                .limit(self.batch_size) \
+            result = (
+                self.database.supabase.table("outbox")
+                .select("*")
+                .eq("published", False)
+                .order("created_at", desc=False)
+                .limit(self.batch_size)
                 .execute()
+            )
 
             if not result.data:
                 return 0
@@ -58,10 +60,12 @@ class OutboxPublisher:
                     )
 
                     if success:
-                        self.database.supabase.table("outbox").update({
-                            "published": True,
-                            "published_at": datetime.utcnow().isoformat(),
-                        }).eq("id", row["id"]).execute()
+                        self.database.supabase.table("outbox").update(
+                            {
+                                "published": True,
+                                "published_at": datetime.utcnow().isoformat(),
+                            }
+                        ).eq("id", row["id"]).execute()
                         published_count += 1
                     else:
                         self.logger.warning(
@@ -69,13 +73,13 @@ class OutboxPublisher:
                         )
 
                 except Exception as e:
-                    self.logger.error(
-                        f"Failed to dispatch outbox row {row['id']}: {e}"
-                    )
+                    self.logger.error(f"Failed to dispatch outbox row {row['id']}: {e}")
                     # Continue to next row — don't block on single failure
 
             if published_count > 0:
-                self.logger.info(f"Outbox: published {published_count}/{len(result.data)} events")
+                self.logger.info(
+                    f"Outbox: published {published_count}/{len(result.data)} events"
+                )
 
             return published_count
 

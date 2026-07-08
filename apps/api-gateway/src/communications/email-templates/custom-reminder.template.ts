@@ -3,8 +3,8 @@
  * Supports: custom free-text, wine tasting, license renewal, and general reminders
  */
 
-import { EMAIL_CONFIG, formatDate } from './template-config';
-import { baseTemplate, tableRow, alertBox } from './base-template';
+import { EMAIL_CONFIG, formatDate } from "./template-config";
+import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 export interface CustomReminderData {
   restaurantName: string;
@@ -14,7 +14,7 @@ export interface CustomReminderData {
   scheduledDate?: Date | string;
   scheduledTime?: string;
   createdBy?: string;
-  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  priority?: "low" | "medium" | "high" | "urgent";
   actionItems?: string[];
   relatedLinks?: Array<{
     label: string;
@@ -29,30 +29,34 @@ export function customReminderTemplate(data: CustomReminderData): string {
   const { colors } = EMAIL_CONFIG;
 
   const typeLabels: Record<string, string> = {
-    custom: 'Reminder',
-    wine_tasting: 'Wine Tasting',
-    license_renewal: 'License Renewal',
-    staff_task: 'Staff Task',
-    training: 'Training Session',
-    maintenance: 'Maintenance',
+    custom: "Reminder",
+    wine_tasting: "Wine Tasting",
+    license_renewal: "License Renewal",
+    staff_task: "Staff Task",
+    training: "Training Session",
+    maintenance: "Maintenance",
   };
 
   const priorityConfig = {
-    low: { color: colors.info, bg: '#eff6ff', label: 'LOW' },
-    medium: { color: colors.warning, bg: '#fef3c7', label: 'MEDIUM' },
-    high: { color: colors.danger, bg: '#fef2f2', label: 'HIGH' },
-    urgent: { color: colors.danger, bg: '#fef2f2', label: 'URGENT' },
+    low: { color: colors.info, bg: "#eff6ff", label: "LOW" },
+    medium: { color: colors.warning, bg: "#fef3c7", label: "MEDIUM" },
+    high: { color: colors.danger, bg: "#fef2f2", label: "HIGH" },
+    urgent: { color: colors.danger, bg: "#fef2f2", label: "URGENT" },
   };
 
-  const priority = priorityConfig[data.priority || 'medium'];
+  const priority = priorityConfig[data.priority || "medium"];
 
-  const actionItemsHtml = data.actionItems && data.actionItems.length > 0 ? `
+  const actionItemsHtml =
+    data.actionItems && data.actionItems.length > 0
+      ? `
     <div style="margin: 20px 0;">
       <h3 style="margin: 0 0 15px; color: ${colors.gray[900]}; font-size: 16px; font-weight: 600;">
         Action Items
       </h3>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-        ${data.actionItems.map((item, index) => `
+        ${data.actionItems
+          .map(
+            (item, index) => `
           <tr>
             <td style="padding: 8px 0; border-bottom: 1px solid ${colors.gray[200]};">
               <div style="display: flex; align-items: center;">
@@ -61,10 +65,13 @@ export function customReminderTemplate(data: CustomReminderData): string {
               </div>
             </td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join("")}
       </table>
     </div>
-  ` : '';
+  `
+      : "";
 
   const content = `
     <!-- Type + Priority Badge -->
@@ -81,7 +88,7 @@ export function customReminderTemplate(data: CustomReminderData): string {
       ${data.title}
     </h2>
     <p style="margin: 0 0 20px; color: ${colors.gray[500]}; font-size: 14px;">
-      ${data.restaurantName}${data.isRecurring ? ` | Recurring: ${data.recurrencePattern || 'Yes'}` : ''}
+      ${data.restaurantName}${data.isRecurring ? ` | Recurring: ${data.recurrencePattern || "Yes"}` : ""}
     </p>
 
     <!-- Description -->
@@ -92,27 +99,31 @@ export function customReminderTemplate(data: CustomReminderData): string {
     </div>
 
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${data.scheduledDate ? tableRow('Date', formatDate(data.scheduledDate)) : ''}
-      ${data.scheduledTime ? tableRow('Time', data.scheduledTime) : ''}
-      ${data.createdBy ? tableRow('Created By', data.createdBy) : ''}
+      ${data.scheduledDate ? tableRow("Date", formatDate(data.scheduledDate)) : ""}
+      ${data.scheduledTime ? tableRow("Time", data.scheduledTime) : ""}
+      ${data.createdBy ? tableRow("Created By", data.createdBy) : ""}
     </table>
 
     ${actionItemsHtml}
 
-    ${data.notes ? alertBox({
-      type: 'info',
-      title: 'Additional Notes',
-      message: data.notes,
-    }) : ''}
+    ${
+      data.notes
+        ? alertBox({
+            type: "info",
+            title: "Additional Notes",
+            message: data.notes,
+          })
+        : ""
+    }
   `;
 
   return baseTemplate({
-    title: `${typeLabels[data.reminderType] || 'Reminder'}: ${data.title}`,
-    preheader: `${data.title}${data.scheduledDate ? ` - ${formatDate(data.scheduledDate)}` : ''} | ${data.restaurantName}`,
+    title: `${typeLabels[data.reminderType] || "Reminder"}: ${data.title}`,
+    preheader: `${data.title}${data.scheduledDate ? ` - ${formatDate(data.scheduledDate)}` : ""} | ${data.restaurantName}`,
     content,
     ctaButton: {
-      text: 'View Details',
-      url: '#',
+      text: "View Details",
+      url: "#",
       color: colors.primary,
     },
   });

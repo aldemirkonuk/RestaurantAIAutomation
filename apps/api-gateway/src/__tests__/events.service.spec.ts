@@ -1,9 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { EventsService } from '../events/events.service';
-import { DatabaseService } from '../database/database.service';
-import { EventType, SourcePage } from '../events/dto/event.dto';
+import { Test, TestingModule } from "@nestjs/testing";
+import { EventsService } from "../events/events.service";
+import { DatabaseService } from "../database/database.service";
+import { EventType, SourcePage } from "../events/dto/event.dto";
 
-describe('EventsService', () => {
+describe("EventsService", () => {
   let service: EventsService;
   let databaseService: DatabaseService;
 
@@ -43,22 +43,22 @@ describe('EventsService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  describe('createEvent', () => {
-    const restaurantId = 'test-restaurant-id';
-    const userId = 'test-user-id';
+  describe("createEvent", () => {
+    const restaurantId = "test-restaurant-id";
+    const userId = "test-user-id";
     const baseDto = {
       eventType: EventType.INVENTORY_CHANGE,
       sourcePage: SourcePage.INVENTORY,
-      payload: { wineId: 'wine-123', quantity: 10, changeType: 'add' },
+      payload: { wineId: "wine-123", quantity: 10, changeType: "add" },
     };
 
-    it('should create a new event successfully', async () => {
+    it("should create a new event successfully", async () => {
       const mockCreatedEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
         user_id: userId,
         event_type: baseDto.eventType,
@@ -78,11 +78,11 @@ describe('EventsService', () => {
 
       const result = await service.createEvent(restaurantId, userId, baseDto);
 
-      expect(result.id).toBe('event-123');
+      expect(result.id).toBe("event-123");
       expect(result.eventType).toBe(EventType.INVENTORY_CHANGE);
       expect(result.sourcePage).toBe(SourcePage.INVENTORY);
       expect(result.deduped).toBe(false);
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('events');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith("events");
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith(
         expect.objectContaining({
           restaurant_id: restaurantId,
@@ -93,14 +93,14 @@ describe('EventsService', () => {
       );
     });
 
-    it('should include idempotency key when provided', async () => {
+    it("should include idempotency key when provided", async () => {
       const dtoWithIdempotency = {
         ...baseDto,
-        idempotencyKey: 'unique-key-123',
+        idempotencyKey: "unique-key-123",
       };
 
       const mockCreatedEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
         user_id: userId,
         event_type: dtoWithIdempotency.eventType,
@@ -118,31 +118,35 @@ describe('EventsService', () => {
         error: null,
       });
 
-      const result = await service.createEvent(restaurantId, userId, dtoWithIdempotency);
+      const result = await service.createEvent(
+        restaurantId,
+        userId,
+        dtoWithIdempotency,
+      );
 
-      expect(result.idempotencyKey).toBe('unique-key-123');
+      expect(result.idempotencyKey).toBe("unique-key-123");
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotency_key: 'unique-key-123',
+          idempotency_key: "unique-key-123",
         }),
       );
     });
 
-    it('should handle duplicate events (idempotency)', async () => {
+    it("should handle duplicate events (idempotency)", async () => {
       const dtoWithIdempotency = {
         ...baseDto,
-        idempotencyKey: 'duplicate-key',
+        idempotencyKey: "duplicate-key",
       };
 
       const existingEvent = {
-        id: 'existing-event-id',
+        id: "existing-event-id",
         restaurant_id: restaurantId,
         user_id: userId,
         event_type: dtoWithIdempotency.eventType,
         source_page: dtoWithIdempotency.sourcePage,
         payload: dtoWithIdempotency.payload,
         schema_version: 1,
-        idempotency_key: 'duplicate-key',
+        idempotency_key: "duplicate-key",
         trace_id: null,
         correlation_id: null,
         created_at: new Date().toISOString(),
@@ -152,7 +156,10 @@ describe('EventsService', () => {
       mockSupabaseClient.single
         .mockResolvedValueOnce({
           data: null,
-          error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+          error: {
+            code: "23505",
+            message: "duplicate key value violates unique constraint",
+          },
         })
         // Second call: find existing event
         .mockResolvedValueOnce({
@@ -160,21 +167,25 @@ describe('EventsService', () => {
           error: null,
         });
 
-      const result = await service.createEvent(restaurantId, userId, dtoWithIdempotency);
+      const result = await service.createEvent(
+        restaurantId,
+        userId,
+        dtoWithIdempotency,
+      );
 
-      expect(result.id).toBe('existing-event-id');
+      expect(result.id).toBe("existing-event-id");
       expect(result.deduped).toBe(true);
     });
 
-    it('should include trace_id and correlation_id when provided', async () => {
+    it("should include trace_id and correlation_id when provided", async () => {
       const dtoWithTracing = {
         ...baseDto,
-        traceId: 'trace-abc-123',
-        correlationId: 'correlation-xyz-789',
+        traceId: "trace-abc-123",
+        correlationId: "correlation-xyz-789",
       };
 
       const mockCreatedEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
         user_id: userId,
         event_type: dtoWithTracing.eventType,
@@ -182,8 +193,8 @@ describe('EventsService', () => {
         payload: dtoWithTracing.payload,
         schema_version: 1,
         idempotency_key: null,
-        trace_id: 'trace-abc-123',
-        correlation_id: 'correlation-xyz-789',
+        trace_id: "trace-abc-123",
+        correlation_id: "correlation-xyz-789",
         created_at: new Date().toISOString(),
       };
 
@@ -192,56 +203,60 @@ describe('EventsService', () => {
         error: null,
       });
 
-      const result = await service.createEvent(restaurantId, userId, dtoWithTracing);
+      const result = await service.createEvent(
+        restaurantId,
+        userId,
+        dtoWithTracing,
+      );
 
-      expect(result.traceId).toBe('trace-abc-123');
-      expect(result.correlationId).toBe('correlation-xyz-789');
+      expect(result.traceId).toBe("trace-abc-123");
+      expect(result.correlationId).toBe("correlation-xyz-789");
     });
 
-    it('should throw error on database failure', async () => {
+    it("should throw error on database failure", async () => {
       mockSupabaseClient.single.mockResolvedValue({
         data: null,
-        error: { code: '42P01', message: 'relation "events" does not exist' },
+        error: { code: "42P01", message: 'relation "events" does not exist' },
       });
 
       await expect(
         service.createEvent(restaurantId, userId, baseDto),
       ).rejects.toMatchObject({
-        message: expect.stringContaining('does not exist'),
+        message: expect.stringContaining("does not exist"),
       });
     });
   });
 
-  describe('listEvents', () => {
-    const restaurantId = 'test-restaurant-id';
+  describe("listEvents", () => {
+    const restaurantId = "test-restaurant-id";
 
-    it('should return paginated events list', async () => {
+    it("should return paginated events list", async () => {
       const mockEvents = [
         {
-          id: 'event-1',
+          id: "event-1",
           restaurant_id: restaurantId,
-          user_id: 'user-1',
-          event_type: 'inventory_change',
-          source_page: 'inventory',
-          payload: { wineId: 'wine-1' },
+          user_id: "user-1",
+          event_type: "inventory_change",
+          source_page: "inventory",
+          payload: { wineId: "wine-1" },
           schema_version: 1,
           idempotency_key: null,
           trace_id: null,
           correlation_id: null,
-          created_at: '2024-01-15T10:00:00Z',
+          created_at: "2024-01-15T10:00:00Z",
         },
         {
-          id: 'event-2',
+          id: "event-2",
           restaurant_id: restaurantId,
-          user_id: 'user-1',
-          event_type: 'order_change',
-          source_page: 'orders',
-          payload: { orderId: 'order-1' },
+          user_id: "user-1",
+          event_type: "order_change",
+          source_page: "orders",
+          payload: { orderId: "order-1" },
           schema_version: 1,
           idempotency_key: null,
           trace_id: null,
           correlation_id: null,
-          created_at: '2024-01-15T09:00:00Z',
+          created_at: "2024-01-15T09:00:00Z",
         },
       ];
 
@@ -251,7 +266,10 @@ describe('EventsService', () => {
         count: 2,
       });
 
-      const result = await service.listEvents(restaurantId, { page: 1, limit: 10 });
+      const result = await service.listEvents(restaurantId, {
+        page: 1,
+        limit: 10,
+      });
 
       expect(result.events).toHaveLength(2);
       expect(result.total).toBe(2);
@@ -260,7 +278,7 @@ describe('EventsService', () => {
       expect(result.hasMore).toBe(false);
     });
 
-    it('should filter by eventType', async () => {
+    it("should filter by eventType", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -271,10 +289,13 @@ describe('EventsService', () => {
         eventType: EventType.INVENTORY_CHANGE,
       });
 
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('event_type', 'inventory_change');
+      expect(mockSupabaseClient.eq).toHaveBeenCalledWith(
+        "event_type",
+        "inventory_change",
+      );
     });
 
-    it('should filter by sourcePage', async () => {
+    it("should filter by sourcePage", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -285,10 +306,13 @@ describe('EventsService', () => {
         sourcePage: SourcePage.DASHBOARD,
       });
 
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('source_page', 'dashboard');
+      expect(mockSupabaseClient.eq).toHaveBeenCalledWith(
+        "source_page",
+        "dashboard",
+      );
     });
 
-    it('should filter by date range (after/before)', async () => {
+    it("should filter by date range (after/before)", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -296,28 +320,36 @@ describe('EventsService', () => {
       });
 
       await service.listEvents(restaurantId, {
-        after: '2024-01-01T00:00:00Z',
-        before: '2024-01-31T23:59:59Z',
+        after: "2024-01-01T00:00:00Z",
+        before: "2024-01-31T23:59:59Z",
       });
 
-      expect(mockSupabaseClient.gt).toHaveBeenCalledWith('created_at', '2024-01-01T00:00:00Z');
-      expect(mockSupabaseClient.lt).toHaveBeenCalledWith('created_at', '2024-01-31T23:59:59Z');
+      expect(mockSupabaseClient.gt).toHaveBeenCalledWith(
+        "created_at",
+        "2024-01-01T00:00:00Z",
+      );
+      expect(mockSupabaseClient.lt).toHaveBeenCalledWith(
+        "created_at",
+        "2024-01-31T23:59:59Z",
+      );
     });
 
-    it('should handle pagination correctly', async () => {
-      const mockEvents = Array(50).fill(null).map((_, i) => ({
-        id: `event-${i}`,
-        restaurant_id: restaurantId,
-        user_id: 'user-1',
-        event_type: 'inventory_change',
-        source_page: 'inventory',
-        payload: {},
-        schema_version: 1,
-        idempotency_key: null,
-        trace_id: null,
-        correlation_id: null,
-        created_at: new Date().toISOString(),
-      }));
+    it("should handle pagination correctly", async () => {
+      const mockEvents = Array(50)
+        .fill(null)
+        .map((_, i) => ({
+          id: `event-${i}`,
+          restaurant_id: restaurantId,
+          user_id: "user-1",
+          event_type: "inventory_change",
+          source_page: "inventory",
+          payload: {},
+          schema_version: 1,
+          idempotency_key: null,
+          trace_id: null,
+          correlation_id: null,
+          created_at: new Date().toISOString(),
+        }));
 
       mockSupabaseClient.range.mockResolvedValue({
         data: mockEvents.slice(0, 25),
@@ -325,7 +357,10 @@ describe('EventsService', () => {
         count: 50,
       });
 
-      const result = await service.listEvents(restaurantId, { page: 1, limit: 25 });
+      const result = await service.listEvents(restaurantId, {
+        page: 1,
+        limit: 25,
+      });
 
       expect(result.events).toHaveLength(25);
       expect(result.total).toBe(50);
@@ -333,28 +368,28 @@ describe('EventsService', () => {
     });
   });
 
-  describe('getMetrics', () => {
-    it('should return metrics snapshot', () => {
+  describe("getMetrics", () => {
+    it("should return metrics snapshot", () => {
       const metrics = service.getMetrics();
 
-      expect(metrics).toHaveProperty('totalIngested');
-      expect(metrics).toHaveProperty('totalDeduped');
-      expect(metrics).toHaveProperty('byType');
-      expect(metrics).toHaveProperty('bySource');
-      expect(metrics).toHaveProperty('errors');
-      expect(metrics).toHaveProperty('lastReset');
+      expect(metrics).toHaveProperty("totalIngested");
+      expect(metrics).toHaveProperty("totalDeduped");
+      expect(metrics).toHaveProperty("byType");
+      expect(metrics).toHaveProperty("bySource");
+      expect(metrics).toHaveProperty("errors");
+      expect(metrics).toHaveProperty("lastReset");
     });
 
-    it('should increment metrics after event creation', async () => {
-      const restaurantId = 'test-restaurant-id';
-      const userId = 'test-user-id';
+    it("should increment metrics after event creation", async () => {
+      const restaurantId = "test-restaurant-id";
+      const userId = "test-user-id";
 
       const mockCreatedEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
         user_id: userId,
-        event_type: 'inventory_change',
-        source_page: 'inventory',
+        event_type: "inventory_change",
+        source_page: "inventory",
         payload: {},
         schema_version: 1,
         idempotency_key: null,
@@ -379,14 +414,16 @@ describe('EventsService', () => {
 
       const updatedMetrics = service.getMetrics();
       expect(updatedMetrics.totalIngested).toBe(initialCount + 1);
-      expect(updatedMetrics.byType['inventory_change']).toBeGreaterThanOrEqual(1);
-      expect(updatedMetrics.bySource['inventory']).toBeGreaterThanOrEqual(1);
+      expect(updatedMetrics.byType["inventory_change"]).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(updatedMetrics.bySource["inventory"]).toBeGreaterThanOrEqual(1);
     });
   });
 
-  describe('event type validation', () => {
-    const restaurantId = 'test-restaurant-id';
-    const userId = 'test-user-id';
+  describe("event type validation", () => {
+    const restaurantId = "test-restaurant-id";
+    const userId = "test-user-id";
 
     const allEventTypes = [
       EventType.INVENTORY_CHANGE,
@@ -403,11 +440,11 @@ describe('EventsService', () => {
     allEventTypes.forEach((eventType) => {
       it(`should handle ${eventType} events`, async () => {
         const mockCreatedEvent = {
-          id: 'event-123',
+          id: "event-123",
           restaurant_id: restaurantId,
           user_id: userId,
           event_type: eventType,
-          source_page: 'system',
+          source_page: "system",
           payload: {},
           schema_version: 1,
           idempotency_key: null,
@@ -432,9 +469,9 @@ describe('EventsService', () => {
     });
   });
 
-  describe('source page validation', () => {
-    const restaurantId = 'test-restaurant-id';
-    const userId = 'test-user-id';
+  describe("source page validation", () => {
+    const restaurantId = "test-restaurant-id";
+    const userId = "test-user-id";
 
     const allSourcePages = [
       SourcePage.DASHBOARD,
@@ -454,10 +491,10 @@ describe('EventsService', () => {
     allSourcePages.forEach((sourcePage) => {
       it(`should handle events from ${sourcePage}`, async () => {
         const mockCreatedEvent = {
-          id: 'event-123',
+          id: "event-123",
           restaurant_id: restaurantId,
           user_id: userId,
-          event_type: 'system_event',
+          event_type: "system_event",
           source_page: sourcePage,
           payload: {},
           schema_version: 1,

@@ -1,8 +1,8 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { ROLES_KEY } from '../decorators/roles.decorator';
+import { Injectable, CanActivate, ExecutionContext } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { ROLES_KEY } from "../decorators/roles.decorator";
 
-export type Role = 'owner' | 'manager' | 'staff';
+export type Role = "owner" | "manager" | "staff";
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -19,17 +19,17 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    
+
     if (!user) {
       return false;
     }
 
     // Owner and Manager are equal (as per requirements)
     const userRole = user.role as Role;
-    
+
     // If owner/manager required, accept both
-    if (requiredRoles.includes('owner') || requiredRoles.includes('manager')) {
-      if (userRole === 'owner' || userRole === 'manager') {
+    if (requiredRoles.includes("owner") || requiredRoles.includes("manager")) {
+      if (userRole === "owner" || userRole === "manager") {
         return true;
       }
     }
@@ -37,4 +37,3 @@ export class RolesGuard implements CanActivate {
     return requiredRoles.some((role) => userRole === role);
   }
 }
-

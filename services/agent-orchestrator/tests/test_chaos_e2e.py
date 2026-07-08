@@ -14,7 +14,7 @@ All tests use in-process mocks. No real RabbitMQ or Supabase required.
 import asyncio
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from agents.pos_integration_agent import POSIntegrationAgent
 from core.message_bus import CircuitBreaker, CircuitBreakerConfig, CircuitState
@@ -78,11 +78,16 @@ def _make_pos_agent(idempotency_return=False):
     bus.publish = AsyncMock(return_value=True)
     db = _make_db()
 
-    a = POSIntegrationAgent("pos_integration_agent", bus, db, {
-        "mock_mode": True,
-        "toast_webhook_secret": "chaos-secret",
-        "toast_api_url": "https://ws-api.toasttab.com",
-    })
+    a = POSIntegrationAgent(
+        "pos_integration_agent",
+        bus,
+        db,
+        {
+            "mock_mode": True,
+            "toast_webhook_secret": "chaos-secret",
+            "toast_api_url": "https://ws-api.toasttab.com",
+        },
+    )
     a._check_idempotency = AsyncMock(return_value=idempotency_return)
     a._mark_processed = AsyncMock()
     a.log_decision = AsyncMock()
@@ -100,6 +105,7 @@ def _make_pos_agent(idempotency_return=False):
 # ---------------------------------------------------------------------------
 # Chaos 01: Agent killed mid-saga → saga compensation on restart
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_chaos_01_agent_killed_mid_saga():
@@ -152,6 +158,7 @@ async def test_chaos_01_agent_killed_mid_saga():
 # Chaos 02: RabbitMQ disconnect → aio_pika connect_robust handles reconnect
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_chaos_02_rabbitmq_disconnect_reconnect():
     """E2E-v2-06: RabbitMQ disconnect handled by aio_pika.connect_robust, not a manual loop.
@@ -161,7 +168,6 @@ async def test_chaos_02_rabbitmq_disconnect_reconnect():
     No manual reconnect loop should exist in the codebase.
     """
     from core.message_bus import MessageBus
-    import aio_pika
 
     connect_robust_calls = []
 
@@ -198,14 +204,15 @@ async def test_chaos_02_rabbitmq_disconnect_reconnect():
             "handles reconnects automatically. "
             f"kwargs passed: {kwargs}"
         )
-        assert kwargs["reconnect_interval"] == 5, (
-            f"Expected reconnect_interval=5, got {kwargs['reconnect_interval']}"
-        )
+        assert (
+            kwargs["reconnect_interval"] == 5
+        ), f"Expected reconnect_interval=5, got {kwargs['reconnect_interval']}"
 
 
 # ---------------------------------------------------------------------------
 # Chaos 03: Supabase 503 → circuit breaker trips
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_chaos_03_supabase_503_circuit_breaker():
@@ -246,6 +253,7 @@ async def test_chaos_03_supabase_503_circuit_breaker():
 # Chaos 04: Malformed webhook → DLQ capture, no crash
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_chaos_04_malformed_webhook_dlq():
     """E2E-v2-06: Malformed webhook → error dict returned, DLQ capture triggered, no exception.
@@ -262,31 +270,35 @@ async def test_chaos_04_malformed_webhook_dlq():
     )
 
     # Must return a dict — never raise
-    assert isinstance(result, dict), (
-        f"process_toast_webhook must return dict for malformed payload, got {type(result)}"
-    )
+    assert isinstance(
+        result, dict
+    ), f"process_toast_webhook must return dict for malformed payload, got {type(result)}"
 
     # Must indicate an error or be ignored (no required fields → no handler match)
     # Acceptable statuses: "error" or "ignored" (handler not found for missing event_type)
-    assert result.get("status") in ("error", "ignored"), (
-        f"Expected status='error' or 'ignored' for malformed payload, got: {result}"
-    )
+    assert result.get("status") in (
+        "error",
+        "ignored",
+    ), f"Expected status='error' or 'ignored' for malformed payload, got: {result}"
 
     # No pos.sale.completed should have been published
     published_calls = agent.message_bus.publish.call_args_list
     pos_sale_calls = [
-        c for c in published_calls
+        c
+        for c in published_calls
         if c.kwargs.get("routing_key") == "pos.sale.completed"
         or "pos.sale.completed" in str(c)
     ]
-    assert not pos_sale_calls, (
-        f"Malformed webhook must NOT publish pos.sale.completed. Got: {pos_sale_calls}"
-    )
+    assert (
+        not pos_sale_calls
+    ), f"Malformed webhook must NOT publish pos.sale.completed. Got: {pos_sale_calls}"
 
     # DLQ capture: either _send_to_dlq was called, or the error is surfaced in result
     # (Agents may capture to DLQ internally or let the caller handle it.)
     dlq_called = agent._send_to_dlq.called
-    has_error_reason = bool(result.get("reason") or result.get("error") or result.get("message"))
+    has_error_reason = bool(
+        result.get("reason") or result.get("error") or result.get("message")
+    )
     assert dlq_called or has_error_reason, (
         f"Either _send_to_dlq must be called OR result must contain 'reason'/'error'/'message'. "
         f"dlq_called={dlq_called}, result={result}"
@@ -296,6 +308,7 @@ async def test_chaos_04_malformed_webhook_dlq():
 # ---------------------------------------------------------------------------
 # Chaos 05: 100 concurrent webhooks → idempotency prevents duplicates
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_chaos_05_100_concurrent_webhooks():
@@ -336,7 +349,8 @@ async def test_chaos_05_100_concurrent_webhooks():
     # pos.sale.completed should be published at most once (idempotency gate)
     published_calls = agent.message_bus.publish.call_args_list
     pos_sale_publishes = [
-        c for c in published_calls
+        c
+        for c in published_calls
         if c.kwargs.get("routing_key") == "pos.sale.completed"
         or "pos.sale.completed" in str(c)
     ]
@@ -346,6 +360,6 @@ async def test_chaos_05_100_concurrent_webhooks():
     )
 
     # _check_idempotency should have been called 100 times (once per webhook)
-    assert call_count == 100, (
-        f"Expected _check_idempotency called 100 times, got {call_count}"
-    )
+    assert (
+        call_count == 100
+    ), f"Expected _check_idempotency called 100 times, got {call_count}"

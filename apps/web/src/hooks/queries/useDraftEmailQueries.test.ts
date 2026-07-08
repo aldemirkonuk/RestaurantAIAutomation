@@ -41,7 +41,7 @@ describe('useActiveConversations — query key uses activeRestaurantId (regressi
   })
 
   it('uses activeRestaurantId as the query key when available', async () => {
-    ;(useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
       user: { restaurantId: 'jwt-rest-A', userId: 'u1', email: 'a@b.com', name: 'A', role: 'owner' },
       activeRestaurantId: 'active-rest-B',   // different from JWT restaurant
       isAuthenticated: true,
@@ -63,7 +63,7 @@ describe('useActiveConversations — query key uses activeRestaurantId (regressi
   })
 
   it('falls back to user.restaurantId when activeRestaurantId is null', async () => {
-    ;(useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
       user: { restaurantId: 'jwt-rest-A', userId: 'u1', email: 'a@b.com', name: 'A', role: 'owner' },
       activeRestaurantId: null,
       isAuthenticated: true,
@@ -82,7 +82,7 @@ describe('useActiveConversations — query key uses activeRestaurantId (regressi
 
   it('refetches when activeRestaurantId changes (restaurant switch)', async () => {
     // First render: activeRestaurantId = 'rest-A'
-    ;(useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
       user: { restaurantId: 'jwt-rest-A' },
       activeRestaurantId: 'rest-A',
       isAuthenticated: true,
@@ -112,7 +112,7 @@ describe('useActiveConversations — query key uses activeRestaurantId (regressi
   })
 
   it('does not fetch when restaurantId is empty', () => {
-    ;(useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
       user: null,
       activeRestaurantId: null,
       isAuthenticated: true,

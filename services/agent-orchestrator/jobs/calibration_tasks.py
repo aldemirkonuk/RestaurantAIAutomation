@@ -25,17 +25,25 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Calibration constants
-MIN_REVIEWS_FOR_CALIBRATION = 50   # minimum resolved reviews per field before adjusting
-ACCURACY_TARGET_LOW = 0.95         # below this → raise accept_threshold
-ACCURACY_TARGET_HIGH = 0.98        # above this → lower review_threshold
+MIN_REVIEWS_FOR_CALIBRATION = 50  # minimum resolved reviews per field before adjusting
+ACCURACY_TARGET_LOW = 0.95  # below this → raise accept_threshold
+ACCURACY_TARGET_HIGH = 0.98  # above this → lower review_threshold
 THRESHOLD_STEP = 0.05
-THRESHOLD_MIN = 0.30               # floor for review_threshold (D-22)
-THRESHOLD_MAX = 0.95               # ceiling for accept_threshold (D-22)
+THRESHOLD_MIN = 0.30  # floor for review_threshold (D-22)
+THRESHOLD_MAX = 0.95  # ceiling for accept_threshold (D-22)
 
 # 10 confidence bins from 0.0 to 1.0
 CONFIDENCE_BINS = [
-    "0.0-0.1", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5",
-    "0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1.0",
+    "0.0-0.1",
+    "0.1-0.2",
+    "0.2-0.3",
+    "0.3-0.4",
+    "0.4-0.5",
+    "0.5-0.6",
+    "0.6-0.7",
+    "0.7-0.8",
+    "0.8-0.9",
+    "0.9-1.0",
 ]
 
 
@@ -103,21 +111,25 @@ def calibrate_field_thresholds_task():
     calibration_rows = []
     for (fname, bin_str), s in stats.items():
         accuracy = s["correct"] / s["total"] if s["total"] > 0 else 0.0
-        calibration_rows.append({
-            "field_name": fname,
-            "confidence_bin": bin_str,
-            "total_reviewed": s["total"],
-            "total_correct": s["correct"],
-            "actual_accuracy": round(accuracy, 4),
-            "measured_at": now_iso,
-        })
+        calibration_rows.append(
+            {
+                "field_name": fname,
+                "confidence_bin": bin_str,
+                "total_reviewed": s["total"],
+                "total_correct": s["correct"],
+                "actual_accuracy": round(accuracy, 4),
+                "measured_at": now_iso,
+            }
+        )
 
     try:
         supabase.table("field_calibration").upsert(
             calibration_rows,
             on_conflict="field_name,confidence_bin",
         ).execute()
-        logger.info("Calibration: upserted %d field_calibration rows", len(calibration_rows))
+        logger.info(
+            "Calibration: upserted %d field_calibration rows", len(calibration_rows)
+        )
     except Exception as exc:
         logger.error("Calibration: field_calibration upsert failed: %s", exc)
 
@@ -132,7 +144,9 @@ def calibrate_field_thresholds_task():
         if total < MIN_REVIEWS_FOR_CALIBRATION:
             logger.debug(
                 "Calibration: skipping %s (only %d reviews, need %d)",
-                fname, total, MIN_REVIEWS_FOR_CALIBRATION,
+                fname,
+                total,
+                MIN_REVIEWS_FOR_CALIBRATION,
             )
             continue
 
@@ -150,7 +164,9 @@ def calibrate_field_thresholds_task():
             current_review = float(t_resp.data["review_threshold"])
             current_accept = float(t_resp.data["accept_threshold"])
         except Exception as exc:
-            logger.warning("Calibration: failed to read thresholds for %s: %s", fname, exc)
+            logger.warning(
+                "Calibration: failed to read thresholds for %s: %s", fname, exc
+            )
             continue
 
         new_review = current_review
@@ -170,18 +186,26 @@ def calibrate_field_thresholds_task():
 
         if new_review != current_review or new_accept != current_accept:
             try:
-                supabase.table("confidence_thresholds").update({
-                    "review_threshold": round(new_review, 2),
-                    "accept_threshold": round(new_accept, 2),
-                    "last_calibrated_at": now_iso,
-                }).eq("field_name", fname).execute()
+                supabase.table("confidence_thresholds").update(
+                    {
+                        "review_threshold": round(new_review, 2),
+                        "accept_threshold": round(new_accept, 2),
+                        "last_calibrated_at": now_iso,
+                    }
+                ).eq("field_name", fname).execute()
                 adjusted += 1
                 logger.info(
                     "Calibration: adjusted %s → review %.2f→%.2f accept %.2f→%.2f",
-                    fname, current_review, new_review, current_accept, new_accept,
+                    fname,
+                    current_review,
+                    new_review,
+                    current_accept,
+                    new_accept,
                 )
             except Exception as exc:
-                logger.warning("Calibration: threshold update failed for %s: %s", fname, exc)
+                logger.warning(
+                    "Calibration: threshold update failed for %s: %s", fname, exc
+                )
 
     return {
         "status": "completed",

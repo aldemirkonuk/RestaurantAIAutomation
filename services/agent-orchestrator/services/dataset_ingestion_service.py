@@ -61,11 +61,17 @@ def _get_supabase_client():
 # Fuzzy matching helpers
 # ---------------------------------------------------------------------------
 
-def _field_match(a: Optional[str], b: Optional[str], threshold: float = MATCH_THRESHOLD) -> bool:
+
+def _field_match(
+    a: Optional[str], b: Optional[str], threshold: float = MATCH_THRESHOLD
+) -> bool:
     """Return True if two strings fuzzy-match above threshold. Handles None/empty."""
     if not a or not b:
         return False
-    return SequenceMatcher(None, str(a).lower().strip(), str(b).lower().strip()).ratio() >= threshold
+    return (
+        SequenceMatcher(None, str(a).lower().strip(), str(b).lower().strip()).ratio()
+        >= threshold
+    )
 
 
 def wine_matches(library_wine: Dict[str, Any], db_wine: Dict[str, Any]) -> int:
@@ -104,6 +110,7 @@ def wine_matches(library_wine: Dict[str, Any], db_wine: Dict[str, Any]) -> int:
 # File discovery
 # ---------------------------------------------------------------------------
 
+
 def discover_datasets() -> List[Dict[str, str]]:
     """
     Return list of discovered dataset files.
@@ -124,6 +131,7 @@ def discover_datasets() -> List[Dict[str, str]]:
 # ---------------------------------------------------------------------------
 # Record extraction from source formats
 # ---------------------------------------------------------------------------
+
 
 def _extract_jsonl_records(path: str) -> List[Dict[str, Any]]:
     """Read JSONL file and return list of normalised wine dicts."""
@@ -153,7 +161,9 @@ def _extract_jsonl_records(path: str) -> List[Dict[str, Any]]:
                 except json.JSONDecodeError as e:
                     logger.warning(
                         "_extract_jsonl_records: line %d parse error in %s: %s",
-                        line_num, path, e,
+                        line_num,
+                        path,
+                        e,
                     )
     except OSError as e:
         logger.warning("_extract_jsonl_records: cannot read %s: %s", path, e)
@@ -179,18 +189,20 @@ def _extract_csv_records(path: str) -> List[Dict[str, Any]]:
                 sensory_profile_patch: Dict[str, Any] = {}
                 if characteristics:
                     sensory_profile_patch["characteristics_raw"] = characteristics
-                records.append({
-                    "name": name,
-                    "producer": None,  # CSV has no producer column (Pitfall 7)
-                    "vintage": row.get("Vintage", "").strip() or None,
-                    "appellation": row.get("Appellation", "").strip() or None,
-                    "country": row.get("Country", "").strip() or None,
-                    "region": row.get("Region", "").strip() or None,
-                    # CSV patches are already in target schema format — skip JSONL mapper
-                    "_wine_structure": wine_structure_patch,
-                    "_sensory_profile": sensory_profile_patch,
-                    "_quality_signals": {},
-                })
+                records.append(
+                    {
+                        "name": name,
+                        "producer": None,  # CSV has no producer column (Pitfall 7)
+                        "vintage": row.get("Vintage", "").strip() or None,
+                        "appellation": row.get("Appellation", "").strip() or None,
+                        "country": row.get("Country", "").strip() or None,
+                        "region": row.get("Region", "").strip() or None,
+                        # CSV patches are already in target schema format — skip JSONL mapper
+                        "_wine_structure": wine_structure_patch,
+                        "_sensory_profile": sensory_profile_patch,
+                        "_quality_signals": {},
+                    }
+                )
     except OSError as e:
         logger.warning("_extract_csv_records: cannot read %s: %s", path, e)
     return records
@@ -200,6 +212,7 @@ def _extract_csv_records(path: str) -> List[Dict[str, Any]]:
 # JSONB field mappers (JSONL source → master_wine_library schema)
 # ---------------------------------------------------------------------------
 
+
 def _map_jsonl_wine_structure(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Map JSONL wine_structure keys to master_wine_library JSONB schema."""
     mapped: Dict[str, Any] = {}
@@ -208,7 +221,7 @@ def _map_jsonl_wine_structure(raw: Dict[str, Any]) -> Dict[str, Any]:
     if raw.get("acidity"):
         mapped["acidity"] = raw["acidity"]
     if raw.get("tannins"):
-        mapped["tannin"] = raw["tannins"]   # key rename: tannins → tannin
+        mapped["tannin"] = raw["tannins"]  # key rename: tannins → tannin
     if raw.get("finish"):
         mapped["finish"] = raw["finish"]
     if raw.get("alcohol_pct") is not None:
@@ -252,12 +265,14 @@ def _build_enrichment_payload(library_record: Dict[str, Any]) -> Dict[str, Any]:
         "wine_structure": _map_jsonl_wine_structure(raw_ws),
         "sensory_profile": _map_jsonl_sensory_profile(raw_sp),
         "quality_signals": {
-            k: v for k, v in {
+            k: v
+            for k, v in {
                 "quality_level": raw_qs.get("quality_level"),
                 "producer_tier": raw_qs.get("producer_tier"),
                 "awards_ratings": raw_qs.get("awards_ratings", []),
                 "appellation_class": raw_qs.get("appellation_class"),
-            }.items() if v is not None
+            }.items()
+            if v is not None
         },
     }
 
@@ -265,6 +280,7 @@ def _build_enrichment_payload(library_record: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Main service class
 # ---------------------------------------------------------------------------
+
 
 class DatasetIngestionService:
     """
@@ -291,13 +307,17 @@ class DatasetIngestionService:
         # Fetch wine record from master_wine_library
         resp = (
             supabase.table("master_wine_library")
-            .select("id, name, producer, vintage, appellation, wine_structure, sensory_profile, quality_signals")
+            .select(
+                "id, name, producer, vintage, appellation, wine_structure, sensory_profile, quality_signals"
+            )
             .eq("id", wine_id)
             .maybe_single()
             .execute()
         )
         if not resp.data:
-            logger.warning("DatasetIngestionService.enrich_wine: wine_id=%s not found", wine_id)
+            logger.warning(
+                "DatasetIngestionService.enrich_wine: wine_id=%s not found", wine_id
+            )
             return {"wine_id": wine_id, "status": "not_found"}
 
         db_wine = resp.data
@@ -308,7 +328,11 @@ class DatasetIngestionService:
                 "DatasetIngestionService.enrich_wine: no dataset files found — skipping wine_id=%s",
                 wine_id,
             )
-            return {"wine_id": wine_id, "status": "skipped", "reason": "no_dataset_files"}
+            return {
+                "wine_id": wine_id,
+                "status": "skipped",
+                "reason": "no_dataset_files",
+            }
 
         best_match: Optional[Dict[str, Any]] = None
         best_count = 0
@@ -334,9 +358,14 @@ class DatasetIngestionService:
         if best_count < MIN_MATCH_COUNT or best_match is None:
             logger.info(
                 "DatasetIngestionService.enrich_wine: wine_id=%s — no match (best_count=%d)",
-                wine_id, best_count,
+                wine_id,
+                best_count,
             )
-            return {"wine_id": wine_id, "status": "no_match", "datasets_scanned": len(dataset_files)}
+            return {
+                "wine_id": wine_id,
+                "status": "no_match",
+                "datasets_scanned": len(dataset_files),
+            }
 
         payload = _build_enrichment_payload(best_match)
         fields_written = []
@@ -345,7 +374,9 @@ class DatasetIngestionService:
         update_patch: Dict[str, Any] = {}
         for col in ("wine_structure", "sensory_profile", "quality_signals"):
             existing = db_wine.get(col)
-            if (existing is None or existing == {} or existing == "{}") and payload.get(col):
+            if (existing is None or existing == {} or existing == "{}") and payload.get(
+                col
+            ):
                 update_patch[col] = payload[col]
                 fields_written.append(col)
 
@@ -354,13 +385,21 @@ class DatasetIngestionService:
                 "DatasetIngestionService.enrich_wine: wine_id=%s — all JSONB columns already populated (skipping)",
                 wine_id,
             )
-            return {"wine_id": wine_id, "status": "skipped", "reason": "already_populated"}
+            return {
+                "wine_id": wine_id,
+                "status": "skipped",
+                "reason": "already_populated",
+            }
 
         # Row-scoped update — T-10-10 mitigation: every update uses .eq("id", wine_id)
-        supabase.table("master_wine_library").update(update_patch).eq("id", wine_id).execute()
+        supabase.table("master_wine_library").update(update_patch).eq(
+            "id", wine_id
+        ).execute()
         logger.info(
             "DatasetIngestionService.enrich_wine: wine_id=%s — wrote %s (match_count=%d)",
-            wine_id, fields_written, best_count,
+            wine_id,
+            fields_written,
+            best_count,
         )
         return {
             "wine_id": wine_id,

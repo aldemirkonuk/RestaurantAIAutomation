@@ -6,13 +6,12 @@ Tests: ONTO-01 through ONTO-08
 All Supabase and DB calls are mocked — no live connections required.
 Run: pytest services/agent-orchestrator/tests/test_ontology_validation.py -x -q
 """
+
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 
@@ -20,9 +19,11 @@ from unittest.mock import MagicMock, patch
 # Helper: create OntologyValidationService bypassing __init__ DB connection
 # ---------------------------------------------------------------------------
 
+
 def _make_service(mock_supabase=None):
     """Create OntologyValidationService without __init__ to avoid real DB/settings calls."""
     from services.ontology_validation_service import OntologyValidationService
+
     svc = OntologyValidationService.__new__(OntologyValidationService)
     svc.supabase = mock_supabase or MagicMock()
     return svc
@@ -32,6 +33,7 @@ def _make_service(mock_supabase=None):
 # Test: check_region_country_consistency (ONTO-01, ONTO-05)
 # ---------------------------------------------------------------------------
 
+
 class TestRegionCountryConsistency:
 
     def test_country_mismatch_is_critical(self):
@@ -40,9 +42,17 @@ class TestRegionCountryConsistency:
 
         # check_region_country_consistency uses lookup_region_by_name from ontology_normalization
         # Mock the region row to return country_code='IT' directly on the row
-        mock_region_row = {"id": "region-barolo", "name": "Barolo", "country_code": "IT", "level": "appellation"}
+        mock_region_row = {
+            "id": "region-barolo",
+            "name": "Barolo",
+            "country_code": "IT",
+            "level": "appellation",
+        }
 
-        with patch("services.ontology_normalization.lookup_region_by_name", return_value=mock_region_row):
+        with patch(
+            "services.ontology_normalization.lookup_region_by_name",
+            return_value=mock_region_row,
+        ):
             result = service.check_region_country_consistency("Barolo", "France")
 
         assert result is not None
@@ -54,9 +64,17 @@ class TestRegionCountryConsistency:
         """ONTO-01: Barolo + Italy → check passes (returns None)"""
         service = _make_service()
 
-        mock_region_row = {"id": "region-barolo", "name": "Barolo", "country_code": "IT", "level": "appellation"}
+        mock_region_row = {
+            "id": "region-barolo",
+            "name": "Barolo",
+            "country_code": "IT",
+            "level": "appellation",
+        }
 
-        with patch("services.ontology_normalization.lookup_region_by_name", return_value=mock_region_row):
+        with patch(
+            "services.ontology_normalization.lookup_region_by_name",
+            return_value=mock_region_row,
+        ):
             result = service.check_region_country_consistency("Barolo", "Italy")
 
         assert result is None
@@ -71,8 +89,12 @@ class TestRegionCountryConsistency:
         """ONTO-05: Appellation not found in DB → skip (no false positives)"""
         service = _make_service()
 
-        with patch("services.ontology_normalization.lookup_region_by_name", return_value=None):
-            result = service.check_region_country_consistency("Unknown Appellation XYZ", "France")
+        with patch(
+            "services.ontology_normalization.lookup_region_by_name", return_value=None
+        ):
+            result = service.check_region_country_consistency(
+                "Unknown Appellation XYZ", "France"
+            )
 
         assert result is None
 
@@ -80,6 +102,7 @@ class TestRegionCountryConsistency:
 # ---------------------------------------------------------------------------
 # Test: normalize_grape_name (ONTO-02)
 # ---------------------------------------------------------------------------
+
 
 class TestGrapeAliasNormalization:
 
@@ -113,8 +136,12 @@ class TestGrapeAliasNormalization:
 
         mock_cache = {"syrah": "Syrah"}
         mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value.data = []
-        mock_supabase.table.return_value.select.return_value.contains.return_value.limit.return_value.execute.return_value.data = []
+        mock_supabase.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
+        mock_supabase.table.return_value.select.return_value.contains.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
         with patch.object(norm_module, "_GRAPE_CACHE", mock_cache):
             with patch.object(norm_module, "_get_supabase", return_value=mock_supabase):
@@ -127,6 +154,7 @@ class TestGrapeAliasNormalization:
 # Test: check_grape_appellation_compatibility (ONTO-03, ONTO-05)
 # ---------------------------------------------------------------------------
 
+
 class TestAppellationRuleEnforcement:
 
     def test_wrong_grape_for_barolo_is_critical(self):
@@ -137,9 +165,17 @@ class TestAppellationRuleEnforcement:
             "allowed_grapes": [],
         }
 
-        with patch("services.ontology_normalization.lookup_appellation_rules", return_value=mock_rules):
-            with patch("services.ontology_normalization.normalize_grape_name", return_value="Cabernet Sauvignon"):
-                result = service.check_grape_appellation_compatibility("Barolo", "Cabernet Sauvignon")
+        with patch(
+            "services.ontology_normalization.lookup_appellation_rules",
+            return_value=mock_rules,
+        ):
+            with patch(
+                "services.ontology_normalization.normalize_grape_name",
+                return_value="Cabernet Sauvignon",
+            ):
+                result = service.check_grape_appellation_compatibility(
+                    "Barolo", "Cabernet Sauvignon"
+                )
 
         assert result is not None
         assert result.severity == "critical"
@@ -154,9 +190,17 @@ class TestAppellationRuleEnforcement:
             "allowed_grapes": [],
         }
 
-        with patch("services.ontology_normalization.lookup_appellation_rules", return_value=mock_rules):
-            with patch("services.ontology_normalization.normalize_grape_name", return_value="Nebbiolo"):
-                result = service.check_grape_appellation_compatibility("Barolo", "Nebbiolo")
+        with patch(
+            "services.ontology_normalization.lookup_appellation_rules",
+            return_value=mock_rules,
+        ):
+            with patch(
+                "services.ontology_normalization.normalize_grape_name",
+                return_value="Nebbiolo",
+            ):
+                result = service.check_grape_appellation_compatibility(
+                    "Barolo", "Nebbiolo"
+                )
 
         assert result is None
 
@@ -164,9 +208,17 @@ class TestAppellationRuleEnforcement:
         """ONTO-05: Appellation not in rules DB → skip (no false positives)"""
         service = _make_service()
 
-        with patch("services.ontology_normalization.lookup_appellation_rules", return_value=None):
-            with patch("services.ontology_normalization.normalize_grape_name", return_value="Merlot"):
-                result = service.check_grape_appellation_compatibility("Unknown Appellation", "Merlot")
+        with patch(
+            "services.ontology_normalization.lookup_appellation_rules",
+            return_value=None,
+        ):
+            with patch(
+                "services.ontology_normalization.normalize_grape_name",
+                return_value="Merlot",
+            ):
+                result = service.check_grape_appellation_compatibility(
+                    "Unknown Appellation", "Merlot"
+                )
 
         assert result is None
 
@@ -174,6 +226,7 @@ class TestAppellationRuleEnforcement:
 # ---------------------------------------------------------------------------
 # Test: check_vintage_plausibility (ONTO-04, ONTO-05)
 # ---------------------------------------------------------------------------
+
 
 class TestVintagePlausibility:
 
@@ -184,12 +237,19 @@ class TestVintagePlausibility:
         This is always in the future, making it CRITICAL without any datetime mocking.
         """
         from services.ontology_validation_service import OntologyValidationService
+
         s = OntologyValidationService.__new__(OntologyValidationService)
         s.supabase = MagicMock()
 
-        mock_rules = {"min_release_delay_months": 1, "allows_nv": False, "rule_type": "standard"}
+        mock_rules = {
+            "min_release_delay_months": 1,
+            "allows_nv": False,
+            "rule_type": "standard",
+        }
         # check_vintage_plausibility uses .limit(1).execute() (not maybe_single)
-        s.supabase.table.return_value.select.return_value.ilike.return_value.eq.return_value.limit.return_value.execute.return_value.data = [mock_rules]
+        s.supabase.table.return_value.select.return_value.ilike.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+            mock_rules
+        ]
 
         result = s.check_vintage_plausibility("2099", "Barolo")
 
@@ -218,7 +278,9 @@ class TestVintagePlausibility:
     def test_no_vintage_rule_skips_check(self):
         """ONTO-05: Vintage present but no DB rule for appellation → skip"""
         service = _make_service()
-        service.supabase.table.return_value.select.return_value.ilike.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+        service.supabase.table.return_value.select.return_value.ilike.return_value.eq.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
         result = service.check_vintage_plausibility("2020", "UnknownAppellation")
         assert result is None
@@ -228,14 +290,19 @@ class TestVintagePlausibility:
 # Test: color/grape consistency severity (ONTO-02, ONTO-05, D-03)
 # ---------------------------------------------------------------------------
 
+
 class TestColorGrapeWarning:
 
     def test_color_grape_mismatch_is_warning_not_critical(self):
         """ONTO-02, D-03: Syrah (red) + color=white → WARNING severity (not CRITICAL)"""
         service = _make_service()
 
-        with patch("services.ontology_normalization.normalize_grape_name", return_value="Syrah"):
-            with patch("services.ontology_normalization.get_grape_color", return_value="red"):
+        with patch(
+            "services.ontology_normalization.normalize_grape_name", return_value="Syrah"
+        ):
+            with patch(
+                "services.ontology_normalization.get_grape_color", return_value="red"
+            ):
                 result = service.check_color_grape_consistency("white", "Syrah")
 
         assert result is not None
@@ -246,8 +313,12 @@ class TestColorGrapeWarning:
         """D-03: Syrah (red) + color=red → passes (None)"""
         service = _make_service()
 
-        with patch("services.ontology_normalization.normalize_grape_name", return_value="Syrah"):
-            with patch("services.ontology_normalization.get_grape_color", return_value="red"):
+        with patch(
+            "services.ontology_normalization.normalize_grape_name", return_value="Syrah"
+        ):
+            with patch(
+                "services.ontology_normalization.get_grape_color", return_value="red"
+            ):
                 result = service.check_color_grape_consistency("red", "Syrah")
 
         assert result is None
@@ -256,8 +327,13 @@ class TestColorGrapeWarning:
         """ONTO-05: Grape color unknown → skip (no false positives)"""
         service = _make_service()
 
-        with patch("services.ontology_normalization.normalize_grape_name", return_value="ExoticGrape"):
-            with patch("services.ontology_normalization.get_grape_color", return_value=None):
+        with patch(
+            "services.ontology_normalization.normalize_grape_name",
+            return_value="ExoticGrape",
+        ):
+            with patch(
+                "services.ontology_normalization.get_grape_color", return_value=None
+            ):
                 result = service.check_color_grape_consistency("red", "ExoticGrape")
 
         assert result is None
@@ -267,6 +343,7 @@ class TestColorGrapeWarning:
 # Test: deterministic autofill (ONTO-08, D-04)
 # ---------------------------------------------------------------------------
 
+
 class TestOntologyAutofill:
 
     def test_autofill_applied_when_confidence_low(self):
@@ -274,10 +351,20 @@ class TestOntologyAutofill:
         service = _make_service()
         fc = {"country": {"value": "Unknown", "confidence": 0.6, "source": "inferred"}}
 
-        with patch("services.ontology_normalization.get_country_for_appellation", return_value="FR"):
-            with patch("services.ontology_normalization.get_region_for_appellation", return_value=None):
-                with patch("services.ontology_normalization.get_grape_color", return_value=None):
-                    updated_fc, count = service._apply_ontology_autofills(fc, "Pauillac", None)
+        with patch(
+            "services.ontology_normalization.get_country_for_appellation",
+            return_value="FR",
+        ):
+            with patch(
+                "services.ontology_normalization.get_region_for_appellation",
+                return_value=None,
+            ):
+                with patch(
+                    "services.ontology_normalization.get_grape_color", return_value=None
+                ):
+                    updated_fc, count = service._apply_ontology_autofills(
+                        fc, "Pauillac", None
+                    )
 
         assert count >= 1
         assert updated_fc["country"]["confidence"] == 1.0
@@ -286,12 +373,24 @@ class TestOntologyAutofill:
     def test_autofill_skipped_when_confidence_high(self):
         """ONTO-08, D-04: country confidence=0.9 (>=0.8) → autofill NOT applied"""
         service = _make_service()
-        fc = {"country": {"value": "France", "confidence": 0.9, "source": "web_verified"}}
+        fc = {
+            "country": {"value": "France", "confidence": 0.9, "source": "web_verified"}
+        }
 
-        with patch("services.ontology_normalization.get_country_for_appellation", return_value="FR"):
-            with patch("services.ontology_normalization.get_region_for_appellation", return_value=None):
-                with patch("services.ontology_normalization.get_grape_color", return_value=None):
-                    updated_fc, count = service._apply_ontology_autofills(fc, "Pauillac", None)
+        with patch(
+            "services.ontology_normalization.get_country_for_appellation",
+            return_value="FR",
+        ):
+            with patch(
+                "services.ontology_normalization.get_region_for_appellation",
+                return_value=None,
+            ):
+                with patch(
+                    "services.ontology_normalization.get_grape_color", return_value=None
+                ):
+                    updated_fc, count = service._apply_ontology_autofills(
+                        fc, "Pauillac", None
+                    )
 
         # Country should NOT be overwritten (high confidence)
         assert updated_fc["country"]["confidence"] == 0.9
@@ -302,10 +401,20 @@ class TestOntologyAutofill:
         service = _make_service()
         fc = {}  # country not present
 
-        with patch("services.ontology_normalization.get_country_for_appellation", return_value="IT"):
-            with patch("services.ontology_normalization.get_region_for_appellation", return_value=None):
-                with patch("services.ontology_normalization.get_grape_color", return_value=None):
-                    updated_fc, count = service._apply_ontology_autofills(fc, "Barolo", None)
+        with patch(
+            "services.ontology_normalization.get_country_for_appellation",
+            return_value="IT",
+        ):
+            with patch(
+                "services.ontology_normalization.get_region_for_appellation",
+                return_value=None,
+            ):
+                with patch(
+                    "services.ontology_normalization.get_grape_color", return_value=None
+                ):
+                    updated_fc, count = service._apply_ontology_autofills(
+                        fc, "Barolo", None
+                    )
 
         assert "country" in updated_fc
         assert updated_fc["country"]["confidence"] == 1.0

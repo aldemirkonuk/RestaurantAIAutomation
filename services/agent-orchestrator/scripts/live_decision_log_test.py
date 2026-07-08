@@ -54,8 +54,10 @@ async def main() -> int:
         load_dotenv(_ROOT / ".env")
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv(
-        "SUPABASE_SERVICE_ROLE_KEY"
+    key = (
+        os.getenv("SUPABASE_SERVICE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     if not url or not key:
         print("Missing SUPABASE_URL or service key.", file=sys.stderr)
@@ -81,7 +83,9 @@ async def main() -> int:
 
     resp = (
         supabase.table("decision_log")
-        .select("id, agent_name, decision_type, inputs, output, reasoning, confidence, correlation_id")
+        .select(
+            "id, agent_name, decision_type, inputs, output, reasoning, confidence, correlation_id"
+        )
         .eq("correlation_id", correlation)
         .limit(1)
         .execute()

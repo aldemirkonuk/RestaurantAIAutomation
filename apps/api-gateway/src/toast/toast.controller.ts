@@ -11,41 +11,45 @@ import {
   HttpException,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiHeader } from '@nestjs/swagger';
-import { Request } from 'express';
-import { ToastService } from './toast.service';
+} from "@nestjs/common";
 import {
-  ToastMenuDto,
-  ToastMenuListResponseDto,
-} from './dto/toast-menu.dto';
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiHeader,
+} from "@nestjs/swagger";
+import { Request } from "express";
+import { ToastService } from "./toast.service";
+import { ToastMenuDto, ToastMenuListResponseDto } from "./dto/toast-menu.dto";
 import {
   CreateToastOrderDto,
   ToastOrderResponseDto,
   ToastSalesResponseDto,
-} from './dto/toast-order.dto';
-import { ToastCacheRefreshDto } from './dto/toast-cache.dto';
+} from "./dto/toast-order.dto";
+import { ToastCacheRefreshDto } from "./dto/toast-cache.dto";
 import {
   ToastWebhookDto,
   ToastWebhookResponseDto,
-} from './dto/toast-webhook.dto';
+} from "./dto/toast-webhook.dto";
 
 /**
  * Toast API Controller
- * 
+ *
  * Proxy endpoints for Toast POS API:
  * - Menu management
  * - Order creation and retrieval
  * - Sales data fetching
- * 
+ *
  * This controller acts as a secure proxy, handling:
  * - OAuth token management
  * - CORS issues (frontend can't call Toast directly)
  * - Error handling and retry logic
  * - Mock data fallback
  */
-@ApiTags('toast')
-@Controller('toast')
+@ApiTags("toast")
+@Controller("toast")
 export class ToastController {
   private readonly logger = new Logger(ToastController.name);
 
@@ -53,50 +57,51 @@ export class ToastController {
 
   /**
    * Toast Webhook Endpoint
-   * 
+   *
    * Receives webhooks from Toast POS for:
    * - Order events (created, updated, closed, paid, voided)
    * - Stock events (updated, out, low)
    * - Menu events (updated, item created/updated/deleted)
-   * 
+   *
    * Verifies signature using HMAC-SHA256 with TOAST_WEBHOOK_SECRET
    */
-  @Post('webhook')
-  @ApiOperation({ 
-    summary: 'Receive Toast POS webhooks',
-    description: 'Endpoint for Toast POS to send real-time event notifications. Verifies HMAC-SHA256 signature.',
+  @Post("webhook")
+  @ApiOperation({
+    summary: "Receive Toast POS webhooks",
+    description:
+      "Endpoint for Toast POS to send real-time event notifications. Verifies HMAC-SHA256 signature.",
   })
   @ApiHeader({
-    name: 'Toast-Signature',
-    description: 'HMAC-SHA256 signature in format v1=<signature>',
+    name: "Toast-Signature",
+    description: "HMAC-SHA256 signature in format v1=<signature>",
     required: false,
   })
   @ApiHeader({
-    name: 'Toast-Timestamp',
-    description: 'Unix timestamp when webhook was sent',
+    name: "Toast-Timestamp",
+    description: "Unix timestamp when webhook was sent",
     required: false,
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     type: ToastWebhookResponseDto,
-    description: 'Webhook received and processed',
+    description: "Webhook received and processed",
   })
-  @ApiResponse({ 
-    status: 401, 
-    description: 'Invalid or missing webhook signature',
+  @ApiResponse({
+    status: 401,
+    description: "Invalid or missing webhook signature",
   })
-  @ApiResponse({ 
-    status: 400, 
-    description: 'Invalid webhook payload',
+  @ApiResponse({
+    status: 400,
+    description: "Invalid webhook payload",
   })
   async handleWebhook(
     @Body() webhookDto: ToastWebhookDto,
-    @Headers('toast-signature') signature: string | undefined,
-    @Headers('toast-timestamp') timestamp: string | undefined,
+    @Headers("toast-signature") signature: string | undefined,
+    @Headers("toast-timestamp") timestamp: string | undefined,
     @Req() request: RawBodyRequest<Request>,
   ): Promise<ToastWebhookResponseDto> {
     this.logger.log({
-      message: 'Webhook received',
+      message: "Webhook received",
       eventId: webhookDto.eventId,
       eventType: webhookDto.eventType,
       hasSignature: !!signature,
@@ -114,7 +119,7 @@ export class ToastController {
       );
     } catch (error) {
       this.logger.error({
-        message: 'Webhook processing error',
+        message: "Webhook processing error",
         eventId: webhookDto.eventId,
         error: error.message,
       });
@@ -124,7 +129,7 @@ export class ToastController {
       }
 
       throw new HttpException(
-        error.message || 'Webhook processing failed',
+        error.message || "Webhook processing failed",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -133,9 +138,12 @@ export class ToastController {
   /**
    * Get webhook processing metrics
    */
-  @Get('webhook/metrics')
-  @ApiOperation({ summary: 'Get Toast webhook metrics' })
-  @ApiResponse({ status: 200, description: 'Returns webhook processing statistics' })
+  @Get("webhook/metrics")
+  @ApiOperation({ summary: "Get Toast webhook metrics" })
+  @ApiResponse({
+    status: 200,
+    description: "Returns webhook processing statistics",
+  })
   async getWebhookMetrics() {
     return this.toastService.getWebhookMetrics();
   }
@@ -143,18 +151,22 @@ export class ToastController {
   /**
    * Get all menus for a restaurant
    */
-  @Get('menus')
-  @ApiOperation({ summary: 'Get all Toast menus' })
-  @ApiQuery({ name: 'restaurantId', description: 'Restaurant UUID', required: true })
+  @Get("menus")
+  @ApiOperation({ summary: "Get all Toast menus" })
+  @ApiQuery({
+    name: "restaurantId",
+    description: "Restaurant UUID",
+    required: true,
+  })
   @ApiResponse({ status: 200, type: ToastMenuListResponseDto })
   async getMenus(
-    @Query('restaurantId') restaurantId: string,
+    @Query("restaurantId") restaurantId: string,
   ): Promise<ToastMenuListResponseDto> {
     try {
       return await this.toastService.getMenus(restaurantId);
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to fetch menus',
+        error.message || "Failed to fetch menus",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -163,8 +175,8 @@ export class ToastController {
   /**
    * Refresh Toast menu cache
    */
-  @Post('cache/refresh')
-  @ApiOperation({ summary: 'Invalidate Toast menu cache' })
+  @Post("cache/refresh")
+  @ApiOperation({ summary: "Invalidate Toast menu cache" })
   async refreshCache(
     @Body() body: ToastCacheRefreshDto,
   ): Promise<{ cleared: number }> {
@@ -178,17 +190,17 @@ export class ToastController {
   /**
    * Get a single menu by ID
    */
-  @Get('menus/:menuId')
-  @ApiOperation({ summary: 'Get a single Toast menu' })
-  @ApiParam({ name: 'menuId', description: 'Menu GUID' })
+  @Get("menus/:menuId")
+  @ApiOperation({ summary: "Get a single Toast menu" })
+  @ApiParam({ name: "menuId", description: "Menu GUID" })
   @ApiResponse({ status: 200, type: ToastMenuDto })
-  @ApiResponse({ status: 404, description: 'Menu not found' })
-  async getMenu(@Param('menuId') menuId: string): Promise<ToastMenuDto> {
+  @ApiResponse({ status: 404, description: "Menu not found" })
+  async getMenu(@Param("menuId") menuId: string): Promise<ToastMenuDto> {
     try {
       return await this.toastService.getMenu(menuId);
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to fetch menu',
+        error.message || "Failed to fetch menu",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -197,19 +209,23 @@ export class ToastController {
   /**
    * Create a new order
    */
-  @Post('orders')
-  @ApiOperation({ summary: 'Create a new Toast order' })
-  @ApiQuery({ name: 'restaurantId', description: 'Restaurant UUID', required: true })
+  @Post("orders")
+  @ApiOperation({ summary: "Create a new Toast order" })
+  @ApiQuery({
+    name: "restaurantId",
+    description: "Restaurant UUID",
+    required: true,
+  })
   @ApiResponse({ status: 201, type: ToastOrderResponseDto })
   async createOrder(
-    @Query('restaurantId') restaurantId: string,
+    @Query("restaurantId") restaurantId: string,
     @Body() dto: CreateToastOrderDto,
   ): Promise<ToastOrderResponseDto> {
     try {
       return await this.toastService.createOrder(restaurantId, dto);
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to create order',
+        error.message || "Failed to create order",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -218,17 +234,19 @@ export class ToastController {
   /**
    * Get order by ID
    */
-  @Get('orders/:orderId')
-  @ApiOperation({ summary: 'Get a Toast order by ID' })
-  @ApiParam({ name: 'orderId', description: 'Order GUID' })
+  @Get("orders/:orderId")
+  @ApiOperation({ summary: "Get a Toast order by ID" })
+  @ApiParam({ name: "orderId", description: "Order GUID" })
   @ApiResponse({ status: 200, type: ToastOrderResponseDto })
-  @ApiResponse({ status: 404, description: 'Order not found' })
-  async getOrder(@Param('orderId') orderId: string): Promise<ToastOrderResponseDto> {
+  @ApiResponse({ status: 404, description: "Order not found" })
+  async getOrder(
+    @Param("orderId") orderId: string,
+  ): Promise<ToastOrderResponseDto> {
     try {
       return await this.toastService.getOrder(orderId);
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to fetch order',
+        error.message || "Failed to fetch order",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -237,29 +255,41 @@ export class ToastController {
   /**
    * Get sales data for a time range
    */
-  @Get('sales')
-  @ApiOperation({ summary: 'Get Toast sales data' })
-  @ApiQuery({ name: 'restaurantId', description: 'Restaurant UUID', required: true })
-  @ApiQuery({ name: 'startTime', description: 'Start time (ISO 8601)', required: true })
-  @ApiQuery({ name: 'endTime', description: 'End time (ISO 8601)', required: true })
+  @Get("sales")
+  @ApiOperation({ summary: "Get Toast sales data" })
+  @ApiQuery({
+    name: "restaurantId",
+    description: "Restaurant UUID",
+    required: true,
+  })
+  @ApiQuery({
+    name: "startTime",
+    description: "Start time (ISO 8601)",
+    required: true,
+  })
+  @ApiQuery({
+    name: "endTime",
+    description: "End time (ISO 8601)",
+    required: true,
+  })
   @ApiResponse({ status: 200, type: ToastSalesResponseDto })
   async getSalesData(
-    @Query('restaurantId') restaurantId: string,
-    @Query('startTime') startTime: string,
-    @Query('endTime') endTime: string,
+    @Query("restaurantId") restaurantId: string,
+    @Query("startTime") startTime: string,
+    @Query("endTime") endTime: string,
   ): Promise<ToastSalesResponseDto> {
     try {
       const start = new Date(startTime);
       const end = new Date(endTime);
-      
+
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        throw new HttpException('Invalid date format', HttpStatus.BAD_REQUEST);
+        throw new HttpException("Invalid date format", HttpStatus.BAD_REQUEST);
       }
-      
+
       return await this.toastService.getSalesData(restaurantId, start, end);
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to fetch sales data',
+        error.message || "Failed to fetch sales data",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -268,15 +298,15 @@ export class ToastController {
   /**
    * Get Toast API statistics
    */
-  @Get('statistics')
-  @ApiOperation({ summary: 'Get Toast API statistics' })
-  @ApiResponse({ status: 200, description: 'Returns API statistics' })
+  @Get("statistics")
+  @ApiOperation({ summary: "Get Toast API statistics" })
+  @ApiResponse({ status: 200, description: "Returns API statistics" })
   async getStatistics() {
     try {
       return await this.toastService.getStatistics();
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to fetch statistics',
+        error.message || "Failed to fetch statistics",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -285,13 +315,13 @@ export class ToastController {
   /**
    * Health check endpoint
    */
-  @Get('health')
-  @ApiOperation({ summary: 'Toast API health check' })
-  @ApiResponse({ status: 200, description: 'Service is healthy' })
+  @Get("health")
+  @ApiOperation({ summary: "Toast API health check" })
+  @ApiResponse({ status: 200, description: "Service is healthy" })
   async healthCheck() {
     return {
-      status: 'healthy',
-      service: 'toast',
+      status: "healthy",
+      service: "toast",
       timestamp: new Date().toISOString(),
     };
   }

@@ -129,6 +129,6 @@ class TestAgentHealth:
             f"Expected 200 or 404 for agent '{agent_name}', got {resp.status_code}: "
             f"{resp.text[:200]}"
         )
-        assert resp.status_code != 500, (
-            f"500 error on /api/v1/health/agents/{agent_name}: {resp.text[:300]}"
-        )
+        assert (
+            resp.status_code != 500
+        ), f"500 error on /api/v1/health/agents/{agent_name}: {resp.text[:300]}"

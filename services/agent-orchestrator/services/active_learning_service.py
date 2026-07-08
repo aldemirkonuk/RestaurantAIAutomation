@@ -18,7 +18,6 @@ Flow:
 
 import json
 import logging
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -36,9 +35,11 @@ METRICS_FILE = PROJECT_ROOT / "datasets" / "_active_learning_metrics.jsonl"
 # DATA MODELS
 # =============================================================================
 
+
 @dataclass
 class FieldAccuracy:
     """Per-field accuracy tracking."""
+
     field_name: str
     total_reviewed: int = 0
     correct: int = 0
@@ -49,6 +50,7 @@ class FieldAccuracy:
 @dataclass
 class CorrectionRecord:
     """A human correction from dev review."""
+
     review_id: str
     field_name: str
     parser_value: Any
@@ -63,6 +65,7 @@ class CorrectionRecord:
 @dataclass
 class LearnedRule:
     """A regex pattern learned from corrections."""
+
     pattern: str
     field_name: str
     description: str
@@ -77,6 +80,7 @@ class LearnedRule:
 @dataclass
 class BenchmarkResult:
     """Result of running the parser against benchmark documents."""
+
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -92,13 +96,21 @@ class BenchmarkResult:
 # ACCURACY TRACKER
 # =============================================================================
 
+
 class AccuracyTracker:
     """Tracks per-field accuracy rates from human corrections."""
 
     IDENTITY_FIELDS = [
-        "wine_name", "producer", "vintage", "country",
-        "region", "grape_variety", "classification", "wine_type",
-        "price", "price_currency",
+        "wine_name",
+        "producer",
+        "vintage",
+        "country",
+        "region",
+        "grape_variety",
+        "classification",
+        "wine_type",
+        "price",
+        "price_currency",
     ]
 
     def __init__(self):
@@ -135,7 +147,11 @@ class AccuracyTracker:
                 stats.correct += 1
             else:
                 stats.incorrect += 1
-            stats.accuracy = stats.correct / stats.total_reviewed if stats.total_reviewed > 0 else 0.0
+            stats.accuracy = (
+                stats.correct / stats.total_reviewed
+                if stats.total_reviewed > 0
+                else 0.0
+            )
 
         self._save_correction(correction)
 
@@ -172,16 +188,24 @@ class AccuracyTracker:
             "total_reviews": total_reviewed,
             "per_field": report,
             "lowest_accuracy_fields": sorted(
-                [(f, s.accuracy) for f, s in self._field_stats.items() if s.total_reviewed >= 5],
+                [
+                    (f, s.accuracy)
+                    for f, s in self._field_stats.items()
+                    if s.total_reviewed >= 5
+                ],
                 key=lambda x: x[1],
             )[:5],
         }
 
-    def get_common_errors(self, field_name: str, top_n: int = 10) -> List[Dict[str, Any]]:
+    def get_common_errors(
+        self, field_name: str, top_n: int = 10
+    ) -> List[Dict[str, Any]]:
         """Get most common parser errors for a specific field."""
         errors = defaultdict(int)
         for c in self._corrections:
-            if c.field_name == field_name and not self._values_match(c.parser_value, c.correct_value):
+            if c.field_name == field_name and not self._values_match(
+                c.parser_value, c.correct_value
+            ):
                 key = f"{c.parser_value} -> {c.correct_value}"
                 errors[key] += 1
 
@@ -206,14 +230,19 @@ class AccuracyTracker:
         try:
             METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(METRICS_FILE, "a") as f:
-                f.write(json.dumps({
-                    "type": "correction",
-                    "review_id": correction.review_id,
-                    "field": correction.field_name,
-                    "parser_value": str(correction.parser_value),
-                    "correct_value": str(correction.correct_value),
-                    "timestamp": correction.timestamp,
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "correction",
+                            "review_id": correction.review_id,
+                            "field": correction.field_name,
+                            "parser_value": str(correction.parser_value),
+                            "correct_value": str(correction.correct_value),
+                            "timestamp": correction.timestamp,
+                        }
+                    )
+                    + "\n"
+                )
         except Exception as e:
             logger.warning(f"Failed to save correction: {e}")
 
@@ -233,7 +262,9 @@ class AccuracyTracker:
                         if field_name in self._field_stats:
                             stats = self._field_stats[field_name]
                             stats.total_reviewed += 1
-                            if self._values_match(data.get("parser_value"), data.get("correct_value")):
+                            if self._values_match(
+                                data.get("parser_value"), data.get("correct_value")
+                            ):
                                 stats.correct += 1
                             else:
                                 stats.incorrect += 1
@@ -245,6 +276,7 @@ class AccuracyTracker:
 # =============================================================================
 # RULE LEARNER
 # =============================================================================
+
 
 class RuleLearner:
     """
@@ -357,6 +389,7 @@ class RuleLearner:
 # BENCHMARK MANAGER
 # =============================================================================
 
+
 class BenchmarkManager:
     """
     Manages a gold-standard benchmark dataset (200 annotated documents)
@@ -466,7 +499,9 @@ class BenchmarkManager:
                 total_correct += correct
                 total_fields += total
 
-        result.overall_accuracy = total_correct / total_fields if total_fields > 0 else 0.0
+        result.overall_accuracy = (
+            total_correct / total_fields if total_fields > 0 else 0.0
+        )
 
         # Save benchmark result
         self._save_result(result)
@@ -509,14 +544,19 @@ class BenchmarkManager:
         try:
             METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(METRICS_FILE, "a") as f:
-                f.write(json.dumps({
-                    "type": "benchmark",
-                    "timestamp": result.timestamp,
-                    "documents": result.total_documents,
-                    "wines": result.total_wines,
-                    "overall_accuracy": round(result.overall_accuracy, 4),
-                    "field_accuracies": result.field_accuracies,
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "benchmark",
+                            "timestamp": result.timestamp,
+                            "documents": result.total_documents,
+                            "wines": result.total_wines,
+                            "overall_accuracy": round(result.overall_accuracy, 4),
+                            "field_accuracies": result.field_accuracies,
+                        }
+                    )
+                    + "\n"
+                )
         except Exception as e:
             logger.warning(f"Failed to save benchmark result: {e}")
 
@@ -532,6 +572,7 @@ class BenchmarkManager:
 # =============================================================================
 # ACTIVE LEARNING SERVICE (FACADE)
 # =============================================================================
+
 
 class ActiveLearningService:
     """
@@ -610,10 +651,18 @@ class ActiveLearningService:
         return {
             "new_rules_proposed": len(new_rules),
             "rules": [r.description for r in new_rules],
-            "benchmark_result": {
-                "overall_accuracy": benchmark_result.overall_accuracy if benchmark_result else None,
-                "field_accuracies": benchmark_result.field_accuracies if benchmark_result else {},
-            } if benchmark_result else None,
+            "benchmark_result": (
+                {
+                    "overall_accuracy": (
+                        benchmark_result.overall_accuracy if benchmark_result else None
+                    ),
+                    "field_accuracies": (
+                        benchmark_result.field_accuracies if benchmark_result else {}
+                    ),
+                }
+                if benchmark_result
+                else None
+            ),
         }
 
 

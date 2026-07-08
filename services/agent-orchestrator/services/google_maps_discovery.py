@@ -12,10 +12,8 @@ Rate: 2-second delay between requests, respects API quotas.
 """
 
 import logging
-import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import requests as http_requests
@@ -26,17 +24,19 @@ logger = logging.getLogger(__name__)
 
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 
-FIELD_MASK = ",".join([
-    "places.displayName",
-    "places.formattedAddress",
-    "places.id",
-    "places.rating",
-    "places.priceLevel",
-    "places.websiteUri",
-    "places.types",
-    "places.userRatingCount",
-    "nextPageToken",
-])
+FIELD_MASK = ",".join(
+    [
+        "places.displayName",
+        "places.formattedAddress",
+        "places.id",
+        "places.rating",
+        "places.priceLevel",
+        "places.websiteUri",
+        "places.types",
+        "places.userRatingCount",
+        "nextPageToken",
+    ]
+)
 
 CITY_CONFIGS: List[Dict[str, Any]] = [
     # Bay Area priority
@@ -99,6 +99,7 @@ MIN_PRICE_LEVEL_INDEX = 3  # $$$ or higher
 @dataclass
 class GoogleMapsDiscoveryResult:
     """Result of a Google Maps discovery session for one city."""
+
     city: str
     restaurants_found: int = 0
     restaurants_new: int = 0
@@ -258,7 +259,11 @@ class GoogleMapsDiscoveryService:
     ) -> Optional[DiscoveredRestaurant]:
         """Parse a Places API result into a DiscoveredRestaurant."""
         display_name = place.get("displayName", {})
-        name = display_name.get("text") if isinstance(display_name, dict) else str(display_name)
+        name = (
+            display_name.get("text")
+            if isinstance(display_name, dict)
+            else str(display_name)
+        )
         if not name:
             return None
 

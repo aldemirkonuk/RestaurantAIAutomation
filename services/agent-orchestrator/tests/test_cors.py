@@ -5,9 +5,9 @@ TestClient is incompatible with httpx 0.28.x (removed sync ASGI transport).
 pytest-asyncio is configured as asyncio_mode=auto in pytest.ini so these
 async test functions are collected automatically.
 """
+
 import json
 import httpx
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

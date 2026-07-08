@@ -17,7 +17,6 @@ for _p in [_AGENT_ROOT, _TESTS_ROOT]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import pytest
 from e2e.report_generator import E2EReportGenerator
 
 # Re-export all fixtures from conftest_e2e so pytest discovers them
@@ -53,5 +52,6 @@ from e2e.conftest_prod import (  # noqa: F401
     # get_with_retry and post_with_retry are helpers, not pytest fixtures;
     # wave files import them directly: from e2e.conftest_prod import get_with_retry
 )
+
 # Import conftest_prod module-level code (Sentry init + pytest_runtest_logreport hook)
 import e2e.conftest_prod  # noqa: F401

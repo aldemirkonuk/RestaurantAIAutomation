@@ -144,14 +144,17 @@ async def health_check():
 # POS routes — imported at the very bottom to avoid circular import
 # (pos_routes.py calls get_orchestrator() which is defined above)
 from api.pos_routes import router as pos_router  # noqa: E402
+
 app.include_router(pos_router)
 
 # Health routes — imported at the bottom to avoid circular import
 # (health_routes.py imports get_orchestrator() defined above in this file)
 from api.health_routes import router as health_router  # noqa: E402
+
 app.include_router(health_router)
 
 # Procurement routes — HTTP trigger for draft generation (RabbitMQ-free fallback)
 # Imported at the bottom because _run_draft_generation calls get_orchestrator()
 from api.procurement_routes import router as procurement_router  # noqa: E402
+
 app.include_router(procurement_router)

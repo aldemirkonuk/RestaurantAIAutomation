@@ -2,10 +2,9 @@
 
 Covers composite idempotency, decision logging, PDF generation path, and edge cases.
 """
+
 import pytest
-import datetime as dt_module
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from agents.reporting_agent import ReportingAgent
 
 
@@ -13,20 +12,23 @@ from agents.reporting_agent import ReportingAgent
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_db():
     """Build a mock DatabaseClient with Supabase chain pre-wired."""
     mock_db = MagicMock()
     mock_db.supabase = MagicMock()
     # idempotency_keys: default not-yet-processed
-    mock_db.supabase.table.return_value.select.return_value.eq.return_value \
-        .execute.return_value.data = []
+    mock_db.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+        []
+    )
     # insert returns a row with message_id
-    mock_db.supabase.table.return_value.insert.return_value.execute.return_value \
-        .data = [{"message_id": "report-key"}]
+    mock_db.supabase.table.return_value.insert.return_value.execute.return_value.data = [
+        {"message_id": "report-key"}
+    ]
     # execute_query for real data queries
-    mock_db.execute_query = AsyncMock(return_value=[
-        {"wine_name": "Opus One", "stock_live": 5, "threshold_min": 3}
-    ])
+    mock_db.execute_query = AsyncMock(
+        return_value=[{"wine_name": "Opus One", "stock_live": 5, "threshold_min": 3}]
+    )
     return mock_db
 
 
@@ -48,8 +50,12 @@ def agent(mock_db):
     return a
 
 
-def report_message(restaurant_id="rest-1", report_type="inventory", date="2026-04-10",
-                   msg_type="generate_on_demand_report"):
+def report_message(
+    restaurant_id="rest-1",
+    report_type="inventory",
+    date="2026-04-10",
+    msg_type="generate_on_demand_report",
+):
     return {
         "type": msg_type,
         "restaurant_id": restaurant_id,
@@ -62,6 +68,7 @@ def report_message(restaurant_id="rest-1", report_type="inventory", date="2026-0
 # ---------------------------------------------------------------------------
 # TestHARD04Idempotency
 # ---------------------------------------------------------------------------
+
 
 class TestHARD04Idempotency:
     @pytest.mark.asyncio
@@ -87,7 +94,9 @@ class TestHARD04Idempotency:
     async def test_composite_key_uses_all_three_fields(self, agent):
         """_check_idempotency must be called with key containing all 3 fields."""
         agent._check_idempotency.return_value = False
-        msg = report_message(restaurant_id="rest-1", report_type="inventory", date="2026-04-10")
+        msg = report_message(
+            restaurant_id="rest-1", report_type="inventory", date="2026-04-10"
+        )
         await agent.process_message(msg)
         call_args = agent._check_idempotency.call_args[0][0]
         assert "rest-1" in call_args
@@ -107,6 +116,7 @@ class TestHARD04Idempotency:
 # ---------------------------------------------------------------------------
 # TestHARD04DecisionLogging
 # ---------------------------------------------------------------------------
+
 
 class TestHARD04DecisionLogging:
     @pytest.mark.asyncio
@@ -144,6 +154,7 @@ class TestHARD04DecisionLogging:
 # TestHARD04PDFGeneration
 # ---------------------------------------------------------------------------
 
+
 class TestHARD04PDFGeneration:
     @pytest.mark.asyncio
     @patch("agents.reporting_agent.weasyprint")
@@ -175,6 +186,7 @@ class TestHARD04PDFGeneration:
 # TestHARD04EdgeCases
 # ---------------------------------------------------------------------------
 
+
 class TestHARD04EdgeCases:
     @pytest.mark.asyncio
     async def test_missing_date_uses_today(self, agent):
@@ -198,8 +210,12 @@ class TestHARD04EdgeCases:
         """Same restaurant + date but different report_type → two separate idempotency checks."""
         agent._check_idempotency.return_value = False
 
-        msg1 = report_message(restaurant_id="rest-1", report_type="inventory", date="2026-04-10")
-        msg2 = report_message(restaurant_id="rest-1", report_type="sales", date="2026-04-10")
+        msg1 = report_message(
+            restaurant_id="rest-1", report_type="inventory", date="2026-04-10"
+        )
+        msg2 = report_message(
+            restaurant_id="rest-1", report_type="sales", date="2026-04-10"
+        )
 
         await agent.process_message(msg1)
         await agent.process_message(msg2)
@@ -223,7 +239,9 @@ class TestHARD04EdgeCases:
     async def test_mark_processed_called_with_composite_key(self, agent):
         """_mark_processed receives the same composite key passed to _check_idempotency."""
         agent._check_idempotency.return_value = False
-        msg = report_message(restaurant_id="rest-42", report_type="procurement", date="2026-05-01")
+        msg = report_message(
+            restaurant_id="rest-42", report_type="procurement", date="2026-05-01"
+        )
         await agent.process_message(msg)
         mark_key = agent._mark_processed.call_args[0][0]
         assert mark_key == "rest-42:procurement:2026-05-01"
@@ -240,7 +258,9 @@ class TestHARD04EdgeCases:
         }
         with patch.object(agent.logger, "warning") as mock_warn:
             await agent.process_message(msg)
-        assert mock_warn.called, "Expected logger.warning to be called when date is absent"
+        assert (
+            mock_warn.called
+        ), "Expected logger.warning to be called when date is absent"
         warning_text = mock_warn.call_args[0][0]
         assert "defaulting to UTC date" in warning_text
 
@@ -259,8 +279,12 @@ class TestHARD04EdgeCases:
             mock_dt.utcnow.return_value.strftime = lambda fmt: "2026-04-11"
             await agent.process_message(msg)
         call_args = agent._check_idempotency.call_args[0][0]
-        assert "2026-04-10" in call_args, f"Expected caller date '2026-04-10' in key, got: {call_args}"
-        assert "2026-04-11" not in call_args, "UTC fallback date should not appear when caller date is supplied"
+        assert (
+            "2026-04-10" in call_args
+        ), f"Expected caller date '2026-04-10' in key, got: {call_args}"
+        assert (
+            "2026-04-11" not in call_args
+        ), "UTC fallback date should not appear when caller date is supplied"
 
     @pytest.mark.asyncio
     async def test_log_decision_output_includes_date_source(self, agent):
@@ -271,9 +295,9 @@ class TestHARD04EdgeCases:
         msg_with_date = report_message(date="2026-04-10")
         await agent.process_message(msg_with_date)
         output_with_date = agent.log_decision.call_args[1].get("output", {})
-        assert output_with_date.get("date_source") == "caller", (
-            f"Expected date_source='caller', got: {output_with_date.get('date_source')}"
-        )
+        assert (
+            output_with_date.get("date_source") == "caller"
+        ), f"Expected date_source='caller', got: {output_with_date.get('date_source')}"
 
         agent.log_decision.reset_mock()
 
@@ -285,6 +309,6 @@ class TestHARD04EdgeCases:
         }
         await agent.process_message(msg_no_date)
         output_no_date = agent.log_decision.call_args[1].get("output", {})
-        assert output_no_date.get("date_source") == "utc_default", (
-            f"Expected date_source='utc_default', got: {output_no_date.get('date_source')}"
-        )
+        assert (
+            output_no_date.get("date_source") == "utc_default"
+        ), f"Expected date_source='utc_default', got: {output_no_date.get('date_source')}"

@@ -19,7 +19,9 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
-from services.field_confidence import DEFAULT_ACCEPT_THRESHOLD, DEFAULT_REVIEW_THRESHOLD  # noqa: F401
+from services.field_confidence import (
+    DEFAULT_ACCEPT_THRESHOLD,
+)  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Configuration constants (overridable via settings.py)
@@ -28,25 +30,55 @@ from services.field_confidence import DEFAULT_ACCEPT_THRESHOLD, DEFAULT_REVIEW_T
 # All 31 DB content fields eligible for research (locked in 12-CONTEXT.md Decision 1)
 RESEARCH_ALL_FIELDS: list[str] = [
     # Visible-on-menu (Vision Pass 1)
-    "wine_name", "producer", "vintage", "primary_type", "color", "sweetness_level",
-    "alcohol_pct", "price_bottle", "price_glass", "section_name", "bin_number",
+    "wine_name",
+    "producer",
+    "vintage",
+    "primary_type",
+    "color",
+    "sweetness_level",
+    "alcohol_pct",
+    "price_bottle",
+    "price_glass",
+    "section_name",
+    "bin_number",
     # Structural knowledge (Haiku Pass 2)
-    "region", "sub_region", "appellation", "country", "grape_variety",
-    "food_pairing", "producer_bio", "tasting_notes", "description",
-    "is_blend", "bottle_size",
+    "region",
+    "sub_region",
+    "appellation",
+    "country",
+    "grape_variety",
+    "food_pairing",
+    "producer_bio",
+    "tasting_notes",
+    "description",
+    "is_blend",
+    "bottle_size",
     # Market intelligence (Phases 10-11)
     "retail_price_avg",
     # Structured JSONB enrichments
-    "grape_family", "wine_structure", "sensory_profile",
-    "practical_attributes", "region_hierarchy", "critic_scores",
+    "grape_family",
+    "wine_structure",
+    "sensory_profile",
+    "practical_attributes",
+    "region_hierarchy",
+    "critic_scores",
     # Derived quality signals
-    "vintage_age", "price_tier",
+    "vintage_age",
+    "price_tier",
 ]
 
 # Backward-compat alias: the original Core 10 subset (for tests / configurable overrides)
 RESEARCH_PRIORITY_FIELDS: list[str] = [
-    "wine_name", "producer", "vintage", "region", "country",
-    "appellation", "grape_variety", "color", "primary_type", "alcohol_pct",
+    "wine_name",
+    "producer",
+    "vintage",
+    "region",
+    "country",
+    "appellation",
+    "grape_variety",
+    "color",
+    "primary_type",
+    "alcohol_pct",
 ]
 
 # Domain → tier mapping for source classification (locked in 12-CONTEXT.md Decision 2).
@@ -54,11 +86,11 @@ RESEARCH_PRIORITY_FIELDS: list[str] = [
 # Domains NOT in this dict and not matching dynamic rule are classified as tier-C.
 SOURCE_TIER_DOMAINS: dict[str, str] = {
     # ── France ───────────────────────────────────────────────────────────────
-    "inao.gouv.fr": "A",           # AOC/AOP official registry
-    "agriculture.gouv.fr": "A",    # French Ministry of Agriculture
-    "civb.com": "A",               # Bordeaux Wine Trade Council
-    "champagne.fr": "A",           # Comité Champagne / CIVC
-    "bivb.com": "A",               # Bourgogne interprofessional bureau
+    "inao.gouv.fr": "A",  # AOC/AOP official registry
+    "agriculture.gouv.fr": "A",  # French Ministry of Agriculture
+    "civb.com": "A",  # Bordeaux Wine Trade Council
+    "champagne.fr": "A",  # Comité Champagne / CIVC
+    "bivb.com": "A",  # Bourgogne interprofessional bureau
     "vinsalsace.com": "A",
     "rhone-wines.com": "A",
     "vinsdeloire-wines.com": "A",
@@ -69,11 +101,11 @@ SOURCE_TIER_DOMAINS: dict[str, str] = {
     "amaroneducati.it": "A",
     "soave.it": "A",
     "prosecco.it": "A",
-    "masi.it": "A",                # major verified Amarone producer
-    "federdoc.com": "A",           # Italian DOC/DOCG federation
-    "icqrf.gov.it": "A",           # Italian government wine registry
+    "masi.it": "A",  # major verified Amarone producer
+    "federdoc.com": "A",  # Italian DOC/DOCG federation
+    "icqrf.gov.it": "A",  # Italian government wine registry
     # ── Spain ────────────────────────────────────────────────────────────────
-    "winefromspain.com": "A",      # ICEX official
+    "winefromspain.com": "A",  # ICEX official
     "riojawine.com": "A",
     "ribera.es": "A",
     "riberadelduero.es": "A",
@@ -81,15 +113,15 @@ SOURCE_TIER_DOMAINS: dict[str, str] = {
     "denominacionorigen.es": "A",
     # ── Germany ──────────────────────────────────────────────────────────────
     "vdp.de": "A",
-    "germanwines.de": "A",         # DWI
+    "germanwines.de": "A",  # DWI
     "weinrecht.de": "A",
     # ── Portugal ─────────────────────────────────────────────────────────────
-    "ivv.gov.pt": "A",             # Instituto da Vinha e do Vinho
-    "ivdp.pt": "A",                # Douro/Porto
+    "ivv.gov.pt": "A",  # Instituto da Vinha e do Vinho
+    "ivdp.pt": "A",  # Douro/Porto
     "cvr-dao.pt": "A",
     "cvrverdelhos.pt": "A",
     # ── USA ───────────────────────────────────────────────────────────────────
-    "ttb.gov": "A",                # TTB COLA registry
+    "ttb.gov": "A",  # TTB COLA registry
     "wineinstitute.org": "A",
     "napavalleyvintners.com": "A",
     "sonomacountywine.com": "A",
@@ -105,8 +137,8 @@ SOURCE_TIER_DOMAINS: dict[str, str] = {
     "wosa.co.za": "A",
     "sawis.co.za": "A",
     # ── EU-level ─────────────────────────────────────────────────────────────
-    "eambrosia.europa.eu": "A",    # EU GI register — authoritative for all EU PDO/PGI
-    "fao.org": "A",                # FAO wine data
+    "eambrosia.europa.eu": "A",  # EU GI register — authoritative for all EU PDO/PGI
+    "fao.org": "A",  # FAO wine data
     # ── Organic / biodynamic certification ───────────────────────────────────
     "ams.usda.gov": "A",
     "demeter-usa.org": "A",
@@ -120,7 +152,7 @@ SOURCE_TIER_DOMAINS: dict[str, str] = {
     "robertparker.com": "B",
     "wineadvocate.com": "B",
     "wine-pages.com": "B",
-    "winemag.com": "B",            # Wine Enthusiast
+    "winemag.com": "B",  # Wine Enthusiast
     "guildsomm.com": "B",
     "cellartracker.com": "B",
     "winefolly.com": "B",
@@ -140,10 +172,10 @@ FIELD_VALUE_SYNONYMS: list[tuple[str, str]] = [
 
 # Confidence by tier (per STRATEGY.md Step 6)
 CONFIDENCE_BY_TIER: dict[str, float] = {
-    "A_single": 0.95,      # 1 tier-A source
-    "B_dual": 0.87,        # >=2 independent tier-B/C sources
-    "B_single": 0.72,      # 1 tier-B source (review zone, but persisted)
-    "C_single": 0.60,      # 1 tier-C source (review zone)
+    "A_single": 0.95,  # 1 tier-A source
+    "B_dual": 0.87,  # >=2 independent tier-B/C sources
+    "B_single": 0.72,  # 1 tier-B source (review zone, but persisted)
+    "C_single": 0.60,  # 1 tier-C source (review zone)
 }
 
 # Re-research eligibility window in days
@@ -153,6 +185,7 @@ ELIGIBILITY_COOLDOWN_DAYS: int = 7
 # ---------------------------------------------------------------------------
 # Eligibility
 # ---------------------------------------------------------------------------
+
 
 def is_eligible_for_research(
     submission: dict[str, Any],
@@ -187,7 +220,7 @@ def is_eligible_for_research(
         if entry is None:
             return True  # NULL = eligible
         if entry.get("source") == "human_resolved":
-            continue     # Human corrections are locked
+            continue  # Human corrections are locked
         if entry.get("confidence", 0.0) < DEFAULT_ACCEPT_THRESHOLD:
             return True
 
@@ -222,6 +255,7 @@ def get_target_fields(
 # Query construction
 # ---------------------------------------------------------------------------
 
+
 def build_serper_query(
     field_name: str,
     wine_name: str,
@@ -243,15 +277,15 @@ def build_serper_query(
     base = " ".join(parts) if parts else wine_name or "unknown wine"
 
     field_hints: dict[str, str] = {
-        "appellation":   f'"{base}" appellation DOCG DOC AOC official',
-        "producer":      f'who produces "{wine_name}" {vintage or ""} winery producer',
-        "region":        f'"{base}" wine region origin',
+        "appellation": f'"{base}" appellation DOCG DOC AOC official',
+        "producer": f'who produces "{wine_name}" {vintage or ""} winery producer',
+        "region": f'"{base}" wine region origin',
         "grape_variety": f'"{base}" grape variety cépage',
-        "country":       f'"{base}" wine country origin',
-        "alcohol_pct":   f'"{base}" alcohol percentage ABV',
-        "color":         f'"{base}" red white rosé wine color',
-        "primary_type":  f'"{base}" still sparkling dessert wine type',
-        "vintage":       f'"{wine_name}" {producer or ""} vintage year',
+        "country": f'"{base}" wine country origin',
+        "alcohol_pct": f'"{base}" alcohol percentage ABV',
+        "color": f'"{base}" red white rosé wine color',
+        "primary_type": f'"{base}" still sparkling dessert wine type',
+        "vintage": f'"{wine_name}" {producer or ""} vintage year',
     }
 
     return field_hints.get(field_name, f'"{base}" {field_name}')
@@ -260,6 +294,7 @@ def build_serper_query(
 # ---------------------------------------------------------------------------
 # Source tier classification
 # ---------------------------------------------------------------------------
+
 
 def classify_source_tier(
     url: str,
@@ -290,7 +325,11 @@ def classify_source_tier(
             normalized_producer = re.sub(r"[^a-z0-9 ]", "", producer.lower().strip())
             normalized_producer = normalized_producer.replace(" ", "")
             domain_clean = domain.replace("-", "").replace(".", "")
-            if normalized_producer and len(normalized_producer) >= 4 and normalized_producer in domain_clean:
+            if (
+                normalized_producer
+                and len(normalized_producer) >= 4
+                and normalized_producer in domain_clean
+            ):
                 return "A"
     except Exception:
         pass
@@ -300,6 +339,7 @@ def classify_source_tier(
 # ---------------------------------------------------------------------------
 # Conflict detection
 # ---------------------------------------------------------------------------
+
 
 def _normalize_value(v: str | None) -> str:
     """Lowercase + strip punctuation for conflict comparison."""
@@ -345,6 +385,7 @@ def detect_conflict(candidates: list[dict[str, Any]]) -> bool:
 # Corroboration
 # ---------------------------------------------------------------------------
 
+
 def _get_domain(url: str) -> str:
     try:
         return urlparse(url).netloc.lower().removeprefix("www.")
@@ -375,7 +416,11 @@ def should_auto_promote(citations: list[dict[str, Any]]) -> tuple[bool, str]:
 
     # Check for >=2 independent tier-B/C
     bc_citations = [c for c in citations if c.get("source_tier") in ("B", "C")]
-    domains = {_get_domain(c.get("source_url", "")) for c in bc_citations if c.get("source_url")}
+    domains = {
+        _get_domain(c.get("source_url", ""))
+        for c in bc_citations
+        if c.get("source_url")
+    }
     if len(domains) >= 2:
         return True, "B_dual"
 
@@ -400,6 +445,7 @@ def assign_confidence_by_tier(confidence_key: str) -> float:
 # Regression guard
 # ---------------------------------------------------------------------------
 
+
 def check_regression_guard(
     field_name: str,
     proposed_confidence: float,
@@ -421,6 +467,7 @@ def check_regression_guard(
 # ---------------------------------------------------------------------------
 # Evidence record builder
 # ---------------------------------------------------------------------------
+
 
 def build_citation_record(
     wine_id: str,
@@ -455,6 +502,7 @@ def build_citation_record(
 # ---------------------------------------------------------------------------
 # Section 6 (Bug #10): Bounded LRU Cache utility
 # ---------------------------------------------------------------------------
+
 
 class BoundedLRUCache:
     """Thread-safe bounded LRU cache using OrderedDict. Max entries enforced on put."""
@@ -525,7 +573,9 @@ def get_entity_cache(key: str, redis_client=None) -> Any | None:
     return None
 
 
-def put_entity_cache(key: str, value: Any, ttl_days: int = 30, redis_client=None) -> None:
+def put_entity_cache(
+    key: str, value: Any, ttl_days: int = 30, redis_client=None
+) -> None:
     """
     Write to Redis (if available) with TTL, and always to in-memory cache.
     Evicts oldest entry if memory cache exceeds _MEMORY_CACHE_MAX.
@@ -544,6 +594,7 @@ def put_entity_cache(key: str, value: Any, ttl_days: int = 30, redis_client=None
 # ---------------------------------------------------------------------------
 # Section 1: Layer 1 Deterministic Inference (D-01, D-08)
 # ---------------------------------------------------------------------------
+
 
 def _should_infer(fc: dict[str, Any], field_name: str) -> bool:
     """Return True if a field should be filled by Layer 1 inference."""
@@ -573,8 +624,16 @@ def run_layer1_inference(
     appellation_rules = None
 
     # Extract current values from fc
-    appellation = (fc.get("appellation") or {}).get("value") if isinstance(fc.get("appellation"), dict) else None
-    grape = (fc.get("grape_variety") or {}).get("value") if isinstance(fc.get("grape_variety"), dict) else None
+    appellation = (
+        (fc.get("appellation") or {}).get("value")
+        if isinstance(fc.get("appellation"), dict)
+        else None
+    )
+    grape = (
+        (fc.get("grape_variety") or {}).get("value")
+        if isinstance(fc.get("grape_variety"), dict)
+        else None
+    )
 
     if appellation:
         # Check Tier 3 cache (D-04) before hitting DB
@@ -592,6 +651,7 @@ def run_layer1_inference(
                     lookup_appellation_rules,
                     normalize_grape_name,
                 )
+
                 cached_rules = lookup_appellation_rules(appellation) or {}
             except Exception:
                 cached_rules = {}
@@ -605,7 +665,9 @@ def run_layer1_inference(
 
         # Step 1: grape variety from required_grapes
         if _should_infer(fc, "grape_variety"):
-            required_grapes = appellation_rules.get("required_grapes") if appellation_rules else None
+            required_grapes = (
+                appellation_rules.get("required_grapes") if appellation_rules else None
+            )
             if required_grapes and len(required_grapes) == 1:
                 entry = required_grapes[0]
                 if entry.get("min_pct") == 100:
@@ -622,34 +684,55 @@ def run_layer1_inference(
                 get_country_for_appellation,
                 get_region_for_appellation,
             )
+
             if _should_infer(fc, "country"):
                 country = get_country_for_appellation(appellation)
                 if country:
-                    fills["country"] = {"value": country, "confidence": 0.99, "source": "ontology_inference"}
+                    fills["country"] = {
+                        "value": country,
+                        "confidence": 0.99,
+                        "source": "ontology_inference",
+                    }
 
             region_result = get_region_for_appellation(appellation)
             if region_result:
                 if _should_infer(fc, "region"):
                     region_name = region_result.get("name")
                     if region_name:
-                        fills["region"] = {"value": region_name, "confidence": 0.99, "source": "ontology_inference"}
+                        fills["region"] = {
+                            "value": region_name,
+                            "confidence": 0.99,
+                            "source": "ontology_inference",
+                        }
                 # Step 3b: sub_region from same result (D-08)
                 if _should_infer(fc, "sub_region"):
                     sub_region = region_result.get("sub_region")
                     if sub_region:
-                        fills["sub_region"] = {"value": sub_region, "confidence": 0.99, "source": "ontology_inference"}
+                        fills["sub_region"] = {
+                            "value": sub_region,
+                            "confidence": 0.99,
+                            "source": "ontology_inference",
+                        }
         except Exception:
             pass
 
     # Step 4: color from grape
     if grape and _should_infer(fc, "color"):
         try:
-            from services.ontology_normalization import get_grape_color, normalize_grape_name
+            from services.ontology_normalization import (
+                get_grape_color,
+                normalize_grape_name,
+            )
+
             canonical = normalize_grape_name(grape)
             if canonical:
                 color = get_grape_color(canonical)
                 if color:
-                    fills["color"] = {"value": color, "confidence": 0.99, "source": "ontology_inference"}
+                    fills["color"] = {
+                        "value": color,
+                        "confidence": 0.99,
+                        "source": "ontology_inference",
+                    }
         except Exception:
             pass
 
@@ -685,7 +768,9 @@ def run_layer1_inference(
 # ---------------------------------------------------------------------------
 
 HAIKU_FIELDS = frozenset({"color", "primary_type", "sweetness_level", "is_blend"})
-SONNET_ESCALATION_FIELDS = frozenset({"tasting_notes", "description", "food_pairing", "producer_bio"})
+SONNET_ESCALATION_FIELDS = frozenset(
+    {"tasting_notes", "description", "food_pairing", "producer_bio"}
+)
 
 
 def select_model(
@@ -715,6 +800,7 @@ def select_model(
 # ---------------------------------------------------------------------------
 # Section 4: Authority-Weighted Conflict Resolution (D-05)
 # ---------------------------------------------------------------------------
+
 
 def resolve_conflict(
     candidates: list[dict[str, Any]],
@@ -790,6 +876,7 @@ def resolve_conflict(
 # ---------------------------------------------------------------------------
 # Section 5: Conflict Candidates Deep Merge (D-06 Bug #3)
 # ---------------------------------------------------------------------------
+
 
 def merge_conflict_candidates(
     existing: dict[str, list] | None,

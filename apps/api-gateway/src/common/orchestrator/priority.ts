@@ -5,7 +5,7 @@
  * actually matter — everything else surfaces quietly or lands in a digest. Pure + testable.
  */
 
-export type PriorityBucket = 'interrupt' | 'surface' | 'digest';
+export type PriorityBucket = "interrupt" | "surface" | "digest";
 
 export interface PrioritySignals {
   /** How relevant to what we actually buy (0..1). */
@@ -34,15 +34,22 @@ export function computePriority(raw: Partial<PrioritySignals>): {
     urgency: clamp01(raw.urgency ?? 0),
     trust: clamp01(raw.trust ?? 0.5),
   };
-  const score = Math.round((0.35 * s.relevance + 0.3 * s.savings + 0.2 * s.urgency + 0.15 * s.trust) * 100) / 100;
+  const score =
+    Math.round(
+      (0.35 * s.relevance +
+        0.3 * s.savings +
+        0.2 * s.urgency +
+        0.15 * s.trust) *
+        100,
+    ) / 100;
 
   const relevant = s.relevance >= 0.5;
   const valuableOrUrgent = s.savings >= 0.5 || s.urgency >= 0.6;
   const trusted = s.trust >= 0.5;
 
-  let bucket: PriorityBucket = 'digest';
-  if (relevant && valuableOrUrgent && trusted) bucket = 'interrupt';
-  else if (relevant || s.urgency >= 0.6 || score >= 0.45) bucket = 'surface';
+  let bucket: PriorityBucket = "digest";
+  if (relevant && valuableOrUrgent && trusted) bucket = "interrupt";
+  else if (relevant || s.urgency >= 0.6 || score >= 0.45) bucket = "surface";
 
   return { score, bucket, signals: s };
 }

@@ -27,7 +27,7 @@ Run: pytest tests/e2e/wave_g_calendar.py --junitxml=test-results/wave_g.xml
 
 import asyncio
 import os
-from datetime import date, timedelta, datetime, timezone
+from datetime import date, timedelta
 
 import pytest
 
@@ -72,8 +72,8 @@ def make_test_event_payload() -> dict:
         "id": E2E_CAL_EVENT_ID,
         "restaurant_id": E2E_RESTAURANT_ID,
         "title": "E2E Test Event — Wave G (DO NOT ATTEND)",
-        "start_date": event_date.isoformat(),       # verified column name from agent source
-        "event_type": "other",                       # always valid per DATE_EXTRACTION_PROMPT
+        "start_date": event_date.isoformat(),  # verified column name from agent source
+        "event_type": "other",  # always valid per DATE_EXTRACTION_PROMPT
         "all_day": True,
         "source": "e2e-wave-g",
         "status": "pending",
@@ -169,7 +169,7 @@ class TestCalendarScheduling:
         """Upsert test calendar event with start_date=today+7 into Supabase."""
         payload = make_test_event_payload()
         try:
-            result = prod_supabase.table(CALENDAR_EVENTS_TABLE).upsert(
+            prod_supabase.table(CALENDAR_EVENTS_TABLE).upsert(
                 payload, on_conflict="id"
             ).execute()
         except Exception as exc:
@@ -232,7 +232,9 @@ class TestCalendarScheduling:
 
     async def test_teardown_registered(self, e2e_created_ids: list):
         """Verify at least one e2e-cal record is registered for teardown."""
-        cal_records = [r for r in e2e_created_ids if r.get("id", "").startswith("e2e-cal")]
+        cal_records = [
+            r for r in e2e_created_ids if r.get("id", "").startswith("e2e-cal")
+        ]
         assert len(cal_records) >= 1, (
             "No e2e-cal records registered in e2e_created_ids. "
             "Calendar test cleanup may not happen."

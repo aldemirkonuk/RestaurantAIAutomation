@@ -6,15 +6,15 @@ Tests: idempotency, decision logging, DLQ, correlation ID propagation.
 import asyncio
 import uuid
 from typing import Dict, Any, List
-from unittest.mock import MagicMock, AsyncMock, patch, call
-import pytest
+from unittest.mock import MagicMock, AsyncMock, call
 
-from core.base_agent import BaseAgent, AgentStatus
+from core.base_agent import BaseAgent
 
 
 # ---------------------------------------------------------------------------
 # Concrete test subclass
 # ---------------------------------------------------------------------------
+
 
 class ConcreteAgent(BaseAgent):
     """Minimal concrete implementation for testing."""
@@ -67,13 +67,15 @@ def _make_supabase_result(data):
 # _check_idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestCheckIdempotency:
 
     def test_returns_false_for_new_message(self):
         agent, supabase = make_agent()
         # Supabase returns empty list → message not seen before
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            _make_supabase_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            []
+        )
 
         result = asyncio.get_event_loop().run_until_complete(
             agent._check_idempotency("new-msg-id")
@@ -82,8 +84,9 @@ class TestCheckIdempotency:
 
     def test_returns_true_for_existing_message(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            _make_supabase_result([{"message_id": "existing-id"}])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            [{"message_id": "existing-id"}]
+        )
 
         result = asyncio.get_event_loop().run_until_complete(
             agent._check_idempotency("existing-id")
@@ -92,8 +95,9 @@ class TestCheckIdempotency:
 
     def test_fails_open_on_db_error(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = \
-            Exception("DB connection lost")
+        supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception(
+            "DB connection lost"
+        )
 
         result = asyncio.get_event_loop().run_until_complete(
             agent._check_idempotency("any-id")
@@ -116,12 +120,14 @@ class TestCheckIdempotency:
 # _mark_processed
 # ---------------------------------------------------------------------------
 
+
 class TestMarkProcessed:
 
     def test_inserts_row_to_idempotency_keys(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.return_value = \
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent._mark_processed("msg-1", {"ok": True})
@@ -136,32 +142,32 @@ class TestMarkProcessed:
     def test_skips_insert_for_empty_message_id(self):
         agent, supabase = make_agent()
 
-        asyncio.get_event_loop().run_until_complete(
-            agent._mark_processed("")
-        )
+        asyncio.get_event_loop().run_until_complete(agent._mark_processed(""))
         supabase.table.assert_not_called()
 
     def test_swallows_db_error(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
+        supabase.table.return_value.insert.return_value.execute.side_effect = Exception(
+            "DB error"
+        )
 
         # Should not raise
-        asyncio.get_event_loop().run_until_complete(
-            agent._mark_processed("msg-1")
-        )
+        asyncio.get_event_loop().run_until_complete(agent._mark_processed("msg-1"))
 
 
 # ---------------------------------------------------------------------------
 # _process_with_retry — idempotency integration
 # ---------------------------------------------------------------------------
 
+
 class TestProcessWithRetryIdempotency:
 
     def test_skips_duplicate_message(self):
         agent, supabase = make_agent()
         # Message already processed
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            _make_supabase_result([{"message_id": "dup-id"}])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            [{"message_id": "dup-id"}]
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent._process_with_retry({"message_id": "dup-id"})
@@ -173,11 +179,13 @@ class TestProcessWithRetryIdempotency:
     def test_marks_processed_after_success(self):
         agent, supabase = make_agent()
         # Check: not seen before
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            _make_supabase_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            []
+        )
         # Insert: success
-        supabase.table.return_value.insert.return_value.execute.return_value = \
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent._process_with_retry({"message_id": "new-msg"})
@@ -186,8 +194,7 @@ class TestProcessWithRetryIdempotency:
         assert agent.process_calls == 1
         # _mark_processed should have been called → insert on idempotency_keys
         insert_calls = [
-            c for c in supabase.table.call_args_list
-            if c == call("idempotency_keys")
+            c for c in supabase.table.call_args_list if c == call("idempotency_keys")
         ]
         assert len(insert_calls) >= 1
 
@@ -196,13 +203,15 @@ class TestProcessWithRetryIdempotency:
 # log_decision
 # ---------------------------------------------------------------------------
 
+
 class TestLogDecision:
 
     def test_persists_to_decision_log(self):
         agent, supabase = make_agent()
         agent._current_correlation_id = "corr-123"
-        supabase.table.return_value.insert.return_value.execute.return_value = \
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent.log_decision(
@@ -225,7 +234,9 @@ class TestLogDecision:
 
     def test_swallows_db_error(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
+        supabase.table.return_value.insert.return_value.execute.side_effect = Exception(
+            "DB error"
+        )
 
         # Should not raise
         asyncio.get_event_loop().run_until_complete(
@@ -237,12 +248,14 @@ class TestLogDecision:
 # _send_to_dlq
 # ---------------------------------------------------------------------------
 
+
 class TestSendToDlq:
 
     def test_persists_failed_message_to_dlq(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.return_value = \
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
+        )
         message = {"message_id": "m1", "payload": "data"}
 
         asyncio.get_event_loop().run_until_complete(
@@ -269,11 +282,13 @@ class TestSendToDlq:
         agent.config.max_retries = 3
 
         # Idempotency check: not seen
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            _make_supabase_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            []
+        )
         # DLQ insert: success
-        supabase.table.return_value.insert.return_value.execute.return_value = \
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent._process_with_retry({"message_id": "fail-msg"})
@@ -281,8 +296,7 @@ class TestSendToDlq:
 
         # DLQ should have been called
         dlq_calls = [
-            c for c in supabase.table.call_args_list
-            if c == call("dead_letter_queue")
+            c for c in supabase.table.call_args_list if c == call("dead_letter_queue")
         ]
         assert len(dlq_calls) >= 1
         assert agent.metrics.messages_failed == 1
@@ -292,27 +306,34 @@ class TestSendToDlq:
 # Correlation ID
 # ---------------------------------------------------------------------------
 
+
 class TestCorrelationId:
 
     def test_extracted_from_incoming_message(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            []
+        )
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
-        supabase.table.return_value.insert.return_value.execute.return_value = \
-            _make_supabase_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
-            agent._process_with_retry({"message_id": "m1", "correlation_id": "trace-abc"})
+            agent._process_with_retry(
+                {"message_id": "m1", "correlation_id": "trace-abc"}
+            )
         )
 
         assert agent._current_correlation_id == "trace-abc"
 
     def test_generated_if_missing_from_message(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+            []
+        )
+        supabase.table.return_value.insert.return_value.execute.return_value = (
             _make_supabase_result([])
-        supabase.table.return_value.insert.return_value.execute.return_value = \
-            _make_supabase_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent._process_with_retry({"message_id": "m2"})

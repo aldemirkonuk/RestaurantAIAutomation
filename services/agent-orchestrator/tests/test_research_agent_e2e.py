@@ -109,11 +109,15 @@ def _mock_layer1_inference(fc, wine_name, producer=None, vintage=None):
     fills = {}
     if not fc.get("country"):
         fills["country"] = {
-            "value": "Italy", "confidence": 0.99, "source": "ontology_inference"
+            "value": "Italy",
+            "confidence": 0.99,
+            "source": "ontology_inference",
         }
     if not fc.get("region"):
         fills["region"] = {
-            "value": "Tuscany", "confidence": 0.99, "source": "ontology_inference"
+            "value": "Tuscany",
+            "confidence": 0.99,
+            "source": "ontology_inference",
         }
     return fills
 
@@ -156,7 +160,9 @@ def research_submission():
     only targets wine_name / producer / region / country / grape_variety.
     """
     supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get(
+        "SUPABASE_KEY"
+    )
     if not supabase_url or not supabase_key:
         pytest.skip("SUPABASE_URL / SUPABASE_KEY not configured — E2E test skipped")
 
@@ -174,15 +180,17 @@ def research_submission():
     }
 
     try:
-        sb.table("master_wine_library_submissions").insert({
-            "id": sid,
-            "wine_name": "Brunello di Montalcino",
-            "producer": "Biondi-Santi",
-            "vintage": 2018,
-            "field_confidence": pre_filled_fc,
-            "last_research_run_at": None,
-            "auto_blocked": False,
-        }).execute()
+        sb.table("master_wine_library_submissions").insert(
+            {
+                "id": sid,
+                "wine_name": "Brunello di Montalcino",
+                "producer": "Biondi-Santi",
+                "vintage": 2018,
+                "field_confidence": pre_filled_fc,
+                "last_research_run_at": None,
+                "auto_blocked": False,
+            }
+        ).execute()
     except Exception as exc:
         pytest.skip(f"Could not insert test submission: {exc}")
 
@@ -243,8 +251,14 @@ def test_research_agent_fills_null_fields(research_submission):
 
     # Run the agent with all HTTP calls mocked at the I/O boundary
     with (
-        patch("jobs.research_tasks.serper_search", new=AsyncMock(return_value=MOCK_SERPER_RESULTS)),
-        patch("jobs.research_tasks._extract_field_candidates", new=_mock_extract_candidates),
+        patch(
+            "jobs.research_tasks.serper_search",
+            new=AsyncMock(return_value=MOCK_SERPER_RESULTS),
+        ),
+        patch(
+            "jobs.research_tasks._extract_field_candidates",
+            new=_mock_extract_candidates,
+        ),
         patch("jobs.research_tasks._fetch_verify_value", new=_mock_fetch_verify),
         patch("jobs.research_tasks.run_layer1_inference", new=_mock_layer1_inference),
     ):
@@ -260,9 +274,7 @@ def test_research_agent_fills_null_fields(research_submission):
         .execute()
     )
     rows = citations_resp.data or []
-    assert len(rows) >= 3, (
-        f"Expected ≥3 evidence_citation rows, got {len(rows)}"
-    )
+    assert len(rows) >= 3, f"Expected ≥3 evidence_citation rows, got {len(rows)}"
     for row in rows:
         assert row.get("source_url"), f"Citation row missing source_url: {row}"
         assert row.get("snippet"), f"Citation row missing snippet: {row}"
@@ -280,13 +292,14 @@ def test_research_agent_fills_null_fields(research_submission):
     )
     fc = (sub_resp.data or {}).get("field_confidence") or {}
     research_filled = [
-        f for f, entry in fc.items()
+        f
+        for f, entry in fc.items()
         if entry.get("source") in ("research_agent", "ontology_inference")
         and entry.get("confidence", 0) > 0.5
     ]
-    assert len(research_filled) >= 3, (
-        f"Expected ≥3 research-agent-filled fields (confidence > 0.5), got: {research_filled}"
-    )
+    assert (
+        len(research_filled) >= 3
+    ), f"Expected ≥3 research-agent-filled fields (confidence > 0.5), got: {research_filled}"
 
     # ------------------------------------------------------------------
     # Assertion 3: null_rate_after < null_rate_before in research_run_stats
@@ -298,7 +311,9 @@ def test_research_agent_fills_null_fields(research_submission):
         .execute()
     )
     stats_rows = stats_resp.data or []
-    assert len(stats_rows) >= 1, "research_run_stats row missing — agent did not write stats"
+    assert (
+        len(stats_rows) >= 1
+    ), "research_run_stats row missing — agent did not write stats"
     stat = stats_rows[0]
     assert stat["null_rate_after"] < stat["null_rate_before"], (
         f"null_rate not improved: before={stat['null_rate_before']}, "
@@ -318,9 +333,9 @@ def test_research_agent_fills_null_fields(research_submission):
     client = TestClient(test_app)
 
     response = client.get("/api/v1/research/metrics")
-    assert response.status_code == 200, (
-        f"Metrics endpoint returned {response.status_code}: {response.text}"
-    )
+    assert (
+        response.status_code == 200
+    ), f"Metrics endpoint returned {response.status_code}: {response.text}"
     body = response.json()
 
     assert "gap_closure" in body, "Metrics missing 'gap_closure' category"
@@ -330,6 +345,6 @@ def test_research_agent_fills_null_fields(research_submission):
     assert "safety" in body, "Metrics missing 'safety' category"
 
     # After our test run, at least one citation exists → citation_completeness > 0
-    assert body["evidence_hygiene"]["citation_completeness"] > 0, (
-        "citation_completeness should be > 0 after evidence_citations were written"
-    )
+    assert (
+        body["evidence_hygiene"]["citation_completeness"] > 0
+    ), "citation_completeness should be > 0 after evidence_citations were written"

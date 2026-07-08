@@ -7,47 +7,49 @@
 export const EMAIL_CONFIG = {
   // Brand Colors
   colors: {
-    primary: '#7c2d12',        // Wine/burgundy - main brand color
-    primaryDark: '#991b1b',    // Darker wine for hover states
-    secondary: '#f59e0b',      // Amber - warning/attention
-    success: '#10b981',        // Emerald - success states
-    danger: '#dc2626',         // Red - critical alerts
-    warning: '#f59e0b',        // Amber - low stock
-    info: '#3b82f6',           // Blue - informational
+    primary: "#7c2d12", // Wine/burgundy - main brand color
+    primaryDark: "#991b1b", // Darker wine for hover states
+    secondary: "#f59e0b", // Amber - warning/attention
+    success: "#10b981", // Emerald - success states
+    danger: "#dc2626", // Red - critical alerts
+    warning: "#f59e0b", // Amber - low stock
+    info: "#3b82f6", // Blue - informational
     gray: {
-      50: '#f9fafb',
-      100: '#f3f4f6',
-      200: '#e5e7eb',
-      300: '#d1d5db',
-      400: '#9ca3af',
-      500: '#6b7280',
-      600: '#4b5563',
-      700: '#374151',
-      800: '#1f2937',
-      900: '#111827',
+      50: "#f9fafb",
+      100: "#f3f4f6",
+      200: "#e5e7eb",
+      300: "#d1d5db",
+      400: "#9ca3af",
+      500: "#6b7280",
+      600: "#4b5563",
+      700: "#374151",
+      800: "#1f2937",
+      900: "#111827",
     },
   },
 
   // Brand Info
   brand: {
-    name: 'WineOps AI',
-    logo: '', // Add logo URL when available
-    website: 'https://wineops.ai',
-    supportEmail: 'support@wineops.ai',
+    name: "WineOps AI",
+    logo: "", // Add logo URL when available
+    website: "https://wineops.ai",
+    supportEmail: "support@wineops.ai",
   },
 
   // Footer Text
   footer: {
-    automated: 'This is an automated message from WineOps AI.',
-    unsubscribe: 'To manage your notification preferences, visit your account settings.',
+    automated: "This is an automated message from WineOps AI.",
+    unsubscribe:
+      "To manage your notification preferences, visit your account settings.",
     copyright: `© ${new Date().getFullYear()} WineOps AI. All rights reserved.`,
   },
 
   // Email Styles
   styles: {
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-    borderRadius: '8px',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    borderRadius: "8px",
+    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
   },
 };
 
@@ -69,7 +71,13 @@ export interface RestaurantBranding {
 export async function getRestaurantBranding(
   restaurantId: string,
   databaseService?: any,
-): Promise<RestaurantBranding & { brandName: string; brandLogo: string; brandColor: string }> {
+): Promise<
+  RestaurantBranding & {
+    brandName: string;
+    brandLogo: string;
+    brandColor: string;
+  }
+> {
   const defaults = {
     brandName: EMAIL_CONFIG.brand.name,
     brandLogo: EMAIL_CONFIG.brand.logo,
@@ -85,9 +93,9 @@ export async function getRestaurantBranding(
 
     // Try restaurant_branding table first
     const { data: branding } = await client
-      .from('restaurant_branding')
-      .select('display_name, logo_url, primary_color, secondary_color, tagline')
-      .eq('restaurant_id', restaurantId)
+      .from("restaurant_branding")
+      .select("display_name, logo_url, primary_color, secondary_color, tagline")
+      .eq("restaurant_id", restaurantId)
       .single();
 
     if (branding) {
@@ -106,9 +114,9 @@ export async function getRestaurantBranding(
 
     // Fallback: try restaurant name from restaurants table
     const { data: restaurant } = await client
-      .from('restaurants')
-      .select('name')
-      .eq('id', restaurantId)
+      .from("restaurants")
+      .select("name")
+      .eq("id", restaurantId)
       .single();
 
     if (restaurant?.name) {
@@ -128,7 +136,10 @@ export async function getRestaurantBranding(
 /**
  * Get severity color based on stock level
  */
-export function getSeverityColor(currentStock: number, threshold: number): string {
+export function getSeverityColor(
+  currentStock: number,
+  threshold: number,
+): string {
   if (currentStock <= threshold * 0.5) {
     return EMAIL_CONFIG.colors.danger;
   }
@@ -138,20 +149,23 @@ export function getSeverityColor(currentStock: number, threshold: number): strin
 /**
  * Get severity label based on stock level
  */
-export function getSeverityLabel(currentStock: number, threshold: number): string {
+export function getSeverityLabel(
+  currentStock: number,
+  threshold: number,
+): string {
   if (currentStock <= threshold * 0.5) {
-    return 'CRITICAL';
+    return "CRITICAL";
   }
-  return 'LOW STOCK';
+  return "LOW STOCK";
 }
 
 /**
  * Format currency
  */
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
   }).format(amount);
 }
 
@@ -159,12 +173,12 @@ export function formatCurrency(amount: number): string {
  * Format date for emails
  */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 }
 
@@ -172,10 +186,10 @@ export function formatDate(date: Date | string): string {
  * Format short date
  */
 export function formatShortDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }

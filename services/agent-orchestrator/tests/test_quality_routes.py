@@ -11,6 +11,7 @@ Tests:
   - PATCH /review-queue 409 when submission not pending_review
   - PATCH /review-queue field corrections logged to field_corrections table
 """
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +19,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_chain(data=None, single_data=None):
     """Build a Supabase query chain mock.
@@ -76,9 +78,11 @@ def _pending_submission(
 # _compute_completeness
 # ---------------------------------------------------------------------------
 
+
 def test_compute_completeness_full_score():
     """QUAL-03: all 6 COMPLETENESS_FIELDS present → 1.0."""
     from api.quality_routes import _compute_completeness
+
     payload = {
         "wine_name": "Château Margaux",
         "vintage": 2018,
@@ -93,6 +97,7 @@ def test_compute_completeness_full_score():
 def test_compute_completeness_partial_score():
     """QUAL-03: 3 of 6 fields → 0.5."""
     from api.quality_routes import _compute_completeness
+
     payload = {"wine_name": "Opus One", "vintage": 2019, "price_bottle": 300.0}
     assert _compute_completeness(payload) == 0.5
 
@@ -100,12 +105,14 @@ def test_compute_completeness_partial_score():
 def test_compute_completeness_empty():
     """QUAL-03: empty payload → 0.0."""
     from api.quality_routes import _compute_completeness
+
     assert _compute_completeness({}) == 0.0
 
 
 # ---------------------------------------------------------------------------
 # GET /review-queue
 # ---------------------------------------------------------------------------
+
 
 def test_get_review_queue_503_when_no_db():
     """QUAL-03: returns 503 when Supabase is not configured."""
@@ -124,19 +131,22 @@ def test_get_review_queue_sorts_blocked_first():
 
     rows = [
         {
-            "id": "sub-high", "restaurant_id": "r1",
+            "id": "sub-high",
+            "restaurant_id": "r1",
             "auto_blocked": False,
             "created_at": "2026-04-05T00:00:00Z",
             "payload": {"wine_name": "High Score", "completeness_score": 0.8},
         },
         {
-            "id": "sub-blocked", "restaurant_id": "r1",
+            "id": "sub-blocked",
+            "restaurant_id": "r1",
             "auto_blocked": True,
             "created_at": "2026-04-05T00:00:01Z",
             "payload": {"wine_name": "Blocked Wine", "completeness_score": 0.1},
         },
         {
-            "id": "sub-low", "restaurant_id": "r1",
+            "id": "sub-low",
+            "restaurant_id": "r1",
             "auto_blocked": False,
             "created_at": "2026-04-05T00:00:02Z",
             "payload": {"wine_name": "Low Score", "completeness_score": 0.4},
@@ -159,6 +169,7 @@ def test_get_review_queue_sorts_blocked_first():
 # PATCH /review-queue — happy path
 # ---------------------------------------------------------------------------
 
+
 def test_patch_promotes_wine_with_sufficient_score():
     """QUAL-03: score >= 0.3 after correction → promoted=True, status=approved."""
     from api.quality_routes import patch_review_queue, ReviewQueuePatchRequest
@@ -166,9 +177,9 @@ def test_patch_promotes_wine_with_sufficient_score():
     sub = _pending_submission(score=0.5)
 
     # Mock execute() calls in order: fetch, promotion insert, status update
-    fetch_resp = MagicMock(data=sub)
-    insert_resp = MagicMock(data=[{}])
-    update_resp = MagicMock(data=[{}])
+    MagicMock(data=sub)
+    MagicMock(data=[{}])
+    MagicMock(data=[{}])
 
     supabase = MagicMock()
     # Each table() call returns a new chain
@@ -206,7 +217,7 @@ def test_patch_promotes_wine_with_sufficient_score():
 
 def test_patch_blocks_wine_with_low_score():
     """QUAL-01/QUAL-03: score < 0.3 after correction → auto_blocked=True, no promotion."""
-    from api.quality_routes import patch_review_queue, ReviewQueuePatchRequest, FieldCorrection
+    from api.quality_routes import patch_review_queue, ReviewQueuePatchRequest
 
     # Wine with only 1/6 fields (score = ~0.167 < 0.3 threshold)
     sub = _pending_submission(score=0.167, blocked=True)
@@ -268,7 +279,11 @@ def test_patch_returns_409_when_not_pending_review():
 
 def test_patch_logs_field_corrections_for_changed_fields():
     """QUAL-02: field_corrections table insert called for each changed field."""
-    from api.quality_routes import patch_review_queue, ReviewQueuePatchRequest, FieldCorrection
+    from api.quality_routes import (
+        patch_review_queue,
+        ReviewQueuePatchRequest,
+        FieldCorrection,
+    )
 
     sub = _pending_submission(score=0.5)
     sub["payload"]["region"] = "Old Region"  # will be corrected
@@ -296,8 +311,10 @@ def test_patch_logs_field_corrections_for_changed_fields():
     )
 
     with patch("api.quality_routes._get_supabase", return_value=supabase):
-        result = patch_review_queue("sub-1", body)
+        patch_review_queue("sub-1", body)
 
     # Verify field_corrections table was called
     table_calls = [c.args[0] for c in supabase.table.call_args_list]
-    assert "field_corrections" in table_calls, "field_corrections table must be called for QUAL-02"
+    assert (
+        "field_corrections" in table_calls
+    ), "field_corrections table must be called for QUAL-02"

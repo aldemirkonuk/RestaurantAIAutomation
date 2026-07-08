@@ -41,10 +41,13 @@ async def client():
 # GET /api/v1/analytics/trends — TEMP-07
 # ---------------------------------------------------------------------------
 
+
 async def test_trends_returns_200_with_valid_period(client):
     """TEMP-07: GET /trends returns 200 with trending_up / trending_down / breakdown lists."""
     mock_sb = MagicMock()
-    mock_sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+    mock_sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+        []
+    )
     with patch("api.analytics_routes._get_supabase", return_value=mock_sb):
         response = await client.get("/api/v1/analytics/trends?period=30d")
     assert response.status_code == 200
@@ -71,9 +74,13 @@ async def test_trends_with_metro_param_returns_200(client):
     """TEMP-07: metro param is accepted; metro=chicago with no restaurants returns empty lists."""
     mock_sb = MagicMock()
     # restaurant_directory ILIKE returns no metro restaurants
-    mock_sb.table.return_value.select.return_value.ilike.return_value.execute.return_value.data = []
+    mock_sb.table.return_value.select.return_value.ilike.return_value.execute.return_value.data = (
+        []
+    )
     # trending_wines query returns empty
-    mock_sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+    mock_sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+        []
+    )
     with patch("api.analytics_routes._get_supabase", return_value=mock_sb):
         response = await client.get("/api/v1/analytics/trends?metro=chicago&period=90d")
     assert response.status_code == 200
@@ -152,7 +159,9 @@ async def test_trends_breakdown_fields_structure(client):
 async def test_trends_default_period_is_90d(client):
     """TEMP-07: omitting period param defaults to 90d — not a 400."""
     mock_sb = MagicMock()
-    mock_sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+    mock_sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+        []
+    )
     with patch("api.analytics_routes._get_supabase", return_value=mock_sb):
         response = await client.get("/api/v1/analytics/trends")
     assert response.status_code == 200
@@ -162,6 +171,7 @@ async def test_trends_default_period_is_90d(client):
 # ---------------------------------------------------------------------------
 # GET /api/v1/analytics/wine/{id}/timeline — TEMP-08
 # ---------------------------------------------------------------------------
+
 
 async def test_timeline_returns_200_for_valid_wine(client):
     """TEMP-08: GET /wine/{id}/timeline returns 200 with wine_id and wine_name populated."""
@@ -177,11 +187,15 @@ async def test_timeline_returns_200_for_valid_wine(client):
         elif name == "master_wine_library_submissions":
             m.select.return_value.eq.return_value.execute.return_value.data = []
         elif name == "wine_popularity":
-            m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
+            m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+                None
+            )
         elif name == "restaurant_wine_roster":
             m.select.return_value.in_.return_value.execute.return_value.data = []
         elif name == "menu_changes":
-            m.select.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+            m.select.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+                []
+            )
         return m
 
     mock_sb.table.side_effect = table_side
@@ -199,9 +213,13 @@ async def test_timeline_returns_200_for_valid_wine(client):
 async def test_timeline_returns_404_for_unknown_wine(client):
     """TEMP-08: GET /wine/{id}/timeline returns 404 when wine not in master_wine_library."""
     mock_sb = MagicMock()
-    mock_sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
+    mock_sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+        None
+    )
     with patch("api.analytics_routes._get_supabase", return_value=mock_sb):
-        response = await client.get(f"/api/v1/analytics/wine/{UNKNOWN_WINE_ID}/timeline")
+        response = await client.get(
+            f"/api/v1/analytics/wine/{UNKNOWN_WINE_ID}/timeline"
+        )
     assert response.status_code == 404
 
 

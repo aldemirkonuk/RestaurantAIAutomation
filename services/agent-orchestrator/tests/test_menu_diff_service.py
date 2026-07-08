@@ -4,8 +4,8 @@ Unit tests for MenuDiffService — Phase 11 TEMP-03 / TEMP-04
 RED phase: written before menu_diff_service.py exists.
 All tests will fail with ImportError until the service is implemented (GREEN).
 """
-import pytest
-from unittest.mock import MagicMock, call
+
+from unittest.mock import MagicMock
 
 from services.menu_diff_service import MenuDiffService
 
@@ -13,6 +13,7 @@ from services.menu_diff_service import MenuDiffService
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_mock_supabase(roster_rows=None):
     """Return a mock supabase client pre-wired with roster_rows for SELECT."""
@@ -22,9 +23,13 @@ def make_mock_supabase(roster_rows=None):
         roster_rows or []
     )
     # INSERT path: table(...).insert(...).execute()
-    mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    mock_supabase.table.return_value.insert.return_value.execute.return_value = (
+        MagicMock()
+    )
     # UPSERT path: table(...).upsert(...).execute()
-    mock_supabase.table.return_value.upsert.return_value.execute.return_value = MagicMock()
+    mock_supabase.table.return_value.upsert.return_value.execute.return_value = (
+        MagicMock()
+    )
     return mock_supabase
 
 
@@ -55,6 +60,7 @@ def _roster_row(hash_="h1", name="Barolo", price=45.0):
 # 1. Empty crawl guard
 # ---------------------------------------------------------------------------
 
+
 def test_empty_crawl_skipped():
     """run_diff([]) must return skipped=True with reason='empty_crawl' — never mass-remove."""
     mock_sb = make_mock_supabase(roster_rows=[_roster_row()])
@@ -75,6 +81,7 @@ def test_empty_crawl_skipped():
 # ---------------------------------------------------------------------------
 # 2. Added wine
 # ---------------------------------------------------------------------------
+
 
 def test_added_wine():
     """Empty roster + 1 new wine → 1 'added' event, roster upserted."""
@@ -97,12 +104,15 @@ def test_added_wine():
 # 3. Removed wine
 # ---------------------------------------------------------------------------
 
+
 def test_removed_wine():
     """Roster has 2 wines, new crawl has only 1 → 1 'removed' event."""
-    mock_sb = make_mock_supabase(roster_rows=[
-        _roster_row("h1", "Barolo", 45.0),
-        _roster_row("h2", "Brunello", 75.0),
-    ])
+    mock_sb = make_mock_supabase(
+        roster_rows=[
+            _roster_row("h1", "Barolo", 45.0),
+            _roster_row("h2", "Brunello", 75.0),
+        ]
+    )
     svc = MenuDiffService(mock_sb)
 
     # Only h1 present in new crawl — h2 is gone
@@ -123,6 +133,7 @@ def test_removed_wine():
 # ---------------------------------------------------------------------------
 # 4. Price change detected
 # ---------------------------------------------------------------------------
+
 
 def test_price_change_detected():
     """Same signature_hash, price 45→52 → 1 'price_change' event with both snapshots."""
@@ -147,37 +158,51 @@ def test_price_change_detected():
 # 5–7. Price gate unit tests (static method, no Supabase needed)
 # ---------------------------------------------------------------------------
 
+
 def test_price_gate_passes_combined_gate():
     """abs=7, rel=15.6% — both thresholds met → True."""
-    assert MenuDiffService._price_gate(
-        {"price_reference": 52.0}, {"price_reference": 45.0}
-    ) is True
+    assert (
+        MenuDiffService._price_gate(
+            {"price_reference": 52.0}, {"price_reference": 45.0}
+        )
+        is True
+    )
 
 
 def test_price_gate_fails_absolute():
     """abs=0.50 < $1 threshold → False even if rel >= 3%."""
-    assert MenuDiffService._price_gate(
-        {"price_reference": 45.50}, {"price_reference": 45.0}
-    ) is False
+    assert (
+        MenuDiffService._price_gate(
+            {"price_reference": 45.50}, {"price_reference": 45.0}
+        )
+        is False
+    )
 
 
 def test_price_gate_fails_relative():
     """abs=1.0 >= $1 BUT rel=1% < 3% → False."""
-    assert MenuDiffService._price_gate(
-        {"price_reference": 101.0}, {"price_reference": 100.0}
-    ) is False
+    assert (
+        MenuDiffService._price_gate(
+            {"price_reference": 101.0}, {"price_reference": 100.0}
+        )
+        is False
+    )
 
 
 def test_price_gate_null_new_price():
     """new_wine has price_reference=None → False (null guard)."""
-    assert MenuDiffService._price_gate(
-        {"price_reference": None}, {"price_reference": 45.0}
-    ) is False
+    assert (
+        MenuDiffService._price_gate(
+            {"price_reference": None}, {"price_reference": 45.0}
+        )
+        is False
+    )
 
 
 # ---------------------------------------------------------------------------
 # 8. First crawl — all wines added (empty roster)
 # ---------------------------------------------------------------------------
+
 
 def test_first_crawl_all_added():
     """Empty roster + 5 new wines → 5 'added' events (first crawl behavior, intentional)."""
@@ -200,6 +225,7 @@ def test_first_crawl_all_added():
 # ---------------------------------------------------------------------------
 # 9. JSONB snapshot shape (D-03 verification)
 # ---------------------------------------------------------------------------
+
 
 def test_change_event_jsonb_shape():
     """'added' event: old_value=None, new_value has all 5 required snapshot fields."""
@@ -228,7 +254,13 @@ def test_change_event_jsonb_shape():
     snapshot = event["new_value"]
     assert snapshot is not None
     # D-03: all 5 required snapshot fields must be present
-    for field in ("wine_name", "producer", "vintage", "price_reference", "signature_hash"):
+    for field in (
+        "wine_name",
+        "producer",
+        "vintage",
+        "price_reference",
+        "signature_hash",
+    ):
         assert field in snapshot, f"Missing snapshot field: {field}"
     assert snapshot["wine_name"] == "Barolo Riserva"
     assert snapshot["producer"] == "Marchesi di Barolo"
@@ -240,6 +272,7 @@ def test_change_event_jsonb_shape():
 # ---------------------------------------------------------------------------
 # 10. No-change crawl — no events written when nothing changed
 # ---------------------------------------------------------------------------
+
 
 def test_no_events_when_no_changes():
     """Roster matches new crawl exactly (same hash, same price) → 0 events, still upserts roster."""

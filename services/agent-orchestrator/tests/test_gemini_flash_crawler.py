@@ -1,21 +1,32 @@
 """Unit tests for GeminiFlashCrawlerExtractor and web_crawler Phase 2 behaviour."""
+
 import json
 import os
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 pytestmark = pytest.mark.asyncio
 
-MOCK_WINES_JSON = json.dumps({
-    "wines": [
-        {"wine_name": "Château Margaux", "vintage": 2018, "price_bottle": 450.0, "confidence": 0.9},
-        {"wine_name": "Opus One", "vintage": 2019, "price_bottle": 300.0, "confidence": 0.85},
-    ],
-    "sections": [],
-})
+MOCK_WINES_JSON = json.dumps(
+    {
+        "wines": [
+            {
+                "wine_name": "Château Margaux",
+                "vintage": 2018,
+                "price_bottle": 450.0,
+                "confidence": 0.9,
+            },
+            {
+                "wine_name": "Opus One",
+                "vintage": 2019,
+                "price_bottle": 300.0,
+                "confidence": 0.85,
+            },
+        ],
+        "sections": [],
+    }
+)
 
 
 def _make_mock_client(response_text: str = MOCK_WINES_JSON) -> MagicMock:
@@ -33,13 +44,17 @@ def _make_mock_client(response_text: str = MOCK_WINES_JSON) -> MagicMock:
 # GMFL-01 tests — real implementations (not stubs)
 # =============================================================================
 
+
 async def test_model_is_gemini_2_5_flash():
     """GMFL-01: extractor must call generate_content with model='gemini-2.5-flash'."""
     from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
+
     mock_client = _make_mock_client()
     extractor = GeminiFlashCrawlerExtractor()
-    extractor._client = mock_client  # bypass _get_client — lazy init skips when _client set
-    result = await extractor.extract_from_text("Château Margaux 2018 $450", "Test Restaurant")
+    extractor._client = (
+        mock_client  # bypass _get_client — lazy init skips when _client set
+    )
+    await extractor.extract_from_text("Château Margaux 2018 $450", "Test Restaurant")
     mock_client.aio.models.generate_content.assert_called_once()
     call_kwargs = mock_client.aio.models.generate_content.call_args
     model_used = (
@@ -47,7 +62,9 @@ async def test_model_is_gemini_2_5_flash():
         or (call_kwargs[1].get("model") if call_kwargs[1] else None)
         or (call_kwargs[0][0] if call_kwargs[0] else None)
     )
-    assert model_used == "gemini-2.5-flash", f"Expected gemini-2.5-flash, got {model_used}"
+    assert (
+        model_used == "gemini-2.5-flash"
+    ), f"Expected gemini-2.5-flash, got {model_used}"
 
 
 async def test_client_lazy_init_and_model():
@@ -75,6 +92,7 @@ async def test_client_lazy_init_and_model():
 async def test_extract_from_text_returns_wines():
     """GMFL-01: extract_from_text with 2-wine mock response returns 2 wines and correct model."""
     from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
+
     mock_client = _make_mock_client(MOCK_WINES_JSON)
     extractor = GeminiFlashCrawlerExtractor()
     extractor._client = mock_client
@@ -89,6 +107,7 @@ async def test_extract_from_text_returns_wines():
 async def test_extract_empty_html_returns_empty_result():
     """GMFL-01: empty wine list in response → total_wines == 0, no warnings."""
     from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
+
     empty_json = json.dumps({"wines": [], "sections": []})
     mock_client = _make_mock_client(empty_json)
     extractor = GeminiFlashCrawlerExtractor()
@@ -101,6 +120,7 @@ async def test_extract_empty_html_returns_empty_result():
 async def test_extract_api_error_returns_warning():
     """GMFL-01: when generate_content raises Exception, result.warnings must be non-empty."""
     from services.vlm_extraction_service import GeminiFlashCrawlerExtractor
+
     mock_aio = MagicMock()
     mock_aio.models.generate_content = AsyncMock(side_effect=Exception("timeout"))
     mock_client = MagicMock()
@@ -114,6 +134,7 @@ async def test_extract_api_error_returns_warning():
 # =============================================================================
 # GMFL-02 through GMFL-05 — real implementations (Plan 02)
 # =============================================================================
+
 
 async def test_robots_txt_disallow_blocks_crawl():
     """GMFL-04: when robots.txt disallows crawling, the pipeline returns ERROR result."""
@@ -149,7 +170,7 @@ async def test_rate_limit_enforced():
 
 async def test_crawl_calls_gemini_after_html():
     """GMFL-02: HTML crawler fetches page HTML then passes it to GeminiFlashCrawlerExtractor."""
-    from services.web_crawler import WebCrawlerService, ContentType
+    from services.web_crawler import WebCrawlerService
     from services.vlm_extraction_service import VLMExtractionResult
 
     service = WebCrawlerService(rate_limit=100)
@@ -163,8 +184,12 @@ async def test_crawl_calls_gemini_after_html():
         mock_page.query_selector = AsyncMock(return_value=None)
 
         mock_body = AsyncMock()
-        mock_body.inner_text = AsyncMock(return_value="Château Margaux 2018 $450\n" * 20)
-        mock_page.query_selector = AsyncMock(side_effect=lambda sel: mock_body if sel == "body" else None)
+        mock_body.inner_text = AsyncMock(
+            return_value="Château Margaux 2018 $450\n" * 20
+        )
+        mock_page.query_selector = AsyncMock(
+            side_effect=lambda sel: mock_body if sel == "body" else None
+        )
 
         mock_context = AsyncMock()
         mock_browser = AsyncMock()
@@ -185,13 +210,16 @@ async def test_crawl_calls_gemini_after_html():
         with patch("services.web_crawler.async_playwright") as mock_playwright_cm:
             mock_playwright_cm.return_value.__aenter__ = AsyncMock(return_value=mock_p)
             mock_playwright_cm.return_value.__aexit__ = AsyncMock(return_value=None)
-            with patch("services.web_crawler.get_gemini_crawler_extractor", return_value=mock_extractor):
+            with patch(
+                "services.web_crawler.get_gemini_crawler_extractor",
+                return_value=mock_extractor,
+            ):
                 # Also patch _persist_crawled_wines and _wine_is_duplicate
                 with patch.object(service, "_wine_is_duplicate", return_value=False):
                     with patch.object(service, "_persist_crawled_wines"):
                         with patch.object(service, "_cache_result"):
                             with patch.object(service, "_log_crawl_to_db"):
-                                result = await service.crawl_restaurant(
+                                await service.crawl_restaurant(
                                     "https://example.com/wine", "Test Restaurant"
                                 )
 
@@ -201,9 +229,10 @@ async def test_crawl_calls_gemini_after_html():
 async def test_crawled_wines_written_to_dataset(tmp_path, monkeypatch):
     """GMFL-03: extracted wines from crawl are written to JSONL dataset file."""
     import services.web_crawler as wc_mod
+
     monkeypatch.setattr(wc_mod, "RESTAURANT_MENUS_DIR", tmp_path)
 
-    from services.web_crawler import WebCrawlerService, ContentType
+    from services.web_crawler import WebCrawlerService
     from services.vlm_extraction_service import VLMExtractionResult
 
     service = WebCrawlerService(rate_limit=100)
@@ -215,7 +244,9 @@ async def test_crawled_wines_written_to_dataset(tmp_path, monkeypatch):
 
         mock_body = AsyncMock()
         mock_body.inner_text = AsyncMock(return_value="Opus One 2019 $300\n" * 20)
-        mock_page.query_selector = AsyncMock(side_effect=lambda sel: mock_body if sel == "body" else None)
+        mock_page.query_selector = AsyncMock(
+            side_effect=lambda sel: mock_body if sel == "body" else None
+        )
 
         mock_context = AsyncMock()
         mock_browser = AsyncMock()
@@ -236,11 +267,14 @@ async def test_crawled_wines_written_to_dataset(tmp_path, monkeypatch):
         with patch("services.web_crawler.async_playwright") as mock_playwright_cm:
             mock_playwright_cm.return_value.__aenter__ = AsyncMock(return_value=mock_p)
             mock_playwright_cm.return_value.__aexit__ = AsyncMock(return_value=None)
-            with patch("services.web_crawler.get_gemini_crawler_extractor", return_value=mock_extractor):
+            with patch(
+                "services.web_crawler.get_gemini_crawler_extractor",
+                return_value=mock_extractor,
+            ):
                 with patch.object(service, "_wine_is_duplicate", return_value=False):
                     with patch.object(service, "_cache_result"):
                         with patch.object(service, "_log_crawl_to_db"):
-                            result = await service.crawl_restaurant(
+                            await service.crawl_restaurant(
                                 "https://example.com/wine", "Opus Restaurant"
                             )
 
@@ -259,6 +293,7 @@ async def test_crawled_wines_written_to_dataset(tmp_path, monkeypatch):
 async def test_duplicate_wine_skipped(tmp_path, monkeypatch):
     """GMFL-05: wine already in master_wine_library is not written to JSONL."""
     import services.web_crawler as wc_mod
+
     monkeypatch.setattr(wc_mod, "RESTAURANT_MENUS_DIR", tmp_path)
 
     from services.web_crawler import WebCrawlerService
@@ -272,8 +307,12 @@ async def test_duplicate_wine_skipped(tmp_path, monkeypatch):
         mock_page.query_selector_all = AsyncMock(return_value=[])
 
         mock_body = AsyncMock()
-        mock_body.inner_text = AsyncMock(return_value="Château Pétrus 2015 $1200\n" * 20)
-        mock_page.query_selector = AsyncMock(side_effect=lambda sel: mock_body if sel == "body" else None)
+        mock_body.inner_text = AsyncMock(
+            return_value="Château Pétrus 2015 $1200\n" * 20
+        )
+        mock_page.query_selector = AsyncMock(
+            side_effect=lambda sel: mock_body if sel == "body" else None
+        )
 
         mock_context = AsyncMock()
         mock_browser = AsyncMock()
@@ -294,23 +333,29 @@ async def test_duplicate_wine_skipped(tmp_path, monkeypatch):
         with patch("services.web_crawler.async_playwright") as mock_playwright_cm:
             mock_playwright_cm.return_value.__aenter__ = AsyncMock(return_value=mock_p)
             mock_playwright_cm.return_value.__aexit__ = AsyncMock(return_value=None)
-            with patch("services.web_crawler.get_gemini_crawler_extractor", return_value=mock_extractor):
+            with patch(
+                "services.web_crawler.get_gemini_crawler_extractor",
+                return_value=mock_extractor,
+            ):
                 # Wine IS a duplicate — should be skipped
                 with patch.object(service, "_wine_is_duplicate", return_value=True):
                     with patch.object(service, "_cache_result"):
                         with patch.object(service, "_log_crawl_to_db"):
-                            result = await service.crawl_restaurant(
+                            await service.crawl_restaurant(
                                 "https://example.com/wine", "Petrus Restaurant"
                             )
 
     # No JSONL file should be written (all wines are duplicates)
     jsonl_files = list(tmp_path.glob("*.jsonl"))
-    assert len(jsonl_files) == 0, f"Expected 0 JSONL files (all duplicates), found {len(jsonl_files)}"
+    assert (
+        len(jsonl_files) == 0
+    ), f"Expected 0 JSONL files (all duplicates), found {len(jsonl_files)}"
 
 
 async def test_non_duplicate_wine_inserted(tmp_path, monkeypatch):
     """GMFL-05: wine not in master_wine_library is written to JSONL."""
     import services.web_crawler as wc_mod
+
     monkeypatch.setattr(wc_mod, "RESTAURANT_MENUS_DIR", tmp_path)
 
     from services.web_crawler import WebCrawlerService
@@ -324,8 +369,12 @@ async def test_non_duplicate_wine_inserted(tmp_path, monkeypatch):
         mock_page.query_selector_all = AsyncMock(return_value=[])
 
         mock_body = AsyncMock()
-        mock_body.inner_text = AsyncMock(return_value="Hidden Gem Winery 2020 $45\n" * 20)
-        mock_page.query_selector = AsyncMock(side_effect=lambda sel: mock_body if sel == "body" else None)
+        mock_body.inner_text = AsyncMock(
+            return_value="Hidden Gem Winery 2020 $45\n" * 20
+        )
+        mock_page.query_selector = AsyncMock(
+            side_effect=lambda sel: mock_body if sel == "body" else None
+        )
 
         mock_context = AsyncMock()
         mock_browser = AsyncMock()
@@ -346,18 +395,23 @@ async def test_non_duplicate_wine_inserted(tmp_path, monkeypatch):
         with patch("services.web_crawler.async_playwright") as mock_playwright_cm:
             mock_playwright_cm.return_value.__aenter__ = AsyncMock(return_value=mock_p)
             mock_playwright_cm.return_value.__aexit__ = AsyncMock(return_value=None)
-            with patch("services.web_crawler.get_gemini_crawler_extractor", return_value=mock_extractor):
+            with patch(
+                "services.web_crawler.get_gemini_crawler_extractor",
+                return_value=mock_extractor,
+            ):
                 # Wine is NOT a duplicate — should be inserted
                 with patch.object(service, "_wine_is_duplicate", return_value=False):
                     with patch.object(service, "_cache_result"):
                         with patch.object(service, "_log_crawl_to_db"):
-                            result = await service.crawl_restaurant(
+                            await service.crawl_restaurant(
                                 "https://example.com/wine", "Hidden Gem Restaurant"
                             )
 
     # JSONL file should be written
     jsonl_files = list(tmp_path.glob("*.jsonl"))
-    assert len(jsonl_files) == 1, f"Expected 1 JSONL file (non-duplicate), found {len(jsonl_files)}"
+    assert (
+        len(jsonl_files) == 1
+    ), f"Expected 1 JSONL file (non-duplicate), found {len(jsonl_files)}"
 
     lines = jsonl_files[0].read_text().strip().splitlines()
     assert len(lines) == 1

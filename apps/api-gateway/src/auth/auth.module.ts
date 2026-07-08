@@ -1,18 +1,18 @@
-import { Module, Logger, OnModuleInit, forwardRef } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { DatabaseModule } from '../database/database.module';
-import { CacheModule } from '../common/cache/cache.module';
-import { TokenBlacklistService } from './services/token-blacklist.service';
-import { GoogleStrategy } from './strategies/google.strategy';
-import { MicrosoftStrategy } from './strategies/microsoft.strategy';
-import { CommunicationsModule } from '../communications/communications.module';
+import { Module, Logger, OnModuleInit, forwardRef } from "@nestjs/common";
+import { JwtModule } from "@nestjs/jwt";
+import { PassportModule } from "@nestjs/passport";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { AuthService } from "./auth.service";
+import { AuthController } from "./auth.controller";
+import { JwtStrategy } from "./strategies/jwt.strategy";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { RolesGuard } from "./guards/roles.guard";
+import { DatabaseModule } from "../database/database.module";
+import { CacheModule } from "../common/cache/cache.module";
+import { TokenBlacklistService } from "./services/token-blacklist.service";
+import { GoogleStrategy } from "./strategies/google.strategy";
+import { MicrosoftStrategy } from "./strategies/microsoft.strategy";
+import { CommunicationsModule } from "../communications/communications.module";
 
 @Module({
   imports: [
@@ -20,12 +20,14 @@ import { CommunicationsModule } from '../communications/communications.module';
     CacheModule,
     ConfigModule,
     forwardRef(() => CommunicationsModule),
-    PassportModule.register({ defaultStrategy: 'jwt' }),
+    PassportModule.register({ defaultStrategy: "jwt" }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET') || 'your-secret-key-change-in-production',
-        signOptions: { expiresIn: '15m' },
+        secret:
+          configService.get("JWT_SECRET") ||
+          "your-secret-key-change-in-production",
+        signOptions: { expiresIn: "15m" },
       }),
       inject: [ConfigService],
     }),
@@ -41,13 +43,16 @@ import { CommunicationsModule } from '../communications/communications.module';
     {
       provide: GoogleStrategy,
       useFactory: (authService: AuthService, configService: ConfigService) => {
-        const clientId = configService.get('GOOGLE_CLIENT_ID');
-        const clientSecret = configService.get('GOOGLE_CLIENT_SECRET');
+        const clientId = configService.get("GOOGLE_CLIENT_ID");
+        const clientSecret = configService.get("GOOGLE_CLIENT_SECRET");
         if (clientId && clientSecret) {
-          Logger.log('Google OAuth enabled', 'AuthModule');
+          Logger.log("Google OAuth enabled", "AuthModule");
           return new GoogleStrategy(authService);
         }
-        Logger.warn('Google OAuth disabled - GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured', 'AuthModule');
+        Logger.warn(
+          "Google OAuth disabled - GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not configured",
+          "AuthModule",
+        );
         return null;
       },
       inject: [AuthService, ConfigService],
@@ -56,13 +61,16 @@ import { CommunicationsModule } from '../communications/communications.module';
     {
       provide: MicrosoftStrategy,
       useFactory: (authService: AuthService, configService: ConfigService) => {
-        const clientId = configService.get('MICROSOFT_CLIENT_ID');
-        const clientSecret = configService.get('MICROSOFT_CLIENT_SECRET');
+        const clientId = configService.get("MICROSOFT_CLIENT_ID");
+        const clientSecret = configService.get("MICROSOFT_CLIENT_SECRET");
         if (clientId && clientSecret) {
-          Logger.log('Microsoft OAuth enabled', 'AuthModule');
+          Logger.log("Microsoft OAuth enabled", "AuthModule");
           return new MicrosoftStrategy(authService);
         }
-        Logger.warn('Microsoft OAuth disabled - MICROSOFT_CLIENT_ID or MICROSOFT_CLIENT_SECRET not configured', 'AuthModule');
+        Logger.warn(
+          "Microsoft OAuth disabled - MICROSOFT_CLIENT_ID or MICROSOFT_CLIENT_SECRET not configured",
+          "AuthModule",
+        );
         return null;
       },
       inject: [AuthService, ConfigService],
@@ -71,4 +79,3 @@ import { CommunicationsModule } from '../communications/communications.module';
   exports: [AuthService, JwtAuthGuard, RolesGuard, TokenBlacklistService],
 })
 export class AuthModule {}
-

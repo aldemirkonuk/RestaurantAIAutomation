@@ -108,7 +108,9 @@ function saveActionsToStorage(actions: ActionItem[]): void {
     const seen = new Set<string>()
     const deduped = actions.filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true })
     localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(deduped.slice(0, MAX_PERSISTED_ACTIONS)))
-  } catch {}
+  } catch {
+    /* ignore localStorage read failures */
+  }
 }
 
 // Generate real actions from data sources
@@ -221,7 +223,9 @@ function generateRealActions(
         }
       })
     }
-  } catch {}
+  } catch {
+    /* ignore localStorage read failures */
+  }
   
   // 3. Pending Orders - from API (passed in) or fallback to localStorage
   const ordersToProcess = apiOrders.length > 0 ? apiOrders : []
@@ -278,7 +282,9 @@ function generateRealActions(
             })
           })
       }
-    } catch {}
+    } catch {
+    /* ignore localStorage read failures */
+  }
   }
   
   // 4. Always include Gmail quick action
@@ -492,7 +498,9 @@ export function OneTapActionCenter() {
                 delete shadow[action.wine.id]
                 localStorage.setItem(SHADOW_STOCK_KEY, JSON.stringify(shadow))
               }
-            } catch {}
+            } catch {
+    /* ignore localStorage read failures */
+  }
           }
           break
           
@@ -526,7 +534,9 @@ export function OneTapActionCenter() {
                 wineType: action.wine.type
               })
               localStorage.setItem(PENDING_ORDERS_KEY, JSON.stringify(orders))
-            } catch {}
+            } catch {
+    /* ignore localStorage read failures */
+  }
           }
           break
           

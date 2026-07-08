@@ -1,16 +1,27 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from "class-validator";
 
 export class CreateProviderDto {
   @ApiPropertyOptional({
-    description: 'UUID of a vendor_catalogue entry. When provided, provider details are auto-filled from the catalogue.',
+    description:
+      "UUID of a vendor_catalogue entry. When provided, provider details are auto-filled from the catalogue.",
   })
   @IsUUID()
   @IsOptional()
   catalogue_vendor_id?: string;
 
   @ApiPropertyOptional({
-    description: 'Required when catalogue_vendor_id is not provided.',
+    description: "Required when catalogue_vendor_id is not provided.",
   })
   @IsString()
   @IsOptional()
@@ -64,27 +75,30 @@ export class CreateProviderDto {
   @IsOptional()
   notes?: string;
 
-  @ApiPropertyOptional({ description: 'Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)' })
+  @ApiPropertyOptional({
+    description:
+      "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)",
+  })
   @IsString()
   @IsOptional()
   type?: string;
 
-  @ApiPropertyOptional({ description: 'Vendor phone number' })
+  @ApiPropertyOptional({ description: "Vendor phone number" })
   @IsString()
   @IsOptional()
   phone?: string;
 
-  @ApiPropertyOptional({ description: 'Vendor email address' })
+  @ApiPropertyOptional({ description: "Vendor email address" })
   @IsString()
   @IsOptional()
   email?: string;
 
-  @ApiPropertyOptional({ description: 'Vendor website URL' })
+  @ApiPropertyOptional({ description: "Vendor website URL" })
   @IsString()
   @IsOptional()
   website?: string;
 
-  @ApiPropertyOptional({ description: 'Primary contact name at the vendor' })
+  @ApiPropertyOptional({ description: "Primary contact name at the vendor" })
   @IsString()
   @IsOptional()
   contactName?: string;
@@ -184,12 +198,15 @@ export class UpdateProviderDto {
   @IsOptional()
   notes?: string;
 
-  @ApiPropertyOptional({ description: 'Payment terms (e.g. Net 30, COD)' })
+  @ApiPropertyOptional({ description: "Payment terms (e.g. Net 30, COD)" })
   @IsString()
   @IsOptional()
   paymentTerms?: string;
 
-  @ApiPropertyOptional({ description: 'Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)' })
+  @ApiPropertyOptional({
+    description:
+      "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)",
+  })
   @IsString()
   @IsOptional()
   type?: string;
@@ -281,19 +298,29 @@ export class ProviderResponseDto {
   @ApiPropertyOptional()
   lastContactNotes?: string;
 
-  @ApiPropertyOptional({ description: 'UUID of the linked vendor_catalogue entry, null for custom vendors' })
+  @ApiPropertyOptional({
+    description:
+      "UUID of the linked vendor_catalogue entry, null for custom vendors",
+  })
   catalogueVendorId?: string | null;
 
-  @ApiPropertyOptional({ description: 'True if this provider was manually created; false if sourced from catalogue' })
+  @ApiPropertyOptional({
+    description:
+      "True if this provider was manually created; false if sourced from catalogue",
+  })
   isCustom?: boolean;
 
-  @ApiPropertyOptional({ description: 'Payment terms (e.g. Net 30, COD)' })
+  @ApiPropertyOptional({ description: "Payment terms (e.g. Net 30, COD)" })
   paymentTerms?: string;
 
-  @ApiPropertyOptional({ description: 'Business type: Distributor, Importer, Wholesaler, etc.' })
+  @ApiPropertyOptional({
+    description: "Business type: Distributor, Importer, Wholesaler, etc.",
+  })
   primaryBusinessType?: string;
 
-  @ApiPropertyOptional({ description: 'Known personnel / contacts (legacy array)' })
+  @ApiPropertyOptional({
+    description: "Known personnel / contacts (legacy array)",
+  })
   knownPersonnel?: string[];
 }
 
@@ -416,7 +443,7 @@ export class CreateProviderLocationDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ description: 'office | warehouse | store | other' })
+  @ApiPropertyOptional({ description: "office | warehouse | store | other" })
   @IsString()
   @IsOptional()
   type?: string;
@@ -438,7 +465,7 @@ export class UpdateProviderLocationDto {
   @IsOptional()
   name?: string;
 
-  @ApiPropertyOptional({ description: 'office | warehouse | store | other' })
+  @ApiPropertyOptional({ description: "office | warehouse | store | other" })
   @IsString()
   @IsOptional()
   type?: string;

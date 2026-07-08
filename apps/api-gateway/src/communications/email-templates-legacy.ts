@@ -35,7 +35,11 @@ export interface WeeklyReportData {
   topWines: Array<{ name: string; bottles: number; revenue: number }>;
   lowStockItems: Array<{ name: string; stock: number; threshold: number }>;
   deliveriesCompleted: number;
-  conversationSummaries?: Array<{ provider: string; summary: string; status: string }>;
+  conversationSummaries?: Array<{
+    provider: string;
+    summary: string;
+    status: string;
+  }>;
 }
 
 export interface DailySummaryData {
@@ -125,12 +129,15 @@ export interface DeliveryReminderData {
 // HELPER FUNCTIONS
 // =============================================================================
 
-export function getSeverityLabel(currentStock: number, threshold: number): string {
+export function getSeverityLabel(
+  currentStock: number,
+  threshold: number,
+): string {
   const ratio = currentStock / threshold;
-  if (ratio <= 0.25) return 'CRITICAL';
-  if (ratio <= 0.5) return 'HIGH';
-  if (ratio <= 0.75) return 'MEDIUM';
-  return 'LOW';
+  if (ratio <= 0.25) return "CRITICAL";
+  if (ratio <= 0.5) return "HIGH";
+  if (ratio <= 0.75) return "MEDIUM";
+  return "LOW";
 }
 
 function baseLayout(title: string, content: string): string {
@@ -186,12 +193,12 @@ function baseLayout(title: string, content: string): string {
 }
 
 function formatCurrency(amount: number): string {
-  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /** Format bottle volume for display: 750 → "750ml", 1500 → "1.5L" */
 function formatBottleVolume(ml: number | undefined): string {
-  if (!ml || ml <= 0) return '';
+  if (!ml || ml <= 0) return "";
   if (ml >= 1000 && ml % 100 === 0) return `${ml / 1000}L`;
   return `${ml}ml`;
 }
@@ -210,7 +217,9 @@ export function lowStockAlertTemplate(data: LowStockAlertData | any): string {
   const severity = getSeverityLabel(data.currentStock, data.threshold);
   const badgeClass = `badge-${severity.toLowerCase()}`;
 
-  return baseLayout('Low Stock Alert', `
+  return baseLayout(
+    "Low Stock Alert",
+    `
     <h2 style="margin-top: 0; color: #111827;">Low Stock Alert</h2>
     <p style="color: #6b7280;">The following wine is running low and may need reordering:</p>
     
@@ -222,38 +231,55 @@ export function lowStockAlertTemplate(data: LowStockAlertData | any): string {
     <div style="margin: 16px 0;">
       <div class="info-row"><span class="info-label">Current Stock</span><span class="info-value">${data.currentStock} bottles</span></div>
       <div class="info-row"><span class="info-label">Threshold</span><span class="info-value">${data.threshold} bottles</span></div>
-      ${data.estimatedStockoutDays ? `<div class="info-row"><span class="info-label">Est. Stockout</span><span class="info-value">${data.estimatedStockoutDays} days</span></div>` : ''}
-      ${data.suggestedProvider ? `<div class="info-row"><span class="info-label">Suggested Provider</span><span class="info-value">${data.suggestedProvider}</span></div>` : ''}
+      ${data.estimatedStockoutDays ? `<div class="info-row"><span class="info-label">Est. Stockout</span><span class="info-value">${data.estimatedStockoutDays} days</span></div>` : ""}
+      ${data.suggestedProvider ? `<div class="info-row"><span class="info-label">Suggested Provider</span><span class="info-value">${data.suggestedProvider}</span></div>` : ""}
     </div>
 
     <div style="text-align: center; margin-top: 24px;">
       <a href="#" class="btn">Reorder Now</a>
     </div>
-  `);
+  `,
+  );
 }
 
 export function weeklyReportTemplate(data: WeeklyReportData | any): string {
   const topWines = data.topWines || data.topSellers || [];
-  const topWinesHtml = topWines.map((w: any) => `
+  const topWinesHtml = topWines
+    .map(
+      (w: any) => `
     <tr><td>${w.name}</td><td>${w.bottles || w.sold || 0}</td><td>${formatCurrency(w.revenue || 0)}</td></tr>
-  `).join('');
+  `,
+    )
+    .join("");
 
   const lowStockItems = data.lowStockItems || [];
-  const lowStockHtml = lowStockItems.map((item: any) => `
+  const lowStockHtml = lowStockItems
+    .map(
+      (item: any) => `
     <tr><td>${item.name}</td><td>${item.stock || item.current || 0}</td><td>${item.threshold || 0}</td></tr>
-  `).join('');
+  `,
+    )
+    .join("");
 
-  const convoSummaryHtml = data.conversationSummaries?.length ? `
+  const convoSummaryHtml = data.conversationSummaries?.length
+    ? `
     <h3 style="color: #111827; margin-top: 24px;">Conversation Summaries</h3>
-    ${data.conversationSummaries.map(c => `
+    ${data.conversationSummaries
+      .map(
+        (c) => `
       <div style="background: #f9fafb; padding: 12px; border-radius: 4px; margin: 8px 0;">
         <strong>${c.provider}</strong> <span class="badge badge-medium">${c.status}</span>
         <p style="color: #6b7280; margin: 4px 0 0; font-size: 13px;">${c.summary}</p>
       </div>
-    `).join('')}
-  ` : '';
+    `,
+      )
+      .join("")}
+  `
+    : "";
 
-  return baseLayout('Weekly Report', `
+  return baseLayout(
+    "Weekly Report",
+    `
     <h2 style="margin-top: 0; color: #111827;">${data.restaurantName} - Weekly Report</h2>
     <p style="color: #6b7280;">${data.weekStartDate} — ${data.weekEndDate}</p>
 
@@ -278,20 +304,27 @@ export function weeklyReportTemplate(data: WeeklyReportData | any): string {
       <tbody>${topWinesHtml}</tbody>
     </table>
 
-    ${lowStockHtml ? `
+    ${
+      lowStockHtml
+        ? `
     <h3 style="color: #111827; margin-top: 24px;">Low Stock Items</h3>
     <table>
       <thead><tr><th>Wine</th><th>Stock</th><th>Threshold</th></tr></thead>
       <tbody>${lowStockHtml}</tbody>
     </table>
-    ` : ''}
+    `
+        : ""
+    }
 
     ${convoSummaryHtml}
-  `);
+  `,
+  );
 }
 
 export function dailySummaryTemplate(data: DailySummaryData | any): string {
-  return baseLayout('Daily Summary', `
+  return baseLayout(
+    "Daily Summary",
+    `
     <h2 style="margin-top: 0; color: #111827;">${data.restaurantName} - Daily Summary</h2>
     <p style="color: #6b7280;">${data.date}</p>
 
@@ -302,23 +335,29 @@ export function dailySummaryTemplate(data: DailySummaryData | any): string {
       <div class="info-row"><span class="info-label">Revenue</span><span class="info-value">${formatCurrency(data.revenue ?? data.metrics?.totalInventoryValue ?? 0)}</span></div>
       <div class="info-row"><span class="info-label">Pending Approvals</span><span class="info-value">${data.pendingApprovals ?? data.metrics?.pendingOrders ?? 0}</span></div>
     </div>
-  `);
+  `,
+  );
 }
 
 export function orderApprovalTemplate(data: OrderApprovalData | any): string {
-  const orderRef = data.orderNumber || data.orderId || 'N/A';
-  const wineName = data.wineName || (data.items?.[0]?.name || 'Wine Order');
-  const quantity = data.quantity || data.items?.reduce((s: number, i: any) => s + (i.quantity || 0), 0) || 0;
+  const orderRef = data.orderNumber || data.orderId || "N/A";
+  const wineName = data.wineName || data.items?.[0]?.name || "Wine Order";
+  const quantity =
+    data.quantity ||
+    data.items?.reduce((s: number, i: any) => s + (i.quantity || 0), 0) ||
+    0;
   const totalCost = data.totalCost || data.totalAmount || 0;
-  const providerName = data.providerName || 'Provider';
+  const providerName = data.providerName || "Provider";
   const urgency = data.urgency;
 
-  return baseLayout('Order Approval Required', `
+  return baseLayout(
+    "Order Approval Required",
+    `
     <h2 style="margin-top: 0; color: #111827;">Order Awaiting Your Approval</h2>
     
     <div style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 12px 16px; border-radius: 4px; margin: 16px 0;">
       <strong>Order #${orderRef}</strong>
-      ${urgency ? `<span class="badge badge-${urgency === 'high' || urgency === 'critical' ? 'high' : 'medium'}" style="margin-left: 8px;">${urgency.toUpperCase()}</span>` : ''}
+      ${urgency ? `<span class="badge badge-${urgency === "high" || urgency === "critical" ? "high" : "medium"}" style="margin-left: 8px;">${urgency.toUpperCase()}</span>` : ""}
     </div>
 
     <div style="margin: 16px 0;">
@@ -329,22 +368,33 @@ export function orderApprovalTemplate(data: OrderApprovalData | any): string {
     </div>
 
     <div style="text-align: center; margin-top: 24px;">
-      <a href="${data.approvalUrl || '#'}" class="btn">Review & Approve</a>
+      <a href="${data.approvalUrl || "#"}" class="btn">Review & Approve</a>
     </div>
-  `);
+  `,
+  );
 }
 
-export function deliveryNotificationTemplate(data: DeliveryNotificationData | any): string {
-  const orderRef = data.orderNumber || data.orderId || 'N/A';
-  const wineName = data.wineName || (data.items?.[0]?.name || 'Wine');
-  const quantity = data.quantity || data.items?.reduce((s: number, i: any) => s + (i.quantity || 0), 0) || 0;
-  const providerName = data.providerName || 'Provider';
-  const deliveredAt = data.deliveredAt || data.deliveryDate || new Date().toISOString();
-  const quantityReceived = data.quantityReceived ?? data.items?.reduce((s: number, i: any) => s + (i.received || 0), 0);
-  const status = data.status || 'delivered';
+export function deliveryNotificationTemplate(
+  data: DeliveryNotificationData | any,
+): string {
+  const orderRef = data.orderNumber || data.orderId || "N/A";
+  const wineName = data.wineName || data.items?.[0]?.name || "Wine";
+  const quantity =
+    data.quantity ||
+    data.items?.reduce((s: number, i: any) => s + (i.quantity || 0), 0) ||
+    0;
+  const providerName = data.providerName || "Provider";
+  const deliveredAt =
+    data.deliveredAt || data.deliveryDate || new Date().toISOString();
+  const quantityReceived =
+    data.quantityReceived ??
+    data.items?.reduce((s: number, i: any) => s + (i.received || 0), 0);
+  const status = data.status || "delivered";
 
-  return baseLayout('Delivery Notification', `
-    <h2 style="margin-top: 0; color: #111827;">Delivery ${status === 'delivered' ? 'Completed' : status === 'partial' ? 'Partial' : 'Update'}</h2>
+  return baseLayout(
+    "Delivery Notification",
+    `
+    <h2 style="margin-top: 0; color: #111827;">Delivery ${status === "delivered" ? "Completed" : status === "partial" ? "Partial" : "Update"}</h2>
     
     <div style="background: #d1fae5; border-left: 4px solid #059669; padding: 12px 16px; border-radius: 4px; margin: 16px 0;">
       <strong>Order #${orderRef} has been delivered</strong>
@@ -353,17 +403,23 @@ export function deliveryNotificationTemplate(data: DeliveryNotificationData | an
     <div style="margin: 16px 0;">
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Ordered</span><span class="info-value">${quantity} bottles</span></div>
-      ${quantityReceived !== undefined ? `<div class="info-row"><span class="info-label">Received</span><span class="info-value">${quantityReceived} bottles</span></div>` : ''}
+      ${quantityReceived !== undefined ? `<div class="info-row"><span class="info-label">Received</span><span class="info-value">${quantityReceived} bottles</span></div>` : ""}
       <div class="info-row"><span class="info-label">Provider</span><span class="info-value">${providerName}</span></div>
       <div class="info-row"><span class="info-label">Delivered At</span><span class="info-value">${deliveredAt}</span></div>
     </div>
 
-    ${data.discrepancy || (quantityReceived !== undefined && quantityReceived < quantity) ? `
+    ${
+      data.discrepancy ||
+      (quantityReceived !== undefined && quantityReceived < quantity)
+        ? `
     <div style="background: #fef3c7; border-left: 4px solid #d97706; padding: 12px 16px; border-radius: 4px; margin: 16px 0;">
       <strong>⚠️ Discrepancy Detected:</strong> Quantity received does not match order.
     </div>
-    ` : ''}
-  `);
+    `
+        : ""
+    }
+  `,
+  );
 }
 
 // =============================================================================
@@ -371,7 +427,9 @@ export function deliveryNotificationTemplate(data: DeliveryNotificationData | an
 // =============================================================================
 
 export function orderInquiryTemplate(data: OrderInquiryData): string {
-  return baseLayout('Wine Order Inquiry', `
+  return baseLayout(
+    "Wine Order Inquiry",
+    `
     <h2 style="margin-top: 0; color: #111827;">Wine Order Inquiry</h2>
     
     <p style="color: #374151;">Dear ${data.providerName},</p>
@@ -384,11 +442,11 @@ export function orderInquiryTemplate(data: OrderInquiryData): string {
     <div style="background: #f9fafb; padding: 16px; border-radius: 6px; margin: 16px 0;">
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(data.wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${data.quantity} bottles</span></div>
-      ${data.targetPrice ? `<div class="info-row"><span class="info-label">Target Price</span><span class="info-value">${formatCurrency(data.targetPrice)}/bottle</span></div>` : ''}
+      ${data.targetPrice ? `<div class="info-row"><span class="info-label">Target Price</span><span class="info-value">${formatCurrency(data.targetPrice)}/bottle</span></div>` : ""}
       <div class="info-row"><span class="info-label">Reference</span><span class="info-value">${data.orderNumber}</span></div>
     </div>
 
-    ${data.notes ? `<p style="color: #374151;"><strong>Notes:</strong> ${data.notes}</p>` : ''}
+    ${data.notes ? `<p style="color: #374151;"><strong>Notes:</strong> ${data.notes}</p>` : ""}
 
     <p style="color: #374151;">
       Could you please confirm availability and your best price for this order?
@@ -400,11 +458,14 @@ export function orderInquiryTemplate(data: OrderInquiryData): string {
       ${data.managerName}<br>
       ${data.restaurantName}
     </p>
-  `);
+  `,
+  );
 }
 
 export function counterOfferTemplate(data: CounterOfferData): string {
-  return baseLayout('Counter Offer', `
+  return baseLayout(
+    "Counter Offer",
+    `
     <h2 style="margin-top: 0; color: #111827;">Counter Offer</h2>
     
     <p style="color: #374151;">Dear ${data.providerName},</p>
@@ -422,7 +483,7 @@ export function counterOfferTemplate(data: CounterOfferData): string {
       <div class="info-row"><span class="info-label">Total</span><span class="info-value">${formatCurrency(data.counterPrice * data.quantity)}</span></div>
     </div>
 
-    ${data.reason ? `<p style="color: #374151;"><strong>Reason:</strong> ${data.reason}</p>` : ''}
+    ${data.reason ? `<p style="color: #374151;"><strong>Reason:</strong> ${data.reason}</p>` : ""}
 
     <p style="color: #374151;">
       We value our partnership and hope we can reach a mutually beneficial agreement.
@@ -434,11 +495,14 @@ export function counterOfferTemplate(data: CounterOfferData): string {
       ${data.managerName}<br>
       ${data.restaurantName}
     </p>
-  `);
+  `,
+  );
 }
 
 export function orderConfirmationTemplate(data: OrderConfirmationData): string {
-  return baseLayout('Order Confirmation', `
+  return baseLayout(
+    "Order Confirmation",
+    `
     <h2 style="margin-top: 0; color: #111827;">Order Confirmed</h2>
     
     <p style="color: #374151;">Dear ${data.providerName},</p>
@@ -453,7 +517,7 @@ export function orderConfirmationTemplate(data: OrderConfirmationData): string {
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${data.quantity} bottles</span></div>
       <div class="info-row"><span class="info-label">Price</span><span class="info-value">${formatCurrency(data.finalPrice)}/bottle</span></div>
       <div class="info-row"><span class="info-label">Total</span><span class="info-value" style="font-weight: 700;">${formatCurrency(data.totalCost)}</span></div>
-      ${data.expectedDeliveryDate ? `<div class="info-row"><span class="info-label">Expected Delivery</span><span class="info-value">${data.expectedDeliveryDate}</span></div>` : ''}
+      ${data.expectedDeliveryDate ? `<div class="info-row"><span class="info-label">Expected Delivery</span><span class="info-value">${data.expectedDeliveryDate}</span></div>` : ""}
     </div>
 
     <p style="color: #374151;">
@@ -465,11 +529,14 @@ export function orderConfirmationTemplate(data: OrderConfirmationData): string {
       ${data.managerName}<br>
       ${data.restaurantName}
     </p>
-  `);
+  `,
+  );
 }
 
 export function deliveryReminderTemplate(data: DeliveryReminderData): string {
-  return baseLayout('Delivery Reminder', `
+  return baseLayout(
+    "Delivery Reminder",
+    `
     <h2 style="margin-top: 0; color: #111827;">Delivery Reminder</h2>
     
     <p style="color: #374151;">Dear ${data.providerName},</p>
@@ -483,7 +550,7 @@ export function deliveryReminderTemplate(data: DeliveryReminderData): string {
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(data.wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${data.quantity} bottles</span></div>
       <div class="info-row"><span class="info-label">Expected Date</span><span class="info-value" style="font-weight: 700;">${data.expectedDeliveryDate}</span></div>
-      ${data.deliveryAddress ? `<div class="info-row"><span class="info-label">Delivery Address</span><span class="info-value">${data.deliveryAddress}</span></div>` : ''}
+      ${data.deliveryAddress ? `<div class="info-row"><span class="info-label">Delivery Address</span><span class="info-value">${data.deliveryAddress}</span></div>` : ""}
     </div>
 
     <p style="color: #374151;">
@@ -495,5 +562,6 @@ export function deliveryReminderTemplate(data: DeliveryReminderData): string {
       Thank you,<br>
       ${data.restaurantName}
     </p>
-  `);
+  `,
+  );
 }

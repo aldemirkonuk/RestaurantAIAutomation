@@ -9,6 +9,7 @@ Usage:
     client = get_gemini_client()
     haiku = get_haiku_client()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +17,10 @@ from typing import Optional
 
 try:
     from google import genai
-    from google.genai import types as genai_types  # noqa: F401 — re-exported for callers
+    from google.genai import (
+        types as genai_types,
+    )  # noqa: F401 — re-exported for callers
+
     _GEMINI_AVAILABLE = True
 except ImportError:
     genai = None  # type: ignore
@@ -25,6 +29,7 @@ except ImportError:
 
 try:
     import anthropic
+
     _ANTHROPIC_AVAILABLE = True
 except ImportError:
     anthropic = None  # type: ignore

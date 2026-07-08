@@ -4,12 +4,17 @@
  * Supports multi-restaurant, multi-role routing with fallback to defaults.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../database/database.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { DatabaseService } from "../database/database.service";
 
-export type RecipientRole = 'manager' | 'staff' | 'provider' | 'sommelier' | 'customer';
-export type NotificationChannel = 'email' | 'sms' | 'push';
+export type RecipientRole =
+  | "manager"
+  | "staff"
+  | "provider"
+  | "sommelier"
+  | "customer";
+export type NotificationChannel = "email" | "sms" | "push";
 
 export interface ResolvedRecipients {
   emails: string[];
@@ -34,8 +39,9 @@ export class RecipientResolverService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
   ) {
-    this.defaultEmail = this.configService.get<string>('MANAGER_EMAIL') || '';
-    this.defaultRestaurantId = this.configService.get<string>('DEFAULT_RESTAURANT_ID') || null;
+    this.defaultEmail = this.configService.get<string>("MANAGER_EMAIL") || "";
+    this.defaultRestaurantId =
+      this.configService.get<string>("DEFAULT_RESTAURANT_ID") || null;
   }
 
   /**
@@ -48,47 +54,58 @@ export class RecipientResolverService {
       pushSubscriptionIds: [],
     };
 
-    const channels = query.channels || ['email', 'sms', 'push'];
+    const channels = query.channels || ["email", "sms", "push"];
 
     try {
       const client = this.databaseService.getClient();
 
       // 1. Find users with matching roles for this restaurant
-      const userIds = await this.getUserIdsForRoles(client, query.restaurantId, query.roles);
+      const userIds = await this.getUserIdsForRoles(
+        client,
+        query.restaurantId,
+        query.roles,
+      );
 
       if (userIds.length === 0) {
-        this.logger.debug(`No users found for restaurant ${query.restaurantId} with roles ${query.roles.join(', ')}. Using defaults.`);
+        this.logger.debug(
+          `No users found for restaurant ${query.restaurantId} with roles ${query.roles.join(", ")}. Using defaults.`,
+        );
         return this.getDefaultRecipients(channels);
       }
 
       // 2. Get notification preferences for these users
-      const preferences = await this.getNotificationPreferences(client, userIds);
+      const preferences = await this.getNotificationPreferences(
+        client,
+        userIds,
+      );
 
       // 3. Get user contact details
       const users = await this.getUserContacts(client, userIds);
 
       for (const user of users) {
         const prefs = preferences.get(user.user_id);
-        
+
         // Check if user wants email notifications
-        if (channels.includes('email') && user.email) {
-          const wantsEmail = !prefs || this.checkChannelPreference(prefs, 'email');
+        if (channels.includes("email") && user.email) {
+          const wantsEmail =
+            !prefs || this.checkChannelPreference(prefs, "email");
           if (wantsEmail) {
             result.emails.push(user.email);
           }
         }
 
         // Check if user wants SMS notifications
-        if (channels.includes('sms') && user.phone) {
-          const wantsSms = !prefs || this.checkChannelPreference(prefs, 'sms');
+        if (channels.includes("sms") && user.phone) {
+          const wantsSms = !prefs || this.checkChannelPreference(prefs, "sms");
           if (wantsSms) {
             result.phones.push(user.phone);
           }
         }
 
         // Check push subscriptions
-        if (channels.includes('push')) {
-          const wantsPush = !prefs || this.checkChannelPreference(prefs, 'push');
+        if (channels.includes("push")) {
+          const wantsPush =
+            !prefs || this.checkChannelPreference(prefs, "push");
           if (wantsPush) {
             const subs = await this.getPushSubscriptions(client, user.user_id);
             result.pushSubscriptionIds.push(...subs);
@@ -97,12 +114,15 @@ export class RecipientResolverService {
       }
 
       // 4. If provider-specific, also resolve provider contacts from contacts table
-      if (query.providerId && query.roles.includes('provider')) {
-        const providerContacts = await this.getProviderContacts(client, query.providerId);
-        if (channels.includes('email')) {
+      if (query.providerId && query.roles.includes("provider")) {
+        const providerContacts = await this.getProviderContacts(
+          client,
+          query.providerId,
+        );
+        if (channels.includes("email")) {
           result.emails.push(...providerContacts.emails);
         }
-        if (channels.includes('sms')) {
+        if (channels.includes("sms")) {
           result.phones.push(...providerContacts.phones);
         }
       }
@@ -113,12 +133,13 @@ export class RecipientResolverService {
       result.pushSubscriptionIds = [...new Set(result.pushSubscriptionIds)];
 
       // Fallback: if no emails found, use defaults
-      if (result.emails.length === 0 && channels.includes('email')) {
-        this.logger.debug('No email recipients resolved, falling back to defaults');
-        const defaults = this.getDefaultRecipients(['email']);
+      if (result.emails.length === 0 && channels.includes("email")) {
+        this.logger.debug(
+          "No email recipients resolved, falling back to defaults",
+        );
+        const defaults = this.getDefaultRecipients(["email"]);
         result.emails = defaults.emails;
       }
-
     } catch (error) {
       this.logger.error(`Failed to resolve recipients: ${error}`);
       return this.getDefaultRecipients(channels);
@@ -126,7 +147,7 @@ export class RecipientResolverService {
 
     this.logger.debug(
       `Resolved recipients for restaurant ${query.restaurantId}: ` +
-      `${result.emails.length} emails, ${result.phones.length} phones, ${result.pushSubscriptionIds.length} push`
+        `${result.emails.length} emails, ${result.phones.length} phones, ${result.pushSubscriptionIds.length} push`,
     );
 
     return result;
@@ -143,10 +164,10 @@ export class RecipientResolverService {
     try {
       // Query user_restaurant_access for users with matching roles
       const { data, error } = await client
-        .from('user_restaurant_access')
-        .select('user_id, role')
-        .eq('restaurant_id', restaurantId)
-        .in('role', roles);
+        .from("user_restaurant_access")
+        .select("user_id, role")
+        .eq("restaurant_id", restaurantId)
+        .in("role", roles);
 
       if (error || !data) return [];
 
@@ -155,10 +176,10 @@ export class RecipientResolverService {
       // Fallback: query users table directly
       try {
         const { data, error } = await client
-          .from('users')
-          .select('user_id, role')
-          .eq('restaurant_id', restaurantId)
-          .in('role', roles);
+          .from("users")
+          .select("user_id, role")
+          .eq("restaurant_id", restaurantId)
+          .in("role", roles);
 
         if (error || !data) return [];
         return data.map((row: any) => row.user_id);
@@ -178,9 +199,9 @@ export class RecipientResolverService {
     const map = new Map<string, any>();
     try {
       const { data, error } = await client
-        .from('notification_preferences')
-        .select('*')
-        .in('user_id', userIds);
+        .from("notification_preferences")
+        .select("*")
+        .in("user_id", userIds);
 
       if (data) {
         for (const pref of data) {
@@ -199,12 +220,14 @@ export class RecipientResolverService {
   private async getUserContacts(
     client: any,
     userIds: string[],
-  ): Promise<Array<{ user_id: string; email: string; phone?: string; name?: string }>> {
+  ): Promise<
+    Array<{ user_id: string; email: string; phone?: string; name?: string }>
+  > {
     try {
       const { data, error } = await client
-        .from('users')
-        .select('user_id, email, phone, name')
-        .in('user_id', userIds);
+        .from("users")
+        .select("user_id, email, phone, name")
+        .in("user_id", userIds);
 
       return data || [];
     } catch {
@@ -215,12 +238,15 @@ export class RecipientResolverService {
   /**
    * Get push subscription IDs for a user.
    */
-  private async getPushSubscriptions(client: any, userId: string): Promise<string[]> {
+  private async getPushSubscriptions(
+    client: any,
+    userId: string,
+  ): Promise<string[]> {
     try {
       const { data, error } = await client
-        .from('push_subscriptions')
-        .select('id')
-        .eq('user_id', userId);
+        .from("push_subscriptions")
+        .select("id")
+        .eq("user_id", userId);
 
       return (data || []).map((s: any) => s.id);
     } catch {
@@ -240,22 +266,24 @@ export class RecipientResolverService {
     try {
       // Find contact linked to this provider
       const { data: contacts, error: contactError } = await client
-        .from('contacts')
-        .select('id')
-        .eq('linked_provider_id', providerId)
-        .eq('is_active', true);
+        .from("contacts")
+        .select("id")
+        .eq("linked_provider_id", providerId)
+        .eq("is_active", true);
 
       if (!contacts || contacts.length === 0) {
         // Fallback: try providers table directly
         const { data: provider } = await client
-          .from('providers')
-          .select('contact_email, contact_phone')
-          .eq('id', providerId)
+          .from("providers")
+          .select("contact_email, contact_phone")
+          .eq("id", providerId)
           .single();
 
         if (provider) {
-          if (provider.contact_email) result.emails.push(provider.contact_email);
-          if (provider.contact_phone) result.phones.push(provider.contact_phone);
+          if (provider.contact_email)
+            result.emails.push(provider.contact_email);
+          if (provider.contact_phone)
+            result.phones.push(provider.contact_phone);
         }
         return result;
       }
@@ -264,15 +292,15 @@ export class RecipientResolverService {
 
       // Get addresses for these contacts
       const { data: addresses } = await client
-        .from('contact_addresses')
-        .select('channel, address_value')
-        .in('contact_id', contactIds)
-        .eq('is_primary', true);
+        .from("contact_addresses")
+        .select("channel, address_value")
+        .in("contact_id", contactIds)
+        .eq("is_primary", true);
 
       if (addresses) {
         for (const addr of addresses) {
-          if (addr.channel === 'email') result.emails.push(addr.address_value);
-          if (addr.channel === 'phone') result.phones.push(addr.address_value);
+          if (addr.channel === "email") result.emails.push(addr.address_value);
+          if (addr.channel === "phone") result.phones.push(addr.address_value);
         }
       }
     } catch (error) {
@@ -301,7 +329,11 @@ export class RecipientResolverService {
     }
 
     // Default: allow if no explicit preferences set
-    if (!prefs.low_stock_channels && !prefs.order_channels && !prefs.report_channels) {
+    if (
+      !prefs.low_stock_channels &&
+      !prefs.order_channels &&
+      !prefs.report_channels
+    ) {
       return true;
     }
 
@@ -311,13 +343,19 @@ export class RecipientResolverService {
   /**
    * Get default recipients when no specific ones are found.
    */
-  private getDefaultRecipients(channels: NotificationChannel[]): ResolvedRecipients {
-    const defaults = this.defaultEmail.split(',').map(e => e.trim()).filter(e => e);
-    const managerPhone = this.configService.get<string>('MANAGER_PHONE') || null;
+  private getDefaultRecipients(
+    channels: NotificationChannel[],
+  ): ResolvedRecipients {
+    const defaults = this.defaultEmail
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => e);
+    const managerPhone =
+      this.configService.get<string>("MANAGER_PHONE") || null;
 
     return {
-      emails: channels.includes('email') ? defaults : [],
-      phones: channels.includes('sms') && managerPhone ? [managerPhone] : [],
+      emails: channels.includes("email") ? defaults : [],
+      phones: channels.includes("sms") && managerPhone ? [managerPhone] : [],
       pushSubscriptionIds: [],
     };
   }
@@ -328,8 +366,8 @@ export class RecipientResolverService {
   async getManagerEmails(restaurantId: string): Promise<string[]> {
     const result = await this.resolveRecipients({
       restaurantId,
-      roles: ['manager'],
-      channels: ['email'],
+      roles: ["manager"],
+      channels: ["email"],
     });
     return result.emails;
   }
@@ -340,8 +378,8 @@ export class RecipientResolverService {
   async getStaffEmails(restaurantId: string): Promise<string[]> {
     const result = await this.resolveRecipients({
       restaurantId,
-      roles: ['staff'],
-      channels: ['email'],
+      roles: ["staff"],
+      channels: ["email"],
     });
     return result.emails;
   }

@@ -621,7 +621,7 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
           </div>
         )
       
-      case 'chart-bar':
+      case 'chart-bar': {
         const maxValue = Math.max(...panel.content.data)
         return (
           <div style={baseStyle}>
@@ -644,8 +644,9 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
             </div>
           </div>
         )
+      }
       
-      case 'chart-pie':
+      case 'chart-pie': {
         const total = panel.content.data.reduce((a: number, b: number) => a + b, 0)
         return (
           <div style={baseStyle}>
@@ -675,6 +676,7 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
             </div>
           </div>
         )
+      }
       
       case 'image':
         return (

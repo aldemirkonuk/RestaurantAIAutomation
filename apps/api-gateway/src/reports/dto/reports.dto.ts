@@ -1,18 +1,18 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsArray, IsEnum, IsOptional, IsString } from "class-validator";
 
 export enum ReportType {
-  INVENTORY_SUMMARY = 'inventory_summary',
-  SALES_ANALYSIS = 'sales_analysis',
-  PROCUREMENT_HISTORY = 'procurement_history',
-  FINANCIAL_SUMMARY = 'financial_summary',
-  COMPLIANCE_REPORT = 'compliance_report',
+  INVENTORY_SUMMARY = "inventory_summary",
+  SALES_ANALYSIS = "sales_analysis",
+  PROCUREMENT_HISTORY = "procurement_history",
+  FINANCIAL_SUMMARY = "financial_summary",
+  COMPLIANCE_REPORT = "compliance_report",
 }
 
 export enum ReportFormat {
-  PDF = 'pdf',
-  EXCEL = 'excel',
-  CSV = 'csv',
+  PDF = "pdf",
+  EXCEL = "excel",
+  CSV = "csv",
 }
 
 export class GenerateReportDto {

@@ -1,6 +1,6 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 @Injectable()
 export class DatabaseService implements OnModuleInit {
@@ -10,11 +10,13 @@ export class DatabaseService implements OnModuleInit {
   constructor(private configService: ConfigService) {}
 
   async onModuleInit() {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = this.configService.get<string>("SUPABASE_URL");
+    const supabaseKey = this.configService.get<string>(
+      "SUPABASE_SERVICE_ROLE_KEY",
+    );
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Supabase configuration missing');
+      throw new Error("Supabase configuration missing");
     }
 
     this.supabase = createClient(supabaseUrl, supabaseKey, {
@@ -24,7 +26,7 @@ export class DatabaseService implements OnModuleInit {
       },
     });
 
-    this.logger.log('✅ Supabase client initialized');
+    this.logger.log("✅ Supabase client initialized");
   }
 
   getClient(): SupabaseClient {
@@ -39,12 +41,12 @@ export class DatabaseService implements OnModuleInit {
   // Helper methods for common operations
   async getRestaurantInventory(restaurantId: string) {
     const { data, error } = await this.supabase
-      .from('restaurant_inventory')
+      .from("restaurant_inventory")
       .select(
-        '*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)',
+        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
       )
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true);
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
 
     if (error) throw error;
     return data;
@@ -52,9 +54,9 @@ export class DatabaseService implements OnModuleInit {
 
   async getLowStockItems(restaurantId: string) {
     const { data, error } = await this.supabase
-      .from('v_low_stock_items')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
+      .from("v_low_stock_items")
+      .select("*")
+      .eq("restaurant_id", restaurantId);
 
     if (error) throw error;
     return data;
@@ -62,15 +64,17 @@ export class DatabaseService implements OnModuleInit {
 
   async getProcurementOrders(restaurantId: string, status?: string) {
     let query = this.supabase
-      .from('procurement_orders')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
+      .from("procurement_orders")
+      .select("*")
+      .eq("restaurant_id", restaurantId);
 
     if (status) {
-      query = query.eq('status', status);
+      query = query.eq("status", status);
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data, error } = await query.order("created_at", {
+      ascending: false,
+    });
 
     if (error) throw error;
     return data;
@@ -78,14 +82,13 @@ export class DatabaseService implements OnModuleInit {
 
   async getRecentNotifications(managerId: string, limit: number = 20) {
     const { data, error } = await this.supabase
-      .from('notifications')
-      .select('*')
-      .eq('manager_id', managerId)
-      .order('sent_at', { ascending: false })
+      .from("notifications")
+      .select("*")
+      .eq("manager_id", managerId)
+      .order("sent_at", { ascending: false })
       .limit(limit);
 
     if (error) throw error;
     return data;
   }
 }
-

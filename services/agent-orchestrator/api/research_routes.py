@@ -31,6 +31,7 @@ research_router = APIRouter(prefix="/api/v1/research", tags=["research"])
 # AUTH
 # =============================================================================
 
+
 def verify_admin_token(x_admin_key: str | None = Header(None)) -> str:
     """Require X-Admin-Key header matching ADMIN_API_KEY env var (D-06 Bug #7)."""
     expected = os.getenv("ADMIN_API_KEY", "")
@@ -44,6 +45,7 @@ def verify_admin_token(x_admin_key: str | None = Header(None)) -> str:
 # =============================================================================
 # REQUEST / RESPONSE MODELS
 # =============================================================================
+
 
 class ResearchMetricsResponse(BaseModel):
     gap_closure: Dict[str, Any]
@@ -63,10 +65,12 @@ class TriggerRequest(BaseModel):
 # HELPERS
 # =============================================================================
 
+
 def _get_supabase():
     """Return Supabase client. Returns None if not configured."""
     try:
         from config.settings import get_settings
+
         settings = get_settings()
         return settings.supabase_client
     except Exception:
@@ -95,6 +99,7 @@ def _percentile_50(values: List[float]) -> float:
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
+
 
 @research_router.get("/metrics", response_model=ResearchMetricsResponse)
 def get_research_metrics():
@@ -186,7 +191,9 @@ def get_research_metrics():
     null_rate_before = _safe_div(total_null_before, n_stats)
     null_rate_after = _safe_div(total_null_after, n_stats)
 
-    fields_filled_p50 = _percentile_50([float(r.get("fields_filled") or 0) for r in stats_rows])
+    fields_filled_p50 = _percentile_50(
+        [float(r.get("fields_filled") or 0) for r in stats_rows]
+    )
     time_to_fill_values = [
         float(r["time_to_fill_hours"])
         for r in stats_rows
@@ -204,7 +211,9 @@ def get_research_metrics():
     # --- Compute: Quality ---
     total_fields_targeted = sum(int(r.get("fields_targeted") or 0) for r in stats_rows)
     total_fields_filled = sum(int(r.get("fields_filled") or 0) for r in stats_rows)
-    total_fields_conflicted = sum(int(r.get("fields_conflicted") or 0) for r in stats_rows)
+    total_fields_conflicted = sum(
+        int(r.get("fields_conflicted") or 0) for r in stats_rows
+    )
 
     promotion_rate = _safe_div(total_fields_filled, total_fields_targeted)
     conflict_rate = _safe_div(total_fields_conflicted, total_fields_targeted)
@@ -241,18 +250,23 @@ def get_research_metrics():
         citation_completeness = 0.0
         independent_corroboration_rate = 0.0
         fetch_verify_pass_rate = 0.0
-        fetch_verify_pass_rate_by_tier: Dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
+        fetch_verify_pass_rate_by_tier: Dict[str, float] = {
+            "A": 0.0,
+            "B": 0.0,
+            "C": 0.0,
+        }
     else:
         # citation_completeness: fraction with corroboration_count >= 1 (proxy for complete citations)
         complete_count = sum(
-            1 for c in cit_rows
-            if int(c.get("corroboration_count") or 0) >= 1
+            1 for c in cit_rows if int(c.get("corroboration_count") or 0) >= 1
         )
         citation_completeness = _safe_div(complete_count, total_c)
 
         corroborated_count = sum(
-            1 for c in cit_rows
-            if int(c.get("corroboration_count") or 0) >= 2 or c.get("source_tier") == "A"
+            1
+            for c in cit_rows
+            if int(c.get("corroboration_count") or 0) >= 2
+            or c.get("source_tier") == "A"
         )
         independent_corroboration_rate = _safe_div(corroborated_count, total_c)
 
@@ -282,7 +296,9 @@ def get_research_metrics():
     }
 
     # --- Compute: Throughput + Cost ---
-    total_records_processed = sum(int(r.get("records_processed") or 0) for r in runs_rows)
+    total_records_processed = sum(
+        int(r.get("records_processed") or 0) for r in runs_rows
+    )
     total_run_cost = sum(float(r.get("cost_usd") or 0) for r in runs_rows)
     total_attempts = sum(int(r.get("attempts") or 0) for r in stats_rows)
 
@@ -308,7 +324,9 @@ def get_research_metrics():
     # --- Compute: Safety ---
     total_pii_flags = sum(int(r.get("pii_policy_flags") or 0) for r in runs_rows)
     # regression_rate: actual regressions tracked from research_run_stats (D-06 Bug #6)
-    total_regressions = sum(int(r.get("regression_blocked_count") or 0) for r in stats_rows)
+    total_regressions = sum(
+        int(r.get("regression_blocked_count") or 0) for r in stats_rows
+    )
     total_fields_attempted = sum(int(r.get("fields_targeted") or 0) for r in stats_rows)
     regression_rate = _safe_div(total_regressions, total_fields_attempted)
     safety = {
@@ -347,9 +365,7 @@ def get_research_runs(limit: int = 20, offset: int = 0):
 
     try:
         count_resp = (
-            supabase.table("research_runs")
-            .select("id", count="exact")
-            .execute()
+            supabase.table("research_runs").select("id", count="exact").execute()
         )
         total = count_resp.count or 0
 
@@ -409,9 +425,7 @@ def get_research_conflicts(limit: int = 20, offset: int = 0):
 
         rows_resp = (
             supabase.table("master_wine_library_submissions")
-            .select(
-                "id, conflict_candidates, field_confidence, last_research_run_at"
-            )
+            .select("id, conflict_candidates, field_confidence, last_research_run_at")
             .not_.is_("conflict_candidates", "null")
             .neq("conflict_candidates", "{}")
             .order("last_research_run_at", desc=True)
@@ -433,16 +447,20 @@ def get_research_conflicts(limit: int = 20, offset: int = 0):
         if isinstance(fc, dict):
             wn_entry = fc.get("wine_name")
             vt_entry = fc.get("vintage")
-            wine_name = wn_entry.get("value") if isinstance(wn_entry, dict) else wn_entry
+            wine_name = (
+                wn_entry.get("value") if isinstance(wn_entry, dict) else wn_entry
+            )
             vintage = vt_entry.get("value") if isinstance(vt_entry, dict) else vt_entry
 
-        conflicts.append({
-            "submission_id": row["id"],
-            "wine_name": wine_name,
-            "vintage": vintage,
-            "conflicted_fields": row.get("conflict_candidates") or {},
-            "detected_at": row.get("last_research_run_at"),
-        })
+        conflicts.append(
+            {
+                "submission_id": row["id"],
+                "wine_name": wine_name,
+                "vintage": vintage,
+                "conflicted_fields": row.get("conflict_candidates") or {},
+                "detected_at": row.get("last_research_run_at"),
+            }
+        )
 
     return {
         "conflicts": conflicts,
@@ -536,7 +554,9 @@ def trigger_research(body: TriggerRequest, _token: str = Depends(verify_admin_to
     except HTTPException:
         raise
     except Exception as exc:
-        logger.warning("trigger_research: could not check running status (non-fatal): %s", exc)
+        logger.warning(
+            "trigger_research: could not check running status (non-fatal): %s", exc
+        )
 
     # Import Celery task
     try:
@@ -557,6 +577,7 @@ def trigger_research(body: TriggerRequest, _token: str = Depends(verify_admin_to
         # Priority: any field_confidence entry below 0.8 for priority fields
         try:
             from datetime import timedelta
+
             cooldown_cutoff = (
                 datetime.now(timezone.utc) - timedelta(days=7)
             ).isoformat()
@@ -588,7 +609,9 @@ def trigger_research(body: TriggerRequest, _token: str = Depends(verify_admin_to
             submission_ids = never_ids + stale_ids
         except Exception as exc:
             logger.error("trigger_research: eligible records query failed: %s", exc)
-            raise HTTPException(status_code=503, detail=f"Failed to query eligible records: {exc}")
+            raise HTTPException(
+                status_code=503, detail=f"Failed to query eligible records: {exc}"
+            )
 
     if not submission_ids:
         return {"queued": 0, "run_message": "No eligible records found for research"}

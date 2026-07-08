@@ -14,19 +14,18 @@ Tests cover:
 """
 
 import asyncio
-import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
-from agents.email_intel_agent import EmailIntelAgent, STALE_EMAIL_HOURS
+from agents.email_intel_agent import EmailIntelAgent
 from models.email_intel import EmailClassification, PromoDetails
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_db_mock(existing_promo_data=None, insert_data=None):
     """Build a Supabase mock that returns configurable data on execute()."""
@@ -46,7 +45,9 @@ def _make_db_mock(existing_promo_data=None, insert_data=None):
     chain.not_ = chain
     chain.is_.return_value = chain
     # Default: empty rows, successful insert
-    chain.execute.return_value.data = existing_promo_data if existing_promo_data is not None else []
+    chain.execute.return_value.data = (
+        existing_promo_data if existing_promo_data is not None else []
+    )
     db.supabase.table.return_value = chain
     return db, chain
 
@@ -103,7 +104,9 @@ def _operational_payload(**overrides):
     return base
 
 
-def _mock_classification(category: str, confidence: float = 0.92, provider_name: str = "TestVendor"):
+def _mock_classification(
+    category: str, confidence: float = 0.92, provider_name: str = "TestVendor"
+):
     return EmailClassification(
         category=category,
         confidence=confidence,
@@ -130,6 +133,7 @@ def _mock_promo_details(**overrides):
 # Test 1: NOISE email → silent discard
 # ---------------------------------------------------------------------------
 
+
 async def test_noise_email_silent_discard():
     """NOISE emails must be silently discarded — no publish, no notify, no DB write."""
     agent = _make_agent()
@@ -141,10 +145,13 @@ async def test_noise_email_silent_discard():
         "received_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
-    with patch.object(agent, "_check_idempotency", return_value=False), \
-         patch.object(agent, "_classify_email", return_value=_mock_classification("NOISE")), \
-         patch.object(agent, "_mark_processed", new_callable=AsyncMock) as mock_mark, \
-         patch.object(agent, "_notify", new_callable=AsyncMock) as mock_notify:
+    with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
+        agent, "_classify_email", return_value=_mock_classification("NOISE")
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ) as mock_mark, patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ) as mock_notify:
 
         await agent.process_message(payload)
 
@@ -158,16 +165,19 @@ async def test_noise_email_silent_discard():
 # Test 2: OPERATIONAL routing → re-publish to email.inbound.received
 # ---------------------------------------------------------------------------
 
+
 async def test_operational_email_republishes_to_received():
     """OPERATIONAL emails must be re-published to email.inbound.received with __intel_bypass."""
     agent = _make_agent()
     payload = _operational_payload()
 
-    with patch.object(agent, "_check_idempotency", return_value=False), \
-         patch.object(agent, "_classify_email", return_value=_mock_classification("OPERATIONAL")), \
-         patch.object(agent, "_mark_processed", new_callable=AsyncMock), \
-         patch.object(agent, "_notify", new_callable=AsyncMock), \
-         patch.object(agent, "publish", new_callable=AsyncMock) as mock_publish:
+    with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
+        agent, "_classify_email", return_value=_mock_classification("OPERATIONAL")
+    ), patch.object(agent, "_mark_processed", new_callable=AsyncMock), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ), patch.object(
+        agent, "publish", new_callable=AsyncMock
+    ) as mock_publish:
 
         await agent.process_message(payload)
 
@@ -184,6 +194,7 @@ async def test_operational_email_republishes_to_received():
 # Test 3: PROMO routing → inserts to vendor_promotions
 # ---------------------------------------------------------------------------
 
+
 async def test_promo_email_inserts_to_vendor_promotions():
     """PROMO emails must trigger extraction and insert a row into vendor_promotions."""
     db, chain = _make_db_mock()
@@ -195,27 +206,36 @@ async def test_promo_email_inserts_to_vendor_promotions():
     agent = _make_agent(db=db)
     payload = _promo_payload()
 
-    with patch.object(agent, "_check_idempotency", return_value=False), \
-         patch.object(agent, "_classify_email", return_value=_mock_classification("PROMO")), \
-         patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), \
-         patch.object(agent, "_compute_urgency_score", return_value=7.5), \
-         patch.object(agent, "_find_linked_events", return_value=["evt-001"]), \
-         patch.object(agent, "_get_last_purchase_price", return_value=45.0), \
-         patch.object(agent, "_mark_processed", new_callable=AsyncMock), \
-         patch.object(agent, "_notify", new_callable=AsyncMock):
+    with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
+        agent, "_classify_email", return_value=_mock_classification("PROMO")
+    ), patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(
+        agent, "_compute_urgency_score", return_value=7.5
+    ), patch.object(
+        agent, "_find_linked_events", return_value=["evt-001"]
+    ), patch.object(
+        agent, "_get_last_purchase_price", return_value=45.0
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ):
 
         await agent.process_message(payload)
 
     # vendor_promotions table must be called
-    table_calls = [str(c) for c in db.supabase.table.call_args_list]
-    vendor_promo_calls = [c for c in db.supabase.table.call_args_list
-                         if "vendor_promotions" in str(c)]
+    [str(c) for c in db.supabase.table.call_args_list]
+    vendor_promo_calls = [
+        c for c in db.supabase.table.call_args_list if "vendor_promotions" in str(c)
+    ]
     assert len(vendor_promo_calls) >= 1, "vendor_promotions table must be accessed"
 
 
 # ---------------------------------------------------------------------------
 # Test 4: Dedup hash prevents re-insertion of same deal
 # ---------------------------------------------------------------------------
+
 
 async def test_promo_dedup_prevents_duplicate_insert():
     """When dedup_hash already exists, the promo must NOT be re-inserted."""
@@ -233,11 +253,15 @@ async def test_promo_dedup_prevents_duplicate_insert():
     agent = _make_agent(db=db)
     payload = _promo_payload()
 
-    with patch.object(agent, "_check_idempotency", return_value=False), \
-         patch.object(agent, "_classify_email", return_value=_mock_classification("PROMO")), \
-         patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), \
-         patch.object(agent, "_mark_processed", new_callable=AsyncMock), \
-         patch.object(agent, "_notify", new_callable=AsyncMock):
+    with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
+        agent, "_classify_email", return_value=_mock_classification("PROMO")
+    ), patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ):
 
         # Patch the dedup check to return existing data
         with patch.object(agent, "_handle_promo") as mock_handle_promo:
@@ -253,8 +277,9 @@ async def test_promo_dedup_prevents_duplicate_insert():
     promo_details = _mock_promo_details()
     classification = _mock_classification("PROMO")
 
-    with patch.object(agent2, "_extract_promo", return_value=promo_details), \
-         patch.object(agent2, "_notify", new_callable=AsyncMock):
+    with patch.object(
+        agent2, "_extract_promo", return_value=promo_details
+    ), patch.object(agent2, "_notify", new_callable=AsyncMock):
 
         await agent2._handle_promo(
             payload=_promo_payload(gmail_message_id="dup-msg"),
@@ -264,8 +289,7 @@ async def test_promo_dedup_prevents_duplicate_insert():
         )
 
     # Insert must NOT be called when dedup match found
-    insert_calls = [c for c in db2.supabase.table.call_args_list
-                    if "vendor_promotions" in str(c)]
+    [c for c in db2.supabase.table.call_args_list if "vendor_promotions" in str(c)]
     # Only the select (dedup check) call should exist, no insert
     table_mock = db2.supabase.table.return_value
     table_mock.insert.assert_not_called()
@@ -274,6 +298,7 @@ async def test_promo_dedup_prevents_duplicate_insert():
 # ---------------------------------------------------------------------------
 # Test 5: Stale email (>18h) skips Redis digest accumulation
 # ---------------------------------------------------------------------------
+
 
 async def test_stale_email_skips_redis_digest():
     """Emails older than STALE_EMAIL_HOURS must not be pushed to Redis digest."""
@@ -292,14 +317,21 @@ async def test_stale_email_skips_redis_digest():
     agent = _make_agent(db=db, redis=redis_mock)
     agent.haiku_semaphore = asyncio.Semaphore(5)
 
-    with patch.object(agent, "_check_idempotency", return_value=False), \
-         patch.object(agent, "_classify_email", return_value=_mock_classification("PROMO")), \
-         patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), \
-         patch.object(agent, "_compute_urgency_score", return_value=3.0), \
-         patch.object(agent, "_find_linked_events", return_value=[]), \
-         patch.object(agent, "_get_last_purchase_price", return_value=None), \
-         patch.object(agent, "_mark_processed", new_callable=AsyncMock), \
-         patch.object(agent, "_notify", new_callable=AsyncMock):
+    with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
+        agent, "_classify_email", return_value=_mock_classification("PROMO")
+    ), patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(
+        agent, "_compute_urgency_score", return_value=3.0
+    ), patch.object(
+        agent, "_find_linked_events", return_value=[]
+    ), patch.object(
+        agent, "_get_last_purchase_price", return_value=None
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ):
 
         await agent.process_message(payload)
 
@@ -310,6 +342,7 @@ async def test_stale_email_skips_redis_digest():
 # ---------------------------------------------------------------------------
 # Test 6: Urgency score formula D-16
 # ---------------------------------------------------------------------------
+
 
 async def test_urgency_score_formula():
     """
@@ -329,14 +362,12 @@ async def test_urgency_score_formula():
         "threshold_min": 4,
         "master_wine_library": {"grape_variety": "Pinot Noir"},
     }
-    cal_row = {
-        "event_date": (_date.today() + timedelta(days=2)).isoformat()  # ≤3 days
-    }
+    cal_row = {"event_date": (_date.today() + timedelta(days=2)).isoformat()}  # ≤3 days
 
     # First call returns inventory (for stock_factor), second returns calendar (for calendar_prox)
     execute_results = [
-        MagicMock(data=[inv_row]),   # restaurant_inventory query
-        MagicMock(data=[cal_row]),   # calendar_events query
+        MagicMock(data=[inv_row]),  # restaurant_inventory query
+        MagicMock(data=[cal_row]),  # calendar_events query
     ]
     chain.execute.side_effect = execute_results
 
@@ -352,15 +383,17 @@ async def test_urgency_score_formula():
 # Test 7: Haiku semaphore is acquired during PROMO extraction
 # ---------------------------------------------------------------------------
 
+
 async def test_haiku_semaphore_acquired_during_extraction():
     """The haiku_semaphore must be acquired when _extract_promo is called."""
     agent = _make_agent()
     acquired = []
 
-    real_semaphore = asyncio.Semaphore(5)
+    asyncio.Semaphore(5)
 
     class TrackingSemaphore:
         """Wrapper that records acquisition."""
+
         async def __aenter__(self):
             acquired.append(True)
             return self
@@ -370,11 +403,15 @@ async def test_haiku_semaphore_acquired_during_extraction():
 
     agent.haiku_semaphore = TrackingSemaphore()
 
-    with patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), \
-         patch.object(agent, "_compute_urgency_score", return_value=5.0), \
-         patch.object(agent, "_find_linked_events", return_value=[]), \
-         patch.object(agent, "_get_last_purchase_price", return_value=None), \
-         patch.object(agent, "_notify", new_callable=AsyncMock):
+    with patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(agent, "_compute_urgency_score", return_value=5.0), patch.object(
+        agent, "_find_linked_events", return_value=[]
+    ), patch.object(
+        agent, "_get_last_purchase_price", return_value=None
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ):
 
         await agent._handle_promo(
             payload=_promo_payload(),
@@ -383,12 +420,15 @@ async def test_haiku_semaphore_acquired_during_extraction():
             is_stale=False,
         )
 
-    assert len(acquired) == 1, "Semaphore must be acquired exactly once per PROMO extraction"
+    assert (
+        len(acquired) == 1
+    ), "Semaphore must be acquired exactly once per PROMO extraction"
 
 
 # ---------------------------------------------------------------------------
 # Test 8: Idempotency check — duplicate gmail_message_id skips processing
 # ---------------------------------------------------------------------------
+
 
 async def test_idempotency_skips_duplicate_message():
     """If _check_idempotency returns True (already processed), skip all logic."""
@@ -401,9 +441,13 @@ async def test_idempotency_skips_duplicate_message():
         "received_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
-    with patch.object(agent, "_check_idempotency", return_value=True) as mock_check, \
-         patch.object(agent, "_triage_inbound", new_callable=AsyncMock) as mock_triage, \
-         patch.object(agent, "_mark_processed", new_callable=AsyncMock) as mock_mark:
+    with patch.object(
+        agent, "_check_idempotency", return_value=True
+    ) as mock_check, patch.object(
+        agent, "_triage_inbound", new_callable=AsyncMock
+    ) as mock_triage, patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ) as mock_mark:
 
         await agent.process_message(payload)
 

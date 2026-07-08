@@ -23,11 +23,13 @@ class NegotiationPlaybookAgent(BaseAgent):
         routing_key = message.get("routing_key")
         payload = message.get("payload", {})
 
-        self.logger.info({
-            "message": "Negotiation playbook event received",
-            "routing_key": routing_key,
-            "payload_keys": list(payload.keys()),
-        })
+        self.logger.info(
+            {
+                "message": "Negotiation playbook event received",
+                "routing_key": routing_key,
+                "payload_keys": list(payload.keys()),
+            }
+        )
 
         # TODO: Record negotiation history
         # TODO: Update provider_price_patterns

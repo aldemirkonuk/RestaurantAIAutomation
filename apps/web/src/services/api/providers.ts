@@ -160,7 +160,7 @@ const mapProviderToApiPayload = (
   }
 
   if (data.paymentTerms !== undefined) {
-    ;(payload as any).paymentTerms = data.paymentTerms
+    (payload as any).paymentTerms = data.paymentTerms
   }
 
   if (data.minimumOrderValue !== undefined) {

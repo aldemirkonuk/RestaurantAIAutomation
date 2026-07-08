@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
-import { CalendarController } from './calendar.controller';
-import { CalendarService } from './calendar.service';
+import { Test, TestingModule } from "@nestjs/testing";
+import { HttpException, HttpStatus, NotFoundException } from "@nestjs/common";
+import { CalendarController } from "./calendar.controller";
+import { CalendarService } from "./calendar.service";
 import {
   CalendarEventType,
   CalendarEventStatus,
@@ -11,15 +11,15 @@ import {
   UpdateEventTypeDto,
   UpdateEventStatusDto,
   CalendarEventResponseDto,
-} from './dto/calendar.dto';
+} from "./dto/calendar.dto";
 
-describe('CalendarController', () => {
+describe("CalendarController", () => {
   let controller: CalendarController;
   let calendarService: CalendarService;
 
   const mockUser = {
-    userId: 'user-123',
-    restaurantId: 'restaurant-456',
+    userId: "user-123",
+    restaurantId: "restaurant-456",
   };
 
   const mockCalendarService = {
@@ -49,31 +49,31 @@ describe('CalendarController', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(controller).toBeDefined();
   });
 
-  describe('GET /calendar/event-types/:restaurantId', () => {
-    const restaurantId = 'restaurant-123';
+  describe("GET /calendar/event-types/:restaurantId", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should return event types list', async () => {
+    it("should return event types list", async () => {
       const expectedResponse: EventTypeResponseDto[] = [
         {
-          id: 'type-1',
+          id: "type-1",
           restaurantId,
-          name: 'Wine Tasting',
-          color: '#FF5733',
-          icon: 'wine',
+          name: "Wine Tasting",
+          color: "#FF5733",
+          icon: "wine",
           isDefault: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
         {
-          id: 'type-2',
+          id: "type-2",
           restaurantId,
-          name: 'Delivery',
-          color: '#33FF57',
-          icon: 'truck',
+          name: "Delivery",
+          color: "#33FF57",
+          icon: "truck",
           isDefault: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -86,13 +86,15 @@ describe('CalendarController', () => {
 
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
-      expect(result[0]).toHaveProperty('id');
-      expect(result[0]).toHaveProperty('name');
-      expect(result[0]).toHaveProperty('color');
-      expect(mockCalendarService.getEventTypes).toHaveBeenCalledWith(restaurantId);
+      expect(result[0]).toHaveProperty("id");
+      expect(result[0]).toHaveProperty("name");
+      expect(result[0]).toHaveProperty("color");
+      expect(mockCalendarService.getEventTypes).toHaveBeenCalledWith(
+        restaurantId,
+      );
     });
 
-    it('should return empty array when no event types', async () => {
+    it("should return empty array when no event types", async () => {
       mockCalendarService.getEventTypes.mockResolvedValue([]);
 
       const result = await controller.getEventTypes(restaurantId);
@@ -101,17 +103,17 @@ describe('CalendarController', () => {
     });
   });
 
-  describe('POST /calendar/event-types', () => {
+  describe("POST /calendar/event-types", () => {
     const createDto: CreateEventTypeDto = {
-      restaurantId: 'restaurant-123',
-      name: 'Custom Event',
-      color: '#FF0000',
-      icon: 'star',
+      restaurantId: "restaurant-123",
+      name: "Custom Event",
+      color: "#FF0000",
+      icon: "star",
     };
 
-    it('should create event type', async () => {
+    it("should create event type", async () => {
       const expectedResponse: EventTypeResponseDto = {
-        id: 'type-new',
+        id: "type-new",
         restaurantId: createDto.restaurantId,
         name: createDto.name,
         color: createDto.color,
@@ -126,32 +128,38 @@ describe('CalendarController', () => {
       const result = await controller.createEventType(createDto);
 
       expect(result).toEqual(expectedResponse);
-      expect(result.id).toBe('type-new');
+      expect(result.id).toBe("type-new");
       expect(result.name).toBe(createDto.name);
-      expect(mockCalendarService.createEventType).toHaveBeenCalledWith(createDto);
+      expect(mockCalendarService.createEventType).toHaveBeenCalledWith(
+        createDto,
+      );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockCalendarService.createEventType.mockRejectedValue(new Error('Validation error'));
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockCalendarService.createEventType.mockRejectedValue(
+        new Error("Validation error"),
+      );
 
-      await expect(controller.createEventType(createDto)).rejects.toThrow(HttpException);
+      await expect(controller.createEventType(createDto)).rejects.toThrow(
+        HttpException,
+      );
     });
   });
 
-  describe('PATCH /calendar/event-types/:id', () => {
-    const eventTypeId = 'type-123';
+  describe("PATCH /calendar/event-types/:id", () => {
+    const eventTypeId = "type-123";
     const updateDto: UpdateEventTypeDto = {
-      name: 'Updated Event Type',
-      color: '#00FF00',
+      name: "Updated Event Type",
+      color: "#00FF00",
     };
 
-    it('should update event type', async () => {
+    it("should update event type", async () => {
       const expectedResponse: EventTypeResponseDto = {
         id: eventTypeId,
-        restaurantId: 'restaurant-123',
+        restaurantId: "restaurant-123",
         name: updateDto.name,
         color: updateDto.color,
-        icon: 'star',
+        icon: "star",
         isDefault: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -163,60 +171,71 @@ describe('CalendarController', () => {
 
       expect(result).toEqual(expectedResponse);
       expect(result.name).toBe(updateDto.name);
-      expect(mockCalendarService.updateEventType).toHaveBeenCalledWith(eventTypeId, updateDto);
+      expect(mockCalendarService.updateEventType).toHaveBeenCalledWith(
+        eventTypeId,
+        updateDto,
+      );
     });
 
-    it('should throw NotFoundException when event type not found', async () => {
+    it("should throw NotFoundException when event type not found", async () => {
       mockCalendarService.updateEventType.mockRejectedValue(
-        new NotFoundException('Event type not found'),
+        new NotFoundException("Event type not found"),
       );
 
-      await expect(controller.updateEventType(eventTypeId, updateDto)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        controller.updateEventType(eventTypeId, updateDto),
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on other errors', async () => {
-      mockCalendarService.updateEventType.mockRejectedValue(new Error('Database error'));
-
-      await expect(controller.updateEventType(eventTypeId, updateDto)).rejects.toThrow(
-        HttpException,
+    it("should throw INTERNAL_SERVER_ERROR on other errors", async () => {
+      mockCalendarService.updateEventType.mockRejectedValue(
+        new Error("Database error"),
       );
+
+      await expect(
+        controller.updateEventType(eventTypeId, updateDto),
+      ).rejects.toThrow(HttpException);
     });
   });
 
-  describe('DELETE /calendar/event-types/:id', () => {
-    const eventTypeId = 'type-123';
+  describe("DELETE /calendar/event-types/:id", () => {
+    const eventTypeId = "type-123";
 
-    it('should delete event type', async () => {
+    it("should delete event type", async () => {
       mockCalendarService.deleteEventType.mockResolvedValue({ success: true });
 
       const result = await controller.deleteEventType(eventTypeId);
 
       expect(result).toEqual({ success: true });
-      expect(mockCalendarService.deleteEventType).toHaveBeenCalledWith(eventTypeId);
+      expect(mockCalendarService.deleteEventType).toHaveBeenCalledWith(
+        eventTypeId,
+      );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockCalendarService.deleteEventType.mockRejectedValue(new Error('Delete failed'));
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockCalendarService.deleteEventType.mockRejectedValue(
+        new Error("Delete failed"),
+      );
 
-      await expect(controller.deleteEventType(eventTypeId)).rejects.toThrow(HttpException);
+      await expect(controller.deleteEventType(eventTypeId)).rejects.toThrow(
+        HttpException,
+      );
     });
   });
 
-  describe('PATCH /calendar/events/:id/status', () => {
-    const eventId = 'event-123';
+  describe("PATCH /calendar/events/:id/status", () => {
+    const eventId = "event-123";
     const statusDto: UpdateEventStatusDto = {
       status: CalendarEventStatus.APPROVED,
     };
 
-    it('should update event status', async () => {
+    it("should update event status", async () => {
       const expectedResponse: CalendarEventResponseDto = {
         id: eventId,
         restaurantId: mockUser.restaurantId,
-        title: 'Test Event',
+        title: "Test Event",
         eventType: CalendarEventType.DELIVERY,
-        eventDate: '2024-02-15',
+        eventDate: "2024-02-15",
         allDay: true,
         source: CalendarEventSource.MANUAL,
         status: CalendarEventStatus.APPROVED,
@@ -229,7 +248,11 @@ describe('CalendarController', () => {
 
       mockCalendarService.updateEventStatus.mockResolvedValue(expectedResponse);
 
-      const result = await controller.updateEventStatus(eventId, statusDto, mockUser);
+      const result = await controller.updateEventStatus(
+        eventId,
+        statusDto,
+        mockUser,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(result.status).toBe(CalendarEventStatus.APPROVED);
@@ -241,9 +264,9 @@ describe('CalendarController', () => {
       );
     });
 
-    it('should throw NotFoundException when event not found', async () => {
+    it("should throw NotFoundException when event not found", async () => {
       mockCalendarService.updateEventStatus.mockRejectedValue(
-        new NotFoundException('Event not found'),
+        new NotFoundException("Event not found"),
       );
 
       await expect(
@@ -252,17 +275,17 @@ describe('CalendarController', () => {
     });
   });
 
-  describe('GET /calendar/events/:id/recurring', () => {
-    const eventId = 'event-123';
+  describe("GET /calendar/events/:id/recurring", () => {
+    const eventId = "event-123";
 
-    it('should return recurring instances', async () => {
+    it("should return recurring instances", async () => {
       const expectedResponse: CalendarEventResponseDto[] = [
         {
-          id: 'instance-1',
+          id: "instance-1",
           restaurantId: mockUser.restaurantId,
-          title: 'Recurring Event',
+          title: "Recurring Event",
           eventType: CalendarEventType.DELIVERY,
-          eventDate: '2024-02-15',
+          eventDate: "2024-02-15",
           allDay: true,
           source: CalendarEventSource.MANUAL,
           status: CalendarEventStatus.PENDING,
@@ -270,16 +293,16 @@ describe('CalendarController', () => {
           reminderDaysBefore: 1,
           isRecurring: true,
           parentEventId: eventId,
-          occurrenceDate: '2024-02-15',
+          occurrenceDate: "2024-02-15",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
         {
-          id: 'instance-2',
+          id: "instance-2",
           restaurantId: mockUser.restaurantId,
-          title: 'Recurring Event',
+          title: "Recurring Event",
           eventType: CalendarEventType.DELIVERY,
-          eventDate: '2024-02-22',
+          eventDate: "2024-02-22",
           allDay: true,
           source: CalendarEventSource.MANUAL,
           status: CalendarEventStatus.PENDING,
@@ -287,19 +310,26 @@ describe('CalendarController', () => {
           reminderDaysBefore: 1,
           isRecurring: true,
           parentEventId: eventId,
-          occurrenceDate: '2024-02-22',
+          occurrenceDate: "2024-02-22",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
       ];
 
-      mockCalendarService.getRecurringInstances.mockResolvedValue(expectedResponse);
+      mockCalendarService.getRecurringInstances.mockResolvedValue(
+        expectedResponse,
+      );
 
-      const result = await controller.getRecurringInstances(eventId, undefined, undefined, mockUser);
+      const result = await controller.getRecurringInstances(
+        eventId,
+        undefined,
+        undefined,
+        mockUser,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
-      expect(result[0]).toHaveProperty('parentEventId');
+      expect(result[0]).toHaveProperty("parentEventId");
       expect(result[0].parentEventId).toBe(eventId);
       expect(mockCalendarService.getRecurringInstances).toHaveBeenCalledWith(
         mockUser.restaurantId,
@@ -309,13 +339,18 @@ describe('CalendarController', () => {
       );
     });
 
-    it('should filter by date range', async () => {
-      const startDate = '2024-02-01';
-      const endDate = '2024-02-28';
+    it("should filter by date range", async () => {
+      const startDate = "2024-02-01";
+      const endDate = "2024-02-28";
 
       mockCalendarService.getRecurringInstances.mockResolvedValue([]);
 
-      await controller.getRecurringInstances(eventId, startDate, endDate, mockUser);
+      await controller.getRecurringInstances(
+        eventId,
+        startDate,
+        endDate,
+        mockUser,
+      );
 
       expect(mockCalendarService.getRecurringInstances).toHaveBeenCalledWith(
         mockUser.restaurantId,
@@ -326,16 +361,20 @@ describe('CalendarController', () => {
     });
   });
 
-  describe('DELETE /calendar/events/:id/recurring', () => {
-    const eventId = 'event-123';
+  describe("DELETE /calendar/events/:id/recurring", () => {
+    const eventId = "event-123";
 
-    it('should delete recurring series', async () => {
+    it("should delete recurring series", async () => {
       mockCalendarService.deleteRecurringSeries.mockResolvedValue({
         success: true,
         deletedCount: 5,
       });
 
-      const result = await controller.deleteRecurringSeries(eventId, undefined, mockUser);
+      const result = await controller.deleteRecurringSeries(
+        eventId,
+        undefined,
+        mockUser,
+      );
 
       expect(result).toEqual({ success: true, deletedCount: 5 });
       expect(mockCalendarService.deleteRecurringSeries).toHaveBeenCalledWith(
@@ -346,15 +385,19 @@ describe('CalendarController', () => {
       );
     });
 
-    it('should delete from specific date', async () => {
-      const fromDate = '2024-03-01';
+    it("should delete from specific date", async () => {
+      const fromDate = "2024-03-01";
 
       mockCalendarService.deleteRecurringSeries.mockResolvedValue({
         success: true,
         deletedCount: 3,
       });
 
-      const result = await controller.deleteRecurringSeries(eventId, fromDate, mockUser);
+      const result = await controller.deleteRecurringSeries(
+        eventId,
+        fromDate,
+        mockUser,
+      );
 
       expect(result).toEqual({ success: true, deletedCount: 3 });
       expect(mockCalendarService.deleteRecurringSeries).toHaveBeenCalledWith(
@@ -365,8 +408,10 @@ describe('CalendarController', () => {
       );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockCalendarService.deleteRecurringSeries.mockRejectedValue(new Error('Delete failed'));
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockCalendarService.deleteRecurringSeries.mockRejectedValue(
+        new Error("Delete failed"),
+      );
 
       await expect(
         controller.deleteRecurringSeries(eventId, undefined, mockUser),

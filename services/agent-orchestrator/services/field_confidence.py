@@ -85,6 +85,7 @@ AUTO_BLOCK_FIELD_RATIO: float = 0.5
 # Core helpers
 # ---------------------------------------------------------------------------
 
+
 def build_field_confidence(
     wine_dict: Dict[str, Any],
     source: str = "visible",
@@ -141,7 +142,9 @@ def merge_field_confidence(
         existing_entry = merged.get(field_name)
         if existing_entry is None:
             merged[field_name] = new_entry
-        elif overwrite_lower and new_entry.get("confidence", 0.0) >= existing_entry.get("confidence", 0.0):
+        elif overwrite_lower and new_entry.get("confidence", 0.0) >= existing_entry.get(
+            "confidence", 0.0
+        ):
             merged[field_name] = new_entry
         # else: keep existing (higher confidence)
     return merged
@@ -179,12 +182,14 @@ def route_fields_by_threshold(
         elif conf >= review_threshold:
             # Persisted (value saved) but flagged for human review
             accepted[field_name] = value
-            review.append({
-                "field_name": field_name,
-                "current_value": str(value) if value is not None else None,
-                "confidence": conf,
-                "source": source,
-            })
+            review.append(
+                {
+                    "field_name": field_name,
+                    "current_value": str(value) if value is not None else None,
+                    "confidence": conf,
+                    "source": source,
+                }
+            )
         else:
             # Rejected — stored as NULL
             rejected[field_name] = None
@@ -235,7 +240,8 @@ def should_auto_block(fc: Dict[str, Dict[str, Any]]) -> bool:
     if total == 0:
         return True
     rejected_count = sum(
-        1 for entry in fc.values()
+        1
+        for entry in fc.values()
         if float(entry.get("confidence", 0.0)) < DEFAULT_REVIEW_THRESHOLD
     )
     return (rejected_count / total) > AUTO_BLOCK_FIELD_RATIO

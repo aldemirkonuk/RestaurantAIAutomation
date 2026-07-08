@@ -1,16 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
-import * as crypto from 'crypto';
-import { CacheService } from '../../common/cache/cache.service';
+import { Injectable, Logger } from "@nestjs/common";
+import * as crypto from "crypto";
+import { CacheService } from "../../common/cache/cache.service";
 
 @Injectable()
 export class TokenBlacklistService {
   private readonly logger = new Logger(TokenBlacklistService.name);
-  private readonly keyPrefix = 'auth:blacklist:';
+  private readonly keyPrefix = "auth:blacklist:";
 
   constructor(private readonly cacheService: CacheService) {}
 
   async blacklistToken(token: string, expiresAt: Date): Promise<void> {
-    const ttlSeconds = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    const ttlSeconds = Math.max(
+      0,
+      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+    );
     if (ttlSeconds <= 0) {
       return;
     }
@@ -18,7 +21,7 @@ export class TokenBlacklistService {
     const key = this.getKey(token);
     await this.cacheService.set(key, { blacklisted: true }, ttlSeconds);
     this.logger.log({
-      message: 'Token blacklisted',
+      message: "Token blacklisted",
       ttlSeconds,
     });
   }
@@ -30,7 +33,7 @@ export class TokenBlacklistService {
   }
 
   private getKey(token: string): string {
-    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const hash = crypto.createHash("sha256").update(token).digest("hex");
     return `${this.keyPrefix}${hash}`;
   }
 }

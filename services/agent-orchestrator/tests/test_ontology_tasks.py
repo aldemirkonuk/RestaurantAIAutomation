@@ -8,22 +8,24 @@ No live connections required.
 
 Run: pytest services/agent-orchestrator/tests/test_ontology_tasks.py -x -q
 """
+
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
 # Helper: create OntologyValidationService bypassing __init__
 # ---------------------------------------------------------------------------
 
+
 def _make_service(mock_supabase=None):
     from services.ontology_validation_service import OntologyValidationService
+
     svc = OntologyValidationService.__new__(OntologyValidationService)
     svc.supabase = mock_supabase or MagicMock()
     return svc
@@ -33,6 +35,7 @@ def _make_service(mock_supabase=None):
 # Test: OntologyValidationResult payload structure (ONTO-06)
 # ---------------------------------------------------------------------------
 
+
 class TestOntologyValidationPayloadStructure:
 
     def test_result_serializes_to_correct_structure(self):
@@ -41,6 +44,7 @@ class TestOntologyValidationPayloadStructure:
             OntologyValidationResult,
             OntologyCheckFailure,
         )
+
         failure = OntologyCheckFailure(
             check="region_country",
             severity="critical",
@@ -75,6 +79,7 @@ class TestOntologyValidationPayloadStructure:
             OntologyValidationResult,
             OntologyCheckFailure,
         )
+
         failures = [
             OntologyCheckFailure(
                 check="region_country",
@@ -113,6 +118,7 @@ class TestOntologyValidationPayloadStructure:
 # Test: CRITICAL failure routing (ONTO-07)
 # ---------------------------------------------------------------------------
 
+
 class TestCriticalFailureRouting:
 
     def test_critical_failure_inserts_into_review_queue(self):
@@ -142,7 +148,9 @@ class TestCriticalFailureRouting:
                     frq_row = row
                     break
 
-        assert frq_row is not None, "No field_review_queue insert with source='ontology' found"
+        assert (
+            frq_row is not None
+        ), "No field_review_queue insert with source='ontology' found"
         assert frq_row["status"] == "pending"
         assert frq_row["submission_id"] == "test-wine-uuid"
         assert frq_row["field_name"] == "country"
@@ -161,7 +169,13 @@ class TestCriticalFailureRouting:
             found="Merlot",
             message="Barolo incompatible with Merlot",
         )
-        fc = {"grape_variety": {"value": "Merlot", "confidence": 0.85, "source": "visible"}}
+        fc = {
+            "grape_variety": {
+                "value": "Merlot",
+                "confidence": 0.85,
+                "source": "visible",
+            }
+        }
 
         service._route_failures("test-wine-uuid", [failure], fc)
 
@@ -222,7 +236,9 @@ class TestCriticalFailureRouting:
                     frq_row = row
                     break
 
-        assert frq_row is not None, "Expected field_review_queue insert for low-confidence WARNING"
+        assert (
+            frq_row is not None
+        ), "Expected field_review_queue insert for low-confidence WARNING"
         assert frq_row["status"] == "pending"
 
         # auto_blocked must NOT be set for WARNING (only CRITICAL triggers it)
@@ -238,6 +254,7 @@ class TestCriticalFailureRouting:
 # ---------------------------------------------------------------------------
 # Test: Task Redis dedup (ONTO-05)
 # ---------------------------------------------------------------------------
+
 
 class TestTaskRedisDedup:
 
@@ -256,9 +273,12 @@ class TestTaskRedisDedup:
 
         with patch("jobs.ontology_tasks.redis_lib") as mock_redis_lib:
             mock_redis_lib.from_url.return_value = mock_redis
-            with patch("jobs.ontology_tasks._validate_sync", return_value=expected_result) as mock_validate:
+            with patch(
+                "jobs.ontology_tasks._validate_sync", return_value=expected_result
+            ) as mock_validate:
                 from jobs.ontology_tasks import ontology_validate_task
-                result = ontology_validate_task.apply(args=["test-uuid"])
+
+                ontology_validate_task.apply(args=["test-uuid"])
 
         # Verify _validate_sync was called
         mock_validate.assert_called_once_with("test-uuid")
@@ -266,7 +286,9 @@ class TestTaskRedisDedup:
         # Verify Redis lock was acquired with NX
         mock_redis.set.assert_called_once()
         set_call = mock_redis.set.call_args
-        assert set_call.kwargs.get("nx") is True or (len(set_call.args) > 1 and "nx" in str(set_call))
+        assert set_call.kwargs.get("nx") is True or (
+            len(set_call.args) > 1 and "nx" in str(set_call)
+        )
 
     def test_task_skips_if_lock_already_held(self):
         """ONTO-05: Redis NX returns None (lock held) → task returns None without calling validate"""
@@ -277,6 +299,7 @@ class TestTaskRedisDedup:
             mock_redis_lib.from_url.return_value = mock_redis
             with patch("jobs.ontology_tasks._validate_sync") as mock_validate:
                 from jobs.ontology_tasks import ontology_validate_task
+
                 result = ontology_validate_task.apply(args=["test-uuid"])
 
         # _validate_sync must NOT have been called

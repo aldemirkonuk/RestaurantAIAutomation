@@ -34,18 +34,21 @@ SURYA_AVAILABLE = False
 
 try:
     import PyPDF2
+
     PYPDF2_AVAILABLE = True
 except ImportError:
     logger.warning("PyPDF2 not available. Install: pip install PyPDF2")
 
 try:
     from PIL import Image
+
     PIL_AVAILABLE = True
 except ImportError:
     logger.warning("Pillow not available. Install: pip install Pillow")
 
 try:
     from pdf2image import convert_from_bytes, convert_from_path
+
     PDF2IMAGE_AVAILABLE = True
 except ImportError:
     logger.warning("pdf2image not available. Install: pip install pdf2image")
@@ -55,15 +58,17 @@ except ImportError:
 # DATA MODELS
 # =============================================================================
 
+
 class PDFType(str, Enum):
-    DIGITAL = "digital"       # Has text layer (PyPDF2 works)
-    SCANNED = "scanned"       # Image-only (needs OCR)
-    MIXED = "mixed"           # Some pages digital, some scanned
+    DIGITAL = "digital"  # Has text layer (PyPDF2 works)
+    SCANNED = "scanned"  # Image-only (needs OCR)
+    MIXED = "mixed"  # Some pages digital, some scanned
     UNKNOWN = "unknown"
 
 
 class PageResult(BaseModel):
     """Result of processing a single PDF page."""
+
     page_number: int
     pdf_type: str = "unknown"
     raw_text: str = ""
@@ -76,6 +81,7 @@ class PageResult(BaseModel):
 
 class PDFExtractionResult(BaseModel):
     """Complete result of processing a PDF document."""
+
     document_type: str = "menu"  # menu or invoice
     pdf_type: str = "unknown"
     total_pages: int = 0
@@ -95,20 +101,23 @@ class PDFExtractionResult(BaseModel):
 # OCR LINE DATA (for bounding-box annotation pipelines)
 # =============================================================================
 
+
 @dataclass
 class OcrLine:
     """A single OCR-detected text line with bounding box coordinates."""
+
     text: str
     confidence: float
-    bbox_x: float      # pixels from left
-    bbox_y: float      # pixels from top
-    bbox_width: float   # pixels
+    bbox_x: float  # pixels from left
+    bbox_y: float  # pixels from top
+    bbox_width: float  # pixels
     bbox_height: float  # pixels
 
 
 @dataclass
 class OcrWord:
     """A single OCR-detected word with bounding box coordinates."""
+
     text: str
     confidence: float
     bbox_x: float
@@ -121,6 +130,7 @@ class OcrWord:
 # =============================================================================
 # SURYA OCR WRAPPER
 # =============================================================================
+
 
 class SuryaOCRService:
     """
@@ -140,6 +150,7 @@ class SuryaOCRService:
         """Check if surya-ocr is installed."""
         try:
             import surya
+
             self._available = True
         except ImportError:
             logger.info(
@@ -198,9 +209,7 @@ class SuryaOCRService:
             return ("", 0.0)
 
         try:
-            results = self._rec_predictor(
-                [image], det_predictor=self._det_predictor
-            )
+            results = self._rec_predictor([image], det_predictor=self._det_predictor)
 
             lines = []
             confidences = []
@@ -240,9 +249,7 @@ class SuryaOCRService:
             return ("", 0.0, [], [])
 
         try:
-            results = self._rec_predictor(
-                [image], det_predictor=self._det_predictor
-            )
+            results = self._rec_predictor([image], det_predictor=self._det_predictor)
 
             ocr_lines: List[OcrLine] = []
             ocr_words: List[OcrWord] = []
@@ -258,14 +265,16 @@ class SuryaOCRService:
                     confidences.append(conf)
 
                     x, y, w, h = self._polygon_to_bbox(text_line.polygon)
-                    ocr_lines.append(OcrLine(
-                        text=clean_text,
-                        confidence=conf,
-                        bbox_x=x,
-                        bbox_y=y,
-                        bbox_width=w,
-                        bbox_height=h,
-                    ))
+                    ocr_lines.append(
+                        OcrLine(
+                            text=clean_text,
+                            confidence=conf,
+                            bbox_x=x,
+                            bbox_y=y,
+                            bbox_width=w,
+                            bbox_height=h,
+                        )
+                    )
 
                     if hasattr(text_line, "words") and text_line.words:
                         for word in text_line.words:
@@ -273,21 +282,25 @@ class SuryaOCRService:
                             if not word_text.strip():
                                 continue
                             wx, wy, ww, wh = self._polygon_to_bbox(word.polygon)
-                            word_conf = word.confidence if hasattr(word, "confidence") and word.confidence else conf
-                            ocr_words.append(OcrWord(
-                                text=word_text,
-                                confidence=word_conf,
-                                bbox_x=wx,
-                                bbox_y=wy,
-                                bbox_width=ww,
-                                bbox_height=wh,
-                                line_index=line_idx,
-                            ))
+                            word_conf = (
+                                word.confidence
+                                if hasattr(word, "confidence") and word.confidence
+                                else conf
+                            )
+                            ocr_words.append(
+                                OcrWord(
+                                    text=word_text,
+                                    confidence=word_conf,
+                                    bbox_x=wx,
+                                    bbox_y=wy,
+                                    bbox_width=ww,
+                                    bbox_height=wh,
+                                    line_index=line_idx,
+                                )
+                            )
 
             text = "\n".join(lines)
-            avg_conf = (
-                sum(confidences) / len(confidences) if confidences else 0.0
-            )
+            avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
             return (text, avg_conf, ocr_lines, ocr_words)
 
         except Exception as e:
@@ -298,6 +311,7 @@ class SuryaOCRService:
 # =============================================================================
 # PDF EXTRACTION SERVICE
 # =============================================================================
+
 
 class PDFExtractionService:
     """
@@ -315,6 +329,7 @@ class PDFExtractionService:
     def _get_menu_parser(self):
         if self._menu_parser is None:
             from services.html_menu_parser import get_menu_parser
+
             self._menu_parser = get_menu_parser()
         return self._menu_parser
 
@@ -338,16 +353,12 @@ class PDFExtractionService:
         """
         path = Path(file_path)
         if not path.exists():
-            return PDFExtractionResult(
-                warnings=[f"File not found: {file_path}"]
-            )
+            return PDFExtractionResult(warnings=[f"File not found: {file_path}"])
 
         with open(path, "rb") as f:
             pdf_bytes = f.read()
 
-        return await self.extract_from_bytes(
-            pdf_bytes, document_type, restaurant_name
-        )
+        return await self.extract_from_bytes(pdf_bytes, document_type, restaurant_name)
 
     async def extract_from_bytes(
         self,
@@ -446,7 +457,11 @@ class PDFExtractionService:
                     pr.confidence = page_parse.parser_confidence
 
         # Determine extraction method used
-        methods = set(pr.extraction_method for pr in page_results if pr.extraction_method != "none")
+        methods = set(
+            pr.extraction_method
+            for pr in page_results
+            if pr.extraction_method != "none"
+        )
         if methods == {"pypdf2"}:
             result.extraction_method = "free"
         elif "surya_ocr" in methods:
@@ -488,9 +503,7 @@ class PDFExtractionService:
     # SURYA OCR FOR SCANNED PAGES
     # =========================================================================
 
-    async def _ocr_page(
-        self, pdf_bytes: bytes, page_number: int
-    ) -> Tuple[str, float]:
+    async def _ocr_page(self, pdf_bytes: bytes, page_number: int) -> Tuple[str, float]:
         """OCR a single page from a PDF using Surya."""
         if not self._surya.is_available:
             return ("", 0.0)

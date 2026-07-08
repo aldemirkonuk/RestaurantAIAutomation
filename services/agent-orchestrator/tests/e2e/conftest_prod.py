@@ -20,7 +20,7 @@ CRITICAL ANTI-PATTERNS (do NOT do these):
 """
 
 import os
-from typing import Any, Dict, List
+from typing import Dict, List
 
 import httpx
 import pytest
@@ -47,6 +47,7 @@ if _sentry_dsn:
 # Wave extraction helper for Sentry tags
 # ---------------------------------------------------------------------------
 
+
 def _extract_wave(nodeid: str) -> str:
     """Return the wave letter (A–G) from a test node ID, or 'unknown'."""
     wave_map = {
@@ -69,6 +70,7 @@ def _extract_wave(nodeid: str) -> str:
 # Coexists with E2EReportGenerator.pytest_runtest_logreport (no conflict).
 # ---------------------------------------------------------------------------
 
+
 def pytest_runtest_logreport(report):  # noqa: N802 (pytest hook name)
     """Fire Sentry alert on production test failure (TEST-PROD-09)."""
     if report.when != "call" or not report.failed:
@@ -90,6 +92,7 @@ def pytest_runtest_logreport(report):  # noqa: N802 (pytest hook name)
 # ---------------------------------------------------------------------------
 # Production URL fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def prod_base_url() -> str:
@@ -116,6 +119,7 @@ def prod_frontend_url() -> str:
 # ---------------------------------------------------------------------------
 # Auth fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 async def prod_jwt() -> str:
@@ -182,6 +186,7 @@ def prod_admin_headers() -> Dict[str, str]:
 # Supabase production client + teardown registry
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def prod_supabase() -> Client:
     """Production Supabase client (service role — full access for teardown).
@@ -231,11 +236,13 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
         try:
             prod_supabase.table(table).delete().eq("id", record_id).execute()
         except Exception as exc:
-            failed_deletes.append({
-                "table": table,
-                "id": record_id,
-                "error": str(exc),
-            })
+            failed_deletes.append(
+                {
+                    "table": table,
+                    "id": record_id,
+                    "error": str(exc),
+                }
+            )
 
     # Step 2: Tag-based sweep (catches orphans from failed prior sessions)
     # H-02 audit of services/agent-orchestrator/agents/*.py — all tables that
@@ -244,11 +251,11 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
     E2E_TABLES = [
         "inventory_stock",
         "notification_deliveries",
-        "notification_logs",       # notification_agent.py: notification_logs.insert
+        "notification_logs",  # notification_agent.py: notification_logs.insert
         "order_interactions",
         "calendar_events",
         "pos_webhook_logs",
-        "system_audit_log",        # inventory_engine.py + state_invariant_enforcer.py
+        "system_audit_log",  # inventory_engine.py + state_invariant_enforcer.py
         "master_wine_library_submissions",
     ]
     for table in E2E_TABLES:
@@ -262,11 +269,13 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
             )
         except Exception as exc:
             # Table may not exist or column may differ — log, don't fail
-            failed_deletes.append({
-                "table": table,
-                "id": "e2e-%",
-                "error": f"tag-based sweep: {exc}",
-            })
+            failed_deletes.append(
+                {
+                    "table": table,
+                    "id": "e2e-%",
+                    "error": f"tag-based sweep: {exc}",
+                }
+            )
 
     # Step 3: Report orphans to Sentry (D-04 — NEVER raise)
     if failed_deletes and _sentry_dsn:
@@ -281,6 +290,7 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
 # ---------------------------------------------------------------------------
 # Retry utilities (RESEARCH.md Pattern 3)
 # ---------------------------------------------------------------------------
+
 
 def make_retry_decorator():
     """Return a tenacity @retry decorator: 3 attempts, 2s base exponential backoff."""

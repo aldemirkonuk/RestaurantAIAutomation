@@ -10,12 +10,10 @@ Returns 25 structured wine fields per detection.
 
 import logging
 import base64
-import asyncio
 import json
 import time
 from typing import Optional, List, Dict, Any
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
@@ -28,6 +26,7 @@ settings = get_settings()
 # =============================================================================
 # ENRICHMENT QUEUE HELPER
 # =============================================================================
+
 
 async def _queue_enrichment_if_needed(
     wine_data: dict,
@@ -44,6 +43,7 @@ async def _queue_enrichment_if_needed(
 
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
         if not supabase:
             return False
@@ -58,7 +58,8 @@ async def _queue_enrichment_if_needed(
             "restaurant_id": restaurant_id,
             "current_confidence": confidence,
             "parsed_fields_snapshot": {
-                k: v for k, v in wine_data.items()
+                k: v
+                for k, v in wine_data.items()
                 if k not in ("field_confidences", "field_sources", "warnings")
             },
             "status": "pending",
@@ -66,11 +67,14 @@ async def _queue_enrichment_if_needed(
         }
 
         supabase.table("enrichment_queue").insert(enrichment_job).execute()
-        logger.info(f"Queued enrichment for '{wine_data.get('wine_name')}' (tier={library_tier}, conf={confidence:.2f})")
+        logger.info(
+            f"Queued enrichment for '{wine_data.get('wine_name')}' (tier={library_tier}, conf={confidence:.2f})"
+        )
         return True
     except Exception as e:
         logger.warning(f"Failed to queue enrichment: {e}")
         return False
+
 
 router = APIRouter(prefix="/api/v1/scan", tags=["scanning"])
 
@@ -82,8 +86,10 @@ router_preview = APIRouter(prefix="/api/v1/preview", tags=["preview"])
 # REQUEST / RESPONSE MODELS
 # =============================================================================
 
+
 class WineScanRequest(BaseModel):
     """Request to scan/interpret wine from OCR text or image."""
+
     ocr_text: Optional[str] = None
     image_base64: Optional[str] = None
     source_type: str = Field(default="menu", description="menu | label | invoice")
@@ -92,6 +98,7 @@ class WineScanRequest(BaseModel):
 
 class WineResearchRequest(BaseModel):
     """Request deep research on an unknown wine."""
+
     wine_name: str
     producer: Optional[str] = None
     vintage: Optional[int] = None
@@ -101,6 +108,7 @@ class WineResearchRequest(BaseModel):
 
 class FuzzyMatchRequest(BaseModel):
     """Request fuzzy matching against master wine library."""
+
     query: str
     producer: Optional[str] = None
     vintage: Optional[int] = None
@@ -120,7 +128,9 @@ class WineParsedResponse(BaseModel):
     wine_name: str = "Unknown Wine"
     producer: Optional[str] = None
     vintage: Optional[int] = None
-    wine_type: Optional[str] = None  # red | white | sparkling | rosé | dessert | fortified | orange
+    wine_type: Optional[str] = (
+        None  # red | white | sparkling | rosé | dessert | fortified | orange
+    )
     country: Optional[str] = None
     region: Optional[str] = None
     grape_variety: Optional[str] = None
@@ -129,30 +139,40 @@ class WineParsedResponse(BaseModel):
     sub_region: Optional[str] = None
     appellation: Optional[str] = None
     appellation_class: Optional[str] = None  # AOC | DOC | DOCG | AVA | DO | etc
-    appellation_tier: Optional[str] = None   # Grand Cru | Premier Cru | Classico | etc
+    appellation_tier: Optional[str] = None  # Grand Cru | Premier Cru | Classico | etc
     is_blend: Optional[bool] = None
-    body: Optional[str] = None               # light | medium | medium-full | full
-    sweetness: Optional[str] = None          # bone-dry | dry | off-dry | medium-sweet | sweet
-    acidity: Optional[str] = None            # low | medium-minus | medium | medium-plus | high
-    tannins: Optional[str] = None            # low | medium-minus | medium | medium-plus | high
+    body: Optional[str] = None  # light | medium | medium-full | full
+    sweetness: Optional[str] = None  # bone-dry | dry | off-dry | medium-sweet | sweet
+    acidity: Optional[str] = None  # low | medium-minus | medium | medium-plus | high
+    tannins: Optional[str] = None  # low | medium-minus | medium | medium-plus | high
     alcohol_pct: Optional[float] = None
-    texture: Optional[str] = None            # silky | grippy | oily | etc
-    finish: Optional[str] = None             # short | medium | long | very-long
+    texture: Optional[str] = None  # silky | grippy | oily | etc
+    finish: Optional[str] = None  # short | medium | long | very-long
     primary_aromas: Optional[List[str]] = None
     secondary_aromas: Optional[List[str]] = None
     tertiary_aromas: Optional[List[str]] = None
 
     # ── Layer 3: Quality + Production ──
-    quality_level: Optional[str] = None      # basic | premium | super-premium | icon | cult
+    quality_level: Optional[str] = None  # basic | premium | super-premium | icon | cult
     classification_name: Optional[str] = None
-    classification_system: Optional[str] = None  # Bordeaux 1855 | Burgundy AOC | Italian DOCG | etc
-    reserve_status: Optional[str] = None     # reserve | gran_reserva | riserva | unregulated_us | none
-    vintage_quality: Optional[str] = None    # exceptional | excellent | very_good | good | average | non_vintage
-    farming: Optional[str] = None            # conventional | sustainable | organic | biodynamic | natural
-    aging_vessel: Optional[str] = None       # french_oak | american_oak | stainless_steel | concrete_egg | amphora
-    aging_duration: Optional[str] = None     # "18 months in French oak"
+    classification_system: Optional[str] = (
+        None  # Bordeaux 1855 | Burgundy AOC | Italian DOCG | etc
+    )
+    reserve_status: Optional[str] = (
+        None  # reserve | gran_reserva | riserva | unregulated_us | none
+    )
+    vintage_quality: Optional[str] = (
+        None  # exceptional | excellent | very_good | good | average | non_vintage
+    )
+    farming: Optional[str] = (
+        None  # conventional | sustainable | organic | biodynamic | natural
+    )
+    aging_vessel: Optional[str] = (
+        None  # french_oak | american_oak | stainless_steel | concrete_egg | amphora
+    )
+    aging_duration: Optional[str] = None  # "18 months in French oak"
     serving_temp_celsius: Optional[int] = None
-    glass_type: Optional[str] = None         # bordeaux | burgundy | flute | universal | coupe
+    glass_type: Optional[str] = None  # bordeaux | burgundy | flute | universal | coupe
     decanting_recommended: Optional[bool] = None
     aging_potential_years: Optional[int] = None
     food_pairings: Optional[List[str]] = None
@@ -161,29 +181,38 @@ class WineParsedResponse(BaseModel):
     bottle_size_ml: Optional[int] = None
     price: Optional[float] = None
     price_currency: Optional[str] = None
-    serving_type: Optional[str] = None       # glass | bottle | carafe
-    rating_ws: Optional[str] = None          # Wine Spectator score
-    rating_rp: Optional[str] = None          # Robert Parker / Wine Advocate
-    rating_jr: Optional[str] = None          # Jancis Robinson
+    serving_type: Optional[str] = None  # glass | bottle | carafe
+    rating_ws: Optional[str] = None  # Wine Spectator score
+    rating_rp: Optional[str] = None  # Robert Parker / Wine Advocate
+    rating_jr: Optional[str] = None  # Jancis Robinson
 
     # ── Metadata: Confidence + Governance ──
-    confidence: float = 0.0                  # Overall confidence (subject to Layer 1 Cap Rule)
-    field_confidences: Dict[str, float] = Field(default_factory=dict)  # Per-field confidence
-    field_sources: Dict[str, str] = Field(default_factory=dict)        # Per-field source types
+    confidence: float = 0.0  # Overall confidence (subject to Layer 1 Cap Rule)
+    field_confidences: Dict[str, float] = Field(
+        default_factory=dict
+    )  # Per-field confidence
+    field_sources: Dict[str, str] = Field(
+        default_factory=dict
+    )  # Per-field source types
     warnings: List[str] = Field(default_factory=list)
-    library_tier: Optional[int] = None       # 0=Canonical, 1=AutoValidated, 2=WebEnriched, 3=Provisional, 4=Unresolved
+    library_tier: Optional[int] = (
+        None  # 0=Canonical, 1=AutoValidated, 2=WebEnriched, 3=Provisional, 4=Unresolved
+    )
     canonical_name_verified: bool = False
     in_master_library: bool = False
     master_wine_id: Optional[str] = None
     source: str = "menu_scan"
 
     # Backwards compatibility aliases (deprecated)
-    rating: Optional[str] = None             # Legacy — use rating_ws/rating_rp/rating_jr
-    classification: Optional[str] = None     # Legacy — use classification_name + classification_system
+    rating: Optional[str] = None  # Legacy — use rating_ws/rating_rp/rating_jr
+    classification: Optional[str] = (
+        None  # Legacy — use classification_name + classification_system
+    )
 
 
 class MenuScanResponse(BaseModel):
     """Full menu scan result (multiple wines)."""
+
     wines_detected: int = 0
     wines: List[WineParsedResponse] = Field(default_factory=list)
     regions_detected: int = 0
@@ -192,6 +221,7 @@ class MenuScanResponse(BaseModel):
 
 class FuzzyMatchResult(BaseModel):
     """Individual fuzzy match result."""
+
     wine_id: str
     name: str
     producer: Optional[str] = None
@@ -204,19 +234,24 @@ class FuzzyMatchResult(BaseModel):
 
 # ── Phase 3: YOLO 2-class Preview ─────────────────────────────────────────────
 
+
 class PreviewDetectRequest(BaseModel):
     """Single camera frame for YOLO bounding box detection. Returns boxes only."""
-    frame_base64: str = Field(..., description="Base64-encoded JPEG or PNG of a camera frame")
+
+    frame_base64: str = Field(
+        ..., description="Base64-encoded JPEG or PNG of a camera frame"
+    )
     confidence_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
 
 
 class BoundingBox(BaseModel):
     """Normalized [0-1] bounding box from YOLO 2-class inference."""
+
     x1: float
     y1: float
     x2: float
     y2: float
-    label: str          # "wine_entry" or "section_header"
+    label: str  # "wine_entry" or "section_header"
     confidence: float
 
 
@@ -225,6 +260,7 @@ class PreviewDetectResponse(BaseModel):
     Bounding box detection result. Does NOT contain OCR text or wine data.
     YOLO output is UX preview only — extraction is separate (POST /api/v1/onboarding/extract).
     """
+
     boxes: List[BoundingBox]
     model_loaded: bool
 
@@ -251,7 +287,11 @@ def _get_menu_agent():
         "confidence_threshold": 0.3,
         "mock_mode": settings.cv_yolov8_mock_mode,
         "google_api_key": settings.google_api_key,
-        "ocr_languages": settings.cv_ocr_languages.split(",") if isinstance(settings.cv_ocr_languages, str) else ["en"],
+        "ocr_languages": (
+            settings.cv_ocr_languages.split(",")
+            if isinstance(settings.cv_ocr_languages, str)
+            else ["en"]
+        ),
     }
 
     _menu_agent = MenuAnalyzerAgent(
@@ -270,6 +310,7 @@ def _get_field_parser():
         return _field_parser
 
     from services.wine_field_parser import get_field_parser
+
     _field_parser = get_field_parser(
         google_api_key=settings.google_api_key,
         mock_mode=settings.mock_llm,
@@ -284,9 +325,11 @@ def _get_wine_matcher():
         return _wine_matcher
 
     from services.wine_matcher import get_wine_matcher
+
     supabase = None
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
     except Exception:
         pass
@@ -303,6 +346,7 @@ def _get_wine_matcher():
 # ROUTES
 # =============================================================================
 
+
 @router.post("/wine", response_model=WineParsedResponse)
 async def scan_wine(request: WineScanRequest):
     """
@@ -311,7 +355,9 @@ async def scan_wine(request: WineScanRequest):
     Returns 25 structured fields with confidence and source annotations.
     """
     if not request.ocr_text and not request.image_base64:
-        raise HTTPException(status_code=400, detail="Either ocr_text or image_base64 is required")
+        raise HTTPException(
+            status_code=400, detail="Either ocr_text or image_base64 is required"
+        )
 
     # If image provided, run through full agent pipeline
     if request.image_base64:
@@ -324,7 +370,11 @@ async def scan_wine(request: WineScanRequest):
         if wines:
             first = wines[0]
             return WineParsedResponse(
-                **{k: v for k, v in first.items() if k in WineParsedResponse.model_fields},
+                **{
+                    k: v
+                    for k, v in first.items()
+                    if k in WineParsedResponse.model_fields
+                },
                 source=f"{request.source_type}_scan",
             )
         raise HTTPException(status_code=404, detail="No wines detected in image")
@@ -366,7 +416,9 @@ async def scan_menu(request: WineScanRequest):
       YOLO (13-class) → OCR → Gemini field parser → library matching.
     """
     if not request.image_base64:
-        raise HTTPException(status_code=400, detail="image_base64 is required for menu scanning")
+        raise HTTPException(
+            status_code=400, detail="image_base64 is required for menu scanning"
+        )
 
     agent = _get_menu_agent()
     result = await agent.process_menu_image(
@@ -379,7 +431,9 @@ async def scan_menu(request: WineScanRequest):
         wine_data = {k: v for k, v in w.items() if k in WineParsedResponse.model_fields}
         wine_data["source"] = "menu_scan"
         # Queue Tier 2 wines for background enrichment
-        await _queue_enrichment_if_needed(wine_data, restaurant_id=request.restaurant_id)
+        await _queue_enrichment_if_needed(
+            wine_data, restaurant_id=request.restaurant_id
+        )
         wines.append(WineParsedResponse(**wine_data))
 
     return MenuScanResponse(
@@ -421,6 +475,7 @@ async def research_wine(request: WineResearchRequest):
         try:
             from core.database import get_supabase_client
             import hashlib
+
             supabase = get_supabase_client()
             if supabase:
                 payload = {
@@ -436,13 +491,15 @@ async def research_wine(request: WineResearchRequest):
                 sig_str = f"{payload.get('name','')}-{payload.get('producer','')}-{payload.get('vintage','')}".lower().strip()
                 signature_hash = hashlib.sha256(sig_str.encode()).hexdigest()
 
-                supabase.table("master_wine_library_submissions").insert({
-                    "restaurant_id": request.restaurant_id,
-                    "submitted_by": "gemini_research",
-                    "payload": payload,
-                    "signature_hash": signature_hash,
-                    "status": "pending_review",
-                }).execute()
+                supabase.table("master_wine_library_submissions").insert(
+                    {
+                        "restaurant_id": request.restaurant_id,
+                        "submitted_by": "gemini_research",
+                        "payload": payload,
+                        "signature_hash": signature_hash,
+                        "status": "pending_review",
+                    }
+                ).execute()
                 submitted = True
         except Exception as e:
             logger.warning(f"Failed to submit to library: {e}")
@@ -491,10 +548,14 @@ async def fuzzy_match_wine(request: FuzzyMatchRequest):
 # PDF WINE BOOK SCRAPING
 # =============================================================================
 
+
 class BookScrapeRequest(BaseModel):
     """Request to process a wine reference book/catalog PDF."""
+
     pdf_base64: str = Field(description="Base64-encoded PDF file")
-    source_name: str = Field(default="uploaded_book", description="Name of the book/catalog")
+    source_name: str = Field(
+        default="uploaded_book", description="Name of the book/catalog"
+    )
     restaurant_id: Optional[str] = None
 
 
@@ -506,10 +567,11 @@ async def scrape_wine_book(request: BookScrapeRequest):
     Returns extracted wine entries with all 25 master_wine_library fields.
     """
     from services.wine_book_scraper import get_wine_book_scraper
-    
+
     supabase = None
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
     except Exception:
         pass
@@ -538,8 +600,10 @@ async def scrape_wine_book(request: BookScrapeRequest):
 # FREE-FIRST EXTRACTION ENDPOINTS
 # =============================================================================
 
+
 class TextExtractRequest(BaseModel):
     """Request to extract wines from raw text (HTML DOM or PDF text)."""
+
     text: str = Field(description="Raw text from HTML DOM, PyPDF2, or OCR")
     source_type: str = Field(default="html", description="html | pdf | ocr")
     restaurant_name: Optional[str] = None
@@ -548,6 +612,7 @@ class TextExtractRequest(BaseModel):
 
 class PDFExtractRequest(BaseModel):
     """Request to extract wines from a PDF."""
+
     pdf_base64: str = Field(description="Base64-encoded PDF file")
     document_type: str = Field(default="menu", description="menu | invoice")
     restaurant_name: Optional[str] = None
@@ -555,6 +620,7 @@ class PDFExtractRequest(BaseModel):
 
 class PhotoExtractRequest(BaseModel):
     """Request to extract wines from a photo (uses VLM)."""
+
     image_base64: str = Field(description="Base64-encoded image")
     document_type: str = Field(default="menu", description="menu | invoice")
     restaurant_name: Optional[str] = None
@@ -649,6 +715,7 @@ async def extract_from_pdf(request: PDFExtractRequest):
     vlm_result = None
     if needs_fallback and settings.scan_vlm_enabled:
         from services.vlm_extraction_service import get_vlm_service
+
         vlm = get_vlm_service()
 
         # Use TEXT fallback (cheaper than vision)
@@ -666,7 +733,11 @@ async def extract_from_pdf(request: PDFExtractRequest):
         "total_pages": result.total_pages,
         "extraction_method": result.extraction_method,
         "cost": result.cost + (vlm_result.cost_estimate if vlm_result else 0.0),
-        "wines": vlm_result.wines if vlm_result and vlm_result.total_wines > result.total_wines else result.merged_wines,
+        "wines": (
+            vlm_result.wines
+            if vlm_result and vlm_result.total_wines > result.total_wines
+            else result.merged_wines
+        ),
         "sections": result.merged_sections,
         "total_wines": max(
             vlm_result.total_wines if vlm_result else 0,
@@ -722,8 +793,10 @@ async def extract_from_photo(request: PhotoExtractRequest):
 # CRAWLER & DISCOVERY ENDPOINTS
 # =============================================================================
 
+
 class DiscoveryRequest(BaseModel):
     """Request to discover restaurants in a city."""
+
     city_slug: str = Field(description="City slug (e.g. 'new-york')")
     max_pages: int = Field(default=5, ge=1, le=25)
     sources: List[str] = Field(
@@ -738,6 +811,7 @@ class DiscoveryRequest(BaseModel):
 
 class CrawlRequest(BaseModel):
     """Request to crawl a restaurant website."""
+
     website_url: str
     restaurant_name: str
 
@@ -752,7 +826,9 @@ async def discover_restaurants(request: DiscoveryRequest):
         (c for c in CITY_CONFIGS if c["slug"] == request.city_slug), None
     )
     if not city_config:
-        raise HTTPException(status_code=400, detail=f"Unknown city: {request.city_slug}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown city: {request.city_slug}"
+        )
 
     unified = get_unified_discovery_service(settings)
     result = await unified.discover_city(
@@ -780,7 +856,9 @@ async def crawl_restaurant(request: CrawlRequest):
     from services.web_crawler import get_crawler_service
 
     crawler = get_crawler_service(rate_limit=settings.crawl_rate_limit_per_day)
-    result = await crawler.crawl_restaurant(request.website_url, request.restaurant_name)
+    result = await crawler.crawl_restaurant(
+        request.website_url, request.restaurant_name
+    )
 
     return {
         "restaurant": result.restaurant_name,
@@ -831,16 +909,21 @@ async def get_crawler_stats():
     # If Supabase is available, add aggregated counts
     try:
         from supabase import create_client
+
         sb = create_client(settings.supabase_url, settings.supabase_key)
 
         # Per-source counts
-        all_rows = sb.table("restaurant_directory").select("discovery_sources,crawl_status,city").execute()
+        all_rows = (
+            sb.table("restaurant_directory")
+            .select("discovery_sources,crawl_status,city")
+            .execute()
+        )
         if all_rows.data:
             source_counts: Dict[str, int] = {}
             status_counts: Dict[str, int] = {}
             city_counts: Dict[str, int] = {}
             for row in all_rows.data:
-                for src in (row.get("discovery_sources") or []):
+                for src in row.get("discovery_sources") or []:
                     source_counts[src] = source_counts.get(src, 0) + 1
                 st = row.get("crawl_status", "pending")
                 status_counts[st] = status_counts.get(st, 0) + 1
@@ -860,10 +943,12 @@ async def get_crawler_stats():
 # RESTAURANT DATASET ENDPOINTS
 # =============================================================================
 
+
 @router.get("/restaurants/cities")
 async def list_dataset_cities():
     """List all cities with restaurant menu datasets."""
     from services.restaurant_dataset_service import get_restaurant_dataset_service
+
     svc = get_restaurant_dataset_service()
     return {"cities": svc.get_all_cities()}
 
@@ -872,6 +957,7 @@ async def list_dataset_cities():
 async def get_city_restaurants(city: str):
     """Get all restaurant menu snapshots for a city."""
     from services.restaurant_dataset_service import get_restaurant_dataset_service
+
     svc = get_restaurant_dataset_service()
     restaurants = svc.get_restaurants_by_city(city)
     return {"city": city, "count": len(restaurants), "restaurants": restaurants}
@@ -881,10 +967,12 @@ async def get_city_restaurants(city: str):
 # QUALITY REVIEW ENDPOINTS
 # =============================================================================
 
+
 @router.get("/quality/queue")
 async def get_review_queue():
     """Get items pending dev review."""
     from services.quality_scorer import get_quality_scorer
+
     scorer = get_quality_scorer()
     queue = scorer.get_review_queue()
     return {
@@ -929,6 +1017,7 @@ async def approve_review(review_id: str):
 async def reject_review(review_id: str):
     """Reject a quality review item."""
     from services.quality_scorer import get_quality_scorer
+
     scorer = get_quality_scorer()
     success = scorer.reject_review(review_id)
     return {"success": success, "review_id": review_id, "action": "rejected"}
@@ -936,6 +1025,7 @@ async def reject_review(review_id: str):
 
 class CorrectionRequest(BaseModel):
     """Corrections for a review item."""
+
     corrections: Dict[str, Any] = Field(description="Dict of field_name: correct_value")
 
 
@@ -971,6 +1061,7 @@ async def correct_review(review_id: str, request: CorrectionRequest):
 async def get_quality_stats():
     """Get quality review statistics."""
     from services.quality_scorer import get_quality_scorer
+
     scorer = get_quality_scorer()
     return scorer.get_review_stats()
 
@@ -979,10 +1070,12 @@ async def get_quality_stats():
 # ACTIVE LEARNING ENDPOINTS
 # =============================================================================
 
+
 @router.get("/learning/accuracy")
 async def get_accuracy_report():
     """Get parser accuracy report from active learning."""
     from services.active_learning_service import get_active_learning_service
+
     al = get_active_learning_service()
     return al.get_improvement_report()
 
@@ -991,6 +1084,7 @@ async def get_accuracy_report():
 async def run_learning_cycle():
     """Run one active learning improvement cycle."""
     from services.active_learning_service import get_active_learning_service
+
     al = get_active_learning_service()
     return al.run_improvement_cycle()
 
@@ -999,6 +1093,7 @@ async def run_learning_cycle():
 async def run_benchmark():
     """Run the parser against the gold-standard benchmark set."""
     from services.active_learning_service import get_active_learning_service
+
     al = get_active_learning_service()
     result = al.benchmark.run_benchmark()
     return {
@@ -1012,6 +1107,7 @@ async def run_benchmark():
 # =============================================================================
 # TRAINING DATA EXPORT
 # =============================================================================
+
 
 @router.get("/training-data/export")
 async def export_training_data(
@@ -1027,6 +1123,7 @@ async def export_training_data(
     supabase = None
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
     except Exception:
         pass
@@ -1043,10 +1140,13 @@ async def export_training_data(
     )
 
     from fastapi.responses import Response
+
     return Response(
         content=jsonl,
         media_type="application/jsonl",
-        headers={"Content-Disposition": f"attachment; filename=training_data_{dataset_type or 'all'}.jsonl"},
+        headers={
+            "Content-Disposition": f"attachment; filename=training_data_{dataset_type or 'all'}.jsonl"
+        },
     )
 
 
@@ -1058,6 +1158,7 @@ async def training_data_stats():
     supabase = None
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
     except Exception:
         pass
@@ -1086,15 +1187,15 @@ def _get_yolo_model():
 
     try:
         from ultralytics import YOLO
+
         model_path = settings.cv_menu_model_path
         if not model_path:
             logger.warning("cv_menu_model_path not set — YOLO preview disabled")
             return None
         from pathlib import Path
+
         if not Path(model_path).exists():
-            logger.warning(
-                f"YOLO model not found at {model_path} — preview disabled"
-            )
+            logger.warning(f"YOLO model not found at {model_path} — preview disabled")
             return None
         _yolo_model = YOLO(model_path)
         logger.info("YOLO model loaded for live preview")
@@ -1108,10 +1209,10 @@ def _get_yolo_model():
 async def yolo_preview_ws(websocket: WebSocket):
     """
     WebSocket endpoint for real-time YOLO detection preview.
-    
+
     Client sends: {"frame": "<base64 JPEG>"}
     Server responds: {"boxes": [{"x": float, "y": float, "width": float, "height": float, "label": str, "confidence": float}]}
-    
+
     Throttled to max ~2 fps server-side. The client should also throttle.
     """
     await websocket.accept()
@@ -1137,7 +1238,9 @@ async def yolo_preview_ws(websocket: WebSocket):
                 msg = json.loads(data)
                 frame_b64 = msg.get("frame")
                 if not frame_b64:
-                    await websocket.send_text(json.dumps({"boxes": [], "error": "no frame"}))
+                    await websocket.send_text(
+                        json.dumps({"boxes": [], "error": "no frame"})
+                    )
                     continue
 
                 # Decode image
@@ -1152,10 +1255,9 @@ async def yolo_preview_ws(websocket: WebSocket):
                 # Run YOLO detection (fast, no OCR/Gemini)
                 model = _get_yolo_model()
                 if model is None:
-                    await websocket.send_text(json.dumps({
-                        "boxes": [],
-                        "error": "YOLO model not available"
-                    }))
+                    await websocket.send_text(
+                        json.dumps({"boxes": [], "error": "YOLO model not available"})
+                    )
                     continue
 
                 # Run inference with low confidence for preview
@@ -1176,20 +1278,24 @@ async def yolo_preview_ws(websocket: WebSocket):
                             cls_id = int(box.cls[0].cpu().numpy())
                             label = model.names.get(cls_id, f"class_{cls_id}")
 
-                            boxes.append({
-                                "x": float(xyxy[0]),
-                                "y": float(xyxy[1]),
-                                "width": float(xyxy[2] - xyxy[0]),
-                                "height": float(xyxy[3] - xyxy[1]),
-                                "label": label,
-                                "confidence": round(conf, 3),
-                                "classId": cls_id,
-                            })
+                            boxes.append(
+                                {
+                                    "x": float(xyxy[0]),
+                                    "y": float(xyxy[1]),
+                                    "width": float(xyxy[2] - xyxy[0]),
+                                    "height": float(xyxy[3] - xyxy[1]),
+                                    "label": label,
+                                    "confidence": round(conf, 3),
+                                    "classId": cls_id,
+                                }
+                            )
 
                 await websocket.send_text(json.dumps({"boxes": boxes}))
 
             except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"boxes": [], "error": "invalid JSON"}))
+                await websocket.send_text(
+                    json.dumps({"boxes": [], "error": "invalid JSON"})
+                )
             except Exception as e:
                 logger.warning(f"YOLO preview frame error: {e}")
                 await websocket.send_text(json.dumps({"boxes": [], "error": str(e)}))
@@ -1209,6 +1315,7 @@ async def yolo_preview_ws(websocket: WebSocket):
 # PREVIEW DETECT: Single-frame HTTP endpoint (POST)
 # Counterpart to the WebSocket at /api/v1/scan/preview (streaming).
 # =============================================================================
+
 
 @router_preview.post("/detect", response_model=PreviewDetectResponse)
 async def preview_detect(request: PreviewDetectRequest):

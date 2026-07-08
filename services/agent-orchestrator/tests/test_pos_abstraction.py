@@ -1,13 +1,14 @@
 """Tests for POS abstraction layer (POS-ABSTRACT)."""
+
 import hashlib
 import hmac
-import json
 from datetime import datetime, timezone
 import pytest
 
 
 def test_pos_event_validates_required_fields():
     from core.pos_provider import POSEvent
+
     event = POSEvent(
         event_type="ORDER_CLOSED",
         restaurant_guid="rest-123",
@@ -22,6 +23,7 @@ def test_pos_event_validates_required_fields():
 def test_toast_adapter_is_pos_provider():
     from core.pos_provider import POSProvider
     from adapters.toast_adapter import ToastAdapter
+
     adapter = ToastAdapter(webhook_secret="test-secret")
     assert isinstance(adapter, POSProvider)
 
@@ -29,6 +31,7 @@ def test_toast_adapter_is_pos_provider():
 @pytest.mark.asyncio
 async def test_toast_adapter_verify_webhook_invalid_signature():
     from adapters.toast_adapter import ToastAdapter
+
     adapter = ToastAdapter(webhook_secret="my-secret")
     raw = b'{"guid": "order-1"}'
     result = await adapter.verify_webhook(raw, signature="invalid-sig")
@@ -38,6 +41,7 @@ async def test_toast_adapter_verify_webhook_invalid_signature():
 @pytest.mark.asyncio
 async def test_toast_adapter_verify_webhook_valid_signature():
     from adapters.toast_adapter import ToastAdapter
+
     secret = "my-webhook-secret"
     raw = b'{"guid": "order-1", "restaurantGuid": "rest-1"}'
     # Compute valid HMAC-SHA256
@@ -51,6 +55,7 @@ async def test_toast_adapter_verify_webhook_valid_signature():
 async def test_toast_adapter_normalize_event_returns_pos_event():
     from adapters.toast_adapter import ToastAdapter
     from core.pos_provider import POSEvent
+
     adapter = ToastAdapter(webhook_secret="test")
     raw = {
         "eventType": "ORDER_CLOSED",
@@ -69,8 +74,9 @@ async def test_toast_adapter_normalize_event_returns_pos_event():
 async def test_toast_adapter_normalize_event_handles_missing_fields():
     """normalize_event does not raise even if some Toast fields are absent."""
     from adapters.toast_adapter import ToastAdapter
+
     adapter = ToastAdapter(webhook_secret="test")
     raw = {"eventType": "TEST_EVENT"}  # Missing restaurantGuid, createdDate, etc.
     event = await adapter.normalize_event(raw)
     assert event.event_type == "TEST_EVENT"
-    assert event.restaurant_guid == ""   # Default fallback
+    assert event.restaurant_guid == ""  # Default fallback

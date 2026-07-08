@@ -10,7 +10,7 @@ Refactored with:
 """
 
 import asyncio
-from typing import Dict, List, Any, Optional, Type
+from typing import Dict, Any, Optional, Type
 from datetime import datetime
 
 from core.base_agent import BaseAgent, AgentStatus
@@ -54,13 +54,13 @@ logger = setup_logger(__name__)
 class AgentOrchestrator:
     """
     Central orchestrator for all autonomous agents.
-    
+
     Refactored with:
     - AgentRegistry for lazy loading and feature flags
     - LazyAgentProxy for on-demand instantiation
     - Auto-suspend for idle on-demand agents
     - Backward-compatible self.agents dict for existing code
-    
+
     Responsibilities:
     - Agent lifecycle management (start, stop, restart)
     - Health monitoring
@@ -68,40 +68,46 @@ class AgentOrchestrator:
     - System-wide control (pause writes, emergency flush)
     - Metrics aggregation
     """
-    
+
     def __init__(self, message_bus: MessageBus, settings: Settings):
         self.message_bus = message_bus
         self.settings = settings
         self.database: Optional[DatabaseClient] = None
-        
+
         # New: Agent registry with lazy loading
         self._feature_flags = self._build_feature_flags(settings)
         self.registry = AgentRegistry(feature_flags=self._feature_flags)
-        
+
         # Lazy proxies
         self._proxies: Dict[str, LazyAgentProxy] = {}
-        
+
         # Backward-compatible agents dict (populated on start)
         self.agents: Dict[str, BaseAgent] = {}
         self.agent_classes: Dict[str, Type[BaseAgent]] = {}
-        
+
         # System state
         self.system_paused: bool = False
         self.started_at: datetime = datetime.utcnow()
-        
+
         logger.info("Agent Orchestrator initialized (lazy-loading enabled)")
-    
+
     @staticmethod
     def _build_feature_flags(settings: Settings) -> Dict[str, bool]:
         """Extract feature flags from settings for the registry."""
         flags = {}
-        if hasattr(settings, 'features'):
+        if hasattr(settings, "features"):
             features = settings.features
-            flags["FEATURE_VISUAL_VERIFICATION"] = getattr(features, 'visual_verification', False)
-            flags["FEATURE_SOMMELIER_AI"] = getattr(features, 'sommelier_ai', False)
-            flags["FEATURE_MENU_ANALYZER"] = getattr(features, 'menu_analyzer_enabled', False) if hasattr(features, 'menu_analyzer_enabled') else False
+            flags["FEATURE_VISUAL_VERIFICATION"] = getattr(
+                features, "visual_verification", False
+            )
+            flags["FEATURE_SOMMELIER_AI"] = getattr(features, "sommelier_ai", False)
+            flags["FEATURE_MENU_ANALYZER"] = (
+                getattr(features, "menu_analyzer_enabled", False)
+                if hasattr(features, "menu_analyzer_enabled")
+                else False
+            )
         return flags
-    
+
     async def initialize(self) -> None:
         """
         Initialize orchestrator: database, registry, lazy proxies.
@@ -109,7 +115,7 @@ class AgentOrchestrator:
         """
         try:
             logger.info("Initializing Agent Orchestrator...")
-            
+
             # Initialize database client
             self.database = DatabaseClient(
                 supabase_url=self.settings.supabase_url,
@@ -117,19 +123,21 @@ class AgentOrchestrator:
                 redis_url=self.settings.redis_url,
             )
             await self.database.connect()
-            
+
             # Register all agent classes with the registry
             self._register_agent_classes()
-            
+
             # Create lazy proxies (no instantiation yet)
             self._create_lazy_proxies()
-            
-            logger.info("Agent Orchestrator initialized (agents registered, not yet instantiated)")
-            
+
+            logger.info(
+                "Agent Orchestrator initialized (agents registered, not yet instantiated)"
+            )
+
         except Exception as e:
             logger.error(f"Failed to initialize orchestrator: {e}")
             raise
-    
+
     def _register_agent_classes(self) -> None:
         """Register all available agent classes with the registry."""
         self.agent_classes = {
@@ -144,37 +152,36 @@ class AgentOrchestrator:
             "notification_agent": NotificationAgent,
             "calendar_agent": CalendarAgent,
             "reporting_agent": ReportingAgent,
-            
             # Phase 2 agents
             "visual_verification_agent": VisualVerificationAgent,
             "sommelier_agent": SommelierAgent,
             "menu_analyzer_agent": MenuAnalyzerAgent,
             "rfq_agent": RFQAgent,
-
             # P1 agents
             "ghost_inventory_agent": GhostInventoryAgent,
             "negotiation_playbook_agent": NegotiationPlaybookAgent,
             "auto_pilot_agent": AutoPilotAgent,
             "compliance_agent": ComplianceAgent,
             "shrinkage_detective_agent": ShrinkageDetectiveAgent,
-
             # Phase 32 agents
             "provider_communication_agent": ProviderCommunicationAgent,
         }
-        
+
         # Register with the new registry (includes tier and dependency info)
         self.registry.register_from_defaults(self.agent_classes)
         logger.info(f"Registered {self.registry.registered_count} agent classes")
-    
+
     def _create_lazy_proxies(self) -> None:
         """Create lazy proxies for all registered agents (no instantiation)."""
         for agent_name, agent_class in self.agent_classes.items():
             if not self.registry.is_enabled(agent_name):
-                logger.info(f"Agent {agent_name} disabled by feature flag - skipping proxy")
+                logger.info(
+                    f"Agent {agent_name} disabled by feature flag - skipping proxy"
+                )
                 continue
-            
+
             agent_config = self._get_agent_config(agent_name)
-            
+
             proxy = self.registry.create_proxy(
                 name=agent_name,
                 factory=agent_class,
@@ -186,9 +193,9 @@ class AgentOrchestrator:
                 },
             )
             self._proxies[agent_name] = proxy
-        
+
         logger.info(f"Created {len(self._proxies)} lazy proxies")
-    
+
     def _get_agent_config(self, agent_name: str) -> Dict[str, Any]:
         """
         Get configuration for a specific agent
@@ -198,7 +205,7 @@ class AgentOrchestrator:
             "environment": self.settings.environment,
             "debug": self.settings.debug,
         }
-        
+
         # Agent-specific configurations
         agent_configs = {
             "pos_integration_agent": {
@@ -218,18 +225,40 @@ class AgentOrchestrator:
                 "default_threshold": self.settings.default_threshold_min,
             },
             "provider_conversation_agent": {
-                "extraction_model": getattr(self.settings, "provider_convo_extraction_model", self.settings.llm_primary_model),
-                "response_model": getattr(self.settings, "provider_convo_response_model", self.settings.llm_primary_model),
-                "embedding_model": getattr(self.settings, "provider_convo_embedding_model", "text-embedding-004"),
+                "extraction_model": getattr(
+                    self.settings,
+                    "provider_convo_extraction_model",
+                    self.settings.llm_primary_model,
+                ),
+                "response_model": getattr(
+                    self.settings,
+                    "provider_convo_response_model",
+                    self.settings.llm_primary_model,
+                ),
+                "embedding_model": getattr(
+                    self.settings,
+                    "provider_convo_embedding_model",
+                    "text-embedding-004",
+                ),
                 "llm_temperature": self.settings.llm_temperature,
                 "google_api_key": self.settings.google_api_key,
                 "mock_mode": self.settings.mock_llm,
                 "api_gateway_url": self.settings.api_gateway_url,
-                "max_sessions": getattr(self.settings, "provider_convo_max_sessions", 20),
-                "memory_top_k": getattr(self.settings, "provider_convo_memory_top_k", 10),
-                "follow_up_buffer_hours": getattr(self.settings, "provider_convo_follow_up_buffer_hours", 24),
-                "relationship_alert_days": getattr(self.settings, "provider_convo_relationship_alert_days", 30),
-                "promo_alert_days": getattr(self.settings, "provider_convo_promo_alert_days", 7),
+                "max_sessions": getattr(
+                    self.settings, "provider_convo_max_sessions", 20
+                ),
+                "memory_top_k": getattr(
+                    self.settings, "provider_convo_memory_top_k", 10
+                ),
+                "follow_up_buffer_hours": getattr(
+                    self.settings, "provider_convo_follow_up_buffer_hours", 24
+                ),
+                "relationship_alert_days": getattr(
+                    self.settings, "provider_convo_relationship_alert_days", 30
+                ),
+                "promo_alert_days": getattr(
+                    self.settings, "provider_convo_promo_alert_days", 7
+                ),
             },
             "procurement_agent": {
                 "llm_model": self.settings.llm_primary_model,
@@ -254,7 +283,9 @@ class AgentOrchestrator:
             },
             # Phase 2 agents
             "visual_verification_agent": {
-                "yolo_model_path": getattr(self.settings, "yolo_model_path", "yolov8n.pt"),
+                "yolo_model_path": getattr(
+                    self.settings, "yolo_model_path", "yolov8n.pt"
+                ),
                 "confidence_threshold": 0.5,
                 "ocr_languages": ["en"],
                 "mock_mode": self.settings.mock_llm,
@@ -265,7 +296,9 @@ class AgentOrchestrator:
                 "mock_mode": self.settings.mock_llm,
             },
             "menu_analyzer_agent": {
-                "yolo_model_path": getattr(self.settings, "yolo_model_path", "yolov8n.pt"),
+                "yolo_model_path": getattr(
+                    self.settings, "yolo_model_path", "yolov8n.pt"
+                ),
                 "confidence_threshold": 0.3,
                 "ocr_languages": ["en"],
                 "google_api_key": self.settings.google_api_key,
@@ -290,28 +323,28 @@ class AgentOrchestrator:
             "compliance_agent": {},
             "shrinkage_detective_agent": {},
         }
-        
+
         config = base_config.copy()
         config.update(agent_configs.get(agent_name, {}))
-        
+
         return config
-    
+
     async def start_all_agents(self) -> None:
         """
         Start CORE agents eagerly (in dependency order).
         ON_DEMAND and OPTIONAL agents remain as lazy proxies.
         """
         logger.info("Starting core agents (on-demand agents will lazy-load)...")
-        
+
         # Get dependency-resolved startup order for core agents only
         start_order = self.registry.get_startup_order()
         started_count = 0
-        
+
         for agent_name in start_order:
             proxy = self._proxies.get(agent_name)
             if not proxy:
                 continue
-            
+
             try:
                 instance = await proxy.ensure_started()
                 # Populate backward-compatible agents dict
@@ -321,30 +354,29 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Failed to start agent {agent_name}: {e}")
                 # Continue starting other agents
-        
+
         # Start the auto-suspend monitor for on-demand agents
         await self.registry.start_suspend_monitor(check_interval=60)
-        
+
         on_demand_count = sum(
-            1 for p in self._proxies.values()
-            if p.spec.tier != AgentTier.CORE
+            1 for p in self._proxies.values() if p.spec.tier != AgentTier.CORE
         )
-        
+
         logger.info(
             f"Started {started_count} core agents. "
             f"{on_demand_count} on-demand agents ready for lazy loading."
         )
-    
+
     async def stop_all_agents(self) -> None:
         """Stop all agents gracefully (both core and lazy-loaded)."""
         logger.info("Stopping all agents...")
-        
+
         # Stop the auto-suspend monitor
         await self.registry.stop_suspend_monitor()
-        
+
         # Stop all proxies (both core and on-demand that were loaded)
         stop_order = list(reversed(list(self._proxies.keys())))
-        
+
         for agent_name in stop_order:
             proxy = self._proxies.get(agent_name)
             if proxy and proxy.is_loaded:
@@ -353,21 +385,25 @@ class AgentOrchestrator:
                     logger.info(f"Stopped agent: {agent_name}")
                 except Exception as e:
                     logger.error(f"Error stopping agent {agent_name}: {e}")
-        
+
         # Also stop any agents in the legacy dict
         for agent_name, agent in self.agents.items():
-            if agent and hasattr(agent, 'status') and agent.status != AgentStatus.STOPPED:
+            if (
+                agent
+                and hasattr(agent, "status")
+                and agent.status != AgentStatus.STOPPED
+            ):
                 try:
                     await agent.stop()
                 except Exception:
                     pass
-        
+
         # Disconnect database
         if self.database:
             await self.database.disconnect()
-        
+
         logger.info("All agents stopped")
-    
+
     async def restart_agent(self, agent_name: str) -> Dict[str, Any]:
         """Restart a specific agent (works with both lazy and eager agents)."""
         proxy = self._proxies.get(agent_name)
@@ -382,12 +418,12 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Failed to restart agent {agent_name}: {e}")
                 return {"success": False, "error": str(e)}
-        
+
         # Fallback to legacy dict
         agent = self.agents.get(agent_name)
         if not agent:
             return {"success": False, "error": "Agent not found"}
-        
+
         try:
             await agent.stop()
             await asyncio.sleep(1)
@@ -395,7 +431,7 @@ class AgentOrchestrator:
             return {"success": True, "agent": agent_name, "status": agent.status.value}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def stop_agent(self, agent_name: str) -> Dict[str, Any]:
         """Stop a specific agent."""
         proxy = self._proxies.get(agent_name)
@@ -405,7 +441,7 @@ class AgentOrchestrator:
                 return {"success": True, "agent": agent_name, "status": "stopped"}
             except Exception as e:
                 return {"success": False, "error": str(e)}
-        
+
         agent = self.agents.get(agent_name)
         if not agent:
             return {"success": False, "error": "Agent not found"}
@@ -414,7 +450,7 @@ class AgentOrchestrator:
             return {"success": True, "agent": agent_name, "status": "stopped"}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def start_agent(self, agent_name: str) -> Dict[str, Any]:
         """Start a specific agent (lazy-load if needed)."""
         proxy = self._proxies.get(agent_name)
@@ -425,16 +461,16 @@ class AgentOrchestrator:
                 return {"success": True, "agent": agent_name, "status": "started"}
             except Exception as e:
                 return {"success": False, "error": str(e)}
-        
+
         return {"success": False, "error": "Agent not registered"}
-    
+
     async def pause_all_writes(self) -> None:
         """
         Pause all agents that write to database
         Used during manual edits (Yield-to-Human protocol)
         """
         logger.warning("⏸️ PAUSING ALL WRITES (Yield-to-Human)")
-        
+
         # Broadcast pause command
         await self.message_bus.publish(
             exchange_name="system.control",
@@ -445,74 +481,80 @@ class AgentOrchestrator:
             },
             priority=10,  # Highest priority
         )
-        
+
         self.system_paused = True
-        
+
         # Pause write-heavy agents
         write_agents = ["inventory_engine", "procurement_agent"]
         for agent_name in write_agents:
             agent = self.agents.get(agent_name)
             if agent:
                 await agent.pause()
-    
+
     async def resume_all_writes(self) -> None:
         """Resume all agents after manual edit period"""
         logger.info("▶️ RESUMING ALL WRITES")
-        
+
         await self.message_bus.publish(
             exchange_name="system.control",
             routing_key="system.resume_writes",
             message_body={"command": "resume_writes"},
             priority=10,
         )
-        
+
         self.system_paused = False
-        
+
         # Resume all paused agents
         for agent in self.agents.values():
             if agent.status == AgentStatus.PAUSED:
                 await agent.resume()
-    
+
     async def emergency_flush_buffer(self) -> Dict[str, Any]:
         """
         Emergency flush of buffer (skip 30-min wait)
         Used for critical stockouts
         """
         logger.warning("🚨 EMERGENCY BUFFER FLUSH")
-        
+
         await self.message_bus.publish(
             exchange_name="system.control",
             routing_key="system.emergency.flush_buffer",
             message_body={"command": "flush_buffer", "reason": "emergency"},
             priority=10,
         )
-        
+
         return {"success": True, "action": "buffer_flushed"}
-    
+
     async def get_agent_health(self) -> Dict[str, Any]:
         """Get health status of all agents (includes lazy proxy status)."""
         agent_health = {}
-        
+
         # Get status from registry (includes all agents, even unloaded)
         registry_statuses = self.registry.get_all_statuses()
-        
+
         for agent_name, status in registry_statuses.items():
             # For loaded agents, also include the agent's own health
             agent = self.agents.get(agent_name)
-            if agent and hasattr(agent, 'get_health'):
+            if agent and hasattr(agent, "get_health"):
                 health = agent.get_health()
                 health.update(status)
                 agent_health[agent_name] = health
             else:
                 agent_health[agent_name] = status
-        
+
         # System-wide health
-        loaded_agents = {k: v for k, v in agent_health.items() if v.get("loaded", False)}
-        all_healthy = all(
-            health.get("healthy", True) and health.get("state") != "failed"
-            for health in loaded_agents.values()
-        ) if loaded_agents else True
-        
+        loaded_agents = {
+            k: v for k, v in agent_health.items() if v.get("loaded", False)
+        }
+        all_healthy = (
+            all(
+                health.get("healthy", True) and health.get("state") != "failed"
+                for health in loaded_agents.values()
+            )
+            if loaded_agents
+            else True
+        )
+
         return {
             "system_healthy": all_healthy,
             "system_paused": self.system_paused,
@@ -521,16 +563,16 @@ class AgentOrchestrator:
             "total_loaded": self.registry.loaded_count,
             "total_active": self.registry.active_count,
         }
-    
+
     async def get_detailed_agent_health(self) -> Dict[str, Any]:
         """Get detailed health for all agents"""
         detailed_health = {}
-        
+
         for agent_name, agent in self.agents.items():
             detailed_health[agent_name] = agent.get_detailed_health()
-        
+
         return detailed_health
-    
+
     async def get_metrics(self) -> Dict[str, Any]:
         """
         Get comprehensive system metrics
@@ -539,22 +581,22 @@ class AgentOrchestrator:
         agent_metrics = {}
         total_messages = 0
         total_errors = 0
-        
+
         for agent_name, agent in self.agents.items():
             metrics = agent.metrics.to_dict()
             agent_metrics[agent_name] = metrics
             total_messages += metrics["messages_processed"]
             total_errors += metrics["errors"]
-        
+
         # Message bus metrics
         bus_stats = await self.message_bus.get_statistics()
-        
+
         # Database metrics
         db_stats = await self.database.get_statistics()
-        
+
         # System metrics
         uptime_seconds = (datetime.utcnow() - self.started_at).total_seconds()
-        
+
         return {
             "system": {
                 "uptime_seconds": round(uptime_seconds, 2),
@@ -566,14 +608,11 @@ class AgentOrchestrator:
             "aggregated": {
                 "total_messages_processed": total_messages,
                 "total_errors": total_errors,
-                "overall_error_rate": round(
-                    total_errors / max(total_messages, 1), 4
-                ),
+                "overall_error_rate": round(total_errors / max(total_messages, 1), 4),
             },
             "message_bus": bus_stats,
             "database": db_stats,
         }
-    
+
     def __repr__(self) -> str:
         return f"<AgentOrchestrator(agents={len(self.agents)}, paused={self.system_paused})>"
-

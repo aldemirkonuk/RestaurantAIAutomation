@@ -13,7 +13,7 @@ Tracks:
 
 import json
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime, timedelta
 
 from core.base_agent import BaseAgent
@@ -64,6 +64,7 @@ class CalendarAgent(BaseAgent):
 
         # Start self-scheduling daily check (no external trigger needed)
         import asyncio
+
         self._daily_check_task = asyncio.create_task(
             self._daily_check_loop(), name="calendar-daily-check"
         )
@@ -97,10 +98,14 @@ class CalendarAgent(BaseAgent):
         restaurant_id = payload.get("restaurant_id")
 
         if not conversation or not provider_id:
-            self.logger.debug("No conversation text or provider_id, skipping date extraction")
+            self.logger.debug(
+                "No conversation text or provider_id, skipping date extraction"
+            )
             return
 
-        self.logger.info(f"Extracting dates from conversation with {provider_name} (provider={provider_id})")
+        self.logger.info(
+            f"Extracting dates from conversation with {provider_name} (provider={provider_id})"
+        )
 
         try:
             # Build the LLM prompt
@@ -115,7 +120,9 @@ class CalendarAgent(BaseAgent):
             extracted_dates = await self._call_llm_for_dates(prompt)
 
             if not extracted_dates:
-                self.logger.debug(f"No dates extracted from conversation with {provider_name}")
+                self.logger.debug(
+                    f"No dates extracted from conversation with {provider_name}"
+                )
                 return
 
             # Persist each extracted date
@@ -148,7 +155,9 @@ class CalendarAgent(BaseAgent):
                     self.logger.warning(f"Failed to save extracted date: {e}")
 
             if saved_count > 0:
-                self.logger.info(f"Saved {saved_count} extracted dates for {provider_name}")
+                self.logger.info(
+                    f"Saved {saved_count} extracted dates for {provider_name}"
+                )
 
                 # Also create calendar_events for high-confidence extractions
                 for date_entry in extracted_dates:
@@ -157,7 +166,9 @@ class CalendarAgent(BaseAgent):
                             self.database.supabase.table("calendar_events").insert(
                                 {
                                     "restaurant_id": restaurant_id,
-                                    "title": date_entry.get("description", "Vendor Event"),
+                                    "title": date_entry.get(
+                                        "description", "Vendor Event"
+                                    ),
                                     "event_type": date_entry.get("event_type", "other"),
                                     "start_date": date_entry.get("date"),
                                     "all_day": True,
@@ -170,7 +181,9 @@ class CalendarAgent(BaseAgent):
                             pass  # Calendar event creation is best-effort
 
         except Exception as e:
-            self.logger.error(f"Error extracting dates from conversation: {e}", exc_info=True)
+            self.logger.error(
+                f"Error extracting dates from conversation: {e}", exc_info=True
+            )
 
     async def _call_llm_for_dates(self, prompt: str) -> List[Dict[str, Any]]:
         """Call Gemini Pro to extract dates, with regex fallback"""
@@ -185,14 +198,16 @@ class CalendarAgent(BaseAgent):
                 # Parse JSON from LLM response
                 text = response.text.strip()
                 # Extract JSON array from response (LLM may wrap in markdown)
-                json_match = re.search(r'\[.*\]', text, re.DOTALL)
+                json_match = re.search(r"\[.*\]", text, re.DOTALL)
                 if json_match:
                     return json.loads(json_match.group())
 
         except ImportError:
             self.logger.debug("google.generativeai not available, using regex fallback")
         except Exception as e:
-            self.logger.warning(f"LLM date extraction failed, using regex fallback: {e}")
+            self.logger.warning(
+                f"LLM date extraction failed, using regex fallback: {e}"
+            )
 
         # Regex fallback: extract obvious date patterns from the prompt
         return self._regex_date_extraction(prompt)
@@ -201,26 +216,30 @@ class CalendarAgent(BaseAgent):
         """Fallback: extract dates using regex patterns"""
         results = []
         # ISO dates: 2026-02-15
-        for match in re.finditer(r'(\d{4}-\d{2}-\d{2})', text):
-            results.append({
-                "date": match.group(1),
-                "event_type": "other",
-                "description": "Date mentioned in conversation",
-                "confidence": 0.6,
-            })
+        for match in re.finditer(r"(\d{4}-\d{2}-\d{2})", text):
+            results.append(
+                {
+                    "date": match.group(1),
+                    "event_type": "other",
+                    "description": "Date mentioned in conversation",
+                    "confidence": 0.6,
+                }
+            )
         # US dates: 02/15/2026 or 2/15/26
-        for match in re.finditer(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', text):
+        for match in re.finditer(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", text):
             month, day, year = match.groups()
             if len(year) == 2:
                 year = "20" + year
             try:
                 date_obj = datetime(int(year), int(month), int(day))
-                results.append({
-                    "date": date_obj.strftime("%Y-%m-%d"),
-                    "event_type": "other",
-                    "description": "Date mentioned in conversation",
-                    "confidence": 0.5,
-                })
+                results.append(
+                    {
+                        "date": date_obj.strftime("%Y-%m-%d"),
+                        "event_type": "other",
+                        "description": "Date mentioned in conversation",
+                        "confidence": 0.5,
+                    }
+                )
             except ValueError:
                 pass
         return results
@@ -237,10 +256,14 @@ class CalendarAgent(BaseAgent):
             try:
                 # Calculate seconds until next midnight + 5 min
                 now = datetime.utcnow()
-                tomorrow = now.replace(hour=0, minute=5, second=0, microsecond=0) + timedelta(days=1)
+                tomorrow = now.replace(
+                    hour=0, minute=5, second=0, microsecond=0
+                ) + timedelta(days=1)
                 sleep_seconds = (tomorrow - now).total_seconds()
 
-                self.logger.debug(f"Next daily check in {sleep_seconds / 3600:.1f} hours")
+                self.logger.debug(
+                    f"Next daily check in {sleep_seconds / 3600:.1f} hours"
+                )
 
                 # Sleep until next check (interruptible by shutdown event)
                 try:
@@ -294,4 +317,3 @@ class CalendarAgent(BaseAgent):
 
         except Exception as e:
             self.logger.error(f"Error checking events: {e}")
-

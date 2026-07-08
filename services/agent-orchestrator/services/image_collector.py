@@ -25,7 +25,6 @@ import logging
 import re
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -39,6 +38,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # DATA MODELS
 # =============================================================================
+
 
 class ImageSource(str, Enum):
     MANUAL = "manual"
@@ -58,6 +58,7 @@ class ImageCategory(str, Enum):
 @dataclass
 class CollectedImage:
     """Represents a collected image with metadata."""
+
     source: ImageSource
     category: ImageCategory
     image_bytes: bytes
@@ -72,6 +73,7 @@ class CollectedImage:
 @dataclass
 class CollectionResult:
     """Result of a collection operation."""
+
     success: bool
     images_collected: int = 0
     images_deduplicated: int = 0
@@ -83,6 +85,7 @@ class CollectionResult:
 # =============================================================================
 # PERCEPTUAL HASHING FOR DEDUPLICATION
 # =============================================================================
+
 
 def compute_average_hash(image_bytes: bytes, hash_size: int = 8) -> str:
     """
@@ -141,6 +144,7 @@ def hamming_distance(hash1: str, hash2: str) -> int:
 # =============================================================================
 # SOURCE ADAPTERS
 # =============================================================================
+
 
 class BaseAdapter(ABC):
     """Base class for image source adapters."""
@@ -223,7 +227,9 @@ class GooglePlacesAdapter(BaseAdapter):
 
         try:
             # Step 1: Find place
-            search_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+            search_url = (
+                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+            )
             query = f"{restaurant_name} restaurant menu"
             if location:
                 query += f" {location}"
@@ -287,7 +293,9 @@ class GooglePlacesAdapter(BaseAdapter):
 class ApifyOpenTableAdapter(BaseAdapter):
     """Adapter for OpenTable scraping via Apify actor."""
 
-    def __init__(self, apify_token: str, http_client: Optional[httpx.AsyncClient] = None):
+    def __init__(
+        self, apify_token: str, http_client: Optional[httpx.AsyncClient] = None
+    ):
         super().__init__(http_client)
         self.apify_token = apify_token
         self.actor_id = "memo23/opentable-reviews-cheerio"
@@ -537,8 +545,14 @@ class GenericWebAdapter(BaseAdapter):
     """Generic web scraper that finds menu/wine images on any restaurant URL."""
 
     MENU_IMAGE_PATTERNS = [
-        r"menu", r"wine.?list", r"carte", r"drink",
-        r"bottle", r"vintage", r"cellar", r"sommelier",
+        r"menu",
+        r"wine.?list",
+        r"carte",
+        r"drink",
+        r"bottle",
+        r"vintage",
+        r"cellar",
+        r"sommelier",
     ]
 
     async def collect(
@@ -564,15 +578,11 @@ class GenericWebAdapter(BaseAdapter):
             html = resp.text
 
             # Extract image URLs from HTML
-            img_pattern = re.compile(
-                r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE
-            )
+            img_pattern = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
             all_img_urls = img_pattern.findall(html)
 
             # Also check srcset
-            srcset_pattern = re.compile(
-                r'srcset=["\']([^"\']+)["\']', re.IGNORECASE
-            )
+            srcset_pattern = re.compile(r'srcset=["\']([^"\']+)["\']', re.IGNORECASE)
             for srcset in srcset_pattern.findall(html):
                 for entry in srcset.split(","):
                     parts = entry.strip().split()
@@ -580,9 +590,7 @@ class GenericWebAdapter(BaseAdapter):
                         all_img_urls.append(parts[0])
 
             # Filter for likely menu/wine images
-            pattern = re.compile(
-                "|".join(self.MENU_IMAGE_PATTERNS), re.IGNORECASE
-            )
+            pattern = re.compile("|".join(self.MENU_IMAGE_PATTERNS), re.IGNORECASE)
             candidate_urls = []
             for img_url in all_img_urls:
                 # Skip tiny icons and data URIs
@@ -593,6 +601,7 @@ class GenericWebAdapter(BaseAdapter):
                     img_url = f"https:{img_url}"
                 elif img_url.startswith("/"):
                     from urllib.parse import urlparse
+
                     parsed = urlparse(url)
                     img_url = f"{parsed.scheme}://{parsed.netloc}{img_url}"
                 elif not img_url.startswith("http"):
@@ -604,7 +613,8 @@ class GenericWebAdapter(BaseAdapter):
             # If no pattern matches, just take larger images
             if not candidate_urls:
                 candidate_urls = [
-                    u for u in all_img_urls
+                    u
+                    for u in all_img_urls
                     if u.startswith("http") and not u.startswith("data:")
                 ]
 
@@ -641,6 +651,7 @@ class GenericWebAdapter(BaseAdapter):
 # IMAGE COLLECTOR SERVICE
 # =============================================================================
 
+
 class ImageCollectorService:
     """
     Central service for collecting images from multiple sources.
@@ -668,7 +679,9 @@ class ImageCollectorService:
         self.adapters: Dict[ImageSource, BaseAdapter] = {}
         self.adapters[ImageSource.MANUAL] = ManualUploadAdapter()
         if google_places_api_key:
-            self.adapters[ImageSource.GOOGLE_PLACES] = GooglePlacesAdapter(google_places_api_key)
+            self.adapters[ImageSource.GOOGLE_PLACES] = GooglePlacesAdapter(
+                google_places_api_key
+            )
         if apify_token:
             self.adapters[ImageSource.OPENTABLE] = ApifyOpenTableAdapter(apify_token)
         if yelp_api_key:
@@ -693,6 +706,7 @@ class ImageCollectorService:
     def _get_supabase(self):
         if self._supabase is None and self.supabase_url and self.supabase_key:
             from supabase import create_client
+
             self._supabase = create_client(self.supabase_url, self.supabase_key)
         return self._supabase
 
@@ -741,9 +755,7 @@ class ImageCollectorService:
 
             tasks.append((source, adapter.collect(**kwargs)))
 
-        results = await asyncio.gather(
-            *(t[1] for t in tasks), return_exceptions=True
-        )
+        results = await asyncio.gather(*(t[1] for t in tasks), return_exceptions=True)
 
         for (source, _), result in zip(tasks, results):
             if isinstance(result, Exception):
@@ -839,9 +851,7 @@ class ImageCollectorService:
             logger.error(f"Failed to store image: {e}")
             return None
 
-    async def _record_metadata(
-        self, image: CollectedImage, storage_path: str
-    ) -> None:
+    async def _record_metadata(self, image: CollectedImage, storage_path: str) -> None:
         """Insert metadata into collection_metadata table."""
         supabase = self._get_supabase()
         if not supabase:

@@ -15,7 +15,6 @@ Architecture (D-01):
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -25,12 +24,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from config.settings import Settings
 from core.base_agent import BaseAgent
 from models.email_intel import EmailClassification, PromoDetails
-from services.model_clients import get_gemini_client, get_haiku_client, get_haiku_semaphore
+from services.model_clients import (
+    get_gemini_client,
+    get_haiku_client,
+    get_haiku_semaphore,
+)
 
 logger = logging.getLogger(__name__)
 
 WINE_EVENT_TYPES = ["tasting", "tasting_event", "high_volume_expected"]
-STALE_EMAIL_HOURS = 18  # per premortem R-06: skip digest accumulation for emails older than this
+STALE_EMAIL_HOURS = (
+    18  # per premortem R-06: skip digest accumulation for emails older than this
+)
 
 
 class EmailIntelAgent(BaseAgent):
@@ -125,7 +130,10 @@ class EmailIntelAgent(BaseAgent):
         await self.log_decision(
             decision_type="email_classification",
             inputs={"subject": email_subject, "body_preview": email_body[:200]},
-            output={"category": classification.category, "confidence": classification.confidence},
+            output={
+                "category": classification.category,
+                "confidence": classification.confidence,
+            },
             reasoning=classification.reasoning,
             confidence=classification.confidence,
             restaurant_id=restaurant_id or None,
@@ -152,7 +160,14 @@ class EmailIntelAgent(BaseAgent):
                 action_url="/providers",
             )
             # D-32-15: Invoice signal detected → trigger invoice match pipeline
-            _invoice_keywords = ("invoice", "inv #", "inv-", "payment request", "bill ", "amount due")
+            _invoice_keywords = (
+                "invoice",
+                "inv #",
+                "inv-",
+                "payment request",
+                "bill ",
+                "amount due",
+            )
             _body_lower = email_body.lower()
             _subj_lower = email_subject.lower()
             if any(kw in _subj_lower or kw in _body_lower for kw in _invoice_keywords):
@@ -269,7 +284,9 @@ class EmailIntelAgent(BaseAgent):
         )
 
         # Cross-vendor price (D-18 — restaurant_inventory, NOT order_items.wine_id)
-        last_price = await self._get_last_purchase_price(restaurant_id, details.grape_variety)
+        last_price = await self._get_last_purchase_price(
+            restaurant_id, details.grape_variety
+        )
 
         # Insert to vendor_promotions
         insert_data: Dict[str, Any] = {
@@ -321,7 +338,9 @@ class EmailIntelAgent(BaseAgent):
                 pipe.expire(digest_key, 36 * 3600)  # 36h TTL per D-09
                 await pipe.execute()
             except Exception as e:
-                self.logger.warning(f"Redis digest accumulation failed (non-critical): {e}")
+                self.logger.warning(
+                    f"Redis digest accumulation failed (non-critical): {e}"
+                )
 
         # In-app notification (D-03 — direct Supabase INSERT, NOT HTTP to NestJS)
         title = f"🏷️ Deal: {details.product_name}"
@@ -417,7 +436,9 @@ class EmailIntelAgent(BaseAgent):
         try:
             inv_result = (
                 self.database.supabase.table("restaurant_inventory")
-                .select("stock_live, threshold_min, master_wine_library!inner(grape_variety)")
+                .select(
+                    "stock_live, threshold_min, master_wine_library!inner(grape_variety)"
+                )
                 .eq("restaurant_id", restaurant_id)
                 .not_.is_("stock_live", "null")
                 .limit(1)
@@ -427,7 +448,8 @@ class EmailIntelAgent(BaseAgent):
                 for row in inv_result.data:
                     mwl = row.get("master_wine_library") or {}
                     if isinstance(mwl, dict) and (
-                        grape_variety.lower() in (mwl.get("grape_variety") or "").lower()
+                        grape_variety.lower()
+                        in (mwl.get("grape_variety") or "").lower()
                     ):
                         stock_live = row.get("stock_live", 0) or 0
                         threshold_min = max(1, row.get("threshold_min", 1) or 1)
@@ -550,7 +572,10 @@ class EmailIntelAgent(BaseAgent):
                 mwl = row.get("master_wine_library") or {}
                 if isinstance(mwl, dict):
                     variety = (mwl.get("grape_variety") or "").lower()
-                    if grape_variety.lower() in variety or variety in grape_variety.lower():
+                    if (
+                        grape_variety.lower() in variety
+                        or variety in grape_variety.lower()
+                    ):
                         price = row.get("last_purchase_price")
                         if price is not None:
                             return float(price)
@@ -598,7 +623,9 @@ class EmailIntelAgent(BaseAgent):
             }
             if metadata:
                 insert_payload["metadata"] = metadata
-            self.database.supabase.table("notifications").insert(insert_payload).execute()
+            self.database.supabase.table("notifications").insert(
+                insert_payload
+            ).execute()
         except Exception as e:
             self.logger.warning(f"Notification insert failed (non-critical): {e}")
 
@@ -656,23 +683,25 @@ class EmailIntelAgent(BaseAgent):
         sender_name = message_payload.get("from_name", sender_email)
         subject = message_payload.get("subject", "(no subject)")
         try:
-            self.database.supabase.table("notifications").insert({
-                "restaurant_id": restaurant_id,
-                "type": "unknown_sender",
-                "title": f"Email from unknown contact: {sender_name}",
-                "message": (
-                    f"Received email from {sender_name} <{sender_email}> "
-                    f"(subject: {subject[:80]}) — this address is not in your providers list. "
-                    "Would you like to add them as a provider?"
-                ),
-                "status": "unread",   # VERIFIED: notifications uses status='unread'
-                "metadata": {
-                    "sender_email": sender_email,
-                    "sender_name": sender_name,
-                    "subject": subject,
-                    "action": "add_to_providers",
-                },
-            }).execute()
+            self.database.supabase.table("notifications").insert(
+                {
+                    "restaurant_id": restaurant_id,
+                    "type": "unknown_sender",
+                    "title": f"Email from unknown contact: {sender_name}",
+                    "message": (
+                        f"Received email from {sender_name} <{sender_email}> "
+                        f"(subject: {subject[:80]}) — this address is not in your providers list. "
+                        "Would you like to add them as a provider?"
+                    ),
+                    "status": "unread",  # VERIFIED: notifications uses status='unread'
+                    "metadata": {
+                        "sender_email": sender_email,
+                        "sender_name": sender_name,
+                        "subject": subject,
+                        "action": "add_to_providers",
+                    },
+                }
+            ).execute()
         except Exception as exc:
             self.logger.error(
                 "unknown_sender_notify failed",

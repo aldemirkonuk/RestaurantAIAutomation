@@ -18,7 +18,6 @@ Rate: ~50-100 OpenTable pages per session.
 """
 
 import asyncio
-import hashlib
 import json
 import logging
 import re
@@ -38,18 +37,38 @@ DISCOVERY_CACHE_DIR = PROJECT_ROOT / "datasets" / "restaurant_menus"
 
 CITY_CONFIGS: List[Dict[str, Any]] = [
     {"name": "New York", "state": "NY", "opentable_metro_id": 4, "slug": "new-york"},
-    {"name": "San Francisco", "state": "CA", "opentable_metro_id": 6, "slug": "san-francisco"},
-    {"name": "Los Angeles", "state": "CA", "opentable_metro_id": 8, "slug": "los-angeles"},
+    {
+        "name": "San Francisco",
+        "state": "CA",
+        "opentable_metro_id": 6,
+        "slug": "san-francisco",
+    },
+    {
+        "name": "Los Angeles",
+        "state": "CA",
+        "opentable_metro_id": 8,
+        "slug": "los-angeles",
+    },
     {"name": "Chicago", "state": "IL", "opentable_metro_id": 3, "slug": "chicago"},
     {"name": "Miami", "state": "FL", "opentable_metro_id": 11, "slug": "miami"},
-    {"name": "Washington DC", "state": "DC", "opentable_metro_id": 13, "slug": "washington-dc"},
+    {
+        "name": "Washington DC",
+        "state": "DC",
+        "opentable_metro_id": 13,
+        "slug": "washington-dc",
+    },
     {"name": "Boston", "state": "MA", "opentable_metro_id": 2, "slug": "boston"},
     {"name": "Seattle", "state": "WA", "opentable_metro_id": 9, "slug": "seattle"},
     {"name": "Portland", "state": "OR", "opentable_metro_id": 16, "slug": "portland"},
     {"name": "Nashville", "state": "TN", "opentable_metro_id": 22, "slug": "nashville"},
     {"name": "Denver", "state": "CO", "opentable_metro_id": 5, "slug": "denver"},
     {"name": "Austin", "state": "TX", "opentable_metro_id": 30, "slug": "austin"},
-    {"name": "Philadelphia", "state": "PA", "opentable_metro_id": 10, "slug": "philadelphia"},
+    {
+        "name": "Philadelphia",
+        "state": "PA",
+        "opentable_metro_id": 10,
+        "slug": "philadelphia",
+    },
     {"name": "Atlanta", "state": "GA", "opentable_metro_id": 1, "slug": "atlanta"},
     {"name": "Las Vegas", "state": "NV", "opentable_metro_id": 15, "slug": "las-vegas"},
 ]
@@ -58,6 +77,7 @@ CITY_CONFIGS: List[Dict[str, Any]] = [
 # =============================================================================
 # DATA MODELS
 # =============================================================================
+
 
 def _normalize_name(name: str) -> str:
     """Normalize restaurant name for dedup: lowercase, strip articles, collapse whitespace."""
@@ -71,6 +91,7 @@ def _normalize_name(name: str) -> str:
 @dataclass
 class DiscoveredRestaurant:
     """A restaurant discovered from any source."""
+
     restaurant_name: str
     city: str
     state: str
@@ -91,6 +112,7 @@ class DiscoveredRestaurant:
 @dataclass
 class DiscoveryResult:
     """Result of a discovery session."""
+
     city: str
     restaurants_found: int = 0
     restaurants_new: int = 0
@@ -102,6 +124,7 @@ class DiscoveryResult:
 # =============================================================================
 # DISCOVERY SERVICE
 # =============================================================================
+
 
 class OpenTableDiscoveryService:
     """
@@ -210,7 +233,9 @@ class OpenTableDiscoveryService:
                         )
                         await asyncio.sleep(self.RESTAURANT_DELAY_SECONDS)
                     except Exception as e:
-                        logger.debug(f"Could not get website for {rest.restaurant_name}: {e}")
+                        logger.debug(
+                            f"Could not get website for {rest.restaurant_name}: {e}"
+                        )
 
             await browser.close()
 
@@ -233,7 +258,7 @@ class OpenTableDiscoveryService:
             # OpenTable uses various selectors for restaurant cards
             cards = await page.query_selector_all(
                 '[data-test="restaurant-card"], '
-                '.restaurant-card, '
+                ".restaurant-card, "
                 '[class*="RestaurantCard"], '
                 'a[href*="/r/"]'
             )
@@ -287,9 +312,7 @@ class OpenTableDiscoveryService:
             cuisine = await cuisine_el.inner_text() if cuisine_el else None
 
             # Extract price range
-            price_el = await card.query_selector(
-                '[class*="price"], [class*="Price"]'
-            )
+            price_el = await card.query_selector('[class*="price"], [class*="Price"]')
             price_text = await price_el.inner_text() if price_el else None
             price_range = None
             if price_text:
@@ -314,7 +337,9 @@ class OpenTableDiscoveryService:
                 '[class*="neighborhood"], [class*="Neighborhood"], '
                 '[class*="location"], [class*="Location"]'
             )
-            neighborhood = await neighborhood_el.inner_text() if neighborhood_el else None
+            neighborhood = (
+                await neighborhood_el.inner_text() if neighborhood_el else None
+            )
 
             return DiscoveredRestaurant(
                 restaurant_name=name,
@@ -355,7 +380,13 @@ class OpenTableDiscoveryService:
                 href = await website_link.get_attribute("href")
                 if href and not any(
                     domain in href
-                    for domain in ["opentable.com", "facebook.com", "instagram.com", "twitter.com", "yelp.com"]
+                    for domain in [
+                        "opentable.com",
+                        "facebook.com",
+                        "instagram.com",
+                        "twitter.com",
+                        "yelp.com",
+                    ]
                 ):
                     return href
 
@@ -379,7 +410,10 @@ class OpenTableDiscoveryService:
             try:
                 with open(cache_file) as f:
                     data = json.load(f)
-                    known = {_normalize_name(r["restaurant_name"]) for r in data.get("restaurants", [])}
+                    known = {
+                        _normalize_name(r["restaurant_name"])
+                        for r in data.get("restaurants", [])
+                    }
             except Exception:
                 pass
 
@@ -411,41 +445,8 @@ class OpenTableDiscoveryService:
         for rest in restaurants:
             norm = _normalize_name(rest.restaurant_name)
             if norm not in existing_names:
-                existing.append({
-                    "restaurant_name": rest.restaurant_name,
-                    "city": rest.city,
-                    "state": rest.state,
-                    "neighborhood": rest.neighborhood,
-                    "cuisine_type": rest.cuisine_type,
-                    "price_range": rest.price_range,
-                    "rating": rest.rating,
-                    "opentable_url": rest.opentable_url,
-                    "website_url": rest.website_url,
-                    "yelp_url": rest.yelp_url,
-                    "google_place_id": rest.google_place_id,
-                    "discovery_source": rest.discovery_source,
-                    "discovered_at": rest.discovered_at,
-                    "crawl_status": "pending",
-                })
-                existing_names.add(norm)
-                self._known_restaurants.setdefault(city, set()).add(norm)
-
-        # Save updated file
-        with open(cache_file, "w") as f:
-            json.dump({
-                "city": city,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "total_restaurants": len(existing),
-                "restaurants": existing,
-            }, f, indent=2)
-
-        logger.info(f"Saved {len(restaurants)} new restaurants for {city} (total: {len(existing)})")
-
-        # Also save to Supabase if available
-        if self._supabase:
-            for rest in restaurants:
-                try:
-                    self._supabase.table("restaurant_directory").upsert({
+                existing.append(
+                    {
                         "restaurant_name": rest.restaurant_name,
                         "city": rest.city,
                         "state": rest.state,
@@ -457,11 +458,57 @@ class OpenTableDiscoveryService:
                         "website_url": rest.website_url,
                         "yelp_url": rest.yelp_url,
                         "google_place_id": rest.google_place_id,
-                        "discovery_sources": [rest.discovery_source],
+                        "discovery_source": rest.discovery_source,
+                        "discovered_at": rest.discovered_at,
                         "crawl_status": "pending",
-                    }, on_conflict="restaurant_name,city").execute()
+                    }
+                )
+                existing_names.add(norm)
+                self._known_restaurants.setdefault(city, set()).add(norm)
+
+        # Save updated file
+        with open(cache_file, "w") as f:
+            json.dump(
+                {
+                    "city": city,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "total_restaurants": len(existing),
+                    "restaurants": existing,
+                },
+                f,
+                indent=2,
+            )
+
+        logger.info(
+            f"Saved {len(restaurants)} new restaurants for {city} (total: {len(existing)})"
+        )
+
+        # Also save to Supabase if available
+        if self._supabase:
+            for rest in restaurants:
+                try:
+                    self._supabase.table("restaurant_directory").upsert(
+                        {
+                            "restaurant_name": rest.restaurant_name,
+                            "city": rest.city,
+                            "state": rest.state,
+                            "neighborhood": rest.neighborhood,
+                            "cuisine_type": rest.cuisine_type,
+                            "price_range": rest.price_range,
+                            "rating": rest.rating,
+                            "opentable_url": rest.opentable_url,
+                            "website_url": rest.website_url,
+                            "yelp_url": rest.yelp_url,
+                            "google_place_id": rest.google_place_id,
+                            "discovery_sources": [rest.discovery_source],
+                            "crawl_status": "pending",
+                        },
+                        on_conflict="restaurant_name,city",
+                    ).execute()
                 except Exception as e:
-                    logger.debug(f"Supabase upsert failed for {rest.restaurant_name}: {e}")
+                    logger.debug(
+                        f"Supabase upsert failed for {rest.restaurant_name}: {e}"
+                    )
 
     def get_pending_restaurants(self, city: str) -> List[Dict[str, Any]]:
         """Get restaurants that haven't been crawled yet."""
@@ -473,7 +520,8 @@ class OpenTableDiscoveryService:
             data = json.load(f)
 
         return [
-            r for r in data.get("restaurants", [])
+            r
+            for r in data.get("restaurants", [])
             if r.get("crawl_status") == "pending" and r.get("website_url")
         ]
 

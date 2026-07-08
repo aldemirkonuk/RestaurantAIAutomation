@@ -25,7 +25,6 @@ import time
 import logging
 from typing import Any, Dict, Optional
 from contextlib import contextmanager
-from functools import wraps
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +52,35 @@ except ImportError:
 
 class NoopMetric:
     """No-op metric placeholder when prometheus_client is not installed."""
-    def inc(self, *args, **kwargs): pass
-    def dec(self, *args, **kwargs): pass
-    def set(self, *args, **kwargs): pass
-    def observe(self, *args, **kwargs): pass
-    def labels(self, *args, **kwargs): return self
-    def info(self, *args, **kwargs): pass
-    def time(self): return _NoopTimer()
+
+    def inc(self, *args, **kwargs):
+        pass
+
+    def dec(self, *args, **kwargs):
+        pass
+
+    def set(self, *args, **kwargs):
+        pass
+
+    def observe(self, *args, **kwargs):
+        pass
+
+    def labels(self, *args, **kwargs):
+        return self
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def time(self):
+        return _NoopTimer()
 
 
 class _NoopTimer:
-    def __enter__(self): return self
-    def __exit__(self, *args): pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
 
 
 class MetricsCollector:
@@ -170,11 +186,15 @@ class MetricsCollector:
         self.http_request_duration = noop
         self.system_info = noop
 
-    def record_agent_message(self, agent_name: str, status: str = "success", duration: float = 0.0):
+    def record_agent_message(
+        self, agent_name: str, status: str = "success", duration: float = 0.0
+    ):
         """Record an agent message processing event."""
         self.agent_messages_total.labels(agent_name=agent_name, status=status).inc()
         if duration > 0:
-            self.agent_processing_duration.labels(agent_name=agent_name).observe(duration)
+            self.agent_processing_duration.labels(agent_name=agent_name).observe(
+                duration
+            )
 
     def update_agent_status(self, agent_name: str, tier: str, state: str):
         """Update agent status gauge."""
@@ -186,10 +206,16 @@ class MetricsCollector:
         """Update connection pool size."""
         self.pool_connections.labels(pool_type=pool_type).set(size)
 
-    def record_http_request(self, method: str, endpoint: str, status_code: int, duration: float):
+    def record_http_request(
+        self, method: str, endpoint: str, status_code: int, duration: float
+    ):
         """Record an HTTP request."""
-        self.http_requests_total.labels(method=method, endpoint=endpoint, status_code=str(status_code)).inc()
-        self.http_request_duration.labels(method=method, endpoint=endpoint).observe(duration)
+        self.http_requests_total.labels(
+            method=method, endpoint=endpoint, status_code=str(status_code)
+        ).inc()
+        self.http_request_duration.labels(method=method, endpoint=endpoint).observe(
+            duration
+        )
 
     @contextmanager
     def agent_processing_timer(self, agent_name: str):
@@ -261,10 +287,12 @@ class TracingManager:
     def _init_tracer(self, exporter: str, otlp_endpoint: Optional[str]):
         """Initialize the OpenTelemetry tracer."""
         try:
-            resource = Resource.create({
-                "service.name": self.service_name,
-                "service.version": "2.6.0",
-            })
+            resource = Resource.create(
+                {
+                    "service.name": self.service_name,
+                    "service.version": "2.6.0",
+                }
+            )
 
             provider = TracerProvider(resource=resource)
 
@@ -273,9 +301,12 @@ class TracingManager:
                     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
                         OTLPSpanExporter,
                     )
+
                     span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
                 except ImportError:
-                    logger.warning("OTLP exporter not installed, falling back to console")
+                    logger.warning(
+                        "OTLP exporter not installed, falling back to console"
+                    )
                     span_exporter = ConsoleSpanExporter()
             else:
                 span_exporter = ConsoleSpanExporter()
@@ -300,7 +331,9 @@ class TracingManager:
             with self._tracer.start_as_current_span(name) as span:
                 if attributes:
                     for k, v in attributes.items():
-                        span.set_attribute(k, str(v) if not isinstance(v, (int, float, bool)) else v)
+                        span.set_attribute(
+                            k, str(v) if not isinstance(v, (int, float, bool)) else v
+                        )
                 yield span
         else:
             yield None
@@ -311,6 +344,7 @@ class TracingManager:
             return
         try:
             from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
             FastAPIInstrumentor.instrument_app(app)
             logger.info("FastAPI instrumented with OpenTelemetry")
         except ImportError:

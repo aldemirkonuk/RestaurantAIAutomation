@@ -1,4 +1,4 @@
-import { baseTemplate } from './base-template';
+import { baseTemplate } from "./base-template";
 
 interface OnboardingEmailData {
   ownerName: string;
@@ -10,15 +10,22 @@ interface OnboardingEmailData {
 }
 
 export function onboardingEmailTemplate(data: OnboardingEmailData): string {
-  const { ownerName, restaurantName, restaurantCity, dashboardUrl, settingsUrl, inviteUrl } = data;
-  const firstName = ownerName.split(' ')[0];
+  const {
+    ownerName,
+    restaurantName,
+    restaurantCity,
+    dashboardUrl,
+    settingsUrl,
+    inviteUrl,
+  } = data;
+  const firstName = ownerName.split(" ")[0];
 
   const content = `
     <h2 style="margin: 0 0 8px; color: #111827; font-size: 22px; font-weight: 700;">
       Welcome to WineOps AI, ${firstName} 🍷
     </h2>
     <p style="margin: 0 0 24px; color: #6b7280; font-size: 15px; line-height: 1.6;">
-      <strong>${restaurantName}</strong>${restaurantCity ? ` in ${restaurantCity}` : ''} is now set up.
+      <strong>${restaurantName}</strong>${restaurantCity ? ` in ${restaurantCity}` : ""} is now set up.
       Here's everything you need to get the most out of WineOps in your first week.
     </p>
 

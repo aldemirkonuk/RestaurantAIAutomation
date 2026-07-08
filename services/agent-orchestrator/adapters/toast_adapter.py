@@ -1,11 +1,12 @@
 """Toast POS Adapter — implements POSProvider for Toast webhook events."""
+
 import hashlib
 import hmac
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from core.pos_provider import POSEvent, POSProvider
+from core.pos_provider import POSEvent
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,9 @@ class ToastAdapter:
     async def verify_webhook(self, raw: bytes, signature: str) -> bool:
         """Return True if HMAC-SHA256 signature matches the raw payload."""
         if not self._secret:
-            logger.warning("ToastAdapter: TOAST_WEBHOOK_SECRET not set — skipping HMAC verification")
+            logger.warning(
+                "ToastAdapter: TOAST_WEBHOOK_SECRET not set — skipping HMAC verification"
+            )
             return True  # Fail-open when secret not configured (dev/mock mode)
         if not signature:
             return False
@@ -47,7 +50,11 @@ class ToastAdapter:
         # Parse timestamp — Toast sends ISO 8601 strings
         raw_ts = raw.get("createdDate") or raw.get("created_date")
         try:
-            timestamp = datetime.fromisoformat(raw_ts.replace("Z", "+00:00")) if raw_ts else datetime.now(tz=timezone.utc)
+            timestamp = (
+                datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                if raw_ts
+                else datetime.now(tz=timezone.utc)
+            )
         except (AttributeError, ValueError):
             timestamp = datetime.now(tz=timezone.utc)
 
@@ -56,13 +63,19 @@ class ToastAdapter:
         order = raw.get("order") or {}
         for check in order.get("checks") or []:
             for selection in check.get("selections") or []:
-                items.append({
-                    "name": selection.get("displayName") or selection.get("itemName") or "",
-                    "quantity": selection.get("quantity") or 1,
-                    "guid": selection.get("itemGuid") or selection.get("guid") or "",
-                    "price": selection.get("price") or 0,
-                    "modifiers": selection.get("modifiers") or [],
-                })
+                items.append(
+                    {
+                        "name": selection.get("displayName")
+                        or selection.get("itemName")
+                        or "",
+                        "quantity": selection.get("quantity") or 1,
+                        "guid": selection.get("itemGuid")
+                        or selection.get("guid")
+                        or "",
+                        "price": selection.get("price") or 0,
+                        "modifiers": selection.get("modifiers") or [],
+                    }
+                )
 
         return POSEvent(
             event_type=event_type,

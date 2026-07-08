@@ -12,7 +12,6 @@ Flow:
   4. Optionally auto-chain to WebCrawlerService for pending restaurants
 """
 
-import asyncio
 import json
 import logging
 import re
@@ -77,7 +76,9 @@ def _jaro_winkler(s1: str, s2: str) -> float:
             transpositions += 1
         k += 1
 
-    jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3
+    jaro = (
+        matches / len1 + matches / len2 + (matches - transpositions / 2) / matches
+    ) / 3
 
     prefix_len = 0
     for i in range(min(len1, len2, 4)):
@@ -95,6 +96,7 @@ DEDUP_THRESHOLD = 0.9
 @dataclass
 class UnifiedDiscoveryResult:
     """Aggregated result across all sources for one city."""
+
     city: str
     google_maps_found: int = 0
     opentable_found: int = 0
@@ -133,12 +135,16 @@ class UnifiedDiscoveryService:
             auto_chain: Whether to auto-queue for crawling. Defaults to settings.
         """
         from services.opentable_discovery import (
-            DiscoveredRestaurant, OpenTableDiscoveryService, CITY_CONFIGS,
+            DiscoveredRestaurant,
+            OpenTableDiscoveryService,
+            CITY_CONFIGS,
         )
         from services.google_maps_discovery import GoogleMapsDiscoveryService
 
         if sources is None:
-            sources = [s.strip() for s in self._settings.crawl_discovery_sources.split(",")]
+            sources = [
+                s.strip() for s in self._settings.crawl_discovery_sources.split(",")
+            ]
         if auto_chain is None:
             auto_chain = self._settings.crawl_auto_chain_discovery_to_crawl
 
@@ -166,7 +172,9 @@ class UnifiedDiscoveryService:
                         r.discovery_source = "google_maps"
                     all_restaurants.extend(gm_restaurants)
                     result.google_maps_found = len(gm_restaurants)
-                    logger.info(f"Google Maps: {len(gm_restaurants)} restaurants for {city_name}")
+                    logger.info(
+                        f"Google Maps: {len(gm_restaurants)} restaurants for {city_name}"
+                    )
                 except Exception as e:
                     logger.error(f"Google Maps discovery failed for {city_name}: {e}")
                     result.errors.append(f"google_maps: {str(e)}")
@@ -197,7 +205,9 @@ class UnifiedDiscoveryService:
                             ot_restaurants.append(r)
                         all_restaurants.extend(ot_restaurants)
                         result.opentable_found = len(ot_restaurants)
-                        logger.info(f"OpenTable: {len(ot_restaurants)} restaurants for {city_name}")
+                        logger.info(
+                            f"OpenTable: {len(ot_restaurants)} restaurants for {city_name}"
+                        )
                 except Exception as e:
                     logger.error(f"OpenTable discovery failed for {city_name}: {e}")
                     result.errors.append(f"opentable: {str(e)}")
@@ -243,7 +253,6 @@ class UnifiedDiscoveryService:
         Run discovery across all 15 curated US cities.
         Returns aggregated stats.
         """
-        from services.opentable_discovery import CITY_CONFIGS
         from services.google_maps_discovery import CITY_CONFIGS as GM_CITIES
 
         city_list = GM_CITIES
@@ -256,22 +265,26 @@ class UnifiedDiscoveryService:
                     state=city_config["state"],
                     sources=sources,
                 )
-                stats["cities"].append({
-                    "city": result.city,
-                    "google_maps": result.google_maps_found,
-                    "opentable": result.opentable_found,
-                    "after_dedup": result.total_after_dedup,
-                    "duplicates_removed": result.duplicates_removed,
-                    "saved_to_db": result.saved_to_db,
-                    "auto_chained": result.auto_chained,
-                })
+                stats["cities"].append(
+                    {
+                        "city": result.city,
+                        "google_maps": result.google_maps_found,
+                        "opentable": result.opentable_found,
+                        "after_dedup": result.total_after_dedup,
+                        "duplicates_removed": result.duplicates_removed,
+                        "saved_to_db": result.saved_to_db,
+                        "auto_chained": result.auto_chained,
+                    }
+                )
                 stats["total_new"] += result.total_after_dedup
                 stats["total_deduped"] += result.duplicates_removed
             except Exception as e:
-                stats["cities"].append({
-                    "city": city_config["name"],
-                    "error": str(e),
-                })
+                stats["cities"].append(
+                    {
+                        "city": city_config["name"],
+                        "error": str(e),
+                    }
+                )
 
         return stats
 
@@ -340,31 +353,37 @@ class UnifiedDiscoveryService:
         for rest in restaurants:
             norm = _normalize_name(rest.restaurant_name)
             if norm not in existing_names:
-                existing.append({
-                    "restaurant_name": rest.restaurant_name,
-                    "city": rest.city,
-                    "state": rest.state,
-                    "neighborhood": rest.neighborhood,
-                    "cuisine_type": rest.cuisine_type,
-                    "price_range": rest.price_range,
-                    "rating": rest.rating,
-                    "opentable_url": rest.opentable_url,
-                    "website_url": rest.website_url,
-                    "yelp_url": rest.yelp_url,
-                    "google_place_id": rest.google_place_id,
-                    "discovery_source": rest.discovery_source,
-                    "discovered_at": rest.discovered_at,
-                    "crawl_status": "pending",
-                })
+                existing.append(
+                    {
+                        "restaurant_name": rest.restaurant_name,
+                        "city": rest.city,
+                        "state": rest.state,
+                        "neighborhood": rest.neighborhood,
+                        "cuisine_type": rest.cuisine_type,
+                        "price_range": rest.price_range,
+                        "rating": rest.rating,
+                        "opentable_url": rest.opentable_url,
+                        "website_url": rest.website_url,
+                        "yelp_url": rest.yelp_url,
+                        "google_place_id": rest.google_place_id,
+                        "discovery_source": rest.discovery_source,
+                        "discovered_at": rest.discovered_at,
+                        "crawl_status": "pending",
+                    }
+                )
                 existing_names.add(norm)
 
         with open(cache_file, "w") as f:
-            json.dump({
-                "city": city_name,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "total_restaurants": len(existing),
-                "restaurants": existing,
-            }, f, indent=2)
+            json.dump(
+                {
+                    "city": city_name,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "total_restaurants": len(existing),
+                    "restaurants": existing,
+                },
+                f,
+                indent=2,
+            )
 
         logger.info(f"Cached {len(restaurants)} restaurants for {city_name}")
 
@@ -407,10 +426,14 @@ class UnifiedDiscoveryService:
         for rest in restaurants:
             if rest.website_url and crawler.remaining_today > 0:
                 try:
-                    await crawler.crawl_restaurant(rest.website_url, rest.restaurant_name)
+                    await crawler.crawl_restaurant(
+                        rest.website_url, rest.restaurant_name
+                    )
                     chained += 1
                 except Exception as e:
-                    logger.debug(f"Auto-chain crawl failed for {rest.restaurant_name}: {e}")
+                    logger.debug(
+                        f"Auto-chain crawl failed for {rest.restaurant_name}: {e}"
+                    )
         return chained
 
 
@@ -425,6 +448,7 @@ def get_unified_discovery_service(
     if _service_instance is None:
         if settings is None:
             from config.settings import get_settings
+
             settings = get_settings()
         _service_instance = UnifiedDiscoveryService(settings, supabase_client)
     return _service_instance

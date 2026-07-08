@@ -1,5 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
 
 export interface ContactDto {
   id?: string;
@@ -52,25 +52,35 @@ export class ContactsService {
     pageSize?: number;
     includeAddresses?: boolean;
   }): Promise<PaginatedResult<ContactWithAddresses>> {
-    const { restaurantId, type, search, page = 1, pageSize = 20, includeAddresses = false } = options;
+    const {
+      restaurantId,
+      type,
+      search,
+      page = 1,
+      pageSize = 20,
+      includeAddresses = false,
+    } = options;
     const client = this.databaseService.getClient();
     const offset = (page - 1) * pageSize;
 
     try {
-      let query = client.from('contacts').select('*', { count: 'exact' }).eq('is_active', true);
+      let query = client
+        .from("contacts")
+        .select("*", { count: "exact" })
+        .eq("is_active", true);
 
       if (restaurantId) {
-        query = query.eq('restaurant_id', restaurantId);
+        query = query.eq("restaurant_id", restaurantId);
       }
       if (type) {
-        query = query.eq('type', type);
+        query = query.eq("type", type);
       }
       if (search) {
-        query = query.ilike('display_name', `%${search}%`);
+        query = query.ilike("display_name", `%${search}%`);
       }
 
       const { data, error, count } = await query
-        .order('display_name', { ascending: true })
+        .order("display_name", { ascending: true })
         .range(offset, offset + pageSize - 1);
 
       if (error) throw error;
@@ -79,11 +89,11 @@ export class ContactsService {
 
       // Optionally include addresses
       if (includeAddresses && results.length > 0) {
-        const contactIds = results.map(c => c.id).filter(Boolean);
+        const contactIds = results.map((c) => c.id).filter(Boolean);
         const { data: addresses } = await client
-          .from('contact_addresses')
-          .select('*')
-          .in('contact_id', contactIds);
+          .from("contact_addresses")
+          .select("*")
+          .in("contact_id", contactIds);
 
         const addressMap = new Map<string, ContactAddressDto[]>();
         for (const addr of addresses || []) {
@@ -92,7 +102,7 @@ export class ContactsService {
           addressMap.set(addr.contact_id, list);
         }
 
-        results = results.map(c => ({
+        results = results.map((c) => ({
           ...c,
           addresses: addressMap.get(c.id!) || [],
         }));
@@ -120,9 +130,9 @@ export class ContactsService {
     const client = this.databaseService.getClient();
 
     const { data: contact, error } = await client
-      .from('contacts')
-      .select('*')
-      .eq('id', id)
+      .from("contacts")
+      .select("*")
+      .eq("id", id)
       .single();
 
     if (error || !contact) {
@@ -130,10 +140,10 @@ export class ContactsService {
     }
 
     const { data: addresses } = await client
-      .from('contact_addresses')
-      .select('*')
-      .eq('contact_id', id)
-      .order('is_primary', { ascending: false });
+      .from("contact_addresses")
+      .select("*")
+      .eq("contact_id", id)
+      .order("is_primary", { ascending: false });
 
     return {
       ...contact,
@@ -144,11 +154,14 @@ export class ContactsService {
   /**
    * Create a contact with optional addresses
    */
-  async create(dto: ContactDto, addresses?: ContactAddressDto[]): Promise<ContactWithAddresses> {
+  async create(
+    dto: ContactDto,
+    addresses?: ContactAddressDto[],
+  ): Promise<ContactWithAddresses> {
     const client = this.databaseService.getClient();
 
     const { data: contact, error } = await client
-      .from('contacts')
+      .from("contacts")
       .insert({
         type: dto.type,
         display_name: dto.display_name,
@@ -165,23 +178,25 @@ export class ContactsService {
 
     let createdAddresses: ContactAddressDto[] = [];
     if (addresses && addresses.length > 0) {
-      const addrRows = addresses.map(a => ({
+      const addrRows = addresses.map((a) => ({
         contact_id: contact.id,
         channel: a.channel,
         address_value: a.address_value,
-        label: a.label || 'work',
+        label: a.label || "work",
         is_primary: a.is_primary || false,
         is_verified: a.is_verified || false,
         metadata: a.metadata || {},
       }));
 
       const { data: addrData, error: addrError } = await client
-        .from('contact_addresses')
+        .from("contact_addresses")
         .insert(addrRows)
         .select();
 
       if (addrError) {
-        this.logger.warn(`Failed to create addresses for contact ${contact.id}: ${addrError.message}`);
+        this.logger.warn(
+          `Failed to create addresses for contact ${contact.id}: ${addrError.message}`,
+        );
       }
       createdAddresses = addrData || [];
     }
@@ -192,22 +207,29 @@ export class ContactsService {
   /**
    * Update a contact
    */
-  async update(id: string, dto: Partial<ContactDto>): Promise<ContactWithAddresses> {
+  async update(
+    id: string,
+    dto: Partial<ContactDto>,
+  ): Promise<ContactWithAddresses> {
     const client = this.databaseService.getClient();
 
     const updateData: Record<string, any> = {};
     if (dto.type !== undefined) updateData.type = dto.type;
-    if (dto.display_name !== undefined) updateData.display_name = dto.display_name;
-    if (dto.restaurant_id !== undefined) updateData.restaurant_id = dto.restaurant_id;
-    if (dto.linked_user_id !== undefined) updateData.linked_user_id = dto.linked_user_id;
-    if (dto.linked_provider_id !== undefined) updateData.linked_provider_id = dto.linked_provider_id;
+    if (dto.display_name !== undefined)
+      updateData.display_name = dto.display_name;
+    if (dto.restaurant_id !== undefined)
+      updateData.restaurant_id = dto.restaurant_id;
+    if (dto.linked_user_id !== undefined)
+      updateData.linked_user_id = dto.linked_user_id;
+    if (dto.linked_provider_id !== undefined)
+      updateData.linked_provider_id = dto.linked_provider_id;
     if (dto.is_active !== undefined) updateData.is_active = dto.is_active;
     if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
 
     const { data: contact, error } = await client
-      .from('contacts')
+      .from("contacts")
       .update(updateData)
-      .eq('id', id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -225,9 +247,9 @@ export class ContactsService {
     const client = this.databaseService.getClient();
 
     const { error } = await client
-      .from('contacts')
+      .from("contacts")
       .update({ is_active: false })
-      .eq('id', id);
+      .eq("id", id);
 
     if (error) throw error;
   }
@@ -239,10 +261,10 @@ export class ContactsService {
     const client = this.databaseService.getClient();
 
     const { data, error } = await client
-      .from('contact_addresses')
-      .select('*')
-      .eq('contact_id', contactId)
-      .order('is_primary', { ascending: false });
+      .from("contact_addresses")
+      .select("*")
+      .eq("contact_id", contactId)
+      .order("is_primary", { ascending: false });
 
     if (error) throw error;
     return data || [];
@@ -251,14 +273,17 @@ export class ContactsService {
   /**
    * Add an address to a contact
    */
-  async addAddress(contactId: string, dto: ContactAddressDto): Promise<ContactAddressDto> {
+  async addAddress(
+    contactId: string,
+    dto: ContactAddressDto,
+  ): Promise<ContactAddressDto> {
     const client = this.databaseService.getClient();
 
     // Verify contact exists
     const { data: contact } = await client
-      .from('contacts')
-      .select('id')
-      .eq('id', contactId)
+      .from("contacts")
+      .select("id")
+      .eq("id", contactId)
       .single();
 
     if (!contact) {
@@ -266,12 +291,12 @@ export class ContactsService {
     }
 
     const { data: address, error } = await client
-      .from('contact_addresses')
+      .from("contact_addresses")
       .insert({
         contact_id: contactId,
         channel: dto.channel,
         address_value: dto.address_value,
-        label: dto.label || 'work',
+        label: dto.label || "work",
         is_primary: dto.is_primary || false,
         is_verified: dto.is_verified || false,
         metadata: dto.metadata || {},
@@ -290,9 +315,9 @@ export class ContactsService {
     const client = this.databaseService.getClient();
 
     const { error } = await client
-      .from('contact_addresses')
+      .from("contact_addresses")
       .delete()
-      .eq('id', addressId);
+      .eq("id", addressId);
 
     if (error) throw error;
   }

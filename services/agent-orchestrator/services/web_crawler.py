@@ -56,6 +56,7 @@ RESTAURANT_MENUS_DIR = PROJECT_ROOT / "datasets" / "restaurant_menus"
 # DATA MODELS
 # =============================================================================
 
+
 class ContentType(str, Enum):
     HTML_MENU = "html_menu"
     PDF_LINK = "pdf_link"
@@ -67,6 +68,7 @@ class ContentType(str, Enum):
 @dataclass
 class VisitedUrl:
     """A URL visited during a crawl with its result."""
+
     url: str
     content_type: str
     http_status: Optional[int] = None
@@ -75,6 +77,7 @@ class VisitedUrl:
 @dataclass
 class CrawlResult:
     """Result of crawling a single restaurant website."""
+
     restaurant_name: str
     website_url: str
     content_type: ContentType = ContentType.NO_MENU
@@ -89,12 +92,15 @@ class CrawlResult:
     restaurant_id: Optional[str] = None
     visited_urls: List[VisitedUrl] = field(default_factory=list)
     image_menu_detected: bool = False  # True when Vision path was taken (Phase 6)
-    wines: List[Dict[str, Any]] = field(default_factory=list)  # Phase 11: accumulated by _persist_crawled_wines for diff engine
+    wines: List[Dict[str, Any]] = field(
+        default_factory=list
+    )  # Phase 11: accumulated by _persist_crawled_wines for diff engine
 
 
 @dataclass
 class CrawlSessionResult:
     """Result of a crawling session."""
+
     total_crawled: int = 0
     menus_found: int = 0
     pdfs_found: int = 0
@@ -132,6 +138,7 @@ MENU_PAGE_PATTERNS = [
 # CRAWLER SERVICE
 # =============================================================================
 
+
 class WebCrawlerService:
     """
     Playwright-based restaurant website crawler.
@@ -163,6 +170,7 @@ class WebCrawlerService:
             restaurant_name: Restaurant name for context.
         """
         import time
+
         start = time.monotonic()
 
         result = CrawlResult(
@@ -205,11 +213,13 @@ class WebCrawlerService:
                     wait_until="domcontentloaded",
                     timeout=self.PAGE_TIMEOUT_MS,
                 )
-                result.visited_urls.append(VisitedUrl(
-                    url=website_url,
-                    content_type="homepage",
-                    http_status=resp.status if resp else None,
-                ))
+                result.visited_urls.append(
+                    VisitedUrl(
+                        url=website_url,
+                        content_type="homepage",
+                        http_status=resp.status if resp else None,
+                    )
+                )
                 await asyncio.sleep(self.NAVIGATION_DELAY_S)
 
                 # Step 2: Look for wine menu links
@@ -222,11 +232,13 @@ class WebCrawlerService:
                         wait_until="domcontentloaded",
                         timeout=self.PAGE_TIMEOUT_MS,
                     )
-                    result.visited_urls.append(VisitedUrl(
-                        url=menu_url,
-                        content_type="menu_page",
-                        http_status=menu_resp.status if menu_resp else None,
-                    ))
+                    result.visited_urls.append(
+                        VisitedUrl(
+                            url=menu_url,
+                            content_type="menu_page",
+                            http_status=menu_resp.status if menu_resp else None,
+                        )
+                    )
                     await asyncio.sleep(self.NAVIGATION_DELAY_S)
                     result.menu_page_url = menu_url
 
@@ -234,15 +246,18 @@ class WebCrawlerService:
                 if pdf_urls:
                     result.content_type = ContentType.PDF_LINK
                     result.pdf_urls = pdf_urls
-                    result.pdf_bytes = await self._download_pdf(
-                        context, pdf_urls[0]
-                    )
+                    result.pdf_bytes = await self._download_pdf(context, pdf_urls[0])
                     for purl in pdf_urls:
-                        result.visited_urls.append(VisitedUrl(
-                            url=purl, content_type="pdf_link",
-                        ))
+                        result.visited_urls.append(
+                            VisitedUrl(
+                                url=purl,
+                                content_type="pdf_link",
+                            )
+                        )
                     if result.pdf_bytes:
-                        await self._handle_pdf_vision(result, restaurant_name, website_url)
+                        await self._handle_pdf_vision(
+                            result, restaurant_name, website_url
+                        )
                 else:
                     text = await self._extract_page_text(page)
                     if text and len(text.strip()) > 100:
@@ -268,18 +283,24 @@ class WebCrawlerService:
                 result.content_hash = hashlib.md5(content.encode()).hexdigest()
 
                 # Gemini Flash extraction + dedup + persist (GMFL-02, GMFL-03, GMFL-05)
-                if result.content_type == ContentType.HTML_MENU and result.extracted_text:
+                if (
+                    result.content_type == ContentType.HTML_MENU
+                    and result.extracted_text
+                ):
                     extractor = get_gemini_crawler_extractor()
                     extraction = await extractor.extract_from_text(
                         result.extracted_text, restaurant_name
                     )
                     if extraction.wines:
                         non_dupes = [
-                            w for w in extraction.wines
+                            w
+                            for w in extraction.wines
                             if not self._wine_is_duplicate(w, restaurant_name)
                         ]
                         if non_dupes:
-                            self._persist_crawled_wines(non_dupes, restaurant_name, website_url, result=result)
+                            self._persist_crawled_wines(
+                                non_dupes, restaurant_name, website_url, result=result
+                            )
                         logger.info(
                             f"Crawled {restaurant_name}: {len(extraction.wines)} wines found, "
                             f"{len(extraction.wines) - len(non_dupes)} duplicates skipped"
@@ -345,15 +366,17 @@ class WebCrawlerService:
             elif result.content_type == ContentType.ERROR:
                 session.errors += 1
 
-            session.details.append({
-                "restaurant": name,
-                "url": url,
-                "content_type": result.content_type.value,
-                "text_length": len(result.extracted_text),
-                "pdf_count": len(result.pdf_urls),
-                "duration_ms": result.crawl_duration_ms,
-                "error": result.error,
-            })
+            session.details.append(
+                {
+                    "restaurant": name,
+                    "url": url,
+                    "content_type": result.content_type.value,
+                    "text_length": len(result.extracted_text),
+                    "pdf_count": len(result.pdf_urls),
+                    "duration_ms": result.crawl_duration_ms,
+                    "error": result.error,
+                }
+            )
 
             # Delay between restaurants
             await asyncio.sleep(self.NAVIGATION_DELAY_S)
@@ -404,13 +427,19 @@ class WebCrawlerService:
         vintage = wine.get("vintage")
 
         try:
-            q = self._supabase.table("master_wine_library").select("id").ilike("name", name)
+            q = (
+                self._supabase.table("master_wine_library")
+                .select("id")
+                .ilike("name", name)
+            )
             if vintage:
                 q = q.eq("vintage", vintage)
             result = q.limit(1).execute()
             return bool(result.data)
         except Exception as e:
-            logger.debug(f"Dedup query failed for '{name}': {e} — allowing insert (fail open)")
+            logger.debug(
+                f"Dedup query failed for '{name}': {e} — allowing insert (fail open)"
+            )
             return False
 
     # =========================================================================
@@ -422,9 +451,14 @@ class WebCrawlerService:
         return re.sub(r"[^a-z0-9 ]", "", (s or "").lower().strip())
 
     def _persist_crawled_wines(
-        self, wines: list, restaurant_name: str, source_url: str,
+        self,
+        wines: list,
+        restaurant_name: str,
+        source_url: str,
         source_type: str = "crawled",
-        result: Optional["CrawlResult"] = None,  # Phase 11: append to result.wines for diff engine
+        result: Optional[
+            "CrawlResult"
+        ] = None,  # Phase 11: append to result.wines for diff engine
     ):
         """
         Write non-duplicate crawled wines to JSONL dataset file.
@@ -444,26 +478,30 @@ class WebCrawlerService:
 
         BOTTLE_SIZE_PATTERNS = {
             "magnum": r"\bmagnum\b|1\.5\s*l",
-            "half":   r"\bhalf\s*bottle\b|375\s*ml",
-            "split":  r"\bsplit\b|187\s*ml",
+            "half": r"\bhalf\s*bottle\b|375\s*ml",
+            "split": r"\bsplit\b|187\s*ml",
         }
 
         with open(out_file, "a") as f:
             for wine in wines:
                 # -- core fields --
-                wine_name     = wine.get("wine_name", "") or ""
-                producer      = wine.get("producer", "") or ""
-                vintage_raw   = wine.get("vintage")
-                vintage       = int(vintage_raw) if vintage_raw and str(vintage_raw).isdigit() else None
-                primary_type  = wine.get("primary_type") or wine.get("wine_type")
-                country       = wine.get("country")
-                region        = wine.get("region")
+                wine_name = wine.get("wine_name", "") or ""
+                producer = wine.get("producer", "") or ""
+                vintage_raw = wine.get("vintage")
+                vintage = (
+                    int(vintage_raw)
+                    if vintage_raw and str(vintage_raw).isdigit()
+                    else None
+                )
+                primary_type = wine.get("primary_type") or wine.get("wine_type")
+                country = wine.get("country")
+                region = wine.get("region")
                 grape_variety = wine.get("grape_variety")
-                sub_region    = wine.get("sub_region")
-                appellation   = wine.get("appellation")
+                sub_region = wine.get("sub_region")
+                appellation = wine.get("appellation")
                 price_ref_raw = wine.get("price_reference") or wine.get("price")
                 price_reference = float(price_ref_raw) if price_ref_raw else None
-                price_glass   = wine.get("price_glass")
+                price_glass = wine.get("price_glass")
 
                 # -- derived fields --
                 bottle_size = "standard"
@@ -472,7 +510,7 @@ class WebCrawlerService:
                         bottle_size = size_name
                         break
 
-                is_blend    = bool(grape_variety and len(grape_variety.split(",")) > 1)
+                is_blend = bool(grape_variety and len(grape_variety.split(",")) > 1)
                 vintage_age = (crawl_year - vintage) if vintage else None
 
                 if price_reference is None:
@@ -487,58 +525,67 @@ class WebCrawlerService:
                     price_tier = "luxury"
 
                 # -- dedup fields --
-                norm_name      = self._normalize_wine_field(wine_name)
-                norm_producer  = self._normalize_wine_field(producer)
-                sig_input      = norm_name + norm_producer + str(vintage or "") + self._normalize_wine_field(region or "")
+                norm_name = self._normalize_wine_field(wine_name)
+                norm_producer = self._normalize_wine_field(producer)
+                sig_input = (
+                    norm_name
+                    + norm_producer
+                    + str(vintage or "")
+                    + self._normalize_wine_field(region or "")
+                )
                 signature_hash = hashlib.md5(sig_input.encode()).hexdigest()
 
                 # -- data_enrichment JSONB --
                 data_enrichment = {
-                    "source_url":      source_url,
-                    "source_type":     source_type,
+                    "source_url": source_url,
+                    "source_type": source_type,
                     "restaurant_name": restaurant_name,
-                    "crawled_at":      crawled_at,
-                    "confidence":      wine.get("confidence"),
-                    "extraction_model": wine.get("extraction_model", "gemini-2.5-flash"),
+                    "crawled_at": crawled_at,
+                    "confidence": wine.get("confidence"),
+                    "extraction_model": wine.get(
+                        "extraction_model", "gemini-2.5-flash"
+                    ),
                 }
 
                 record = {
                     # Direct columns
-                    "wine_name":           wine_name,
-                    "producer":            producer,
-                    "vintage":             vintage,
-                    "primary_type":        primary_type,
-                    "country":             country,
-                    "region":              region,
-                    "grape_variety":       grape_variety,
-                    "sub_region":          sub_region,
-                    "appellation":         appellation,
-                    "price_reference":     price_reference,
+                    "wine_name": wine_name,
+                    "producer": producer,
+                    "vintage": vintage,
+                    "primary_type": primary_type,
+                    "country": country,
+                    "region": region,
+                    "grape_variety": grape_variety,
+                    "sub_region": sub_region,
+                    "appellation": appellation,
+                    "price_reference": price_reference,
                     # Derived
-                    "price_glass":         price_glass,
-                    "bottle_size":         bottle_size,
-                    "is_blend":            is_blend,
-                    "vintage_age":         vintage_age,
-                    "price_tier":          price_tier,
+                    "price_glass": price_glass,
+                    "bottle_size": bottle_size,
+                    "is_blend": is_blend,
+                    "vintage_age": vintage_age,
+                    "price_tier": price_tier,
                     # Dedup
-                    "signature_hash":      signature_hash,
-                    "normalized_name":     norm_name,
+                    "signature_hash": signature_hash,
+                    "normalized_name": norm_name,
                     "normalized_producer": norm_producer,
                     # JSONB metadata
-                    "data_enrichment":     data_enrichment,
+                    "data_enrichment": data_enrichment,
                     # Future enrichment stubs (Haiku Phase 4 fills these)
-                    "color":               None,
-                    "sweetness_level":     None,
-                    "food_pairing":        None,
+                    "color": None,
+                    "sweetness_level": None,
+                    "food_pairing": None,
                     # Submissions staging
-                    "restaurant_id":       None,
+                    "restaurant_id": None,
                 }
                 f.write(json.dumps(record) + "\n")
                 if result is not None:
                     result.wines.append(record)
                 count += 1
 
-        logger.info(f"Persisted {count} crawled wines for {restaurant_name} to {out_file.name}")
+        logger.info(
+            f"Persisted {count} crawled wines for {restaurant_name} to {out_file.name}"
+        )
 
     # =========================================================================
     # LINK DETECTION
@@ -597,10 +644,18 @@ class WebCrawlerService:
         try:
             # Get text from main content areas
             selectors = [
-                "main", "article", '[role="main"]',
-                ".menu", ".wine-list", ".wine-menu",
-                "#menu", "#wine-list", "#wine-menu",
-                ".content", "#content", ".page-content",
+                "main",
+                "article",
+                '[role="main"]',
+                ".menu",
+                ".wine-list",
+                ".wine-menu",
+                "#menu",
+                "#wine-list",
+                "#wine-menu",
+                ".content",
+                "#content",
+                ".page-content",
             ]
 
             for selector in selectors:
@@ -648,7 +703,9 @@ class WebCrawlerService:
         MAX_CHUNKS = 10
 
         try:
-            await page.set_viewport_size({"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT})
+            await page.set_viewport_size(
+                {"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT}
+            )
             total_height = await page.evaluate(
                 "Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, window.innerHeight)"
             )
@@ -699,7 +756,7 @@ class WebCrawlerService:
 
             # Signal 2: no wine patterns in page text
             page_text = await page.evaluate("document.body.innerText")
-            if not re.search(r'\d{4}|\$\d+', page_text or ""):
+            if not re.search(r"\d{4}|\$\d+", page_text or ""):
                 return True
 
         except Exception as e:
@@ -732,12 +789,15 @@ class WebCrawlerService:
 
         if extraction.wines:
             non_dupes = [
-                w for w in extraction.wines
+                w
+                for w in extraction.wines
                 if not self._wine_is_duplicate(w, restaurant_name)
             ]
             if non_dupes:
                 self._persist_crawled_wines(
-                    non_dupes, restaurant_name, website_url,
+                    non_dupes,
+                    restaurant_name,
+                    website_url,
                     source_type="image_menu",
                     result=result,
                 )
@@ -768,12 +828,15 @@ class WebCrawlerService:
 
         if extraction.wines:
             non_dupes = [
-                w for w in extraction.wines
+                w
+                for w in extraction.wines
                 if not self._wine_is_duplicate(w, restaurant_name)
             ]
             if non_dupes:
                 self._persist_crawled_wines(
-                    non_dupes, restaurant_name, website_url,
+                    non_dupes,
+                    restaurant_name,
+                    website_url,
                     source_type="pdf_vision_fallback",
                     result=result,
                 )
@@ -784,9 +847,7 @@ class WebCrawlerService:
 
         result.image_menu_detected = True
 
-    async def _download_pdf(
-        self, context, pdf_url: str
-    ) -> Optional[bytes]:
+    async def _download_pdf(self, context, pdf_url: str) -> Optional[bytes]:
         """Download a PDF file. Tries Playwright first, falls back to aiohttp."""
         # Try Playwright inline navigation
         try:
@@ -805,7 +866,9 @@ class WebCrawlerService:
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
-            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            }
             async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(
                     pdf_url, ssl=ssl_ctx, timeout=aiohttp.ClientTimeout(total=20)
@@ -838,31 +901,39 @@ class WebCrawlerService:
 
         for visited in result.visited_urls:
             try:
-                self._supabase.table("crawl_log").insert({
-                    "restaurant_id": result.restaurant_id,
-                    "url": visited.url,
-                    "result_type": result_type_map.get(
-                        result.content_type, visited.content_type
-                    ),
-                    "content_hash": result.content_hash,
-                    "extracted_text_length": len(result.extracted_text) if result.extracted_text else 0,
-                    "pdf_downloaded": bool(result.pdf_bytes),
-                    "error_message": result.error,
-                }).execute()
+                self._supabase.table("crawl_log").insert(
+                    {
+                        "restaurant_id": result.restaurant_id,
+                        "url": visited.url,
+                        "result_type": result_type_map.get(
+                            result.content_type, visited.content_type
+                        ),
+                        "content_hash": result.content_hash,
+                        "extracted_text_length": (
+                            len(result.extracted_text) if result.extracted_text else 0
+                        ),
+                        "pdf_downloaded": bool(result.pdf_bytes),
+                        "error_message": result.error,
+                    }
+                ).execute()
             except Exception as e:
                 logger.debug(f"crawl_log insert failed for {visited.url}: {e}")
 
         if not result.visited_urls:
             try:
-                self._supabase.table("crawl_log").insert({
-                    "restaurant_id": result.restaurant_id,
-                    "url": result.website_url,
-                    "result_type": result_type_map.get(result.content_type, "error"),
-                    "content_hash": result.content_hash,
-                    "extracted_text_length": 0,
-                    "pdf_downloaded": False,
-                    "error_message": result.error,
-                }).execute()
+                self._supabase.table("crawl_log").insert(
+                    {
+                        "restaurant_id": result.restaurant_id,
+                        "url": result.website_url,
+                        "result_type": result_type_map.get(
+                            result.content_type, "error"
+                        ),
+                        "content_hash": result.content_hash,
+                        "extracted_text_length": 0,
+                        "pdf_downloaded": False,
+                        "error_message": result.error,
+                    }
+                ).execute()
             except Exception as e:
                 logger.debug(f"crawl_log insert failed: {e}")
 

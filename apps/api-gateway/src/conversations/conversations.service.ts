@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import axios from 'axios';
+import { Injectable, Logger } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
+import axios from "axios";
 
-const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL || 'http://localhost:8000';
+const AGENT_ORCHESTRATOR_URL =
+  process.env.AGENT_ORCHESTRATOR_URL || "http://localhost:8000";
 
 interface ApprovalOptions {
   modifiedMessage?: string;
@@ -26,7 +27,7 @@ interface ListConversationsOptions {
   page: number;
   limit: number;
   sortBy: string;
-  sortOrder: 'asc' | 'desc';
+  sortOrder: "asc" | "desc";
 }
 
 @Injectable()
@@ -46,70 +47,72 @@ export class ConversationsService {
       const offset = (page - 1) * limit;
 
       let query = this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .select(
           `
           *,
           providers (id, name),
           procurement_orders (id, order_number, quantity, status, negotiated_price, final_price)
         `,
-          { count: 'exact' },
+          { count: "exact" },
         );
 
       // Apply filters
       if (options.restaurantId) {
-        query = query.eq('restaurant_id', options.restaurantId);
+        query = query.eq("restaurant_id", options.restaurantId);
       }
       if (options.providerId) {
-        query = query.eq('provider_id', options.providerId);
+        query = query.eq("provider_id", options.providerId);
       }
       if (options.orderId) {
-        query = query.eq('order_id', options.orderId);
+        query = query.eq("order_id", options.orderId);
       }
       if (options.channel) {
-        query = query.eq('channel', options.channel);
+        query = query.eq("channel", options.channel);
       }
       if (options.direction) {
-        query = query.eq('direction', options.direction);
+        query = query.eq("direction", options.direction);
       }
       if (options.dateFrom) {
-        query = query.gte('created_at', options.dateFrom);
+        query = query.gte("created_at", options.dateFrom);
       }
       if (options.dateTo) {
-        query = query.lte('created_at', options.dateTo);
+        query = query.lte("created_at", options.dateTo);
       }
       if (options.search) {
-        query = query.ilike('message_text', `%${options.search}%`);
+        query = query.ilike("message_text", `%${options.search}%`);
       }
       if (options.status) {
-        query = query.eq('delivery_status', options.status);
+        query = query.eq("delivery_status", options.status);
       }
 
       // Quarter filter: convert Q1-Q4 + year to date range
       if (options.quarter && options.year) {
         const yr = parseInt(options.year, 10);
-        const q = parseInt(options.quarter.replace('Q', ''), 10);
+        const q = parseInt(options.quarter.replace("Q", ""), 10);
         const startMonth = (q - 1) * 3;
         const qStart = new Date(yr, startMonth, 1).toISOString();
         const qEnd = new Date(yr, startMonth + 3, 0, 23, 59, 59).toISOString();
-        query = query.gte('created_at', qStart).lte('created_at', qEnd);
+        query = query.gte("created_at", qStart).lte("created_at", qEnd);
       } else if (options.year && options.month) {
         const yr = parseInt(options.year, 10);
         const mo = parseInt(options.month, 10) - 1;
         const mStart = new Date(yr, mo, 1).toISOString();
         const mEnd = new Date(yr, mo + 1, 0, 23, 59, 59).toISOString();
-        query = query.gte('created_at', mStart).lte('created_at', mEnd);
+        query = query.gte("created_at", mStart).lte("created_at", mEnd);
       } else if (options.year) {
         const yr = parseInt(options.year, 10);
         query = query
-          .gte('created_at', new Date(yr, 0, 1).toISOString())
-          .lte('created_at', new Date(yr, 11, 31, 23, 59, 59).toISOString());
+          .gte("created_at", new Date(yr, 0, 1).toISOString())
+          .lte("created_at", new Date(yr, 11, 31, 23, 59, 59).toISOString());
       }
 
       // Sorting
-      const validSortFields = ['created_at', 'sent_at', 'received_at'];
-      const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
-      query = query.order(sortField, { ascending: sortOrder === 'asc' });
+      const validSortFields = ["created_at", "sent_at", "received_at"];
+      const sortField = validSortFields.includes(sortBy)
+        ? sortBy
+        : "created_at";
+      query = query.order(sortField, { ascending: sortOrder === "asc" });
 
       // Pagination
       query = query.range(offset, offset + limit - 1);
@@ -142,7 +145,7 @@ export class ConversationsService {
       // Thread matching: if thread_id column exists use it, otherwise
       // fall back to grouping by order_id (pre-email-tracking migration)
       const { data, error } = await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .select(
           `
           *,
@@ -150,8 +153,8 @@ export class ConversationsService {
           procurement_orders (id, order_number, quantity, status, negotiated_price)
         `,
         )
-        .eq('order_id', threadId)
-        .order('created_at', { ascending: true });
+        .eq("order_id", threadId)
+        .order("created_at", { ascending: true });
 
       if (error) {
         throw new Error(error.message);
@@ -196,20 +199,20 @@ export class ConversationsService {
     try {
       // Get the thread_id for this conversation
       const { data: conv, error } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .select('id, order_id')
-        .eq('id', conversationId)
+        .from("procurement_conversations")
+        .select("id, order_id")
+        .eq("id", conversationId)
         .single();
 
       if (error || !conv) {
-        return { success: false, error: 'Conversation not found' };
+        return { success: false, error: "Conversation not found" };
       }
 
       // Publish event to trigger summarization in the EmailParsingAgent
       try {
         await axios.post(`${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`, {
-          exchange: 'email.events',
-          routing_key: 'email.summarize.requested',
+          exchange: "email.events",
+          routing_key: "email.summarize.requested",
           payload: {
             order_id: conv.order_id,
             conversation_id: conversationId,
@@ -223,7 +226,7 @@ export class ConversationsService {
       return {
         success: true,
         order_id: conv.order_id,
-        message: 'Summary regeneration requested',
+        message: "Summary regeneration requested",
       };
     } catch (error) {
       this.logger.error(`Failed to regenerate summary: ${error.message}`);
@@ -237,11 +240,13 @@ export class ConversationsService {
   async getStats(restaurantId?: string) {
     try {
       let baseQuery = this.databaseService.supabase
-        .from('procurement_conversations')
-        .select('id, channel, direction, provider_id, detected_sentiment, created_at');
+        .from("procurement_conversations")
+        .select(
+          "id, channel, direction, provider_id, detected_sentiment, created_at",
+        );
 
       if (restaurantId) {
-        baseQuery = baseQuery.eq('restaurant_id', restaurantId);
+        baseQuery = baseQuery.eq("restaurant_id", restaurantId);
       }
 
       const { data, error } = await baseQuery;
@@ -270,7 +275,8 @@ export class ConversationsService {
         }
         // By sentiment
         if (c.detected_sentiment) {
-          bySentiment[c.detected_sentiment] = (bySentiment[c.detected_sentiment] || 0) + 1;
+          bySentiment[c.detected_sentiment] =
+            (bySentiment[c.detected_sentiment] || 0) + 1;
         }
         // By month
         if (c.created_at) {
@@ -299,8 +305,9 @@ export class ConversationsService {
   async getConversation(conversationId: string): Promise<any> {
     try {
       const { data, error } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .select(`
+        .from("procurement_conversations")
+        .select(
+          `
           *,
           providers (
             id,
@@ -316,8 +323,9 @@ export class ConversationsService {
             negotiated_price,
             final_price
           )
-        `)
-        .eq('id', conversationId)
+        `,
+        )
+        .eq("id", conversationId)
         .single();
 
       if (error) {
@@ -338,17 +346,19 @@ export class ConversationsService {
   async getPendingConversations(restaurantId?: string): Promise<any[]> {
     try {
       let query = this.databaseService.supabase
-        .from('procurement_conversations')
-        .select(`
+        .from("procurement_conversations")
+        .select(
+          `
           *,
           providers (name),
           procurement_orders (id, order_number, quantity, status, negotiated_price)
-        `)
-        .eq('delivery_status', 'pending')
-        .order('created_at', { ascending: true });
+        `,
+        )
+        .eq("delivery_status", "pending")
+        .order("created_at", { ascending: true });
 
       if (restaurantId) {
-        query = query.eq('restaurant_id', restaurantId);
+        query = query.eq("restaurant_id", restaurantId);
       }
 
       const { data, error } = await query;
@@ -360,7 +370,9 @@ export class ConversationsService {
 
       return data || [];
     } catch (error) {
-      this.logger.error(`Failed to get pending conversations: ${error.message}`);
+      this.logger.error(
+        `Failed to get pending conversations: ${error.message}`,
+      );
       return [];
     }
   }
@@ -371,12 +383,14 @@ export class ConversationsService {
    */
   async approveConversation(
     conversationId: string,
-    options: ApprovalOptions
+    options: ApprovalOptions,
   ): Promise<{ success: boolean; messageSent: boolean; error?: string }> {
     try {
       // 1. Update conversation in database
       const updates: any = {
-        manager_approval_status: options.modifiedMessage ? 'modified' : 'approved',
+        manager_approval_status: options.modifiedMessage
+          ? "modified"
+          : "approved",
         approval_channel: options.approvalChannel,
         resumed_at: new Date().toISOString(),
       };
@@ -394,25 +408,33 @@ export class ConversationsService {
       if (conversation.paused_at) {
         const pausedAt = new Date(conversation.paused_at);
         const now = new Date();
-        const diffSeconds = Math.floor((now.getTime() - pausedAt.getTime()) / 1000);
+        const diffSeconds = Math.floor(
+          (now.getTime() - pausedAt.getTime()) / 1000,
+        );
         updates.time_to_approval_seconds = diffSeconds;
       }
 
       const { error: updateError } = await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .update(updates)
-        .eq('id', conversationId);
+        .eq("id", conversationId);
 
       if (updateError) {
-        this.logger.error(`Failed to update conversation: ${updateError.message}`);
-        return { success: false, messageSent: false, error: updateError.message };
+        this.logger.error(
+          `Failed to update conversation: ${updateError.message}`,
+        );
+        return {
+          success: false,
+          messageSent: false,
+          error: updateError.message,
+        };
       }
 
       // 2. Publish conversation.approved event to RabbitMQ
       try {
         await axios.post(`${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`, {
-          exchange: 'conversation.events',
-          routing_key: 'conversation.approved',
+          exchange: "conversation.events",
+          routing_key: "conversation.approved",
           payload: {
             conversation_id: conversationId,
             approval_channel: options.approvalChannel,
@@ -420,7 +442,9 @@ export class ConversationsService {
           },
         });
 
-        this.logger.log(`✅ Published conversation.approved event for ${conversationId}`);
+        this.logger.log(
+          `✅ Published conversation.approved event for ${conversationId}`,
+        );
       } catch (eventError) {
         this.logger.error(`Failed to publish event: ${eventError.message}`);
         // Don't fail the request if event publishing fails
@@ -439,7 +463,7 @@ export class ConversationsService {
   async editMessage(
     conversationId: string,
     newMessage: string,
-    managerNotes?: string
+    managerNotes?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const updates: any = {
@@ -451,9 +475,9 @@ export class ConversationsService {
       }
 
       const { error } = await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .update(updates)
-        .eq('id', conversationId);
+        .eq("id", conversationId);
 
       if (error) {
         this.logger.error(`Failed to edit message: ${error.message}`);
@@ -474,45 +498,49 @@ export class ConversationsService {
   async rejectConversation(
     conversationId: string,
     reason?: string,
-    managerNotes?: string
+    managerNotes?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // 1. Update conversation in database
       const updates: any = {
-        manager_approval_status: 'rejected',
+        manager_approval_status: "rejected",
         resumed_at: new Date().toISOString(),
       };
 
       if (reason) {
-        updates.manager_notes = managerNotes 
-          ? `${reason} - ${managerNotes}` 
+        updates.manager_notes = managerNotes
+          ? `${reason} - ${managerNotes}`
           : reason;
       } else if (managerNotes) {
         updates.manager_notes = managerNotes;
       }
 
       const { error: updateError } = await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .update(updates)
-        .eq('id', conversationId);
+        .eq("id", conversationId);
 
       if (updateError) {
-        this.logger.error(`Failed to update conversation: ${updateError.message}`);
+        this.logger.error(
+          `Failed to update conversation: ${updateError.message}`,
+        );
         return { success: false, error: updateError.message };
       }
 
       // 2. Publish conversation.rejected event to RabbitMQ
       try {
         await axios.post(`${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`, {
-          exchange: 'conversation.events',
-          routing_key: 'conversation.rejected',
+          exchange: "conversation.events",
+          routing_key: "conversation.rejected",
           payload: {
             conversation_id: conversationId,
             reason,
           },
         });
 
-        this.logger.log(`✅ Published conversation.rejected event for ${conversationId}`);
+        this.logger.log(
+          `✅ Published conversation.rejected event for ${conversationId}`,
+        );
       } catch (eventError) {
         this.logger.error(`Failed to publish event: ${eventError.message}`);
         // Don't fail the request if event publishing fails
@@ -525,4 +553,3 @@ export class ConversationsService {
     }
   }
 }
-

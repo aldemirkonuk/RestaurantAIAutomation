@@ -1,15 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
-import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
-import { DatabaseService } from '../database/database.service';
-import { EventsService } from '../events/events.service';
+import { Test, TestingModule } from "@nestjs/testing";
+import { BadRequestException } from "@nestjs/common";
+import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
+import { DatabaseService } from "../database/database.service";
+import { EventsService } from "../events/events.service";
 import {
   TransactionType,
   TransactionSource,
   StockType,
-} from '../inventory-ledger/dto/inventory-ledger.dto';
+} from "../inventory-ledger/dto/inventory-ledger.dto";
 
-describe('InventoryLedgerService', () => {
+describe("InventoryLedgerService", () => {
   let service: InventoryLedgerService;
   let databaseService: DatabaseService;
   let eventsService: EventsService;
@@ -33,7 +33,7 @@ describe('InventoryLedgerService', () => {
   };
 
   const mockEventsService = {
-    createEvent: jest.fn().mockResolvedValue({ id: 'event-123' }),
+    createEvent: jest.fn().mockResolvedValue({ id: "event-123" }),
   };
 
   beforeEach(async () => {
@@ -52,24 +52,24 @@ describe('InventoryLedgerService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  describe('createTransaction', () => {
-    const restaurantId = 'restaurant-123';
-    const userId = 'user-456';
+  describe("createTransaction", () => {
+    const restaurantId = "restaurant-123";
+    const userId = "user-456";
 
     const baseDto = {
-      inventoryId: 'inv-123',
-      wineId: 'wine-456',
+      inventoryId: "inv-123",
+      wineId: "wine-456",
       transactionType: TransactionType.SALE,
       source: TransactionSource.POS,
       quantityChange: -2,
     };
 
-    it('should create a transaction successfully', async () => {
-      const transactionId = 'txn-789';
+    it("should create a transaction successfully", async () => {
+      const transactionId = "txn-789";
       const mockTransaction = {
         id: transactionId,
         restaurant_id: restaurantId,
@@ -80,9 +80,9 @@ describe('InventoryLedgerService', () => {
         quantity_change: baseDto.quantityChange,
         quantity_before: 10,
         quantity_after: 8,
-        stock_type: 'live',
+        stock_type: "live",
         performed_by: userId,
-        performed_by_type: 'user',
+        performed_by_type: "user",
         transaction_date: new Date().toISOString(),
         created_at: new Date().toISOString(),
         metadata: {},
@@ -98,7 +98,11 @@ describe('InventoryLedgerService', () => {
         error: null,
       });
 
-      const result = await service.createTransaction(restaurantId, userId, baseDto);
+      const result = await service.createTransaction(
+        restaurantId,
+        userId,
+        baseDto,
+      );
 
       expect(result.id).toBe(transactionId);
       expect(result.quantityChange).toBe(-2);
@@ -107,7 +111,7 @@ describe('InventoryLedgerService', () => {
       expect(mockEventsService.createEvent).toHaveBeenCalled();
     });
 
-    it('should reject zero quantity change', async () => {
+    it("should reject zero quantity change", async () => {
       await expect(
         service.createTransaction(restaurantId, userId, {
           ...baseDto,
@@ -116,16 +120,16 @@ describe('InventoryLedgerService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should handle purchase transactions (positive quantity)', async () => {
+    it("should handle purchase transactions (positive quantity)", async () => {
       const purchaseDto = {
         ...baseDto,
         transactionType: TransactionType.PURCHASE,
         source: TransactionSource.ORDER,
         quantityChange: 24,
-        orderId: 'order-123',
+        orderId: "order-123",
       };
 
-      const transactionId = 'txn-purchase';
+      const transactionId = "txn-purchase";
       const mockTransaction = {
         id: transactionId,
         restaurant_id: restaurantId,
@@ -136,10 +140,10 @@ describe('InventoryLedgerService', () => {
         quantity_change: purchaseDto.quantityChange,
         quantity_before: 10,
         quantity_after: 34,
-        stock_type: 'live',
+        stock_type: "live",
         order_id: purchaseDto.orderId,
         performed_by: userId,
-        performed_by_type: 'user',
+        performed_by_type: "user",
         transaction_date: new Date().toISOString(),
         created_at: new Date().toISOString(),
         metadata: {},
@@ -155,47 +159,51 @@ describe('InventoryLedgerService', () => {
         error: null,
       });
 
-      const result = await service.createTransaction(restaurantId, userId, purchaseDto);
+      const result = await service.createTransaction(
+        restaurantId,
+        userId,
+        purchaseDto,
+      );
 
       expect(result.quantityChange).toBe(24);
       expect(result.quantityAfter).toBe(34);
-      expect(result.orderId).toBe('order-123');
+      expect(result.orderId).toBe("order-123");
     });
   });
 
-  describe('listTransactions', () => {
-    const restaurantId = 'restaurant-123';
+  describe("listTransactions", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should return paginated transactions', async () => {
+    it("should return paginated transactions", async () => {
       const mockTransactions = [
         {
-          id: 'txn-1',
+          id: "txn-1",
           restaurant_id: restaurantId,
-          inventory_id: 'inv-1',
-          wine_id: 'wine-1',
-          transaction_type: 'sale',
-          source: 'pos',
+          inventory_id: "inv-1",
+          wine_id: "wine-1",
+          transaction_type: "sale",
+          source: "pos",
           quantity_change: -2,
           quantity_before: 10,
           quantity_after: 8,
-          stock_type: 'live',
-          performed_by_type: 'system',
+          stock_type: "live",
+          performed_by_type: "system",
           transaction_date: new Date().toISOString(),
           created_at: new Date().toISOString(),
           metadata: {},
         },
         {
-          id: 'txn-2',
+          id: "txn-2",
           restaurant_id: restaurantId,
-          inventory_id: 'inv-1',
-          wine_id: 'wine-1',
-          transaction_type: 'purchase',
-          source: 'order',
+          inventory_id: "inv-1",
+          wine_id: "wine-1",
+          transaction_type: "purchase",
+          source: "order",
           quantity_change: 24,
           quantity_before: 8,
           quantity_after: 32,
-          stock_type: 'live',
-          performed_by_type: 'user',
+          stock_type: "live",
+          performed_by_type: "user",
           transaction_date: new Date().toISOString(),
           created_at: new Date().toISOString(),
           metadata: {},
@@ -218,7 +226,7 @@ describe('InventoryLedgerService', () => {
       expect(result.hasMore).toBe(false);
     });
 
-    it('should filter by transaction type', async () => {
+    it("should filter by transaction type", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -229,10 +237,13 @@ describe('InventoryLedgerService', () => {
         transactionType: TransactionType.SALE,
       });
 
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('transaction_type', 'sale');
+      expect(mockSupabaseClient.eq).toHaveBeenCalledWith(
+        "transaction_type",
+        "sale",
+      );
     });
 
-    it('should filter by date range', async () => {
+    it("should filter by date range", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -240,25 +251,25 @@ describe('InventoryLedgerService', () => {
       });
 
       await service.listTransactions(restaurantId, {
-        startDate: '2024-01-01T00:00:00Z',
-        endDate: '2024-01-31T23:59:59Z',
+        startDate: "2024-01-01T00:00:00Z",
+        endDate: "2024-01-31T23:59:59Z",
       });
 
       expect(mockSupabaseClient.gte).toHaveBeenCalledWith(
-        'transaction_date',
-        '2024-01-01T00:00:00Z',
+        "transaction_date",
+        "2024-01-01T00:00:00Z",
       );
       expect(mockSupabaseClient.lte).toHaveBeenCalledWith(
-        'transaction_date',
-        '2024-01-31T23:59:59Z',
+        "transaction_date",
+        "2024-01-31T23:59:59Z",
       );
     });
   });
 
-  describe('getBalanceAt', () => {
-    const restaurantId = 'restaurant-123';
+  describe("getBalanceAt", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should return balance at point in time', async () => {
+    it("should return balance at point in time", async () => {
       mockSupabaseClient.rpc.mockResolvedValue({
         data: 15,
         error: null,
@@ -266,33 +277,33 @@ describe('InventoryLedgerService', () => {
 
       const result = await service.getBalanceAt(
         restaurantId,
-        'inv-123',
-        '2024-01-15T12:00:00Z',
+        "inv-123",
+        "2024-01-15T12:00:00Z",
         StockType.LIVE,
       );
 
       expect(result.balance).toBe(15);
-      expect(result.inventoryId).toBe('inv-123');
+      expect(result.inventoryId).toBe("inv-123");
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
-        'get_inventory_balance_at',
+        "get_inventory_balance_at",
         expect.objectContaining({
-          p_inventory_id: 'inv-123',
-          p_as_of: '2024-01-15T12:00:00Z',
-          p_stock_type: 'live',
+          p_inventory_id: "inv-123",
+          p_as_of: "2024-01-15T12:00:00Z",
+          p_stock_type: "live",
         }),
       );
     });
   });
 
-  describe('getTransactionSummary', () => {
-    const restaurantId = 'restaurant-123';
+  describe("getTransactionSummary", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should calculate summary correctly', async () => {
+    it("should calculate summary correctly", async () => {
       const mockData = [
-        { transaction_type: 'sale', source: 'pos', quantity_change: -5 },
-        { transaction_type: 'sale', source: 'pos', quantity_change: -3 },
-        { transaction_type: 'purchase', source: 'order', quantity_change: 24 },
-        { transaction_type: 'waste', source: 'manual', quantity_change: -1 },
+        { transaction_type: "sale", source: "pos", quantity_change: -5 },
+        { transaction_type: "sale", source: "pos", quantity_change: -3 },
+        { transaction_type: "purchase", source: "order", quantity_change: 24 },
+        { transaction_type: "waste", source: "manual", quantity_change: -1 },
       ];
 
       mockSupabaseClient.lte.mockResolvedValue({
@@ -302,8 +313,8 @@ describe('InventoryLedgerService', () => {
 
       const result = await service.getTransactionSummary(
         restaurantId,
-        '2024-01-01',
-        '2024-01-31',
+        "2024-01-01",
+        "2024-01-31",
       );
 
       expect(result.totalIn).toBe(24);
@@ -315,32 +326,32 @@ describe('InventoryLedgerService', () => {
     });
   });
 
-  describe('reconcileInventory', () => {
-    const restaurantId = 'restaurant-123';
-    const userId = 'user-456';
+  describe("reconcileInventory", () => {
+    const restaurantId = "restaurant-123";
+    const userId = "user-456";
 
-    it('should create reconciliation transaction for positive adjustment', async () => {
+    it("should create reconciliation transaction for positive adjustment", async () => {
       // Current stock is 10, actual count is 12
       mockSupabaseClient.single.mockResolvedValueOnce({
         data: { live_stock: 10 },
         error: null,
       });
 
-      const transactionId = 'txn-reconcile';
+      const transactionId = "txn-reconcile";
       const mockTransaction = {
         id: transactionId,
         restaurant_id: restaurantId,
-        inventory_id: 'inv-123',
-        wine_id: 'wine-456',
-        transaction_type: 'reconciliation',
-        source: 'reconciliation',
+        inventory_id: "inv-123",
+        wine_id: "wine-456",
+        transaction_type: "reconciliation",
+        source: "reconciliation",
         quantity_change: 2,
         quantity_before: 10,
         quantity_after: 12,
-        stock_type: 'live',
+        stock_type: "live",
         performed_by: userId,
-        performed_by_type: 'user',
-        reason: 'Physical count reconciliation: Expected 10, Actual 12',
+        performed_by_type: "user",
+        reason: "Physical count reconciliation: Expected 10, Actual 12",
         transaction_date: new Date().toISOString(),
         created_at: new Date().toISOString(),
         metadata: {},
@@ -359,16 +370,16 @@ describe('InventoryLedgerService', () => {
       const result = await service.reconcileInventory(
         restaurantId,
         userId,
-        'inv-123',
-        'wine-456',
+        "inv-123",
+        "wine-456",
         12,
       );
 
       expect(result.quantityChange).toBe(2);
-      expect(result.transactionType).toBe('reconciliation');
+      expect(result.transactionType).toBe("reconciliation");
     });
 
-    it('should reject reconciliation when counts match', async () => {
+    it("should reject reconciliation when counts match", async () => {
       mockSupabaseClient.single.mockResolvedValue({
         data: { live_stock: 10 },
         error: null,
@@ -378,30 +389,30 @@ describe('InventoryLedgerService', () => {
         service.reconcileInventory(
           restaurantId,
           userId,
-          'inv-123',
-          'wine-456',
+          "inv-123",
+          "wine-456",
           10, // Same as current
         ),
       ).rejects.toThrow(BadRequestException);
     });
   });
 
-  describe('createBulkTransactions', () => {
-    const restaurantId = 'restaurant-123';
-    const userId = 'user-456';
+  describe("createBulkTransactions", () => {
+    const restaurantId = "restaurant-123";
+    const userId = "user-456";
 
-    it('should create multiple transactions', async () => {
+    it("should create multiple transactions", async () => {
       const transactions = [
         {
-          inventoryId: 'inv-1',
-          wineId: 'wine-1',
+          inventoryId: "inv-1",
+          wineId: "wine-1",
           transactionType: TransactionType.SALE,
           source: TransactionSource.POS,
           quantityChange: -2,
         },
         {
-          inventoryId: 'inv-2',
-          wineId: 'wine-2',
+          inventoryId: "inv-2",
+          wineId: "wine-2",
           transactionType: TransactionType.SALE,
           source: TransactionSource.POS,
           quantityChange: -1,
@@ -410,23 +421,23 @@ describe('InventoryLedgerService', () => {
 
       // Mock successful transactions
       mockSupabaseClient.rpc
-        .mockResolvedValueOnce({ data: 'txn-1', error: null })
-        .mockResolvedValueOnce({ data: 'txn-2', error: null });
+        .mockResolvedValueOnce({ data: "txn-1", error: null })
+        .mockResolvedValueOnce({ data: "txn-2", error: null });
 
       mockSupabaseClient.single
         .mockResolvedValueOnce({
           data: {
-            id: 'txn-1',
+            id: "txn-1",
             restaurant_id: restaurantId,
-            inventory_id: 'inv-1',
-            wine_id: 'wine-1',
-            transaction_type: 'sale',
-            source: 'pos',
+            inventory_id: "inv-1",
+            wine_id: "wine-1",
+            transaction_type: "sale",
+            source: "pos",
             quantity_change: -2,
             quantity_before: 10,
             quantity_after: 8,
-            stock_type: 'live',
-            performed_by_type: 'user',
+            stock_type: "live",
+            performed_by_type: "user",
             transaction_date: new Date().toISOString(),
             created_at: new Date().toISOString(),
             metadata: {},
@@ -435,17 +446,17 @@ describe('InventoryLedgerService', () => {
         })
         .mockResolvedValueOnce({
           data: {
-            id: 'txn-2',
+            id: "txn-2",
             restaurant_id: restaurantId,
-            inventory_id: 'inv-2',
-            wine_id: 'wine-2',
-            transaction_type: 'sale',
-            source: 'pos',
+            inventory_id: "inv-2",
+            wine_id: "wine-2",
+            transaction_type: "sale",
+            source: "pos",
             quantity_change: -1,
             quantity_before: 5,
             quantity_after: 4,
-            stock_type: 'live',
-            performed_by_type: 'user',
+            stock_type: "live",
+            performed_by_type: "user",
             transaction_date: new Date().toISOString(),
             created_at: new Date().toISOString(),
             metadata: {},
@@ -453,9 +464,13 @@ describe('InventoryLedgerService', () => {
           error: null,
         });
 
-      const result = await service.createBulkTransactions(restaurantId, userId, {
-        transactions,
-      });
+      const result = await service.createBulkTransactions(
+        restaurantId,
+        userId,
+        {
+          transactions,
+        },
+      );
 
       expect(result.successCount).toBe(2);
       expect(result.failedCount).toBe(0);

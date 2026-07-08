@@ -98,14 +98,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # PII detection patterns (T-12-09)
-_PII_EMAIL_RE = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
-_PII_PHONE_RE = re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b')
+_PII_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_PII_PHONE_RE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
 
 # Wine content keywords for Playwright trigger decision
-WINE_KEYWORDS = frozenset({
-    "wine", "grape", "vintage", "appellation", "region",
-    "producer", "winery", "vino", "cuvee", "château", "domaine",
-})
+WINE_KEYWORDS = frozenset(
+    {
+        "wine",
+        "grape",
+        "vintage",
+        "appellation",
+        "region",
+        "producer",
+        "winery",
+        "vino",
+        "cuvee",
+        "château",
+        "domaine",
+    }
+)
 
 # Private IP networks for SSRF protection (T-12-05)
 _PRIVATE_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
@@ -119,9 +130,15 @@ _PRIVATE_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
 ]
 
 # Numeric fields: use exact float comparison, not string matching
-NUMERIC_RESEARCH_FIELDS = frozenset({
-    "alcohol_pct", "vintage", "price_bottle", "price_glass", "retail_price_avg",
-})
+NUMERIC_RESEARCH_FIELDS = frozenset(
+    {
+        "alcohol_pct",
+        "vintage",
+        "price_bottle",
+        "price_glass",
+        "retail_price_avg",
+    }
+)
 
 # URL page-text TTL (days)
 _URL_CACHE_TTL_DAYS = 7
@@ -133,6 +150,7 @@ _url_cache = BoundedLRUCache(max_size=1000)
 # ---------------------------------------------------------------------------
 # T-12-05: SSRF protection (bug #8: DNS resolution added)
 # ---------------------------------------------------------------------------
+
 
 def _is_safe_url(url: str) -> bool:
     """
@@ -155,7 +173,9 @@ def _is_safe_url(url: str) -> bool:
                 addr = ipaddress.ip_address(ip_str)
                 for network in _PRIVATE_NETWORKS:
                     if addr in network:
-                        logger.debug("SSRF guard: %s resolves to private IP %s", host, ip_str)
+                        logger.debug(
+                            "SSRF guard: %s resolves to private IP %s", host, ip_str
+                        )
                         return False
         except socket.gaierror:
             return False  # Cannot resolve hostname — block
@@ -176,6 +196,7 @@ def _is_safe_url(url: str) -> bool:
 # T-12-09: PII detection
 # ---------------------------------------------------------------------------
 
+
 def _has_pii(text: str) -> bool:
     """Returns True if snippet contains detectable PII (email or phone)."""
     return bool(_PII_EMAIL_RE.search(text)) or bool(_PII_PHONE_RE.search(text))
@@ -184,6 +205,7 @@ def _has_pii(text: str) -> bool:
 # ---------------------------------------------------------------------------
 # Decision 5: Semantic match algorithm
 # ---------------------------------------------------------------------------
+
 
 def _normalize_text(text: str) -> str:
     """Lowercase + strip diacritics (NFKD → ASCII) + collapse whitespace."""
@@ -214,7 +236,7 @@ def _numeric_match(proposed_value: str, page_text: str) -> bool:
         if not val_str:
             return False
         float_val = float(val_str)
-        nums = re.findall(r'\d+\.?\d*', page_text)
+        nums = re.findall(r"\d+\.?\d*", page_text)
         return any(abs(float(n) - float_val) < 0.01 for n in nums)
     except (ValueError, TypeError):
         return False
@@ -240,7 +262,7 @@ def _semantic_match(proposed_value: str, page_text: str, field_name: str = "") -
         return False
 
     escaped = re.escape(norm_value)
-    if re.search(r'\b' + escaped + r'\b', norm_text):
+    if re.search(r"\b" + escaped + r"\b", norm_text):
         return True
 
     val_len = len(norm_value)
@@ -250,7 +272,7 @@ def _semantic_match(proposed_value: str, page_text: str, field_name: str = "") -
     max_dist = max(1, int(val_len * 0.15))
     step = max(1, val_len // 2)
     for i in range(0, max(1, len(norm_text) - val_len + 1), step):
-        window = norm_text[i:i + val_len]
+        window = norm_text[i : i + val_len]
         if len(window) == val_len and _levenshtein(norm_value, window) <= max_dist:
             return True
 
@@ -260,6 +282,7 @@ def _semantic_match(proposed_value: str, page_text: str, field_name: str = "") -
 # ---------------------------------------------------------------------------
 # Decision 5: Playwright trigger logic
 # ---------------------------------------------------------------------------
+
 
 def _should_use_playwright(response_body: str, source_tier: str) -> bool:
     """
@@ -283,7 +306,9 @@ async def _fetch_with_playwright(url: str) -> str:
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        logger.debug("Playwright not installed — skipping Playwright render for %s", url)
+        logger.debug(
+            "Playwright not installed — skipping Playwright render for %s", url
+        )
         return ""
 
     try:
@@ -303,6 +328,7 @@ async def _fetch_with_playwright(url: str) -> str:
 # Decision 5: URL cache (evidence_url_cache)
 # Bug #10 fix: BoundedLRUCache replaces unbounded _url_cache dict
 # ---------------------------------------------------------------------------
+
 
 def _get_cached_page_text(url: str, supabase) -> Optional[str]:
     """
@@ -338,17 +364,21 @@ def _get_cached_page_text(url: str, supabase) -> Optional[str]:
     return None
 
 
-def _store_cached_page_text(url: str, page_text: str, fetch_method: str, supabase) -> None:
+def _store_cached_page_text(
+    url: str, page_text: str, fetch_method: str, supabase
+) -> None:
     """Store page text in BoundedLRUCache and Supabase evidence_url_cache."""
     _url_cache.put(url, page_text)
     now = datetime.now(timezone.utc)
     try:
-        supabase.table("evidence_url_cache").upsert({
-            "url": url,
-            "page_text": page_text[:50000],
-            "cached_at": now.isoformat(),
-            "fetch_method": fetch_method,
-        }).execute()
+        supabase.table("evidence_url_cache").upsert(
+            {
+                "url": url,
+                "page_text": page_text[:50000],
+                "cached_at": now.isoformat(),
+                "fetch_method": fetch_method,
+            }
+        ).execute()
     except Exception as exc:
         logger.debug("URL cache write failed (non-fatal): %s", exc)
 
@@ -356,6 +386,7 @@ def _store_cached_page_text(url: str, page_text: str, fetch_method: str, supabas
 # ---------------------------------------------------------------------------
 # Decision 5: Fetch-verify pipeline
 # ---------------------------------------------------------------------------
+
 
 async def _fetch_verify_value(
     proposed_value: str,
@@ -410,6 +441,7 @@ async def _fetch_verify_value(
 # D-02 BLOCKER FIX: Cascade model dispatch in _extract_field_candidates
 # ---------------------------------------------------------------------------
 
+
 async def _extract_field_candidates(
     field_name: str,
     wine_name: str,
@@ -454,11 +486,13 @@ async def _extract_field_candidates(
     # ── Anthropic path: Haiku or Sonnet (D-02 cascade) ──
     if model_tier in ("haiku", "sonnet") and settings.claude_api_key:
         model_name = (
-            settings.research_cascade_haiku_model if model_tier == "haiku"
+            settings.research_cascade_haiku_model
+            if model_tier == "haiku"
             else settings.research_cascade_sonnet_model
         )
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=settings.claude_api_key)
             response = client.messages.create(
                 model=model_name,
@@ -475,10 +509,15 @@ async def _extract_field_candidates(
                 out_tok = response.usage.output_tokens or 0
                 cost_per_in = 0.80 if model_tier == "haiku" else 3.00
                 cost_per_out = 4.00 if model_tier == "haiku" else 15.00
-                cost = (in_tok * cost_per_in / 1_000_000) + (out_tok * cost_per_out / 1_000_000)
+                cost = (in_tok * cost_per_in / 1_000_000) + (
+                    out_tok * cost_per_out / 1_000_000
+                )
                 spend_logger.log(
-                    provider="anthropic", model=model_name,
-                    input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost,
+                    provider="anthropic",
+                    model=model_name,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cost_usd=cost,
                 )
             except Exception:
                 pass
@@ -487,19 +526,29 @@ async def _extract_field_candidates(
                 return []
             return [c for c in candidates if isinstance(c, dict) and c.get("value")]
         except Exception as exc:
-            logger.debug("Anthropic extraction failed field=%s model=%s: %s",
-                         field_name, model_name, exc)
+            logger.debug(
+                "Anthropic extraction failed field=%s model=%s: %s",
+                field_name,
+                model_name,
+                exc,
+            )
             return []
 
     # ── Google Gemini Flash path (default / fallback for "flash" tier) ──
     if not settings.google_api_key:
-        logger.debug("GEMINI_API_KEY not configured — skipping Gemini extraction for %s", field_name)
+        logger.debug(
+            "GEMINI_API_KEY not configured — skipping Gemini extraction for %s",
+            field_name,
+        )
         return []
 
     try:
         from google import genai
+
         client = genai.Client(api_key=settings.google_api_key)
-        flash_model = getattr(settings, "research_cascade_flash_model", "gemini-2.5-flash")
+        flash_model = getattr(
+            settings, "research_cascade_flash_model", "gemini-2.5-flash"
+        )
         response = client.models.generate_content(
             model=flash_model,
             contents=prompt,
@@ -540,6 +589,7 @@ async def _extract_field_candidates(
 # ---------------------------------------------------------------------------
 # Core evidence loop — Three-Layer Architecture (D-01)
 # ---------------------------------------------------------------------------
+
 
 async def _process_record(
     submission: dict[str, Any],
@@ -592,13 +642,19 @@ async def _process_record(
             new_fc_entries[field_name] = fill_entry
             fields_filled += 1
             target_fields.remove(field_name)
-            citation_records.append(build_citation_record(
-                wine_id=wine_id, run_id=run_id, field_name=field_name,
-                proposed_value=str(fill_entry.get("value", "")),
-                source_url="ontology://phase9",
-                source_tier="A", snippet="Deterministic inference from Phase 9 ontology",
-                fetch_verified=True, corroboration_count=1,
-            ))
+            citation_records.append(
+                build_citation_record(
+                    wine_id=wine_id,
+                    run_id=run_id,
+                    field_name=field_name,
+                    proposed_value=str(fill_entry.get("value", "")),
+                    source_url="ontology://phase9",
+                    source_tier="A",
+                    snippet="Deterministic inference from Phase 9 ontology",
+                    fetch_verified=True,
+                    corroboration_count=1,
+                )
+            )
     # Layer 2/3 see Layer 1 fills in existing_fc for regression guard
     existing_fc = {**existing_fc, **{k: v for k, v in new_fc_entries.items()}}
 
@@ -610,7 +666,8 @@ async def _process_record(
         if call_counter >= settings.research_max_calls_per_record:
             logger.info(
                 "research_agent: stop rule (%d calls) — stopping field loop wine_id=%s",
-                call_counter, wine_id,
+                call_counter,
+                wine_id,
             )
             break
 
@@ -618,7 +675,8 @@ async def _process_record(
         if record_cost >= settings.research_max_cost_per_record_usd:
             logger.info(
                 "research_agent: cost ceiling ($%.4f) — stopping field loop wine_id=%s",
-                record_cost, wine_id,
+                record_cost,
+                wine_id,
             )
             break
 
@@ -631,9 +689,16 @@ async def _process_record(
             continue
 
         # Producer-level cache for shared producer fields
-        if producer and field_name in ("country", "region", "sub_region", "producer_bio"):
+        if producer and field_name in (
+            "country",
+            "region",
+            "sub_region",
+            "producer_bio",
+        ):
             producer_cache_key = _cache_key_producer(producer)
-            cached_producer = get_entity_cache(f"{producer_cache_key}:{field_name}", redis_client)
+            cached_producer = get_entity_cache(
+                f"{producer_cache_key}:{field_name}", redis_client
+            )
             if cached_producer is not None:
                 new_fc_entries[field_name] = cached_producer
                 fields_filled += 1
@@ -655,13 +720,19 @@ async def _process_record(
             search_results = await serper_search(query, num_results=5)
         except Exception as exc:
             logger.warning(
-                "Serper search failed for field=%s wine_id=%s: %s", field_name, wine_id, exc
+                "Serper search failed for field=%s wine_id=%s: %s",
+                field_name,
+                wine_id,
+                exc,
             )
 
         try:
             spend_logger.log(
-                provider="serper", model="search",
-                input_tokens=0, output_tokens=0, cost_usd=serper_cost,
+                provider="serper",
+                model="search",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=serper_cost,
             )
         except Exception as spend_err:
             logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
@@ -692,9 +763,13 @@ async def _process_record(
 
         # ── Cascade extraction (D-02: dispatches to Haiku/Flash/Sonnet per model_tier) ──
         candidates = await _extract_field_candidates(
-            field_name, wine_name, vintage,
-            [{"title": sr["title"], "link": sr["link"], "snippet": sr["snippet"]}
-             for sr in clean_snippets],
+            field_name,
+            wine_name,
+            vintage,
+            [
+                {"title": sr["title"], "link": sr["link"], "snippet": sr["snippet"]}
+                for sr in clean_snippets
+            ],
             spend_logger,
             model_tier=model_tier,
         )
@@ -705,16 +780,28 @@ async def _process_record(
 
         for cand in candidates:
             url = cand.get("source_url", "")
-            cand["source_tier"] = classify_source_tier(url, producer=producer if producer else None)
+            cand["source_tier"] = classify_source_tier(
+                url, producer=producer if producer else None
+            )
 
         # ── Conflict detection with auto-resolution (D-05) ──
         if detect_conflict(candidates):
             resolution, reason, winner = resolve_conflict(candidates, field_name)
             if resolution == "auto" and winner is not None:
-                logger.info("Conflict auto-resolved field=%s wine_id=%s: %s", field_name, wine_id, reason)
+                logger.info(
+                    "Conflict auto-resolved field=%s wine_id=%s: %s",
+                    field_name,
+                    wine_id,
+                    reason,
+                )
                 top_candidate = winner
             else:
-                logger.info("Conflict → human field=%s wine_id=%s: %s", field_name, wine_id, reason)
+                logger.info(
+                    "Conflict → human field=%s wine_id=%s: %s",
+                    field_name,
+                    wine_id,
+                    reason,
+                )
                 conflict_updates[field_name] = candidates
                 fields_conflicted += 1
                 continue
@@ -731,7 +818,8 @@ async def _process_record(
                 tier_bc = [c for c in candidates if c.get("source_tier") in ("B", "C")]
                 top_candidate = (
                     max(tier_bc, key=lambda c: c.get("confidence", 0))
-                    if tier_bc else candidates[0]
+                    if tier_bc
+                    else candidates[0]
                 )
             else:
                 top_candidate = candidates[0]
@@ -766,38 +854,56 @@ async def _process_record(
             proposed_value = str(top_candidate.get("value", ""))
             if existing_value.lower().strip() != proposed_value.lower().strip():
                 try:
-                    supabase.table("resolution_challenges").insert({
-                        "submission_id": wine_id,
-                        "field_name": field_name,
-                        "existing_value": existing_value,
-                        "challenging_value": proposed_value,
-                        "challenging_source_url": top_candidate.get("source_url", ""),
-                        "challenging_source_tier": "A",
-                        "snippet": top_candidate.get("snippet_used", ""),
-                        "status": "open",
-                    }).execute()
+                    supabase.table("resolution_challenges").insert(
+                        {
+                            "submission_id": wine_id,
+                            "field_name": field_name,
+                            "existing_value": existing_value,
+                            "challenging_value": proposed_value,
+                            "challenging_source_url": top_candidate.get(
+                                "source_url", ""
+                            ),
+                            "challenging_source_tier": "A",
+                            "snippet": top_candidate.get("snippet_used", ""),
+                            "status": "open",
+                        }
+                    ).execute()
                     # D-07: Challenge notification
                     try:
-                        supabase.table("notifications").insert({
-                            "type": "resolution_challenge",
-                            "title": f"Tier-A challenge: {field_name}",
-                            "message": (
-                                f"Tier-A source challenges human_resolved {field_name} "
-                                f"for wine {wine_name}: '{existing_value}' → '{proposed_value}'"
-                            ),
-                            "metadata": json.dumps({
-                                "submission_id": wine_id, "field_name": field_name,
-                            }),
-                            "status": "unread",
-                        }).execute()
+                        supabase.table("notifications").insert(
+                            {
+                                "type": "resolution_challenge",
+                                "title": f"Tier-A challenge: {field_name}",
+                                "message": (
+                                    f"Tier-A source challenges human_resolved {field_name} "
+                                    f"for wine {wine_name}: '{existing_value}' → '{proposed_value}'"
+                                ),
+                                "metadata": json.dumps(
+                                    {
+                                        "submission_id": wine_id,
+                                        "field_name": field_name,
+                                    }
+                                ),
+                                "status": "unread",
+                            }
+                        ).execute()
                     except Exception:
-                        logger.info("challenge_notification: %s", json.dumps({
-                            "type": "resolution_challenge", "wine_id": wine_id,
-                            "field": field_name, "existing": existing_value,
-                            "challenging": proposed_value,
-                        }))
+                        logger.info(
+                            "challenge_notification: %s",
+                            json.dumps(
+                                {
+                                    "type": "resolution_challenge",
+                                    "wine_id": wine_id,
+                                    "field": field_name,
+                                    "existing": existing_value,
+                                    "challenging": proposed_value,
+                                }
+                            ),
+                        )
                 except Exception as exc:
-                    logger.warning("resolution_challenges insert failed (non-fatal): %s", exc)
+                    logger.warning(
+                        "resolution_challenges insert failed (non-fatal): %s", exc
+                    )
                 fields_unchanged += 1
                 continue
 
@@ -809,7 +915,9 @@ async def _process_record(
                 continue
         else:
             can_promote = True
-            conf_key = "A_single" if top_candidate.get("source_tier") == "A" else "B_dual"
+            conf_key = (
+                "A_single" if top_candidate.get("source_tier") == "A" else "B_dual"
+            )
 
         confidence = assign_confidence_by_tier(conf_key)
         proposed_value = str(top_candidate.get("value", ""))
@@ -818,14 +926,18 @@ async def _process_record(
         if not check_regression_guard(field_name, confidence, existing_fc):
             logger.debug(
                 "Regression guard blocked field=%s wine_id=%s (proposed=%.2f < existing)",
-                field_name, wine_id, confidence,
+                field_name,
+                wine_id,
+                confidence,
             )
             regression_blocked_count += 1  # Bug #6
             fields_unchanged += 1
             continue
 
         citation = build_citation_record(
-            wine_id=wine_id, run_id=run_id, field_name=field_name,
+            wine_id=wine_id,
+            run_id=run_id,
+            field_name=field_name,
             proposed_value=proposed_value,
             source_url=top_candidate.get("source_url", ""),
             source_tier=top_candidate.get("source_tier", "C"),
@@ -837,7 +949,9 @@ async def _process_record(
         citation_records.append(citation)
 
         new_fc_entries[field_name] = {
-            "value": proposed_value, "confidence": confidence, "source": "research_agent",
+            "value": proposed_value,
+            "confidence": confidence,
+            "source": "research_agent",
         }
         fields_filled += 1
         target_fields.remove(field_name)
@@ -849,7 +963,12 @@ async def _process_record(
             ttl_days=settings.research_cache_wine_ttl_days,
             redis_client=redis_client,
         )
-        if producer and field_name in ("country", "region", "sub_region", "producer_bio"):
+        if producer and field_name in (
+            "country",
+            "region",
+            "sub_region",
+            "producer_bio",
+        ):
             put_entity_cache(
                 f"{_cache_key_producer(producer)}:{field_name}",
                 new_fc_entries[field_name],
@@ -901,9 +1020,13 @@ async def _process_record(
             record_cost += 0.0001
 
             candidates = await _extract_field_candidates(
-                field_name, wine_name, vintage,
-                [{"title": sr["title"], "link": sr["link"], "snippet": sr["snippet"]}
-                 for sr in clean],
+                field_name,
+                wine_name,
+                vintage,
+                [
+                    {"title": sr["title"], "link": sr["link"], "snippet": sr["snippet"]}
+                    for sr in clean
+                ],
                 spend_logger,
                 model_tier=model_tier,
             )
@@ -915,13 +1038,17 @@ async def _process_record(
             if curr_value in [v.lower().strip() for v in prev_values]:
                 logger.info(
                     "Reflexion plateau field=%s wine_id=%s attempt=%d — stopping",
-                    field_name, wine_id, attempt,
+                    field_name,
+                    wine_id,
+                    attempt,
                 )
                 break
             prev_values.append(curr_value)
 
             for c in candidates:
-                c["source_tier"] = classify_source_tier(c.get("source_url", ""), producer=producer if producer else None)
+                c["source_tier"] = classify_source_tier(
+                    c.get("source_url", ""), producer=producer if producer else None
+                )
 
             if detect_conflict(candidates):
                 resolution, reason, winner = resolve_conflict(candidates, field_name)
@@ -939,10 +1066,13 @@ async def _process_record(
                     tier_a = [c for c in candidates if c.get("source_tier") == "A"]
                     top_candidate = tier_a[0] if tier_a else candidates[0]
                 elif conf_key == "B_dual":
-                    tier_bc = [c for c in candidates if c.get("source_tier") in ("B", "C")]
+                    tier_bc = [
+                        c for c in candidates if c.get("source_tier") in ("B", "C")
+                    ]
                     top_candidate = (
                         max(tier_bc, key=lambda c: c.get("confidence", 0))
-                        if tier_bc else candidates[0]
+                        if tier_bc
+                        else candidates[0]
                     )
                 else:
                     top_candidate = candidates[0]
@@ -959,7 +1089,8 @@ async def _process_record(
                     str(top_candidate.get("value", "")),
                     top_candidate.get("source_url", ""),
                     top_candidate.get("source_tier", "C"),
-                    field_name, supabase,
+                    field_name,
+                    supabase,
                 )
 
             top_candidate["fetch_verified"] = fetch_verified
@@ -970,26 +1101,38 @@ async def _process_record(
                 regression_blocked_count += 1
                 break
 
-            citation_records.append(build_citation_record(
-                wine_id=wine_id, run_id=run_id, field_name=field_name,
-                proposed_value=proposed,
-                source_url=top_candidate.get("source_url", ""),
-                source_tier=top_candidate.get("source_tier", "C"),
-                snippet=top_candidate.get("snippet_used", ""),
-                fetch_verified=fetch_verified,
-                corroboration_count=len(candidates),
-            ))
+            citation_records.append(
+                build_citation_record(
+                    wine_id=wine_id,
+                    run_id=run_id,
+                    field_name=field_name,
+                    proposed_value=proposed,
+                    source_url=top_candidate.get("source_url", ""),
+                    source_tier=top_candidate.get("source_tier", "C"),
+                    snippet=top_candidate.get("snippet_used", ""),
+                    fetch_verified=fetch_verified,
+                    corroboration_count=len(candidates),
+                )
+            )
             new_fc_entries[field_name] = {
-                "value": proposed, "confidence": confidence, "source": "research_agent",
+                "value": proposed,
+                "confidence": confidence,
+                "source": "research_agent",
             }
             fields_filled += 1
             filled_in_layer3 = True
             break  # Field filled — exit retry loop
 
         # D-03: fields exhausting all Reflexion retries → mark research_exhausted
-        if not filled_in_layer3 and field_name not in new_fc_entries and field_name not in conflict_updates:
+        if (
+            not filled_in_layer3
+            and field_name not in new_fc_entries
+            and field_name not in conflict_updates
+        ):
             new_fc_entries[field_name] = {
-                "value": None, "confidence": 0.0, "source": "research_exhausted",
+                "value": None,
+                "confidence": 0.0,
+                "source": "research_exhausted",
             }
 
     # Compute null_rate_after
@@ -1001,7 +1144,11 @@ async def _process_record(
         "new_fc_entries": new_fc_entries,
         "citation_records": citation_records,
         "conflict_updates": conflict_updates,
-        "fields_targeted": len(get_target_fields(submission.get("field_confidence") or {}, RESEARCH_ALL_FIELDS)),
+        "fields_targeted": len(
+            get_target_fields(
+                submission.get("field_confidence") or {}, RESEARCH_ALL_FIELDS
+            )
+        ),
         "fields_filled": fields_filled,
         "fields_conflicted": fields_conflicted,
         "fields_unchanged": fields_unchanged,
@@ -1011,7 +1158,8 @@ async def _process_record(
         "cost_usd": record_cost,
         "pii_policy_flags": pii_policy_flags,
         # Bug #5 fix: time_to_fill_hours
-        "time_to_fill_hours": (datetime.now(timezone.utc) - started_at).total_seconds() / 3600,
+        "time_to_fill_hours": (datetime.now(timezone.utc) - started_at).total_seconds()
+        / 3600,
         # Bug #6 fix: actual regression count
         "regression_blocked_count": regression_blocked_count,
     }
@@ -1020,6 +1168,7 @@ async def _process_record(
 # ---------------------------------------------------------------------------
 # Write results to Supabase
 # ---------------------------------------------------------------------------
+
 
 async def _write_results(
     submission_id: str,
@@ -1043,7 +1192,9 @@ async def _write_results(
        Bug #3 fix: uses merge_conflict_candidates() to deep-merge conflicts
     """
     if dry_run:
-        logger.info("DRY RUN: skipping all Supabase writes for submission_id=%s", submission_id)
+        logger.info(
+            "DRY RUN: skipping all Supabase writes for submission_id=%s", submission_id
+        )
         return {"dry_run": True}
 
     updated_fc = merge_field_confidence(existing_fc, new_fc_entries)
@@ -1059,15 +1210,19 @@ async def _write_results(
         queue_rows = []
         for item in review_list:
             source_raw = item.get("source", "research_agent")
-            db_source = "knowledge" if source_raw not in ("visible", "inferred") else source_raw
-            queue_rows.append({
-                "submission_id": submission_id,
-                "field_name": item["field_name"],
-                "current_value": item.get("current_value"),
-                "confidence": item.get("confidence", 0.0),
-                "source": db_source,
-                "status": "pending",
-            })
+            db_source = (
+                "knowledge" if source_raw not in ("visible", "inferred") else source_raw
+            )
+            queue_rows.append(
+                {
+                    "submission_id": submission_id,
+                    "field_name": item["field_name"],
+                    "current_value": item.get("current_value"),
+                    "confidence": item.get("confidence", 0.0),
+                    "source": db_source,
+                    "status": "pending",
+                }
+            )
         try:
             supabase.table("field_review_queue").insert(queue_rows).execute()
         except Exception as exc:
@@ -1106,6 +1261,7 @@ async def _write_results(
 # T-12-08: Daily budget cap check (bug #2 fix: sum ALL providers)
 # ---------------------------------------------------------------------------
 
+
 async def _check_daily_budget() -> bool:
     """
     Returns True if today's research API spend is below the daily cap.
@@ -1138,6 +1294,7 @@ async def _check_daily_budget() -> bool:
 # Async implementation
 # ---------------------------------------------------------------------------
 
+
 async def _research_async(submission_id: str, dry_run: bool) -> None:
     """
     Full async research pipeline for one wine submission.
@@ -1156,7 +1313,8 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
 
     if not settings.supabase_url or not settings.supabase_key:
         logger.warning(
-            "research_agent: Supabase not configured — skipping submission_id=%s", submission_id
+            "research_agent: Supabase not configured — skipping submission_id=%s",
+            submission_id,
         )
         return
 
@@ -1167,10 +1325,16 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
     if settings.redis_url:
         try:
             import redis
-            redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+
+            redis_client = redis.Redis.from_url(
+                settings.redis_url, decode_responses=True
+            )
             redis_client.ping()
         except Exception as exc:
-            logger.debug("Redis not available for entity cache (falling back to in-memory): %s", exc)
+            logger.debug(
+                "Redis not available for entity cache (falling back to in-memory): %s",
+                exc,
+            )
             redis_client = None
 
     # Check Redis budget flag (D-06 bug #4)
@@ -1220,19 +1384,25 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
     try:
         run_resp = (
             supabase.table("research_runs")
-            .insert({
-                "status": "running",
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "records_eligible": 1,
-            })
+            .insert(
+                {
+                    "status": "running",
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "records_eligible": 1,
+                }
+            )
             .execute()
         )
         run_id = (run_resp.data or [{}])[0].get("id")
     except Exception as exc:
-        logger.warning("Failed to create research_run row: %s — continuing without run_id", exc)
+        logger.warning(
+            "Failed to create research_run row: %s — continuing without run_id", exc
+        )
 
     existing_fc: dict = submission.get("field_confidence") or {}
-    existing_conflicts: dict = submission.get("conflict_candidates") or {}  # Bug #3: for deep-merge
+    existing_conflicts: dict = (
+        submission.get("conflict_candidates") or {}
+    )  # Bug #3: for deep-merge
     run_id_str = str(run_id) if run_id else "unknown"
 
     # Evidence loop
@@ -1264,20 +1434,26 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
     if not dry_run:
         # Write research_run_stats row (RSCH-07) with bug #5 and #6 fixes
         try:
-            supabase.table("research_run_stats").insert({
-                "run_id": run_id_str,
-                "wine_id": submission_id,
-                "fields_targeted": stats.get("fields_targeted", 0),
-                "fields_filled": stats.get("fields_filled", 0),
-                "fields_conflicted": stats.get("fields_conflicted", 0),
-                "fields_unchanged": stats.get("fields_unchanged", 0),
-                "cost_usd": stats.get("cost_usd", 0.0),
-                "attempts": stats.get("call_counter", 0),
-                "null_rate_before": stats.get("null_rate_before", 0.0),
-                "null_rate_after": stats.get("null_rate_after", 0.0),
-                "time_to_fill_hours": stats.get("time_to_fill_hours", 0.0),  # Bug #5
-                "regression_blocked_count": stats.get("regression_blocked_count", 0),  # Bug #6
-            }).execute()
+            supabase.table("research_run_stats").insert(
+                {
+                    "run_id": run_id_str,
+                    "wine_id": submission_id,
+                    "fields_targeted": stats.get("fields_targeted", 0),
+                    "fields_filled": stats.get("fields_filled", 0),
+                    "fields_conflicted": stats.get("fields_conflicted", 0),
+                    "fields_unchanged": stats.get("fields_unchanged", 0),
+                    "cost_usd": stats.get("cost_usd", 0.0),
+                    "attempts": stats.get("call_counter", 0),
+                    "null_rate_before": stats.get("null_rate_before", 0.0),
+                    "null_rate_after": stats.get("null_rate_after", 0.0),
+                    "time_to_fill_hours": stats.get(
+                        "time_to_fill_hours", 0.0
+                    ),  # Bug #5
+                    "regression_blocked_count": stats.get(
+                        "regression_blocked_count", 0
+                    ),  # Bug #6
+                }
+            ).execute()
         except Exception as exc:
             logger.warning("research_run_stats insert failed (non-fatal): %s", exc)
 
@@ -1291,14 +1467,16 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
         if run_id:
             run_status = "completed" if stats.get("fields_filled", 0) > 0 else "partial"
             try:
-                supabase.table("research_runs").update({
-                    "status": run_status,
-                    "completed_at": now_iso,
-                    "records_processed": 1,
-                    "fields_filled": stats.get("fields_filled", 0),
-                    "cost_usd": stats.get("cost_usd", 0.0),
-                    "pii_policy_flags": stats.get("pii_policy_flags", 0),
-                }).eq("id", run_id).execute()
+                supabase.table("research_runs").update(
+                    {
+                        "status": run_status,
+                        "completed_at": now_iso,
+                        "records_processed": 1,
+                        "fields_filled": stats.get("fields_filled", 0),
+                        "cost_usd": stats.get("cost_usd", 0.0),
+                        "pii_policy_flags": stats.get("pii_policy_flags", 0),
+                    }
+                ).eq("id", run_id).execute()
             except Exception as exc:
                 logger.warning("research_run update failed (non-fatal): %s", exc)
 
@@ -1315,6 +1493,7 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
 # ---------------------------------------------------------------------------
 # Celery task entry points
 # ---------------------------------------------------------------------------
+
 
 @celery_app.task(name="research.agent_task")
 def research_agent_task(submission_id: str, dry_run: bool = False) -> None:
@@ -1338,10 +1517,13 @@ def research_daily_budget_check_task() -> None:
     settings = get_settings()
     logger.info("research_daily_budget_check: within_budget=%s", result)
     if not result:
-        logger.warning("research_daily_budget_check: BUDGET EXCEEDED — setting Redis flag")
+        logger.warning(
+            "research_daily_budget_check: BUDGET EXCEEDED — setting Redis flag"
+        )
         if settings.redis_url:
             try:
                 import redis
+
                 r = redis.Redis.from_url(settings.redis_url, decode_responses=True)
                 today = datetime.now(timezone.utc).date().isoformat()
                 r.setex(f"research:budget_exceeded:{today}", 86400, "1")
@@ -1352,6 +1534,7 @@ def research_daily_budget_check_task() -> None:
 # ---------------------------------------------------------------------------
 # D-07: Staleness re-verification task (weekly)
 # ---------------------------------------------------------------------------
+
 
 @celery_app.task(name="research.staleness_reverify")
 def staleness_reverify_task() -> None:
@@ -1437,13 +1620,16 @@ async def _staleness_reverify_async() -> None:
         )
 
         if still_valid:
-            logger.debug("staleness_reverify: field=%s wine=%s still valid", field_name, wine_id)
+            logger.debug(
+                "staleness_reverify: field=%s wine=%s still valid", field_name, wine_id
+            )
             continue
 
         # Value no longer present → downgrade
         logger.info(
             "staleness_reverify: STALE field=%s wine=%s — downgrading to 0.85",
-            field_name, wine_id,
+            field_name,
+            wine_id,
         )
         fc[field_name] = {
             "value": entry.get("value"),
@@ -1452,23 +1638,29 @@ async def _staleness_reverify_async() -> None:
         }
 
         try:
-            supabase.table("master_wine_library_submissions").update({
-                "field_confidence": fc,
-            }).eq("id", wine_id).execute()
+            supabase.table("master_wine_library_submissions").update(
+                {
+                    "field_confidence": fc,
+                }
+            ).eq("id", wine_id).execute()
         except Exception as exc:
-            logger.warning("staleness_reverify: FC update failed wine=%s: %s", wine_id, exc)
+            logger.warning(
+                "staleness_reverify: FC update failed wine=%s: %s", wine_id, exc
+            )
             continue
 
         # Insert into field_review_queue
         try:
-            supabase.table("field_review_queue").insert({
-                "submission_id": wine_id,
-                "field_name": field_name,
-                "current_value": str(entry.get("value", "")),
-                "confidence": 0.85,
-                "source": "knowledge",
-                "status": "pending",
-            }).execute()
+            supabase.table("field_review_queue").insert(
+                {
+                    "submission_id": wine_id,
+                    "field_name": field_name,
+                    "current_value": str(entry.get("value", "")),
+                    "confidence": 0.85,
+                    "source": "knowledge",
+                    "status": "pending",
+                }
+            ).execute()
         except Exception as exc:
             logger.warning("staleness_reverify: review queue insert failed: %s", exc)
 
@@ -1476,5 +1668,6 @@ async def _staleness_reverify_async() -> None:
 
     logger.info(
         "staleness_reverify: processed %d citations, downgraded %d",
-        len(stale_citations), downgraded,
+        len(stale_citations),
+        downgraded,
     )

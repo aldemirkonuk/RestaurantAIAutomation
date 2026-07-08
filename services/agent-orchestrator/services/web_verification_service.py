@@ -16,7 +16,6 @@ It is NOT a separate column. merge_field_confidence() propagates it correctly.
 """
 
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -26,7 +25,6 @@ from supabase import create_client
 
 from config.settings import get_settings
 from services.field_confidence import merge_field_confidence
-from services.producer_normalization import normalize_producer_name
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -101,18 +99,26 @@ NUMERIC_FIELDS = {"alcohol_pct", "price_bottle", "price_glass"}
 # Pydantic schema for Gemini 2.5 Flash structured extraction (WSRCH-02)
 # ---------------------------------------------------------------------------
 
+
 class WineVerificationResult(BaseModel):
     """
     Structured extraction result from Gemini 2.5 Flash parsing Serper snippets.
     All fields Optional — web sources may not mention every field.
     source_confidence is Gemini's self-reported confidence in web source quality (0.0-1.0).
     """
+
     producer: Optional[str] = Field(None, description="Producer/winery name")
-    region: Optional[str] = Field(None, description="Wine region (e.g. Burgundy, Napa Valley)")
-    sub_region: Optional[str] = Field(None, description="Sub-region (e.g. Pauillac, Rutherford)")
+    region: Optional[str] = Field(
+        None, description="Wine region (e.g. Burgundy, Napa Valley)"
+    )
+    sub_region: Optional[str] = Field(
+        None, description="Sub-region (e.g. Pauillac, Rutherford)"
+    )
     appellation: Optional[str] = Field(None, description="AOC/DOC/AVA/GI appellation")
     country: Optional[str] = Field(None, description="Country of origin")
-    grape_variety: Optional[str] = Field(None, description="Primary grape variety or blend")
+    grape_variety: Optional[str] = Field(
+        None, description="Primary grape variety or blend"
+    )
     color: Optional[str] = Field(None, description="red, white, rosé, or amber")
     primary_type: Optional[str] = Field(
         None,
@@ -123,14 +129,22 @@ class WineVerificationResult(BaseModel):
         description="dry, off-dry, semi-sweet, sweet, brut, or extra-dry",
     )
     alcohol_pct: Optional[float] = Field(None, description="ABV as float, e.g. 13.5")
-    tasting_notes: Optional[str] = Field(None, description="Aroma and palate descriptors")
+    tasting_notes: Optional[str] = Field(
+        None, description="Aroma and palate descriptors"
+    )
     # Producer knowledge graph fields
     founding_year: Optional[int] = Field(None, description="Producer founding year")
     winemaker_name: Optional[str] = Field(None, description="Head winemaker name")
     website_url: Optional[str] = Field(None, description="Producer website URL")
-    certifications_organic: Optional[bool] = Field(None, description="Organic certified?")
-    certifications_biodynamic: Optional[bool] = Field(None, description="Biodynamic certified?")
-    certifications_sustainable: Optional[bool] = Field(None, description="Sustainable certified?")
+    certifications_organic: Optional[bool] = Field(
+        None, description="Organic certified?"
+    )
+    certifications_biodynamic: Optional[bool] = Field(
+        None, description="Biodynamic certified?"
+    )
+    certifications_sustainable: Optional[bool] = Field(
+        None, description="Sustainable certified?"
+    )
     # Source confidence (Gemini's assessment of snippet quality)
     source_confidence: Optional[float] = Field(
         None,
@@ -240,7 +254,8 @@ async def parse_search_results(
     except Exception as exc:
         logger.warning(
             "parse_search_results: failed to parse Gemini response for wine=%r: %s",
-            wine_name, exc,
+            wine_name,
+            exc,
         )
         return None
 
@@ -248,6 +263,7 @@ async def parse_search_results(
 # ---------------------------------------------------------------------------
 # Concordance engine (WSRCH-03, WSRCH-06)
 # ---------------------------------------------------------------------------
+
 
 def _normalize_for_compare(value: str, field_name: str) -> str:
     """Lowercase + strip for concordance comparison. Apply alias for region/color fields."""
@@ -358,7 +374,7 @@ def apply_concordance_result(
         existing_entry = existing_fc.get(field_name, {})
         new_entry: Dict[str, Any] = {
             "value": existing_entry.get("value", web_value),  # keep original value
-            "confidence": max(0.95, web_confidence),           # WSRCH-03: boost to 0.95+
+            "confidence": max(0.95, web_confidence),  # WSRCH-03: boost to 0.95+
             "source": "web_verified",
             "verification_status": "web_verified",
         }
@@ -395,7 +411,9 @@ def apply_concordance_result(
             "verification_status": "web_verified",
         }
 
-    return merge_field_confidence(existing_fc, {field_name: new_entry}, overwrite_lower=True)
+    return merge_field_confidence(
+        existing_fc, {field_name: new_entry}, overwrite_lower=True
+    )
 
 
 def apply_producer_graph_enrichment(
@@ -445,6 +463,7 @@ def apply_producer_graph_enrichment(
 # Producer knowledge graph operations (WSRCH-04, WSRCH-05)
 # ---------------------------------------------------------------------------
 
+
 def lookup_producer(normalized_name: str) -> Optional[Dict[str, Any]]:
     """
     Check producers table for a known producer by normalized_name.
@@ -467,7 +486,9 @@ def lookup_producer(normalized_name: str) -> Optional[Dict[str, Any]]:
         )
         return resp.data or None
     except Exception as exc:
-        logger.warning("lookup_producer: DB error for %r (fail open): %s", normalized_name, exc)
+        logger.warning(
+            "lookup_producer: DB error for %r (fail open): %s", normalized_name, exc
+        )
         return None
 
 
@@ -539,7 +560,9 @@ def upsert_producer(
             producer_id = resp.data[0].get("id")
             logger.info(
                 "upsert_producer: upserted producer=%r normalized=%r id=%s",
-                name, normalized_name, producer_id,
+                name,
+                normalized_name,
+                producer_id,
             )
             return producer_id
     except Exception as exc:

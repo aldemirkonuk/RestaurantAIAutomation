@@ -54,8 +54,10 @@ async def main() -> int:
         load_dotenv(_ROOT / ".env")
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv(
-        "SUPABASE_SERVICE_ROLE_KEY"
+    key = (
+        os.getenv("SUPABASE_SERVICE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     if not url or not key:
         print("Missing SUPABASE_URL or service key.", file=sys.stderr)
@@ -86,15 +88,21 @@ async def main() -> int:
 
     resp = (
         supabase.table("dead_letter_queue")
-        .select("id, agent_name, original_exchange, original_routing_key, message, error, retry_count")
+        .select(
+            "id, agent_name, original_exchange, original_routing_key, message, error, retry_count"
+        )
         .eq("agent_name", "live_dlq_test_agent")
         .order("id", desc=True)
         .limit(5)
         .execute()
     )
     rows = resp.data or []
-    row = next((r for r in rows if (r.get("message") or {}).get("dlq_marker") == marker), None)
-    assert row is not None, f"No DLQ row with marker {marker!r} in last 5 for agent: {rows!r}"
+    row = next(
+        (r for r in rows if (r.get("message") or {}).get("dlq_marker") == marker), None
+    )
+    assert (
+        row is not None
+    ), f"No DLQ row with marker {marker!r} in last 5 for agent: {rows!r}"
 
     assert row.get("agent_name") == "live_dlq_test_agent"
     assert row.get("original_exchange") == "test.exchange"
@@ -106,7 +114,9 @@ async def main() -> int:
     assert msg_body.get("body") == {"hello": "world"}
 
     print("OK — dead_letter_queue row present after retry exhaustion.")
-    print(f"  id={row.get('id')!r} retry_count={row.get('retry_count')!r} error={row.get('error')!r}")
+    print(
+        f"  id={row.get('id')!r} retry_count={row.get('retry_count')!r} error={row.get('error')!r}"
+    )
     return 0
 
 

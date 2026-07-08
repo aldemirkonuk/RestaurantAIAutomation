@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString,
   IsEnum,
@@ -7,8 +7,8 @@ import {
   ValidateNested,
   IsNumber,
   IsArray,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+} from "class-validator";
+import { Type } from "class-transformer";
 
 /**
  * Toast Webhook Event Types
@@ -16,57 +16,57 @@ import { Type } from 'class-transformer';
  */
 export enum ToastWebhookEventType {
   // Order events
-  ORDER_CREATED = 'order.created',
-  ORDER_UPDATED = 'order.updated',
-  ORDER_CLOSED = 'order.closed',
-  ORDER_VOIDED = 'order.voided',
-  ORDER_PAID = 'order.paid',
+  ORDER_CREATED = "order.created",
+  ORDER_UPDATED = "order.updated",
+  ORDER_CLOSED = "order.closed",
+  ORDER_VOIDED = "order.voided",
+  ORDER_PAID = "order.paid",
 
   // Menu events
-  MENU_UPDATED = 'menu.updated',
-  MENU_ITEM_UPDATED = 'menuItem.updated',
-  MENU_ITEM_CREATED = 'menuItem.created',
-  MENU_ITEM_DELETED = 'menuItem.deleted',
+  MENU_UPDATED = "menu.updated",
+  MENU_ITEM_UPDATED = "menuItem.updated",
+  MENU_ITEM_CREATED = "menuItem.created",
+  MENU_ITEM_DELETED = "menuItem.deleted",
 
   // Stock/Inventory events
-  STOCK_UPDATED = 'stock.updated',
-  STOCK_OUT = 'stock.out',
-  STOCK_LOW = 'stock.low',
+  STOCK_UPDATED = "stock.updated",
+  STOCK_OUT = "stock.out",
+  STOCK_LOW = "stock.low",
 
   // Payment events
-  PAYMENT_PROCESSED = 'payment.processed',
-  PAYMENT_REFUNDED = 'payment.refunded',
+  PAYMENT_PROCESSED = "payment.processed",
+  PAYMENT_REFUNDED = "payment.refunded",
 
   // Test/Verification
-  WEBHOOK_VERIFICATION = 'webhook.verification',
+  WEBHOOK_VERIFICATION = "webhook.verification",
 }
 
 /**
  * Order item in webhook payload
  */
 export class WebhookOrderItemDto {
-  @ApiProperty({ description: 'Menu item GUID from Toast' })
+  @ApiProperty({ description: "Menu item GUID from Toast" })
   @IsString()
   guid: string;
 
-  @ApiProperty({ description: 'Item name' })
+  @ApiProperty({ description: "Item name" })
   @IsString()
   name: string;
 
-  @ApiProperty({ description: 'Quantity ordered' })
+  @ApiProperty({ description: "Quantity ordered" })
   @IsNumber()
   quantity: number;
 
-  @ApiProperty({ description: 'Unit price in cents' })
+  @ApiProperty({ description: "Unit price in cents" })
   @IsNumber()
   unitPrice: number;
 
-  @ApiPropertyOptional({ description: 'SKU or external ID' })
+  @ApiPropertyOptional({ description: "SKU or external ID" })
   @IsString()
   @IsOptional()
   sku?: string;
 
-  @ApiPropertyOptional({ description: 'Wine type category' })
+  @ApiPropertyOptional({ description: "Wine type category" })
   @IsString()
   @IsOptional()
   category?: string;
@@ -76,63 +76,63 @@ export class WebhookOrderItemDto {
  * Order payload in webhook
  */
 export class WebhookOrderPayloadDto {
-  @ApiProperty({ description: 'Order GUID from Toast' })
+  @ApiProperty({ description: "Order GUID from Toast" })
   @IsString()
   guid: string;
 
-  @ApiPropertyOptional({ description: 'Order number' })
+  @ApiPropertyOptional({ description: "Order number" })
   @IsString()
   @IsOptional()
   orderNumber?: string;
 
-  @ApiPropertyOptional({ description: 'Table name' })
+  @ApiPropertyOptional({ description: "Table name" })
   @IsString()
   @IsOptional()
   tableName?: string;
 
-  @ApiPropertyOptional({ description: 'Server name' })
+  @ApiPropertyOptional({ description: "Server name" })
   @IsString()
   @IsOptional()
   serverName?: string;
 
-  @ApiProperty({ description: 'Order items', type: [WebhookOrderItemDto] })
+  @ApiProperty({ description: "Order items", type: [WebhookOrderItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => WebhookOrderItemDto)
   @IsOptional()
   items?: WebhookOrderItemDto[];
 
-  @ApiPropertyOptional({ description: 'Order subtotal in cents' })
+  @ApiPropertyOptional({ description: "Order subtotal in cents" })
   @IsNumber()
   @IsOptional()
   subtotal?: number;
 
-  @ApiPropertyOptional({ description: 'Tax amount in cents' })
+  @ApiPropertyOptional({ description: "Tax amount in cents" })
   @IsNumber()
   @IsOptional()
   tax?: number;
 
-  @ApiPropertyOptional({ description: 'Total amount in cents' })
+  @ApiPropertyOptional({ description: "Total amount in cents" })
   @IsNumber()
   @IsOptional()
   total?: number;
 
-  @ApiPropertyOptional({ description: 'Order status' })
+  @ApiPropertyOptional({ description: "Order status" })
   @IsString()
   @IsOptional()
   status?: string;
 
-  @ApiPropertyOptional({ description: 'Created timestamp (ISO 8601)' })
+  @ApiPropertyOptional({ description: "Created timestamp (ISO 8601)" })
   @IsString()
   @IsOptional()
   createdAt?: string;
 
-  @ApiPropertyOptional({ description: 'Updated timestamp (ISO 8601)' })
+  @ApiPropertyOptional({ description: "Updated timestamp (ISO 8601)" })
   @IsString()
   @IsOptional()
   updatedAt?: string;
 
-  @ApiPropertyOptional({ description: 'Closed timestamp (ISO 8601)' })
+  @ApiPropertyOptional({ description: "Closed timestamp (ISO 8601)" })
   @IsString()
   @IsOptional()
   closedAt?: string;
@@ -142,31 +142,31 @@ export class WebhookOrderPayloadDto {
  * Stock/Inventory payload in webhook
  */
 export class WebhookStockPayloadDto {
-  @ApiProperty({ description: 'Menu item GUID' })
+  @ApiProperty({ description: "Menu item GUID" })
   @IsString()
   itemGuid: string;
 
-  @ApiPropertyOptional({ description: 'Item name' })
+  @ApiPropertyOptional({ description: "Item name" })
   @IsString()
   @IsOptional()
   itemName?: string;
 
-  @ApiPropertyOptional({ description: 'New quantity' })
+  @ApiPropertyOptional({ description: "New quantity" })
   @IsNumber()
   @IsOptional()
   quantity?: number;
 
-  @ApiPropertyOptional({ description: 'Previous quantity' })
+  @ApiPropertyOptional({ description: "Previous quantity" })
   @IsNumber()
   @IsOptional()
   previousQuantity?: number;
 
-  @ApiPropertyOptional({ description: 'Reason for change' })
+  @ApiPropertyOptional({ description: "Reason for change" })
   @IsString()
   @IsOptional()
   reason?: string;
 
-  @ApiPropertyOptional({ description: 'Stock status (in_stock, low, out)' })
+  @ApiPropertyOptional({ description: "Stock status (in_stock, low, out)" })
   @IsString()
   @IsOptional()
   status?: string;
@@ -176,16 +176,16 @@ export class WebhookStockPayloadDto {
  * Menu update payload in webhook
  */
 export class WebhookMenuPayloadDto {
-  @ApiProperty({ description: 'Menu GUID' })
+  @ApiProperty({ description: "Menu GUID" })
   @IsString()
   menuGuid: string;
 
-  @ApiPropertyOptional({ description: 'Menu name' })
+  @ApiPropertyOptional({ description: "Menu name" })
   @IsString()
   @IsOptional()
   menuName?: string;
 
-  @ApiPropertyOptional({ description: 'Changed items GUIDs' })
+  @ApiPropertyOptional({ description: "Changed items GUIDs" })
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
@@ -194,20 +194,20 @@ export class WebhookMenuPayloadDto {
 
 /**
  * Main Toast Webhook Request DTO
- * 
+ *
  * This matches the Toast webhook payload structure:
  * https://doc.toasttab.com/apidocs/webhooks/
  */
 export class ToastWebhookDto {
   @ApiProperty({
-    description: 'Unique webhook event ID',
-    example: 'evt_12345678-abcd-1234-efgh-567890ijklmn',
+    description: "Unique webhook event ID",
+    example: "evt_12345678-abcd-1234-efgh-567890ijklmn",
   })
   @IsString()
   eventId: string;
 
   @ApiProperty({
-    description: 'Webhook event type',
+    description: "Webhook event type",
     enum: ToastWebhookEventType,
     example: ToastWebhookEventType.ORDER_CLOSED,
   })
@@ -215,21 +215,21 @@ export class ToastWebhookDto {
   eventType: ToastWebhookEventType;
 
   @ApiProperty({
-    description: 'Restaurant GUID from Toast',
-    example: 'rest_12345678-abcd-1234-efgh-567890ijklmn',
+    description: "Restaurant GUID from Toast",
+    example: "rest_12345678-abcd-1234-efgh-567890ijklmn",
   })
   @IsString()
   restaurantGuid: string;
 
   @ApiProperty({
-    description: 'Timestamp when event occurred (ISO 8601)',
-    example: '2026-01-18T12:00:00.000Z',
+    description: "Timestamp when event occurred (ISO 8601)",
+    example: "2026-01-18T12:00:00.000Z",
   })
   @IsString()
   timestamp: string;
 
   @ApiPropertyOptional({
-    description: 'Order payload (for order events)',
+    description: "Order payload (for order events)",
     type: WebhookOrderPayloadDto,
   })
   @ValidateNested()
@@ -238,7 +238,7 @@ export class ToastWebhookDto {
   order?: WebhookOrderPayloadDto;
 
   @ApiPropertyOptional({
-    description: 'Stock payload (for stock events)',
+    description: "Stock payload (for stock events)",
     type: WebhookStockPayloadDto,
   })
   @ValidateNested()
@@ -247,7 +247,7 @@ export class ToastWebhookDto {
   stock?: WebhookStockPayloadDto;
 
   @ApiPropertyOptional({
-    description: 'Menu payload (for menu events)',
+    description: "Menu payload (for menu events)",
     type: WebhookMenuPayloadDto,
   })
   @ValidateNested()
@@ -256,7 +256,7 @@ export class ToastWebhookDto {
   menu?: WebhookMenuPayloadDto;
 
   @ApiPropertyOptional({
-    description: 'Raw payload for unknown event types',
+    description: "Raw payload for unknown event types",
   })
   @IsObject()
   @IsOptional()
@@ -267,18 +267,18 @@ export class ToastWebhookDto {
  * Response DTO for webhook processing
  */
 export class ToastWebhookResponseDto {
-  @ApiProperty({ description: 'Processing status', example: 'received' })
-  status: 'received' | 'processed' | 'ignored' | 'error';
+  @ApiProperty({ description: "Processing status", example: "received" })
+  status: "received" | "processed" | "ignored" | "error";
 
-  @ApiProperty({ description: 'Webhook event ID echoed back' })
+  @ApiProperty({ description: "Webhook event ID echoed back" })
   eventId: string;
 
-  @ApiPropertyOptional({ description: 'Internal event ID if created' })
+  @ApiPropertyOptional({ description: "Internal event ID if created" })
   internalEventId?: string;
 
-  @ApiPropertyOptional({ description: 'Message for debugging' })
+  @ApiPropertyOptional({ description: "Message for debugging" })
   message?: string;
 
-  @ApiPropertyOptional({ description: 'Processing timestamp' })
+  @ApiPropertyOptional({ description: "Processing timestamp" })
   processedAt?: string;
 }

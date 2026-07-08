@@ -1,33 +1,41 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsObject, IsInt, Min, Max } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsObject,
+  IsInt,
+  Min,
+  Max,
+} from "class-validator";
 
 export enum EventType {
-  INVENTORY_CHANGE = 'inventory_change',
-  ORDER_CHANGE = 'order_change',
-  CALENDAR_EVENT = 'calendar_event',
-  DASHBOARD_UPDATE = 'dashboard_update',
-  WINE_UPDATE = 'wine_update',
-  REPORT_EVENT = 'report_event',
-  NOTIFICATION_SENT = 'notification_sent',
-  USER_ACTION = 'user_action',
-  SYSTEM_EVENT = 'system_event',
-  PROVIDER_CHANGE = 'provider_change',
-  TEMPLATE_CHANGE = 'template_change',
+  INVENTORY_CHANGE = "inventory_change",
+  ORDER_CHANGE = "order_change",
+  CALENDAR_EVENT = "calendar_event",
+  DASHBOARD_UPDATE = "dashboard_update",
+  WINE_UPDATE = "wine_update",
+  REPORT_EVENT = "report_event",
+  NOTIFICATION_SENT = "notification_sent",
+  USER_ACTION = "user_action",
+  SYSTEM_EVENT = "system_event",
+  PROVIDER_CHANGE = "provider_change",
+  TEMPLATE_CHANGE = "template_change",
 }
 
 export enum SourcePage {
-  DASHBOARD = 'dashboard',
-  INVENTORY = 'inventory',
-  WINE_LIBRARY = 'wine_library',
-  ORDERS = 'orders',
-  CALENDAR = 'calendar',
-  REPORTS = 'reports',
-  COMMUNICATIONS = 'communications',
-  PROVIDERS = 'providers',
-  DOCUMENTS = 'documents',
-  NOTIFICATIONS = 'notifications',
-  SETTINGS = 'settings',
-  SYSTEM = 'system',
+  DASHBOARD = "dashboard",
+  INVENTORY = "inventory",
+  WINE_LIBRARY = "wine_library",
+  ORDERS = "orders",
+  CALENDAR = "calendar",
+  REPORTS = "reports",
+  COMMUNICATIONS = "communications",
+  PROVIDERS = "providers",
+  DOCUMENTS = "documents",
+  NOTIFICATIONS = "notifications",
+  SETTINGS = "settings",
+  SYSTEM = "system",
 }
 
 export class CreateEventDto {

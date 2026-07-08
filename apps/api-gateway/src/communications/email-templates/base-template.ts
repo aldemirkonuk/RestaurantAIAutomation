@@ -3,7 +3,7 @@
  * Provides the HTML wrapper and common elements for all email templates
  */
 
-import { EMAIL_CONFIG, RestaurantBranding } from './template-config';
+import { EMAIL_CONFIG, RestaurantBranding } from "./template-config";
 
 export interface BaseTemplateOptions {
   title: string;
@@ -15,18 +15,30 @@ export interface BaseTemplateOptions {
     color?: string;
   };
   showFooter?: boolean;
-  branding?: RestaurantBranding & { brandName?: string; brandLogo?: string; brandColor?: string };
+  branding?: RestaurantBranding & {
+    brandName?: string;
+    brandLogo?: string;
+    brandColor?: string;
+  };
 }
 
 /**
  * Generate the base HTML email template
  */
 export function baseTemplate(options: BaseTemplateOptions): string {
-  const { title, preheader, content, ctaButton, showFooter = true, branding } = options;
+  const {
+    title,
+    preheader,
+    content,
+    ctaButton,
+    showFooter = true,
+    branding,
+  } = options;
   const { colors, brand, footer, styles } = EMAIL_CONFIG;
 
   // Apply restaurant branding overrides
-  const headerBg = branding?.brandColor || branding?.primaryColor || colors.primary;
+  const headerBg =
+    branding?.brandColor || branding?.primaryColor || colors.primary;
   const headerName = branding?.brandName || branding?.displayName || brand.name;
   const headerLogo = branding?.brandLogo || branding?.logoUrl || brand.logo;
 
@@ -38,7 +50,7 @@ export function baseTemplate(options: BaseTemplateOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title>${title}</title>
-  ${preheader ? `<!--[if !mso]><!--><meta name="description" content="${preheader}"><!--<![endif]-->` : ''}
+  ${preheader ? `<!--[if !mso]><!--><meta name="description" content="${preheader}"><!--<![endif]-->` : ""}
   <style>
     /* Reset styles */
     body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -56,12 +68,16 @@ export function baseTemplate(options: BaseTemplateOptions): string {
   </style>
 </head>
 <body style="margin: 0; padding: 0; font-family: ${styles.fontFamily}; background-color: ${colors.gray[100]};">
-  ${preheader ? `
+  ${
+    preheader
+      ? `
   <!-- Preheader text (hidden) -->
   <div style="display: none; font-size: 1px; color: ${colors.gray[100]}; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
     ${preheader}
   </div>
-  ` : ''}
+  `
+      : ""
+  }
 
   <!-- Email Container -->
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${colors.gray[100]};">
@@ -72,7 +88,7 @@ export function baseTemplate(options: BaseTemplateOptions): string {
           <!-- Logo Header -->
           <tr>
             <td style="padding: 20px 30px; background-color: ${headerBg}; text-align: center;">
-              ${headerLogo ? `<img src="${headerLogo}" alt="${headerName}" style="max-height: 40px; margin-bottom: 8px;" />` : ''}
+              ${headerLogo ? `<img src="${headerLogo}" alt="${headerName}" style="max-height: 40px; margin-bottom: 8px;" />` : ""}
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">
                 ${headerName}
               </h1>
@@ -86,7 +102,9 @@ export function baseTemplate(options: BaseTemplateOptions): string {
             </td>
           </tr>
 
-          ${ctaButton ? `
+          ${
+            ctaButton
+              ? `
           <!-- CTA Button -->
           <tr>
             <td style="padding: 0 30px 30px; text-align: center;">
@@ -95,9 +113,13 @@ export function baseTemplate(options: BaseTemplateOptions): string {
               </a>
             </td>
           </tr>
-          ` : ''}
+          `
+              : ""
+          }
 
-          ${showFooter ? `
+          ${
+            showFooter
+              ? `
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 30px; background-color: ${colors.gray[50]}; border-top: 1px solid ${colors.gray[200]};">
@@ -109,7 +131,9 @@ export function baseTemplate(options: BaseTemplateOptions): string {
               </p>
             </td>
           </tr>
-          ` : ''}
+          `
+              : ""
+          }
 
         </table>
       </td>
@@ -140,10 +164,14 @@ export function metricBox(options: {
 /**
  * Create a table row for data display
  */
-export function tableRow(label: string, value: string, isHighlighted = false): string {
+export function tableRow(
+  label: string,
+  value: string,
+  isHighlighted = false,
+): string {
   const { colors } = EMAIL_CONFIG;
-  const bgColor = isHighlighted ? colors.gray[50] : 'transparent';
-  
+  const bgColor = isHighlighted ? colors.gray[50] : "transparent";
+
   return `
     <tr style="background-color: ${bgColor};">
       <td style="padding: 12px 15px; border-bottom: 1px solid ${colors.gray[200]}; color: ${colors.gray[600]}; font-size: 14px;">
@@ -160,21 +188,21 @@ export function tableRow(label: string, value: string, isHighlighted = false): s
  * Create an alert/callout box
  */
 export function alertBox(options: {
-  type: 'warning' | 'danger' | 'success' | 'info';
+  type: "warning" | "danger" | "success" | "info";
   title: string;
   message: string;
 }): string {
   const { colors } = EMAIL_CONFIG;
-  
+
   const colorMap = {
-    warning: { bg: '#fef3c7', border: colors.warning, text: '#92400e' },
-    danger: { bg: '#fef2f2', border: colors.danger, text: '#991b1b' },
-    success: { bg: '#ecfdf5', border: colors.success, text: '#065f46' },
-    info: { bg: '#eff6ff', border: colors.info, text: '#1e40af' },
+    warning: { bg: "#fef3c7", border: colors.warning, text: "#92400e" },
+    danger: { bg: "#fef2f2", border: colors.danger, text: "#991b1b" },
+    success: { bg: "#ecfdf5", border: colors.success, text: "#065f46" },
+    info: { bg: "#eff6ff", border: colors.info, text: "#1e40af" },
   };
-  
+
   const style = colorMap[options.type];
-  
+
   return `
     <div style="padding: 15px 20px; background-color: ${style.bg}; border-left: 4px solid ${style.border}; border-radius: 0 8px 8px 0; margin: 20px 0;">
       <p style="margin: 0 0 5px; color: ${style.text}; font-size: 14px; font-weight: 600;">

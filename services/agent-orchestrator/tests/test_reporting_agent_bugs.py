@@ -1,8 +1,8 @@
 """Tests for BUG-09, BUG-10, BUG-11, BUG-12 in ReportingAgent."""
+
 import inspect
-import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import AsyncMock, MagicMock, patch
 from agents.reporting_agent import ReportingAgent
 
 
@@ -31,15 +31,18 @@ def _make_agent():
 # BUG-09: self.db → self.database
 # ---------------------------------------------------------------------------
 
+
 class TestBUG09SelfDb:
     def test_no_self_db_in_source(self):
         """Source of reporting_agent.py must not reference self.db."""
         source = inspect.getsource(ReportingAgent)
         # Find all self.db occurrences (but not self.database)
         import re
-        matches = re.findall(r'\bself\.db\b(?!ase)', source)
-        assert matches == [], \
-            f"BUG-09: found {len(matches)} occurrences of self.db: {matches}"
+
+        matches = re.findall(r"\bself\.db\b(?!ase)", source)
+        assert (
+            matches == []
+        ), f"BUG-09: found {len(matches)} occurrences of self.db: {matches}"
 
     @pytest.mark.asyncio
     async def test_generate_inventory_report_uses_self_database(self):
@@ -48,10 +51,9 @@ class TestBUG09SelfDb:
         # Set up mock Supabase chain for inventory query
         mock_result = MagicMock()
         mock_result.data = []
-        agent.database.supabase.table.return_value \
-            .select.return_value \
-            .eq.return_value \
-            .execute.return_value = mock_result
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            mock_result
+        )
 
         # Should not raise AttributeError
         result = await agent._generate_inventory_report("rest-1")
@@ -63,12 +65,13 @@ class TestBUG09SelfDb:
         """_get_manager_preferences must not raise AttributeError for self.db."""
         agent = _make_agent()
         mock_result = MagicMock()
-        mock_result.data = {"report_timezone": "America/Chicago", "report_format": "pdf"}
-        agent.database.supabase.table.return_value \
-            .select.return_value \
-            .eq.return_value \
-            .single.return_value \
-            .execute.return_value = mock_result
+        mock_result.data = {
+            "report_timezone": "America/Chicago",
+            "report_format": "pdf",
+        }
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = (
+            mock_result
+        )
 
         prefs = await agent._get_manager_preferences("manager-1")
         assert prefs is not None
@@ -77,6 +80,7 @@ class TestBUG09SelfDb:
 # ---------------------------------------------------------------------------
 # BUG-10: SMS append outside if-block
 # ---------------------------------------------------------------------------
+
 
 class TestBUG10SmsAppend:
     @pytest.mark.asyncio
@@ -103,8 +107,9 @@ class TestBUG10SmsAppend:
             report_type="inventory",
         )
 
-        assert "sms" not in result.get("channels", []), \
-            f"BUG-10: 'sms' should not be in channels when sms=False, got {result['channels']}"
+        assert "sms" not in result.get(
+            "channels", []
+        ), f"BUG-10: 'sms' should not be in channels when sms=False, got {result['channels']}"
 
     @pytest.mark.asyncio
     async def test_sms_append_inside_if_block(self):
@@ -114,18 +119,23 @@ class TestBUG10SmsAppend:
         # Simplest check: if the line exists, verify it's not reachable when SMS is off.
         # We rely on the functional test above (test_sms_not_in_channels_when_disabled).
         # This source check ensures no bare unindented append remains.
-        lines = source.split('\n')
+        lines = source.split("\n")
         for i, line in enumerate(lines):
-            if 'channels_used.append("sms")' in line or "channels_used.append('sms')" in line:
+            if (
+                'channels_used.append("sms")' in line
+                or "channels_used.append('sms')" in line
+            ):
                 # The line must be preceded by an active (uncommented) if-sms guard
-                context = '\n'.join(lines[max(0, i-5):i+1])
-                assert 'if' in context and '#' not in line.strip()[:2], \
-                    f"BUG-10: sms append at line {i} appears outside active if-block:\n{context}"
+                context = "\n".join(lines[max(0, i - 5) : i + 1])
+                assert (
+                    "if" in context and "#" not in line.strip()[:2]
+                ), f"BUG-10: sms append at line {i} appears outside active if-block:\n{context}"
 
 
 # ---------------------------------------------------------------------------
 # BUG-11: Real inventory + sales reports from DB
 # ---------------------------------------------------------------------------
+
 
 class TestBUG11RealReports:
     @pytest.mark.asyncio
@@ -135,14 +145,31 @@ class TestBUG11RealReports:
 
         mock_result = MagicMock()
         mock_result.data = [
-            {"id": "i1", "wine_name": "Caymus", "stock_live": 5, "threshold_min": 3, "wine_price": 150.0},
-            {"id": "i2", "wine_name": "Opus One", "stock_live": 1, "threshold_min": 3, "wine_price": 350.0},
-            {"id": "i3", "wine_name": "Pinot Noir", "stock_live": 0, "threshold_min": 2, "wine_price": 80.0},
+            {
+                "id": "i1",
+                "wine_name": "Caymus",
+                "stock_live": 5,
+                "threshold_min": 3,
+                "wine_price": 150.0,
+            },
+            {
+                "id": "i2",
+                "wine_name": "Opus One",
+                "stock_live": 1,
+                "threshold_min": 3,
+                "wine_price": 350.0,
+            },
+            {
+                "id": "i3",
+                "wine_name": "Pinot Noir",
+                "stock_live": 0,
+                "threshold_min": 2,
+                "wine_price": 80.0,
+            },
         ]
-        agent.database.supabase.table.return_value \
-            .select.return_value \
-            .eq.return_value \
-            .execute.return_value = mock_result
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            mock_result
+        )
 
         result = await agent._generate_inventory_report("rest-1")
 
@@ -159,16 +186,22 @@ class TestBUG11RealReports:
         agent = _make_agent()
         mock_result = MagicMock()
         mock_result.data = [
-            {"id": "i1", "wine_name": "Caymus", "stock_live": 5, "threshold_min": 3, "wine_price": 100.0},
+            {
+                "id": "i1",
+                "wine_name": "Caymus",
+                "stock_live": 5,
+                "threshold_min": 3,
+                "wine_price": 100.0,
+            },
         ]
-        agent.database.supabase.table.return_value \
-            .select.return_value \
-            .eq.return_value \
-            .execute.return_value = mock_result
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            mock_result
+        )
 
         result = await agent._generate_inventory_report("rest-1")
-        assert result["summary"]["total_value"] == 500.0, \
-            f"Expected total_value=500.0 (5 bottles × $100), got {result['summary']['total_value']}"
+        assert (
+            result["summary"]["total_value"] == 500.0
+        ), f"Expected total_value=500.0 (5 bottles × $100), got {result['summary']['total_value']}"
 
     @pytest.mark.asyncio
     async def test_sales_report_queries_pos_webhook_logs(self):
@@ -177,27 +210,41 @@ class TestBUG11RealReports:
 
         mock_result = MagicMock()
         mock_result.data = [
-            {"id": "w1", "event_type": "OrderCompleted", "payload": {"wine_name": "Caymus", "quantity": 2, "price": 150.0}},
-            {"id": "w2", "event_type": "OrderCompleted", "payload": {"wine_name": "Opus One", "quantity": 1, "price": 350.0}},
-            {"id": "w3", "event_type": "OrderCompleted", "payload": {"wine_name": "Caymus", "quantity": 1, "price": 150.0}},
+            {
+                "id": "w1",
+                "event_type": "OrderCompleted",
+                "payload": {"wine_name": "Caymus", "quantity": 2, "price": 150.0},
+            },
+            {
+                "id": "w2",
+                "event_type": "OrderCompleted",
+                "payload": {"wine_name": "Opus One", "quantity": 1, "price": 350.0},
+            },
+            {
+                "id": "w3",
+                "event_type": "OrderCompleted",
+                "payload": {"wine_name": "Caymus", "quantity": 1, "price": 150.0},
+            },
         ]
-        agent.database.supabase.table.return_value \
-            .select.return_value \
-            .eq.return_value \
-            .order.return_value \
-            .execute.return_value = mock_result
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = (
+            mock_result
+        )
 
         result = await agent._generate_sales_report("rest-1")
 
         agent.database.supabase.table.assert_called_with("pos_webhook_logs")
-        assert result["summary"]["total_sales"] == 3, \
-            f"Expected total_sales=3, got {result['summary']['total_sales']}"
-        assert len(result["summary"]["top_sellers"]) > 0, "top_sellers should not be empty"
+        assert (
+            result["summary"]["total_sales"] == 3
+        ), f"Expected total_sales=3, got {result['summary']['total_sales']}"
+        assert (
+            len(result["summary"]["top_sellers"]) > 0
+        ), "top_sellers should not be empty"
 
 
 # ---------------------------------------------------------------------------
 # BUG-12: Real PDF via weasyprint
 # ---------------------------------------------------------------------------
+
 
 class TestBUG12RealPDF:
     @pytest.mark.asyncio
@@ -246,5 +293,6 @@ class TestBUG12RealPDF:
 
             result = await agent._export_to_pdf(report_data)
 
-        assert result["size_bytes"] == len(fake_pdf_bytes), \
-            f"Expected size_bytes={len(fake_pdf_bytes)}, got {result['size_bytes']} (hardcoded mock?)"
+        assert result["size_bytes"] == len(
+            fake_pdf_bytes
+        ), f"Expected size_bytes={len(fake_pdf_bytes)}, got {result['size_bytes']} (hardcoded mock?)"

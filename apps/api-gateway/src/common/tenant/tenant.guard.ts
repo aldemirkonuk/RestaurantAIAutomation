@@ -1,7 +1,13 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
-import { TENANT_BYPASS_KEY } from './tenant.decorator';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { IS_PUBLIC_KEY } from "../../auth/decorators/public.decorator";
+import { TENANT_BYPASS_KEY } from "./tenant.decorator";
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -18,10 +24,10 @@ export class TenantGuard implements CanActivate {
       return true;
     }
 
-    const bypass = this.reflector.getAllAndOverride<boolean>(TENANT_BYPASS_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const bypass = this.reflector.getAllAndOverride<boolean>(
+      TENANT_BYPASS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (bypass) {
       return true;
     }
@@ -43,15 +49,20 @@ export class TenantGuard implements CanActivate {
     const tenantId = String(user.restaurantId);
     request.tenantId = tenantId;
 
-    const paramTenant = request.params?.restaurantId || request.params?.restaurant_id;
-    const queryTenant = request.query?.restaurantId || request.query?.restaurant_id;
-    const bodyTenant = request.body?.restaurantId || request.body?.restaurant_id;
+    const paramTenant =
+      request.params?.restaurantId || request.params?.restaurant_id;
+    const queryTenant =
+      request.query?.restaurantId || request.query?.restaurant_id;
+    const bodyTenant =
+      request.body?.restaurantId || request.body?.restaurant_id;
 
-    const candidates = [paramTenant, queryTenant, bodyTenant].filter(Boolean).map(String);
+    const candidates = [paramTenant, queryTenant, bodyTenant]
+      .filter(Boolean)
+      .map(String);
     const mismatch = candidates.find((value) => value !== tenantId);
 
     if (mismatch) {
-      throw new ForbiddenException('Tenant isolation violation');
+      throw new ForbiddenException("Tenant isolation violation");
     }
 
     return true;

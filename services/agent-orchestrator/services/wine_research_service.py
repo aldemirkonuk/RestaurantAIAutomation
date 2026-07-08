@@ -22,9 +22,9 @@ Rate: Respects robots.txt, 1 request per 3 seconds.
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,11 @@ logger = logging.getLogger(__name__)
 # DATA MODELS
 # =============================================================================
 
+
 @dataclass
 class WineResearchResult:
     """Result of researching a wine online."""
+
     wine_name: str
     producer: Optional[str] = None
     vintage: Optional[int] = None
@@ -60,6 +62,7 @@ class WineResearchResult:
 # RESEARCH SERVICE
 # =============================================================================
 
+
 class WineResearchService:
     """
     Searches external wine databases to fill gaps in the master library.
@@ -68,8 +71,14 @@ class WineResearchService:
 
     REQUEST_DELAY_S = 3.0  # seconds between requests
     IDENTITY_FIELDS = [
-        "wine_name", "producer", "vintage", "country",
-        "region", "grape_variety", "classification", "wine_type",
+        "wine_name",
+        "producer",
+        "vintage",
+        "country",
+        "region",
+        "grape_variety",
+        "classification",
+        "wine_type",
     ]
     AUTO_ADD_MIN_FIELDS = 6
     AUTO_ADD_MIN_CONFIDENCE = 0.80
@@ -178,8 +187,12 @@ class WineResearchService:
             page = await browser.new_page()
 
             try:
-                search_url = f"https://www.wine-searcher.com/find/{query.replace(' ', '+')}"
-                await page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
+                search_url = (
+                    f"https://www.wine-searcher.com/find/{query.replace(' ', '+')}"
+                )
+                await page.goto(
+                    search_url, wait_until="domcontentloaded", timeout=15000
+                )
                 await asyncio.sleep(2)
 
                 # Extract from search results page
@@ -219,7 +232,9 @@ class WineResearchService:
 
             try:
                 search_url = f"https://www.cellartracker.com/list.asp?szSearch={query.replace(' ', '+')}"
-                await page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
+                await page.goto(
+                    search_url, wait_until="domcontentloaded", timeout=15000
+                )
                 await asyncio.sleep(2)
 
                 # Try to get first result details
@@ -228,7 +243,9 @@ class WineResearchService:
                     href = await first_link.get_attribute("href")
                     if href:
                         detail_url = f"https://www.cellartracker.com/{href}"
-                        await page.goto(detail_url, wait_until="domcontentloaded", timeout=15000)
+                        await page.goto(
+                            detail_url, wait_until="domcontentloaded", timeout=15000
+                        )
                         await asyncio.sleep(1)
 
                         meta_text = await page.inner_text("body")
@@ -247,12 +264,11 @@ class WineResearchService:
     # TEXT PARSING HELPERS
     # =========================================================================
 
-    def _parse_wine_searcher_text(
-        self, text: str, result: WineResearchResult
-    ):
+    def _parse_wine_searcher_text(self, text: str, result: WineResearchResult):
         """Extract wine details from Wine-Searcher page text."""
         # Country/Region detection
         from services.html_menu_parser import REGION_TO_COUNTRY
+
         lower = text.lower()
 
         for region_key, (country, region) in REGION_TO_COUNTRY.items():
@@ -277,13 +293,16 @@ class WineResearchService:
         # Wine type
         if not result.wine_type:
             from services.text_normalizer import get_normalizer
+
             normalizer = get_normalizer()
             wtype = normalizer.infer_wine_type(text[:500])
             if wtype:
                 result.wine_type = wtype
 
         # Average price
-        price_match = re.search(r"(?:average|avg|median)\s*(?:price)?\s*:?\s*\$?([\d,]+\.?\d*)", text, re.I)
+        price_match = re.search(
+            r"(?:average|avg|median)\s*(?:price)?\s*:?\s*\$?([\d,]+\.?\d*)", text, re.I
+        )
         if price_match and not result.average_price:
             try:
                 result.average_price = float(price_match.group(1).replace(",", ""))
@@ -297,9 +316,7 @@ class WineResearchService:
             if 50 <= score <= 100:
                 result.critic_score = float(score)
 
-    def _parse_cellartracker_text(
-        self, text: str, result: WineResearchResult
-    ):
+    def _parse_cellartracker_text(self, text: str, result: WineResearchResult):
         """Extract wine details from CellarTracker page text."""
         # Similar extraction logic, adapted for CT's format
         self._parse_wine_searcher_text(text, result)
@@ -343,24 +360,28 @@ class WineResearchService:
             return
 
         try:
-            self._supabase.table("master_wine_library").insert({
-                "wine_name": result.wine_name,
-                "producer": result.producer,
-                "vintage": result.vintage,
-                "country": result.country,
-                "region": result.region,
-                "sub_region": result.sub_region,
-                "grape_variety": result.grape_variety,
-                "classification": result.classification,
-                "wine_type": result.wine_type,
-                "average_price": result.average_price,
-                "critic_score": result.critic_score,
-                "source": f"auto_research:{result.source}",
-                "confidence": result.confidence,
-                "added_at": datetime.now(timezone.utc).isoformat(),
-            }).execute()
+            self._supabase.table("master_wine_library").insert(
+                {
+                    "wine_name": result.wine_name,
+                    "producer": result.producer,
+                    "vintage": result.vintage,
+                    "country": result.country,
+                    "region": result.region,
+                    "sub_region": result.sub_region,
+                    "grape_variety": result.grape_variety,
+                    "classification": result.classification,
+                    "wine_type": result.wine_type,
+                    "average_price": result.average_price,
+                    "critic_score": result.critic_score,
+                    "source": f"auto_research:{result.source}",
+                    "confidence": result.confidence,
+                    "added_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ).execute()
 
-            logger.info(f"Auto-added '{result.wine_name}' to master library from {result.source}")
+            logger.info(
+                f"Auto-added '{result.wine_name}' to master library from {result.source}"
+            )
         except Exception as e:
             logger.error(f"Failed to add to master library: {e}")
 

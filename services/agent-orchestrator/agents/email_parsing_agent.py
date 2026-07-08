@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 
 from core.base_agent import BaseAgent
-from core.message_bus import BaseEvent, EventPriority
+from core.message_bus import EventPriority
 from core.database import DatabaseClient
 from utils.logger import setup_logger
 
@@ -85,7 +85,7 @@ class EmailParsingAgent(BaseAgent):
         gmail_message_id = payload.get("gmail_message_id", "")
         gmail_thread_id = payload.get("gmail_thread_id", "")
         received_at = payload.get("received_at", datetime.utcnow().isoformat())
-        headers = payload.get("headers", {})
+        payload.get("headers", {})
 
         self.logger.info(f"Processing inbound email: from={sender}, subject={subject}")
 
@@ -176,23 +176,27 @@ class EmailParsingAgent(BaseAgent):
             "thread_id": matched_thread_id,
             "message_id": message_id_header,
             "parent_message_id": parent_db_id,
-            "email_headers": json.dumps({
-                "from": sender,
-                "subject": subject,
-                "message_id": message_id_header,
-                "in_reply_to": in_reply_to,
-                "references": references,
-                "gmail_message_id": gmail_message_id,
-                "gmail_thread_id": gmail_thread_id,
-            }),
+            "email_headers": json.dumps(
+                {
+                    "from": sender,
+                    "subject": subject,
+                    "message_id": message_id_header,
+                    "in_reply_to": in_reply_to,
+                    "references": references,
+                    "gmail_message_id": gmail_message_id,
+                    "gmail_thread_id": gmail_thread_id,
+                }
+            ),
             "confidence_score": confidence,
         }
 
         try:
-            result = await self.db.supabase.table("procurement_conversations").insert(
+            await self.db.supabase.table("procurement_conversations").insert(
                 conversation_data
             ).execute()
-            self.logger.info(f"Stored inbound email as conversation (match={match_method})")
+            self.logger.info(
+                f"Stored inbound email as conversation (match={match_method})"
+            )
         except Exception as e:
             self.logger.error(f"Failed to store conversation: {e}")
             return
@@ -215,14 +219,21 @@ class EmailParsingAgent(BaseAgent):
 
         # Step 10: Scarcity auto-reply — vendor says stock is limited
         if detected_intent == "scarcity_urgency" and provider_id:
-            self.logger.info(f"Scarcity detected from {sender_email} — triggering auto-hold")
+            self.logger.info(
+                f"Scarcity detected from {sender_email} — triggering auto-hold"
+            )
             try:
                 # Look up wine_name from the matched order
                 wine_name = ""
                 if matched_order_id:
                     try:
-                        order_row = await self.db.supabase.table("procurement_orders") \
-                            .select("wine_name").eq("id", matched_order_id).single().execute()
+                        order_row = (
+                            await self.db.supabase.table("procurement_orders")
+                            .select("wine_name")
+                            .eq("id", matched_order_id)
+                            .single()
+                            .execute()
+                        )
                         wine_name = (order_row.data or {}).get("wine_name", "")
                     except Exception:
                         pass
@@ -260,9 +271,13 @@ class EmailParsingAgent(BaseAgent):
     ) -> Optional[Dict[str, Any]]:
         """Match by Gmail thread ID stored on the outbound conversation row"""
         try:
-            result = await self.db.supabase.table("procurement_conversations").select(
-                "id, order_id, thread_id"
-            ).eq("gmail_thread_id", gmail_thread_id).limit(1).execute()
+            result = (
+                await self.db.supabase.table("procurement_conversations")
+                .select("id, order_id, thread_id")
+                .eq("gmail_thread_id", gmail_thread_id)
+                .limit(1)
+                .execute()
+            )
             if result.data:
                 row = result.data[0]
                 return {
@@ -291,9 +306,13 @@ class EmailParsingAgent(BaseAgent):
         # Look up each reference in our stored message_ids
         for ref_id in ref_ids:
             try:
-                result = await self.db.supabase.table("procurement_conversations").select(
-                    "id, order_id, thread_id"
-                ).eq("message_id", ref_id).limit(1).execute()
+                result = (
+                    await self.db.supabase.table("procurement_conversations")
+                    .select("id, order_id, thread_id")
+                    .eq("message_id", ref_id)
+                    .limit(1)
+                    .execute()
+                )
 
                 if result.data:
                     row = result.data[0]
@@ -323,11 +342,15 @@ class EmailParsingAgent(BaseAgent):
             return None
 
         try:
-            orders_result = await self.db.supabase.table("procurement_orders").select(
-                "id, wine_name, quantity, status, notes, created_at"
-            ).eq("provider_id", provider_id).in_(
-                "status", ["pending", "approved", "ordered", "negotiating"]
-            ).order("created_at", desc=True).limit(10).execute()
+            orders_result = (
+                await self.db.supabase.table("procurement_orders")
+                .select("id, wine_name, quantity, status, notes, created_at")
+                .eq("provider_id", provider_id)
+                .in_("status", ["pending", "approved", "ordered", "negotiating"])
+                .order("created_at", desc=True)
+                .limit(10)
+                .execute()
+            )
 
             if not orders_result.data:
                 return None
@@ -390,11 +413,13 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
             return None
 
         try:
-            orders = await self.db.supabase.table("procurement_orders").select(
-                "id, wine_name"
-            ).eq("provider_id", provider_id).in_(
-                "status", ["pending", "approved", "ordered", "negotiating"]
-            ).execute()
+            orders = (
+                await self.db.supabase.table("procurement_orders")
+                .select("id, wine_name")
+                .eq("provider_id", provider_id)
+                .in_("status", ["pending", "approved", "ordered", "negotiating"])
+                .execute()
+            )
 
             text = f"{subject} {body}".lower()
             for order in orders.data or []:
@@ -410,13 +435,21 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
 
     # ── Thread Summarization ─────────────────────────────────────────
 
-    async def _generate_thread_summary(self, thread_id: str, restaurant_id: Optional[str] = None) -> None:
+    async def _generate_thread_summary(
+        self, thread_id: str, restaurant_id: Optional[str] = None
+    ) -> None:
         """Generate an AI summary of the entire conversation thread"""
         try:
             # Load all messages in the thread
-            result = await self.db.supabase.table("procurement_conversations").select(
-                "id, direction, channel, message_text, sent_at, received_at, created_at"
-            ).eq("thread_id", thread_id).order("created_at", asc=True).execute()
+            result = (
+                await self.db.supabase.table("procurement_conversations")
+                .select(
+                    "id, direction, channel, message_text, sent_at, received_at, created_at"
+                )
+                .eq("thread_id", thread_id)
+                .order("created_at", asc=True)
+                .execute()
+            )
 
             messages = result.data or []
             if len(messages) < 2:
@@ -425,8 +458,16 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
             # Build transcript
             transcript_lines = []
             for msg in messages:
-                direction = "Restaurant -> Vendor" if msg["direction"] == "outbound" else "Vendor -> Restaurant"
-                timestamp = msg.get("sent_at") or msg.get("received_at") or msg.get("created_at", "")
+                direction = (
+                    "Restaurant -> Vendor"
+                    if msg["direction"] == "outbound"
+                    else "Vendor -> Restaurant"
+                )
+                timestamp = (
+                    msg.get("sent_at")
+                    or msg.get("received_at")
+                    or msg.get("created_at", "")
+                )
                 if timestamp:
                     timestamp = timestamp[:19]  # trim to YYYY-MM-DDTHH:MM:SS
                 text = (msg.get("message_text") or "").strip()
@@ -490,12 +531,16 @@ Respond with ONLY valid JSON:
 
             # Update all messages in the thread with the summary
             now = datetime.utcnow().isoformat()
-            await self.db.supabase.table("procurement_conversations").update({
-                "conversation_summary": summary,
-                "summary_updated_at": now,
-            }).eq("thread_id", thread_id).execute()
+            await self.db.supabase.table("procurement_conversations").update(
+                {
+                    "conversation_summary": summary,
+                    "summary_updated_at": now,
+                }
+            ).eq("thread_id", thread_id).execute()
 
-            self.logger.info(f"Thread summary updated for {thread_id} ({len(messages)} messages)")
+            self.logger.info(
+                f"Thread summary updated for {thread_id} ({len(messages)} messages)"
+            )
 
             # Publish summary update event
             try:
@@ -539,9 +584,13 @@ Respond with ONLY valid JSON:
                 return result.data[0].get("id")
 
             # Fallback: search contact_email column directly
-            result = await self.db.supabase.table("providers").select(
-                "id, contact_email"
-            ).ilike("contact_email", email).limit(1).execute()
+            result = (
+                await self.db.supabase.table("providers")
+                .select("id, contact_email")
+                .ilike("contact_email", email)
+                .limit(1)
+                .execute()
+            )
             if result.data:
                 return result.data[0].get("id")
             return None
@@ -551,9 +600,14 @@ Respond with ONLY valid JSON:
     async def _find_thread_for_order(self, order_id: str) -> Optional[str]:
         """Find existing thread_id for an order"""
         try:
-            result = await self.db.supabase.table("procurement_conversations").select(
-                "thread_id"
-            ).eq("order_id", order_id).not_.is_("thread_id", "null").limit(1).execute()
+            result = (
+                await self.db.supabase.table("procurement_conversations")
+                .select("thread_id")
+                .eq("order_id", order_id)
+                .not_.is_("thread_id", "null")
+                .limit(1)
+                .execute()
+            )
             if result.data:
                 return result.data[0].get("thread_id")
             return None
@@ -566,9 +620,13 @@ Respond with ONLY valid JSON:
         """Get restaurant_id from order or provider"""
         if order_id:
             try:
-                result = await self.db.supabase.table("procurement_orders").select(
-                    "restaurant_id"
-                ).eq("id", order_id).limit(1).execute()
+                result = (
+                    await self.db.supabase.table("procurement_orders")
+                    .select("restaurant_id")
+                    .eq("id", order_id)
+                    .limit(1)
+                    .execute()
+                )
                 if result.data:
                     return result.data[0].get("restaurant_id")
             except Exception:

@@ -1,15 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
-import { OneTapActionsService } from '../one-tap-actions/one-tap-actions.service';
-import { DatabaseService } from '../database/database.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+import { Test, TestingModule } from "@nestjs/testing";
+import { NotFoundException } from "@nestjs/common";
+import { OneTapActionsService } from "../one-tap-actions/one-tap-actions.service";
+import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   OneTapActionType,
   OneTapActionStatus,
   OneTapPriority,
-} from '../one-tap-actions/dto/one-tap-action.dto';
+} from "../one-tap-actions/dto/one-tap-action.dto";
 
-describe('OneTapActionsService', () => {
+describe("OneTapActionsService", () => {
   let service: OneTapActionsService;
   let databaseService: DatabaseService;
   let websocketGateway: WebsocketGateway;
@@ -61,24 +61,24 @@ describe('OneTapActionsService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  describe('getActions', () => {
-    const restaurantId = 'test-restaurant-id';
+  describe("getActions", () => {
+    const restaurantId = "test-restaurant-id";
 
-    it('should return actions list', async () => {
+    it("should return actions list", async () => {
       const mockActions = [
         {
-          id: '1',
+          id: "1",
           restaurant_id: restaurantId,
-          title: 'Test Action',
-          status: 'pending',
-          action_type: 'custom',
-          priority: 'medium',
-          color: 'wine',
-          icon: 'Zap',
+          title: "Test Action",
+          status: "pending",
+          action_type: "custom",
+          priority: "medium",
+          color: "wine",
+          icon: "Zap",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -87,7 +87,10 @@ describe('OneTapActionsService', () => {
       mockSupabaseClient.select.mockReturnThis();
       mockSupabaseClient.eq.mockReturnThis();
       mockSupabaseClient.is.mockReturnThis();
-      mockSupabaseClient.order.mockResolvedValue({ data: mockActions, error: null });
+      mockSupabaseClient.order.mockResolvedValue({
+        data: mockActions,
+        error: null,
+      });
 
       const result = await service.getActions(restaurantId);
 
@@ -96,38 +99,38 @@ describe('OneTapActionsService', () => {
       expect(result.pending).toBe(1);
     });
 
-    it('should filter by status when provided', async () => {
+    it("should filter by status when provided", async () => {
       mockSupabaseClient.order.mockResolvedValue({ data: [], error: null });
 
       await service.getActions(restaurantId, OneTapActionStatus.COMPLETED);
 
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('status', 'completed');
+      expect(mockSupabaseClient.eq).toHaveBeenCalledWith("status", "completed");
     });
   });
 
-  describe('createAction', () => {
-    const restaurantId = 'test-restaurant-id';
-    const userId = 'test-user-id';
+  describe("createAction", () => {
+    const restaurantId = "test-restaurant-id";
+    const userId = "test-user-id";
 
-    it('should create a new action', async () => {
+    it("should create a new action", async () => {
       const createDto = {
-        title: 'Test Action',
-        description: 'Test description',
+        title: "Test Action",
+        description: "Test description",
         actionType: OneTapActionType.CUSTOM,
         priority: OneTapPriority.HIGH,
       };
 
       const mockCreatedAction = {
-        id: 'new-action-id',
+        id: "new-action-id",
         restaurant_id: restaurantId,
         user_id: userId,
         title: createDto.title,
         description: createDto.description,
         action_type: createDto.actionType,
         priority: createDto.priority,
-        status: 'pending',
-        color: 'wine',
-        icon: 'Zap',
+        status: "pending",
+        color: "wine",
+        icon: "Zap",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -137,28 +140,32 @@ describe('OneTapActionsService', () => {
         error: null,
       });
 
-      const result = await service.createAction(restaurantId, userId, createDto);
+      const result = await service.createAction(
+        restaurantId,
+        userId,
+        createDto,
+      );
 
-      expect(result.id).toBe('new-action-id');
+      expect(result.id).toBe("new-action-id");
       expect(result.title).toBe(createDto.title);
       expect(result.status).toBe(OneTapActionStatus.PENDING);
     });
 
-    it('should broadcast action created event', async () => {
+    it("should broadcast action created event", async () => {
       const createDto = {
-        title: 'Test Action',
+        title: "Test Action",
       };
 
       const mockCreatedAction = {
-        id: 'new-action-id',
+        id: "new-action-id",
         restaurant_id: restaurantId,
         user_id: userId,
         title: createDto.title,
-        action_type: 'custom',
-        priority: 'medium',
-        status: 'pending',
-        color: 'wine',
-        icon: 'Zap',
+        action_type: "custom",
+        priority: "medium",
+        status: "pending",
+        color: "wine",
+        icon: "Zap",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -176,18 +183,18 @@ describe('OneTapActionsService', () => {
     });
   });
 
-  describe('getAction', () => {
-    it('should return action when found', async () => {
-      const actionId = 'test-action-id';
+  describe("getAction", () => {
+    it("should return action when found", async () => {
+      const actionId = "test-action-id";
       const mockAction = {
         id: actionId,
-        restaurant_id: 'test-restaurant',
-        title: 'Test Action',
-        action_type: 'custom',
-        priority: 'medium',
-        status: 'pending',
-        color: 'wine',
-        icon: 'Zap',
+        restaurant_id: "test-restaurant",
+        title: "Test Action",
+        action_type: "custom",
+        priority: "medium",
+        status: "pending",
+        color: "wine",
+        icon: "Zap",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -202,41 +209,43 @@ describe('OneTapActionsService', () => {
       expect(result.id).toBe(actionId);
     });
 
-    it('should throw NotFoundException when action not found', async () => {
-      const actionId = 'non-existent-id';
+    it("should throw NotFoundException when action not found", async () => {
+      const actionId = "non-existent-id";
 
       mockSupabaseClient.single.mockResolvedValue({
         data: null,
-        error: { message: 'Not found' },
+        error: { message: "Not found" },
       });
 
-      await expect(service.getAction(actionId)).rejects.toThrow(NotFoundException);
+      await expect(service.getAction(actionId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
-  describe('executeAction', () => {
-    it('should mark action as completed', async () => {
-      const actionId = 'test-action-id';
-      const userId = 'test-user-id';
-      const restaurantId = 'test-restaurant';
+  describe("executeAction", () => {
+    it("should mark action as completed", async () => {
+      const actionId = "test-action-id";
+      const userId = "test-user-id";
+      const restaurantId = "test-restaurant";
 
       // Mock getAction
       const mockExistingAction = {
         id: actionId,
         restaurant_id: restaurantId,
-        title: 'Test Action',
-        action_type: 'custom',
-        priority: 'medium',
-        status: 'pending',
-        color: 'wine',
-        icon: 'Zap',
+        title: "Test Action",
+        action_type: "custom",
+        priority: "medium",
+        status: "pending",
+        color: "wine",
+        icon: "Zap",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
       const mockUpdatedAction = {
         ...mockExistingAction,
-        status: 'completed',
+        status: "completed",
         executed_at: new Date().toISOString(),
         executed_by: userId,
       };
@@ -253,23 +262,23 @@ describe('OneTapActionsService', () => {
     });
   });
 
-  describe('createSystemAction', () => {
-    it('should create system-generated action with correct defaults', async () => {
-      const restaurantId = 'test-restaurant';
+  describe("createSystemAction", () => {
+    it("should create system-generated action with correct defaults", async () => {
+      const restaurantId = "test-restaurant";
       const actionType = OneTapActionType.LOW_STOCK;
-      const title = 'Low Stock Alert';
-      const description = 'Wine X is running low';
+      const title = "Low Stock Alert";
+      const description = "Wine X is running low";
 
       const mockCreatedAction = {
-        id: 'system-action-id',
+        id: "system-action-id",
         restaurant_id: restaurantId,
         title,
         description,
         action_type: actionType,
-        priority: 'medium',
-        status: 'pending',
-        color: 'rose', // Default for LOW_STOCK
-        icon: 'AlertTriangle', // Default for LOW_STOCK
+        priority: "medium",
+        status: "pending",
+        color: "rose", // Default for LOW_STOCK
+        icon: "AlertTriangle", // Default for LOW_STOCK
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

@@ -56,7 +56,7 @@ async def upsert_low_stock_record(prod_supabase, e2e_created_ids: list) -> str:
         "id": E2E_STOCK_ID,
         "restaurant_id": E2E_RESTAURANT_ID,
         "wine_id": E2E_WINE_ID,
-        "current_quantity": 0,           # Below threshold — triggers alert
+        "current_quantity": 0,  # Below threshold — triggers alert
         "minimum_threshold": 5,
         "unit": "bottles",
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -115,7 +115,9 @@ class TestGmailPipeline:
     async def test_notification_deliveries_table_accessible(self, prod_supabase):
         """Verify notification_deliveries table exists and is queryable."""
         try:
-            prod_supabase.table(DELIVERIES_TABLE).select("notification_id").limit(1).execute()
+            prod_supabase.table(DELIVERIES_TABLE).select("notification_id").limit(
+                1
+            ).execute()
         except Exception as exc:
             pytest.skip(
                 f"notification_deliveries table not accessible: {exc}. "

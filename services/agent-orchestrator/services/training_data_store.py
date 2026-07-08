@@ -49,7 +49,7 @@ class TrainingDataStore:
     ) -> Optional[str]:
         """
         Save a single input-output pair for training.
-        
+
         Args:
             dataset_type: Type of data ('menu_scan', 'label_scan', 'enrichment', 'book_scrape')
             input_data: Raw input (image base64, OCR text, etc.)
@@ -58,7 +58,7 @@ class TrainingDataStore:
             confidence: Confidence score of the output
             human_verified: Whether a human verified/corrected this pair
             restaurant_id: Optional restaurant context
-            
+
         Returns:
             ID of the saved record, or None if failed
         """
@@ -76,7 +76,9 @@ class TrainingDataStore:
         if self.mock_mode or not self.supabase:
             # Buffer in memory
             self._buffer.append(record)
-            logger.debug(f"Training data buffered (mock/no-db): {dataset_type}, buffer size: {len(self._buffer)}")
+            logger.debug(
+                f"Training data buffered (mock/no-db): {dataset_type}, buffer size: {len(self._buffer)}"
+            )
             return f"buffered_{len(self._buffer)}"
 
         try:
@@ -102,12 +104,14 @@ class TrainingDataStore:
     ) -> Optional[str]:
         """
         Save a menu scan input-output pair.
-        
+
         The input is the raw image. The output is the detected wines,
         optionally including user corrections (accepted/rejected/edited wines).
         """
         input_data = {
-            "image_base64_truncated": image_base64[:100] + "..." if len(image_base64) > 100 else image_base64,
+            "image_base64_truncated": (
+                image_base64[:100] + "..." if len(image_base64) > 100 else image_base64
+            ),
             "image_size_bytes": len(image_base64),
             "source_type": "menu",
         }
@@ -121,7 +125,9 @@ class TrainingDataStore:
             output_data["user_corrections"] = user_corrections
             output_data["has_corrections"] = True
 
-        avg_confidence = sum(w.get("confidence", 0) for w in detected_wines) / max(len(detected_wines), 1)
+        avg_confidence = sum(w.get("confidence", 0) for w in detected_wines) / max(
+            len(detected_wines), 1
+        )
 
         return await self.save_scan_pair(
             dataset_type="menu_scan",
@@ -144,7 +150,7 @@ class TrainingDataStore:
     ) -> Optional[str]:
         """
         Save a wine enrichment input-output pair.
-        
+
         Input is the wine name/context. Output is the enriched fields.
         """
         input_data = {
@@ -180,7 +186,7 @@ class TrainingDataStore:
     ) -> str:
         """
         Export training data in JSONL format for LLM fine-tuning.
-        
+
         Returns:
             JSONL string (one JSON object per line)
         """
@@ -216,11 +222,17 @@ class TrainingDataStore:
             return {
                 "total": len(self._buffer),
                 "by_type": {},
-                "human_verified": sum(1 for r in self._buffer if r.get("human_verified")),
+                "human_verified": sum(
+                    1 for r in self._buffer if r.get("human_verified")
+                ),
             }
 
         try:
-            result = self.supabase.table("training_datasets").select("dataset_type, human_verified", count="exact").execute()
+            result = (
+                self.supabase.table("training_datasets")
+                .select("dataset_type, human_verified", count="exact")
+                .execute()
+            )
             records = result.data or []
 
             by_type: Dict[str, int] = {}

@@ -28,9 +28,11 @@ logger = logging.getLogger(__name__)
 # QUALITY RESULT
 # =============================================================================
 
+
 @dataclass
 class QualityResult:
     """Result of quality scoring for an extraction."""
+
     composite_score: float = 0.0
     parser_confidence: float = 0.0
     field_completeness: float = 0.0
@@ -44,6 +46,7 @@ class QualityResult:
 @dataclass
 class ReviewItem:
     """An extraction flagged for dev review."""
+
     review_id: str
     restaurant_name: str
     source_url: Optional[str] = None
@@ -60,6 +63,7 @@ class ReviewItem:
 # QUALITY SCORER
 # =============================================================================
 
+
 class QualityScorer:
     """
     Scores extraction quality and routes to accept/review/reject.
@@ -72,8 +76,14 @@ class QualityScorer:
 
     # Identity fields that matter for wine dedup
     IDENTITY_FIELDS = [
-        "wine_name", "producer", "vintage", "country",
-        "region", "grape_variety", "classification", "wine_type",
+        "wine_name",
+        "producer",
+        "vintage",
+        "country",
+        "region",
+        "grape_variety",
+        "classification",
+        "wine_type",
     ]
 
     # Weights for composite score
@@ -218,9 +228,7 @@ class QualityScorer:
     # CROSS-VALIDATION
     # =========================================================================
 
-    def _cross_validate(
-        self, wines: List[Dict[str, Any]], ocr_text: str
-    ) -> float:
+    def _cross_validate(self, wines: List[Dict[str, Any]], ocr_text: str) -> float:
         """
         Cross-validate parser output against raw OCR text.
         Check if extracted wine names appear in the OCR text.
@@ -283,9 +291,7 @@ class QualityScorer:
                 return True
         return False
 
-    def correct_review(
-        self, review_id: str, corrected_data: Dict[str, Any]
-    ) -> bool:
+    def correct_review(self, review_id: str, corrected_data: Dict[str, Any]) -> bool:
         """Mark a review as corrected with updated data."""
         for r in self._review_queue:
             if r.review_id == review_id:

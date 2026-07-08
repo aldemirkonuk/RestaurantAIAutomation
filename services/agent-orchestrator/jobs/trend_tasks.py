@@ -8,12 +8,13 @@ Tasks:
                                and trending_wines in a single task (popularity first
                                to guarantee ordering — see RESEARCH.md Pitfall 9).
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Set
 
 from jobs.celery_app import celery_app
 from config.settings import get_settings
@@ -33,6 +34,7 @@ TREND_WEIGHTS = {30: 3.0, 60: 1.5, 90: 1.0}
 # BEAT TASK
 # =============================================================================
 
+
 @celery_app.task(name="trend.compute_metrics")
 def compute_trend_metrics_task() -> Dict[str, Any]:
     """
@@ -45,6 +47,7 @@ def compute_trend_metrics_task() -> Dict[str, Any]:
     before Step 2 reads from wine_popularity (RESEARCH.md Pitfall 9).
     """
     from supabase import create_client
+
     supabase = create_client(settings.supabase_url, settings.supabase_key)
 
     popularity_count = _compute_popularity(supabase)
@@ -62,6 +65,7 @@ def compute_trend_metrics_task() -> Dict[str, Any]:
 # =============================================================================
 # POPULARITY COMPUTATION (TEMP-05)
 # =============================================================================
+
 
 def _compute_popularity(supabase: Any) -> int:
     """
@@ -145,6 +149,7 @@ def _compute_popularity(supabase: Any) -> int:
 # TRENDING COMPUTATION (TEMP-06)
 # =============================================================================
 
+
 def _window_start_iso(days: int) -> str:
     """Return ISO string for the start of a rolling window N days ago."""
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -213,10 +218,13 @@ def _compute_trending(supabase: Any) -> int:
 
     # Get current restaurant_count from wine_popularity (just written in _compute_popularity)
     try:
-        pop_resp = supabase.table("wine_popularity").select("wine_id, restaurant_count").execute()
+        pop_resp = (
+            supabase.table("wine_popularity")
+            .select("wine_id, restaurant_count")
+            .execute()
+        )
         current_count: Dict[str, int] = {
-            row["wine_id"]: row["restaurant_count"]
-            for row in (pop_resp.data or [])
+            row["wine_id"]: row["restaurant_count"] for row in (pop_resp.data or [])
         }
     except Exception as exc:
         logger.error("_compute_trending: failed to fetch wine_popularity: %s", exc)
@@ -237,19 +245,26 @@ def _compute_trending(supabase: Any) -> int:
         window_deltas: Dict[int, int] = {}
         for days in WINDOWS:
             cutoff = _window_start_iso(days)
-            adds = len({
-                ev["restaurant_id"] for ev in wine_events
-                if ev["change_type"] == "added" and ev["detected_at"] >= cutoff
-            })
-            removes = len({
-                ev["restaurant_id"] for ev in wine_events
-                if ev["change_type"] == "removed" and ev["detected_at"] >= cutoff
-            })
+            adds = len(
+                {
+                    ev["restaurant_id"]
+                    for ev in wine_events
+                    if ev["change_type"] == "added" and ev["detected_at"] >= cutoff
+                }
+            )
+            removes = len(
+                {
+                    ev["restaurant_id"]
+                    for ev in wine_events
+                    if ev["change_type"] == "removed" and ev["detected_at"] >= cutoff
+                }
+            )
             window_deltas[days] = adds - removes
 
         # Burst detection: ≥3 distinct restaurants added wine in last 14 days
         new_rests_14d = {
-            ev["restaurant_id"] for ev in wine_events
+            ev["restaurant_id"]
+            for ev in wine_events
             if ev["change_type"] == "added" and ev["detected_at"] >= burst_cutoff
         }
         burst_detected = len(new_rests_14d) >= BURST_RESTAURANT_THRESHOLD
@@ -272,17 +287,23 @@ def _compute_trending(supabase: Any) -> int:
             count_start = max(0, count_end - delta)
             pct_change = (delta / count_start * 100.0) if count_start > 0 else None
 
-            rows_to_upsert.append({
-                "wine_id": wine_id,
-                "window_days": days,
-                "restaurant_count_start": count_start,
-                "restaurant_count_end": count_end,
-                "delta": delta,
-                "pct_change": round(pct_change, 4) if pct_change is not None else None,
-                "trend_score": round(trend_score, 4),  # same combined score on all rows
-                "burst_detected_at": burst_detected_at,
-                "computed_at": now_iso,
-            })
+            rows_to_upsert.append(
+                {
+                    "wine_id": wine_id,
+                    "window_days": days,
+                    "restaurant_count_start": count_start,
+                    "restaurant_count_end": count_end,
+                    "delta": delta,
+                    "pct_change": (
+                        round(pct_change, 4) if pct_change is not None else None
+                    ),
+                    "trend_score": round(
+                        trend_score, 4
+                    ),  # same combined score on all rows
+                    "burst_detected_at": burst_detected_at,
+                    "computed_at": now_iso,
+                }
+            )
 
     if not rows_to_upsert:
         return 0

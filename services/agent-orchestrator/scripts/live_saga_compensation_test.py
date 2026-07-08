@@ -56,8 +56,10 @@ async def main() -> int:
         load_dotenv(_ROOT / ".env")
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv(
-        "SUPABASE_SERVICE_ROLE_KEY"
+    key = (
+        os.getenv("SUPABASE_SERVICE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     if not url or not key:
         print("Missing SUPABASE_URL or service key.", file=sys.stderr)
@@ -96,7 +98,9 @@ async def main() -> int:
     rows = (ghost_resp.data if ghost_resp is not None else None) or []
     assert len(rows) == 0, "unexpected row for random UUID"
 
-    print("OK — compensate_saga sets COMPENSATED + error; unknown UUID returns without exception.")
+    print(
+        "OK — compensate_saga sets COMPENSATED + error; unknown UUID returns without exception."
+    )
     print(f"  compensated saga_id={saga_id!r}")
     return 0
 

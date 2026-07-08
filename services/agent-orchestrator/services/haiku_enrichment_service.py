@@ -29,6 +29,7 @@ class EnrichmentResult:
     field_confidence: Per-field {value, confidence, source="knowledge"} map
     6 JSONB enrichment dicts: structured nested objects for master_wine_library columns
     """
+
     wine_id: str
     field_confidence: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     # JSONB structured enrichments (FCONF-08 / CONTEXT.md D-07)
@@ -57,16 +58,30 @@ class HaikuEnrichmentService:
 
     # Scalar fields Haiku enriches with per-field {value, confidence, source}
     SCALAR_FIELDS = [
-        "producer", "region", "sub_region", "appellation", "country",
-        "grape_variety", "color", "primary_type", "sweetness_level",
-        "food_pairing", "producer_bio", "tasting_notes", "alcohol_pct",
+        "producer",
+        "region",
+        "sub_region",
+        "appellation",
+        "country",
+        "grape_variety",
+        "color",
+        "primary_type",
+        "sweetness_level",
+        "food_pairing",
+        "producer_bio",
+        "tasting_notes",
+        "alcohol_pct",
         "description",
     ]
 
     # 6 JSONB keys returned as raw dicts (not wrapped in {value, confidence})
     JSONB_KEYS = [
-        "grape_family", "wine_structure", "sensory_profile",
-        "practical_attributes", "region_hierarchy", "critic_scores",
+        "grape_family",
+        "wine_structure",
+        "sensory_profile",
+        "practical_attributes",
+        "region_hierarchy",
+        "critic_scores",
     ]
 
     def __init__(self):
@@ -103,19 +118,29 @@ class HaikuEnrichmentService:
             fc = sub_resp.data.get("field_confidence") or {}
             # Already enriched if field_confidence has knowledge-sourced fields
             knowledge_fields = [
-                k for k, v in fc.items()
+                k
+                for k, v in fc.items()
                 if isinstance(v, dict) and v.get("source") == "knowledge"
             ]
             if len(knowledge_fields) >= 3:
                 self._logger.info(
                     "Skipping enrichment for %s: field_confidence has %d knowledge fields",
-                    wine_id, len(knowledge_fields)
+                    wine_id,
+                    len(knowledge_fields),
                 )
                 return True
             # Legacy check: flat payload fields
             payload = sub_resp.data.get("payload") or {}
-            if all([payload.get("region"), payload.get("country"), payload.get("grape_variety")]):
-                self._logger.info("Skipping enrichment for %s: payload already complete", wine_id)
+            if all(
+                [
+                    payload.get("region"),
+                    payload.get("country"),
+                    payload.get("grape_variety"),
+                ]
+            ):
+                self._logger.info(
+                    "Skipping enrichment for %s: payload already complete", wine_id
+                )
                 return True
 
         # Check 2: master library — does approved record exist with wine_name match AND all 3 fields?
@@ -130,7 +155,8 @@ class HaikuEnrichmentService:
             rec = lib_resp.data[0]
             if all([rec.get("region"), rec.get("country"), rec.get("grape_variety")]):
                 self._logger.info(
-                    "Skipping enrichment for %s: master library record complete", wine_id
+                    "Skipping enrichment for %s: master library record complete",
+                    wine_id,
                 )
                 return True
 
@@ -154,7 +180,7 @@ class HaikuEnrichmentService:
         prompt = (
             "You are a wine expert. Given the wine name and vintage below, return ONLY a JSON object.\n\n"
             "For each scalar field, return an object: "
-            "{\"value\": ..., \"confidence\": 0.0-1.0, \"source\": \"knowledge\"}.\n"
+            '{"value": ..., "confidence": 0.0-1.0, "source": "knowledge"}.\n'
             "Rate confidence 0.9+ only when certain from well-known wine knowledge. "
             "Use 0.5-0.8 for reasonable inferences. Use < 0.5 when genuinely uncertain.\n\n"
             "Scalar fields to provide (all with {value, confidence, source}):\n"
@@ -173,17 +199,17 @@ class HaikuEnrichmentService:
             "- alcohol_pct: Typical ABV as a float (e.g. 13.5)\n"
             "- description: Brief wine description\n\n"
             "Also provide these structured objects (raw dicts, NOT wrapped in {value,confidence}):\n"
-            "- grape_family: {\"primary\": \"...\", \"blend\": bool, \"percentages\": null, \"family\": \"...\"}\n"
-            "- wine_structure: {\"body\": \"light/medium/full\", \"tannin\": \"low/medium/high\", "
-            "\"acidity\": \"low/medium/high\", \"finish\": \"short/medium/long\"}\n"
-            "- sensory_profile: {\"aromas\": [...], \"palate\": [...], \"color_descriptor\": \"...\"}\n"
-            "- practical_attributes: {\"serving_temp_c\": int, \"decant_minutes\": int, "
-            "\"aging_potential_years\": \"...\", \"glass_type\": \"...\"}\n"
-            "- winemaking_details: {\"production_method\": \"e.g. Metodo Classico / Charmat / Pétillant Naturel / Traditional / etc. (null if not applicable)\", "
-            "\"lees_contact_months\": int or null, \"fermentation\": \"...\", "
-            "\"oak_aging\": \"...\", \"harvest\": \"...\"}\n"
-            "- region_hierarchy: {\"country\": \"...\", \"region\": \"...\", \"sub_region\": \"...\", "
-            "\"appellation\": \"...\", \"classification\": \"...\", \"commune\": \"...\"}\n"
+            '- grape_family: {"primary": "...", "blend": bool, "percentages": null, "family": "..."}\n'
+            '- wine_structure: {"body": "light/medium/full", "tannin": "low/medium/high", '
+            '"acidity": "low/medium/high", "finish": "short/medium/long"}\n'
+            '- sensory_profile: {"aromas": [...], "palate": [...], "color_descriptor": "..."}\n'
+            '- practical_attributes: {"serving_temp_c": int, "decant_minutes": int, '
+            '"aging_potential_years": "...", "glass_type": "..."}\n'
+            '- winemaking_details: {"production_method": "e.g. Metodo Classico / Charmat / Pétillant Naturel / Traditional / etc. (null if not applicable)", '
+            '"lees_contact_months": int or null, "fermentation": "...", '
+            '"oak_aging": "...", "harvest": "..."}\n'
+            '- region_hierarchy: {"country": "...", "region": "...", "sub_region": "...", '
+            '"appellation": "...", "classification": "...", "commune": "..."}\n'
             "- critic_scores: {} (leave empty — populated by Phase 10)\n\n"
             "Return ONLY valid JSON. No markdown, no explanation.\n\n"
             f"Wine: {wine_name}{vintage_str}"

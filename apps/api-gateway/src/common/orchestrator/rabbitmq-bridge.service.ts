@@ -13,16 +13,16 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as amqplib from 'amqplib';
-import { WebsocketGateway } from '../../websocket/websocket.gateway';
-import { DatabaseService } from '../../database/database.service';
-import { InboundResponderService } from './inbound-responder.service';
-import { deriveTransportSignals, looksPromotional } from './email-triage';
-import { createHash } from 'crypto';
-import { PromotionExtractorService } from './promotion-extractor.service';
-import { ProspectsService } from './prospects.service';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as amqplib from "amqplib";
+import { WebsocketGateway } from "../../websocket/websocket.gateway";
+import { DatabaseService } from "../../database/database.service";
+import { InboundResponderService } from "./inbound-responder.service";
+import { deriveTransportSignals, looksPromotional } from "./email-triage";
+import { createHash } from "crypto";
+import { PromotionExtractorService } from "./promotion-extractor.service";
+import { ProspectsService } from "./prospects.service";
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -78,26 +78,26 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
   private async connect(): Promise<void> {
     const rabbitUrl = this.configService.get<string>(
-      'RABBITMQ_URL',
-      'amqp://localhost:5672',
+      "RABBITMQ_URL",
+      "amqp://localhost:5672",
     );
 
-    this.logger.log('Connecting RabbitMQ bridge to consume agent events...');
+    this.logger.log("Connecting RabbitMQ bridge to consume agent events...");
 
     this.connection = await amqplib.connect(rabbitUrl);
     this.channel = await this.connection.createChannel();
     await this.channel.prefetch(50);
 
     // Handle connection errors for auto-reconnect
-    this.connection.on('error', (err) => {
+    this.connection.on("error", (err) => {
       this.logger.error(`RabbitMQ bridge connection error: ${err?.message}`);
       this.isConnected = false;
       this.scheduleReconnect();
     });
 
-    this.connection.on('close', () => {
+    this.connection.on("close", () => {
       if (this.isConnected) {
-        this.logger.warn('RabbitMQ bridge connection closed unexpectedly');
+        this.logger.warn("RabbitMQ bridge connection closed unexpectedly");
         this.isConnected = false;
         this.scheduleReconnect();
       }
@@ -108,7 +108,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
     this.isConnected = true;
     this.logger.log(
-      'RabbitMQ bridge connected - agent events will now propagate to frontend',
+      "RabbitMQ bridge connected - agent events will now propagate to frontend",
     );
   }
 
@@ -128,7 +128,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     } catch {
       // Ignore cleanup errors
     }
-    this.logger.log('RabbitMQ bridge disconnected');
+    this.logger.log("RabbitMQ bridge disconnected");
   }
 
   // ===========================================================================
@@ -139,135 +139,135 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const routes: RouteHandler[] = [
       // --- Stock events ---
       {
-        exchange: 'stock.events',
-        routingKey: 'stock.state.changed',
+        exchange: "stock.events",
+        routingKey: "stock.state.changed",
         handler: (msg) => this.handleStockStateChanged(msg),
       },
       {
-        exchange: 'stock.events',
-        routingKey: 'stock.threshold.breached',
+        exchange: "stock.events",
+        routingKey: "stock.threshold.breached",
         handler: (msg) => this.handleStockThresholdBreached(msg),
       },
       {
-        exchange: 'stock.events',
-        routingKey: 'stock.increased',
+        exchange: "stock.events",
+        routingKey: "stock.increased",
         handler: (msg) => this.handleStockIncreased(msg),
       },
       {
-        exchange: 'stock.events',
-        routingKey: 'stock.manually_corrected',
+        exchange: "stock.events",
+        routingKey: "stock.manually_corrected",
         handler: (msg) => this.handleStockManuallyCorrected(msg),
       },
       {
-        exchange: 'stock.events',
-        routingKey: 'stock.evaluated',
+        exchange: "stock.events",
+        routingKey: "stock.evaluated",
         handler: (msg) => this.handleStockEvaluated(msg),
       },
 
       // --- Procurement events ---
       {
-        exchange: 'procurement.events',
-        routingKey: 'procurement.order.created',
+        exchange: "procurement.events",
+        routingKey: "procurement.order.created",
         handler: (msg) => this.handleOrderCreated(msg),
       },
       {
-        exchange: 'procurement.events',
-        routingKey: 'procurement.order.delivered',
+        exchange: "procurement.events",
+        routingKey: "procurement.order.delivered",
         handler: (msg) => this.handleOrderDelivered(msg),
       },
       {
-        exchange: 'procurement.events',
-        routingKey: 'procurement.order.approved',
-        handler: (msg) => this.handleOrderStatusChanged(msg, 'APPROVED'),
+        exchange: "procurement.events",
+        routingKey: "procurement.order.approved",
+        handler: (msg) => this.handleOrderStatusChanged(msg, "APPROVED"),
       },
 
       // --- Notification events ---
       {
-        exchange: 'notification.events',
-        routingKey: 'notification.#',
+        exchange: "notification.events",
+        routingKey: "notification.#",
         handler: (msg) => this.handleNotificationEvent(msg),
       },
 
       // --- Report events ---
       {
-        exchange: 'report.events',
-        routingKey: 'report.generated',
+        exchange: "report.events",
+        routingKey: "report.generated",
         handler: (msg) => this.handleReportGenerated(msg),
       },
 
       // --- Menu events ---
       {
-        exchange: 'menu.events',
-        routingKey: 'menu.scan_complete',
+        exchange: "menu.events",
+        routingKey: "menu.scan_complete",
         handler: (msg) => this.handleMenuScanComplete(msg),
       },
 
       // --- Verification events ---
       {
-        exchange: 'notification.events',
-        routingKey: 'notification.invariant_violation',
+        exchange: "notification.events",
+        routingKey: "notification.invariant_violation",
         handler: (msg) => this.handleInvariantViolation(msg),
       },
 
       // --- Additional procurement lifecycle events ---
       {
-        exchange: 'procurement.events',
-        routingKey: 'procurement.order.confirmed',
-        handler: (msg) => this.handleOrderStatusChanged(msg, 'CONFIRMED'),
+        exchange: "procurement.events",
+        routingKey: "procurement.order.confirmed",
+        handler: (msg) => this.handleOrderStatusChanged(msg, "CONFIRMED"),
       },
       {
-        exchange: 'procurement.events',
-        routingKey: 'procurement.order.completed',
-        handler: (msg) => this.handleOrderStatusChanged(msg, 'COMPLETED'),
+        exchange: "procurement.events",
+        routingKey: "procurement.order.completed",
+        handler: (msg) => this.handleOrderStatusChanged(msg, "COMPLETED"),
       },
 
       // --- Inbound email events ---
       {
-        exchange: 'email.events',
-        routingKey: 'email.inbound.received',
+        exchange: "email.events",
+        routingKey: "email.inbound.received",
         handler: (msg) => this.handleInboundEmail(msg),
       },
 
       // --- Vendor / conversation events ---
       {
-        exchange: 'procurement.events',
-        routingKey: 'procurement.vendor_response',
+        exchange: "procurement.events",
+        routingKey: "procurement.vendor_response",
         handler: (msg) => this.handleConversationUpdated(msg),
       },
       {
-        exchange: 'conversation.events',
-        routingKey: 'conversation.summary.updated',
+        exchange: "conversation.events",
+        routingKey: "conversation.summary.updated",
         handler: (msg) => this.handleConversationSummaryUpdated(msg),
       },
 
       // --- Recurring order events ---
       {
-        exchange: 'recurring.events',
-        routingKey: 'recurring.order.reminder',
+        exchange: "recurring.events",
+        routingKey: "recurring.order.reminder",
         handler: (msg) => this.handleRecurringOrderReminder(msg),
       },
       {
-        exchange: 'recurring.events',
-        routingKey: 'recurring.order.executed',
+        exchange: "recurring.events",
+        routingKey: "recurring.order.executed",
         handler: (msg) => this.handleOrderCreated(msg),
       },
 
       // --- Calendar events ---
       {
-        exchange: 'calendar.events',
-        routingKey: 'calendar.event.created',
+        exchange: "calendar.events",
+        routingKey: "calendar.event.created",
         handler: (msg) => this.handleCalendarEventCreated(msg),
       },
       {
-        exchange: 'calendar.events',
-        routingKey: 'calendar.event.updated',
+        exchange: "calendar.events",
+        routingKey: "calendar.event.updated",
         handler: (msg) => this.handleCalendarEventUpdated(msg),
       },
 
       // --- Invoice events ---
       {
-        exchange: 'invoice.events',
-        routingKey: 'invoice.processed',
+        exchange: "invoice.events",
+        routingKey: "invoice.processed",
         handler: (msg) => this.handleNotificationEvent(msg),
       },
     ];
@@ -275,17 +275,17 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     for (const route of routes) {
       try {
         // Assert exchange exists (topic type, durable)
-        await this.channel.assertExchange(route.exchange, 'topic', {
+        await this.channel.assertExchange(route.exchange, "topic", {
           durable: true,
         });
 
         // Create a unique queue for this bridge consumer
-        const queueName = `bridge.nestjs.${route.exchange}.${route.routingKey.replace(/[.#*]/g, '_')}`;
+        const queueName = `bridge.nestjs.${route.exchange}.${route.routingKey.replace(/[.#*]/g, "_")}`;
         const { queue } = await this.channel.assertQueue(queueName, {
           durable: true,
           arguments: {
-            'x-message-ttl': 300000, // 5 min TTL - bridge events are ephemeral
-            'x-max-length': 1000, // Cap queue size
+            "x-message-ttl": 300000, // 5 min TTL - bridge events are ephemeral
+            "x-max-length": 1000, // Cap queue size
           },
         });
 
@@ -333,13 +333,13 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.websocketGateway.emitStockUpdate(restaurantId, {
       inventory_id: payload.inventory_id,
       restaurant_id: restaurantId,
-      wine_name: payload.wine_name || 'Unknown',
+      wine_name: payload.wine_name || "Unknown",
       stock_before: payload.stock_before ?? payload.previous_stock ?? 0,
       stock_after: payload.stock_after ?? payload.current_stock ?? 0,
     });
 
     // Also emit as a generic event:new so RealtimeContext picks it up
-    this.emitGenericEvent(restaurantId, 'inventory_change', payload);
+    this.emitGenericEvent(restaurantId, "inventory_change", payload);
   }
 
   private handleStockThresholdBreached(msg: any): void {
@@ -350,14 +350,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.websocketGateway.emitLowStockAlert(restaurantId, {
       inventory_id: payload.inventory_id,
       restaurant_id: restaurantId,
-      wine_name: payload.wine_name || 'Unknown',
+      wine_name: payload.wine_name || "Unknown",
       stock_after: payload.stock_after ?? 0,
       threshold: payload.threshold ?? 3,
-      urgency: payload.urgency || 'medium',
+      urgency: payload.urgency || "medium",
       estimated_stockout_days: payload.estimated_stockout_days ?? 999,
     });
 
-    this.emitGenericEvent(restaurantId, 'inventory_change', payload);
+    this.emitGenericEvent(restaurantId, "inventory_change", payload);
   }
 
   private handleStockIncreased(msg: any): void {
@@ -368,12 +368,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.websocketGateway.emitStockUpdate(restaurantId, {
       inventory_id: payload.inventory_id,
       restaurant_id: restaurantId,
-      wine_name: payload.wine_name || 'Unknown',
+      wine_name: payload.wine_name || "Unknown",
       stock_before: payload.stock_before ?? 0,
       stock_after: payload.stock_after ?? 0,
     });
 
-    this.emitGenericEvent(restaurantId, 'inventory_change', payload);
+    this.emitGenericEvent(restaurantId, "inventory_change", payload);
   }
 
   private handleStockManuallyCorrected(msg: any): void {
@@ -384,12 +384,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.websocketGateway.emitStockUpdate(restaurantId, {
       inventory_id: payload.inventory_id,
       restaurant_id: restaurantId,
-      wine_name: payload.wine_name || 'Unknown',
+      wine_name: payload.wine_name || "Unknown",
       stock_before: payload.stock_before ?? 0,
       stock_after: payload.corrected_stock ?? payload.stock_after ?? 0,
     });
 
-    this.emitGenericEvent(restaurantId, 'inventory_change', payload);
+    this.emitGenericEvent(restaurantId, "inventory_change", payload);
   }
 
   private handleStockEvaluated(msg: any): void {
@@ -400,12 +400,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.websocketGateway.emitStockUpdate(restaurantId, {
       inventory_id: payload.inventory_id,
       restaurant_id: restaurantId,
-      wine_name: payload.wine_name || 'Unknown',
+      wine_name: payload.wine_name || "Unknown",
       stock_before: payload.stock_before ?? 0,
       stock_after: payload.stock_after ?? 0,
     });
 
-    this.emitGenericEvent(restaurantId, 'inventory_change', payload);
+    this.emitGenericEvent(restaurantId, "inventory_change", payload);
   }
 
   private handleOrderCreated(msg: any): void {
@@ -419,10 +419,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       quantity: payload.quantity,
       provider_name: payload.provider_name,
       target_price: payload.target_price,
-      status: 'NEGOTIATING',
+      status: "NEGOTIATING",
     });
 
-    this.emitGenericEvent(restaurantId, 'order_change', payload);
+    this.emitGenericEvent(restaurantId, "order_change", payload);
   }
 
   private handleOrderDelivered(msg: any): void {
@@ -434,11 +434,11 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       order_id: payload.order_id,
       wine_name: payload.wine_name,
       quantity: payload.quantity_delivered,
-      status: 'DELIVERED',
-      previous_status: 'IN_TRANSIT',
+      status: "DELIVERED",
+      previous_status: "IN_TRANSIT",
     });
 
-    this.emitGenericEvent(restaurantId, 'order_change', payload);
+    this.emitGenericEvent(restaurantId, "order_change", payload);
   }
 
   private handleOrderStatusChanged(msg: any, newStatus: string): void {
@@ -453,7 +453,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       previous_status: payload.previous_status,
     });
 
-    this.emitGenericEvent(restaurantId, 'order_change', payload);
+    this.emitGenericEvent(restaurantId, "order_change", payload);
   }
 
   private handleNotificationEvent(msg: any): void {
@@ -462,21 +462,24 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
     const payload = msg?.payload || msg;
     this.websocketGateway.emitRestaurantNotification(restaurantId, {
-      id: payload.notification_id || payload.event_id || '',
-      title: payload.title || payload.event_type || 'Notification',
-      message: payload.message || payload.body || '',
+      id: payload.notification_id || payload.event_id || "",
+      title: payload.title || payload.event_type || "Notification",
+      message: payload.message || payload.body || "",
       type: this.mapNotificationType(payload.urgency || payload.type),
       action_url: payload.action_url,
     });
 
     // For inbound vendor emails, also push a conversation:updated event so the
     // CommsThreadDrawer refetches the thread without requiring a manual refresh.
-    if (payload.type === 'vendor_email' && (payload.order_id || payload.provider_id)) {
+    if (
+      payload.type === "vendor_email" &&
+      (payload.order_id || payload.provider_id)
+    ) {
       this.websocketGateway.emitConversationUpdated(restaurantId, {
         order_id: payload.order_id,
         provider_id: payload.provider_id,
-        direction: 'inbound',
-        channel: 'email',
+        direction: "inbound",
+        channel: "email",
       });
     }
   }
@@ -489,21 +492,17 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.websocketGateway.emitReportReady(restaurantId, {
       report_id: payload.report_id,
       report_type: payload.report_type,
-      download_url: payload.download_url || '',
+      download_url: payload.download_url || "",
     });
 
-    this.emitGenericEvent(restaurantId, 'report_event', payload);
+    this.emitGenericEvent(restaurantId, "report_event", payload);
   }
 
   private handleMenuScanComplete(msg: any): void {
     const restaurantId = msg?.restaurant_id || msg?.payload?.restaurant_id;
     if (!restaurantId) return;
 
-    this.emitGenericEvent(
-      restaurantId,
-      'wine_update',
-      msg?.payload || msg,
-    );
+    this.emitGenericEvent(restaurantId, "wine_update", msg?.payload || msg);
   }
 
   private handleInvariantViolation(msg: any): void {
@@ -512,10 +511,13 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
     const payload = msg?.payload || msg;
     this.websocketGateway.emitRestaurantNotification(restaurantId, {
-      id: payload.event_id || '',
-      title: 'System Invariant Violation',
-      message: payload.message || payload.violation_type || 'Data integrity issue detected',
-      type: 'error',
+      id: payload.event_id || "",
+      title: "System Invariant Violation",
+      message:
+        payload.message ||
+        payload.violation_type ||
+        "Data integrity issue detected",
+      type: "error",
     });
   }
 
@@ -525,22 +527,27 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
   private async handleInboundEmail(msg: any): Promise<void> {
     const payload = msg?.payload || msg;
-    const from: string = payload.from || '';
-    const subject: string = payload.subject || '';
-    const body: string = payload.body || '';
-    const attachments: Array<{ filename: string; mime_type: string; data: string }> =
-      Array.isArray(payload.attachments) ? payload.attachments : [];
-    const gmailThreadId: string = payload.gmail_thread_id || '';
-    const gmailMessageId: string = payload.gmail_message_id || '';
-    const messageIdHeader: string = payload.message_id_header || '';
-    const inReplyTo: string = payload.in_reply_to || '';
-    const references: string = payload.references || '';
+    const from: string = payload.from || "";
+    const subject: string = payload.subject || "";
+    const body: string = payload.body || "";
+    const attachments: Array<{
+      filename: string;
+      mime_type: string;
+      data: string;
+    }> = Array.isArray(payload.attachments) ? payload.attachments : [];
+    const gmailThreadId: string = payload.gmail_thread_id || "";
+    const gmailMessageId: string = payload.gmail_message_id || "";
+    const messageIdHeader: string = payload.message_id_header || "";
+    const inReplyTo: string = payload.in_reply_to || "";
+    const references: string = payload.references || "";
     const receivedAt: string = payload.received_at || new Date().toISOString();
     // Transport/auth signals (bulk, list, auto-submitted, SPF/DKIM/DMARC) derived from the
     // full header map the ingestion path already publishes on payload.headers. Captured now
     // for triage classification + sender verification — nothing gates on them yet (shadow phase).
     const rawHeaders =
-      payload.headers && typeof payload.headers === 'object' ? payload.headers : {};
+      payload.headers && typeof payload.headers === "object"
+        ? payload.headers
+        : {};
     const transportSignals = deriveTransportSignals(rawHeaders, from);
 
     const emailMatch = from.match(/<([^>]+)>/) || [null, from.trim()];
@@ -557,11 +564,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     try {
       // 1. Find provider by email (scoped to the attributed restaurant when we know it).
       let providerQuery = this.databaseService.supabase
-        .from('providers')
-        .select('id, restaurant_id, name')
-        .ilike('contact_email', senderEmail);
+        .from("providers")
+        .select("id, restaurant_id, name")
+        .ilike("contact_email", senderEmail);
       if (restaurantIdFromEvent) {
-        providerQuery = providerQuery.eq('restaurant_id', restaurantIdFromEvent);
+        providerQuery = providerQuery.eq(
+          "restaurant_id",
+          restaurantIdFromEvent,
+        );
       }
       const { data: providers } = await providerQuery.limit(1);
       const provider = providers?.[0];
@@ -569,16 +579,23 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
         // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
         // drop mass marketing blasts (bulk/list transport) so this never becomes a spam magnet.
-        const isBulkBlast = transportSignals.bulk || transportSignals.listMail || transportSignals.autoSubmitted;
+        const isBulkBlast =
+          transportSignals.bulk ||
+          transportSignals.listMail ||
+          transportSignals.autoSubmitted;
         const promotional = looksPromotional(subject, body);
         const looksOutreach = attachments.length > 0 || promotional;
         if (looksOutreach && !isBulkBlast) {
-          const senderName = (from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] || '').trim() || null;
+          const senderName =
+            (from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] || "").trim() || null;
           // Provenance the manager can see: WHY this was captured.
           const captureReason =
-            [attachments.length > 0 ? 'attachment' : null, promotional ? 'promotional' : null]
+            [
+              attachments.length > 0 ? "attachment" : null,
+              promotional ? "promotional" : null,
+            ]
               .filter(Boolean)
-              .join('+') || null;
+              .join("+") || null;
           // Make the attachment chip real: persist bytes + keep refs on the prospect row.
           const persistedRefs = await this.persistProspectAttachments(
             this.prospects.domainOf(senderEmail),
@@ -601,27 +618,40 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           });
           // Digest/notify parity with promotions — only for a NEW, attributed prospect. Triage
           // rows belong to no tenant, so there is no one to notify (they are logged instead).
-          if (result.captured && result.isNew && !result.isTriage && result.restaurantId) {
+          if (
+            result.captured &&
+            result.isNew &&
+            !result.isTriage &&
+            result.restaurantId
+          ) {
             const label = senderName || this.prospects.domainOf(senderEmail);
-            const message = `${label} reached out${attachments.length ? ' with an attachment' : ''}. Review it in Promotions → Prospects.`;
-            this.websocketGateway.emitRestaurantNotification(result.restaurantId, {
-              id: `prospect-${result.restaurantId}-${Date.now()}`,
-              title: `New vendor prospect: ${label}`,
-              message,
-              type: 'info',
-              action_url: '/promotions?tab=prospects',
-            });
-            void this.inboundResponder.persistManagerNotification(result.restaurantId, {
-              type: 'prospect',
-              title: `New vendor prospect: ${label}`,
-              message,
-              priority: 'low',
-              actionUrl: '/promotions?tab=prospects',
-              metadata: { kind: 'prospect', domain: result.domain },
-            });
+            const message = `${label} reached out${attachments.length ? " with an attachment" : ""}. Review it in Promotions → Prospects.`;
+            this.websocketGateway.emitRestaurantNotification(
+              result.restaurantId,
+              {
+                id: `prospect-${result.restaurantId}-${Date.now()}`,
+                title: `New vendor prospect: ${label}`,
+                message,
+                type: "info",
+                action_url: "/promotions?tab=prospects",
+              },
+            );
+            void this.inboundResponder.persistManagerNotification(
+              result.restaurantId,
+              {
+                type: "prospect",
+                title: `New vendor prospect: ${label}`,
+                message,
+                priority: "low",
+                actionUrl: "/promotions?tab=prospects",
+                metadata: { kind: "prospect", domain: result.domain },
+              },
+            );
           }
         } else {
-          this.logger.warn(`handleInboundEmail: no provider found for ${senderEmail} (not leaded)`);
+          this.logger.warn(
+            `handleInboundEmail: no provider found for ${senderEmail} (not leaded)`,
+          );
         }
         return;
       }
@@ -633,9 +663,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
       if (gmailThreadId) {
         const { data: outbound } = await this.databaseService.supabase
-          .from('procurement_conversations')
-          .select('id, order_id, thread_id, restaurant_id')
-          .eq('gmail_thread_id', gmailThreadId)
+          .from("procurement_conversations")
+          .select("id, order_id, thread_id, restaurant_id")
+          .eq("gmail_thread_id", gmailThreadId)
           .limit(1);
         if (outbound?.[0]) {
           orderId = outbound[0].order_id;
@@ -645,55 +675,77 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (!restaurantId) {
-        this.logger.warn('handleInboundEmail: could not determine restaurant_id');
+        this.logger.warn(
+          "handleInboundEmail: could not determine restaurant_id",
+        );
         return;
       }
 
       // 3. Deduplicate — skip if same gmail_message_id already stored
       if (gmailMessageId) {
         const { data: existing } = await this.databaseService.supabase
-          .from('procurement_conversations')
-          .select('id')
-          .eq('gmail_message_id', gmailMessageId)
+          .from("procurement_conversations")
+          .select("id")
+          .eq("gmail_message_id", gmailMessageId)
           .limit(1);
         if (existing?.length) {
-          this.logger.log(`handleInboundEmail: already stored gmail_message_id=${gmailMessageId}, skipping`);
+          this.logger.log(
+            `handleInboundEmail: already stored gmail_message_id=${gmailMessageId}, skipping`,
+          );
           return;
         }
       }
 
       // 4. Store inbound row
       const { data: inserted, error } = await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .insert({
           order_id: orderId,
           restaurant_id: restaurantId,
           provider_id: provider.id,
-          direction: 'inbound',
-          channel: 'email',
+          direction: "inbound",
+          channel: "email",
           message_text: `Subject: ${subject}\n\n${body}`,
           ai_generated: false,
           received_at: receivedAt,
-          delivery_status: 'delivered',
+          delivery_status: "delivered",
           thread_id: threadId,
           gmail_thread_id: gmailThreadId || null,
           gmail_message_id: gmailMessageId || null,
           message_id: messageIdHeader || null,
-          email_headers: { from, subject, message_id: messageIdHeader, in_reply_to: inReplyTo, references, gmail_thread_id: gmailThreadId, transport: transportSignals },
+          email_headers: {
+            from,
+            subject,
+            message_id: messageIdHeader,
+            in_reply_to: inReplyTo,
+            references,
+            gmail_thread_id: gmailThreadId,
+            transport: transportSignals,
+          },
           confidence_score: orderId ? 1.0 : null,
         })
-        .select('id')
+        .select("id")
         .single();
 
       if (error) {
-        this.logger.error(`handleInboundEmail: DB insert failed — ${error.message}`);
+        this.logger.error(
+          `handleInboundEmail: DB insert failed — ${error.message}`,
+        );
         return;
       }
 
-      this.logger.log(`handleInboundEmail: stored inbound row ${inserted.id} (order=${orderId}, thread=${gmailThreadId})`);
+      this.logger.log(
+        `handleInboundEmail: stored inbound row ${inserted.id} (order=${orderId}, thread=${gmailThreadId})`,
+      );
 
       // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
-      void this.persistAttachments(inserted.id, orderId, restaurantId, provider.id, attachments);
+      void this.persistAttachments(
+        inserted.id,
+        orderId,
+        restaurantId,
+        provider.id,
+        attachments,
+      );
 
       // Promotions lane (D3) — deterministic extract → provider_promotions + notify. Runs
       // for every provider-matched inbound; self-gates cheaply via the promo pre-filter.
@@ -712,7 +764,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         id: inserted.id,
         title: `New vendor email: ${subject.substring(0, 60)}`,
         message: `Reply received from ${senderEmail}`,
-        type: 'info',
+        type: "info",
         action_url: orderId ? `/orders?order=${orderId}` : undefined,
       });
 
@@ -721,8 +773,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           conversation_id: inserted.id,
           order_id: orderId,
           provider_id: provider.id,
-          direction: 'inbound',
-          channel: 'email',
+          direction: "inbound",
+          channel: "email",
         });
 
         // 6. Hand off to the autonomous responder: understand the reply, decide
@@ -743,7 +795,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         });
       }
     } catch (err: any) {
-      this.logger.error(`handleInboundEmail: unexpected error — ${err?.message}`);
+      this.logger.error(
+        `handleInboundEmail: unexpected error — ${err?.message}`,
+      );
     }
   }
 
@@ -764,31 +818,42 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     for (const a of attachments) {
       try {
         if (!a?.data) continue;
-        const buffer = Buffer.from(a.data, 'base64');
+        const buffer = Buffer.from(a.data, "base64");
         if (!buffer.length) continue;
-        const sha256 = createHash('sha256').update(buffer).digest('hex');
-        const safeName = (a.filename || 'attachment').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+        const sha256 = createHash("sha256").update(buffer).digest("hex");
+        const safeName = (a.filename || "attachment")
+          .replace(/[^\w.-]+/g, "_")
+          .slice(0, 120);
         const path = `${restaurantId}/${conversationId}/${sha256.slice(0, 16)}-${safeName}`;
         const { error: upErr } = await this.databaseService.supabase.storage
-          .from('vendor-attachments')
-          .upload(path, buffer, { contentType: a.mime_type || 'application/octet-stream', upsert: true });
+          .from("vendor-attachments")
+          .upload(path, buffer, {
+            contentType: a.mime_type || "application/octet-stream",
+            upsert: true,
+          });
         if (upErr) {
-          this.logger.warn(`persistAttachments: upload failed for ${safeName} — ${upErr.message}`);
+          this.logger.warn(
+            `persistAttachments: upload failed for ${safeName} — ${upErr.message}`,
+          );
           continue;
         }
-        await this.databaseService.supabase.from('conversation_attachments').insert({
-          conversation_id: conversationId,
-          order_id: orderId,
-          restaurant_id: restaurantId,
-          provider_id: providerId,
-          filename: a.filename || safeName,
-          mime_type: a.mime_type || null,
-          size_bytes: buffer.length,
-          storage_path: path,
-          sha256,
-        });
+        await this.databaseService.supabase
+          .from("conversation_attachments")
+          .insert({
+            conversation_id: conversationId,
+            order_id: orderId,
+            restaurant_id: restaurantId,
+            provider_id: providerId,
+            filename: a.filename || safeName,
+            mime_type: a.mime_type || null,
+            size_bytes: buffer.length,
+            storage_path: path,
+            sha256,
+          });
       } catch (e: any) {
-        this.logger.warn(`persistAttachments: failed for ${a?.filename} — ${e?.message}`);
+        this.logger.warn(
+          `persistAttachments: failed for ${a?.filename} — ${e?.message}`,
+        );
       }
     }
   }
@@ -801,23 +866,46 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   private async persistProspectAttachments(
     domain: string,
     attachments: Array<{ filename: string; mime_type: string; data: string }>,
-  ): Promise<Array<{ filename: string; mime_type: string | null; size_bytes: number; storage_path: string; sha256: string }>> {
-    const out: Array<{ filename: string; mime_type: string | null; size_bytes: number; storage_path: string; sha256: string }> = [];
+  ): Promise<
+    Array<{
+      filename: string;
+      mime_type: string | null;
+      size_bytes: number;
+      storage_path: string;
+      sha256: string;
+    }>
+  > {
+    const out: Array<{
+      filename: string;
+      mime_type: string | null;
+      size_bytes: number;
+      storage_path: string;
+      sha256: string;
+    }> = [];
     if (!Array.isArray(attachments) || !attachments.length) return out;
-    const safeDomain = (domain || 'unknown').replace(/[^\w.\-]+/g, '_').slice(0, 80);
+    const safeDomain = (domain || "unknown")
+      .replace(/[^\w.-]+/g, "_")
+      .slice(0, 80);
     for (const a of attachments) {
       try {
         if (!a?.data) continue;
-        const buffer = Buffer.from(a.data, 'base64');
+        const buffer = Buffer.from(a.data, "base64");
         if (!buffer.length) continue;
-        const sha256 = createHash('sha256').update(buffer).digest('hex');
-        const safeName = (a.filename || 'attachment').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+        const sha256 = createHash("sha256").update(buffer).digest("hex");
+        const safeName = (a.filename || "attachment")
+          .replace(/[^\w.-]+/g, "_")
+          .slice(0, 120);
         const path = `prospects/${safeDomain}/${sha256.slice(0, 16)}-${safeName}`;
         const { error: upErr } = await this.databaseService.supabase.storage
-          .from('vendor-attachments')
-          .upload(path, buffer, { contentType: a.mime_type || 'application/octet-stream', upsert: true });
+          .from("vendor-attachments")
+          .upload(path, buffer, {
+            contentType: a.mime_type || "application/octet-stream",
+            upsert: true,
+          });
         if (upErr) {
-          this.logger.warn(`persistProspectAttachments: upload failed for ${safeName} — ${upErr.message}`);
+          this.logger.warn(
+            `persistProspectAttachments: upload failed for ${safeName} — ${upErr.message}`,
+          );
           continue;
         }
         out.push({
@@ -828,7 +916,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           sha256,
         });
       } catch (e: any) {
-        this.logger.warn(`persistProspectAttachments: failed for ${a?.filename} — ${e?.message}`);
+        this.logger.warn(
+          `persistProspectAttachments: failed for ${a?.filename} — ${e?.message}`,
+        );
       }
     }
     return out;
@@ -847,11 +937,11 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       conversation_id: payload.conversation_id || payload.id,
       order_id: payload.order_id,
       provider_id: payload.provider_id,
-      direction: payload.direction || 'inbound',
-      channel: payload.channel || 'email',
+      direction: payload.direction || "inbound",
+      channel: payload.channel || "email",
     });
 
-    this.emitGenericEvent(restaurantId, 'conversation_update', payload);
+    this.emitGenericEvent(restaurantId, "conversation_update", payload);
   }
 
   private handleConversationSummaryUpdated(msg: any): void {
@@ -865,7 +955,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       message_count: payload.message_count,
     });
 
-    this.emitGenericEvent(restaurantId, 'conversation_update', payload);
+    this.emitGenericEvent(restaurantId, "conversation_update", payload);
   }
 
   private handleRecurringOrderReminder(msg: any): void {
@@ -875,13 +965,15 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const payload = msg?.payload || msg;
     this.websocketGateway.emitRestaurantNotification(restaurantId, {
       id: payload.event_id || `recurring-${Date.now()}`,
-      title: 'Recurring Order Reminder',
-      message: payload.message || `Recurring order due in ${payload.days_until || 2} days`,
-      type: 'info',
-      action_url: payload.action_url || '/orders?filter=recurring',
+      title: "Recurring Order Reminder",
+      message:
+        payload.message ||
+        `Recurring order due in ${payload.days_until || 2} days`,
+      type: "info",
+      action_url: payload.action_url || "/orders?filter=recurring",
     });
 
-    this.emitGenericEvent(restaurantId, 'order_change', payload);
+    this.emitGenericEvent(restaurantId, "order_change", payload);
   }
 
   private handleCalendarEventCreated(msg: any): void {
@@ -898,7 +990,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       provider_id: payload.provider_id,
     });
 
-    this.emitGenericEvent(restaurantId, 'calendar_change', payload);
+    this.emitGenericEvent(restaurantId, "calendar_change", payload);
   }
 
   private handleCalendarEventUpdated(msg: any): void {
@@ -914,7 +1006,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       status: payload.status,
     });
 
-    this.emitGenericEvent(restaurantId, 'calendar_change', payload);
+    this.emitGenericEvent(restaurantId, "calendar_change", payload);
   }
 
   // ===========================================================================
@@ -931,10 +1023,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     payload: any,
   ): void {
     const room = `restaurant:${restaurantId}`;
-    this.websocketGateway.server?.to(room).emit('event:new', {
+    this.websocketGateway.server?.to(room).emit("event:new", {
       id: payload?.event_id || `bridge-${Date.now()}`,
       eventType,
-      sourcePage: 'agent',
+      sourcePage: "agent",
       restaurantId,
       payload,
       createdAt: new Date().toISOString(),
@@ -943,18 +1035,18 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
   private mapNotificationType(
     urgency: string,
-  ): 'info' | 'success' | 'warning' | 'error' {
+  ): "info" | "success" | "warning" | "error" {
     switch (urgency?.toLowerCase()) {
-      case 'critical':
-      case 'error':
-        return 'error';
-      case 'high':
-      case 'warning':
-        return 'warning';
-      case 'success':
-        return 'success';
+      case "critical":
+      case "error":
+        return "error";
+      case "high":
+      case "warning":
+        return "warning";
+      case "success":
+        return "success";
       default:
-        return 'info';
+        return "info";
     }
   }
 

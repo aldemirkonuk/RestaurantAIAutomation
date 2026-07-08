@@ -23,6 +23,7 @@ from services.critic_score_service import (
 # normalize_score
 # ---------------------------------------------------------------------------
 
+
 class TestNormalizeScore:
     def test_vivino_multiplied_by_20(self):
         assert normalize_score("vivino", 4.2) == 84.0
@@ -44,6 +45,7 @@ class TestNormalizeScore:
 # SCORE_WEIGHTS
 # ---------------------------------------------------------------------------
 
+
 class TestScoreWeights:
     def test_five_sources(self):
         assert len(SCORE_WEIGHTS) == 5
@@ -63,18 +65,23 @@ class TestScoreWeights:
 # compute_composite_score
 # ---------------------------------------------------------------------------
 
+
 class TestCompositeScore:
     def test_two_sources_returns_float(self):
-        result = compute_composite_score({
-            "wine_advocate": {"normalized_score": 93.0},
-            "vivino": {"normalized_score": 84.0},
-        })
+        result = compute_composite_score(
+            {
+                "wine_advocate": {"normalized_score": 93.0},
+                "vivino": {"normalized_score": 84.0},
+            }
+        )
         assert isinstance(result, float)
 
     def test_one_source_returns_none(self):
-        result = compute_composite_score({
-            "wine_advocate": {"normalized_score": 93.0},
-        })
+        result = compute_composite_score(
+            {
+                "wine_advocate": {"normalized_score": 93.0},
+            }
+        )
         assert result is None
 
     def test_empty_dict_returns_none(self):
@@ -84,25 +91,31 @@ class TestCompositeScore:
         # WA(0.30)=93, Vivino(0.20)=84 → total_weight=0.50
         # weighted_sum = 0.30*93 + 0.20*84 = 27.9 + 16.8 = 44.7
         # composite = 44.7 / 0.50 = 89.4
-        result = compute_composite_score({
-            "wine_advocate": {"normalized_score": 93.0},
-            "vivino": {"normalized_score": 84.0},
-        })
+        result = compute_composite_score(
+            {
+                "wine_advocate": {"normalized_score": 93.0},
+                "vivino": {"normalized_score": 84.0},
+            }
+        )
         assert result == pytest.approx(89.4, abs=0.2)
 
     def test_ignores_none_normalized_score(self):
-        result = compute_composite_score({
-            "wine_advocate": {"normalized_score": 93.0},
-            "vivino": {"normalized_score": None},
-        })
+        result = compute_composite_score(
+            {
+                "wine_advocate": {"normalized_score": 93.0},
+                "vivino": {"normalized_score": None},
+            }
+        )
         assert result is None  # only 1 valid source
 
     def test_ignores_unknown_source(self):
         # unknown source not in SCORE_WEIGHTS should be excluded
-        result = compute_composite_score({
-            "wine_advocate": {"normalized_score": 93.0},
-            "unknown_source": {"normalized_score": 50.0},
-        })
+        result = compute_composite_score(
+            {
+                "wine_advocate": {"normalized_score": 93.0},
+                "unknown_source": {"normalized_score": 50.0},
+            }
+        )
         assert result is None  # unknown_source not in WEIGHTS, only 1 valid
 
 
@@ -110,13 +123,18 @@ class TestCompositeScore:
 # build_critic_score_queries
 # ---------------------------------------------------------------------------
 
+
 class TestBuildCriticScoreQueries:
     def test_returns_six_keys(self):
         queries = build_critic_score_queries("Barolo", "Gaja", 2019)
         assert len(queries) == 6
         expected_keys = {
-            "wine_advocate", "wine_spectator", "vivino",
-            "decanter", "jancis_robinson", "wine_searcher",
+            "wine_advocate",
+            "wine_spectator",
+            "vivino",
+            "decanter",
+            "jancis_robinson",
+            "wine_searcher",
         }
         assert set(queries.keys()) == expected_keys
 
@@ -142,6 +160,7 @@ class TestBuildCriticScoreQueries:
 # ---------------------------------------------------------------------------
 # parse_serper_score_snippets
 # ---------------------------------------------------------------------------
+
 
 class TestParseSerperScoreSnippets:
     def test_empty_results_returns_none(self):
@@ -221,6 +240,7 @@ class TestParseSerperScoreSnippets:
 # classify_markup
 # ---------------------------------------------------------------------------
 
+
 class TestClassifyMarkup:
     def test_below_1_5_is_value(self):
         assert classify_markup(1.2) == "value"
@@ -241,6 +261,7 @@ class TestClassifyMarkup:
 # ---------------------------------------------------------------------------
 # compute_markup_info
 # ---------------------------------------------------------------------------
+
 
 class TestComputeMarkupInfo:
     def test_standard_markup(self):
@@ -278,6 +299,7 @@ class TestComputeMarkupInfo:
 # CriticScoreService (facade)
 # ---------------------------------------------------------------------------
 
+
 class TestCriticScoreServiceFacade:
     def test_normalize_score_via_service(self):
         svc = CriticScoreService()
@@ -285,9 +307,11 @@ class TestCriticScoreServiceFacade:
 
     def test_compute_composite_via_service(self):
         svc = CriticScoreService()
-        result = svc.compute_composite_score({
-            "wine_advocate": {"normalized_score": 93.0},
-        })
+        result = svc.compute_composite_score(
+            {
+                "wine_advocate": {"normalized_score": 93.0},
+            }
+        )
         assert result is None
 
     def test_compute_markup_via_service(self):

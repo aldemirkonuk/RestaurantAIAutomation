@@ -19,7 +19,6 @@ Retry policy: max_retries=3, countdown 60→120→240s (matching web_verify_task
 Requirements: ONTO-05, ONTO-06, ONTO-07, ONTO-08
 """
 
-import asyncio
 import logging
 from typing import Any, Dict, Optional
 
@@ -59,7 +58,8 @@ def ontology_validate_task(self, wine_id: str) -> Optional[Dict[str, Any]]:
     acquired = r.set(lock_key, "1", nx=True, ex=3600)
     if not acquired:
         logger.info(
-            "ontology_validate_task: deduplicated for wine_id=%s (already queued/running)", wine_id
+            "ontology_validate_task: deduplicated for wine_id=%s (already queued/running)",
+            wine_id,
         )
         return None
 
@@ -68,10 +68,13 @@ def ontology_validate_task(self, wine_id: str) -> Optional[Dict[str, Any]]:
         return result
     except Exception as exc:
         retry_num = self.request.retries  # 0, 1, 2
-        countdown = 60 * (2 ** retry_num)  # 60, 120, 240
+        countdown = 60 * (2**retry_num)  # 60, 120, 240
         logger.warning(
             "ontology_validate_task failed for wine_id=%s (attempt %d/3): %s. Retrying in %ds.",
-            wine_id, retry_num + 1, exc, countdown,
+            wine_id,
+            retry_num + 1,
+            exc,
+            countdown,
         )
         if retry_num >= self.max_retries - 1:
             logger.warning(
@@ -102,7 +105,9 @@ def _validate_sync(wine_id: str) -> Optional[Dict[str, Any]]:
     result = service.run_ontology_validation(wine_id)
 
     if result is None:
-        logger.warning("_validate_sync: wine_id=%s not found or validation returned None", wine_id)
+        logger.warning(
+            "_validate_sync: wine_id=%s not found or validation returned None", wine_id
+        )
         return None
 
     logger.info(
@@ -117,14 +122,18 @@ def _validate_sync(wine_id: str) -> Optional[Dict[str, Any]]:
     # CRIT-01 / D-03a: Trigger score + dataset enrichment after ontology validation (chain end)
     try:
         from jobs.score_tasks import score_lookup_task, dataset_enrich_task
+
         score_lookup_task.delay(wine_id)
         dataset_enrich_task.delay(wine_id)
         logger.info(
-            "_validate_sync: queued score_lookup_task + dataset_enrich_task for wine_id=%s", wine_id
+            "_validate_sync: queued score_lookup_task + dataset_enrich_task for wine_id=%s",
+            wine_id,
         )
     except Exception as exc:
         logger.warning(
-            "_validate_sync: failed to queue score tasks for wine_id=%s: %s", wine_id, exc
+            "_validate_sync: failed to queue score tasks for wine_id=%s: %s",
+            wine_id,
+            exc,
         )
 
     return {

@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
-import { DatabaseService } from '../database/database.service';
-import { CreateWineSubmissionDto } from './dto/wine-submissions.dto';
+import { Injectable, Logger } from "@nestjs/common";
+import { createHash } from "crypto";
+import { DatabaseService } from "../database/database.service";
+import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
 
 type SubmissionRow = {
   id: string;
@@ -19,11 +19,11 @@ export class WineSubmissionsService {
   constructor(private readonly dbService: DatabaseService) {}
 
   private normalizeText(value?: string | null): string {
-    if (!value) return '';
+    if (!value) return "";
     return value
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .replace(/[^a-zA-Z0-9]+/g, ' ')
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .replace(/[^a-zA-Z0-9]+/g, " ")
       .trim()
       .toLowerCase();
   }
@@ -31,16 +31,24 @@ export class WineSubmissionsService {
   private buildSignature(payload: CreateWineSubmissionDto): string {
     const producer = this.normalizeText(payload.producer);
     const name = this.normalizeText(payload.name);
-    const vintage = payload.vintage ?? 'NV';
+    const vintage = payload.vintage ?? "NV";
     const country = this.normalizeText(payload.country);
     const region = this.normalizeText(payload.region);
     const primaryType = this.normalizeText(payload.primaryType);
     const grapeVariety = this.normalizeText(payload.grapeVariety);
-    return [producer, name, vintage, country, region, primaryType, grapeVariety].join('|');
+    return [
+      producer,
+      name,
+      vintage,
+      country,
+      region,
+      primaryType,
+      grapeVariety,
+    ].join("|");
   }
 
   private hashSignature(signature: string): string {
-    return createHash('sha256').update(signature).digest('hex');
+    return createHash("sha256").update(signature).digest("hex");
   }
 
   private generateWineId(): string {
@@ -67,20 +75,20 @@ export class WineSubmissionsService {
     };
 
     const { data, error } = await this.dbService.supabase
-      .from('master_wine_library_submissions')
+      .from("master_wine_library_submissions")
       .insert({
         restaurant_id: restaurantId,
         submitted_by: userId,
         payload,
         normalized_fields: normalizedFields,
         signature_hash: signatureHash,
-        status: 'pending',
+        status: "pending",
       })
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to submit wine', { error: error.message });
+      this.logger.error("Failed to submit wine", { error: error.message });
       throw error;
     }
 
@@ -89,13 +97,13 @@ export class WineSubmissionsService {
 
   async listSubmissions(status?: string, limit = 50) {
     let query = this.dbService.supabase
-      .from('master_wine_library_submissions')
-      .select('*')
-      .order('created_at', { ascending: false })
+      .from("master_wine_library_submissions")
+      .select("*")
+      .order("created_at", { ascending: false })
       .limit(limit);
 
     if (status) {
-      query = query.eq('status', status);
+      query = query.eq("status", status);
     }
 
     const { data, error } = await query;
@@ -105,40 +113,49 @@ export class WineSubmissionsService {
 
   async processPendingSubmissions(limit = 50) {
     const { data, error } = await this.dbService.supabase
-      .from('master_wine_library_submissions')
-      .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .from("master_wine_library_submissions")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
       .limit(limit);
 
     if (error) throw error;
     const submissions = (data || []) as SubmissionRow[];
 
-    const results: Array<{ id: string; status: string; matchedMasterId?: string | null }> = [];
+    const results: Array<{
+      id: string;
+      status: string;
+      matchedMasterId?: string | null;
+    }> = [];
 
     for (const submission of submissions) {
       const payload = submission.payload as CreateWineSubmissionDto;
       const signature = this.buildSignature(payload);
-      const signatureHash = submission.signature_hash || this.hashSignature(signature);
+      const signatureHash =
+        submission.signature_hash || this.hashSignature(signature);
 
       // Exact signature match
       const { data: existingMaster } = await this.dbService.supabase
-        .from('master_wine_library')
-        .select('id')
-        .eq('signature_hash', signatureHash)
+        .from("master_wine_library")
+        .select("id")
+        .eq("signature_hash", signatureHash)
         .maybeSingle();
 
       if (existingMaster?.id) {
         await this.dbService.supabase
-          .from('master_wine_library_submissions')
+          .from("master_wine_library_submissions")
           .update({
-            status: 'merged',
+            status: "merged",
             matched_master_id: existingMaster.id,
-            decision_reason: 'signature_match',
+            decision_reason: "signature_match",
             signature_hash: signatureHash,
           })
-          .eq('id', submission.id);
-        results.push({ id: submission.id, status: 'merged', matchedMasterId: existingMaster.id });
+          .eq("id", submission.id);
+        results.push({
+          id: submission.id,
+          status: "merged",
+          matchedMasterId: existingMaster.id,
+        });
         continue;
       }
 
@@ -146,36 +163,36 @@ export class WineSubmissionsService {
       const normalizedName = this.normalizeText(payload.name);
       const normalizedProducer = this.normalizeText(payload.producer);
       const { data: nameProducerMatch } = await this.dbService.supabase
-        .from('master_wine_library')
-        .select('id, vintage')
-        .eq('normalized_name', normalizedName)
-        .eq('normalized_producer', normalizedProducer)
+        .from("master_wine_library")
+        .select("id, vintage")
+        .eq("normalized_name", normalizedName)
+        .eq("normalized_producer", normalizedProducer)
         .limit(1);
 
       if (nameProducerMatch && nameProducerMatch.length > 0) {
         await this.dbService.supabase
-          .from('master_wine_library_submissions')
+          .from("master_wine_library_submissions")
           .update({
-            status: 'pending_review',
-            decision_reason: 'name_producer_match',
+            status: "pending_review",
+            decision_reason: "name_producer_match",
             signature_hash: signatureHash,
           })
-          .eq('id', submission.id);
-        results.push({ id: submission.id, status: 'pending_review' });
+          .eq("id", submission.id);
+        results.push({ id: submission.id, status: "pending_review" });
         continue;
       }
 
-      const wineId = payload['wineId'] || this.generateWineId();
+      const wineId = payload["wineId"] || this.generateWineId();
       const insertPayload = {
         wine_id: wineId,
         name: payload.name,
         producer: payload.producer,
         vintage: payload.vintage ?? null,
         price_reference: payload.priceReference ?? null,
-        primary_type: payload.primaryType ?? 'unknown',
+        primary_type: payload.primaryType ?? "unknown",
         grape_variety: payload.grapeVariety ?? null,
-        country: payload.country ?? 'Unknown',
-        region: payload.region ?? 'Unknown',
+        country: payload.country ?? "Unknown",
+        region: payload.region ?? "Unknown",
         appellation: payload.appellation ?? null,
         sub_region: payload.subRegion ?? null,
         wine_structure: payload.wineStructure ?? null,
@@ -183,40 +200,47 @@ export class WineSubmissionsService {
         signature_hash: signatureHash,
         normalized_name: normalizedName,
         normalized_producer: normalizedProducer,
-        signature_source: 'submission',
+        signature_source: "submission",
       };
 
-      const { data: upserted, error: upsertError } = await this.dbService.supabase
-        .from('master_wine_library')
-        .upsert(insertPayload, { onConflict: 'signature_hash' })
-        .select('id')
-        .single();
+      const { data: upserted, error: upsertError } =
+        await this.dbService.supabase
+          .from("master_wine_library")
+          .upsert(insertPayload, { onConflict: "signature_hash" })
+          .select("id")
+          .single();
 
       if (upsertError) {
-        this.logger.error('Failed to upsert master wine', { error: upsertError.message });
+        this.logger.error("Failed to upsert master wine", {
+          error: upsertError.message,
+        });
         await this.dbService.supabase
-          .from('master_wine_library_submissions')
+          .from("master_wine_library_submissions")
           .update({
-            status: 'pending',
+            status: "pending",
             decision_reason: upsertError.message,
             signature_hash: signatureHash,
           })
-          .eq('id', submission.id);
-        results.push({ id: submission.id, status: 'pending' });
+          .eq("id", submission.id);
+        results.push({ id: submission.id, status: "pending" });
         continue;
       }
 
       await this.dbService.supabase
-        .from('master_wine_library_submissions')
+        .from("master_wine_library_submissions")
         .update({
-          status: 'accepted',
+          status: "accepted",
           matched_master_id: upserted?.id ?? null,
-          decision_reason: 'upserted',
+          decision_reason: "upserted",
           signature_hash: signatureHash,
         })
-        .eq('id', submission.id);
+        .eq("id", submission.id);
 
-      results.push({ id: submission.id, status: 'accepted', matchedMasterId: upserted?.id ?? null });
+      results.push({
+        id: submission.id,
+        status: "accepted",
+        matchedMasterId: upserted?.id ?? null,
+      });
     }
 
     return { processed: results.length, results };

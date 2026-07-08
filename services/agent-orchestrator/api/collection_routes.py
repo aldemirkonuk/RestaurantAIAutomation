@@ -30,12 +30,16 @@ router = APIRouter(prefix="/api/v1/collect", tags=["Image Collection"])
 
 class GooglePlacesRequest(BaseModel):
     restaurant_name: str = Field(..., description="Restaurant name to search")
-    location: Optional[str] = Field(None, description="City or address for narrowing search")
+    location: Optional[str] = Field(
+        None, description="City or address for narrowing search"
+    )
     max_photos: int = Field(10, ge=1, le=50)
 
 
 class OpenTableRequest(BaseModel):
-    restaurant_name: str = Field(..., description="Restaurant name to search on OpenTable")
+    restaurant_name: str = Field(
+        ..., description="Restaurant name to search on OpenTable"
+    )
     location: Optional[str] = Field(None, description="City or address")
     max_photos: int = Field(10, ge=1, le=50)
 
@@ -119,7 +123,11 @@ async def upload_image(
     if len(image_bytes) < 1000:
         raise HTTPException(status_code=400, detail="Image too small")
 
-    ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "jpg"
+    ext = (
+        file.filename.rsplit(".", 1)[-1]
+        if file.filename and "." in file.filename
+        else "jpg"
+    )
 
     try:
         cat = ImageCategory(category)

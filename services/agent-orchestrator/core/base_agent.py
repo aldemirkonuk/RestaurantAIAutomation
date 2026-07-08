@@ -15,29 +15,37 @@ from __future__ import annotations
 import asyncio
 import uuid
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Callable, Awaitable, TypeVar
+from typing import Dict, Any, Optional, List, TypeVar
 from datetime import datetime, timedelta
 from enum import Enum
 from dataclasses import dataclass, field
 from contextlib import asynccontextmanager
 import traceback
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from core.message_bus import MessageBus, BaseEvent, EventPriority, CircuitBreaker, CircuitBreakerConfig
+from core.message_bus import (
+    MessageBus,
+    BaseEvent,
+    EventPriority,
+    CircuitBreaker,
+    CircuitBreakerConfig,
+)
 from core.database import DatabaseClient
 from utils.logger import setup_logger, set_log_context
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 # =============================================================================
 # AGENT STATUS & LIFECYCLE
 # =============================================================================
 
+
 class AgentStatus(Enum):
     """Agent lifecycle states"""
+
     INITIALIZING = "initializing"
     STARTING = "starting"
     ACTIVE = "active"
@@ -51,6 +59,7 @@ class AgentStatus(Enum):
 
 class AgentCapability(Enum):
     """Agent capability flags"""
+
     CONSUME_MESSAGES = "consume_messages"
     PUBLISH_MESSAGES = "publish_messages"
     DATABASE_READ = "database_read"
@@ -63,65 +72,66 @@ class AgentCapability(Enum):
 # PERFORMANCE METRICS
 # =============================================================================
 
+
 @dataclass
 class AgentMetrics:
     """Comprehensive agent performance metrics"""
-    
+
     # Message processing
     messages_received: int = 0
     messages_processed: int = 0
     messages_failed: int = 0
     messages_skipped: int = 0
-    
+
     # Timing
     total_processing_time_ms: float = 0.0
-    min_processing_time_ms: float = float('inf')
+    min_processing_time_ms: float = float("inf")
     max_processing_time_ms: float = 0.0
     processing_times: List[float] = field(default_factory=list)
-    
+
     # Health
     errors: int = 0
     last_error: Optional[str] = None
     last_error_time: Optional[datetime] = None
     circuit_breaker_trips: int = 0
-    
+
     # Activity
     started_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     pause_count: int = 0
     restart_count: int = 0
-    
+
     def record_processing(self, duration_ms: float, success: bool) -> None:
         """Record message processing result"""
         self.messages_received += 1
-        
+
         if success:
             self.messages_processed += 1
             self.total_processing_time_ms += duration_ms
             self.min_processing_time_ms = min(self.min_processing_time_ms, duration_ms)
             self.max_processing_time_ms = max(self.max_processing_time_ms, duration_ms)
-            
+
             # Keep last 100 for percentiles
             self.processing_times.append(duration_ms)
             if len(self.processing_times) > 100:
                 self.processing_times.pop(0)
         else:
             self.messages_failed += 1
-        
+
         self.last_activity = datetime.utcnow()
-    
+
     def record_error(self, error: str) -> None:
         """Record error occurrence"""
         self.errors += 1
         self.last_error = error
         self.last_error_time = datetime.utcnow()
-    
+
     @property
     def avg_processing_time_ms(self) -> float:
         if self.messages_processed == 0:
             return 0.0
         return self.total_processing_time_ms / self.messages_processed
-    
+
     @property
     def p95_processing_time_ms(self) -> float:
         if not self.processing_times:
@@ -129,20 +139,20 @@ class AgentMetrics:
         sorted_times = sorted(self.processing_times)
         idx = int(len(sorted_times) * 0.95)
         return sorted_times[min(idx, len(sorted_times) - 1)]
-    
+
     @property
     def success_rate(self) -> float:
         total = self.messages_processed + self.messages_failed
         if total == 0:
             return 1.0
         return self.messages_processed / total
-    
+
     @property
     def uptime_seconds(self) -> float:
         if not self.started_at:
             return 0.0
         return (datetime.utcnow() - self.started_at).total_seconds()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "messages": {
@@ -154,7 +164,11 @@ class AgentMetrics:
             },
             "timing": {
                 "avg_ms": round(self.avg_processing_time_ms, 2),
-                "min_ms": round(self.min_processing_time_ms, 2) if self.min_processing_time_ms != float('inf') else 0,
+                "min_ms": (
+                    round(self.min_processing_time_ms, 2)
+                    if self.min_processing_time_ms != float("inf")
+                    else 0
+                ),
                 "max_ms": round(self.max_processing_time_ms, 2),
                 "p95_ms": round(self.p95_processing_time_ms, 2),
             },
@@ -165,7 +179,9 @@ class AgentMetrics:
             },
             "activity": {
                 "uptime_seconds": round(self.uptime_seconds, 2),
-                "last_activity": self.last_activity.isoformat() if self.last_activity else None,
+                "last_activity": (
+                    self.last_activity.isoformat() if self.last_activity else None
+                ),
                 "pause_count": self.pause_count,
                 "restart_count": self.restart_count,
             },
@@ -176,37 +192,38 @@ class AgentMetrics:
 # AGENT CONFIGURATION
 # =============================================================================
 
+
 class AgentConfig(BaseModel):
     """Base agent configuration"""
-    
+
     # Identity
     name: str
     version: str = "1.0.0"
-    
+
     # Capabilities
     capabilities: List[AgentCapability] = [
         AgentCapability.CONSUME_MESSAGES,
         AgentCapability.PUBLISH_MESSAGES,
     ]
-    
+
     # Performance
     max_concurrent_tasks: int = 10
     task_timeout_seconds: float = 30.0
-    
+
     # Circuit breaker
     circuit_breaker_enabled: bool = True
     circuit_breaker_failure_threshold: int = 5
     circuit_breaker_timeout_seconds: float = 30.0
-    
+
     # Backpressure
     max_queue_size: int = 1000
     drop_oldest_on_overflow: bool = True
-    
+
     # Retry
     max_retries: int = 3
     retry_delay_seconds: float = 1.0
     retry_exponential_backoff: bool = True
-    
+
     # Debug
     debug: bool = False
     environment: str = "development"
@@ -216,10 +233,11 @@ class AgentConfig(BaseModel):
 # BASE AGENT
 # =============================================================================
 
+
 class BaseAgent(ABC):
     """
     Abstract base class for autonomous agents
-    
+
     Features:
     ✅ Structured concurrency with TaskGroup
     ✅ Circuit breaker for fault tolerance
@@ -227,7 +245,7 @@ class BaseAgent(ABC):
     ✅ Performance monitoring
     ✅ Graceful degradation
     ✅ Backpressure handling
-    
+
     Lifecycle:
     1. __init__() - Create instance
     2. initialize() - Setup resources
@@ -236,7 +254,7 @@ class BaseAgent(ABC):
     5. stop() - Graceful shutdown
     6. cleanup() - Release resources
     """
-    
+
     def __init__(
         self,
         agent_name: str,
@@ -247,14 +265,14 @@ class BaseAgent(ABC):
         self.agent_name = agent_name
         self.message_bus = message_bus
         self.database = database
-        
+
         # Parse config
         self.config = AgentConfig(name=agent_name, **config)
-        
+
         # State
         self.status: AgentStatus = AgentStatus.INITIALIZING
         self.metrics = AgentMetrics()
-        
+
         # Concurrency control
         self._task_group: Optional[asyncio.TaskGroup] = None
         self._active_tasks: set = set()
@@ -262,15 +280,15 @@ class BaseAgent(ABC):
         self._shutdown_event = asyncio.Event()
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused by default
-        
+
         # Message queue (for backpressure)
         self._message_queue: asyncio.Queue = asyncio.Queue(
             maxsize=self.config.max_queue_size
         )
-        
+
         # Message processor task reference (detect silent failures)
         self._processor_task: Optional[asyncio.Task] = None
-        
+
         # Circuit breaker
         self._circuit_breaker: Optional[CircuitBreaker] = None
         if self.config.circuit_breaker_enabled:
@@ -279,9 +297,9 @@ class BaseAgent(ABC):
                 CircuitBreakerConfig(
                     failure_threshold=self.config.circuit_breaker_failure_threshold,
                     timeout_seconds=self.config.circuit_breaker_timeout_seconds,
-                )
+                ),
             )
-        
+
         # Logger
         self.logger = setup_logger(f"agent.{agent_name}")
 
@@ -290,11 +308,11 @@ class BaseAgent(ABC):
         set_log_context(agent_name=self.agent_name)
 
         self.logger.info(f"🤖 Agent initialized: {agent_name} (v{self.config.version})")
-    
+
     # =========================================================================
     # ABSTRACT METHODS (Must implement)
     # =========================================================================
-    
+
     @abstractmethod
     async def initialize(self) -> None:
         """
@@ -302,75 +320,77 @@ class BaseAgent(ABC):
         Called once during startup.
         """
         pass
-    
+
     @abstractmethod
     async def process_message(self, message: Dict[str, Any]) -> None:
         """
         Process a message from the queue.
-        
+
         Args:
             message: Message payload
         """
         pass
-    
+
     @abstractmethod
     def get_subscribed_routing_keys(self) -> List[tuple[str, str]]:
         """
         Return list of (exchange, routing_key) tuples this agent subscribes to.
-        
+
         Returns:
             List of (exchange_name, routing_key) tuples
         """
         pass
-    
+
     # =========================================================================
     # LIFECYCLE MANAGEMENT
     # =========================================================================
-    
+
     async def start(self) -> None:
         """Start the agent and begin processing messages"""
         try:
             self.status = AgentStatus.STARTING
             self.logger.info(f"🚀 Starting agent: {self.agent_name}")
-            
+
             # Initialize resources
             await self.initialize()
-            
+
             # Subscribe to queues
             await self._setup_subscriptions()
-            
+
             # Start message processor (store reference to detect silent failures)
             self._processor_task = asyncio.create_task(
                 self._message_processor(),
                 name=f"{self.agent_name}-processor",
             )
             self._processor_task.add_done_callback(self._on_processor_done)
-            
+
             # Update state
             self.status = AgentStatus.ACTIVE
             self.metrics.started_at = datetime.utcnow()
-            
+
             self.logger.info(f"✅ Agent {self.agent_name} is ACTIVE")
-            
+
         except Exception as e:
             self.status = AgentStatus.ERROR
             self.metrics.record_error(str(e))
             self.logger.error(f"❌ Failed to start agent: {e}")
             raise
-    
+
     async def stop(self) -> None:
         """Stop the agent gracefully"""
         try:
             self.status = AgentStatus.STOPPING
             self.logger.info(f"🛑 Stopping agent: {self.agent_name}")
-            
+
             # Signal shutdown
             self._shutdown_event.set()
             self._pause_event.set()  # Unpause if paused
-            
+
             # Wait for active tasks with timeout
             if self._active_tasks:
-                self.logger.info(f"Waiting for {len(self._active_tasks)} tasks to complete...")
+                self.logger.info(
+                    f"Waiting for {len(self._active_tasks)} tasks to complete..."
+                )
                 try:
                     await asyncio.wait_for(
                         asyncio.gather(*self._active_tasks, return_exceptions=True),
@@ -378,30 +398,30 @@ class BaseAgent(ABC):
                     )
                 except asyncio.TimeoutError:
                     self.logger.warning("Task completion timeout, forcing shutdown")
-            
+
             # Cleanup
             await self.cleanup()
-            
+
             self.status = AgentStatus.STOPPED
             self.logger.info(f"✅ Agent {self.agent_name} stopped")
-            
+
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
             self.status = AgentStatus.ERROR
-    
+
     async def pause(self) -> None:
         """Pause message processing"""
         self.logger.info(f"⏸️ Pausing agent: {self.agent_name}")
         self._pause_event.clear()
         self.status = AgentStatus.PAUSED
         self.metrics.pause_count += 1
-    
+
     async def resume(self) -> None:
         """Resume message processing"""
         self.logger.info(f"▶️ Resuming agent: {self.agent_name}")
         self._pause_event.set()
         self.status = AgentStatus.ACTIVE
-    
+
     async def restart(self) -> None:
         """Restart the agent"""
         self.logger.info(f"🔄 Restarting agent: {self.agent_name}")
@@ -409,18 +429,18 @@ class BaseAgent(ABC):
         await asyncio.sleep(1)
         await self.start()
         self.metrics.restart_count += 1
-    
+
     # =========================================================================
     # MESSAGE HANDLING
     # =========================================================================
-    
+
     async def _setup_subscriptions(self) -> None:
         """Setup message queue subscriptions"""
         subscriptions = self.get_subscribed_routing_keys()
-        
+
         for exchange_name, routing_key in subscriptions:
             queue_name = f"queue.{self.agent_name}.{routing_key.replace('.', '_')}"
-            
+
             # Declare queue
             await self.message_bus.declare_queue(
                 queue_name=queue_name,
@@ -429,16 +449,16 @@ class BaseAgent(ABC):
                 durable=True,
                 max_priority=10,
             )
-            
+
             # Start consuming
             await self.message_bus.consume(
                 queue_name=queue_name,
                 callback=self._enqueue_message,
                 auto_ack=False,
             )
-            
+
             self.logger.info(f"📬 Subscribed: {exchange_name}/{routing_key}")
-    
+
     async def _enqueue_message(self, message: Dict[str, Any]) -> None:
         """Enqueue message for processing (with backpressure)"""
         try:
@@ -456,21 +476,21 @@ class BaseAgent(ABC):
                     self.metrics.messages_skipped += 1
                     self.logger.warning("Queue full, rejecting message")
                     return
-            
+
             await self._message_queue.put(message)
-            
+
         except Exception as e:
             self.logger.error(f"Failed to enqueue message: {e}")
-    
+
     async def _message_processor(self) -> None:
         """Background task that processes messages from queue"""
         self.logger.info("Message processor started")
-        
+
         while not self._shutdown_event.is_set():
             try:
                 # Wait if paused
                 await self._pause_event.wait()
-                
+
                 # Get message with timeout
                 try:
                     message = await asyncio.wait_for(
@@ -479,28 +499,26 @@ class BaseAgent(ABC):
                     )
                 except asyncio.TimeoutError:
                     continue
-                
+
                 # Process with concurrency limit
                 async with self._semaphore:
-                    task = asyncio.create_task(
-                        self._process_with_retry(message)
-                    )
+                    task = asyncio.create_task(self._process_with_retry(message))
                     self._active_tasks.add(task)
                     task.add_done_callback(self._active_tasks.discard)
-                
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 self.logger.error(f"Message processor error: {e}")
-        
+
         self.logger.info("Message processor stopped")
-    
+
     def _on_processor_done(self, task: asyncio.Task) -> None:
         """Callback when message processor task finishes (expected or unexpected)"""
         if task.cancelled():
             self.logger.info(f"Message processor for {self.agent_name} was cancelled")
             return
-        
+
         exc = task.exception()
         if exc:
             self.logger.error(
@@ -509,17 +527,19 @@ class BaseAgent(ABC):
             )
             self.status = AgentStatus.ERROR
             self.metrics.record_error(f"Processor died: {exc}")
-            
+
             # Auto-restart the processor if agent is not shutting down
             if not self._shutdown_event.is_set():
-                self.logger.warning(f"Auto-restarting message processor for {self.agent_name}")
+                self.logger.warning(
+                    f"Auto-restarting message processor for {self.agent_name}"
+                )
                 self._processor_task = asyncio.create_task(
                     self._message_processor(),
                     name=f"{self.agent_name}-processor-restart",
                 )
                 self._processor_task.add_done_callback(self._on_processor_done)
                 self.status = AgentStatus.ACTIVE
-    
+
     async def _process_with_retry(self, message: Dict[str, Any]) -> None:
         """Process message with retry logic and circuit breaker"""
         start_time = asyncio.get_event_loop().time()
@@ -527,14 +547,22 @@ class BaseAgent(ABC):
         last_error = None
 
         # Extract correlation_id from message (INFRA-04)
-        self._current_correlation_id = message.get("correlation_id") or str(uuid.uuid4())
-        set_log_context(agent_name=self.agent_name, correlation_id=self._current_correlation_id)
+        self._current_correlation_id = message.get("correlation_id") or str(
+            uuid.uuid4()
+        )
+        set_log_context(
+            agent_name=self.agent_name, correlation_id=self._current_correlation_id
+        )
 
         # Set Sentry scope tags for per-agent error attribution (OBS-01)
         try:
             import sentry_sdk
+
             sentry_sdk.set_tag("agent", self.agent_name)
-            if hasattr(self, "_current_correlation_id") and self._current_correlation_id:
+            if (
+                hasattr(self, "_current_correlation_id")
+                and self._current_correlation_id
+            ):
                 sentry_sdk.set_tag("correlation_id", self._current_correlation_id)
         except ImportError:
             pass  # Sentry not installed (shouldn't happen in production)
@@ -548,7 +576,7 @@ class BaseAgent(ABC):
 
         while attempt < self.config.max_retries:
             attempt += 1
-            
+
             try:
                 # Check circuit breaker
                 if self._circuit_breaker:
@@ -557,7 +585,7 @@ class BaseAgent(ABC):
                         self.logger.warning("Circuit breaker open, skipping message")
                         self.metrics.messages_skipped += 1
                         return
-                    
+
                     async with self._circuit_breaker:
                         await asyncio.wait_for(
                             self.process_message(message),
@@ -568,7 +596,7 @@ class BaseAgent(ABC):
                         self.process_message(message),
                         timeout=self.config.task_timeout_seconds,
                     )
-                
+
                 # Success
                 duration_ms = (asyncio.get_event_loop().time() - start_time) * 1000
                 self.metrics.record_processing(duration_ms, success=True)
@@ -581,25 +609,25 @@ class BaseAgent(ABC):
                     self.logger.debug(f"✓ Processed in {duration_ms:.1f}ms")
 
                 return
-                
+
             except asyncio.TimeoutError:
                 last_error = "Processing timeout"
                 self.logger.warning(f"Processing timeout (attempt {attempt})")
-                
+
             except Exception as e:
                 last_error = str(e)
                 self.logger.error(f"Processing error (attempt {attempt}): {e}")
-                
+
                 if self.config.debug:
                     self.logger.debug(traceback.format_exc())
-            
+
             # Retry delay
             if attempt < self.config.max_retries:
                 delay = self.config.retry_delay_seconds
                 if self.config.retry_exponential_backoff:
-                    delay *= (2 ** (attempt - 1))
+                    delay *= 2 ** (attempt - 1)
                 await asyncio.sleep(delay)
-        
+
         # All retries exhausted
         duration_ms = (asyncio.get_event_loop().time() - start_time) * 1000
         self.metrics.record_processing(duration_ms, success=False)
@@ -613,11 +641,11 @@ class BaseAgent(ABC):
             error=last_error or "Unknown error",
             retry_count=attempt,
         )
-    
+
     # =========================================================================
     # PUBLISHING
     # =========================================================================
-    
+
     async def publish(
         self,
         exchange_name: str,
@@ -640,7 +668,7 @@ class BaseAgent(ABC):
             priority=priority,
             correlation_id=self._current_correlation_id,
         )
-    
+
     async def publish_event(
         self,
         exchange_name: str,
@@ -657,18 +685,18 @@ class BaseAgent(ABC):
             event_dict["correlation_id"] = self._current_correlation_id
 
         event_dict["source_agent"] = self.agent_name
-        
+
         # Recreate event with source
         event_class = type(event)
         enriched_event = event_class(**event_dict)
-        
+
         return await self.message_bus.publish_event(
             exchange_name=exchange_name,
             routing_key=routing_key,
             event=enriched_event,
             priority=priority,
         )
-    
+
     # =========================================================================
     # IDEMPOTENCY (INFRA-01)
     # =========================================================================
@@ -678,10 +706,12 @@ class BaseAgent(ABC):
         if not message_id:
             return False
         try:
-            result = self.database.supabase.table("idempotency_keys") \
-                .select("message_id") \
-                .eq("message_id", message_id) \
+            result = (
+                self.database.supabase.table("idempotency_keys")
+                .select("message_id")
+                .eq("message_id", message_id)
                 .execute()
+            )
             return len(result.data) > 0
         except Exception as e:
             self.logger.warning(f"Idempotency check failed (fail open): {e}")
@@ -692,11 +722,17 @@ class BaseAgent(ABC):
         if not message_id:
             return
         try:
-            self.database.supabase.table("idempotency_keys").insert({
-                "message_id": message_id,
-                "agent_name": self.agent_name,
-                "result": result if isinstance(result, dict) else {"result": str(result)} if result else {},
-            }).execute()
+            self.database.supabase.table("idempotency_keys").insert(
+                {
+                    "message_id": message_id,
+                    "agent_name": self.agent_name,
+                    "result": (
+                        result
+                        if isinstance(result, dict)
+                        else {"result": str(result)} if result else {}
+                    ),
+                }
+            ).execute()
         except Exception as e:
             self.logger.warning(f"Failed to mark message processed: {e}")
 
@@ -715,16 +751,20 @@ class BaseAgent(ABC):
     ) -> None:
         """Persist an agent decision to the decision_log table."""
         try:
-            self.database.supabase.table("decision_log").insert({
-                "agent_name": self.agent_name,
-                "decision_type": decision_type,
-                "inputs": inputs,
-                "reasoning": {"text": reasoning} if isinstance(reasoning, str) else reasoning,
-                "output": output,
-                "confidence": confidence,
-                "correlation_id": self._current_correlation_id,
-                "restaurant_id": restaurant_id,
-            }).execute()
+            self.database.supabase.table("decision_log").insert(
+                {
+                    "agent_name": self.agent_name,
+                    "decision_type": decision_type,
+                    "inputs": inputs,
+                    "reasoning": (
+                        {"text": reasoning} if isinstance(reasoning, str) else reasoning
+                    ),
+                    "output": output,
+                    "confidence": confidence,
+                    "correlation_id": self._current_correlation_id,
+                    "restaurant_id": restaurant_id,
+                }
+            ).execute()
         except Exception as e:
             self.logger.warning(f"Failed to log decision: {e}")
 
@@ -742,15 +782,21 @@ class BaseAgent(ABC):
     ) -> None:
         """Persist a failed message to the dead_letter_queue table."""
         try:
-            self.database.supabase.table("dead_letter_queue").insert({
-                "agent_name": self.agent_name,
-                "original_exchange": original_exchange or message.get("_exchange", "unknown"),
-                "original_routing_key": original_routing_key or message.get("_routing_key", "unknown"),
-                "message": message,
-                "error": error,
-                "retry_count": retry_count,
-            }).execute()
-            self.logger.info(f"Message sent to DLQ after {retry_count} retries: {error}")
+            self.database.supabase.table("dead_letter_queue").insert(
+                {
+                    "agent_name": self.agent_name,
+                    "original_exchange": original_exchange
+                    or message.get("_exchange", "unknown"),
+                    "original_routing_key": original_routing_key
+                    or message.get("_routing_key", "unknown"),
+                    "message": message,
+                    "error": error,
+                    "retry_count": retry_count,
+                }
+            ).execute()
+            self.logger.info(
+                f"Message sent to DLQ after {retry_count} retries: {error}"
+            )
         except Exception as e:
             self.logger.error(f"CRITICAL: Failed to send to DLQ: {e}")
 
@@ -766,18 +812,22 @@ class BaseAgent(ABC):
     ) -> str:
         """Start a new saga and return its saga_id."""
         saga_id = str(uuid.uuid4())
-        deadline_at = (datetime.utcnow() + timedelta(minutes=deadline_minutes)).isoformat()
+        deadline_at = (
+            datetime.utcnow() + timedelta(minutes=deadline_minutes)
+        ).isoformat()
 
         try:
-            self.database.supabase.table("saga_state").insert({
-                "saga_id": saga_id,
-                "saga_type": saga_type,
-                "current_step": "INIT",
-                "status": "IN_PROGRESS",
-                "context": context,
-                "compensations": [],
-                "deadline_at": deadline_at,
-            }).execute()
+            self.database.supabase.table("saga_state").insert(
+                {
+                    "saga_id": saga_id,
+                    "saga_type": saga_type,
+                    "current_step": "INIT",
+                    "status": "IN_PROGRESS",
+                    "context": context,
+                    "compensations": [],
+                    "deadline_at": deadline_at,
+                }
+            ).execute()
             self.logger.info(f"Saga started: {saga_type} ({saga_id})")
             return saga_id
         except Exception as e:
@@ -792,23 +842,29 @@ class BaseAgent(ABC):
     ) -> None:
         """Advance saga to next step and record compensation info."""
         try:
-            result = self.database.supabase.table("saga_state") \
-                .select("compensations") \
-                .eq("saga_id", saga_id) \
+            result = (
+                self.database.supabase.table("saga_state")
+                .select("compensations")
+                .eq("saga_id", saga_id)
                 .execute()
+            )
 
             compensations = result.data[0]["compensations"] if result.data else []
             if compensation_info:
-                compensations.append({
-                    "step": step,
-                    "compensation": compensation_info,
-                })
+                compensations.append(
+                    {
+                        "step": step,
+                        "compensation": compensation_info,
+                    }
+                )
 
-            self.database.supabase.table("saga_state").update({
-                "current_step": step,
-                "compensations": compensations,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("saga_id", saga_id).execute()
+            self.database.supabase.table("saga_state").update(
+                {
+                    "current_step": step,
+                    "compensations": compensations,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            ).eq("saga_id", saga_id).execute()
 
             self.logger.info(f"Saga {saga_id} advanced to step: {step}")
         except Exception as e:
@@ -818,11 +874,13 @@ class BaseAgent(ABC):
     async def complete_saga(self, saga_id: str) -> None:
         """Mark saga as completed."""
         try:
-            self.database.supabase.table("saga_state").update({
-                "status": "COMPLETED",
-                "current_step": "DONE",
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("saga_id", saga_id).execute()
+            self.database.supabase.table("saga_state").update(
+                {
+                    "status": "COMPLETED",
+                    "current_step": "DONE",
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            ).eq("saga_id", saga_id).execute()
             self.logger.info(f"Saga completed: {saga_id}")
         except Exception as e:
             self.logger.error(f"Failed to complete saga {saga_id}: {e}")
@@ -831,10 +889,12 @@ class BaseAgent(ABC):
     async def compensate_saga(self, saga_id: str, error: str) -> None:
         """Run compensations in reverse order and mark saga as compensated."""
         try:
-            result = self.database.supabase.table("saga_state") \
-                .select("compensations, saga_type") \
-                .eq("saga_id", saga_id) \
+            result = (
+                self.database.supabase.table("saga_state")
+                .select("compensations, saga_type")
+                .eq("saga_id", saga_id)
                 .execute()
+            )
 
             if not result.data:
                 self.logger.warning(f"Saga {saga_id} not found for compensation")
@@ -848,11 +908,13 @@ class BaseAgent(ABC):
                 f"{len(compensations)} compensation(s) to run."
             )
 
-            self.database.supabase.table("saga_state").update({
-                "status": "COMPENSATED",
-                "error": error,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("saga_id", saga_id).execute()
+            self.database.supabase.table("saga_state").update(
+                {
+                    "status": "COMPENSATED",
+                    "error": error,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            ).eq("saga_id", saga_id).execute()
 
             self.logger.info(f"Saga compensated: {saga_id}")
         except Exception as e:
@@ -873,14 +935,16 @@ class BaseAgent(ABC):
     ) -> None:
         """Append a domain event to the event store (append-only)."""
         try:
-            self.database.supabase.table("event_store").insert({
-                "aggregate_type": aggregate_type,
-                "aggregate_id": aggregate_id,
-                "event_type": event_type,
-                "payload": payload,
-                "sequence_number": sequence_number,
-                "correlation_id": self._current_correlation_id,
-            }).execute()
+            self.database.supabase.table("event_store").insert(
+                {
+                    "aggregate_type": aggregate_type,
+                    "aggregate_id": aggregate_id,
+                    "event_type": event_type,
+                    "payload": payload,
+                    "sequence_number": sequence_number,
+                    "correlation_id": self._current_correlation_id,
+                }
+            ).execute()
         except Exception as e:
             self.logger.error(
                 f"Failed to append event {event_type} for {aggregate_type}/{aggregate_id}: {e}"
@@ -897,22 +961,19 @@ class BaseAgent(ABC):
         Override in subclass if needed.
         """
         pass
-    
+
     # =========================================================================
     # HEALTH & MONITORING
     # =========================================================================
-    
+
     def get_health(self) -> Dict[str, Any]:
         """Get agent health status"""
         is_healthy = (
             self.status in [AgentStatus.ACTIVE, AgentStatus.IDLE]
             and self.metrics.success_rate >= 0.9
-            and (
-                self._circuit_breaker is None
-                or self._circuit_breaker.is_available
-            )
+            and (self._circuit_breaker is None or self._circuit_breaker.is_available)
         )
-        
+
         return {
             "agent_name": self.agent_name,
             "version": self.config.version,
@@ -920,7 +981,7 @@ class BaseAgent(ABC):
             "healthy": is_healthy,
             "capabilities": [c.value for c in self.config.capabilities],
         }
-    
+
     def get_detailed_health(self) -> Dict[str, Any]:
         """Get detailed health with metrics"""
         health = self.get_health()
@@ -950,11 +1011,11 @@ class BaseAgent(ABC):
         the returned dict with their own subsystem checks.
         """
         return self.get_health()
-    
+
     # =========================================================================
     # UTILITY
     # =========================================================================
-    
+
     @asynccontextmanager
     async def timed_operation(self, operation_name: str):
         """Context manager for timing operations"""
@@ -965,7 +1026,7 @@ class BaseAgent(ABC):
             duration = (asyncio.get_event_loop().time() - start) * 1000
             if self.config.debug:
                 self.logger.debug(f"{operation_name} completed in {duration:.1f}ms")
-    
+
     def __repr__(self) -> str:
         return (
             f"<{self.__class__.__name__}("

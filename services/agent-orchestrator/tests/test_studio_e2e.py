@@ -11,6 +11,7 @@ Mocks Supabase client at the route layer. Exercises the complete flow:
 
 Requires: studio_router registered in main.py (Plan 02 Task 2).
 """
+
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
@@ -38,6 +39,7 @@ SUBMISSION_ID = "sub-e2e-001"
 
 def _make_jwt(payload: dict) -> str:
     import jwt as pyjwt
+
     return pyjwt.encode(payload, SECRET, algorithm="HS256")
 
 
@@ -70,7 +72,9 @@ def mock_supabase_e2e():
         "id": SUBMISSION_ID,
         "field_confidence": field_confidence_map,
     }
-    submissions_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
+    submissions_mock.update.return_value.eq.return_value.execute.return_value.data = [
+        {}
+    ]
 
     # override_events: insert + audit trail
     events_mock = MagicMock()
@@ -79,16 +83,32 @@ def mock_supabase_e2e():
     ]
     # GET /sessions/{id} → override_events audit trail (select.eq.order.execute.data)
     events_mock.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
-        {"id": "ov-wine_name", "field_name": "wine_name", "promotion_status": "auto_promoted"},
-        {"id": "ov-vintage", "field_name": "vintage", "promotion_status": "auto_promoted"},
-        {"id": "ov-region", "field_name": "region", "promotion_status": "auto_promoted"},
+        {
+            "id": "ov-wine_name",
+            "field_name": "wine_name",
+            "promotion_status": "auto_promoted",
+        },
+        {
+            "id": "ov-vintage",
+            "field_name": "vintage",
+            "promotion_status": "auto_promoted",
+        },
+        {
+            "id": "ov-region",
+            "field_name": "region",
+            "promotion_status": "auto_promoted",
+        },
     ]
     # GET /queue → 0 pending items (count=0)
     events_mock.select.return_value.eq.return_value.execute.return_value.count = 0
-    events_mock.select.return_value.eq.return_value.order.return_value.range.return_value.execute.return_value.data = []
+    events_mock.select.return_value.eq.return_value.order.return_value.range.return_value.execute.return_value.data = (
+        []
+    )
 
     user_roles_mock = MagicMock()
-    user_roles_mock.select.return_value.eq.return_value.is_.return_value.execute.return_value.data = []
+    user_roles_mock.select.return_value.eq.return_value.is_.return_value.execute.return_value.data = (
+        []
+    )
 
     def _table_side_effect(name: str):
         mapping = {
@@ -121,9 +141,13 @@ class TestStudioE2EOverrideFlow:
         """
         auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=mock_supabase_e2e), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=[]):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch(
+            "api.studio_routes._get_supabase", return_value=mock_supabase_e2e
+        ), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=[]
+        ):
 
             # Step 1: create session
             sess_resp = test_client.post(
@@ -192,8 +216,9 @@ class TestStudioE2EOverrideFlow:
         """
         auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=mock_supabase_e2e):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=mock_supabase_e2e):
 
             queue_resp = test_client.get("/api/v1/studio/queue", headers=auth)
             assert queue_resp.status_code == 200, queue_resp.text
@@ -236,7 +261,9 @@ def mock_supabase_cc():
             "wine_name": {"value": "Old Wine", "confidence": 0.4, "source": "inferred"}
         },
     }
-    submissions_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
+    submissions_mock.update.return_value.eq.return_value.execute.return_value.data = [
+        {}
+    ]
 
     events_mock = MagicMock()
     # POST /overrides → certified_contributor override lands pending
@@ -259,7 +286,11 @@ def mock_supabase_cc():
 
     user_roles_mock = MagicMock()
     user_roles_mock.select.return_value.eq.return_value.is_.return_value.execute.return_value.data = [
-        {"role": "certified_contributor", "promotion_policy": "queue", "consecutive_approved_overrides": 0}
+        {
+            "role": "certified_contributor",
+            "promotion_policy": "queue",
+            "consecutive_approved_overrides": 0,
+        }
     ]
 
     def _table_side_effect(name: str):
@@ -291,17 +322,27 @@ class TestCertifiedContributorFlow:
         admin_auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
 
         cc_roles_row = [
-            {"role": "certified_contributor", "promotion_policy": "queue",
-             "consecutive_approved_overrides": 0}
+            {
+                "role": "certified_contributor",
+                "promotion_policy": "queue",
+                "consecutive_approved_overrides": 0,
+            }
         ]
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=mock_supabase_cc), \
-             patch("api.studio_routes._get_user_studio_roles", side_effect=lambda _sb, uid: (
-                 cc_roles_row if uid == CERTIFIED_PAYLOAD["sub"] else []
-             )), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch(
+            "api.studio_routes._get_supabase", return_value=mock_supabase_cc
+        ), patch(
+            "api.studio_routes._get_user_studio_roles",
+            side_effect=lambda _sb, uid: (
+                cc_roles_row if uid == CERTIFIED_PAYLOAD["sub"] else []
+            ),
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             # Step 1: certified_contributor starts session
             sess_resp = test_client.post(
@@ -325,9 +366,9 @@ class TestCertifiedContributorFlow:
             )
             assert ov_resp.status_code == 200, ov_resp.text
             ov_body = ov_resp.json()
-            assert ov_body["status"] == "pending", (
-                f"Expected certified_contributor override to be 'pending', got: {ov_body['status']}"
-            )
+            assert (
+                ov_body["status"] == "pending"
+            ), f"Expected certified_contributor override to be 'pending', got: {ov_body['status']}"
             override_id = ov_body.get("override_id", CC_OVERRIDE_ID)
 
             # Step 3: review_admin approves the pending override
@@ -338,7 +379,7 @@ class TestCertifiedContributorFlow:
             )
             assert approve_resp.status_code == 200, approve_resp.text
             approve_body = approve_resp.json()
-            assert approve_body["decision"] == "approved", (
-                f"Expected decision='approved', got: {approve_body}"
-            )
+            assert (
+                approve_body["decision"] == "approved"
+            ), f"Expected decision='approved', got: {approve_body}"
             assert approve_body["override_id"] == override_id

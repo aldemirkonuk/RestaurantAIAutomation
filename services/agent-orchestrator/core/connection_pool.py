@@ -10,9 +10,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +19,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # SUPABASE CONNECTION POOL
 # =============================================================================
+
 
 class SupabasePool:
     """
@@ -49,6 +49,7 @@ class SupabasePool:
         """Get or create the Supabase client."""
         if self._client is None:
             from supabase import create_client
+
             self._client = create_client(self._url, self._key)
         return self._client
 
@@ -60,7 +61,7 @@ class SupabasePool:
                 self._request_count += 1
                 result = operation(*args, **kwargs)
                 # If it's a query builder, execute it
-                if hasattr(result, 'execute'):
+                if hasattr(result, "execute"):
                     result = result.execute()
                 return result
             except Exception as e:
@@ -103,6 +104,7 @@ class SupabasePool:
 # REDIS CONNECTION POOL
 # =============================================================================
 
+
 class RedisPool:
     """
     Wraps Redis with connection pooling.
@@ -127,6 +129,7 @@ class RedisPool:
         """Initialize the Redis connection pool."""
         try:
             import redis.asyncio as aioredis
+
             self._pool = aioredis.ConnectionPool.from_url(
                 self._url,
                 max_connections=self._max_connections,
@@ -136,7 +139,9 @@ class RedisPool:
             self._client = aioredis.Redis(connection_pool=self._pool)
             # Test connection
             await self._client.ping()
-            logger.info(f"Redis pool connected (max_connections={self._max_connections})")
+            logger.info(
+                f"Redis pool connected (max_connections={self._max_connections})"
+            )
         except Exception as e:
             logger.error(f"Failed to connect Redis pool: {e}")
             self._pool = None
@@ -214,6 +219,7 @@ class RedisPool:
 # RABBITMQ CHANNEL POOL
 # =============================================================================
 
+
 class RabbitMQChannelPool:
     """
     Reuses AMQP channels across agents instead of creating new ones.
@@ -237,6 +243,7 @@ class RabbitMQChannelPool:
         """Initialize the RabbitMQ connection and pre-create channels."""
         try:
             import aio_pika
+
             self._connection = await aio_pika.connect_robust(
                 self._url,
                 timeout=30,
@@ -247,7 +254,7 @@ class RabbitMQChannelPool:
                 channel = await self._connection.channel()
                 await self._available_channels.put(channel)
                 self._created_channels += 1
-            
+
             logger.info(
                 f"RabbitMQ channel pool connected "
                 f"(initial={initial_channels}, max={self._pool_size})"
@@ -274,10 +281,10 @@ class RabbitMQChannelPool:
                     channel = await asyncio.wait_for(
                         self._available_channels.get(), timeout=10.0
                     )
-            
+
             self._checkouts += 1
             yield channel
-            
+
         except Exception as e:
             logger.error(f"RabbitMQ channel pool error: {e}")
             # If channel is broken, don't return it
@@ -311,16 +318,17 @@ class RabbitMQChannelPool:
                     await channel.close()
             except Exception:
                 pass
-        
+
         if self._connection and not self._connection.is_closed:
             await self._connection.close()
-        
+
         logger.info("RabbitMQ channel pool disconnected")
 
     def get_stats(self) -> Dict[str, Any]:
         return {
             "type": "rabbitmq",
-            "connected": self._connection is not None and not (self._connection.is_closed if self._connection else True),
+            "connected": self._connection is not None
+            and not (self._connection.is_closed if self._connection else True),
             "pool_size": self._pool_size,
             "created_channels": self._created_channels,
             "available_channels": self._available_channels.qsize(),
@@ -332,6 +340,7 @@ class RabbitMQChannelPool:
 # =============================================================================
 # UNIFIED POOL MANAGER
 # =============================================================================
+
 
 class ConnectionPoolManager:
     """

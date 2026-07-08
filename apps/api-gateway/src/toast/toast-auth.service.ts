@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
-import { CacheService } from '../common/cache/cache.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import axios from "axios";
+import { CacheService } from "../common/cache/cache.service";
 
 interface ToastTokenResponse {
   accessToken: string;
@@ -11,9 +11,9 @@ interface ToastTokenResponse {
 @Injectable()
 export class ToastAuthService {
   private readonly logger = new Logger(ToastAuthService.name);
-  private readonly cachePrefix = 'toast:token:';
-  private readonly sandboxApiUrl = 'https://ws-api-sandbox.toasttab.com';
-  private readonly productionApiUrl = 'https://ws-api.toasttab.com';
+  private readonly cachePrefix = "toast:token:";
+  private readonly sandboxApiUrl = "https://ws-api-sandbox.toasttab.com";
+  private readonly productionApiUrl = "https://ws-api.toasttab.com";
 
   constructor(
     private readonly configService: ConfigService,
@@ -39,7 +39,10 @@ export class ToastAuthService {
     return this.getAccessToken(restaurantGuid);
   }
 
-  private async fetchToken(restaurantGuid: string, forceRefresh = false): Promise<string> {
+  private async fetchToken(
+    restaurantGuid: string,
+    forceRefresh = false,
+  ): Promise<string> {
     const cacheKey = `${this.cachePrefix}${restaurantGuid}`;
     if (!forceRefresh) {
       const cached = await this.cacheService.get<{ token: string }>(cacheKey);
@@ -48,10 +51,17 @@ export class ToastAuthService {
       }
     }
 
-    const clientId = this.configService.get<string>('TOAST_CLIENT_ID', '');
-    const clientSecret = this.configService.get<string>('TOAST_CLIENT_SECRET', '');
-    const environment = this.configService.get<string>('TOAST_ENVIRONMENT', 'sandbox');
-    const apiUrl = environment === 'production' ? this.productionApiUrl : this.sandboxApiUrl;
+    const clientId = this.configService.get<string>("TOAST_CLIENT_ID", "");
+    const clientSecret = this.configService.get<string>(
+      "TOAST_CLIENT_SECRET",
+      "",
+    );
+    const environment = this.configService.get<string>(
+      "TOAST_ENVIRONMENT",
+      "sandbox",
+    );
+    const apiUrl =
+      environment === "production" ? this.productionApiUrl : this.sandboxApiUrl;
 
     try {
       const response = await axios.post(
@@ -59,11 +69,11 @@ export class ToastAuthService {
         {
           clientId,
           clientSecret,
-          userAccessType: 'TOAST_MACHINE_CLIENT',
+          userAccessType: "TOAST_MACHINE_CLIENT",
         },
         {
           headers: {
-            'Toast-Restaurant-External-ID': restaurantGuid,
+            "Toast-Restaurant-External-ID": restaurantGuid,
           },
         },
       );
@@ -75,7 +85,7 @@ export class ToastAuthService {
       return data.accessToken;
     } catch (error) {
       this.logger.error({
-        message: 'Failed to fetch Toast token',
+        message: "Failed to fetch Toast token",
         restaurantGuid,
         error: error.message,
       });

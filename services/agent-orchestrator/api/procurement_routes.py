@@ -9,7 +9,6 @@ Routes:
                                            for a single order without RabbitMQ
 """
 
-import asyncio
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -45,23 +44,31 @@ async def _run_draft_generation(payload: Dict[str, Any]) -> None:
     try:
         # Try to reuse the running orchestrator's agent instance first
         from main import get_orchestrator  # noqa: PLC0415
+
         orch = get_orchestrator()
         if orch is not None:
             agent = orch.agents.get("provider_communication_agent")
             if agent is not None:
                 await agent._handle_order_created(payload)
-                logger.info("Draft triggered via running orchestrator agent for order %s", payload.get("order_id"))
+                logger.info(
+                    "Draft triggered via running orchestrator agent for order %s",
+                    payload.get("order_id"),
+                )
                 return
 
         # Orchestrator not running (RabbitMQ was unavailable at startup) —
         # create an ephemeral agent with a direct Supabase connection.
         settings = get_settings()
         if not settings.supabase_url or not settings.supabase_key:
-            logger.error("Supabase not configured — cannot generate draft without RabbitMQ")
+            logger.error(
+                "Supabase not configured — cannot generate draft without RabbitMQ"
+            )
             return
 
         from core.database import DatabaseClient  # noqa: PLC0415
-        from agents.provider_communication_agent import ProviderCommunicationAgent  # noqa: PLC0415
+        from agents.provider_communication_agent import (
+            ProviderCommunicationAgent,
+        )  # noqa: PLC0415
 
         redis_url = settings.redis_url or "redis://127.0.0.1:6379"
         supabase_key = settings.supabase_service_role_key or settings.supabase_key
@@ -71,13 +78,19 @@ async def _run_draft_generation(payload: Dict[str, Any]) -> None:
             agent = ProviderCommunicationAgent(message_bus=None, database=db)
             await agent.initialize()
             await agent._handle_order_created(payload)
-            logger.info("Draft triggered via ephemeral agent (HTTP-only mode) for order %s", payload.get("order_id"))
+            logger.info(
+                "Draft triggered via ephemeral agent (HTTP-only mode) for order %s",
+                payload.get("order_id"),
+            )
         finally:
             await db.disconnect()
 
     except Exception as exc:
-        logger.error("Draft generation via HTTP fallback failed for order %s: %s",
-                     payload.get("order_id"), exc)
+        logger.error(
+            "Draft generation via HTTP fallback failed for order %s: %s",
+            payload.get("order_id"),
+            exc,
+        )
 
 
 @router.post("/trigger-draft")

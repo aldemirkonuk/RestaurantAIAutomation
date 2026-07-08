@@ -13,17 +13,18 @@ Tier 3: Provisional (confidence 0.50–0.69, human review recommended)
 Tier 4: Unresolved (confidence <0.50 or critical field null)
 """
 
-from typing import Dict, Optional, List, Any
+from typing import Dict, Any
 from enum import IntEnum
 
 
 class GovernanceTier(IntEnum):
     """Wine library governance tiers."""
-    CANONICAL = 0       # Human-verified, producer-confirmed
+
+    CANONICAL = 0  # Human-verified, producer-confirmed
     AUTO_VALIDATED = 1  # High confidence, all Layer 1 fields present
-    WEB_ENRICHED = 2    # Medium-high confidence, web enrichment available
-    PROVISIONAL = 3     # Low-medium confidence, human review recommended
-    UNRESOLVED = 4      # Very low confidence or missing critical fields
+    WEB_ENRICHED = 2  # Medium-high confidence, web enrichment available
+    PROVISIONAL = 3  # Low-medium confidence, human review recommended
+    UNRESOLVED = 4  # Very low confidence or missing critical fields
 
 
 # Layer 1 identity fields — the core of wine identification
@@ -43,8 +44,8 @@ LAYER_1_CONFIDENCE_FLOOR = 0.70
 # Overall confidence thresholds for tier assignment
 TIER_THRESHOLDS = {
     GovernanceTier.AUTO_VALIDATED: 0.95,  # ≥0.95 → Tier 1
-    GovernanceTier.WEB_ENRICHED: 0.70,    # 0.70–0.94 → Tier 2
-    GovernanceTier.PROVISIONAL: 0.50,      # 0.50–0.69 → Tier 3
+    GovernanceTier.WEB_ENRICHED: 0.70,  # 0.70–0.94 → Tier 2
+    GovernanceTier.PROVISIONAL: 0.50,  # 0.50–0.69 → Tier 3
     # < 0.50 → Tier 4
 }
 
@@ -159,7 +160,8 @@ def assign_governance_tier(
 
     # Step 3: Count Layer 1 fields present
     layer_1_present = sum(
-        1 for f in LAYER_1_FIELDS
+        1
+        for f in LAYER_1_FIELDS
         if field_values.get(f) is not None
         and field_values.get(f) != ""
         and field_values.get(f) != "unknown"
@@ -180,7 +182,10 @@ def assign_governance_tier(
     all_layer_1_present = layer_1_present >= len(LAYER_1_FIELDS)
 
     # Step 4: Assign tier based on confidence + Layer 1 completeness
-    if overall_confidence >= TIER_THRESHOLDS[GovernanceTier.AUTO_VALIDATED] and all_layer_1_present:
+    if (
+        overall_confidence >= TIER_THRESHOLDS[GovernanceTier.AUTO_VALIDATED]
+        and all_layer_1_present
+    ):
         tier = GovernanceTier.AUTO_VALIDATED
     elif overall_confidence >= TIER_THRESHOLDS[GovernanceTier.WEB_ENRICHED]:
         tier = GovernanceTier.WEB_ENRICHED
@@ -192,7 +197,9 @@ def assign_governance_tier(
     # Step 5: If capped, tier cannot be above PROVISIONAL
     if is_capped and tier < GovernanceTier.PROVISIONAL:
         tier = GovernanceTier.PROVISIONAL
-        warnings.append("TIER_OVERRIDE: Capped to Tier 3 (Provisional) due to Layer 1 Cap Rule")
+        warnings.append(
+            "TIER_OVERRIDE: Capped to Tier 3 (Provisional) due to Layer 1 Cap Rule"
+        )
 
     tier_names = {
         GovernanceTier.CANONICAL: "canonical",
@@ -209,7 +216,8 @@ def assign_governance_tier(
         "canonical_name_verified": False,
         "warnings": warnings,
         "review_required": tier >= GovernanceTier.PROVISIONAL,
-        "web_enrichment_eligible": tier in (
+        "web_enrichment_eligible": tier
+        in (
             GovernanceTier.WEB_ENRICHED,
             GovernanceTier.PROVISIONAL,
         ),

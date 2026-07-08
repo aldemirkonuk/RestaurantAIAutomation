@@ -1,4 +1,5 @@
 """POS Provider abstraction — Protocol + POSEvent schema (POS-ABSTRACT)."""
+
 from typing import Protocol, runtime_checkable
 from pydantic import BaseModel
 from datetime import datetime
@@ -6,6 +7,7 @@ from datetime import datetime
 
 class POSEvent(BaseModel):
     """Normalized POS event — all provider-specific formats reduced to this."""
+
     event_type: str
     restaurant_guid: str
     timestamp: datetime

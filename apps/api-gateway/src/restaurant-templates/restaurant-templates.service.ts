@@ -1,10 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
 import {
   CreateTemplateDto,
   TemplateResponseDto,
   UpdateTemplateDto,
-} from './dto/restaurant-templates.dto';
+} from "./dto/restaurant-templates.dto";
 
 @Injectable()
 export class RestaurantTemplatesService {
@@ -14,14 +14,17 @@ export class RestaurantTemplatesService {
 
   async listTemplates(restaurantId: string): Promise<TemplateResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('communication_templates')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
+      .from("communication_templates")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
 
     if (error) {
-      this.logger.error('Failed to list templates', { restaurantId, error: error.message });
+      this.logger.error("Failed to list templates", {
+        restaurantId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -33,7 +36,7 @@ export class RestaurantTemplatesService {
     dto: CreateTemplateDto,
   ): Promise<TemplateResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('communication_templates')
+      .from("communication_templates")
       .insert({
         restaurant_id: restaurantId,
         name: dto.name,
@@ -41,11 +44,14 @@ export class RestaurantTemplatesService {
         body: dto.body,
         type: dto.type,
       })
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to create template', { restaurantId, error: error.message });
+      this.logger.error("Failed to create template", {
+        restaurantId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -64,30 +70,39 @@ export class RestaurantTemplatesService {
     if (dto.type !== undefined) updatePayload.type = dto.type;
 
     const { data, error } = await this.databaseService.supabase
-      .from('communication_templates')
+      .from("communication_templates")
       .update(updatePayload)
-      .eq('id', templateId)
-      .eq('restaurant_id', restaurantId)
-      .select('*')
+      .eq("id", templateId)
+      .eq("restaurant_id", restaurantId)
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to update template', { templateId, error: error.message });
+      this.logger.error("Failed to update template", {
+        templateId,
+        error: error.message,
+      });
       throw error;
     }
 
     return this.mapRow(data);
   }
 
-  async deleteTemplate(restaurantId: string, templateId: string): Promise<void> {
+  async deleteTemplate(
+    restaurantId: string,
+    templateId: string,
+  ): Promise<void> {
     const { error } = await this.databaseService.supabase
-      .from('communication_templates')
+      .from("communication_templates")
       .update({ is_active: false })
-      .eq('id', templateId)
-      .eq('restaurant_id', restaurantId);
+      .eq("id", templateId)
+      .eq("restaurant_id", restaurantId);
 
     if (error) {
-      this.logger.error('Failed to delete template', { templateId, error: error.message });
+      this.logger.error("Failed to delete template", {
+        templateId,
+        error: error.message,
+      });
       throw error;
     }
   }

@@ -2,8 +2,8 @@
  * Payment Due Reminder Email Template
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from './template-config';
-import { baseTemplate, metricBox, tableRow, alertBox } from './base-template';
+import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface PaymentDueData {
   restaurantName: string;
@@ -27,23 +27,31 @@ export function paymentDueTemplate(data: PaymentDueData): string {
 
   const isUrgent = data.daysUntilDue <= 1;
   const isWarning = data.daysUntilDue <= 3;
-  const urgencyColor = isUrgent ? colors.danger : isWarning ? colors.warning : colors.info;
-  const urgencyBg = isUrgent ? '#fef2f2' : isWarning ? '#fef3c7' : '#eff6ff';
-  const urgencyLabel = isUrgent ? 'DUE TODAY' : isWarning ? 'DUE SOON' : 'UPCOMING';
+  const urgencyColor = isUrgent
+    ? colors.danger
+    : isWarning
+      ? colors.warning
+      : colors.info;
+  const urgencyBg = isUrgent ? "#fef2f2" : isWarning ? "#fef3c7" : "#eff6ff";
+  const urgencyLabel = isUrgent
+    ? "DUE TODAY"
+    : isWarning
+      ? "DUE SOON"
+      : "UPCOMING";
 
   const metricsHtml = `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 20px 0;">
       <tr>
         ${metricBox({
           value: formatCurrency(data.amount),
-          label: 'Amount Due',
+          label: "Amount Due",
           backgroundColor: urgencyBg,
           textColor: urgencyColor,
         })}
         <td width="15px"></td>
         ${metricBox({
-          value: data.daysUntilDue <= 0 ? 'TODAY' : `${data.daysUntilDue} days`,
-          label: 'Until Due Date',
+          value: data.daysUntilDue <= 0 ? "TODAY" : `${data.daysUntilDue} days`,
+          label: "Until Due Date",
           backgroundColor: urgencyBg,
           textColor: urgencyColor,
         })}
@@ -51,7 +59,9 @@ export function paymentDueTemplate(data: PaymentDueData): string {
     </table>
   `;
 
-  const itemsHtml = data.items && data.items.length > 0 ? `
+  const itemsHtml =
+    data.items && data.items.length > 0
+      ? `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid ${colors.gray[200]}; border-radius: 8px; overflow: hidden; margin: 20px 0;">
       <thead>
         <tr style="background-color: ${colors.gray[50]};">
@@ -61,16 +71,21 @@ export function paymentDueTemplate(data: PaymentDueData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.items.map((item, index) => `
-          <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+        ${data.items
+          .map(
+            (item, index) => `
+          <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${item.name}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
             <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.amount)}</td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join("")}
       </tbody>
     </table>
-  ` : '';
+  `
+      : "";
 
   const content = `
     <!-- Urgency Badge -->
@@ -88,25 +103,34 @@ export function paymentDueTemplate(data: PaymentDueData): string {
     ${metricsHtml}
 
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${tableRow('Provider', data.providerName)}
-      ${tableRow('Due Date', formatDate(data.dueDate))}
-      ${data.paymentTerms ? tableRow('Payment Terms', data.paymentTerms) : ''}
-      ${data.paymentMethod ? tableRow('Payment Method', data.paymentMethod) : ''}
+      ${tableRow("Provider", data.providerName)}
+      ${tableRow("Due Date", formatDate(data.dueDate))}
+      ${data.paymentTerms ? tableRow("Payment Terms", data.paymentTerms) : ""}
+      ${data.paymentMethod ? tableRow("Payment Method", data.paymentMethod) : ""}
     </table>
 
     ${itemsHtml}
 
-    ${data.notes ? alertBox({
-      type: 'info',
-      title: 'Notes',
-      message: data.notes,
-    }) : ''}
+    ${
+      data.notes
+        ? alertBox({
+            type: "info",
+            title: "Notes",
+            message: data.notes,
+          })
+        : ""
+    }
 
-    ${isUrgent ? alertBox({
-      type: 'danger',
-      title: 'Payment Due Today',
-      message: 'This payment is due today. Please process it immediately to avoid late fees and maintain your relationship with the provider.',
-    }) : ''}
+    ${
+      isUrgent
+        ? alertBox({
+            type: "danger",
+            title: "Payment Due Today",
+            message:
+              "This payment is due today. Please process it immediately to avoid late fees and maintain your relationship with the provider.",
+          })
+        : ""
+    }
   `;
 
   return baseTemplate({
@@ -114,8 +138,8 @@ export function paymentDueTemplate(data: PaymentDueData): string {
     preheader: `Invoice #${data.invoiceNumber} - ${formatCurrency(data.amount)} due ${formatDate(data.dueDate)}`,
     content,
     ctaButton: {
-      text: 'Process Payment',
-      url: '#',
+      text: "Process Payment",
+      url: "#",
       color: urgencyColor,
     },
   });

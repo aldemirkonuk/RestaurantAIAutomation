@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../../database/database.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { DatabaseService } from "../../database/database.service";
 
 /** A persisted attachment reference stored on a prospect (bytes live in Storage). */
 export interface ProspectAttachmentRef {
@@ -18,9 +18,9 @@ export interface ProspectAttachmentRef {
  * - `none`: no restaurants exist at all — nothing to attribute to.
  */
 type Attribution =
-  | { kind: 'attributed'; id: string }
-  | { kind: 'ambiguous' }
-  | { kind: 'none' };
+  | { kind: "attributed"; id: string }
+  | { kind: "ambiguous" }
+  | { kind: "none" };
 
 export interface CaptureResult {
   captured: boolean;
@@ -54,7 +54,7 @@ export interface CaptureResult {
 @Injectable()
 export class ProspectsService {
   private readonly logger = new Logger(ProspectsService.name);
-  private static readonly ATTACHMENT_BUCKET = 'vendor-attachments';
+  private static readonly ATTACHMENT_BUCKET = "vendor-attachments";
 
   constructor(
     private readonly databaseService: DatabaseService,
@@ -63,11 +63,11 @@ export class ProspectsService {
 
   /** Bare domain from an email address or `Name <a@b.com>`. */
   domainOf(emailOrDomain: string | null | undefined): string {
-    const s = (emailOrDomain ?? '').toString().trim().toLowerCase();
-    if (!s) return '';
+    const s = (emailOrDomain ?? "").toString().trim().toLowerCase();
+    if (!s) return "";
     const angled = s.match(/<([^>]+)>/);
     const addr = angled ? angled[1] : s;
-    return addr.includes('@') ? (addr.split('@')[1] ?? '').trim() : addr;
+    return addr.includes("@") ? (addr.split("@")[1] ?? "").trim() : addr;
   }
 
   /**
@@ -75,18 +75,22 @@ export class ProspectsService {
    * multiple tenants: ambiguity resolves to triage, not an arbitrary tenant.
    */
   private async resolveAttribution(): Promise<Attribution> {
-    const configured = this.configService.get<string>('DEFAULT_RESTAURANT_ID');
-    if (configured) return { kind: 'attributed', id: configured };
+    const configured = this.configService.get<string>("DEFAULT_RESTAURANT_ID");
+    if (configured) return { kind: "attributed", id: configured };
     try {
-      const { data } = await this.databaseService.supabase.from('restaurants').select('id').limit(2);
+      const { data } = await this.databaseService.supabase
+        .from("restaurants")
+        .select("id")
+        .limit(2);
       if (Array.isArray(data)) {
-        if (data.length === 1) return { kind: 'attributed', id: (data[0] as any).id };
-        if (data.length > 1) return { kind: 'ambiguous' };
+        if (data.length === 1)
+          return { kind: "attributed", id: (data[0] as any).id };
+        if (data.length > 1) return { kind: "ambiguous" };
       }
     } catch {
       /* ignore */
     }
-    return { kind: 'none' };
+    return { kind: "none" };
   }
 
   /**
@@ -117,50 +121,67 @@ export class ProspectsService {
     if (!domain) return { captured: false };
 
     const attribution: Attribution = params.restaurantId
-      ? { kind: 'attributed', id: params.restaurantId }
+      ? { kind: "attributed", id: params.restaurantId }
       : await this.resolveAttribution();
-    if (attribution.kind === 'none') {
+    if (attribution.kind === "none") {
       // No restaurant exists at all — nothing to attribute to. Loud, not silent.
-      this.logger.warn(`PROSPECT_DROP_NO_RESTAURANT domain=${domain} — no restaurant exists to attribute a cold email to.`);
+      this.logger.warn(
+        `PROSPECT_DROP_NO_RESTAURANT domain=${domain} — no restaurant exists to attribute a cold email to.`,
+      );
       return { captured: false };
     }
-    const restaurantId = attribution.kind === 'attributed' ? attribution.id : null;
+    const restaurantId =
+      attribution.kind === "attributed" ? attribution.id : null;
     const isTriage = restaurantId === null;
 
     // Idempotency: same physical email already captured → do nothing (don't re-bump).
     if (params.gmailMessageId) {
       try {
         const { data: dup } = await this.databaseService.supabase
-          .from('email_prospects')
-          .select('id')
-          .eq('gmail_message_id', params.gmailMessageId)
+          .from("email_prospects")
+          .select("id")
+          .eq("gmail_message_id", params.gmailMessageId)
           .limit(1);
-        if (dup && dup.length) return { captured: false, duplicate: true, restaurantId, domain, isTriage };
+        if (dup && dup.length)
+          return {
+            captured: false,
+            duplicate: true,
+            restaurantId,
+            domain,
+            isTriage,
+          };
       } catch {
         /* ignore — index/table may be mid-migration */
       }
     }
 
-    const snippet = (params.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 280) || null;
-    const bodyPreview = (params.bodyPreview ?? params.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 4000) || null;
-    const attachments = Array.isArray(params.attachments) ? params.attachments : [];
+    const snippet =
+      (params.body ?? "").replace(/\s+/g, " ").trim().slice(0, 280) || null;
+    const bodyPreview =
+      (params.bodyPreview ?? params.body ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 4000) || null;
+    const attachments = Array.isArray(params.attachments)
+      ? params.attachments
+      : [];
     const now = new Date().toISOString();
 
     try {
       // Dedup match: per-restaurant for attributed rows, global for the triage bucket
       // (which has restaurant_id IS NULL, where the composite index does not dedup).
       let existingQuery = this.databaseService.supabase
-        .from('email_prospects')
-        .select('id, message_count, status')
-        .eq('domain', domain);
+        .from("email_prospects")
+        .select("id, message_count, status")
+        .eq("domain", domain);
       existingQuery = isTriage
-        ? existingQuery.is('restaurant_id', null)
-        : existingQuery.eq('restaurant_id', restaurantId as string);
+        ? existingQuery.is("restaurant_id", null)
+        : existingQuery.eq("restaurant_id", restaurantId as string);
       const { data: existing } = await existingQuery.maybeSingle();
 
       if (existing) {
         await this.databaseService.supabase
-          .from('email_prospects')
+          .from("email_prospects")
           .update({
             message_count: ((existing as any).message_count ?? 1) + 1,
             last_seen_at: now,
@@ -170,16 +191,33 @@ export class ProspectsService {
             ...(params.subject ? { subject: params.subject } : {}),
             ...(snippet ? { snippet } : {}),
             ...(bodyPreview ? { body_preview: bodyPreview } : {}),
-            ...(params.captureReason ? { capture_reason: params.captureReason } : {}),
-            ...(params.gmailMessageId ? { gmail_message_id: params.gmailMessageId } : {}),
-            ...(params.gmailThreadId ? { gmail_thread_id: params.gmailThreadId } : {}),
-            ...(attachments.length ? { attachments, has_attachments: true } : (params.hasAttachments ? { has_attachments: true } : {})),
+            ...(params.captureReason
+              ? { capture_reason: params.captureReason }
+              : {}),
+            ...(params.gmailMessageId
+              ? { gmail_message_id: params.gmailMessageId }
+              : {}),
+            ...(params.gmailThreadId
+              ? { gmail_thread_id: params.gmailThreadId }
+              : {}),
+            ...(attachments.length
+              ? { attachments, has_attachments: true }
+              : params.hasAttachments
+                ? { has_attachments: true }
+                : {}),
           })
-          .eq('id', (existing as any).id);
-        return { captured: true, isNew: false, isTriage, restaurantId, domain, senderName: params.senderName ?? null };
+          .eq("id", (existing as any).id);
+        return {
+          captured: true,
+          isNew: false,
+          isTriage,
+          restaurantId,
+          domain,
+          senderName: params.senderName ?? null,
+        };
       }
 
-      await this.databaseService.supabase.from('email_prospects').insert({
+      await this.databaseService.supabase.from("email_prospects").insert({
         restaurant_id: restaurantId,
         domain,
         sender_email: params.senderEmail,
@@ -191,20 +229,34 @@ export class ProspectsService {
         attachments,
         gmail_message_id: params.gmailMessageId ?? null,
         gmail_thread_id: params.gmailThreadId ?? null,
-        has_attachments: params.hasAttachments === true || attachments.length > 0,
+        has_attachments:
+          params.hasAttachments === true || attachments.length > 0,
         message_count: 1,
-        status: 'new',
+        status: "new",
         first_seen_at: now,
         last_seen_at: now,
       });
       if (isTriage) {
-        this.logger.warn(`PROSPECT_TRIAGE_CAPTURE domain=${domain} — cold email unattributable (multi-restaurant, no DEFAULT_RESTAURANT_ID); held in triage, not leaked.`);
+        this.logger.warn(
+          `PROSPECT_TRIAGE_CAPTURE domain=${domain} — cold email unattributable (multi-restaurant, no DEFAULT_RESTAURANT_ID); held in triage, not leaked.`,
+        );
       } else {
-        this.logger.log(`PROSPECT_CAPTURE domain=${domain} restaurant=${restaurantId}.`);
+        this.logger.log(
+          `PROSPECT_CAPTURE domain=${domain} restaurant=${restaurantId}.`,
+        );
       }
-      return { captured: true, isNew: true, isTriage, restaurantId, domain, senderName: params.senderName ?? null };
+      return {
+        captured: true,
+        isNew: true,
+        isTriage,
+        restaurantId,
+        domain,
+        senderName: params.senderName ?? null,
+      };
     } catch (e: any) {
-      this.logger.warn(`captureFromColdEmail failed for ${domain}: ${e?.message}`);
+      this.logger.warn(
+        `captureFromColdEmail failed for ${domain}: ${e?.message}`,
+      );
       return { captured: false };
     }
   }
@@ -213,11 +265,13 @@ export class ProspectsService {
   async list(restaurantId: string): Promise<any[]> {
     try {
       const { data } = await this.databaseService.supabase
-        .from('email_prospects')
-        .select('id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at')
-        .eq('restaurant_id', restaurantId)
-        .eq('status', 'new')
-        .order('last_seen_at', { ascending: false })
+        .from("email_prospects")
+        .select(
+          "id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "new")
+        .order("last_seen_at", { ascending: false })
         .limit(100);
       return ((data as any[]) || []).map((r) => this.toDto(r));
     } catch {
@@ -232,11 +286,13 @@ export class ProspectsService {
   async listUnattributed(): Promise<any[]> {
     try {
       const { data } = await this.databaseService.supabase
-        .from('email_prospects')
-        .select('id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at')
-        .is('restaurant_id', null)
-        .eq('status', 'new')
-        .order('last_seen_at', { ascending: false })
+        .from("email_prospects")
+        .select(
+          "id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
+        )
+        .is("restaurant_id", null)
+        .eq("status", "new")
+        .order("last_seen_at", { ascending: false })
         .limit(200);
       return ((data as any[]) || []).map((r) => this.toDto(r));
     } catch {
@@ -245,17 +301,26 @@ export class ProspectsService {
   }
 
   /** Restaurant ids the user may see prospects for (their active + any other memberships). */
-  async accessibleRestaurantIds(userId: string, activeRestaurantId: string): Promise<string[]> {
+  async accessibleRestaurantIds(
+    userId: string,
+    activeRestaurantId: string,
+  ): Promise<string[]> {
     try {
       const { data } = await this.databaseService.supabase
-        .from('user_restaurant_access')
-        .select('restaurant_id')
-        .eq('user_id', userId)
-        .eq('is_active', true);
-      const ids = ((data as any[]) || []).map((r) => r.restaurant_id).filter(Boolean);
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+      const ids = ((data as any[]) || [])
+        .map((r) => r.restaurant_id)
+        .filter(Boolean);
       const set = new Set<string>(ids);
       if (activeRestaurantId) set.add(activeRestaurantId);
-      return set.size ? Array.from(set) : activeRestaurantId ? [activeRestaurantId] : [];
+      return set.size
+        ? Array.from(set)
+        : activeRestaurantId
+          ? [activeRestaurantId]
+          : [];
     } catch {
       return activeRestaurantId ? [activeRestaurantId] : [];
     }
@@ -270,11 +335,13 @@ export class ProspectsService {
     if (!restaurantIds.length) return [];
     try {
       const { data } = await this.databaseService.supabase
-        .from('email_prospects')
-        .select('id, restaurant_id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at')
-        .in('restaurant_id', restaurantIds)
-        .eq('status', 'new')
-        .order('last_seen_at', { ascending: false })
+        .from("email_prospects")
+        .select(
+          "id, restaurant_id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
+        )
+        .in("restaurant_id", restaurantIds)
+        .eq("status", "new")
+        .order("last_seen_at", { ascending: false })
         .limit(300);
       return ((data as any[]) || []).map((r) => this.toDto(r));
     } catch {
@@ -309,15 +376,22 @@ export class ProspectsService {
   }
 
   /** Short-lived signed URLs for a prospect's persisted attachments. Tenant-scoped. */
-  async attachmentsFor(restaurantId: string, prospectId: string): Promise<any[]> {
+  async attachmentsFor(
+    restaurantId: string,
+    prospectId: string,
+  ): Promise<any[]> {
     try {
       const { data: prospect } = await this.databaseService.supabase
-        .from('email_prospects')
-        .select('id, attachments')
-        .eq('restaurant_id', restaurantId)
-        .eq('id', prospectId)
+        .from("email_prospects")
+        .select("id, attachments")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", prospectId)
         .maybeSingle();
-      const refs: ProspectAttachmentRef[] = Array.isArray((prospect as any)?.attachments) ? (prospect as any).attachments : [];
+      const refs: ProspectAttachmentRef[] = Array.isArray(
+        (prospect as any)?.attachments,
+      )
+        ? (prospect as any).attachments
+        : [];
       const out: any[] = [];
       for (const a of refs) {
         let url: string | null = null;
@@ -329,7 +403,12 @@ export class ProspectsService {
         } catch {
           /* best-effort — a missing object just yields no url */
         }
-        out.push({ filename: a.filename, mime_type: a.mime_type ?? null, size_bytes: a.size_bytes ?? null, url });
+        out.push({
+          filename: a.filename,
+          mime_type: a.mime_type ?? null,
+          size_bytes: a.size_bytes ?? null,
+          url,
+        });
       }
       return out;
     } catch {
@@ -342,13 +421,16 @@ export class ProspectsService {
    * with the same email already exists for this restaurant, reuse it instead of manufacturing a
    * duplicate (which would destabilize the inbound provider match).
    */
-  async promote(restaurantId: string, prospectId: string): Promise<{ promoted: boolean; providerId?: string; reused?: boolean }> {
+  async promote(
+    restaurantId: string,
+    prospectId: string,
+  ): Promise<{ promoted: boolean; providerId?: string; reused?: boolean }> {
     try {
       const { data: prospect } = await this.databaseService.supabase
-        .from('email_prospects')
-        .select('id, domain, sender_email, sender_name, status')
-        .eq('restaurant_id', restaurantId)
-        .eq('id', prospectId)
+        .from("email_prospects")
+        .select("id, domain, sender_email, sender_name, status")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", prospectId)
         .maybeSingle();
       if (!prospect) return { promoted: false };
       const p = prospect as any;
@@ -358,11 +440,11 @@ export class ProspectsService {
       let reused = false;
       if (p.sender_email) {
         const { data: existing } = await this.databaseService.supabase
-          .from('providers')
-          .select('id')
-          .eq('restaurant_id', restaurantId)
-          .ilike('contact_email', p.sender_email)
-          .is('deleted_at', null)
+          .from("providers")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .ilike("contact_email", p.sender_email)
+          .is("deleted_at", null)
           .limit(1);
         if (existing?.[0]) {
           providerId = (existing[0] as any).id;
@@ -372,7 +454,7 @@ export class ProspectsService {
 
       if (!providerId) {
         const { data: provider, error } = await this.databaseService.supabase
-          .from('providers')
+          .from("providers")
           .insert({
             restaurant_id: restaurantId,
             name: p.sender_name || p.domain,
@@ -380,22 +462,24 @@ export class ProspectsService {
             is_custom: true,
             is_active: true,
           })
-          .select('id')
+          .select("id")
           .single();
         if (error) {
           // Lost a race against the unique index — re-select the winner.
           const { data: raced } = await this.databaseService.supabase
-            .from('providers')
-            .select('id')
-            .eq('restaurant_id', restaurantId)
-            .ilike('contact_email', p.sender_email ?? '')
-            .is('deleted_at', null)
+            .from("providers")
+            .select("id")
+            .eq("restaurant_id", restaurantId)
+            .ilike("contact_email", p.sender_email ?? "")
+            .is("deleted_at", null)
             .limit(1);
           if (raced?.[0]) {
             providerId = (raced[0] as any).id;
             reused = true;
           } else {
-            this.logger.error(`promote: provider insert failed — ${error.message}`);
+            this.logger.error(
+              `promote: provider insert failed — ${error.message}`,
+            );
             return { promoted: false };
           }
         } else {
@@ -404,9 +488,13 @@ export class ProspectsService {
       }
 
       await this.databaseService.supabase
-        .from('email_prospects')
-        .update({ status: 'promoted', promoted_provider_id: providerId, updated_at: new Date().toISOString() })
-        .eq('id', prospectId);
+        .from("email_prospects")
+        .update({
+          status: "promoted",
+          promoted_provider_id: providerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", prospectId);
 
       return { promoted: true, providerId: providerId ?? undefined, reused };
     } catch (e: any) {
@@ -416,13 +504,16 @@ export class ProspectsService {
   }
 
   /** Dismiss a prospect (won't be resurrected by a repeat outreach). */
-  async dismiss(restaurantId: string, prospectId: string): Promise<{ dismissed: boolean }> {
+  async dismiss(
+    restaurantId: string,
+    prospectId: string,
+  ): Promise<{ dismissed: boolean }> {
     try {
       await this.databaseService.supabase
-        .from('email_prospects')
-        .update({ status: 'dismissed', updated_at: new Date().toISOString() })
-        .eq('restaurant_id', restaurantId)
-        .eq('id', prospectId);
+        .from("email_prospects")
+        .update({ status: "dismissed", updated_at: new Date().toISOString() })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", prospectId);
       return { dismissed: true };
     } catch {
       return { dismissed: false };
@@ -430,14 +521,17 @@ export class ProspectsService {
   }
 
   /** Restore a dismissed prospect back to the open list (undo a dismiss). */
-  async restore(restaurantId: string, prospectId: string): Promise<{ restored: boolean }> {
+  async restore(
+    restaurantId: string,
+    prospectId: string,
+  ): Promise<{ restored: boolean }> {
     try {
       await this.databaseService.supabase
-        .from('email_prospects')
-        .update({ status: 'new', updated_at: new Date().toISOString() })
-        .eq('restaurant_id', restaurantId)
-        .eq('id', prospectId)
-        .eq('status', 'dismissed');
+        .from("email_prospects")
+        .update({ status: "new", updated_at: new Date().toISOString() })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", prospectId)
+        .eq("status", "dismissed");
       return { restored: true };
     } catch {
       return { restored: false };

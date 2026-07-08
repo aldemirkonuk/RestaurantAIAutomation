@@ -27,8 +27,10 @@ class Settings:
             "YOLO_MODEL_PATH",
             "datasets/wine_menus_2class/runs/train2/weights/best.pt",
         )
-        self.cv_menu_model_path: str = self.yolo_model_path   # alias used by scan_routes.py
-        self.cv_yolov8_mock_mode: bool = False                # D-07: no mock for YOLO path
+        self.cv_menu_model_path: str = (
+            self.yolo_model_path
+        )  # alias used by scan_routes.py
+        self.cv_yolov8_mock_mode: bool = False  # D-07: no mock for YOLO path
         # Agent config used by _get_menu_agent() in scan_routes.py
         self.google_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
         self.cv_ocr_languages: str = os.getenv("CV_OCR_LANGUAGES", "en")
@@ -38,10 +40,16 @@ class Settings:
         self.gmail_user: Optional[str] = os.getenv("GMAIL_USER")
         self.gmail_password: Optional[str] = os.getenv("GMAIL_PASSWORD")
         # Celery broker/backend (Phase 4+ background tasks)
-        self.celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-        self.celery_backend_url: str = os.getenv("CELERY_BACKEND_URL", "redis://localhost:6379/1")
+        self.celery_broker_url: str = os.getenv(
+            "CELERY_BROKER_URL", "redis://localhost:6379/0"
+        )
+        self.celery_backend_url: str = os.getenv(
+            "CELERY_BACKEND_URL", "redis://localhost:6379/1"
+        )
         # Phase 11: max concurrent restaurant re-crawl tasks per beat run
-        self.recrawl_max_concurrent: int = int(os.getenv("RECRAWL_MAX_CONCURRENT", "10"))
+        self.recrawl_max_concurrent: int = int(
+            os.getenv("RECRAWL_MAX_CONCURRENT", "10")
+        )
         # Web Search Verification (Phase 8 — WSRCH-01, WSRCH-08)
         self.serper_api_key: Optional[str] = os.getenv("SERPER_API_KEY")
         self.web_search_daily_budget_usd: float = float(
@@ -154,11 +162,19 @@ class Settings:
         # Phase 32: Provider Outbound Communication Engine
         self.hard_round_cap: int = int(os.getenv("HARD_ROUND_CAP", "6"))
         self.max_round_cap: int = int(os.getenv("MAX_ROUND_CAP", "12"))
-        self.negotiation_draft_daily_cap: int = int(os.getenv("NEGOTIATION_DRAFT_DAILY_CAP", "50"))
-        self.email_classify_daily_cap: int = int(os.getenv("EMAIL_CLASSIFY_DAILY_CAP", "500"))
-        self.auto_send_health_threshold: float = float(os.getenv("AUTO_SEND_HEALTH_THRESHOLD", "0.80"))
+        self.negotiation_draft_daily_cap: int = int(
+            os.getenv("NEGOTIATION_DRAFT_DAILY_CAP", "50")
+        )
+        self.email_classify_daily_cap: int = int(
+            os.getenv("EMAIL_CLASSIFY_DAILY_CAP", "500")
+        )
+        self.auto_send_health_threshold: float = float(
+            os.getenv("AUTO_SEND_HEALTH_THRESHOLD", "0.80")
+        )
         self.draft_token_budget: int = int(os.getenv("DRAFT_TOKEN_BUDGET", "6000"))
-        self.draft_input_token_hard_cap: int = int(os.getenv("DRAFT_INPUT_TOKEN_HARD_CAP", "8000"))
+        self.draft_input_token_hard_cap: int = int(
+            os.getenv("DRAFT_INPUT_TOKEN_HARD_CAP", "8000")
+        )
         self.wineops_disclaimer: str = (
             "—\nThis message was drafted by WineOps AI on behalf of {restaurant_name}."
         )
@@ -197,7 +213,10 @@ class Settings:
         if self._supabase_client is None and self.supabase_url and self.supabase_key:
             try:
                 from supabase import create_client
-                self._supabase_client = create_client(self.supabase_url, self.supabase_key)
+
+                self._supabase_client = create_client(
+                    self.supabase_url, self.supabase_key
+                )
             except Exception:
                 pass
         return self._supabase_client

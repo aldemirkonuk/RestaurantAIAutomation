@@ -7,7 +7,7 @@ Listens for PDF upload events and processes wine books through the hybrid pipeli
 
 import logging
 import base64
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from agents.base_agent import BaseAgent
 
@@ -41,6 +41,7 @@ class BookScraperAgent(BaseAgent):
         supabase = None
         try:
             from core.database import get_supabase_client
+
             supabase = get_supabase_client()
         except Exception:
             pass

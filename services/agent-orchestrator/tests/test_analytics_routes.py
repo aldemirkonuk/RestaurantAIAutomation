@@ -31,9 +31,13 @@ def _make_supabase_mock(wine_data=None, inventory_data=None):
     def table_side_effect(table_name):
         mock_table = MagicMock()
         if table_name == "master_wine_library":
-            mock_table.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = wine_resp
+            mock_table.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
+                wine_resp
+            )
         elif table_name == "restaurant_inventory":
-            mock_table.select.return_value.eq.return_value.execute.return_value = inv_resp
+            mock_table.select.return_value.eq.return_value.execute.return_value = (
+                inv_resp
+            )
         return mock_table
 
     mock.table.side_effect = table_side_effect
@@ -62,7 +66,11 @@ class TestGetWineScores:
             "scores_last_updated_at": "2026-04-06T03:00:00+00:00",
         }
         inventory_data = [
-            {"restaurant_id": "rest-uuid-1", "markup_ratio": 2.4, "markup_classification": "standard"}
+            {
+                "restaurant_id": "rest-uuid-1",
+                "markup_ratio": 2.4,
+                "markup_classification": "standard",
+            }
         ]
 
         mock_supabase = _make_supabase_mock(wine_data, inventory_data)
@@ -95,7 +103,7 @@ class TestGetWineScores:
         wine_data = {
             "id": VALID_UUID,
             "name": "Mystery Wine",
-            "critic_scores": {},   # empty — not yet scored
+            "critic_scores": {},  # empty — not yet scored
             "retail_price_avg": None,
             "scores_last_updated_at": None,
         }

@@ -1,12 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
 import {
   GenerateReportDto,
   ReportListResponseDto,
   ReportResponseDto,
   ScheduleReportDto,
   ScheduledReportResponseDto,
-} from './dto/reports.dto';
+} from "./dto/reports.dto";
 
 interface GeneratedReportRow {
   id: string;
@@ -47,17 +47,17 @@ export class ReportsService {
       report_period_end: dto.periodEnd,
       title: dto.title,
       report_data: dto.parameters ?? {},
-      status: 'pending',
+      status: "pending",
     };
 
     const { data, error } = await this.databaseService.supabase
-      .from('generated_reports')
+      .from("generated_reports")
       .insert(payload)
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to generate report', {
+      this.logger.error("Failed to generate report", {
         restaurantId,
         error: error.message,
       });
@@ -69,13 +69,13 @@ export class ReportsService {
 
   async listReports(restaurantId: string): Promise<ReportListResponseDto> {
     const { data, error, count } = await this.databaseService.supabase
-      .from('generated_reports')
-      .select('*', { count: 'exact' })
-      .eq('restaurant_id', restaurantId)
-      .order('created_at', { ascending: false });
+      .from("generated_reports")
+      .select("*", { count: "exact" })
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false });
 
     if (error) {
-      this.logger.error('Failed to list reports', {
+      this.logger.error("Failed to list reports", {
         restaurantId,
         error: error.message,
       });
@@ -97,14 +97,14 @@ export class ReportsService {
     reportId: string,
   ): Promise<ReportResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('generated_reports')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('id', reportId)
+      .from("generated_reports")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", reportId)
       .single();
 
     if (error) {
-      this.logger.error('Failed to get report', {
+      this.logger.error("Failed to get report", {
         restaurantId,
         reportId,
         error: error.message,
@@ -133,13 +133,13 @@ export class ReportsService {
     };
 
     const { data, error } = await this.databaseService.supabase
-      .from('scheduled_reports')
+      .from("scheduled_reports")
       .insert(payload)
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to schedule report', {
+      this.logger.error("Failed to schedule report", {
         restaurantId,
         error: error.message,
       });
@@ -153,13 +153,13 @@ export class ReportsService {
     restaurantId: string,
   ): Promise<ScheduledReportResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('scheduled_reports')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .order('created_at', { ascending: false });
+      .from("scheduled_reports")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false });
 
     if (error) {
-      this.logger.error('Failed to list report schedules', {
+      this.logger.error("Failed to list report schedules", {
         restaurantId,
         error: error.message,
       });
@@ -176,13 +176,13 @@ export class ReportsService {
     scheduleId: string,
   ): Promise<void> {
     const { error } = await this.databaseService.supabase
-      .from('scheduled_reports')
+      .from("scheduled_reports")
       .delete()
-      .eq('restaurant_id', restaurantId)
-      .eq('id', scheduleId);
+      .eq("restaurant_id", restaurantId)
+      .eq("id", scheduleId);
 
     if (error) {
-      this.logger.error('Failed to delete report schedule', {
+      this.logger.error("Failed to delete report schedule", {
         restaurantId,
         scheduleId,
         error: error.message,
@@ -205,7 +205,9 @@ export class ReportsService {
     };
   }
 
-  private mapScheduledReportRow(row: ScheduledReportRow): ScheduledReportResponseDto {
+  private mapScheduledReportRow(
+    row: ScheduledReportRow,
+  ): ScheduledReportResponseDto {
     return {
       id: row.id,
       restaurantId: row.restaurant_id,

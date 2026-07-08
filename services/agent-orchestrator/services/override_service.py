@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # JWT ROLE DEPENDENCY (extends verify_admin_token pattern from research_routes.py)
 # =============================================================================
 
+
 def require_studio_role(*required_roles: str):
     """
     FastAPI dependency factory — returns a callable suitable for Depends().
@@ -47,6 +48,7 @@ def require_studio_role(*required_roles: str):
         def submit(body: ..., user: dict = Depends(require_studio_role("developer", "review_admin"))):
             actor_id = user["sub"]
     """
+
     def _check(authorization: Optional[str] = Header(None)) -> dict:
         import jwt as pyjwt  # PyJWT>=2.8.0
         from config.settings import get_settings
@@ -56,7 +58,9 @@ def require_studio_role(*required_roles: str):
         token = authorization.removeprefix("Bearer ")
         secret = get_settings().supabase_jwt_secret
         if not secret:
-            logger.error("SUPABASE_JWT_SECRET not configured — studio endpoints cannot authenticate")
+            logger.error(
+                "SUPABASE_JWT_SECRET not configured — studio endpoints cannot authenticate"
+            )
             raise HTTPException(status_code=503, detail="Auth configuration error")
         try:
             payload = pyjwt.decode(
@@ -96,7 +100,11 @@ def require_studio_role(*required_roles: str):
                         return payload
                     jwt_roles = db_roles  # show accurate roles in error message
                 except Exception as exc:
-                    logger.warning("require_studio_role: DB role fallback failed for %s: %s", user_id, exc)
+                    logger.warning(
+                        "require_studio_role: DB role fallback failed for %s: %s",
+                        user_id,
+                        exc,
+                    )
 
         raise HTTPException(
             status_code=403,
@@ -110,6 +118,7 @@ def require_studio_role(*required_roles: str):
 # REQUEST / RESPONSE MODELS
 # =============================================================================
 
+
 class OverrideRequest(BaseModel):
     """
     POST /api/v1/studio/overrides request body.
@@ -117,6 +126,7 @@ class OverrideRequest(BaseModel):
     CRITICAL: old_confidence MUST be fetched from DB by the endpoint, not trusted from this model.
     This model carries the client-supplied values; the endpoint re-fetches old_confidence from DB.
     """
+
     session_id: Optional[str] = None
     submission_id: str
     field_name: str = Field(..., min_length=1, max_length=100)
@@ -128,18 +138,21 @@ class OverrideRequest(BaseModel):
 
 class ApprovalDecision(BaseModel):
     """PATCH /api/v1/studio/queue/{override_id} request body."""
+
     decision: str = Field(..., pattern="^(approved|rejected)$")
     note: Optional[str] = None
 
 
 class InviteRequest(BaseModel):
     """POST /api/v1/studio/invite request body."""
+
     role: str = Field(..., pattern="^(developer|certified_contributor|review_admin)$")
     target_email: Optional[str] = None
 
 
 class RedeemRequest(BaseModel):
     """POST /api/v1/studio/invite/redeem request body. Token in body, never query string (Pitfall 2)."""
+
     token: str  # UUID string of the invite token
 
 
@@ -147,10 +160,12 @@ class RedeemRequest(BaseModel):
 # HELPERS
 # =============================================================================
 
+
 def _get_supabase():
     """Return Supabase client from settings. Returns None if not configured."""
     try:
         from config.settings import get_settings
+
         return get_settings().supabase_client
     except Exception:
         return None
@@ -184,7 +199,9 @@ def _get_user_studio_roles(supabase, user_id: str) -> list:
         return []
 
 
-def _apply_override_to_submission(supabase, submission_id: str, field_name: str, new_value: str, actor_id: str) -> None:
+def _apply_override_to_submission(
+    supabase, submission_id: str, field_name: str, new_value: str, actor_id: str
+) -> None:
     """
     Write approved override to field_confidence JSONB on master_wine_library_submissions.
     Uses merge_field_confidence() to ensure higher-confidence existing values are never downgraded (DEVUI-06).
@@ -196,7 +213,10 @@ def _apply_override_to_submission(supabase, submission_id: str, field_name: str,
     try:
         from services.field_confidence import merge_field_confidence
     except ImportError as exc:
-        logger.error("_apply_override_to_submission: cannot import merge_field_confidence: %s", exc)
+        logger.error(
+            "_apply_override_to_submission: cannot import merge_field_confidence: %s",
+            exc,
+        )
         raise RuntimeError(f"field_confidence module unavailable: {exc}")
 
     try:
@@ -211,16 +231,27 @@ def _apply_override_to_submission(supabase, submission_id: str, field_name: str,
             raise ValueError(f"Submission {submission_id} not found")
         existing_fc = (resp.data or {}).get("field_confidence") or {}
     except Exception as exc:
-        logger.error("_apply_override_to_submission: fetch submission %s failed: %s", submission_id, exc)
+        logger.error(
+            "_apply_override_to_submission: fetch submission %s failed: %s",
+            submission_id,
+            exc,
+        )
         raise
 
-    new_entry = {field_name: {"value": new_value, "confidence": 1.0, "source": "human_override"}}
+    new_entry = {
+        field_name: {"value": new_value, "confidence": 1.0, "source": "human_override"}
+    }
     merged = merge_field_confidence(existing_fc, new_entry)
 
     supabase.table("master_wine_library_submissions").update(
         {"field_confidence": merged}
     ).eq("id", submission_id).execute()
-    logger.info("Applied override to submission %s field=%s by actor=%s", submission_id, field_name, actor_id)
+    logger.info(
+        "Applied override to submission %s field=%s by actor=%s",
+        submission_id,
+        field_name,
+        actor_id,
+    )
 
 
 def _fc_value(fc, field_name):
@@ -254,20 +285,25 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         jsonb_cols = ", ".join(JSONB_ENRICHMENT_KEYS)
         resp = (
             supabase.table("master_wine_library_submissions")
-            .select(f"id, payload, field_confidence, status, auto_blocked, restaurant_id, {jsonb_cols}")
+            .select(
+                f"id, payload, field_confidence, status, auto_blocked, restaurant_id, {jsonb_cols}"
+            )
             .eq("id", submission_id)
             .maybe_single()
             .execute()
         )
         if not resp.data:
-            logger.warning("_maybe_promote_submission: submission %s not found", submission_id)
+            logger.warning(
+                "_maybe_promote_submission: submission %s not found", submission_id
+            )
             return False
 
         submission = resp.data
         if submission.get("status") != "pending_review":
             logger.debug(
                 "_maybe_promote_submission: submission %s not in pending_review (status=%s)",
-                submission_id, submission.get("status"),
+                submission_id,
+                submission.get("status"),
             )
             return False
 
@@ -283,14 +319,18 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         if remaining_pending > 0:
             logger.debug(
                 "_maybe_promote_submission: %d pending fields remain for %s",
-                remaining_pending, submission_id,
+                remaining_pending,
+                submission_id,
             )
             return False
 
         # Gate 3: field confidence ratio not auto-blocked
         fc = submission.get("field_confidence") or {}
         if should_auto_block(fc):
-            logger.debug("_maybe_promote_submission: submission %s is auto_blocked", submission_id)
+            logger.debug(
+                "_maybe_promote_submission: submission %s is auto_blocked",
+                submission_id,
+            )
             return False
 
         # Build promotion row — mirrors quality_routes.patch_review_queue mapping (D-20)
@@ -343,7 +383,9 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         return False
 
 
-def check_and_update_trust(supabase, user_id: str, approved: bool, threshold: int = 5) -> None:
+def check_and_update_trust(
+    supabase, user_id: str, approved: bool, threshold: int = 5
+) -> None:
     """
     Update consecutive_approved_overrides for certified_contributor.
     Any rejection resets streak to 0 (prevents gaming via alternating overrides).
@@ -363,13 +405,23 @@ def check_and_update_trust(supabase, user_id: str, approved: bool, threshold: in
                 .maybe_single()
                 .execute()
             )
-            count = (ur_resp.data or {}).get("consecutive_approved_overrides", 0) if ur_resp.data else 0
+            count = (
+                (ur_resp.data or {}).get("consecutive_approved_overrides", 0)
+                if ur_resp.data
+                else 0
+            )
             if count >= threshold:
-                supabase.table("user_roles").update({
-                    "promotion_policy": "auto_promote",
-                    "auto_promote_earned_at": "now()",
-                }).eq("user_id", user_id).eq("role", "certified_contributor").execute()
-                logger.info("User %s earned auto_promote status (threshold=%d)", user_id, threshold)
+                supabase.table("user_roles").update(
+                    {
+                        "promotion_policy": "auto_promote",
+                        "auto_promote_earned_at": "now()",
+                    }
+                ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
+                logger.info(
+                    "User %s earned auto_promote status (threshold=%d)",
+                    user_id,
+                    threshold,
+                )
         else:
             # Rejection resets streak
             supabase.table("user_roles").update(

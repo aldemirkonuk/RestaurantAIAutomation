@@ -8,13 +8,15 @@ Tests:
   - AUTO_BLOCK_THRESHOLD constant = 0.3 (QUAL-01 gate)
   - auto_blocked computed correctly from completeness_score
 """
+
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 # ---------------------------------------------------------------------------
 # _preflight_cap_check
 # ---------------------------------------------------------------------------
+
 
 def _make_spend_supabase(rows=None, raise_error=False):
     """Build mock Supabase returning rows from api_spend query."""
@@ -69,15 +71,18 @@ def test_preflight_cap_check_returns_zero_when_no_rows():
 # AUTO_BLOCK_THRESHOLD (QUAL-01)
 # ---------------------------------------------------------------------------
 
+
 def test_auto_block_threshold_is_point_three():
     """QUAL-01: AUTO_BLOCK_THRESHOLD must be 0.3 — ensures contract is stable."""
     from api.onboarding_routes import AUTO_BLOCK_THRESHOLD
+
     assert AUTO_BLOCK_THRESHOLD == 0.3
 
 
 def test_auto_blocked_true_for_score_below_threshold():
     """QUAL-01: completeness_score < 0.3 → auto_blocked must be True."""
     from api.onboarding_routes import AUTO_BLOCK_THRESHOLD
+
     low_score = 0.167  # 1 of 6 fields
     assert (low_score < AUTO_BLOCK_THRESHOLD) is True
 
@@ -85,6 +90,7 @@ def test_auto_blocked_true_for_score_below_threshold():
 def test_auto_blocked_false_for_score_at_threshold():
     """QUAL-01: completeness_score == 0.3 is NOT blocked (strictly less-than gate)."""
     from api.onboarding_routes import AUTO_BLOCK_THRESHOLD
+
     boundary_score = 0.3  # exactly at threshold — should NOT be blocked
     assert (boundary_score < AUTO_BLOCK_THRESHOLD) is False
 
@@ -92,4 +98,5 @@ def test_auto_blocked_false_for_score_at_threshold():
 def test_per_restaurant_cap_constant():
     """COST-03: PER_RESTAURANT_CAP_USD must be 2.00 — contract stability check."""
     from api.onboarding_routes import PER_RESTAURANT_CAP_USD
+
     assert PER_RESTAURANT_CAP_USD == 2.00

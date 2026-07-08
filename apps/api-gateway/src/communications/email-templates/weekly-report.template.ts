@@ -2,8 +2,12 @@
  * Weekly Report Email Template
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatShortDate } from './template-config';
-import { baseTemplate, metricBox, tableRow } from './base-template';
+import {
+  EMAIL_CONFIG,
+  formatCurrency,
+  formatShortDate,
+} from "./template-config";
+import { baseTemplate, metricBox, tableRow } from "./base-template";
 
 export interface WeeklyReportData {
   restaurantName: string;
@@ -35,7 +39,7 @@ export interface WeeklyReportData {
  */
 export function weeklyReportTemplate(data: WeeklyReportData): string {
   const { colors } = EMAIL_CONFIG;
-  
+
   const periodStart = formatShortDate(data.reportPeriod.start);
   const periodEnd = formatShortDate(data.reportPeriod.end);
 
@@ -45,15 +49,15 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
       <tr>
         ${metricBox({
           value: data.metrics.totalBottles.toLocaleString(),
-          label: 'Total Bottles',
+          label: "Total Bottles",
           backgroundColor: colors.gray[100],
           textColor: colors.primary,
         })}
         <td width="15px"></td>
         ${metricBox({
           value: formatCurrency(data.metrics.totalValue),
-          label: 'Inventory Value',
-          backgroundColor: '#ecfdf5',
+          label: "Inventory Value",
+          backgroundColor: "#ecfdf5",
           textColor: colors.success,
         })}
       </tr>
@@ -62,14 +66,16 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
       <tr>
         ${metricBox({
           value: data.metrics.lowStockCount,
-          label: 'Low Stock Items',
-          backgroundColor: data.metrics.lowStockCount > 0 ? '#fef2f2' : colors.gray[100],
-          textColor: data.metrics.lowStockCount > 0 ? colors.danger : colors.gray[700],
+          label: "Low Stock Items",
+          backgroundColor:
+            data.metrics.lowStockCount > 0 ? "#fef2f2" : colors.gray[100],
+          textColor:
+            data.metrics.lowStockCount > 0 ? colors.danger : colors.gray[700],
         })}
         <td width="15px"></td>
         ${metricBox({
           value: data.metrics.ordersPlaced || 0,
-          label: 'Orders Placed',
+          label: "Orders Placed",
           backgroundColor: colors.gray[100],
           textColor: colors.gray[700],
         })}
@@ -78,7 +84,9 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
   `;
 
   // Top sellers table
-  const topSellersHtml = data.topSellers.length > 0 ? `
+  const topSellersHtml =
+    data.topSellers.length > 0
+      ? `
     <div style="margin: 30px 0;">
       <h3 style="margin: 0 0 15px; color: ${colors.gray[900]}; font-size: 16px; font-weight: 600;">
         Top Sellers This Week
@@ -92,20 +100,27 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
           </tr>
         </thead>
         <tbody>
-          ${data.topSellers.map((wine, index) => `
-            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+          ${data.topSellers
+            .map(
+              (wine, index) => `
+            <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
               <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${wine.name}</td>
               <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[700]}; font-size: 14px;">${wine.sold}</td>
               <td style="padding: 12px 15px; text-align: right; color: ${colors.success}; font-size: 14px; font-weight: 600;">${formatCurrency(wine.revenue)}</td>
             </tr>
-          `).join('')}
+          `,
+            )
+            .join("")}
         </tbody>
       </table>
     </div>
-  ` : '';
+  `
+      : "";
 
   // Low stock alerts
-  const lowStockHtml = data.lowStockItems.length > 0 ? `
+  const lowStockHtml =
+    data.lowStockItems.length > 0
+      ? `
     <div style="margin: 30px 0;">
       <h3 style="margin: 0 0 15px; color: ${colors.danger}; font-size: 16px; font-weight: 600;">
         Items Requiring Attention
@@ -119,17 +134,22 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
           </tr>
         </thead>
         <tbody>
-          ${data.lowStockItems.map((item, index) => `
-            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+          ${data.lowStockItems
+            .map(
+              (item, index) => `
+            <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
               <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${item.name}</td>
               <td style="padding: 12px 15px; text-align: right; color: ${colors.danger}; font-size: 14px; font-weight: 600;">${item.current}</td>
               <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[500]}; font-size: 14px;">${item.threshold}</td>
             </tr>
-          `).join('')}
+          `,
+            )
+            .join("")}
         </tbody>
       </table>
     </div>
-  ` : '';
+  `
+      : "";
 
   // Main content
   const content = `
@@ -158,8 +178,8 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
     preheader: `Your weekly inventory summary: ${data.metrics.totalBottles} bottles, ${formatCurrency(data.metrics.totalValue)} value`,
     content,
     ctaButton: {
-      text: 'View Full Report',
-      url: '#', // Replace with actual URL
+      text: "View Full Report",
+      url: "#", // Replace with actual URL
       color: colors.primary,
     },
   });

@@ -11,19 +11,19 @@ import {
   Headers,
   Param,
   Query,
-} from '@nestjs/common';
-import { AuthService, LoginCredentials, RegisterData } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { Roles } from './decorators/roles.decorator';
-import { Public } from './decorators/public.decorator';
-import { CheckEmailDto } from './dto/check-email.dto';
-import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
-import { JoinViaInviteDto } from './dto/join-via-invite.dto';
-import { InviteDto } from './dto/invite.dto';
-import { Request } from 'express';
+} from "@nestjs/common";
+import { AuthService, LoginCredentials, RegisterData } from "./auth.service";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { RolesGuard } from "./guards/roles.guard";
+import { Roles } from "./decorators/roles.decorator";
+import { Public } from "./decorators/public.decorator";
+import { CheckEmailDto } from "./dto/check-email.dto";
+import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
+import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
+import { InviteDto } from "./dto/invite.dto";
+import { Request } from "express";
 
-@Controller('auth')
+@Controller("auth")
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
@@ -32,74 +32,70 @@ export class AuthController {
   /**
    * Login with email/password
    */
-  @Post('login')
+  @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
     this.logger.log(`Login attempt: ${credentials.email}`);
-    try {
-      const tokens = await this.authService.login(credentials);
-      return {
-        success: true,
-        ...tokens,
-        message: 'Login successful',
-      };
-    } catch (error) {
-      throw error;
-    }
+    const tokens = await this.authService.login(credentials);
+    return {
+      success: true,
+      ...tokens,
+      message: "Login successful",
+    };
   }
 
   /**
    * Register new user
    */
-  @Post('register')
+  @Post("register")
   async register(@Body() data: RegisterData) {
     this.logger.log(`Registration attempt: ${data.email}`);
     const tokens = await this.authService.register(data);
-    
+
     return {
       success: true,
       ...tokens,
-      message: 'Registration successful',
+      message: "Registration successful",
     };
   }
 
   /**
    * Login with Google OAuth
    */
-  @Post('oauth/google')
+  @Post("oauth/google")
   async loginWithGoogle(@Body() body: { token: string }) {
-    this.logger.log('Google OAuth login attempt');
+    this.logger.log("Google OAuth login attempt");
     const tokens = await this.authService.loginWithGoogle(body.token);
-    
+
     return {
       success: true,
       ...tokens,
-      message: 'Google login successful',
+      message: "Google login successful",
     };
   }
 
   /**
    * Login with Microsoft OAuth
    */
-  @Post('oauth/microsoft')
+  @Post("oauth/microsoft")
   async loginWithMicrosoft(@Body() body: { token: string }) {
-    this.logger.log('Microsoft OAuth login attempt');
+    this.logger.log("Microsoft OAuth login attempt");
     const tokens = await this.authService.loginWithMicrosoft(body.token);
-    
+
     return {
       success: true,
       ...tokens,
-      message: 'Microsoft login successful',
+      message: "Microsoft login successful",
     };
   }
 
   /**
    * Refresh access token
    */
-  @Post('refresh')
+  @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
     const tokens = await this.authService.refreshAccessToken(body.refreshToken);
-    
+
     return {
       success: true,
       ...tokens,
@@ -109,27 +105,27 @@ export class AuthController {
   /**
    * Logout
    */
-  @Post('logout')
+  @Post("logout")
   @UseGuards(JwtAuthGuard)
   async logout(
     @Req() req: Request & { user: any },
-    @Headers('authorization') authorization?: string,
+    @Headers("authorization") authorization?: string,
   ) {
-    const token = authorization?.startsWith('Bearer ')
-      ? authorization.substring('Bearer '.length)
+    const token = authorization?.startsWith("Bearer ")
+      ? authorization.substring("Bearer ".length)
       : undefined;
     await this.authService.logout(req.user.userId, token);
-    
+
     return {
       success: true,
-      message: 'Logout successful',
+      message: "Logout successful",
     };
   }
 
   /**
    * Get current user profile
    */
-  @Get('me')
+  @Get("me")
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: Request & { user: any }) {
     return {
@@ -138,11 +134,11 @@ export class AuthController {
     };
   }
 
-  @Get('me/role')
+  @Get("me/role")
   @UseGuards(JwtAuthGuard)
   async getMyRole(
     @Req() req: Request & { user: any },
-    @Query('restaurantId') restaurantId?: string,
+    @Query("restaurantId") restaurantId?: string,
   ) {
     if (!restaurantId) {
       return { success: true, role: null };
@@ -154,11 +150,11 @@ export class AuthController {
     return { success: true, role };
   }
 
-  @Post('invite/:code/accept')
+  @Post("invite/:code/accept")
   @UseGuards(JwtAuthGuard)
   async acceptInviteAsAuthed(
     @Req() req: Request & { user: any },
-    @Param('code') code: string,
+    @Param("code") code: string,
   ) {
     this.logger.log(
       `Invite accept by authenticated user ${req.user.userId}, code: ${code}`,
@@ -173,12 +169,12 @@ export class AuthController {
   /**
    * Verify token (health check for auth)
    */
-  @Get('verify')
+  @Get("verify")
   @UseGuards(JwtAuthGuard)
   async verifyToken() {
     return {
       success: true,
-      message: 'Token is valid',
+      message: "Token is valid",
     };
   }
 
@@ -186,62 +182,78 @@ export class AuthController {
    * Path B: Register a new restaurant (creates org + restaurant + owner user atomically).
    * Requires email verification after registration.
    */
-  @Post('register/restaurant')
+  @Post("register/restaurant")
   @Public()
   async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
     this.logger.log(`Path B registration attempt: ${dto.email}`);
     const tokens = await this.authService.registerRestaurant(dto);
-    return { success: true, ...tokens, message: 'Registration successful. Please verify your email.' };
+    return {
+      success: true,
+      ...tokens,
+      message: "Registration successful. Please verify your email.",
+    };
   }
 
   /**
    * Preview an invite code — returns org/restaurant info or {valid:false, reason}.
    */
-  @Get('invite/:code')
+  @Get("invite/:code")
   @Public()
-  async getInvitePreview(@Param('code') code: string) {
+  async getInvitePreview(@Param("code") code: string) {
     return this.authService.getInvitePreview(code);
   }
 
   /**
    * Generate an invite code for a restaurant (owner/manager only).
    */
-  @Post('invite')
+  @Post("invite")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('owner', 'manager')
-  async generateInvite(@Req() req: Request & { user: any }, @Body() dto: InviteDto) {
-    this.logger.log(`Invite generation by user ${req.user.userId} for restaurant ${dto.restaurantId}`);
-    const result = await this.authService.generateInvite(req.user.userId, dto.restaurantId, dto);
+  @Roles("owner", "manager")
+  async generateInvite(
+    @Req() req: Request & { user: any },
+    @Body() dto: InviteDto,
+  ) {
+    this.logger.log(
+      `Invite generation by user ${req.user.userId} for restaurant ${dto.restaurantId}`,
+    );
+    const result = await this.authService.generateInvite(
+      req.user.userId,
+      dto.restaurantId,
+      dto,
+    );
     return { success: true, ...result };
   }
 
   /**
    * Path A: Join via invite code — creates user linked to restaurant.
    */
-  @Post('join')
+  @Post("join")
   @Public()
   async joinViaInvite(@Body() dto: JoinViaInviteDto) {
     this.logger.log(`Path A join attempt with code: ${dto.code}`);
     const tokens = await this.authService.joinViaInvite(dto);
-    return { success: true, ...tokens, message: 'Joined successfully' };
+    return { success: true, ...tokens, message: "Joined successfully" };
   }
 
   /**
    * Verify email with the token from the verification email.
    */
-  @Post('verify-email')
+  @Post("verify-email")
   async verifyEmail(@Body() body: { token: string }) {
     const tokens = await this.authService.verifyEmail(body.token);
-    return { success: true, ...tokens, message: 'Email verified' };
+    return { success: true, ...tokens, message: "Email verified" };
   }
 
   /**
    * Resend verification email — rate-limited to 1 per minute.
    */
-  @Post('resend-verification')
+  @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
   async resendVerification(@Req() req: Request & { user: any }) {
-    const result = await this.authService.resendVerification(req.user.userId, req.user.email);
+    const result = await this.authService.resendVerification(
+      req.user.userId,
+      req.user.email,
+    );
     return { success: true, ...result };
   }
 
@@ -249,13 +261,16 @@ export class AuthController {
    * Switch active restaurant context — re-issues JWT with the new restaurantId.
    * Validates the requesting user belongs to the target restaurant's organisation.
    */
-  @Post('switch-restaurant')
+  @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
   async switchRestaurant(
     @Req() req: Request & { user: any },
     @Body() body: { restaurantId: string },
   ) {
-    const tokens = await this.authService.switchRestaurant(req.user.userId, body.restaurantId);
+    const tokens = await this.authService.switchRestaurant(
+      req.user.userId,
+      body.restaurantId,
+    );
     return { success: true, ...tokens };
   }
 
@@ -263,7 +278,7 @@ export class AuthController {
    * Check if an email is already registered.
    * Public endpoint for registration form validation.
    */
-  @Get('check-email')
+  @Get("check-email")
   @Public()
   async checkEmail(@Query() query: CheckEmailDto) {
     const exists = await this.authService.checkEmailExists(query.email);
@@ -273,4 +288,3 @@ export class AuthController {
     };
   }
 }
-

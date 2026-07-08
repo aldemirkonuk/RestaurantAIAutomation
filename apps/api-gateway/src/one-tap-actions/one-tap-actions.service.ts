@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   CreateOneTapActionDto,
   UpdateOneTapActionDto,
@@ -10,11 +10,11 @@ import {
   OneTapActionStatus,
   OneTapActionType,
   OneTapPriority,
-} from './dto/one-tap-action.dto';
+} from "./dto/one-tap-action.dto";
 
 /**
  * One-Tap Actions Service
- * 
+ *
  * Manages one-tap actions for quick manager workflows:
  * - CRUD operations for actions
  * - Real-time sync via WebSocket
@@ -38,16 +38,16 @@ export class OneTapActionsService {
     status?: OneTapActionStatus,
   ): Promise<OneTapActionListResponseDto> {
     const client = this.dbService.getClient();
-    
+
     let query = client
-      .from('one_tap_actions')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .from("one_tap_actions")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
 
     if (status) {
-      query = query.eq('status', status);
+      query = query.eq("status", status);
     }
 
     const { data, error } = await query;
@@ -58,8 +58,12 @@ export class OneTapActionsService {
     }
 
     const actions = (data || []).map(this.mapToResponse);
-    const pending = actions.filter(a => a.status === OneTapActionStatus.PENDING).length;
-    const completed = actions.filter(a => a.status === OneTapActionStatus.COMPLETED).length;
+    const pending = actions.filter(
+      (a) => a.status === OneTapActionStatus.PENDING,
+    ).length;
+    const completed = actions.filter(
+      (a) => a.status === OneTapActionStatus.COMPLETED,
+    ).length;
 
     return {
       actions,
@@ -72,18 +76,20 @@ export class OneTapActionsService {
   /**
    * Get pending actions for a restaurant
    */
-  async getPendingActions(restaurantId: string): Promise<OneTapActionResponseDto[]> {
+  async getPendingActions(
+    restaurantId: string,
+  ): Promise<OneTapActionResponseDto[]> {
     const client = this.dbService.getClient();
-    
+
     const { data, error } = await client
-      .from('one_tap_actions')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'pending')
-      .is('deleted_at', null)
-      .or('expires_at.is.null,expires_at.gt.now()')
-      .order('priority', { ascending: true })
-      .order('created_at', { ascending: false });
+      .from("one_tap_actions")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "pending")
+      .is("deleted_at", null)
+      .or("expires_at.is.null,expires_at.gt.now()")
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: false });
 
     if (error) {
       this.logger.error(`Failed to fetch pending actions: ${error.message}`);
@@ -98,12 +104,12 @@ export class OneTapActionsService {
    */
   async getAction(actionId: string): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
-    
+
     const { data, error } = await client
-      .from('one_tap_actions')
-      .select('*')
-      .eq('id', actionId)
-      .is('deleted_at', null)
+      .from("one_tap_actions")
+      .select("*")
+      .eq("id", actionId)
+      .is("deleted_at", null)
       .single();
 
     if (error || !data) {
@@ -122,9 +128,9 @@ export class OneTapActionsService {
     dto: CreateOneTapActionDto,
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
-    
+
     const { data, error } = await client
-      .from('one_tap_actions')
+      .from("one_tap_actions")
       .insert({
         restaurant_id: restaurantId,
         user_id: userId,
@@ -133,8 +139,8 @@ export class OneTapActionsService {
         description: dto.description,
         action_url: dto.actionUrl,
         priority: dto.priority || OneTapPriority.MEDIUM,
-        color: dto.color || 'wine',
-        icon: dto.icon || 'Zap',
+        color: dto.color || "wine",
+        icon: dto.icon || "Zap",
         status: OneTapActionStatus.PENDING,
         related_wine_id: dto.relatedWineId,
         related_order_id: dto.relatedOrderId,
@@ -153,7 +159,7 @@ export class OneTapActionsService {
     const action = this.mapToResponse(data);
 
     // Broadcast to WebSocket clients
-    this.broadcastActionUpdate(restaurantId, 'action_created', action);
+    this.broadcastActionUpdate(restaurantId, "action_created", action);
 
     this.logger.log(`Created action: ${action.id} - ${action.title}`);
     return action;
@@ -167,7 +173,7 @@ export class OneTapActionsService {
     dto: UpdateOneTapActionDto,
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
-    
+
     // First get the action to get restaurant_id
     const existing = await this.getAction(actionId);
 
@@ -182,9 +188,9 @@ export class OneTapActionsService {
     if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
 
     const { data, error } = await client
-      .from('one_tap_actions')
+      .from("one_tap_actions")
       .update(updateData)
-      .eq('id', actionId)
+      .eq("id", actionId)
       .select()
       .single();
 
@@ -196,7 +202,7 @@ export class OneTapActionsService {
     const action = this.mapToResponse(data);
 
     // Broadcast to WebSocket clients
-    this.broadcastActionUpdate(existing.restaurantId, 'action_updated', action);
+    this.broadcastActionUpdate(existing.restaurantId, "action_updated", action);
 
     this.logger.log(`Updated action: ${action.id}`);
     return action;
@@ -211,19 +217,19 @@ export class OneTapActionsService {
     dto: ExecuteActionDto,
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
-    
+
     // First get the action to get restaurant_id
     const existing = await this.getAction(actionId);
 
     const { data, error } = await client
-      .from('one_tap_actions')
+      .from("one_tap_actions")
       .update({
         status: OneTapActionStatus.COMPLETED,
         executed_at: new Date().toISOString(),
         executed_by: userId,
         execution_result: dto.result || {},
       })
-      .eq('id', actionId)
+      .eq("id", actionId)
       .select()
       .single();
 
@@ -238,7 +244,11 @@ export class OneTapActionsService {
     await this.triggerWorkflow(action);
 
     // Broadcast to WebSocket clients
-    this.broadcastActionUpdate(existing.restaurantId, 'action_executed', action);
+    this.broadcastActionUpdate(
+      existing.restaurantId,
+      "action_executed",
+      action,
+    );
 
     this.logger.log(`Executed action: ${action.id} - ${action.title}`);
     return action;
@@ -249,16 +259,16 @@ export class OneTapActionsService {
    */
   async cancelAction(actionId: string): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
-    
+
     // First get the action to get restaurant_id
     const existing = await this.getAction(actionId);
 
     const { data, error } = await client
-      .from('one_tap_actions')
+      .from("one_tap_actions")
       .update({
         status: OneTapActionStatus.CANCELLED,
       })
-      .eq('id', actionId)
+      .eq("id", actionId)
       .select()
       .single();
 
@@ -270,7 +280,11 @@ export class OneTapActionsService {
     const action = this.mapToResponse(data);
 
     // Broadcast to WebSocket clients
-    this.broadcastActionUpdate(existing.restaurantId, 'action_cancelled', action);
+    this.broadcastActionUpdate(
+      existing.restaurantId,
+      "action_cancelled",
+      action,
+    );
 
     this.logger.log(`Cancelled action: ${action.id}`);
     return action;
@@ -281,16 +295,16 @@ export class OneTapActionsService {
    */
   async deleteAction(actionId: string): Promise<void> {
     const client = this.dbService.getClient();
-    
+
     // First get the action to get restaurant_id
     const existing = await this.getAction(actionId);
 
     const { error } = await client
-      .from('one_tap_actions')
+      .from("one_tap_actions")
       .update({
         deleted_at: new Date().toISOString(),
       })
-      .eq('id', actionId);
+      .eq("id", actionId);
 
     if (error) {
       this.logger.error(`Failed to delete action: ${error.message}`);
@@ -298,7 +312,9 @@ export class OneTapActionsService {
     }
 
     // Broadcast to WebSocket clients
-    this.broadcastActionUpdate(existing.restaurantId, 'action_deleted', { id: actionId });
+    this.broadcastActionUpdate(existing.restaurantId, "action_deleted", {
+      id: actionId,
+    });
 
     this.logger.log(`Deleted action: ${actionId}`);
   }
@@ -321,9 +337,9 @@ export class OneTapActionsService {
     } = {},
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
-    
+
     const { data, error } = await client
-      .from('one_tap_actions')
+      .from("one_tap_actions")
       .insert({
         restaurant_id: restaurantId,
         action_type: actionType,
@@ -350,7 +366,7 @@ export class OneTapActionsService {
     const action = this.mapToResponse(data);
 
     // Broadcast to WebSocket clients
-    this.broadcastActionUpdate(restaurantId, 'action_created', action);
+    this.broadcastActionUpdate(restaurantId, "action_created", action);
 
     this.logger.log(`Created system action: ${action.id} - ${action.title}`);
     return action;
@@ -359,25 +375,31 @@ export class OneTapActionsService {
   /**
    * Trigger backend workflow based on action type
    */
-  private async triggerWorkflow(action: OneTapActionResponseDto): Promise<void> {
+  private async triggerWorkflow(
+    action: OneTapActionResponseDto,
+  ): Promise<void> {
     switch (action.actionType) {
       case OneTapActionType.LOW_STOCK:
         // TODO: Trigger reorder workflow
         this.logger.log(`Triggering reorder workflow for action: ${action.id}`);
         break;
-      
+
       case OneTapActionType.DELIVERY_CONFIRM:
         // TODO: Update inventory with delivered items
-        this.logger.log(`Triggering delivery confirmation for action: ${action.id}`);
+        this.logger.log(
+          `Triggering delivery confirmation for action: ${action.id}`,
+        );
         break;
-      
+
       case OneTapActionType.PRICE_CHANGE:
         // TODO: Update price in system
         this.logger.log(`Triggering price update for action: ${action.id}`);
         break;
-      
+
       default:
-        this.logger.log(`No workflow defined for action type: ${action.actionType}`);
+        this.logger.log(
+          `No workflow defined for action type: ${action.actionType}`,
+        );
     }
   }
 
@@ -391,7 +413,7 @@ export class OneTapActionsService {
   ): void {
     this.websocketGateway.server
       .to(`restaurant:${restaurantId}`)
-      .emit('one_tap_action', { event, data });
+      .emit("one_tap_action", { event, data });
   }
 
   /**
@@ -428,17 +450,17 @@ export class OneTapActionsService {
    */
   private getColorForActionType(actionType: OneTapActionType): string {
     const colors: Record<OneTapActionType, string> = {
-      [OneTapActionType.LOW_STOCK]: 'rose',
-      [OneTapActionType.PRICE_CHANGE]: 'amber',
-      [OneTapActionType.DELIVERY_CONFIRM]: 'emerald',
-      [OneTapActionType.INEQUALITY]: 'purple',
-      [OneTapActionType.VINTAGE_SUB]: 'blue',
-      [OneTapActionType.STOCK_RECEIPT]: 'emerald',
-      [OneTapActionType.CUSTOM]: 'wine',
-      [OneTapActionType.GMAIL_SEND]: 'blue',
-      [OneTapActionType.GMAIL_CONTEXTUAL]: 'blue',
+      [OneTapActionType.LOW_STOCK]: "rose",
+      [OneTapActionType.PRICE_CHANGE]: "amber",
+      [OneTapActionType.DELIVERY_CONFIRM]: "emerald",
+      [OneTapActionType.INEQUALITY]: "purple",
+      [OneTapActionType.VINTAGE_SUB]: "blue",
+      [OneTapActionType.STOCK_RECEIPT]: "emerald",
+      [OneTapActionType.CUSTOM]: "wine",
+      [OneTapActionType.GMAIL_SEND]: "blue",
+      [OneTapActionType.GMAIL_CONTEXTUAL]: "blue",
     };
-    return colors[actionType] || 'wine';
+    return colors[actionType] || "wine";
   }
 
   /**
@@ -446,16 +468,16 @@ export class OneTapActionsService {
    */
   private getIconForActionType(actionType: OneTapActionType): string {
     const icons: Record<OneTapActionType, string> = {
-      [OneTapActionType.LOW_STOCK]: 'AlertTriangle',
-      [OneTapActionType.PRICE_CHANGE]: 'DollarSign',
-      [OneTapActionType.DELIVERY_CONFIRM]: 'Truck',
-      [OneTapActionType.INEQUALITY]: 'RefreshCw',
-      [OneTapActionType.VINTAGE_SUB]: 'Wine',
-      [OneTapActionType.STOCK_RECEIPT]: 'Package',
-      [OneTapActionType.CUSTOM]: 'Zap',
-      [OneTapActionType.GMAIL_SEND]: 'Mail',
-      [OneTapActionType.GMAIL_CONTEXTUAL]: 'Send',
+      [OneTapActionType.LOW_STOCK]: "AlertTriangle",
+      [OneTapActionType.PRICE_CHANGE]: "DollarSign",
+      [OneTapActionType.DELIVERY_CONFIRM]: "Truck",
+      [OneTapActionType.INEQUALITY]: "RefreshCw",
+      [OneTapActionType.VINTAGE_SUB]: "Wine",
+      [OneTapActionType.STOCK_RECEIPT]: "Package",
+      [OneTapActionType.CUSTOM]: "Zap",
+      [OneTapActionType.GMAIL_SEND]: "Mail",
+      [OneTapActionType.GMAIL_CONTEXTUAL]: "Send",
     };
-    return icons[actionType] || 'Zap';
+    return icons[actionType] || "Zap";
   }
 }

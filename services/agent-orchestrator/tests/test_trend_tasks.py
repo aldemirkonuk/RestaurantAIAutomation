@@ -9,13 +9,14 @@ Tests:
   5. No burst when fewer than 3 distinct new restaurants in 14 days
   6. compute_trend_metrics_task calls both _compute_popularity and _compute_trending
 """
-import pytest
+
 from unittest.mock import MagicMock, patch
 
 
 # =============================================================================
 # Test 1: _compute_popularity counts distinct restaurants (not duplicate rows)
 # =============================================================================
+
 
 @patch("supabase.create_client")
 def test_popularity_counts_distinct_restaurants(mock_create_client):
@@ -43,6 +44,7 @@ def test_popularity_counts_distinct_restaurants(mock_create_client):
     mock_sb.table.side_effect = table_side_effect
 
     from jobs.trend_tasks import _compute_popularity
+
     count = _compute_popularity(mock_sb)
     assert count == 1
 
@@ -57,9 +59,11 @@ def test_popularity_counts_distinct_restaurants(mock_create_client):
 # Test 2: _window_start_iso returns correct ISO date for 30-day window
 # =============================================================================
 
+
 def test_window_start_iso_30d():
     from jobs.trend_tasks import _window_start_iso
     from datetime import datetime, timezone, timedelta
+
     result = _window_start_iso(30)
     expected = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     # Same date prefix (year-month-day)
@@ -72,9 +76,11 @@ def test_window_start_iso_30d():
 # Test 3: Burst detection constants at correct threshold and bonus
 # =============================================================================
 
+
 def test_burst_detected_at_threshold():
     """BURST_RESTAURANT_THRESHOLD=3 and BURST_BONUS=2.0 match D-02 formula."""
     from jobs.trend_tasks import BURST_RESTAURANT_THRESHOLD, BURST_BONUS
+
     assert BURST_RESTAURANT_THRESHOLD == 3
     assert BURST_BONUS == 2.0
 
@@ -83,9 +89,11 @@ def test_burst_detected_at_threshold():
 # Test 4: Trend score formula accuracy — manual calculation
 # =============================================================================
 
+
 def test_trend_score_formula():
     """Manual: (5×3.0) + (3×1.5) + (2×1.0) + 2.0 = 15.0 + 4.5 + 2.0 + 2.0 = 23.5"""
     from jobs.trend_tasks import TREND_WEIGHTS, BURST_BONUS
+
     delta_30, delta_60, delta_90 = 5, 3, 2
     burst_bonus = BURST_BONUS  # burst detected
     score = (
@@ -102,9 +110,11 @@ def test_trend_score_formula():
 # Test 5: No burst when fewer than 3 distinct restaurants
 # =============================================================================
 
+
 def test_no_burst_below_threshold():
     """2 new restaurants in 14d → burst_bonus = 0, not triggered."""
     from jobs.trend_tasks import BURST_RESTAURANT_THRESHOLD, BURST_BONUS
+
     new_restaurants = {"rest-1", "rest-2"}
     burst = len(new_restaurants) >= BURST_RESTAURANT_THRESHOLD
     assert burst is False
@@ -116,6 +126,7 @@ def test_no_burst_below_threshold():
 # Test 6: compute_trend_metrics_task calls both sub-functions in order
 # =============================================================================
 
+
 @patch("jobs.trend_tasks._compute_trending")
 @patch("jobs.trend_tasks._compute_popularity")
 @patch("supabase.create_client")
@@ -126,6 +137,7 @@ def test_compute_task_calls_both(mock_create_client, mock_pop, mock_trend):
     mock_trend.return_value = 8
 
     from jobs.trend_tasks import compute_trend_metrics_task
+
     result = compute_trend_metrics_task()
 
     mock_pop.assert_called_once()
@@ -139,6 +151,7 @@ def test_compute_task_calls_both(mock_create_client, mock_pop, mock_trend):
 # Test 7: _compute_popularity returns 0 when no promoted submissions exist
 # =============================================================================
 
+
 @patch("supabase.create_client")
 def test_popularity_returns_zero_no_submissions(mock_create_client):
     """Empty submissions → hash_to_wine_id is empty → returns 0 without error."""
@@ -148,12 +161,15 @@ def test_popularity_returns_zero_no_submissions(mock_create_client):
     def table_side_effect(table_name):
         mock = MagicMock()
         if table_name == "master_wine_library_submissions":
-            mock.select.return_value.not_.is_.return_value.execute.return_value.data = []
+            mock.select.return_value.not_.is_.return_value.execute.return_value.data = (
+                []
+            )
         return mock
 
     mock_sb.table.side_effect = table_side_effect
 
     from jobs.trend_tasks import _compute_popularity
+
     count = _compute_popularity(mock_sb)
     assert count == 0
 
@@ -162,9 +178,11 @@ def test_popularity_returns_zero_no_submissions(mock_create_client):
 # Test 8: TREND_WEIGHTS match the D-02 formula weights exactly
 # =============================================================================
 
+
 def test_trend_weights_match_formula():
     """D-02: 30d weight=3.0, 60d weight=1.5, 90d weight=1.0."""
     from jobs.trend_tasks import TREND_WEIGHTS
+
     assert TREND_WEIGHTS[30] == 3.0
     assert TREND_WEIGHTS[60] == 1.5
     assert TREND_WEIGHTS[90] == 1.0

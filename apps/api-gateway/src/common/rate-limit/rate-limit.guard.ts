@@ -5,9 +5,9 @@ import {
   HttpException,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { ConfigService } from "@nestjs/config";
 
 /**
  * Rate limit configuration
@@ -25,17 +25,17 @@ export interface RateLimitConfig {
  * Default rate limits by endpoint type
  */
 export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
-  default: { limit: 100, windowSeconds: 60 },      // 100 requests per minute
-  auth: { limit: 10, windowSeconds: 60 },          // 10 auth requests per minute
-  upload: { limit: 10, windowSeconds: 300 },       // 10 uploads per 5 minutes
-  ai: { limit: 20, windowSeconds: 60 },            // 20 AI requests per minute
-  webhook: { limit: 1000, windowSeconds: 60 },     // 1000 webhooks per minute
+  default: { limit: 100, windowSeconds: 60 }, // 100 requests per minute
+  auth: { limit: 10, windowSeconds: 60 }, // 10 auth requests per minute
+  upload: { limit: 10, windowSeconds: 300 }, // 10 uploads per 5 minutes
+  ai: { limit: 20, windowSeconds: 60 }, // 20 AI requests per minute
+  webhook: { limit: 1000, windowSeconds: 60 }, // 1000 webhooks per minute
 };
 
 /**
  * Decorator to set custom rate limit for a route
  */
-export const RATE_LIMIT_KEY = 'rateLimit';
+export const RATE_LIMIT_KEY = "rateLimit";
 export const RateLimit = (config: RateLimitConfig) => {
   return (target: any, key?: string, descriptor?: PropertyDescriptor) => {
     if (descriptor) {
@@ -50,7 +50,7 @@ export const RateLimit = (config: RateLimitConfig) => {
 /**
  * Decorator to skip rate limiting for a route
  */
-export const SKIP_RATE_LIMIT_KEY = 'skipRateLimit';
+export const SKIP_RATE_LIMIT_KEY = "skipRateLimit";
 export const SkipRateLimit = () => {
   return (target: any, key?: string, descriptor?: PropertyDescriptor) => {
     if (descriptor) {
@@ -73,30 +73,38 @@ class RateLimitStore {
    * Check and increment rate limit
    * @returns { allowed: boolean, remaining: number, resetAt: number }
    */
-  check(key: string, limit: number, windowSeconds: number): {
+  check(
+    key: string,
+    limit: number,
+    windowSeconds: number,
+  ): {
     allowed: boolean;
     remaining: number;
     resetAt: number;
   } {
     const now = Date.now();
     const windowMs = windowSeconds * 1000;
-    
+
     const entry = this.store.get(key);
-    
+
     if (!entry || entry.resetAt < now) {
       // New window
       this.store.set(key, { count: 1, resetAt: now + windowMs });
       return { allowed: true, remaining: limit - 1, resetAt: now + windowMs };
     }
-    
+
     if (entry.count >= limit) {
       // Rate limited
       return { allowed: false, remaining: 0, resetAt: entry.resetAt };
     }
-    
+
     // Increment
     entry.count++;
-    return { allowed: true, remaining: limit - entry.count, resetAt: entry.resetAt };
+    return {
+      allowed: true,
+      remaining: limit - entry.count,
+      resetAt: entry.resetAt,
+    };
   }
 
   /**
@@ -114,7 +122,7 @@ class RateLimitStore {
 
 /**
  * Rate Limit Guard
- * 
+ *
  * Implements rate limiting for API endpoints:
  * - Per-IP rate limiting (default)
  * - Per-user rate limiting (when authenticated)
@@ -162,13 +170,13 @@ export class RateLimitGuard implements CanActivate {
 
     // Set rate limit headers
     const response = context.switchToHttp().getResponse();
-    response.setHeader('X-RateLimit-Limit', config.limit);
-    response.setHeader('X-RateLimit-Remaining', result.remaining);
-    response.setHeader('X-RateLimit-Reset', Math.ceil(result.resetAt / 1000));
+    response.setHeader("X-RateLimit-Limit", config.limit);
+    response.setHeader("X-RateLimit-Remaining", result.remaining);
+    response.setHeader("X-RateLimit-Reset", Math.ceil(result.resetAt / 1000));
 
     if (!result.allowed) {
       const retryAfter = Math.ceil((result.resetAt - Date.now()) / 1000);
-      response.setHeader('Retry-After', retryAfter);
+      response.setHeader("Retry-After", retryAfter);
 
       this.logger.warn(
         `Rate limit exceeded for ${key} - ${config.limit} requests per ${config.windowSeconds}s`,
@@ -177,7 +185,7 @@ export class RateLimitGuard implements CanActivate {
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: 'Too many requests. Please try again later.',
+          message: "Too many requests. Please try again later.",
           retryAfter,
         },
         HttpStatus.TOO_MANY_REQUESTS,
@@ -191,8 +199,8 @@ export class RateLimitGuard implements CanActivate {
    * Get rate limit configuration for the current request
    */
   private getRateLimitConfig(
-    handler: Function,
-    classRef: Function,
+    handler: any,
+    classRef: any,
     request: any,
   ): RateLimitConfig {
     // Check for custom rate limit on handler
@@ -215,17 +223,17 @@ export class RateLimitGuard implements CanActivate {
 
     // Determine limit based on route
     const path = request.route?.path || request.url;
-    
-    if (path.includes('/auth/')) {
+
+    if (path.includes("/auth/")) {
       return DEFAULT_RATE_LIMITS.auth;
     }
-    if (path.includes('/upload') || path.includes('/invoice')) {
+    if (path.includes("/upload") || path.includes("/invoice")) {
       return DEFAULT_RATE_LIMITS.upload;
     }
-    if (path.includes('/ai/') || path.includes('/agent/')) {
+    if (path.includes("/ai/") || path.includes("/agent/")) {
       return DEFAULT_RATE_LIMITS.ai;
     }
-    if (path.includes('/webhook')) {
+    if (path.includes("/webhook")) {
       return DEFAULT_RATE_LIMITS.webhook;
     }
 
@@ -258,10 +266,10 @@ export class RateLimitGuard implements CanActivate {
     }
 
     // Add route
-    const route = request.route?.path || request.url.split('?')[0];
+    const route = request.route?.path || request.url.split("?")[0];
     parts.push(`route:${route}`);
 
-    return parts.join(':');
+    return parts.join(":");
   }
 
   /**
@@ -269,11 +277,11 @@ export class RateLimitGuard implements CanActivate {
    */
   private getClientIp(request: any): string {
     return (
-      request.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-      request.headers['x-real-ip'] ||
+      request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      request.headers["x-real-ip"] ||
       request.connection?.remoteAddress ||
       request.ip ||
-      'unknown'
+      "unknown"
     );
   }
 }

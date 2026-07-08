@@ -1,12 +1,23 @@
-import { Controller, Post, Put, Get, Body, Param, Query, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { ConversationsService } from './conversations.service';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Put,
+  Get,
+  Body,
+  Param,
+  Query,
+  Logger,
+  HttpException,
+  HttpStatus,
+} from "@nestjs/common";
+import { ConversationsService } from "./conversations.service";
+import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
 
 interface ApproveConversationDto {
   approved: boolean;
   modified_message?: string;
   manager_notes?: string;
-  approval_channel: 'push_notification' | 'onetap_center' | 'web_app';
+  approval_channel: "push_notification" | "onetap_center" | "web_app";
 }
 
 interface EditMessageDto {
@@ -19,8 +30,8 @@ interface RejectConversationDto {
   manager_notes?: string;
 }
 
-@ApiTags('Conversations')
-@Controller('conversations')
+@ApiTags("Conversations")
+@Controller("conversations")
 export class ConversationsController {
   private readonly logger = new Logger(ConversationsController.name);
 
@@ -32,40 +43,40 @@ export class ConversationsController {
    * List all conversations with pagination and comprehensive filters
    */
   @Get()
-  @ApiOperation({ summary: 'List conversations with pagination and filters' })
-  @ApiQuery({ name: 'restaurantId', required: false })
-  @ApiQuery({ name: 'providerId', required: false })
-  @ApiQuery({ name: 'orderId', required: false })
-  @ApiQuery({ name: 'channel', required: false })
-  @ApiQuery({ name: 'direction', required: false })
-  @ApiQuery({ name: 'dateFrom', required: false })
-  @ApiQuery({ name: 'dateTo', required: false })
-  @ApiQuery({ name: 'quarter', required: false })
-  @ApiQuery({ name: 'year', required: false })
-  @ApiQuery({ name: 'month', required: false })
-  @ApiQuery({ name: 'search', required: false })
-  @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  @ApiQuery({ name: 'sortBy', required: false })
-  @ApiQuery({ name: 'sortOrder', required: false })
+  @ApiOperation({ summary: "List conversations with pagination and filters" })
+  @ApiQuery({ name: "restaurantId", required: false })
+  @ApiQuery({ name: "providerId", required: false })
+  @ApiQuery({ name: "orderId", required: false })
+  @ApiQuery({ name: "channel", required: false })
+  @ApiQuery({ name: "direction", required: false })
+  @ApiQuery({ name: "dateFrom", required: false })
+  @ApiQuery({ name: "dateTo", required: false })
+  @ApiQuery({ name: "quarter", required: false })
+  @ApiQuery({ name: "year", required: false })
+  @ApiQuery({ name: "month", required: false })
+  @ApiQuery({ name: "search", required: false })
+  @ApiQuery({ name: "status", required: false })
+  @ApiQuery({ name: "page", required: false })
+  @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({ name: "sortBy", required: false })
+  @ApiQuery({ name: "sortOrder", required: false })
   async listConversations(
-    @Query('restaurantId') restaurantId?: string,
-    @Query('providerId') providerId?: string,
-    @Query('orderId') orderId?: string,
-    @Query('channel') channel?: string,
-    @Query('direction') direction?: string,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo') dateTo?: string,
-    @Query('quarter') quarter?: string,
-    @Query('year') year?: string,
-    @Query('month') month?: string,
-    @Query('search') search?: string,
-    @Query('status') status?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: string,
+    @Query("restaurantId") restaurantId?: string,
+    @Query("providerId") providerId?: string,
+    @Query("orderId") orderId?: string,
+    @Query("channel") channel?: string,
+    @Query("direction") direction?: string,
+    @Query("dateFrom") dateFrom?: string,
+    @Query("dateTo") dateTo?: string,
+    @Query("quarter") quarter?: string,
+    @Query("year") year?: string,
+    @Query("month") month?: string,
+    @Query("search") search?: string,
+    @Query("status") status?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+    @Query("sortBy") sortBy?: string,
+    @Query("sortOrder") sortOrder?: string,
   ) {
     try {
       return await this.conversationsService.listConversations({
@@ -83,98 +94,121 @@ export class ConversationsController {
         status,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20,
-        sortBy: sortBy || 'created_at',
-        sortOrder: (sortOrder as 'asc' | 'desc') || 'desc',
+        sortBy: sortBy || "created_at",
+        sortOrder: (sortOrder as "asc" | "desc") || "desc",
       });
     } catch (error) {
-      this.logger.error(`Failed to list conversations: ${error.message}`, error.stack);
-      throw new HttpException('Failed to list conversations', HttpStatus.INTERNAL_SERVER_ERROR);
+      this.logger.error(
+        `Failed to list conversations: ${error.message}`,
+        error.stack,
+      );
+      throw new HttpException(
+        "Failed to list conversations",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
    * Get a full conversation thread by threadId
    */
-  @Get('thread/:threadId')
-  @ApiOperation({ summary: 'Get all messages in a conversation thread' })
-  async getThread(@Param('threadId') threadId: string) {
+  @Get("thread/:threadId")
+  @ApiOperation({ summary: "Get all messages in a conversation thread" })
+  async getThread(@Param("threadId") threadId: string) {
     try {
       return await this.conversationsService.getThread(threadId);
     } catch (error) {
       this.logger.error(`Failed to get thread: ${error.message}`, error.stack);
-      throw new HttpException('Failed to get thread', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        "Failed to get thread",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
    * Get all conversations with a specific provider
    */
-  @Get('by-provider/:providerId')
-  @ApiOperation({ summary: 'Get all conversations with a vendor' })
+  @Get("by-provider/:providerId")
+  @ApiOperation({ summary: "Get all conversations with a vendor" })
   async getByProvider(
-    @Param('providerId') providerId: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Param("providerId") providerId: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
   ) {
     try {
       return await this.conversationsService.listConversations({
         providerId,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20,
-        sortBy: 'created_at',
-        sortOrder: 'desc',
+        sortBy: "created_at",
+        sortOrder: "desc",
       });
     } catch (error) {
-      this.logger.error(`Failed to get provider conversations: ${error.message}`);
-      throw new HttpException('Failed to get conversations', HttpStatus.INTERNAL_SERVER_ERROR);
+      this.logger.error(
+        `Failed to get provider conversations: ${error.message}`,
+      );
+      throw new HttpException(
+        "Failed to get conversations",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
    * Get all conversations for a specific order
    */
-  @Get('by-order/:orderId')
-  @ApiOperation({ summary: 'Get all conversations for an order' })
-  async getByOrder(@Param('orderId') orderId: string) {
+  @Get("by-order/:orderId")
+  @ApiOperation({ summary: "Get all conversations for an order" })
+  async getByOrder(@Param("orderId") orderId: string) {
     try {
       return await this.conversationsService.listConversations({
         orderId,
         page: 1,
         limit: 100,
-        sortBy: 'created_at',
-        sortOrder: 'asc',
+        sortBy: "created_at",
+        sortOrder: "asc",
       });
     } catch (error) {
       this.logger.error(`Failed to get order conversations: ${error.message}`);
-      throw new HttpException('Failed to get conversations', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        "Failed to get conversations",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
    * Trigger summary regeneration for a conversation/thread
    */
-  @Post(':conversationId/summarize')
-  @ApiOperation({ summary: 'Regenerate AI summary for a conversation thread' })
-  async regenerateSummary(@Param('conversationId') conversationId: string) {
+  @Post(":conversationId/summarize")
+  @ApiOperation({ summary: "Regenerate AI summary for a conversation thread" })
+  async regenerateSummary(@Param("conversationId") conversationId: string) {
     try {
       return await this.conversationsService.regenerateSummary(conversationId);
     } catch (error) {
       this.logger.error(`Failed to regenerate summary: ${error.message}`);
-      throw new HttpException('Failed to regenerate summary', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        "Failed to regenerate summary",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
    * Get aggregated conversation statistics
    */
-  @Get('stats/overview')
-  @ApiOperation({ summary: 'Get aggregated conversation statistics' })
-  async getStats(@Query('restaurantId') restaurantId?: string) {
+  @Get("stats/overview")
+  @ApiOperation({ summary: "Get aggregated conversation statistics" })
+  async getStats(@Query("restaurantId") restaurantId?: string) {
     try {
       return await this.conversationsService.getStats(restaurantId);
     } catch (error) {
       this.logger.error(`Failed to get stats: ${error.message}`);
-      throw new HttpException('Failed to get stats', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        "Failed to get stats",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -183,15 +217,22 @@ export class ConversationsController {
   /**
    * Get all pending conversations
    */
-  @Get('pending/list')
+  @Get("pending/list")
   async getPendingConversations() {
-    this.logger.log('Fetching all pending conversations');
+    this.logger.log("Fetching all pending conversations");
     try {
-      const conversations = await this.conversationsService.getPendingConversations();
+      const conversations =
+        await this.conversationsService.getPendingConversations();
       return { conversations, count: conversations.length };
     } catch (error) {
-      this.logger.error(`Failed to fetch pending conversations: ${error.message}`, error.stack);
-      throw new HttpException('Failed to fetch pending conversations', HttpStatus.INTERNAL_SERVER_ERROR);
+      this.logger.error(
+        `Failed to fetch pending conversations: ${error.message}`,
+        error.stack,
+      );
+      throw new HttpException(
+        "Failed to fetch pending conversations",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -200,17 +241,18 @@ export class ConversationsController {
   /**
    * Get conversation by ID
    */
-  @Get(':conversationId')
-  async getConversation(@Param('conversationId') conversationId: string) {
+  @Get(":conversationId")
+  async getConversation(@Param("conversationId") conversationId: string) {
     this.logger.log(`Fetching conversation ${conversationId}`);
-    
+
     try {
-      const conversation = await this.conversationsService.getConversation(conversationId);
-      
+      const conversation =
+        await this.conversationsService.getConversation(conversationId);
+
       if (!conversation) {
-        throw new HttpException('Conversation not found', HttpStatus.NOT_FOUND);
+        throw new HttpException("Conversation not found", HttpStatus.NOT_FOUND);
       }
-      
+
       return {
         conversation_id: conversation.id,
         order_id: conversation.order_id,
@@ -223,10 +265,13 @@ export class ConversationsController {
         conversation_context: conversation.conversation_context,
       };
     } catch (error) {
-      this.logger.error(`Failed to fetch conversation: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to fetch conversation: ${error.message}`,
+        error.stack,
+      );
       throw new HttpException(
-        error.message || 'Failed to fetch conversation',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR
+        error.message || "Failed to fetch conversation",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -235,17 +280,19 @@ export class ConversationsController {
    * Approve AI conversation
    * Triggers conversation.approved event for procurement agent to resume
    */
-  @Post(':conversationId/approve')
+  @Post(":conversationId/approve")
   async approveConversation(
-    @Param('conversationId') conversationId: string,
-    @Body() body: ApproveConversationDto
+    @Param("conversationId") conversationId: string,
+    @Body() body: ApproveConversationDto,
   ) {
-    this.logger.log(`Approving conversation ${conversationId} via ${body.approval_channel}`);
-    
+    this.logger.log(
+      `Approving conversation ${conversationId} via ${body.approval_channel}`,
+    );
+
     try {
       if (!body.approved) {
         return this.rejectConversation(conversationId, {
-          reason: 'Manager declined approval',
+          reason: "Manager declined approval",
           manager_notes: body.manager_notes,
         });
       }
@@ -256,11 +303,14 @@ export class ConversationsController {
           modifiedMessage: body.modified_message,
           managerNotes: body.manager_notes,
           approvalChannel: body.approval_channel,
-        }
+        },
       );
 
       if (!result.success) {
-        throw new HttpException(result.error || 'Approval failed', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          result.error || "Approval failed",
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       return {
@@ -270,10 +320,13 @@ export class ConversationsController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      this.logger.error(`Failed to approve conversation: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to approve conversation: ${error.message}`,
+        error.stack,
+      );
       throw new HttpException(
-        error.message || 'Failed to approve conversation',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR
+        error.message || "Failed to approve conversation",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -281,26 +334,32 @@ export class ConversationsController {
   /**
    * Edit AI message before sending
    */
-  @Put(':conversationId/message')
+  @Put(":conversationId/message")
   async editMessage(
-    @Param('conversationId') conversationId: string,
-    @Body() body: EditMessageDto
+    @Param("conversationId") conversationId: string,
+    @Body() body: EditMessageDto,
   ) {
     this.logger.log(`Editing message for conversation ${conversationId}`);
-    
+
     try {
       if (!body.new_message || body.new_message.trim().length === 0) {
-        throw new HttpException('Message cannot be empty', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          "Message cannot be empty",
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       const result = await this.conversationsService.editMessage(
         conversationId,
         body.new_message,
-        body.manager_notes
+        body.manager_notes,
       );
 
       if (!result.success) {
-        throw new HttpException(result.error || 'Edit failed', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          result.error || "Edit failed",
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       return {
@@ -310,10 +369,13 @@ export class ConversationsController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      this.logger.error(`Failed to edit message: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to edit message: ${error.message}`,
+        error.stack,
+      );
       throw new HttpException(
-        error.message || 'Failed to edit message',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR
+        error.message || "Failed to edit message",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -322,22 +384,25 @@ export class ConversationsController {
    * Reject AI conversation
    * Triggers conversation.rejected event
    */
-  @Post(':conversationId/reject')
+  @Post(":conversationId/reject")
   async rejectConversation(
-    @Param('conversationId') conversationId: string,
-    @Body() body: RejectConversationDto
+    @Param("conversationId") conversationId: string,
+    @Body() body: RejectConversationDto,
   ) {
     this.logger.log(`Rejecting conversation ${conversationId}`);
-    
+
     try {
       const result = await this.conversationsService.rejectConversation(
         conversationId,
         body.reason,
-        body.manager_notes
+        body.manager_notes,
       );
 
       if (!result.success) {
-        throw new HttpException(result.error || 'Rejection failed', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          result.error || "Rejection failed",
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       return {
@@ -346,12 +411,14 @@ export class ConversationsController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      this.logger.error(`Failed to reject conversation: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to reject conversation: ${error.message}`,
+        error.stack,
+      );
       throw new HttpException(
-        error.message || 'Failed to reject conversation',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR
+        error.message || "Failed to reject conversation",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 }
-

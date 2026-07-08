@@ -1,8 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsObject, IsOptional, IsString } from "class-validator";
 
 export class UpdatePreferencesDto {
-  @ApiProperty({ description: 'Partial preferences object to deep-merge' })
+  @ApiProperty({ description: "Partial preferences object to deep-merge" })
   @IsObject()
   preferences: Record<string, any>;
 }

@@ -10,8 +10,8 @@ import {
   Logger,
   HttpException,
   HttpStatus,
-} from '@nestjs/common';
-import { NotificationsService } from './notifications.service';
+} from "@nestjs/common";
+import { NotificationsService } from "./notifications.service";
 import {
   GetNotificationsQueryDto,
   GetUnreadQueryDto,
@@ -24,9 +24,9 @@ import {
   UpdatePreferencesDto,
   PushSubscribeDto,
   PushUnsubscribeDto,
-} from './dto/notifications.dto';
+} from "./dto/notifications.dto";
 
-@Controller('notifications')
+@Controller("notifications")
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
@@ -50,7 +50,7 @@ export class NotificationsController {
       type: string;
       title: string;
       message: string;
-      priority?: 'low' | 'medium' | 'high' | 'critical';
+      priority?: "low" | "medium" | "high" | "critical";
       actionUrl?: string;
       actionLabel?: string;
       metadata?: Record<string, any>;
@@ -83,7 +83,7 @@ export class NotificationsController {
     }
   }
 
-  @Get('unread')
+  @Get("unread")
   async getUnreadNotifications(@Query() query: GetUnreadQueryDto) {
     try {
       return await this.notificationsService.getUnreadNotifications({
@@ -97,7 +97,7 @@ export class NotificationsController {
     }
   }
 
-  @Get('unread/count')
+  @Get("unread/count")
   async getUnreadCount(@Query() query: GetUnreadCountQueryDto) {
     try {
       const count = await this.notificationsService.getUnreadCount({
@@ -111,7 +111,7 @@ export class NotificationsController {
     }
   }
 
-  @Get('history')
+  @Get("history")
   async getNotificationHistory(@Query() query: GetHistoryQueryDto) {
     try {
       return await this.notificationsService.getNotificationHistory(
@@ -124,7 +124,7 @@ export class NotificationsController {
     }
   }
 
-  @Get('preferences')
+  @Get("preferences")
   async getPreferences(@Query() query: GetPreferencesQueryDto) {
     try {
       return await this.notificationsService.getPreferences(query.userId);
@@ -134,7 +134,7 @@ export class NotificationsController {
     }
   }
 
-  @Patch('preferences')
+  @Patch("preferences")
   async updatePreferences(
     @Query() query: GetPreferencesQueryDto,
     @Body() body: UpdatePreferencesDto,
@@ -155,7 +155,7 @@ export class NotificationsController {
     }
   }
 
-  @Patch('read/bulk')
+  @Patch("read/bulk")
   async markBulkAsRead(@Body() body: BulkIdsDto) {
     try {
       const count = await this.notificationsService.markBulkAsRead(body.ids);
@@ -166,7 +166,7 @@ export class NotificationsController {
     }
   }
 
-  @Patch('read/all')
+  @Patch("read/all")
   async markAllAsRead(@Query() query: MarkAllReadQueryDto) {
     try {
       const count = await this.notificationsService.markAllAsRead({
@@ -180,21 +180,24 @@ export class NotificationsController {
     }
   }
 
-  @Patch(':id/read')
-  async markAsRead(@Param('id') id: string) {
+  @Patch(":id/read")
+  async markAsRead(@Param("id") id: string) {
     try {
       const notification = await this.notificationsService.markAsRead(id);
       return notification;
     } catch (error) {
-      this.logger.error(`Failed to mark notification as read: ${error.message}`);
+      this.logger.error(
+        `Failed to mark notification as read: ${error.message}`,
+      );
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  @Patch(':id/archive')
-  async archiveNotification(@Param('id') id: string) {
+  @Patch(":id/archive")
+  async archiveNotification(@Param("id") id: string) {
     try {
-      const notification = await this.notificationsService.archiveNotification(id);
+      const notification =
+        await this.notificationsService.archiveNotification(id);
       return notification;
     } catch (error) {
       this.logger.error(`Failed to archive notification: ${error.message}`);
@@ -202,7 +205,7 @@ export class NotificationsController {
     }
   }
 
-  @Delete('bulk')
+  @Delete("bulk")
   async deleteBulk(@Body() body: BulkIdsDto) {
     try {
       const count = await this.notificationsService.deleteBulk(body.ids);
@@ -213,7 +216,7 @@ export class NotificationsController {
     }
   }
 
-  @Delete('read/all')
+  @Delete("read/all")
   async deleteAllRead(@Query() query: DeleteAllReadQueryDto) {
     try {
       const count = await this.notificationsService.deleteAllRead(query.userId);
@@ -224,8 +227,8 @@ export class NotificationsController {
     }
   }
 
-  @Delete(':id')
-  async deleteNotification(@Param('id') id: string) {
+  @Delete(":id")
+  async deleteNotification(@Param("id") id: string) {
     try {
       await this.notificationsService.deleteNotification(id);
       return { success: true };
@@ -239,7 +242,7 @@ export class NotificationsController {
   // PUSH NOTIFICATION SUBSCRIPTION ENDPOINTS
   // =========================================================================
 
-  @Post('push/subscribe')
+  @Post("push/subscribe")
   async subscribeToPush(@Body() body: PushSubscribeDto) {
     try {
       return await this.notificationsService.registerPushSubscription(
@@ -252,10 +255,12 @@ export class NotificationsController {
     }
   }
 
-  @Post('push/unsubscribe')
+  @Post("push/unsubscribe")
   async unsubscribeFromPush(@Body() body: PushUnsubscribeDto) {
     try {
-      return await this.notificationsService.unregisterPushSubscription(body.userId);
+      return await this.notificationsService.unregisterPushSubscription(
+        body.userId,
+      );
     } catch (error) {
       this.logger.error(`Failed to unsubscribe from push: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -266,21 +271,21 @@ export class NotificationsController {
   // EXISTING SENDING ENDPOINTS (preserved from original)
   // =========================================================================
 
-  @Post('test')
+  @Post("test")
   async sendTestNotification(@Body() body: { userId: string }) {
     this.logger.log(`Sending test notification to user ${body.userId}`);
 
     await this.notificationsService.sendToUser(body.userId, {
-      type: 'system_alert',
-      title: '🍷 WineOps AI Test',
+      type: "system_alert",
+      title: "🍷 WineOps AI Test",
       body: "Notifications are working! You'll receive alerts here.",
       requireInteraction: false,
     });
 
-    return { success: true, message: 'Test notification sent' };
+    return { success: true, message: "Test notification sent" };
   }
 
-  @Post('order-approval')
+  @Post("order-approval")
   async notifyOrderApproval(
     @Body()
     body: {
@@ -296,7 +301,7 @@ export class NotificationsController {
     return { success: true };
   }
 
-  @Post('low-stock')
+  @Post("low-stock")
   async notifyLowStock(
     @Body()
     body: {
@@ -311,7 +316,7 @@ export class NotificationsController {
     return { success: true };
   }
 
-  @Post('delivery')
+  @Post("delivery")
   async notifyDelivery(
     @Body()
     body: {
@@ -326,7 +331,7 @@ export class NotificationsController {
     return { success: true };
   }
 
-  @Post('price-negotiation')
+  @Post("price-negotiation")
   async notifyPriceNegotiation(
     @Body()
     body: {
@@ -342,21 +347,21 @@ export class NotificationsController {
     return { success: true };
   }
 
-  @Post('system-alert')
+  @Post("system-alert")
   async sendSystemAlert(
     @Body()
     body: {
       restaurantId: string;
       title: string;
       message: string;
-      severity: 'info' | 'warning' | 'error';
+      severity: "info" | "warning" | "error";
     },
   ) {
     await this.notificationsService.sendSystemAlert(body);
     return { success: true };
   }
 
-  @Post('send-email')
+  @Post("send-email")
   async sendEmail(
     @Body()
     body: {
@@ -369,7 +374,7 @@ export class NotificationsController {
       bcc?: string[];
     },
   ) {
-    this.logger.log(`Sending email to ${body.to.join(', ')}`);
+    this.logger.log(`Sending email to ${body.to.join(", ")}`);
 
     try {
       const result = await this.notificationsService.sendEmail({

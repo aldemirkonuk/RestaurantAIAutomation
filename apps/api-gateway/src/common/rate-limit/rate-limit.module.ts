@@ -1,9 +1,9 @@
-import { Module, Global } from '@nestjs/common';
-import { RateLimitGuard } from './rate-limit.guard';
+import { Module, Global } from "@nestjs/common";
+import { RateLimitGuard } from "./rate-limit.guard";
 
 /**
  * Rate Limit Module
- * 
+ *
  * Provides rate limiting for API endpoints:
  * - Per-IP rate limiting
  * - Per-user rate limiting

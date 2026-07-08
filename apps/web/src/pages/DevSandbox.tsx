@@ -239,7 +239,9 @@ export default function DevSandbox() {
         timestamp: new Date().toISOString()
       }
       localStorage.setItem('wineops_shadow_stock', JSON.stringify(shadow))
-    } catch {}
+    } catch {
+      /* sandbox action best-effort */
+    }
     
     addOneTapAction({
       type: 'stock_receipt',

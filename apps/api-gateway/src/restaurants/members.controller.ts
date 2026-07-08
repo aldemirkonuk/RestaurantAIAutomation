@@ -12,19 +12,19 @@ import {
   UseGuards,
   UsePipes,
   ValidationPipe,
-} from '@nestjs/common';
-import { MembersService } from './members.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { UpdateMemberRoleDto } from '../auth/dto/update-member-role.dto';
-import { AddMemberDto } from './dto/add-member.dto';
-import { Request } from 'express';
+} from "@nestjs/common";
+import { MembersService } from "./members.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UpdateMemberRoleDto } from "../auth/dto/update-member-role.dto";
+import { AddMemberDto } from "./dto/add-member.dto";
+import { Request } from "express";
 
 interface AuthenticatedUser {
   userId: string;
   role: string;
 }
 
-@Controller('restaurants')
+@Controller("restaurants")
 @UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true }))
 export class MembersController {
@@ -32,35 +32,35 @@ export class MembersController {
 
   constructor(private readonly membersService: MembersService) {}
 
-  @Get(':restaurantId/members')
+  @Get(":restaurantId/members")
   async getMembers(
     @Req() req: Request & { user: AuthenticatedUser },
-    @Param('restaurantId') restaurantId: string,
+    @Param("restaurantId") restaurantId: string,
   ) {
     const userId = (req.user as AuthenticatedUser)?.userId;
-    if (!userId) throw new ForbiddenException('Missing user identity');
+    if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.getMembers(userId, restaurantId);
   }
 
-  @Get(':restaurantId/invites')
+  @Get(":restaurantId/invites")
   async getInvites(
     @Req() req: Request & { user: AuthenticatedUser },
-    @Param('restaurantId') restaurantId: string,
+    @Param("restaurantId") restaurantId: string,
   ) {
     const userId = (req.user as AuthenticatedUser)?.userId;
-    if (!userId) throw new ForbiddenException('Missing user identity');
+    if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.getInvites(userId, restaurantId);
   }
 
-  @Patch(':restaurantId/members/:memberId')
+  @Patch(":restaurantId/members/:memberId")
   async updateMemberRole(
     @Req() req: Request & { user: AuthenticatedUser },
-    @Param('restaurantId') restaurantId: string,
-    @Param('memberId') memberId: string,
+    @Param("restaurantId") restaurantId: string,
+    @Param("memberId") memberId: string,
     @Body() body: UpdateMemberRoleDto,
   ): Promise<void> {
     const userId = (req.user as AuthenticatedUser)?.userId;
-    if (!userId) throw new ForbiddenException('Missing user identity');
+    if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.updateMemberRole(
       userId,
       restaurantId,
@@ -69,25 +69,25 @@ export class MembersController {
     );
   }
 
-  @Delete(':restaurantId/members/:memberId')
+  @Delete(":restaurantId/members/:memberId")
   async removeMember(
     @Req() req: Request & { user: AuthenticatedUser },
-    @Param('restaurantId') restaurantId: string,
-    @Param('memberId') memberId: string,
+    @Param("restaurantId") restaurantId: string,
+    @Param("memberId") memberId: string,
   ): Promise<void> {
     const userId = (req.user as AuthenticatedUser)?.userId;
-    if (!userId) throw new ForbiddenException('Missing user identity');
+    if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.removeMember(userId, restaurantId, memberId);
   }
 
-  @Post(':restaurantId/members')
+  @Post(":restaurantId/members")
   async addMember(
     @Req() req: Request & { user: AuthenticatedUser },
-    @Param('restaurantId') restaurantId: string,
+    @Param("restaurantId") restaurantId: string,
     @Body() body: AddMemberDto,
   ): Promise<void> {
     const userId = (req.user as AuthenticatedUser)?.userId;
-    if (!userId) throw new ForbiddenException('Missing user identity');
+    if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.addMember(
       userId,
       restaurantId,
@@ -96,14 +96,14 @@ export class MembersController {
     );
   }
 
-  @Delete(':restaurantId/invites/:code')
+  @Delete(":restaurantId/invites/:code")
   async revokeInvite(
     @Req() req: Request & { user: AuthenticatedUser },
-    @Param('restaurantId') restaurantId: string,
-    @Param('code') code: string,
+    @Param("restaurantId") restaurantId: string,
+    @Param("code") code: string,
   ): Promise<void> {
     const userId = (req.user as AuthenticatedUser)?.userId;
-    if (!userId) throw new ForbiddenException('Missing user identity');
+    if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.revokeInvite(userId, restaurantId, code);
   }
 }

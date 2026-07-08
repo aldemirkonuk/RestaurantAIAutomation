@@ -62,11 +62,11 @@ _COUNTRY_NAME_TO_CODE: Dict[str, str] = {
 
 
 class OntologyCheckFailure(BaseModel):
-    check: str            # "region_country" | "grape_appellation" | "vintage_plausibility" | "color_grape"
-    severity: str         # "critical" | "warning"
+    check: str  # "region_country" | "grape_appellation" | "vintage_plausibility" | "color_grape"
+    severity: str  # "critical" | "warning"
     expected: Optional[str] = None
     found: Optional[str] = None
-    message: str          # human-readable explanation
+    message: str  # human-readable explanation
 
 
 class OntologyValidationResult(BaseModel):
@@ -75,7 +75,7 @@ class OntologyValidationResult(BaseModel):
     checks_total: int
     failures: List[OntologyCheckFailure]
     autofills_applied: int
-    validated_at: str     # ISO timestamp
+    validated_at: str  # ISO timestamp
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +136,9 @@ class OntologyValidationService:
 
         # Normalize claimed country to ISO code
         claimed_lower = country_value.strip().lower()
-        claimed_code = _COUNTRY_NAME_TO_CODE.get(claimed_lower, claimed_lower.upper()[:2])
+        claimed_code = _COUNTRY_NAME_TO_CODE.get(
+            claimed_lower, claimed_lower.upper()[:2]
+        )
 
         if known_country_code.upper() != claimed_code.upper():
             return OntologyCheckFailure(
@@ -278,9 +280,9 @@ class OntologyValidationService:
         min_release_delay_months: int = rule.get("min_release_delay_months", 0)
 
         # October 1 = canonical Northern-hemisphere harvest date
-        earliest_release = datetime(vintage_year, 10, 1, tzinfo=timezone.utc) + timedelta(
-            days=30 * min_release_delay_months
-        )
+        earliest_release = datetime(
+            vintage_year, 10, 1, tzinfo=timezone.utc
+        ) + timedelta(days=30 * min_release_delay_months)
         now = datetime.now(timezone.utc)
 
         if now < earliest_release:
@@ -318,7 +320,10 @@ class OntologyValidationService:
           5. Normalize color_value: lowercase, map "rose" → "rosé"
           6. If color_value != grape_color → WARNING
         """
-        from services.ontology_normalization import get_grape_color, normalize_grape_name
+        from services.ontology_normalization import (
+            get_grape_color,
+            normalize_grape_name,
+        )
 
         if not color_value or not grape_value:
             return None
@@ -399,7 +404,9 @@ class OntologyValidationService:
                 }
             }
             nonlocal updated_fc
-            updated_fc = merge_field_confidence(updated_fc, ontology_fill, overwrite_lower=True)
+            updated_fc = merge_field_confidence(
+                updated_fc, ontology_fill, overwrite_lower=True
+            )
             return 1
 
         # 1. appellation → country
@@ -457,7 +464,9 @@ class OntologyValidationService:
         for failure in failures:
             field_name = field_map.get(failure.check, failure.check)
             current_entry = fc.get(field_name, {})
-            current_value = current_entry.get("value") if isinstance(current_entry, dict) else None
+            current_value = (
+                current_entry.get("value") if isinstance(current_entry, dict) else None
+            )
             current_confidence = (
                 float(current_entry.get("confidence", 1.0))
                 if isinstance(current_entry, dict)
@@ -467,7 +476,10 @@ class OntologyValidationService:
             should_route = False
             if failure.severity == "critical":
                 should_route = True
-            elif failure.severity == "warning" and current_confidence < DEFAULT_ACCEPT_THRESHOLD:
+            elif (
+                failure.severity == "warning"
+                and current_confidence < DEFAULT_ACCEPT_THRESHOLD
+            ):
                 # D-03: WARNING routes to field_review_queue only if confidence also low
                 should_route = True
 
@@ -475,34 +487,46 @@ class OntologyValidationService:
                 continue
 
             try:
-                self.supabase.table("field_review_queue").insert({
-                    "submission_id": wine_id,
-                    "field_name": field_name,
-                    "current_value": str(current_value) if current_value is not None else None,
-                    "confidence": current_confidence,
-                    "source": "ontology",
-                    "status": "pending",
-                }).execute()
+                self.supabase.table("field_review_queue").insert(
+                    {
+                        "submission_id": wine_id,
+                        "field_name": field_name,
+                        "current_value": (
+                            str(current_value) if current_value is not None else None
+                        ),
+                        "confidence": current_confidence,
+                        "source": "ontology",
+                        "status": "pending",
+                    }
+                ).execute()
             except Exception as exc:
                 logger.warning(
                     "field_review_queue insert failed for wine_id=%s field=%s: %s",
-                    wine_id, field_name, exc,
+                    wine_id,
+                    field_name,
+                    exc,
                 )
 
         # Set auto_blocked=True only for CRITICAL failures (D-03)
         if has_critical:
             try:
-                self.supabase.table("master_wine_library_submissions").update({
-                    "auto_blocked": True,
-                }).eq("id", wine_id).execute()
+                self.supabase.table("master_wine_library_submissions").update(
+                    {
+                        "auto_blocked": True,
+                    }
+                ).eq("id", wine_id).execute()
             except Exception as exc:
-                logger.warning("auto_blocked update failed for wine_id=%s: %s", wine_id, exc)
+                logger.warning(
+                    "auto_blocked update failed for wine_id=%s: %s", wine_id, exc
+                )
 
     # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
-    def run_ontology_validation(self, wine_id: str) -> Optional[OntologyValidationResult]:
+    def run_ontology_validation(
+        self, wine_id: str
+    ) -> Optional[OntologyValidationResult]:
         """
         Main entry point. Called by ontology_tasks.py.
 
@@ -529,7 +553,11 @@ class OntologyValidationService:
                 .execute()
             )
         except Exception as exc:
-            logger.error("run_ontology_validation: DB fetch failed for wine_id=%s: %s", wine_id, exc)
+            logger.error(
+                "run_ontology_validation: DB fetch failed for wine_id=%s: %s",
+                wine_id,
+                exc,
+            )
             return None
 
         if not resp.data:
@@ -560,7 +588,9 @@ class OntologyValidationService:
         if r1:
             failures.append(r1)
 
-        r2 = self.check_grape_appellation_compatibility(appellation, canonical_grape or grape_variety)
+        r2 = self.check_grape_appellation_compatibility(
+            appellation, canonical_grape or grape_variety
+        )
         if r2:
             failures.append(r2)
 
@@ -586,7 +616,9 @@ class OntologyValidationService:
         )
 
         # 6. Apply deterministic autofills (D-04)
-        updated_fc, autofill_count = self._apply_ontology_autofills(fc, appellation, canonical_grape)
+        updated_fc, autofill_count = self._apply_ontology_autofills(
+            fc, appellation, canonical_grape
+        )
         result.autofills_applied = autofill_count
 
         # 7. Write ontology_validation JSONB + updated field_confidence to submission
@@ -599,13 +631,17 @@ class OntologyValidationService:
         }
 
         try:
-            self.supabase.table("master_wine_library_submissions").update({
-                "ontology_validation": validation_payload,
-                "ontology_validated_at": result.validated_at,
-                "field_confidence": updated_fc,
-            }).eq("id", wine_id).execute()
+            self.supabase.table("master_wine_library_submissions").update(
+                {
+                    "ontology_validation": validation_payload,
+                    "ontology_validated_at": result.validated_at,
+                    "field_confidence": updated_fc,
+                }
+            ).eq("id", wine_id).execute()
         except Exception as exc:
-            logger.error("ontology_validation write failed for wine_id=%s: %s", wine_id, exc)
+            logger.error(
+                "ontology_validation write failed for wine_id=%s: %s", wine_id, exc
+            )
             return result  # Return result even if write fails
 
         # 8. Route failures (D-03: CRITICAL always; WARNING only if low confidence)
@@ -613,6 +649,10 @@ class OntologyValidationService:
 
         logger.info(
             "run_ontology_validation: wine_id=%s checks=%d/%d failures=%d autofills=%d",
-            wine_id, checks_passed, checks_total, checks_failed, autofill_count,
+            wine_id,
+            checks_passed,
+            checks_total,
+            checks_failed,
+            autofill_count,
         )
         return result

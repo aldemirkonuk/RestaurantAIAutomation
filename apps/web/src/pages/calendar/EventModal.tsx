@@ -162,7 +162,7 @@ function getDefaultEndTime(startTime: string): string {
 
 function buildRruleText(freq: string, daysOfWeek: number[], monthCfg: MonthlyConfig, endType: string, endOnDate: string, endAfterCount: number): string {
   if (freq === 'none') return ''
-  let parts: string[] = []
+  const parts: string[] = []
   if (freq === 'daily') parts.push('FREQ=DAILY')
   else if (freq === 'weekly') {
     parts.push('FREQ=WEEKLY')

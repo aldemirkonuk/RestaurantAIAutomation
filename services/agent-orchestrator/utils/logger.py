@@ -38,8 +38,16 @@ class AgentContextFilter(logging.Filter):
     """Injects agent_name and correlation_id into every log record."""
 
     def filter(self, record):
-        record.agent_name = getattr(_context, 'agent_name', None) or getattr(record, 'agent_name', None) or ''
-        record.correlation_id = getattr(_context, 'correlation_id', None) or getattr(record, 'correlation_id', None) or ''
+        record.agent_name = (
+            getattr(_context, "agent_name", None)
+            or getattr(record, "agent_name", None)
+            or ""
+        )
+        record.correlation_id = (
+            getattr(_context, "correlation_id", None)
+            or getattr(record, "correlation_id", None)
+            or ""
+        )
         return True
 
 
@@ -48,11 +56,11 @@ class AgentJsonFormatter(jsonlogger.JsonFormatter):
 
     def add_fields(self, log_record, record, message_dict):
         super().add_fields(log_record, record, message_dict)
-        log_record['timestamp'] = log_record.get('asctime', record.created)
-        log_record['level'] = record.levelname
-        log_record['logger'] = record.name
-        log_record['agent_name'] = getattr(record, 'agent_name', '')
-        log_record['correlation_id'] = getattr(record, 'correlation_id', '')
+        log_record["timestamp"] = log_record.get("asctime", record.created)
+        log_record["level"] = record.levelname
+        log_record["logger"] = record.name
+        log_record["agent_name"] = getattr(record, "agent_name", "")
+        log_record["correlation_id"] = getattr(record, "correlation_id", "")
 
 
 def setup_logger(name: str) -> logging.Logger:
@@ -78,12 +86,12 @@ def setup_logger(name: str) -> logging.Logger:
     console_handler = logging.StreamHandler(sys.stdout)
     if os.environ.get("LOG_JSON_STDOUT"):
         console_formatter = AgentJsonFormatter(
-            '%(asctime)s %(name)s %(levelname)s %(message)s %(agent_name)s %(correlation_id)s'
+            "%(asctime)s %(name)s %(levelname)s %(message)s %(agent_name)s %(correlation_id)s"
         )
     else:
         console_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - [%(agent_name)s] [%(correlation_id)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s - %(name)s - %(levelname)s - [%(agent_name)s] [%(correlation_id)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
     console_handler.setFormatter(console_formatter)
     console_handler.addFilter(context_filter)
@@ -95,7 +103,7 @@ def setup_logger(name: str) -> logging.Logger:
 
     file_handler = logging.FileHandler(log_dir / "agent-orchestrator.log")
     json_formatter = AgentJsonFormatter(
-        '%(asctime)s %(name)s %(levelname)s %(message)s %(agent_name)s %(correlation_id)s'
+        "%(asctime)s %(name)s %(levelname)s %(message)s %(agent_name)s %(correlation_id)s"
     )
     file_handler.setFormatter(json_formatter)
     file_handler.addFilter(context_filter)

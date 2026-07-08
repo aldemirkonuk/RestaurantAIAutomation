@@ -37,10 +37,26 @@ def _make_extraction_result(wines=None):
                 "country": None,  # below threshold — rejected
                 "grape_variety": None,  # triggers Haiku enrichment
                 "field_confidence": {
-                    "wine_name": {"value": "Barolo Riserva", "confidence": 0.97, "source": "visible"},
-                    "vintage": {"value": "2019", "confidence": 0.88, "source": "visible"},
-                    "region": {"value": "Piedmont", "confidence": 0.65, "source": "inferred"},
-                    "country": {"value": None, "confidence": 0.35, "source": "inferred"},
+                    "wine_name": {
+                        "value": "Barolo Riserva",
+                        "confidence": 0.97,
+                        "source": "visible",
+                    },
+                    "vintage": {
+                        "value": "2019",
+                        "confidence": 0.88,
+                        "source": "visible",
+                    },
+                    "region": {
+                        "value": "Piedmont",
+                        "confidence": 0.65,
+                        "source": "inferred",
+                    },
+                    "country": {
+                        "value": None,
+                        "confidence": 0.35,
+                        "source": "inferred",
+                    },
                 },
                 "completeness_score": 0.72,
                 "needs_review": True,
@@ -53,10 +69,26 @@ def _make_extraction_result(wines=None):
                 "country": "Italy",
                 "grape_variety": None,  # triggers Haiku enrichment
                 "field_confidence": {
-                    "wine_name": {"value": "Chianti Classico", "confidence": 0.95, "source": "visible"},
-                    "vintage": {"value": "2020", "confidence": 0.90, "source": "visible"},
-                    "region": {"value": "Tuscany", "confidence": 0.72, "source": "inferred"},
-                    "country": {"value": "Italy", "confidence": 0.88, "source": "visible"},
+                    "wine_name": {
+                        "value": "Chianti Classico",
+                        "confidence": 0.95,
+                        "source": "visible",
+                    },
+                    "vintage": {
+                        "value": "2020",
+                        "confidence": 0.90,
+                        "source": "visible",
+                    },
+                    "region": {
+                        "value": "Tuscany",
+                        "confidence": 0.72,
+                        "source": "inferred",
+                    },
+                    "country": {
+                        "value": "Italy",
+                        "confidence": 0.88,
+                        "source": "visible",
+                    },
                 },
                 "completeness_score": 0.80,
                 "needs_review": False,
@@ -84,7 +116,9 @@ def _make_supabase_mock(submission_id="sub-001"):
 
     # master_wine_library_submissions insert
     submissions_mock = MagicMock()
-    submissions_mock.insert.return_value.execute.return_value.data = [{"id": submission_id}]
+    submissions_mock.insert.return_value.execute.return_value.data = [
+        {"id": submission_id}
+    ]
 
     # field_review_queue insert
     review_queue_mock = MagicMock()
@@ -133,21 +167,29 @@ class TestExtractionPipelineE2E:
                 json={"restaurant_id": "test-r-001", "images": ["base64data"]},
             )
 
-        assert resp.status_code == 200, f"Expected 200 got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200 got {resp.status_code}: {resp.text}"
 
         # Supabase insert was called for each wine
-        assert submissions_mock.insert.called, "Expected master_wine_library_submissions.insert() to be called"
+        assert (
+            submissions_mock.insert.called
+        ), "Expected master_wine_library_submissions.insert() to be called"
 
         # Inspect insert payload for first wine
         call_args = submissions_mock.insert.call_args_list[0][0][0]
-        assert "field_confidence" in call_args, "Insert payload missing field_confidence"
+        assert (
+            "field_confidence" in call_args
+        ), "Insert payload missing field_confidence"
         assert call_args["field_confidence"] is not None
 
         # auto_blocked is present in payload
         assert "auto_blocked" in call_args, "Insert payload missing auto_blocked"
 
         # Haiku delay was called (wines missing grape_variety)
-        assert mock_haiku.delay.called, "Expected haiku_enrich_task.delay() to be called"
+        assert (
+            mock_haiku.delay.called
+        ), "Expected haiku_enrich_task.delay() to be called"
 
     def test_extraction_routes_mid_confidence_to_review_queue(self, test_client):
         """
@@ -176,9 +218,9 @@ class TestExtractionPipelineE2E:
         assert resp.status_code == 200
 
         # field_review_queue insert was called for mid-confidence fields
-        assert review_queue_mock.insert.called, (
-            "Expected field_review_queue.insert() to be called for mid-confidence fields"
-        )
+        assert (
+            review_queue_mock.insert.called
+        ), "Expected field_review_queue.insert() to be called for mid-confidence fields"
 
         # Inspect queue rows — region (0.65) should be in the queue
         queue_call_args = review_queue_mock.insert.call_args_list[0][0][0]
@@ -188,13 +230,18 @@ class TestExtractionPipelineE2E:
         else:
             field_names = [queue_call_args.get("field_name")]
 
-        assert "region" in field_names, (
-            f"Expected 'region' in field_review_queue rows, got {field_names}"
-        )
+        assert (
+            "region" in field_names
+        ), f"Expected 'region' in field_review_queue rows, got {field_names}"
 
         # Check that the region entry has status=pending and correct confidence
         region_rows = [
-            r for r in (queue_call_args if isinstance(queue_call_args, list) else [queue_call_args])
+            r
+            for r in (
+                queue_call_args
+                if isinstance(queue_call_args, list)
+                else [queue_call_args]
+            )
             if r.get("field_name") == "region"
         ]
         assert region_rows, "No region row found in review_queue insert"
@@ -272,11 +319,13 @@ class TestExtractionPipelineE2E:
                 json={"restaurant_id": "test-r-cap", "images": ["base64data"]},
             )
 
-        assert resp.status_code == 402, f"Expected 402 got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 402
+        ), f"Expected 402 got {resp.status_code}: {resp.text}"
         detail = resp.json().get("detail", "")
-        assert "cap" in detail.lower() or "exceed" in detail.lower(), (
-            f"Expected cap/exceed in error detail, got: {detail}"
-        )
+        assert (
+            "cap" in detail.lower() or "exceed" in detail.lower()
+        ), f"Expected cap/exceed in error detail, got: {detail}"
 
     def test_extraction_missing_images_returns_422(self, test_client):
         """
@@ -285,7 +334,13 @@ class TestExtractionPipelineE2E:
         with patch(_SUPABASE_PATCH, return_value=None):
             resp = test_client.post(
                 "/api/v1/onboarding/extract",
-                json={"restaurant_id": "test-r-422", "images": None, "pdf_base64": None},
+                json={
+                    "restaurant_id": "test-r-422",
+                    "images": None,
+                    "pdf_base64": None,
+                },
             )
 
-        assert resp.status_code == 422, f"Expected 422 got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 422
+        ), f"Expected 422 got {resp.status_code}: {resp.text}"

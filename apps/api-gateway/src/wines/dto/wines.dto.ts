@@ -1,5 +1,12 @@
-import { IsIn, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  IsIn,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+} from "class-validator";
+import { Transform } from "class-transformer";
 
 export class GetWinesQueryDto {
   @IsOptional()
@@ -33,12 +40,12 @@ export class GetWinesQueryDto {
   maxPrice?: number;
 
   @IsOptional()
-  @IsIn(['name', 'price', 'vintage', 'type'])
-  sortBy?: 'name' | 'price' | 'vintage' | 'type';
+  @IsIn(["name", "price", "vintage", "type"])
+  sortBy?: "name" | "price" | "vintage" | "type";
 
   @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc';
+  @IsIn(["asc", "desc"])
+  sortOrder?: "asc" | "desc";
 
   @IsOptional()
   @Transform(({ value }) => Number(value))

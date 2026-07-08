@@ -1,6 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import { FeatureFlagsDto, UpdateFeatureFlagsDto } from './dto/feature-flags.dto';
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
+import {
+  FeatureFlagsDto,
+  UpdateFeatureFlagsDto,
+} from "./dto/feature-flags.dto";
 
 @Injectable()
 export class SettingsService {
@@ -13,28 +16,25 @@ export class SettingsService {
    */
   async getFeatureFlags(restaurantId: string): Promise<FeatureFlagsDto> {
     const { data, error } = await this.databaseService.client
-      .from('restaurant_feature_flags')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
+      .from("restaurant_feature_flags")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      if (error.code === "PGRST116") {
         // No flags found, return defaults (all enabled)
         return this.getDefaultFeatureFlags();
       }
-      this.logger.error(`Error fetching feature flags: ${error.message}`, error);
+      this.logger.error(
+        `Error fetching feature flags: ${error.message}`,
+        error,
+      );
       throw new Error(`Failed to fetch feature flags: ${error.message}`);
     }
 
     // Remove id, restaurant_id, created_at, updated_at from response
-    const {
-      id,
-      restaurant_id,
-      created_at,
-      updated_at,
-      ...flags
-    } = data;
+    const { id, restaurant_id, created_at, updated_at, ...flags } = data;
 
     return flags as FeatureFlagsDto;
   }
@@ -48,32 +48,29 @@ export class SettingsService {
   ): Promise<FeatureFlagsDto> {
     // Check if flags exist
     const { data: existing } = await this.databaseService.client
-      .from('restaurant_feature_flags')
-      .select('id')
-      .eq('restaurant_id', restaurantId)
+      .from("restaurant_feature_flags")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
       .single();
 
     if (existing) {
       // Update existing flags
       const { data, error } = await this.databaseService.client
-        .from('restaurant_feature_flags')
+        .from("restaurant_feature_flags")
         .update(updateDto)
-        .eq('restaurant_id', restaurantId)
+        .eq("restaurant_id", restaurantId)
         .select()
         .single();
 
       if (error) {
-        this.logger.error(`Error updating feature flags: ${error.message}`, error);
+        this.logger.error(
+          `Error updating feature flags: ${error.message}`,
+          error,
+        );
         throw new Error(`Failed to update feature flags: ${error.message}`);
       }
 
-      const {
-        id,
-        restaurant_id,
-        created_at,
-        updated_at,
-        ...flags
-      } = data;
+      const { id, restaurant_id, created_at, updated_at, ...flags } = data;
 
       return flags as FeatureFlagsDto;
     } else {
@@ -86,23 +83,20 @@ export class SettingsService {
       };
 
       const { data, error } = await this.databaseService.client
-        .from('restaurant_feature_flags')
+        .from("restaurant_feature_flags")
         .insert(newFlags)
         .select()
         .single();
 
       if (error) {
-        this.logger.error(`Error creating feature flags: ${error.message}`, error);
+        this.logger.error(
+          `Error creating feature flags: ${error.message}`,
+          error,
+        );
         throw new Error(`Failed to create feature flags: ${error.message}`);
       }
 
-      const {
-        id,
-        restaurant_id,
-        created_at,
-        updated_at,
-        ...flags
-      } = data;
+      const { id, restaurant_id, created_at, updated_at, ...flags } = data;
 
       return flags as FeatureFlagsDto;
     }
@@ -115,17 +109,16 @@ export class SettingsService {
     restaurantId: string,
     featureName: string,
   ): Promise<boolean> {
-    const { data, error } = await this.databaseService.client
-      .rpc('get_restaurant_feature_flag', {
+    const { data, error } = await this.databaseService.client.rpc(
+      "get_restaurant_feature_flag",
+      {
         p_restaurant_id: restaurantId,
         p_feature_name: featureName,
-      });
+      },
+    );
 
     if (error) {
-      this.logger.error(
-        `Error checking feature flag: ${error.message}`,
-        error,
-      );
+      this.logger.error(`Error checking feature flag: ${error.message}`, error);
       // Default to enabled if check fails
       return true;
     }

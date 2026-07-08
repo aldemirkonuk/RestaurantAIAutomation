@@ -17,12 +17,12 @@ pytestmark = pytest.mark.e2e
 # the router is registered and the prefix resolves correctly.
 ROUTER_PROBE_ENDPOINTS = [
     # (prefix_label, path, method)
-    ("onboarding",  "/api/v1/onboarding/extract",      "POST"),
-    ("quality",     "/api/v1/quality/review-queue",    "GET"),
-    ("research",    "/api/v1/research/metrics",        "GET"),
-    ("preview",     "/api/v1/preview/detect",          "POST"),
-    ("analytics",   "/api/v1/analytics/trends",        "GET"),
-    ("studio",      "/api/v1/studio/queue",            "GET"),
+    ("onboarding", "/api/v1/onboarding/extract", "POST"),
+    ("quality", "/api/v1/quality/review-queue", "GET"),
+    ("research", "/api/v1/research/metrics", "GET"),
+    ("preview", "/api/v1/preview/detect", "POST"),
+    ("analytics", "/api/v1/analytics/trends", "GET"),
+    ("studio", "/api/v1/studio/queue", "GET"),
 ]
 
 

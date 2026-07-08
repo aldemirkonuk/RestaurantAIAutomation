@@ -195,7 +195,7 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Calculate character count and segments
-  const hasUnicode = /[^\x00-\x7F]/.test(message)
+  const hasUnicode = [...message].some((ch) => ch.charCodeAt(0) > 127)
   const segmentSize = hasUnicode ? SMS_UNICODE_SEGMENT_SIZE : SMS_SEGMENT_SIZE
   const characterCount = message.length
   const segmentCount = Math.ceil(characterCount / segmentSize) || 1

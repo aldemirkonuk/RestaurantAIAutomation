@@ -7,13 +7,13 @@ All external dependencies (Redis, Supabase, Serper, Celery) are mocked.
 No live connections required.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 
 # =============================================================================
 # CRIT-01 / D-03c: Redis SET NX dedup
 # =============================================================================
+
 
 class TestRedisNXDedup:
     """Redis SET NX lock prevents double processing of the same wine."""
@@ -47,14 +47,19 @@ class TestRedisNXDedup:
         async def mock_score_async(wine_id):
             return {"wine_id": wine_id, "sources_found": 2, "composite": 90.0}
 
-        with patch("jobs.score_tasks.redis_lib") as mock_redis_lib, \
-             patch("jobs.score_tasks._score_async", side_effect=mock_score_async):
+        with patch("jobs.score_tasks.redis_lib") as mock_redis_lib, patch(
+            "jobs.score_tasks._score_async", side_effect=mock_score_async
+        ):
             mock_redis_lib.from_url.return_value = mock_redis
             result = score_lookup_task.run("wine-proceed")
 
         # Lock must be released in finally block
         mock_redis.delete.assert_called_once_with("wine:scores:wine-proceed")
-        assert result == {"wine_id": "wine-proceed", "sources_found": 2, "composite": 90.0}
+        assert result == {
+            "wine_id": "wine-proceed",
+            "sources_found": 2,
+            "composite": 90.0,
+        }
 
     def test_lock_released_even_on_exception(self):
         """Lock is always released in finally block, even when _score_async raises."""
@@ -67,15 +72,16 @@ class TestRedisNXDedup:
             raise RuntimeError("Serper timeout")
 
         # Use apply() in eager mode so retry is surfaced without Celery overhead
-        with patch("jobs.score_tasks.redis_lib") as mock_redis_lib, \
-             patch("jobs.score_tasks._score_async", side_effect=mock_score_raises), \
-             patch.object(score_lookup_task, "retry", side_effect=Exception("retry exhausted")):
+        with patch("jobs.score_tasks.redis_lib") as mock_redis_lib, patch(
+            "jobs.score_tasks._score_async", side_effect=mock_score_raises
+        ), patch.object(
+            score_lookup_task, "retry", side_effect=Exception("retry exhausted")
+        ):
             mock_redis_lib.from_url.return_value = mock_redis
             # With max_retries=3, after the third retry the task returns None
             # Patch request.retries via the Celery app task request context
-            result = None
             try:
-                result = score_lookup_task.run("wine-exc")
+                score_lookup_task.run("wine-exc")
             except Exception:
                 pass
 
@@ -120,6 +126,7 @@ class TestRedisNXDedup:
 # Budget cap behavior
 # =============================================================================
 
+
 class TestBudgetCapBehavior:
     """CRIT-01: Budget cap causes graceful skip per Serper source call."""
 
@@ -132,10 +139,15 @@ class TestBudgetCapBehavior:
         mock_redis.delete.return_value = 1
 
         async def mock_score_budget_cap(wine_id):
-            return {"wine_id": wine_id, "status": "skipped_budget_cap", "sources_found": 0}
+            return {
+                "wine_id": wine_id,
+                "status": "skipped_budget_cap",
+                "sources_found": 0,
+            }
 
-        with patch("jobs.score_tasks.redis_lib") as mock_redis_lib, \
-             patch("jobs.score_tasks._score_async", side_effect=mock_score_budget_cap):
+        with patch("jobs.score_tasks.redis_lib") as mock_redis_lib, patch(
+            "jobs.score_tasks._score_async", side_effect=mock_score_budget_cap
+        ):
             mock_redis_lib.from_url.return_value = mock_redis
             result = score_lookup_task.run("wine-budget")
 
@@ -150,11 +162,16 @@ class TestBudgetCapBehavior:
         mock_supabase = MagicMock()
         mock_supabase.table.return_value.select.return_value.execute.return_value.data = [
             {"id": "wine-stale-1", "critic_scores": {}, "scores_last_updated_at": None},
-            {"id": "wine-stale-2", "critic_scores": None, "scores_last_updated_at": None},
+            {
+                "id": "wine-stale-2",
+                "critic_scores": None,
+                "scores_last_updated_at": None,
+            },
         ]
 
-        with patch("jobs.score_tasks._get_supabase_client", return_value=mock_supabase), \
-             patch("jobs.score_tasks.score_lookup_task") as mock_task:
+        with patch(
+            "jobs.score_tasks._get_supabase_client", return_value=mock_supabase
+        ), patch("jobs.score_tasks.score_lookup_task") as mock_task:
             mock_task.delay = MagicMock()
             result = rescore_stale_wines_task()
 
@@ -166,6 +183,7 @@ class TestBudgetCapBehavior:
 # CRIT-05: Markup cascade update
 # =============================================================================
 
+
 class TestMarkupCascadeUpdate:
     """_update_inventory_markup writes markup_ratio + markup_classification to inventory rows."""
 
@@ -174,7 +192,9 @@ class TestMarkupCascadeUpdate:
         from jobs.score_tasks import _update_inventory_markup
 
         mock_supabase = MagicMock()
-        inv_select = mock_supabase.table.return_value.select.return_value.eq.return_value.execute
+        inv_select = (
+            mock_supabase.table.return_value.select.return_value.eq.return_value.execute
+        )
         inv_select.return_value.data = [
             {"id": "inv-row-1", "menu_price_current": 120.0},
         ]
@@ -205,7 +225,9 @@ class TestMarkupCascadeUpdate:
         from jobs.score_tasks import _update_inventory_markup
 
         mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+            []
+        )
 
         # Should not raise
         _update_inventory_markup(mock_supabase, "wine-empty", 50.0)
@@ -243,6 +265,7 @@ class TestMarkupCascadeUpdate:
 # =============================================================================
 # CRIT-06: Anomaly detection and field_review_queue insertion
 # =============================================================================
+
 
 class TestAnomalyFlagging:
     """markup_ratio > 5x or < 0.8x triggers field_review_queue insert."""
@@ -329,6 +352,7 @@ class TestAnomalyFlagging:
 # rescore_stale_wines_task boundary conditions
 # =============================================================================
 
+
 class TestRescoreStaleWines:
     """rescore_stale_wines_task correctly identifies stale wines."""
 
@@ -336,10 +360,13 @@ class TestRescoreStaleWines:
         from jobs.score_tasks import rescore_stale_wines_task
 
         mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.execute.return_value.data = []
+        mock_supabase.table.return_value.select.return_value.execute.return_value.data = (
+            []
+        )
 
-        with patch("jobs.score_tasks._get_supabase_client", return_value=mock_supabase), \
-             patch("jobs.score_tasks.score_lookup_task") as mock_task:
+        with patch(
+            "jobs.score_tasks._get_supabase_client", return_value=mock_supabase
+        ), patch("jobs.score_tasks.score_lookup_task") as mock_task:
             mock_task.delay = MagicMock()
             result = rescore_stale_wines_task()
 
@@ -362,8 +389,9 @@ class TestRescoreStaleWines:
             },
         ]
 
-        with patch("jobs.score_tasks._get_supabase_client", return_value=mock_supabase), \
-             patch("jobs.score_tasks.score_lookup_task") as mock_task:
+        with patch(
+            "jobs.score_tasks._get_supabase_client", return_value=mock_supabase
+        ), patch("jobs.score_tasks.score_lookup_task") as mock_task:
             mock_task.delay = MagicMock()
             result = rescore_stale_wines_task()
 

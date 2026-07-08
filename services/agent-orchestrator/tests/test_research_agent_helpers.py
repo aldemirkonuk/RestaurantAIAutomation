@@ -34,7 +34,6 @@ from services.research_agent_helpers import (
     FIELD_VALUE_SYNONYMS,
     HAIKU_FIELDS,
     RESEARCH_PRIORITY_FIELDS,
-    SONNET_ESCALATION_FIELDS,
     BoundedLRUCache,
     _cache_key_producer,
     _cache_key_wine,
@@ -45,11 +44,9 @@ from services.research_agent_helpers import (
     check_regression_guard,
     classify_source_tier,
     detect_conflict,
-    get_entity_cache,
     get_target_fields,
     is_eligible_for_research,
     merge_conflict_candidates,
-    put_entity_cache,
     resolve_conflict,
     run_layer1_inference,
     select_model,
@@ -61,12 +58,15 @@ from services.research_agent_helpers import (
 # is_eligible_for_research (RSCH-01)
 # ===========================================================================
 
+
 def test_is_eligible_skips_recent_record():
     """Submission with last_research_run_at 3 days ago → not eligible (cooldown = 7 days)."""
     recent = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     submission = {
         "last_research_run_at": recent,
-        "field_confidence": {"region": {"value": None, "confidence": 0.3, "source": "inferred"}},
+        "field_confidence": {
+            "region": {"value": None, "confidence": 0.3, "source": "inferred"}
+        },
     }
     assert is_eligible_for_research(submission) is False
 
@@ -76,7 +76,9 @@ def test_is_eligible_passes_old_record():
     old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
     submission = {
         "last_research_run_at": old,
-        "field_confidence": {"region": {"value": "Bordeaux", "confidence": 0.5, "source": "inferred"}},
+        "field_confidence": {
+            "region": {"value": "Bordeaux", "confidence": 0.5, "source": "inferred"}
+        },
     }
     assert is_eligible_for_research(submission) is True
 
@@ -99,6 +101,7 @@ def test_is_eligible_skips_human_resolved():
 # get_target_fields (RSCH-01)
 # ===========================================================================
 
+
 def test_get_target_fields_returns_null_fields():
     """Field absent from fc → included in target list."""
     fc = {}
@@ -119,6 +122,7 @@ def test_get_target_fields_excludes_high_confidence():
 # build_serper_query (RSCH-01)
 # ===========================================================================
 
+
 def test_build_serper_query_appellation():
     """Appellation query must include official regulatory acronyms (DOCG DOC AOC)."""
     query = build_serper_query(
@@ -136,10 +140,20 @@ def test_build_serper_query_appellation():
 # classify_source_tier (RSCH-04)
 # ===========================================================================
 
-@pytest.mark.parametrize("url,expected_tier", [
-    ("https://www.consorziobrunellomontalcino.it/en/the-brunello/", "A"),  # Italian appellation body
-    ("https://www.wine-searcher.com/find/biondi+santi", "B"),             # Trade press — tier-B
-])
+
+@pytest.mark.parametrize(
+    "url,expected_tier",
+    [
+        (
+            "https://www.consorziobrunellomontalcino.it/en/the-brunello/",
+            "A",
+        ),  # Italian appellation body
+        (
+            "https://www.wine-searcher.com/find/biondi+santi",
+            "B",
+        ),  # Trade press — tier-B
+    ],
+)
 def test_classify_source_tier_known_domains(url, expected_tier):
     """Known tier-A (official appellation body) and tier-B (trade press) domains classified correctly."""
     assert classify_source_tier(url) == expected_tier
@@ -155,6 +169,7 @@ def test_classify_source_tier_unknown():
 # detect_conflict (RSCH-05)
 # ===========================================================================
 
+
 def test_detect_conflict_true():
     """Two candidates with genuinely different (non-synonym) values → conflict True."""
     candidates = [
@@ -168,10 +183,13 @@ def test_detect_conflict_false_synonyms():
     """Syrah and Shiraz are known synonyms (FIELD_VALUE_SYNONYMS) → no conflict."""
     # Verify the synonym pair exists in the constants
     synonym_pairs = {(a, b) for a, b in FIELD_VALUE_SYNONYMS}
-    assert ("syrah", "shiraz") in synonym_pairs, "Test precondition: syrah/shiraz must be synonyms"
+    assert (
+        "syrah",
+        "shiraz",
+    ) in synonym_pairs, "Test precondition: syrah/shiraz must be synonyms"
 
     candidates = [
-        {"value": "Syrah",  "source_url": "https://a.com", "source_tier": "B"},
+        {"value": "Syrah", "source_url": "https://a.com", "source_tier": "B"},
         {"value": "Shiraz", "source_url": "https://b.com", "source_tier": "B"},
     ]
     assert detect_conflict(candidates) is False
@@ -179,13 +197,16 @@ def test_detect_conflict_false_synonyms():
 
 def test_detect_conflict_false_single():
     """Single candidate can never constitute a conflict (need ≥2 candidates)."""
-    candidates = [{"value": "Pinot Noir", "source_url": "https://a.com", "source_tier": "A"}]
+    candidates = [
+        {"value": "Pinot Noir", "source_url": "https://a.com", "source_tier": "A"}
+    ]
     assert detect_conflict(candidates) is False
 
 
 # ===========================================================================
 # should_auto_promote (RSCH-03)
 # ===========================================================================
+
 
 def test_should_auto_promote_tier_a():
     """Single tier-A source → auto-promote with confidence key 'A_single'."""
@@ -199,7 +220,10 @@ def test_should_auto_promote_dual_b():
     """Two independent tier-B sources (different domains) → 'B_dual' (corroborated)."""
     citations = [
         {"source_url": "https://www.wine-searcher.com/find/barolo", "source_tier": "B"},
-        {"source_url": "https://www.decanter.com/wine-reviews/barolo", "source_tier": "B"},
+        {
+            "source_url": "https://www.decanter.com/wine-reviews/barolo",
+            "source_tier": "B",
+        },
     ]
     can_promote, key = should_auto_promote(citations)
     assert can_promote is True
@@ -209,8 +233,14 @@ def test_should_auto_promote_dual_b():
 def test_should_auto_promote_same_domain():
     """Two tier-B sources from the SAME domain → single-source 'B_single', NOT 'B_dual'."""
     citations = [
-        {"source_url": "https://www.wine-searcher.com/find/barolo-1", "source_tier": "B"},
-        {"source_url": "https://www.wine-searcher.com/find/barolo-2", "source_tier": "B"},
+        {
+            "source_url": "https://www.wine-searcher.com/find/barolo-1",
+            "source_tier": "B",
+        },
+        {
+            "source_url": "https://www.wine-searcher.com/find/barolo-2",
+            "source_tier": "B",
+        },
     ]
     can_promote, key = should_auto_promote(citations)
     assert can_promote is True
@@ -228,12 +258,16 @@ def test_should_auto_promote_empty():
 # assign_confidence_by_tier (RSCH-03)
 # ===========================================================================
 
-@pytest.mark.parametrize("confidence_key,expected", [
-    ("A_single", 0.95),
-    ("B_dual",   0.87),
-    ("B_single", 0.72),
-    ("C_single", 0.60),
-])
+
+@pytest.mark.parametrize(
+    "confidence_key,expected",
+    [
+        ("A_single", 0.95),
+        ("B_dual", 0.87),
+        ("B_single", 0.72),
+        ("C_single", 0.60),
+    ],
+)
 def test_assign_confidence_by_tier(confidence_key, expected):
     """Each corroboration key maps to the correct confidence float (STRATEGY.md Step 6)."""
     assert assign_confidence_by_tier(confidence_key) == pytest.approx(expected)
@@ -243,15 +277,20 @@ def test_assign_confidence_by_tier(confidence_key, expected):
 # check_regression_guard (T-12-07)
 # ===========================================================================
 
+
 def test_check_regression_guard_safe():
     """Proposed 0.87 > existing 0.73 → improvement, safe to write (True)."""
-    existing_fc = {"region": {"value": "Burgundy", "confidence": 0.73, "source": "inferred"}}
+    existing_fc = {
+        "region": {"value": "Burgundy", "confidence": 0.73, "source": "inferred"}
+    }
     assert check_regression_guard("region", 0.87, existing_fc) is True
 
 
 def test_check_regression_guard_regression():
     """Proposed 0.60 < existing 0.88 → regression detected, must block (False)."""
-    existing_fc = {"region": {"value": "Burgundy", "confidence": 0.88, "source": "inferred"}}
+    existing_fc = {
+        "region": {"value": "Burgundy", "confidence": 0.88, "source": "inferred"}
+    }
     assert check_regression_guard("region", 0.60, existing_fc) is False
 
 
@@ -263,6 +302,7 @@ def test_check_regression_guard_new_field():
 # ===========================================================================
 # build_citation_record (RSCH-02)
 # ===========================================================================
+
 
 def test_build_citation_record_completeness():
     """
@@ -305,6 +345,7 @@ def test_build_citation_record_completeness():
 # Phase 12.1 additions — run_layer1_inference (D-01, D-08)
 # ===========================================================================
 
+
 def test_run_layer1_inference_returns_empty_when_no_ontology():
     """Layer 1 returns {} gracefully when ontology tables are unavailable (T-12.1-01)."""
     result = run_layer1_inference({}, "Some Unknown Wine XYZ 9999")
@@ -324,13 +365,19 @@ def test_run_layer1_inference_skips_high_confidence_fields():
 def test_run_layer1_inference_infers_when_field_absent():
     """_should_infer returns True for absent/low-confidence fields, False for high-confidence."""
     assert _should_infer({}, "country") is True
-    assert _should_infer({"country": {"value": "X", "confidence": 0.3}}, "country") is True
-    assert _should_infer({"country": {"value": "France", "confidence": 0.95}}, "country") is False
+    assert (
+        _should_infer({"country": {"value": "X", "confidence": 0.3}}, "country") is True
+    )
+    assert (
+        _should_infer({"country": {"value": "France", "confidence": 0.95}}, "country")
+        is False
+    )
 
 
 # ===========================================================================
 # Phase 12.1 additions — select_model (D-02)
 # ===========================================================================
+
 
 def test_select_model_haiku_for_color():
     """Color is a simple categorization field → Haiku (HAIKU_FIELDS set)."""
@@ -360,19 +407,20 @@ def test_select_model_haiku_high_ontology_hint():
 # Phase 12.1 additions — BoundedLRUCache (D-04, D-06 bug #10)
 # ===========================================================================
 
+
 def test_bounded_lru_cache_eviction():
     """Cache with max_size=3 evicts oldest non-recently-accessed entry on 4th insert."""
     cache = BoundedLRUCache(max_size=3)
     cache.put("a", 1)
     cache.put("b", 2)
     cache.put("c", 3)
-    cache.get("a")            # promote 'a' to most-recent; order: b, c, a
-    cache.put("d", 4)         # 4th insert → evicts 'b' (oldest)
+    cache.get("a")  # promote 'a' to most-recent; order: b, c, a
+    cache.put("d", 4)  # 4th insert → evicts 'b' (oldest)
     assert len(cache) == 3
     assert cache.get("a") == 1
     assert cache.get("c") == 3
     assert cache.get("d") == 4
-    assert cache.get("b") is None   # evicted
+    assert cache.get("b") is None  # evicted
 
 
 def test_bounded_lru_cache_ttl_expiry():
@@ -387,11 +435,22 @@ def test_bounded_lru_cache_ttl_expiry():
 # Phase 12.1 additions — resolve_conflict (D-05)
 # ===========================================================================
 
+
 def test_resolve_conflict_auto_tier_a_vs_c():
     """Tier-A fetch_verified vs Tier-C → auto-resolve with Tier-A winner."""
     candidates = [
-        {"value": "Italy", "source_url": "https://civb.com/x", "source_tier": "A", "fetch_verified": True},
-        {"value": "Spain", "source_url": "https://random.com/y", "source_tier": "C", "fetch_verified": False},
+        {
+            "value": "Italy",
+            "source_url": "https://civb.com/x",
+            "source_tier": "A",
+            "fetch_verified": True,
+        },
+        {
+            "value": "Spain",
+            "source_url": "https://random.com/y",
+            "source_tier": "C",
+            "fetch_verified": False,
+        },
     ]
     resolution, reason, winner = resolve_conflict(candidates, "country")
     assert resolution == "auto"
@@ -402,8 +461,18 @@ def test_resolve_conflict_auto_tier_a_vs_c():
 def test_resolve_conflict_escalates_a_vs_a():
     """Two tier-A sources disagreeing → human escalation required."""
     candidates = [
-        {"value": "Italy", "source_url": "https://civb.com", "source_tier": "A", "fetch_verified": True},
-        {"value": "France", "source_url": "https://inao.gouv.fr", "source_tier": "A", "fetch_verified": True},
+        {
+            "value": "Italy",
+            "source_url": "https://civb.com",
+            "source_tier": "A",
+            "fetch_verified": True,
+        },
+        {
+            "value": "France",
+            "source_url": "https://inao.gouv.fr",
+            "source_tier": "A",
+            "fetch_verified": True,
+        },
     ]
     resolution, reason, winner = resolve_conflict(candidates, "country")
     assert resolution == "human"
@@ -413,9 +482,24 @@ def test_resolve_conflict_escalates_a_vs_a():
 def test_resolve_conflict_b_consensus():
     """2+ Tier-B sources agreeing on same value vs 1 Tier-C → auto-resolve B consensus."""
     candidates = [
-        {"value": "Burgundy", "source_url": "https://wine-searcher.com/x", "source_tier": "B", "fetch_verified": True},
-        {"value": "Burgundy", "source_url": "https://vivino.com/y", "source_tier": "B", "fetch_verified": True},
-        {"value": "Bordeaux", "source_url": "https://random.com/z", "source_tier": "C", "fetch_verified": False},
+        {
+            "value": "Burgundy",
+            "source_url": "https://wine-searcher.com/x",
+            "source_tier": "B",
+            "fetch_verified": True,
+        },
+        {
+            "value": "Burgundy",
+            "source_url": "https://vivino.com/y",
+            "source_tier": "B",
+            "fetch_verified": True,
+        },
+        {
+            "value": "Bordeaux",
+            "source_url": "https://random.com/z",
+            "source_tier": "C",
+            "fetch_verified": False,
+        },
     ]
     resolution, reason, winner = resolve_conflict(candidates, "region")
     assert resolution == "auto"
@@ -426,8 +510,18 @@ def test_resolve_conflict_b_consensus():
 def test_resolve_conflict_escalates_b_vs_b():
     """Two Tier-B sources with different values → human escalation."""
     candidates = [
-        {"value": "Burgundy", "source_url": "https://wine-searcher.com/x", "source_tier": "B", "fetch_verified": True},
-        {"value": "Bordeaux", "source_url": "https://vivino.com/y", "source_tier": "B", "fetch_verified": True},
+        {
+            "value": "Burgundy",
+            "source_url": "https://wine-searcher.com/x",
+            "source_tier": "B",
+            "fetch_verified": True,
+        },
+        {
+            "value": "Bordeaux",
+            "source_url": "https://vivino.com/y",
+            "source_tier": "B",
+            "fetch_verified": True,
+        },
     ]
     resolution, reason, winner = resolve_conflict(candidates, "region")
     assert resolution == "human"
@@ -437,6 +531,7 @@ def test_resolve_conflict_escalates_b_vs_b():
 # ===========================================================================
 # Phase 12.1 additions — merge_conflict_candidates (D-06 bug #3)
 # ===========================================================================
+
 
 def test_merge_conflict_candidates_deep_merge():
     """Existing conflicts on 'region' + new conflicts on 'country' → both preserved."""
@@ -452,10 +547,12 @@ def test_merge_conflict_candidates_deep_merge():
 def test_merge_conflict_candidates_deduplicates():
     """Same source_url for same field is not added twice."""
     existing = {"region": [{"value": "A", "source_url": "https://a.com"}]}
-    new = {"region": [
-        {"value": "A", "source_url": "https://a.com"},    # duplicate
-        {"value": "B", "source_url": "https://b.com"},    # new
-    ]}
+    new = {
+        "region": [
+            {"value": "A", "source_url": "https://a.com"},  # duplicate
+            {"value": "B", "source_url": "https://b.com"},  # new
+        ]
+    }
     merged = merge_conflict_candidates(existing, new)
     assert len(merged["region"]) == 2  # original + one new unique URL
 
@@ -463,6 +560,7 @@ def test_merge_conflict_candidates_deduplicates():
 # ===========================================================================
 # Phase 12.1 additions — cache key helpers (D-04)
 # ===========================================================================
+
 
 def test_cache_key_wine_deterministic():
     """Same inputs produce identical cache key (SHA-256 determinism)."""

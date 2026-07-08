@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class SerperResult(TypedDict):
     """Shape of a single organic search result from Serper API."""
+
     title: str
     link: str
     snippet: str
@@ -65,7 +66,9 @@ async def serper_search(
     settings = get_settings()
     key = api_key or settings.serper_api_key
     if not key:
-        logger.warning("serper_search: SERPER_API_KEY not configured — returning empty results")
+        logger.warning(
+            "serper_search: SERPER_API_KEY not configured — returning empty results"
+        )
         return []
 
     url = "https://google.serper.dev/search"
@@ -91,7 +94,5 @@ async def serper_search(
                 position=item.get("position", 0),
             )
         )
-    logger.debug(
-        "serper_search: query=%r returned %d results", query, len(results)
-    )
+    logger.debug("serper_search: query=%r returned %d results", query, len(results))
     return results

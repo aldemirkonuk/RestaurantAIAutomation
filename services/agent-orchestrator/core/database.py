@@ -13,18 +13,11 @@ Production-grade Supabase client with:
 from __future__ import annotations
 
 import asyncio
-from abc import ABC, abstractmethod
-from typing import (
-    Dict, List, Any, Optional, TypeVar, Generic, Type,
-    Callable, Awaitable, Union, Protocol, runtime_checkable
-)
+from abc import ABC
+from typing import Dict, List, Any, Optional, TypeVar, Generic, Type
 from datetime import datetime, timedelta
-from dataclasses import dataclass, field
-from functools import wraps
-from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from enum import Enum
-import hashlib
-import json
 
 import redis.asyncio as redis
 from supabase import create_client, Client
@@ -35,21 +28,23 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-T = TypeVar('T', bound=BaseModel)
-ModelT = TypeVar('ModelT', bound=BaseModel)
+T = TypeVar("T", bound=BaseModel)
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 # =============================================================================
 # DOMAIN MODELS (Type-Safe Data Contracts)
 # =============================================================================
 
+
 class BaseEntity(BaseModel):
     """Base class for all database entities"""
+
     model_config = ConfigDict(
         from_attributes=True,
         populate_by_name=True,
     )
-    
+
     id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -57,28 +52,29 @@ class BaseEntity(BaseModel):
 
 class InventoryItem(BaseEntity):
     """Restaurant inventory item model"""
+
     restaurant_id: str
     master_wine_id: str
     provider_id: Optional[str] = None
-    
+
     # Stock levels
     stock_live: int = 0
     physical_stock: Optional[int] = None
     shadow_stock: int = 0
     expected_stock: int = 0
     in_transit_quantity: int = 0
-    
+
     # Configuration
     threshold_min: int = 3
     validation_max: Optional[int] = None
     buffer_window_minutes: Optional[int] = None
-    
+
     # State
     inventory_state: str = "LIVE"
     last_sold_at: Optional[datetime] = None
     last_restocked_at: Optional[datetime] = None
     last_alert_level: Optional[int] = None
-    
+
     # Computed (from joins)
     wine_name: Optional[str] = None
     sales_velocity_7d: Optional[float] = None
@@ -86,6 +82,7 @@ class InventoryItem(BaseEntity):
 
 class Provider(BaseEntity):
     """Wine provider model"""
+
     name: str
     # Legacy flat fields (backward-compatible)
     contact_email: Optional[str] = None
@@ -93,13 +90,15 @@ class Provider(BaseEntity):
     contact_name: Optional[str] = None
     address: Optional[Dict[str, Any]] = None
     # New JSONB structure (matches database schema)
-    primary_contact: Optional[Dict[str, Any]] = None  # {email, phone, whatsapp, preferred_method}
+    primary_contact: Optional[Dict[str, Any]] = (
+        None  # {email, phone, whatsapp, preferred_method}
+    )
     alternative_contacts: Optional[List[Dict[str, Any]]] = None
-    
+
     lead_time_days: int = 7
     minimum_order_quantity: int = 12
     payment_terms: Optional[str] = None
-    
+
     is_active: bool = True
     rating: Optional[float] = None
     restaurant_id: Optional[str] = None
@@ -122,6 +121,7 @@ class Provider(BaseEntity):
 
 class Contact(BaseEntity):
     """Contact directory entry - supports provider, staff, manager, customer, sommelier"""
+
     type: str  # 'provider', 'staff', 'manager', 'customer', 'sommelier'
     display_name: str
     restaurant_id: Optional[str] = None  # NULL = global/shared
@@ -133,6 +133,7 @@ class Contact(BaseEntity):
 
 class ContactAddress(BaseEntity):
     """Communication address for a contact (email, phone, whatsapp, etc.)"""
+
     contact_id: str
     channel: str  # 'email', 'phone', 'whatsapp', 'fax', 'linkedin', 'custom'
     address_value: str
@@ -145,33 +146,35 @@ class ContactAddress(BaseEntity):
 
 class ProcurementOrder(BaseEntity):
     """Procurement order model"""
+
     restaurant_id: str
     inventory_id: str
     provider_id: str
-    
+
     order_number: Optional[str] = None
     wine_name: str
     quantity: int
-    
+
     target_price_per_bottle: Optional[float] = None
     negotiated_price_per_bottle: Optional[float] = None
     final_price_per_bottle: Optional[float] = None
-    
+
     status: str = "DRAFT"
     urgency: str = "normal"
-    
+
     negotiation_message: Optional[str] = None
     negotiation_attempt: int = 0
 
 
 class SalesEvent(BaseEntity):
     """POS sales event model"""
+
     restaurant_id: str
     inventory_id: str
-    
+
     quantity: int
     unit_price: Optional[float] = None
-    
+
     pos_event_id: Optional[str] = None
     pos_event_timestamp: Optional[datetime] = None
     pos_event_type: str = "sale"
@@ -179,59 +182,65 @@ class SalesEvent(BaseEntity):
 
 class ProcurementConversation(BaseEntity):
     """AI conversation with provider (with manager approval support)"""
+
     order_id: Optional[str] = None
     restaurant_id: str
     provider_id: str
-    
+
     # Message details
     direction: str  # 'outbound', 'inbound'
     channel: str  # 'sms', 'email', 'whatsapp'
     message_text: str
     ai_generated: bool = False
     llm_model: Optional[str] = None
-    
+
     # AI Analysis
     detected_intent: Optional[str] = None
     detected_sentiment: Optional[str] = None
     important_dates_detected: Optional[Dict[str, Any]] = None
-    
+
     # Message delivery
     sent_at: Optional[datetime] = None
     received_at: Optional[datetime] = None
     delivery_status: Optional[str] = None
-    
+
     # Manager approval fields (NEW for hybrid 80/20 approach)
-    manager_approval_status: str = 'pending'  # 'pending', 'approved', 'modified', 'rejected'
+    manager_approval_status: str = (
+        "pending"  # 'pending', 'approved', 'modified', 'rejected'
+    )
     manager_approved_message: Optional[str] = None
     manager_notes: Optional[str] = None
     conversation_context: Optional[Dict[str, Any]] = None
     paused_at: Optional[datetime] = None
     resumed_at: Optional[datetime] = None
     notification_sent: bool = False
-    approval_channel: Optional[str] = None  # 'push_notification', 'onetap_center', 'web_app'
+    approval_channel: Optional[str] = (
+        None  # 'push_notification', 'onetap_center', 'web_app'
+    )
     time_to_approval_seconds: Optional[int] = None
 
 
 class OrderInteraction(BaseEntity):
     """Order interaction model - Voice calls, SMS, Email, WhatsApp"""
+
     order_id: str
-    
+
     # Interaction Details
     interaction_type: str  # 'VOICE', 'SMS', 'EMAIL', 'WHATSAPP'
     interaction_direction: str  # 'OUTBOUND', 'INBOUND'
-    
+
     # Voice Call Details (for VOICE type)
     recording_url: Optional[str] = None
     transcript: Optional[str] = None
     call_duration_seconds: Optional[int] = None
     call_uuid: Optional[str] = None
-    
+
     # AI Analysis
     ai_summary: Optional[str] = None
     detected_intent: Optional[str] = None
     detected_sentiment: Optional[str] = None
     important_dates_detected: Optional[Dict[str, Any]] = None
-    
+
     # Barcode/Vintage Tracking (for Visual Verification)
     barcode_scanned: Optional[str] = None
     vintage_confirmed: Optional[int] = None
@@ -241,24 +250,30 @@ class OrderInteraction(BaseEntity):
 
 class ManagerPreferences(BaseEntity):
     """Manager preferences model - Unified preferences"""
+
     manager_id: str
-    
+
     # Report Preferences
     report_frequency: Optional[str] = None  # 'DAILY', 'WEEKLY', 'MONTHLY', 'NONE'
     report_delivery_time: Optional[str] = "07:00:00"
     report_timezone: str = "America/Los_Angeles"
-    
+
     # Notification Channels
     notification_channels: Dict[str, bool] = Field(
-        default_factory=lambda: {"sms": True, "email": True, "push": True, "voice": False}
+        default_factory=lambda: {
+            "sms": True,
+            "email": True,
+            "push": True,
+            "voice": False,
+        }
     )
-    
+
     # Low Stock Alerts
     low_stock_alert_enabled: bool = True
     low_stock_alert_channels: Dict[str, bool] = Field(
         default_factory=lambda: {"sms": True, "push": True}
     )
-    
+
     # Quiet Hours
     quiet_hours_start: Optional[str] = None
     quiet_hours_end: Optional[str] = None
@@ -266,13 +281,14 @@ class ManagerPreferences(BaseEntity):
 
 class UnitConversion(BaseEntity):
     """Unit conversion model - Purchase Unit → Pour Unit mapping"""
+
     restaurant_id: str
     inventory_id: str
-    
+
     # Unit Mapping
     purchase_unit: str  # 'case', 'bottle', 'liter'
     pour_unit: str  # 'shot', 'glass', 'bottle'
-    
+
     # Conversion Rates
     purchase_to_pour_ratio: float  # e.g., 1 case = 12 bottles = 144 shots
     pour_to_purchase_ratio: float  # Inverse
@@ -280,59 +296,63 @@ class UnitConversion(BaseEntity):
 
 class RFQRequest(BaseEntity):
     """RFQ (Request for Quotation) model - Polite bidding"""
+
     inventory_id: str
     restaurant_id: str
-    
+
     # RFQ Details
     wine_name: str
     quantity: int
     requested_delivery_date: Optional[datetime] = None
-    
+
     # Vendor Responses (stored as JSONB array)
     vendor_responses: Optional[List[Dict[str, Any]]] = None
-    
+
     # Selection
     selected_vendor_id: Optional[str] = None
     selected_price: Optional[float] = None
     selection_reason: Optional[str] = None
-    
+
     # Status
-    status: str = "pending"  # 'pending', 'responses_received', 'presented', 'approved', 'cancelled'
+    status: str = (
+        "pending"  # 'pending', 'responses_received', 'presented', 'approved', 'cancelled'
+    )
     presented_at: Optional[datetime] = None
     approved_at: Optional[datetime] = None
 
 
 class MasterWineLibrary(BaseEntity):
     """Master Wine Library model - Wine data enrichment"""
+
     # Wine Identification
     name: str
     producer: Optional[str] = None
     vintage: Optional[int] = None
-    
+
     # Bottle specs (migrated from bottle_specifications)
     bottle_size_ml: int = 750
     weight_grams: Optional[int] = None
     closure_type: Optional[str] = None
-    
+
     # Classification
     region: Optional[str] = None
     sub_region: Optional[str] = None
     country: Optional[str] = None
     grape_varieties: Optional[List[str]] = None
     wine_type: Optional[str] = None  # 'red', 'white', 'rosé', 'sparkling', 'dessert'
-    
+
     # Tasting Notes
     tasting_notes: Optional[str] = None
     food_pairings: Optional[List[str]] = None
-    
+
     # Pricing
     avg_retail_price: Optional[float] = None
     avg_wholesale_price: Optional[float] = None
-    
+
     # Barcode Tracking
     barcode: Optional[str] = None
     barcode_vintage_mapping: Optional[Dict[str, Any]] = None
-    
+
     # Enrichment Source
     data_source: Optional[str] = None  # 'vivino', 'wine-searcher', 'gemini', 'manual'
     enrichment_date: Optional[datetime] = None
@@ -342,16 +362,19 @@ class MasterWineLibrary(BaseEntity):
 # CACHING INFRASTRUCTURE
 # =============================================================================
 
+
 class CacheStrategy(Enum):
     """Cache invalidation strategies"""
+
     WRITE_THROUGH = "write_through"  # Update cache on write
-    WRITE_BEHIND = "write_behind"    # Async cache update
-    CACHE_ASIDE = "cache_aside"      # Application manages cache
+    WRITE_BEHIND = "write_behind"  # Async cache update
+    CACHE_ASIDE = "cache_aside"  # Application manages cache
 
 
 @dataclass
 class CacheConfig:
     """Cache configuration"""
+
     ttl_seconds: int = 300
     max_size: int = 1000
     strategy: CacheStrategy = CacheStrategy.CACHE_ASIDE
@@ -360,11 +383,12 @@ class CacheConfig:
 @dataclass
 class CacheEntry(Generic[T]):
     """Cached value with metadata"""
+
     value: T
     cached_at: datetime
     ttl_seconds: int
     hit_count: int = 0
-    
+
     @property
     def is_expired(self) -> bool:
         return datetime.utcnow() - self.cached_at > timedelta(seconds=self.ttl_seconds)
@@ -372,38 +396,38 @@ class CacheEntry(Generic[T]):
 
 class LocalCache(Generic[T]):
     """High-performance local LRU cache"""
-    
+
     def __init__(self, config: Optional[CacheConfig] = None):
         self.config = config or CacheConfig()
         self._cache: Dict[str, CacheEntry[T]] = {}
         self._access_order: List[str] = []
-        
+
         # Metrics
         self.hits: int = 0
         self.misses: int = 0
-    
+
     def get(self, key: str) -> Optional[T]:
         """Get cached value"""
         entry = self._cache.get(key)
-        
+
         if entry is None:
             self.misses += 1
             return None
-        
+
         if entry.is_expired:
             self._cache.pop(key, None)
             self.misses += 1
             return None
-        
+
         # Update access order (LRU)
         entry.hit_count += 1
         if key in self._access_order:
             self._access_order.remove(key)
         self._access_order.append(key)
-        
+
         self.hits += 1
         return entry.value
-    
+
     def set(self, key: str, value: T, ttl_seconds: Optional[int] = None) -> None:
         """Cache a value"""
         # Evict if at capacity
@@ -411,39 +435,39 @@ class LocalCache(Generic[T]):
             if self._access_order:
                 oldest_key = self._access_order.pop(0)
                 self._cache.pop(oldest_key, None)
-        
+
         self._cache[key] = CacheEntry(
             value=value,
             cached_at=datetime.utcnow(),
             ttl_seconds=ttl_seconds or self.config.ttl_seconds,
         )
-        
+
         if key not in self._access_order:
             self._access_order.append(key)
-    
+
     def invalidate(self, key: str) -> None:
         """Invalidate specific key"""
         self._cache.pop(key, None)
         if key in self._access_order:
             self._access_order.remove(key)
-    
+
     def invalidate_pattern(self, pattern: str) -> int:
         """Invalidate keys matching pattern"""
         keys_to_remove = [k for k in self._cache.keys() if pattern in k]
         for key in keys_to_remove:
             self.invalidate(key)
         return len(keys_to_remove)
-    
+
     def clear(self) -> None:
         """Clear all cache"""
         self._cache.clear()
         self._access_order.clear()
-    
+
     @property
     def hit_rate(self) -> float:
         total = self.hits + self.misses
         return self.hits / total if total > 0 else 0.0
-    
+
     def stats(self) -> Dict[str, Any]:
         return {
             "size": len(self._cache),
@@ -456,14 +480,14 @@ class LocalCache(Generic[T]):
 
 class DistributedCache:
     """Redis-backed distributed cache"""
-    
+
     def __init__(self, redis_client: redis.Redis, prefix: str = "wineops"):
         self.redis = redis_client
         self.prefix = prefix
-    
+
     def _key(self, key: str) -> str:
         return f"{self.prefix}:{key}"
-    
+
     async def get(self, key: str, model: Type[T]) -> Optional[T]:
         """Get and deserialize cached value"""
         try:
@@ -474,7 +498,7 @@ class DistributedCache:
         except Exception as e:
             logger.debug(f"Redis get failed: {e}")
             return None
-    
+
     async def set(
         self,
         key: str,
@@ -492,7 +516,7 @@ class DistributedCache:
         except Exception as e:
             logger.debug(f"Redis set failed: {e}")
             return False
-    
+
     async def invalidate(self, key: str) -> bool:
         """Invalidate key"""
         try:
@@ -500,7 +524,7 @@ class DistributedCache:
             return True
         except Exception:
             return False
-    
+
     async def invalidate_pattern(self, pattern: str) -> int:
         """Invalidate keys matching pattern"""
         try:
@@ -516,16 +540,17 @@ class DistributedCache:
 # REPOSITORY PATTERN
 # =============================================================================
 
+
 class BaseRepository(ABC, Generic[ModelT]):
     """
     Abstract repository implementing data access patterns
-    
+
     Benefits:
     - Decouples business logic from data access
     - Enables easy testing with mocks
     - Centralizes caching and query optimization
     """
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -539,15 +564,15 @@ class BaseRepository(ABC, Generic[ModelT]):
         self.model = model
         self.local_cache = local_cache or LocalCache(CacheConfig(ttl_seconds=300))
         self.distributed_cache = distributed_cache
-        
+
         # Metrics
         self.queries_executed: int = 0
         self.cache_hits: int = 0
-    
+
     def _cache_key(self, *parts: str) -> str:
         """Generate cache key"""
         return f"{self.table_name}:{':'.join(parts)}"
-    
+
     async def get_by_id(
         self,
         id: str,
@@ -555,14 +580,14 @@ class BaseRepository(ABC, Generic[ModelT]):
     ) -> Optional[ModelT]:
         """Get entity by ID with multi-level caching"""
         cache_key = self._cache_key("id", id)
-        
+
         # L1: Local cache
         if use_cache:
             cached = self.local_cache.get(cache_key)
             if cached:
                 self.cache_hits += 1
                 return cached
-        
+
         # L2: Distributed cache
         if use_cache and self.distributed_cache:
             cached = await self.distributed_cache.get(cache_key, self.model)
@@ -570,34 +595,36 @@ class BaseRepository(ABC, Generic[ModelT]):
                 self.local_cache.set(cache_key, cached)
                 self.cache_hits += 1
                 return cached
-        
+
         # L3: Database
         self.queries_executed += 1
-        
+
         try:
-            response = self.supabase.table(self.table_name) \
-                .select("*") \
-                .eq("id", id) \
-                .single() \
+            response = (
+                self.supabase.table(self.table_name)
+                .select("*")
+                .eq("id", id)
+                .single()
                 .execute()
-            
+            )
+
             if response.data:
                 entity = self.model.model_validate(response.data)
-                
+
                 # Populate caches
                 if use_cache:
                     self.local_cache.set(cache_key, entity)
                     if self.distributed_cache:
                         await self.distributed_cache.set(cache_key, entity)
-                
+
                 return entity
-            
+
             return None
-            
+
         except APIError as e:
             logger.error(f"Database error in {self.table_name}.get_by_id: {e}")
             return None
-    
+
     async def find_many(
         self,
         filters: Dict[str, Any],
@@ -608,10 +635,10 @@ class BaseRepository(ABC, Generic[ModelT]):
     ) -> List[ModelT]:
         """Query multiple entities with filters"""
         self.queries_executed += 1
-        
+
         try:
             query = self.supabase.table(self.table_name).select("*")
-            
+
             # Apply filters
             for key, value in filters.items():
                 if isinstance(value, list):
@@ -620,50 +647,50 @@ class BaseRepository(ABC, Generic[ModelT]):
                     query = query.is_(key, "null")
                 else:
                     query = query.eq(key, value)
-            
+
             # Ordering
             if order_by:
                 query = query.order(order_by, desc=order_desc)
-            
+
             # Pagination
             query = query.range(offset, offset + limit - 1)
-            
+
             response = query.execute()
-            
+
             if response.data:
                 return [self.model.model_validate(item) for item in response.data]
-            
+
             return []
-            
+
         except APIError as e:
             logger.error(f"Database error in {self.table_name}.find_many: {e}")
             return []
-    
+
     async def create(self, entity: ModelT) -> Optional[ModelT]:
         """Create new entity"""
         self.queries_executed += 1
-        
+
         try:
-            data = entity.model_dump(exclude_unset=True, exclude={"id", "created_at", "updated_at"})
-            
-            response = self.supabase.table(self.table_name) \
-                .insert(data) \
-                .execute()
-            
+            data = entity.model_dump(
+                exclude_unset=True, exclude={"id", "created_at", "updated_at"}
+            )
+
+            response = self.supabase.table(self.table_name).insert(data).execute()
+
             if response.data:
                 created = self.model.model_validate(response.data[0])
-                
+
                 # Invalidate related caches
                 await self._invalidate_related_caches(created)
-                
+
                 return created
-            
+
             return None
-            
+
         except APIError as e:
             logger.error(f"Database error in {self.table_name}.create: {e}")
             return None
-    
+
     async def update(
         self,
         id: str,
@@ -671,90 +698,88 @@ class BaseRepository(ABC, Generic[ModelT]):
     ) -> Optional[ModelT]:
         """Update entity by ID"""
         self.queries_executed += 1
-        
+
         try:
             updates["updated_at"] = datetime.utcnow().isoformat()
-            
-            response = self.supabase.table(self.table_name) \
-                .update(updates) \
-                .eq("id", id) \
+
+            response = (
+                self.supabase.table(self.table_name)
+                .update(updates)
+                .eq("id", id)
                 .execute()
-            
+            )
+
             if response.data:
                 updated = self.model.model_validate(response.data[0])
-                
+
                 # Invalidate caches
                 self.local_cache.invalidate(self._cache_key("id", id))
                 if self.distributed_cache:
                     await self.distributed_cache.invalidate(self._cache_key("id", id))
-                
+
                 await self._invalidate_related_caches(updated)
-                
+
                 return updated
-            
+
             return None
-            
+
         except APIError as e:
             logger.error(f"Database error in {self.table_name}.update: {e}")
             return None
-    
+
     async def delete(self, id: str, soft: bool = True) -> bool:
         """Delete entity (soft delete by default)"""
         self.queries_executed += 1
-        
+
         try:
             if soft:
-                response = self.supabase.table(self.table_name) \
-                    .update({"deleted_at": datetime.utcnow().isoformat()}) \
-                    .eq("id", id) \
-                    .execute()
+                self.supabase.table(self.table_name).update(
+                    {"deleted_at": datetime.utcnow().isoformat()}
+                ).eq("id", id).execute()
             else:
-                response = self.supabase.table(self.table_name) \
-                    .delete() \
-                    .eq("id", id) \
-                    .execute()
-            
+                self.supabase.table(self.table_name).delete().eq("id", id).execute()
+
             # Invalidate caches
             self.local_cache.invalidate(self._cache_key("id", id))
             if self.distributed_cache:
                 await self.distributed_cache.invalidate(self._cache_key("id", id))
-            
+
             return True
-            
+
         except APIError as e:
             logger.error(f"Database error in {self.table_name}.delete: {e}")
             return False
-    
+
     async def batch_create(self, entities: List[ModelT]) -> List[ModelT]:
         """Batch insert for high throughput"""
         if not entities:
             return []
-        
+
         self.queries_executed += 1
-        
+
         try:
             data = [
-                e.model_dump(exclude_unset=True, exclude={"id", "created_at", "updated_at"})
+                e.model_dump(
+                    exclude_unset=True, exclude={"id", "created_at", "updated_at"}
+                )
                 for e in entities
             ]
-            
-            response = self.supabase.table(self.table_name) \
-                .insert(data) \
-                .execute()
-            
+
+            response = self.supabase.table(self.table_name).insert(data).execute()
+
             if response.data:
                 return [self.model.model_validate(item) for item in response.data]
-            
+
             return []
-            
+
         except APIError as e:
             logger.error(f"Database error in {self.table_name}.batch_create: {e}")
             return []
-    
+
     async def _invalidate_related_caches(self, entity: ModelT) -> None:
         """Override in subclass to invalidate related caches"""
         pass
-    
+
     def stats(self) -> Dict[str, Any]:
         return {
             "table": self.table_name,
@@ -768,9 +793,10 @@ class BaseRepository(ABC, Generic[ModelT]):
 # SPECIALIZED REPOSITORIES
 # =============================================================================
 
+
 class InventoryRepository(BaseRepository[InventoryItem]):
     """Specialized repository for inventory operations"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -784,7 +810,7 @@ class InventoryRepository(BaseRepository[InventoryItem]):
             local_cache,
             distributed_cache,
         )
-    
+
     async def get_by_restaurant(
         self,
         restaurant_id: str,
@@ -792,48 +818,52 @@ class InventoryRepository(BaseRepository[InventoryItem]):
     ) -> List[InventoryItem]:
         """Get all inventory for a restaurant"""
         filters = {"restaurant_id": restaurant_id}
-        
+
         if not include_out_of_stock:
             # This would need a different query approach
             pass
-        
+
         return await self.find_many(
             filters,
             limit=500,
             order_by="wine_name",
         )
-    
+
     async def get_low_stock(
         self,
         restaurant_id: str,
     ) -> List[InventoryItem]:
         """Get items below threshold - optimized query"""
         self.queries_executed += 1
-        
+
         try:
             # Use view for optimized query
-            response = self.supabase.table("restaurant_inventory") \
-                .select("*, master_wine_library(name)") \
-                .eq("restaurant_id", restaurant_id) \
-                .lt("stock_live", self.supabase.table("restaurant_inventory").select("threshold_min")) \
+            response = (
+                self.supabase.table("restaurant_inventory")
+                .select("*, master_wine_library(name)")
+                .eq("restaurant_id", restaurant_id)
+                .lt(
+                    "stock_live",
+                    self.supabase.table("restaurant_inventory").select("threshold_min"),
+                )
                 .execute()
-            
+            )
+
             # Fallback to raw query if view doesn't exist
             response = self.supabase.rpc(
-                "get_low_stock_items",
-                {"p_restaurant_id": restaurant_id}
+                "get_low_stock_items", {"p_restaurant_id": restaurant_id}
             ).execute()
-            
+
             if response.data:
                 return [InventoryItem.model_validate(item) for item in response.data]
-            
+
             return []
-            
+
         except APIError:
             # Fallback: fetch all and filter
             all_items = await self.get_by_restaurant(restaurant_id)
             return [item for item in all_items if item.stock_live < item.threshold_min]
-    
+
     async def update_stock(
         self,
         inventory_id: str,
@@ -866,13 +896,15 @@ class InventoryRepository(BaseRepository[InventoryItem]):
             # 2. Attempt conditional UPDATE: only succeeds if version hasn't changed
             result = (
                 self.supabase.table(self.table_name)
-                .update({
-                    "stock_live": new_stock,
-                    "version": expected_version + 1,
-                    "updated_at": datetime.utcnow().isoformat(),
-                })
+                .update(
+                    {
+                        "stock_live": new_stock,
+                        "version": expected_version + 1,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }
+                )
                 .eq("id", inventory_id)
-                .eq("version", expected_version)   # ← optimistic lock predicate
+                .eq("version", expected_version)  # ← optimistic lock predicate
                 .execute()
             ).data
 
@@ -900,7 +932,7 @@ class InventoryRepository(BaseRepository[InventoryItem]):
             f"Stock update dropped — investigate high write contention."
         )
         return None
-    
+
     async def _log_stock_change(
         self,
         inventory_id: str,
@@ -909,17 +941,19 @@ class InventoryRepository(BaseRepository[InventoryItem]):
     ) -> None:
         """Async audit logging"""
         try:
-            await self.supabase.table("system_audit_log").insert({
-                "actor_type": "agent",
-                "actor_id": "inventory_engine",
-                "action": "stock_updated",
-                "entity_type": "inventory",
-                "entity_id": inventory_id,
-                "changes": {"stock_live": new_stock, "reason": reason},
-            }).execute()
+            await self.supabase.table("system_audit_log").insert(
+                {
+                    "actor_type": "agent",
+                    "actor_id": "inventory_engine",
+                    "action": "stock_updated",
+                    "entity_type": "inventory",
+                    "entity_id": inventory_id,
+                    "changes": {"stock_live": new_stock, "reason": reason},
+                }
+            ).execute()
         except Exception as e:
             logger.warning(f"Audit log failed: {e}")
-    
+
     async def _invalidate_related_caches(self, entity: InventoryItem) -> None:
         """Invalidate restaurant-level caches"""
         self.local_cache.invalidate_pattern(f"restaurant:{entity.restaurant_id}")
@@ -927,7 +961,7 @@ class InventoryRepository(BaseRepository[InventoryItem]):
 
 class ProviderRepository(BaseRepository[Provider]):
     """Specialized repository for provider operations"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -941,7 +975,7 @@ class ProviderRepository(BaseRepository[Provider]):
             LocalCache(CacheConfig(ttl_seconds=600)),  # Longer TTL for providers
             distributed_cache,
         )
-    
+
     async def get_active_providers(self) -> List[Provider]:
         """Get all active providers"""
         return await self.find_many(
@@ -952,35 +986,54 @@ class ProviderRepository(BaseRepository[Provider]):
 
 class ContactRepository:
     """Repository for contacts and contact_addresses tables."""
-    
+
     def __init__(self, supabase_client):
         self.client = supabase_client
         self.table = "contacts"
         self.addresses_table = "contact_addresses"
-    
+
     async def get_by_id(self, contact_id: str) -> Optional[Dict[str, Any]]:
         """Get contact with addresses by ID."""
         try:
-            resp = self.client.table(self.table).select("*").eq("id", contact_id).single().execute()
+            resp = (
+                self.client.table(self.table)
+                .select("*")
+                .eq("id", contact_id)
+                .single()
+                .execute()
+            )
             if resp.data:
                 # Also fetch addresses
-                addr_resp = self.client.table(self.addresses_table).select("*").eq("contact_id", contact_id).execute()
+                addr_resp = (
+                    self.client.table(self.addresses_table)
+                    .select("*")
+                    .eq("contact_id", contact_id)
+                    .execute()
+                )
                 resp.data["addresses"] = addr_resp.data or []
             return resp.data
         except Exception:
             return None
-    
-    async def search_by_name(self, name: str, restaurant_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+
+    async def search_by_name(
+        self, name: str, restaurant_id: Optional[str] = None, limit: int = 20
+    ) -> List[Dict[str, Any]]:
         """Trigram search by display_name."""
         try:
-            query = self.client.table(self.table).select("*").ilike("display_name", f"%{name}%").eq("is_active", True).limit(limit)
+            query = (
+                self.client.table(self.table)
+                .select("*")
+                .ilike("display_name", f"%{name}%")
+                .eq("is_active", True)
+                .limit(limit)
+            )
             if restaurant_id:
                 query = query.eq("restaurant_id", restaurant_id)
             resp = query.execute()
             return resp.data or []
         except Exception:
             return []
-    
+
     async def find_by_channel(self, channel: str, value: str) -> List[Dict[str, Any]]:
         """Find contacts by a specific address (e.g., email or phone)."""
         try:
@@ -994,70 +1047,113 @@ class ContactRepository:
             if not resp.data:
                 return []
             contact_ids = list(set(a["contact_id"] for a in resp.data))
-            contacts_resp = self.client.table(self.table).select("*").in_("id", contact_ids).execute()
+            contacts_resp = (
+                self.client.table(self.table)
+                .select("*")
+                .in_("id", contact_ids)
+                .execute()
+            )
             return contacts_resp.data or []
         except Exception:
             return []
-    
-    async def get_for_restaurant(self, restaurant_id: str, contact_type: Optional[str] = None, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+
+    async def get_for_restaurant(
+        self,
+        restaurant_id: str,
+        contact_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
         """Get all contacts for a restaurant, optionally filtered by type."""
         try:
-            query = self.client.table(self.table).select("*").eq("restaurant_id", restaurant_id).eq("is_active", True).range(offset, offset + limit - 1)
+            query = (
+                self.client.table(self.table)
+                .select("*")
+                .eq("restaurant_id", restaurant_id)
+                .eq("is_active", True)
+                .range(offset, offset + limit - 1)
+            )
             if contact_type:
                 query = query.eq("type", contact_type)
             resp = query.order("display_name").execute()
             return resp.data or []
         except Exception:
             return []
-    
+
     async def get_provider_contacts(self, provider_id: str) -> List[Dict[str, Any]]:
         """Get contacts linked to a specific provider."""
         try:
-            resp = self.client.table(self.table).select("*").eq("linked_provider_id", provider_id).eq("is_active", True).execute()
+            resp = (
+                self.client.table(self.table)
+                .select("*")
+                .eq("linked_provider_id", provider_id)
+                .eq("is_active", True)
+                .execute()
+            )
             contacts = resp.data or []
             # Fetch addresses for each
             for contact in contacts:
-                addr_resp = self.client.table(self.addresses_table).select("*").eq("contact_id", contact["id"]).execute()
+                addr_resp = (
+                    self.client.table(self.addresses_table)
+                    .select("*")
+                    .eq("contact_id", contact["id"])
+                    .execute()
+                )
                 contact["addresses"] = addr_resp.data or []
             return contacts
         except Exception:
             return []
-    
-    async def create(self, contact_data: Dict[str, Any], addresses: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+
+    async def create(
+        self,
+        contact_data: Dict[str, Any],
+        addresses: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Create a contact with optional addresses."""
         try:
             resp = self.client.table(self.table).insert(contact_data).execute()
             if not resp.data:
                 return None
             contact = resp.data[0]
-            
+
             if addresses:
                 for addr in addresses:
                     addr["contact_id"] = contact["id"]
                 self.client.table(self.addresses_table).insert(addresses).execute()
-            
+
             return contact
         except Exception as e:
             logger.error(f"Failed to create contact: {e}")
             return None
-    
-    async def update(self, contact_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+
+    async def update(
+        self, contact_id: str, data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Update a contact."""
         try:
-            resp = self.client.table(self.table).update(data).eq("id", contact_id).execute()
+            resp = (
+                self.client.table(self.table)
+                .update(data)
+                .eq("id", contact_id)
+                .execute()
+            )
             return resp.data[0] if resp.data else None
         except Exception:
             return None
-    
-    async def add_address(self, contact_id: str, address_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+
+    async def add_address(
+        self, contact_id: str, address_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Add an address to a contact."""
         try:
             address_data["contact_id"] = contact_id
-            resp = self.client.table(self.addresses_table).insert(address_data).execute()
+            resp = (
+                self.client.table(self.addresses_table).insert(address_data).execute()
+            )
             return resp.data[0] if resp.data else None
         except Exception:
             return None
-    
+
     async def bulk_create(self, contacts: List[Dict[str, Any]]) -> int:
         """Bulk create contacts. Returns count of created contacts."""
         try:
@@ -1069,7 +1165,7 @@ class ContactRepository:
 
 class ProcurementRepository(BaseRepository[ProcurementOrder]):
     """Specialized repository for procurement operations"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1083,36 +1179,44 @@ class ProcurementRepository(BaseRepository[ProcurementOrder]):
             local_cache,
             distributed_cache,
         )
-    
+
     async def get_active_orders(self, restaurant_id: str) -> List[ProcurementOrder]:
         """Get orders that are in progress"""
         return await self.find_many(
             {
                 "restaurant_id": restaurant_id,
-                "status": ["DRAFT", "NEGOTIATING", "PENDING_APPROVAL", "APPROVED", "IN_TRANSIT"],
+                "status": [
+                    "DRAFT",
+                    "NEGOTIATING",
+                    "PENDING_APPROVAL",
+                    "APPROVED",
+                    "IN_TRANSIT",
+                ],
             },
             order_by="created_at",
             order_desc=True,
         )
-    
+
     async def generate_order_number(self) -> str:
         """Generate unique order number"""
         today = datetime.utcnow().date().isoformat().replace("-", "")
-        
+
         self.queries_executed += 1
-        
-        response = self.supabase.table("procurement_orders") \
-            .select("id", count="exact") \
-            .gte("created_at", f"{datetime.utcnow().date()}T00:00:00") \
+
+        response = (
+            self.supabase.table("procurement_orders")
+            .select("id", count="exact")
+            .gte("created_at", f"{datetime.utcnow().date()}T00:00:00")
             .execute()
-        
-        count = response.count if hasattr(response, 'count') and response.count else 0
+        )
+
+        count = response.count if hasattr(response, "count") and response.count else 0
         return f"ORD-{today}-{count + 1:04d}"
 
 
 class SalesEventRepository(BaseRepository[SalesEvent]):
     """Specialized repository for sales events - optimized for high volume"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1125,12 +1229,12 @@ class SalesEventRepository(BaseRepository[SalesEvent]):
             local_cache=None,
             distributed_cache=None,
         )
-    
+
     async def batch_insert(self, events: List[SalesEvent]) -> int:
         """Optimized batch insert for POS events"""
         if not events:
             return 0
-        
+
         created = await self.batch_create(events)
         logger.info(f"Batch inserted {len(created)} sales events")
         return len(created)
@@ -1138,7 +1242,7 @@ class SalesEventRepository(BaseRepository[SalesEvent]):
 
 class OrderInteractionRepository(BaseRepository[OrderInteraction]):
     """Repository for order interactions (voice calls, SMS, email, WhatsApp)"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1152,7 +1256,7 @@ class OrderInteractionRepository(BaseRepository[OrderInteraction]):
             local_cache,
             distributed_cache,
         )
-    
+
     async def get_by_order(self, order_id: str) -> List[OrderInteraction]:
         """Get all interactions for an order"""
         return await self.find_many(
@@ -1160,7 +1264,7 @@ class OrderInteractionRepository(BaseRepository[OrderInteraction]):
             order_by="created_at",
             order_desc=True,
         )
-    
+
     async def get_voice_calls(self, order_id: str) -> List[OrderInteraction]:
         """Get only voice call interactions for an order"""
         return await self.find_many(
@@ -1168,7 +1272,7 @@ class OrderInteractionRepository(BaseRepository[OrderInteraction]):
             order_by="created_at",
             order_desc=True,
         )
-    
+
     async def create_voice_interaction(
         self,
         order_id: str,
@@ -1193,7 +1297,7 @@ class OrderInteractionRepository(BaseRepository[OrderInteraction]):
 
 class ManagerPreferencesRepository(BaseRepository[ManagerPreferences]):
     """Repository for manager preferences"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1207,41 +1311,39 @@ class ManagerPreferencesRepository(BaseRepository[ManagerPreferences]):
             LocalCache(CacheConfig(ttl_seconds=600)),  # Longer TTL for preferences
             distributed_cache,
         )
-    
+
     async def get_by_manager(self, manager_id: str) -> Optional[ManagerPreferences]:
         """Get preferences for a specific manager"""
         results = await self.find_many({"manager_id": manager_id}, limit=1)
         return results[0] if results else None
-    
+
     async def upsert_preferences(
-        self,
-        manager_id: str,
-        preferences: Dict[str, Any]
+        self, manager_id: str, preferences: Dict[str, Any]
     ) -> Optional[ManagerPreferences]:
         """Create or update manager preferences"""
         existing = await self.get_by_manager(manager_id)
-        
+
         if existing:
             return await self.update(existing.id, preferences)
         else:
             prefs = ManagerPreferences(manager_id=manager_id, **preferences)
             return await self.create(prefs)
-    
+
     async def is_quiet_hours(self, manager_id: str) -> bool:
         """Check if current time is within quiet hours"""
         prefs = await self.get_by_manager(manager_id)
         if not prefs or not prefs.quiet_hours_start or not prefs.quiet_hours_end:
             return False
-        
+
         from datetime import datetime
         import pytz
-        
+
         tz = pytz.timezone(prefs.report_timezone)
         now = datetime.now(tz).time()
-        
+
         start = datetime.strptime(prefs.quiet_hours_start, "%H:%M:%S").time()
         end = datetime.strptime(prefs.quiet_hours_end, "%H:%M:%S").time()
-        
+
         if start <= end:
             return start <= now <= end
         else:  # Spans midnight
@@ -1250,7 +1352,7 @@ class ManagerPreferencesRepository(BaseRepository[ManagerPreferences]):
 
 class UnitConversionRepository(BaseRepository[UnitConversion]):
     """Repository for unit conversions"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1264,41 +1366,41 @@ class UnitConversionRepository(BaseRepository[UnitConversion]):
             LocalCache(CacheConfig(ttl_seconds=3600)),  # Long TTL for conversions
             distributed_cache,
         )
-    
+
     async def get_for_inventory(
-        self,
-        restaurant_id: str,
-        inventory_id: str
+        self, restaurant_id: str, inventory_id: str
     ) -> List[UnitConversion]:
         """Get all unit conversions for an inventory item"""
-        return await self.find_many({
-            "restaurant_id": restaurant_id,
-            "inventory_id": inventory_id,
-        })
-    
+        return await self.find_many(
+            {
+                "restaurant_id": restaurant_id,
+                "inventory_id": inventory_id,
+            }
+        )
+
     async def convert_units(
         self,
         restaurant_id: str,
         inventory_id: str,
         quantity: float,
         from_unit: str,
-        to_unit: str
+        to_unit: str,
     ) -> Optional[float]:
         """Convert quantity from one unit to another"""
         conversions = await self.get_for_inventory(restaurant_id, inventory_id)
-        
+
         for conv in conversions:
             if conv.purchase_unit == from_unit and conv.pour_unit == to_unit:
                 return quantity * conv.purchase_to_pour_ratio
             elif conv.pour_unit == from_unit and conv.purchase_unit == to_unit:
                 return quantity * conv.pour_to_purchase_ratio
-        
+
         return None  # No conversion found
 
 
 class RFQRepository(BaseRepository[RFQRequest]):
     """Repository for RFQ (Request for Quotation) requests"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1312,7 +1414,7 @@ class RFQRepository(BaseRepository[RFQRequest]):
             local_cache,
             distributed_cache,
         )
-    
+
     async def get_pending_rfqs(self, restaurant_id: str) -> List[RFQRequest]:
         """Get all pending RFQ requests for a restaurant"""
         return await self.find_many(
@@ -1320,7 +1422,7 @@ class RFQRepository(BaseRepository[RFQRequest]):
             order_by="created_at",
             order_desc=True,
         )
-    
+
     async def get_by_inventory(self, inventory_id: str) -> List[RFQRequest]:
         """Get all RFQ requests for an inventory item"""
         return await self.find_many(
@@ -1328,7 +1430,7 @@ class RFQRepository(BaseRepository[RFQRequest]):
             order_by="created_at",
             order_desc=True,
         )
-    
+
     async def add_vendor_response(
         self,
         rfq_id: str,
@@ -1341,7 +1443,7 @@ class RFQRepository(BaseRepository[RFQRequest]):
         rfq = await self.get_by_id(rfq_id)
         if not rfq:
             return None
-        
+
         response = {
             "vendor_id": vendor_id,
             "price": price,
@@ -1349,35 +1451,37 @@ class RFQRepository(BaseRepository[RFQRequest]):
             "delivery_date": delivery_date,
             "received_at": datetime.utcnow().isoformat(),
         }
-        
+
         responses = rfq.vendor_responses or []
         responses.append(response)
-        
-        return await self.update(rfq_id, {
-            "vendor_responses": responses,
-            "status": "responses_received" if len(responses) >= 1 else rfq.status,
-        })
-    
+
+        return await self.update(
+            rfq_id,
+            {
+                "vendor_responses": responses,
+                "status": "responses_received" if len(responses) >= 1 else rfq.status,
+            },
+        )
+
     async def select_winner(
-        self,
-        rfq_id: str,
-        vendor_id: str,
-        price: float,
-        reason: str
+        self, rfq_id: str, vendor_id: str, price: float, reason: str
     ) -> Optional[RFQRequest]:
         """Select a winning vendor for an RFQ"""
-        return await self.update(rfq_id, {
-            "selected_vendor_id": vendor_id,
-            "selected_price": price,
-            "selection_reason": reason,
-            "status": "presented",
-            "presented_at": datetime.utcnow().isoformat(),
-        })
+        return await self.update(
+            rfq_id,
+            {
+                "selected_vendor_id": vendor_id,
+                "selected_price": price,
+                "selection_reason": reason,
+                "status": "presented",
+                "presented_at": datetime.utcnow().isoformat(),
+            },
+        )
 
 
 class MasterWineLibraryRepository(BaseRepository[MasterWineLibrary]):
     """Repository for Master Wine Library"""
-    
+
     def __init__(
         self,
         supabase: Client,
@@ -1391,45 +1495,44 @@ class MasterWineLibraryRepository(BaseRepository[MasterWineLibrary]):
             LocalCache(CacheConfig(ttl_seconds=3600)),  # Long TTL for wine data
             distributed_cache,
         )
-    
-    async def search_by_name(self, name: str, limit: int = 10) -> List[MasterWineLibrary]:
+
+    async def search_by_name(
+        self, name: str, limit: int = 10
+    ) -> List[MasterWineLibrary]:
         """Search wines by name (fuzzy match)"""
         self.queries_executed += 1
-        
+
         try:
-            response = self.supabase.table(self.table_name) \
-                .select("*") \
-                .ilike("name", f"%{name}%") \
-                .limit(limit) \
+            response = (
+                self.supabase.table(self.table_name)
+                .select("*")
+                .ilike("name", f"%{name}%")
+                .limit(limit)
                 .execute()
-            
+            )
+
             if response.data:
                 return [self.model.model_validate(item) for item in response.data]
             return []
         except APIError as e:
             logger.error(f"Search error: {e}")
             return []
-    
+
     async def get_by_barcode(self, barcode: str) -> Optional[MasterWineLibrary]:
         """Get wine by barcode"""
         results = await self.find_many({"barcode": barcode}, limit=1)
         return results[0] if results else None
-    
+
     async def enrich_wine(
-        self,
-        wine_id: str,
-        enrichment_data: Dict[str, Any],
-        source: str
+        self, wine_id: str, enrichment_data: Dict[str, Any], source: str
     ) -> Optional[MasterWineLibrary]:
         """Enrich wine data from external source"""
         enrichment_data["data_source"] = source
         enrichment_data["enrichment_date"] = datetime.utcnow().isoformat()
         return await self.update(wine_id, enrichment_data)
-    
+
     async def get_wines_for_event(
-        self,
-        event_type: str,
-        limit: int = 10
+        self, event_type: str, limit: int = 10
     ) -> List[MasterWineLibrary]:
         """Get wines suitable for a specific event type"""
         # Event type to wine type mapping
@@ -1441,18 +1544,20 @@ class MasterWineLibraryRepository(BaseRepository[MasterWineLibrary]):
             "seafood_dinner": ["white", "sparkling"],
             "steak_dinner": ["red"],
         }
-        
+
         wine_types = event_wine_mapping.get(event_type.lower(), ["red", "white"])
-        
+
         self.queries_executed += 1
-        
+
         try:
-            response = self.supabase.table(self.table_name) \
-                .select("*") \
-                .in_("wine_type", wine_types) \
-                .limit(limit) \
+            response = (
+                self.supabase.table(self.table_name)
+                .select("*")
+                .in_("wine_type", wine_types)
+                .limit(limit)
                 .execute()
-            
+            )
+
             if response.data:
                 return [self.model.model_validate(item) for item in response.data]
             return []
@@ -1465,10 +1570,11 @@ class MasterWineLibraryRepository(BaseRepository[MasterWineLibrary]):
 # DATABASE CLIENT (Facade)
 # =============================================================================
 
+
 class DatabaseClient:
     """
     Production-grade database client facade
-    
+
     Features:
     ✅ Repository pattern for clean architecture
     ✅ Multi-level caching (local + Redis)
@@ -1476,7 +1582,7 @@ class DatabaseClient:
     ✅ Connection resilience
     ✅ Comprehensive observability
     """
-    
+
     def __init__(
         self,
         supabase_url: str,
@@ -1487,20 +1593,20 @@ class DatabaseClient:
         self.supabase_key = supabase_key
         # Upstash Redis requires TLS — normalise redis:// → rediss://
         if redis_url and redis_url.startswith("redis://") and "upstash.io" in redis_url:
-            redis_url = "rediss://" + redis_url[len("redis://"):]
+            redis_url = "rediss://" + redis_url[len("redis://") :]
         self.redis_url = redis_url
-        
+
         # Clients
         self.supabase: Optional[Client] = None
         self.redis: Optional[redis.Redis] = None
         self.distributed_cache: Optional[DistributedCache] = None
-        
+
         # Repositories (initialized on connect)
         self.inventory: Optional[InventoryRepository] = None
         self.providers: Optional[ProviderRepository] = None
         self.procurement: Optional[ProcurementRepository] = None
         self.sales_events: Optional[SalesEventRepository] = None
-        
+
         # New repositories (Phase 2)
         self.order_interactions: Optional[OrderInteractionRepository] = None
         self.manager_preferences: Optional[ManagerPreferencesRepository] = None
@@ -1508,16 +1614,16 @@ class DatabaseClient:
         self.rfq_requests: Optional[RFQRepository] = None
         self.wine_library: Optional[MasterWineLibraryRepository] = None
         self.contacts: Optional[ContactRepository] = None
-    
+
     async def connect(self) -> None:
         """Initialize all connections and repositories"""
         logger.info("🔌 Initializing database connections...")
-        
+
         try:
             # Supabase client
             self.supabase = create_client(self.supabase_url, self.supabase_key)
             logger.info("✅ Supabase client initialized")
-            
+
             # Redis (optional)
             try:
                 self.redis = await redis.from_url(
@@ -1535,7 +1641,7 @@ class DatabaseClient:
                 logger.warning(f"⚠️ Redis unavailable (using local cache only): {e}")
                 self.redis = None
                 self.distributed_cache = None
-            
+
             # Initialize repositories
             self.inventory = InventoryRepository(
                 self.supabase,
@@ -1550,7 +1656,7 @@ class DatabaseClient:
                 distributed_cache=self.distributed_cache,
             )
             self.sales_events = SalesEventRepository(self.supabase)
-            
+
             # Initialize new repositories (Phase 2)
             self.order_interactions = OrderInteractionRepository(
                 self.supabase,
@@ -1573,13 +1679,13 @@ class DatabaseClient:
                 distributed_cache=self.distributed_cache,
             )
             self.contacts = ContactRepository(self.supabase)
-            
+
             logger.info("✅ All repositories initialized (including Phase 2)")
-            
+
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {e}")
             raise
-    
+
     async def disconnect(self) -> None:
         """Close all connections"""
         try:
@@ -1588,11 +1694,11 @@ class DatabaseClient:
                 logger.info("✅ Redis disconnected")
         except Exception as e:
             logger.error(f"Error disconnecting: {e}")
-    
+
     # =========================================================================
     # LEGACY COMPATIBILITY METHODS
     # =========================================================================
-    
+
     async def get_inventory_item(
         self,
         inventory_id: str,
@@ -1601,7 +1707,7 @@ class DatabaseClient:
         """Legacy method - use self.inventory.get_by_id instead"""
         item = await self.inventory.get_by_id(inventory_id, use_cache)
         return item.model_dump() if item else None
-    
+
     async def update_inventory_stock(
         self,
         inventory_id: str,
@@ -1609,9 +1715,11 @@ class DatabaseClient:
         update_reason: str = "automated",
     ) -> bool:
         """Legacy method - use self.inventory.update_stock instead"""
-        result = await self.inventory.update_stock(inventory_id, new_stock, update_reason)
+        result = await self.inventory.update_stock(
+            inventory_id, new_stock, update_reason
+        )
         return result is not None
-    
+
     async def get_low_stock_items(
         self,
         restaurant_id: str,
@@ -1620,7 +1728,7 @@ class DatabaseClient:
         """Legacy method - use self.inventory.get_low_stock instead"""
         items = await self.inventory.get_low_stock(restaurant_id)
         return [item.model_dump() for item in items]
-    
+
     async def get_provider(
         self,
         provider_id: str,
@@ -1629,7 +1737,7 @@ class DatabaseClient:
         """Legacy method - use self.providers.get_by_id instead"""
         provider = await self.providers.get_by_id(provider_id, use_cache)
         return provider.model_dump() if provider else None
-    
+
     async def create_procurement_order(
         self,
         order_data: Dict[str, Any],
@@ -1637,17 +1745,17 @@ class DatabaseClient:
         """Legacy method - use self.procurement.create instead"""
         if "order_number" not in order_data:
             order_data["order_number"] = await self.procurement.generate_order_number()
-        
+
         order = ProcurementOrder.model_validate(order_data)
         created = await self.procurement.create(order)
         return created.id if created else None
-    
+
     async def insert_sales_event(self, sales_data: Dict[str, Any]) -> bool:
         """Legacy method"""
         event = SalesEvent.model_validate(sales_data)
         created = await self.sales_events.create(event)
         return created is not None
-    
+
     async def batch_insert_sales_events(
         self,
         sales_events: List[Dict[str, Any]],
@@ -1655,12 +1763,14 @@ class DatabaseClient:
         """Legacy method"""
         events = [SalesEvent.model_validate(e) for e in sales_events]
         return await self.sales_events.batch_insert(events)
-    
+
     # =========================================================================
     # CONVERSATION METHODS (AI Approval Workflow)
     # =========================================================================
-    
-    async def create_conversation(self, conversation_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+
+    async def create_conversation(
+        self, conversation_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Create a new AI conversation with manager approval tracking"""
         try:
             response = (
@@ -1668,17 +1778,17 @@ class DatabaseClient:
                 .insert(conversation_data)
                 .execute()
             )
-            
+
             if response.data and len(response.data) > 0:
                 conversation = response.data[0]
                 logger.info(f"Created conversation {conversation.get('id')}")
                 return conversation
-            
+
             return None
         except Exception as e:
             logger.error(f"Failed to create conversation: {e}")
             return None
-    
+
     async def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         """Get conversation by ID"""
         try:
@@ -1689,16 +1799,14 @@ class DatabaseClient:
                 .single()
                 .execute()
             )
-            
+
             return response.data if response.data else None
         except Exception as e:
             logger.error(f"Failed to get conversation {conversation_id}: {e}")
             return None
-    
+
     async def update_conversation(
-        self,
-        conversation_id: str,
-        updates: Dict[str, Any]
+        self, conversation_id: str, updates: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Update conversation fields"""
         try:
@@ -1708,40 +1816,45 @@ class DatabaseClient:
                 .eq("id", conversation_id)
                 .execute()
             )
-            
+
             if response.data and len(response.data) > 0:
-                logger.info(f"Updated conversation {conversation_id}: {list(updates.keys())}")
+                logger.info(
+                    f"Updated conversation {conversation_id}: {list(updates.keys())}"
+                )
                 return response.data[0]
-            
+
             return None
         except Exception as e:
             logger.error(f"Failed to update conversation {conversation_id}: {e}")
             return None
-    
+
     async def get_pending_conversations(
-        self,
-        restaurant_id: Optional[str] = None
+        self, restaurant_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Get all conversations pending manager approval"""
         try:
             query = (
                 self.supabase.table("procurement_conversations")
-                .select("*, providers(name), procurement_orders(wine_name, quantity, target_price_per_bottle)")
+                .select(
+                    "*, providers(name), procurement_orders(wine_name, quantity, target_price_per_bottle)"
+                )
                 .eq("manager_approval_status", "pending")
                 .order("paused_at", desc=False)
             )
-            
+
             if restaurant_id:
                 query = query.eq("restaurant_id", restaurant_id)
-            
+
             response = query.execute()
             return response.data if response.data else []
         except Exception as e:
             logger.error(f"Failed to get pending conversations: {e}")
             return []
-    
-    async def get_provider(self, provider_id: str) -> Optional[Dict[str, Any]]:
-        """Get provider by ID"""
+
+    async def get_provider_by_id_direct(
+        self, provider_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Direct Supabase provider lookup (bypasses repository cache)."""
         try:
             response = (
                 self.supabase.table("providers")
@@ -1750,12 +1863,12 @@ class DatabaseClient:
                 .single()
                 .execute()
             )
-            
+
             return response.data if response.data else None
         except Exception as e:
             logger.error(f"Failed to get provider {provider_id}: {e}")
             return None
-    
+
     async def get_manager(self, restaurant_id: str) -> Optional[Dict[str, Any]]:
         """Get manager preferences for notification routing"""
         try:
@@ -1767,24 +1880,24 @@ class DatabaseClient:
                 .single()
                 .execute()
             )
-            
+
             if response.data:
                 # Extract manager from users array (assuming first user is manager)
                 restaurant = response.data
-                if restaurant.get('users') and len(restaurant['users']) > 0:
-                    manager = restaurant['users'][0]
-                    manager['push_enabled'] = restaurant.get('push_enabled', True)
+                if restaurant.get("users") and len(restaurant["users"]) > 0:
+                    manager = restaurant["users"][0]
+                    manager["push_enabled"] = restaurant.get("push_enabled", True)
                     return manager
-            
+
             return None
         except Exception as e:
             logger.error(f"Failed to get manager for restaurant {restaurant_id}: {e}")
             return None
-    
+
     # =========================================================================
     # HEALTH & METRICS
     # =========================================================================
-    
+
     async def get_statistics(self) -> Dict[str, Any]:
         """Get comprehensive statistics"""
         stats = {
@@ -1792,7 +1905,7 @@ class DatabaseClient:
             "redis_connected": self.redis is not None,
             "repositories": {},
         }
-        
+
         if self.inventory:
             stats["repositories"]["inventory"] = self.inventory.stats()
         if self.providers:
@@ -1801,21 +1914,21 @@ class DatabaseClient:
             stats["repositories"]["procurement"] = self.procurement.stats()
         if self.sales_events:
             stats["repositories"]["sales_events"] = self.sales_events.stats()
-        
+
         return stats
-    
+
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check"""
         health = {"status": "healthy"}
-        
+
         # Check Supabase
         try:
-            response = self.supabase.table("restaurants").select("id").limit(1).execute()
+            self.supabase.table("restaurants").select("id").limit(1).execute()
             health["supabase"] = "connected"
         except Exception as e:
             health["supabase"] = f"error: {e}"
             health["status"] = "unhealthy"
-        
+
         # Check Redis
         if self.redis:
             try:
@@ -1826,7 +1939,7 @@ class DatabaseClient:
                 health["status"] = "degraded"
         else:
             health["redis"] = "disabled"
-        
+
         return health
 
 

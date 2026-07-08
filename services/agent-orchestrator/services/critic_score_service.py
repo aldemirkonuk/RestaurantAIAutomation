@@ -28,16 +28,28 @@ SCORE_WEIGHTS: Dict[str, float] = {
 # Regex patterns for score extraction from Serper snippets
 # ---------------------------------------------------------------------------
 # 100-pt scale: Wine Advocate, Wine Spectator, Decanter
-_WA_WS_DEC_RE = re.compile(r'\b(9[0-9]|8[5-9])\s*(?:points?|pts?|/100)?\b', re.IGNORECASE)
-_SCORE_LABEL_RE = re.compile(r'(?:score|rated?|points?)[:\s]+(\d{2,3})\b', re.IGNORECASE)
+_WA_WS_DEC_RE = re.compile(
+    r"\b(9[0-9]|8[5-9])\s*(?:points?|pts?|/100)?\b", re.IGNORECASE
+)
+_SCORE_LABEL_RE = re.compile(
+    r"(?:score|rated?|points?)[:\s]+(\d{2,3})\b", re.IGNORECASE
+)
 # Vivino 5-pt scale with decimal
-_VIVINO_RE = re.compile(r'\b([3-5]\.\d)\s*(?:out of 5|/5|stars?)?\b', re.IGNORECASE)
+_VIVINO_RE = re.compile(r"\b([3-5]\.\d)\s*(?:out of 5|/5|stars?)?\b", re.IGNORECASE)
 # JancisRobinson 20-pt
-_JR_RE = re.compile(r'\b(1[2-9](?:\.\d)?|20(?:\.0)?)\s*(?:/20|out of 20)\b', re.IGNORECASE)
-_JR_LABEL_RE = re.compile(r'(\d{2}(?:\.\d)?)\s*points?\b', re.IGNORECASE)  # fallback for "16.5 points"
+_JR_RE = re.compile(
+    r"\b(1[2-9](?:\.\d)?|20(?:\.0)?)\s*(?:/20|out of 20)\b", re.IGNORECASE
+)
+_JR_LABEL_RE = re.compile(
+    r"(\d{2}(?:\.\d)?)\s*points?\b", re.IGNORECASE
+)  # fallback for "16.5 points"
 # Wine-Searcher retail price
-_WS_PRICE_RE = re.compile(r'\$\s*(\d+(?:\.\d{2})?)\s*(?:average|avg|/bottle)?\b', re.IGNORECASE)
-_WS_FROM_RE = re.compile(r'(?:from|starting at)\s*\$\s*(\d+(?:\.\d{2})?)', re.IGNORECASE)
+_WS_PRICE_RE = re.compile(
+    r"\$\s*(\d+(?:\.\d{2})?)\s*(?:average|avg|/bottle)?\b", re.IGNORECASE
+)
+_WS_FROM_RE = re.compile(
+    r"(?:from|starting at)\s*\$\s*(\d+(?:\.\d{2})?)", re.IGNORECASE
+)
 
 # Domain → source key mapping
 _DOMAIN_SOURCE: Dict[str, str] = {
@@ -76,7 +88,8 @@ def compute_composite_score(scores: Dict[str, Dict[str, Any]]) -> Optional[float
     available = {
         src: data["normalized_score"]
         for src, data in scores.items()
-        if isinstance(data, dict) and data.get("normalized_score") is not None
+        if isinstance(data, dict)
+        and data.get("normalized_score") is not None
         and src in SCORE_WEIGHTS
     }
     if len(available) < 2:
@@ -100,8 +113,8 @@ def build_critic_score_queries(
                              jancis_robinson, wine_searcher
     """
     # Strip bin numbers and parentheticals from wine_name
-    clean_name = re.sub(r'\s*\(.*?\)', '', wine_name).strip()
-    clean_name = re.sub(r'^\d+\.\s*', '', clean_name).strip()
+    clean_name = re.sub(r"\s*\(.*?\)", "", wine_name).strip()
+    clean_name = re.sub(r"^\d+\.\s*", "", clean_name).strip()
 
     vintage_str = str(vintage) if vintage else ""
     # Use producer + name when producer is known; fall back to name alone
@@ -261,7 +274,9 @@ class CriticScoreService:
     def normalize_score(self, source: str, raw_score: float) -> float:
         return normalize_score(source, raw_score)
 
-    def compute_composite_score(self, scores: Dict[str, Dict[str, Any]]) -> Optional[float]:
+    def compute_composite_score(
+        self, scores: Dict[str, Dict[str, Any]]
+    ) -> Optional[float]:
         return compute_composite_score(scores)
 
     def build_critic_score_queries(

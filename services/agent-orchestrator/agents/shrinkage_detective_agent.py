@@ -23,11 +23,13 @@ class ShrinkageDetectiveAgent(BaseAgent):
         routing_key = message.get("routing_key")
         payload = message.get("payload", {})
 
-        self.logger.info({
-            "message": "Shrinkage detective event received",
-            "routing_key": routing_key,
-            "payload_keys": list(payload.keys()),
-        })
+        self.logger.info(
+            {
+                "message": "Shrinkage detective event received",
+                "routing_key": routing_key,
+                "payload_keys": list(payload.keys()),
+            }
+        )
 
         # TODO: Analyze patterns and insert shrinkage_alerts
         # TODO: Update staff_correlation_data and anomaly_patterns

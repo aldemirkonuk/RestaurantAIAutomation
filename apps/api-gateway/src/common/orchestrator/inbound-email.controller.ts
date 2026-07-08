@@ -1,8 +1,17 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Logger, Post, Query } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Public } from '../../auth/decorators/public.decorator';
-import { OrchestratorService } from './orchestrator.service';
-import { InboundAddressService } from './inbound-address.service';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Post,
+  Query,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Public } from "../../auth/decorators/public.decorator";
+import { OrchestratorService } from "./orchestrator.service";
+import { InboundAddressService } from "./inbound-address.service";
 
 interface NormalizedInbound {
   from: string;
@@ -30,7 +39,7 @@ interface NormalizedInbound {
  * header or `?secret=` query). With no secret configured the endpoint refuses, so it can never
  * act as an open relay.
  */
-@Controller('webhooks')
+@Controller("webhooks")
 export class InboundEmailController {
   private readonly logger = new Logger(InboundEmailController.name);
 
@@ -41,56 +50,70 @@ export class InboundEmailController {
   ) {}
 
   @Public()
-  @Post('inbound-email')
+  @Post("inbound-email")
   @HttpCode(HttpStatus.OK)
   async inbound(
     @Body() body: any,
-    @Headers('x-inbound-secret') headerSecret?: string,
-    @Query('secret') querySecret?: string,
+    @Headers("x-inbound-secret") headerSecret?: string,
+    @Query("secret") querySecret?: string,
   ): Promise<{ status: string; restaurant_id?: string | null }> {
-    const configured = (this.configService.get<string>('INBOUND_WEBHOOK_SECRET') || '').trim();
+    const configured = (
+      this.configService.get<string>("INBOUND_WEBHOOK_SECRET") || ""
+    ).trim();
     if (!configured) {
-      this.logger.warn('inbound-email webhook hit but INBOUND_WEBHOOK_SECRET is not set — refusing.');
-      return { status: 'disabled' };
+      this.logger.warn(
+        "inbound-email webhook hit but INBOUND_WEBHOOK_SECRET is not set — refusing.",
+      );
+      return { status: "disabled" };
     }
-    const provided = (headerSecret || querySecret || '').trim();
+    const provided = (headerSecret || querySecret || "").trim();
     if (provided !== configured) {
-      this.logger.warn('inbound-email webhook: bad or missing secret — rejected.');
-      return { status: 'unauthorized' };
+      this.logger.warn(
+        "inbound-email webhook: bad or missing secret — rejected.",
+      );
+      return { status: "unauthorized" };
     }
 
     try {
       const norm = this.normalizePayload(body || {});
       if (!norm.from) {
-        this.logger.warn('inbound-email webhook: payload had no sender — ignored.');
-        return { status: 'ignored' };
+        this.logger.warn(
+          "inbound-email webhook: payload had no sender — ignored.",
+        );
+        return { status: "ignored" };
       }
-      const restaurantId = await this.inboundAddress.resolveRestaurantId(norm.recipients);
+      const restaurantId = await this.inboundAddress.resolveRestaurantId(
+        norm.recipients,
+      );
 
       // Publish the exact event shape the Gmail path publishes, plus restaurant_id + source.
-      await this.orchestrator.publishEvent('email.events', 'email.inbound.received', {
-        restaurant_id: restaurantId, // may be null -> the bridge routes it to triage
-        from: norm.from,
-        subject: norm.subject,
-        body: norm.body,
-        attachments: norm.attachments,
-        message_id_header: norm.messageId,
-        gmail_message_id: null,
-        gmail_thread_id: null,
-        in_reply_to: norm.inReplyTo,
-        references: norm.references,
-        received_at: new Date().toISOString(),
-        headers: norm.headers,
-        source: 'inbound-domain',
-      });
+      await this.orchestrator.publishEvent(
+        "email.events",
+        "email.inbound.received",
+        {
+          restaurant_id: restaurantId, // may be null -> the bridge routes it to triage
+          from: norm.from,
+          subject: norm.subject,
+          body: norm.body,
+          attachments: norm.attachments,
+          message_id_header: norm.messageId,
+          gmail_message_id: null,
+          gmail_thread_id: null,
+          in_reply_to: norm.inReplyTo,
+          references: norm.references,
+          received_at: new Date().toISOString(),
+          headers: norm.headers,
+          source: "inbound-domain",
+        },
+      );
 
       this.logger.log(
-        `inbound-email: from=${norm.from} to=${norm.recipients[0] ?? '?'} restaurant=${restaurantId ?? 'TRIAGE'}`,
+        `inbound-email: from=${norm.from} to=${norm.recipients[0] ?? "?"} restaurant=${restaurantId ?? "TRIAGE"}`,
       );
-      return { status: 'ok', restaurant_id: restaurantId };
+      return { status: "ok", restaurant_id: restaurantId };
     } catch (e: any) {
       this.logger.error(`inbound-email webhook failed: ${e?.message}`);
-      return { status: 'error' };
+      return { status: "error" };
     }
   }
 
@@ -102,28 +125,46 @@ export class InboundEmailController {
   private normalizePayload(b: any): NormalizedInbound {
     const headerMap: Record<string, string> = {};
     if (Array.isArray(b.Headers)) {
-      for (const h of b.Headers) if (h?.Name) headerMap[String(h.Name).toLowerCase()] = String(h.Value ?? '');
+      for (const h of b.Headers)
+        if (h?.Name)
+          headerMap[String(h.Name).toLowerCase()] = String(h.Value ?? "");
     }
-    if (b.headers && typeof b.headers === 'object' && !Array.isArray(b.headers)) {
-      for (const [k, v] of Object.entries(b.headers)) headerMap[k.toLowerCase()] = String(v ?? '');
+    if (
+      b.headers &&
+      typeof b.headers === "object" &&
+      !Array.isArray(b.headers)
+    ) {
+      for (const [k, v] of Object.entries(b.headers))
+        headerMap[k.toLowerCase()] = String(v ?? "");
     }
 
-    const from: string = b.FromFull?.Email || b.From || b.from || headerMap['from'] || '';
-    const subject: string = b.Subject ?? b.subject ?? headerMap['subject'] ?? '';
+    const from: string =
+      b.FromFull?.Email || b.From || b.from || headerMap["from"] || "";
+    const subject: string =
+      b.Subject ?? b.subject ?? headerMap["subject"] ?? "";
     const body: string =
-      b.TextBody || b.text || b.StrippedTextReply || b.HtmlBody || b.html || b.body || '';
+      b.TextBody ||
+      b.text ||
+      b.StrippedTextReply ||
+      b.HtmlBody ||
+      b.html ||
+      b.body ||
+      "";
 
     // Recipient candidates — the address the vendor emailed is our attribution key.
     const recipients: string[] = [];
-    const push = (v: any) => { if (typeof v === 'string' && v.trim()) recipients.push(v); };
+    const push = (v: any) => {
+      if (typeof v === "string" && v.trim()) recipients.push(v);
+    };
     push(b.OriginalRecipient);
     if (Array.isArray(b.ToFull)) for (const t of b.ToFull) push(t?.Email);
-    if (Array.isArray(b.to)) for (const t of b.to) push(typeof t === 'string' ? t : t?.email);
+    if (Array.isArray(b.to))
+      for (const t of b.to) push(typeof t === "string" ? t : t?.email);
     else push(b.to);
     push(b.To);
-    push(headerMap['delivered-to']);
-    push(headerMap['x-original-to']);
-    push(headerMap['to']);
+    push(headerMap["delivered-to"]);
+    push(headerMap["x-original-to"]);
+    push(headerMap["to"]);
 
     const rawAtt: any[] = Array.isArray(b.Attachments)
       ? b.Attachments
@@ -132,16 +173,31 @@ export class InboundEmailController {
         : [];
     const attachments = rawAtt
       .map((a) => ({
-        filename: a?.Name || a?.filename || a?.name || 'attachment',
-        mime_type: a?.ContentType || a?.contentType || a?.mime_type || 'application/octet-stream',
-        data: a?.Content || a?.content || a?.data || '',
+        filename: a?.Name || a?.filename || a?.name || "attachment",
+        mime_type:
+          a?.ContentType ||
+          a?.contentType ||
+          a?.mime_type ||
+          "application/octet-stream",
+        data: a?.Content || a?.content || a?.data || "",
       }))
       .filter((a) => a.data);
 
-    const messageId: string = b.MessageID || b.messageId || headerMap['message-id'] || '';
-    const inReplyTo: string = headerMap['in-reply-to'] || b.inReplyTo || '';
-    const references: string = headerMap['references'] || b.references || '';
+    const messageId: string =
+      b.MessageID || b.messageId || headerMap["message-id"] || "";
+    const inReplyTo: string = headerMap["in-reply-to"] || b.inReplyTo || "";
+    const references: string = headerMap["references"] || b.references || "";
 
-    return { from, subject, body, recipients, attachments, messageId, inReplyTo, references, headers: headerMap };
+    return {
+      from,
+      subject,
+      body,
+      recipients,
+      attachments,
+      messageId,
+      inReplyTo,
+      references,
+      headers: headerMap,
+    };
   }
 }

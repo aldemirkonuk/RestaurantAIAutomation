@@ -1,5 +1,14 @@
-import { IsInt, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from "class-validator";
+import { Transform } from "class-transformer";
 
 export class CreateWineSubmissionDto {
   @IsString()
@@ -11,12 +20,16 @@ export class CreateWineSubmissionDto {
   producer!: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === null || value === undefined ? undefined : Number(value)))
+  @Transform(({ value }) =>
+    value === null || value === undefined ? undefined : Number(value),
+  )
   @IsNumber()
   vintage?: number | null;
 
   @IsOptional()
-  @Transform(({ value }) => (value === null || value === undefined ? undefined : Number(value)))
+  @Transform(({ value }) =>
+    value === null || value === undefined ? undefined : Number(value),
+  )
   @IsNumber()
   priceReference?: number | null;
 
@@ -53,7 +66,9 @@ export class CreateWineSubmissionDto {
   sensoryProfile?: Record<string, unknown>;
 
   @IsOptional()
-  @Transform(({ value }) => (value === null || value === undefined ? undefined : Number(value)))
+  @Transform(({ value }) =>
+    value === null || value === undefined ? undefined : Number(value),
+  )
   @IsInt()
   @Min(50)
   @Max(18000)

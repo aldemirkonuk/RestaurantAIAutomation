@@ -1,19 +1,29 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from "class-validator";
+import { Type } from "class-transformer";
 
 export enum ProcurementOrderStatus {
-  PENDING = 'PENDING',
-  APPROVAL_NEEDED = 'APPROVAL_NEEDED',
-  NEGOTIATING = 'NEGOTIATING',
-  APPROVED = 'APPROVED',
-  CONFIRMED = 'CONFIRMED',
-  IN_TRANSIT = 'IN_TRANSIT',
-  DELIVERED = 'DELIVERED',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-  REJECTED = 'REJECTED',
-  FAILED = 'FAILED',
+  PENDING = "PENDING",
+  APPROVAL_NEEDED = "APPROVAL_NEEDED",
+  NEGOTIATING = "NEGOTIATING",
+  APPROVED = "APPROVED",
+  CONFIRMED = "CONFIRMED",
+  IN_TRANSIT = "IN_TRANSIT",
+  DELIVERED = "DELIVERED",
+  COMPLETED = "COMPLETED",
+  CANCELLED = "CANCELLED",
+  REJECTED = "REJECTED",
+  FAILED = "FAILED",
 }
 
 export class CreateOrderDto {
@@ -191,7 +201,7 @@ export class OrderFilterDto {
   @IsOptional()
   sortBy?: string;
 
-  @ApiPropertyOptional({ enum: ['asc', 'desc'] })
+  @ApiPropertyOptional({ enum: ["asc", "desc"] })
   @IsString()
   @IsOptional()
   sortOrder?: string;

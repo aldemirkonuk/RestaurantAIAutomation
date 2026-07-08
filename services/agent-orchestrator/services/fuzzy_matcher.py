@@ -37,7 +37,10 @@ class FuzzyMatcher:
         """
         if not candidate or not known_name:
             return 0.0
-        return fuzz.token_sort_ratio(candidate.lower().strip(), known_name.lower().strip()) / 100.0
+        return (
+            fuzz.token_sort_ratio(candidate.lower().strip(), known_name.lower().strip())
+            / 100.0
+        )
 
     def match_wine_name(self, candidate: str, known_name: str) -> float:
         """
@@ -47,7 +50,10 @@ class FuzzyMatcher:
         """
         if not candidate or not known_name:
             return 0.0
-        return fuzz.token_set_ratio(candidate.lower().strip(), known_name.lower().strip()) / 100.0
+        return (
+            fuzz.token_set_ratio(candidate.lower().strip(), known_name.lower().strip())
+            / 100.0
+        )
 
     def compute_match_score(
         self,
@@ -99,7 +105,9 @@ class FuzzyMatcher:
         best_order = None
 
         for order in orders:
-            p_score = self.match_provider_name(extracted_provider, order.get("provider_name", ""))
+            p_score = self.match_provider_name(
+                extracted_provider, order.get("provider_name", "")
+            )
             w_score = self.match_wine_name(extracted_wine, order.get("wine_name", ""))
 
             order_qty = order.get("quantity") or 0
@@ -113,8 +121,13 @@ class FuzzyMatcher:
             if extracted_date and order.get("created_at"):
                 try:
                     from datetime import datetime
-                    inv_date = datetime.fromisoformat(extracted_date.replace("Z", "+00:00"))
-                    ord_date = datetime.fromisoformat(order["created_at"].replace("Z", "+00:00"))
+
+                    inv_date = datetime.fromisoformat(
+                        extracted_date.replace("Z", "+00:00")
+                    )
+                    ord_date = datetime.fromisoformat(
+                        order["created_at"].replace("Z", "+00:00")
+                    )
                     date_ok = abs((inv_date - ord_date).days) <= 45
                 except (ValueError, TypeError):
                     pass
@@ -122,7 +135,11 @@ class FuzzyMatcher:
             score = self.compute_match_score(p_score, w_score, qty_ok, date_ok)
             if score > best_score:
                 best_score = score
-                best_order = {**order, "_match_score": score, "_match_class": self.classify_match(score)}
+                best_order = {
+                    **order,
+                    "_match_score": score,
+                    "_match_class": self.classify_match(score),
+                }
 
         return best_order
 

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field as PydanticField
 
-from services.text_normalizer import get_normalizer, WINE_TYPE_KEYWORDS
+from services.text_normalizer import get_normalizer
 from services.wine_field_parser import RegexWineParser, WineParsedFields
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 # SECTION HIERARCHY MODEL
 # =============================================================================
 
+
 @dataclass
 class MenuSection:
     """A section in the wine menu hierarchy."""
+
     name: str
     level: int  # 0 = top, 1 = sub, 2 = sub-sub
     parent: Optional[str] = None
@@ -45,6 +47,7 @@ class MenuSection:
 @dataclass
 class ParsedWineEntry:
     """A single wine entry extracted from the menu."""
+
     raw_text: str
     parsed: WineParsedFields
     section_path: str = ""  # e.g. "Sparkling/Champagne"
@@ -54,6 +57,7 @@ class ParsedWineEntry:
 
 class MenuParseResult(BaseModel):
     """Complete result of parsing a wine menu."""
+
     wines: List[Dict[str, Any]] = PydanticField(default_factory=list)
     sections: List[Dict[str, Any]] = PydanticField(default_factory=list)
     section_hierarchy: Dict[str, Any] = PydanticField(default_factory=dict)
@@ -75,12 +79,18 @@ SECTION_HEADER_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"^\s*(?:red\s+wines?|reds)\s*$", re.I), "Red"),
     (re.compile(r"^\s*(?:white\s+wines?|whites)\s*$", re.I), "White"),
     (re.compile(r"^\s*(?:ros[eé]\s+wines?|ros[eé]s?)\s*$", re.I), "Rosé"),
-    (re.compile(r"^\s*(?:sparkling\s+wines?|sparkling|bubbles)\s*$", re.I), "Sparkling"),
+    (
+        re.compile(r"^\s*(?:sparkling\s+wines?|sparkling|bubbles)\s*$", re.I),
+        "Sparkling",
+    ),
     (re.compile(r"^\s*(?:champagne)\s*$", re.I), "Champagne"),
     (re.compile(r"^\s*(?:dessert\s+wines?|sweet\s+wines?)\s*$", re.I), "Dessert"),
     (re.compile(r"^\s*(?:fortified\s+wines?|fortified)\s*$", re.I), "Fortified"),
     (re.compile(r"^\s*(?:by\s+the\s+glass)\s*$", re.I), "By the Glass"),
-    (re.compile(r"^\s*(?:wine\s+list|wine\s+menu|wine\s+program)\s*$", re.I), "Wine List"),
+    (
+        re.compile(r"^\s*(?:wine\s+list|wine\s+menu|wine\s+program)\s*$", re.I),
+        "Wine List",
+    ),
     (re.compile(r"^\s*(?:reserve\s+(?:list|wines?|selection))\s*$", re.I), "Reserve"),
     (re.compile(r"^\s*(?:half\s+bottles?)\s*$", re.I), "Half Bottles"),
     (re.compile(r"^\s*(?:large\s+format|magnums?)\s*$", re.I), "Large Format"),
@@ -249,6 +259,7 @@ REGION_TO_COUNTRY: Dict[str, Tuple[str, Optional[str]]] = {
 # MAIN PARSER CLASS
 # =============================================================================
 
+
 class HtmlMenuParser:
     """
     Parses raw text from HTML DOM, PDF, or OCR into structured wine entries.
@@ -398,7 +409,9 @@ class HtmlMenuParser:
         wine_signals: int = 0
         signal_details: Dict[str, bool] = field(default_factory=dict)
 
-    def _classify_lines(self, lines: List[str]) -> List["HtmlMenuParser.ClassifiedLine"]:
+    def _classify_lines(
+        self, lines: List[str]
+    ) -> List["HtmlMenuParser.ClassifiedLine"]:
         """Classify each line as section header, wine entry, or continuation."""
         classified = []
 
@@ -446,14 +459,34 @@ class HtmlMenuParser:
             if pattern.match(stripped):
                 # Determine level: type-level = 0, region = 1, grape = 2
                 level = 0
-                if name in ("Red", "White", "Rosé", "Sparkling", "Dessert",
-                            "Fortified", "By the Glass", "Wine List", "Reserve",
-                            "Half Bottles", "Large Format", "Champagne"):
+                if name in (
+                    "Red",
+                    "White",
+                    "Rosé",
+                    "Sparkling",
+                    "Dessert",
+                    "Fortified",
+                    "By the Glass",
+                    "Wine List",
+                    "Reserve",
+                    "Half Bottles",
+                    "Large Format",
+                    "Champagne",
+                ):
                     level = 0
                 elif name in REGION_TO_COUNTRY or name in (
-                    "France", "Italy", "Spain", "California", "Oregon",
-                    "Washington", "New York", "Germany", "Australia",
-                    "New Zealand", "South America", "Portugal",
+                    "France",
+                    "Italy",
+                    "Spain",
+                    "California",
+                    "Oregon",
+                    "Washington",
+                    "New York",
+                    "Germany",
+                    "Australia",
+                    "New Zealand",
+                    "South America",
+                    "Portugal",
                 ):
                     level = 1
                 else:
@@ -501,12 +534,16 @@ class HtmlMenuParser:
                 section = MenuSection(
                     name=cl.section_name,
                     level=level,
-                    parent=current_path_parts[-2] if len(current_path_parts) > 1 else None,
+                    parent=(
+                        current_path_parts[-2] if len(current_path_parts) > 1 else None
+                    ),
                 )
                 sections.append(section)
 
             # Record the current section path for this line
-            section_stack[cl.line_number] = "/".join(current_path_parts) if current_path_parts else ""
+            section_stack[cl.line_number] = (
+                "/".join(current_path_parts) if current_path_parts else ""
+            )
 
         return sections, section_stack
 
@@ -590,7 +627,11 @@ class HtmlMenuParser:
             parsed.confidence = max(parsed.confidence, 0.45)
 
         # Skip entries that are clearly not wines
-        if parsed.wine_name == "Unknown Wine" and not parsed.vintage and not parsed.price:
+        if (
+            parsed.wine_name == "Unknown Wine"
+            and not parsed.vintage
+            and not parsed.price
+        ):
             return None
 
         return ParsedWineEntry(
@@ -605,7 +646,9 @@ class HtmlMenuParser:
     # WINE KNOWLEDGE ENRICHMENT
     # =========================================================================
 
-    def _enrich_from_context(self, wines: List[ParsedWineEntry]) -> List[ParsedWineEntry]:
+    def _enrich_from_context(
+        self, wines: List[ParsedWineEntry]
+    ) -> List[ParsedWineEntry]:
         """Enrich wine entries using wine knowledge rules and section context."""
         for wine in wines:
             parsed = wine.parsed
@@ -650,7 +693,9 @@ class HtmlMenuParser:
                 if not parsed.country:
                     parsed.country = country
                     parsed.field_sources["country"] = "ai_inferred"
-                    parsed.warnings.append(f"Country '{country}' inferred from region '{region_key}'")
+                    parsed.warnings.append(
+                        f"Country '{country}' inferred from region '{region_key}'"
+                    )
                 if not parsed.region and region:
                     parsed.region = region
                     parsed.field_sources["region"] = "ai_inferred"
@@ -684,14 +729,16 @@ class HtmlMenuParser:
         identity_scores = []
         for w in wines:
             p = w.parsed
-            populated = sum([
-                bool(p.wine_name and p.wine_name != "Unknown Wine"),
-                bool(p.vintage),
-                bool(p.price),
-                bool(p.country),
-                bool(p.region),
-                bool(p.wine_type),
-            ])
+            populated = sum(
+                [
+                    bool(p.wine_name and p.wine_name != "Unknown Wine"),
+                    bool(p.vintage),
+                    bool(p.price),
+                    bool(p.country),
+                    bool(p.region),
+                    bool(p.wine_type),
+                ]
+            )
             identity_scores.append(populated / 6.0)
         avg_identity = sum(identity_scores) / len(identity_scores)
 

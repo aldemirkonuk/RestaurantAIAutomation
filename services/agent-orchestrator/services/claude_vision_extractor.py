@@ -20,7 +20,6 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import anthropic
@@ -30,7 +29,6 @@ from services.spend_logger import get_spend_logger
 from services.field_confidence import (
     build_field_confidence,
     compute_completeness_from_fc,
-    should_auto_block,
     VISION_FIELDS,
 )
 
@@ -41,13 +39,20 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 MODEL_ID = "claude-haiku-4-5-20251001"
-MAX_TOKENS = 8192          # Haiku max; truncation handled by parse_json_response recovery
-CONCURRENCY_LIMIT = 5      # asyncio.Semaphore cap; prevents Anthropic rate limit
-PRICE_INPUT_PER_M = 0.80   # USD per 1M input tokens (Haiku, 2026-04-02)
+MAX_TOKENS = 8192  # Haiku max; truncation handled by parse_json_response recovery
+CONCURRENCY_LIMIT = 5  # asyncio.Semaphore cap; prevents Anthropic rate limit
+PRICE_INPUT_PER_M = 0.80  # USD per 1M input tokens (Haiku, 2026-04-02)
 PRICE_OUTPUT_PER_M = 4.00  # USD per 1M output tokens
 
 # Legacy completeness fields kept for backward compat in compute_completeness()
-COMPLETENESS_FIELDS = ["wine_name", "vintage", "price_bottle", "region", "country", "section_name"]
+COMPLETENESS_FIELDS = [
+    "wine_name",
+    "vintage",
+    "price_bottle",
+    "region",
+    "country",
+    "section_name",
+]
 COMPLETENESS_THRESHOLD = 0.5  # < 0.5 → needs_review
 
 # Phase 7: 18-field extraction prompt with per-field {value, confidence, source} format
@@ -125,8 +130,10 @@ Return ONLY valid JSON in this exact format:
 # DATA MODELS
 # =============================================================================
 
+
 class ClaudePageResult(BaseModel):
     """Result for a single extracted page."""
+
     page_index: int
     wines: List[Dict[str, Any]] = Field(default_factory=list)
     input_tokens: int = 0
@@ -139,6 +146,7 @@ class ClaudePageResult(BaseModel):
 
 class ClaudeExtractionResult(BaseModel):
     """Aggregated result for a full menu extraction request."""
+
     scan_session_id: str
     wines: List[Dict[str, Any]] = Field(default_factory=list)
     total_wines: int = 0
@@ -163,26 +171,79 @@ class ClaudeExtractionResult(BaseModel):
 # Common wine region/country tokens that leak into the producer field.
 # Lower-cased for matching; producer casing is preserved.
 _REGION_TOKENS: set = {
-    "loire valley", "loire", "bordeaux", "burgundy", "bourgogne", "champagne",
-    "rhône", "rhone", "alsace", "provence", "languedoc", "roussillon",
-    "tuscany", "toscana", "piedmont", "piemonte", "veneto", "sicily", "sicilia",
-    "rioja", "ribera del duero", "priorat", "rias baixas", "galicia",
-    "napa valley", "napa", "sonoma", "paso robles", "willamette valley",
-    "mendoza", "malbec country",
-    "barossa valley", "barossa", "mclaren vale", "coonawarra", "yarra valley",
-    "marlborough", "hawke's bay", "central otago",
-    "mosel", "rheingau", "rheinhessen", "pfalz", "franken",
-    "douro", "alentejo", "vinho verde",
-    "tokaj", "eger",
+    "loire valley",
+    "loire",
+    "bordeaux",
+    "burgundy",
+    "bourgogne",
+    "champagne",
+    "rhône",
+    "rhone",
+    "alsace",
+    "provence",
+    "languedoc",
+    "roussillon",
+    "tuscany",
+    "toscana",
+    "piedmont",
+    "piemonte",
+    "veneto",
+    "sicily",
+    "sicilia",
+    "rioja",
+    "ribera del duero",
+    "priorat",
+    "rias baixas",
+    "galicia",
+    "napa valley",
+    "napa",
+    "sonoma",
+    "paso robles",
+    "willamette valley",
+    "mendoza",
+    "malbec country",
+    "barossa valley",
+    "barossa",
+    "mclaren vale",
+    "coonawarra",
+    "yarra valley",
+    "marlborough",
+    "hawke's bay",
+    "central otago",
+    "mosel",
+    "rheingau",
+    "rheinhessen",
+    "pfalz",
+    "franken",
+    "douro",
+    "alentejo",
+    "vinho verde",
+    "tokaj",
+    "eger",
 }
 
 _COUNTRY_TOKENS: set = {
-    "france", "italy", "spain", "portugal", "germany", "austria", "switzerland",
-    "usa", "united states", "argentina", "chile", "australia", "new zealand",
-    "south africa", "greece", "hungary", "croatia", "slovenia",
+    "france",
+    "italy",
+    "spain",
+    "portugal",
+    "germany",
+    "austria",
+    "switzerland",
+    "usa",
+    "united states",
+    "argentina",
+    "chile",
+    "australia",
+    "new zealand",
+    "south africa",
+    "greece",
+    "hungary",
+    "croatia",
+    "slovenia",
 }
 
-_YEAR_RE = re.compile(r'^\s*(\d{4})\s+(.+)$', re.DOTALL)
+_YEAR_RE = re.compile(r"^\s*(\d{4})\s+(.+)$", re.DOTALL)
 
 
 def _strip_field_value(wine_entry: object) -> str | None:
@@ -204,13 +265,16 @@ def normalize_wine_fields(wine: dict) -> dict:
     Works on both raw {value, confidence, source} dict entries and plain string values.
     Preserves existing vintage if already set.
     """
+
     def _get(field: str):
         e = wine.get(field)
         if isinstance(e, dict):
             return e.get("value")
         return e
 
-    def _set_value(field: str, new_val, confidence: float = 0.90, source: str = "inferred"):
+    def _set_value(
+        field: str, new_val, confidence: float = 0.90, source: str = "inferred"
+    ):
         existing = wine.get(field)
         if isinstance(existing, dict):
             existing["value"] = new_val
@@ -264,8 +328,8 @@ def parse_json_response(raw_text: str) -> Tuple[dict, bool]:
     """
     # Strip markdown fences (with or without closing fence — handles truncation)
     text = raw_text.strip()
-    text = re.sub(r'^```json?\s*', '', text)
-    text = re.sub(r'```\s*$', '', text)
+    text = re.sub(r"^```json?\s*", "", text)
+    text = re.sub(r"```\s*$", "", text)
     text = text.strip()
 
     # Strategy 1: clean complete JSON
@@ -289,21 +353,21 @@ def parse_json_response(raw_text: str) -> Tuple[dict, bool]:
     # Find the start of the wines array
     wines_start = text.find('"wines"')
     if wines_start != -1:
-        bracket_start = text.find('[', wines_start)
+        bracket_start = text.find("[", wines_start)
         if bracket_start != -1:
             # Walk character by character to find each complete top-level wine object
             depth = 0
             obj_start = None
             for i, ch in enumerate(text[bracket_start:], bracket_start):
-                if ch == '{':
+                if ch == "{":
                     if depth == 0:
                         obj_start = i
                     depth += 1
-                elif ch == '}':
+                elif ch == "}":
                     depth -= 1
                     if depth == 0 and obj_start is not None:
                         try:
-                            wine = json.loads(text[obj_start:i + 1])
+                            wine = json.loads(text[obj_start : i + 1])
                             wine_objects.append(wine)
                         except json.JSONDecodeError:
                             pass
@@ -314,7 +378,10 @@ def parse_json_response(raw_text: str) -> Tuple[dict, bool]:
             f"Truncated JSON recovery: salvaged {len(wine_objects)} complete wine objects "
             f"from partial response (hit max_tokens)"
         )
-        return {"wines": wine_objects, "page_notes": "partial — response truncated at token limit"}, False
+        return {
+            "wines": wine_objects,
+            "page_notes": "partial — response truncated at token limit",
+        }, False
 
     return {"wines": [], "parse_error": True}, True
 
@@ -325,8 +392,7 @@ def compute_completeness(wine: dict) -> float:
     Scored over COMPLETENESS_FIELDS = [wine_name, vintage, price_bottle, region, country, section_name].
     """
     filled = sum(
-        1 for f in COMPLETENESS_FIELDS
-        if wine.get(f) is not None and wine.get(f) != ""
+        1 for f in COMPLETENESS_FIELDS if wine.get(f) is not None and wine.get(f) != ""
     )
     return round(filled / len(COMPLETENESS_FIELDS), 3)
 
@@ -346,6 +412,7 @@ def get_media_type(b64_header: Optional[str] = None) -> str:
 # =============================================================================
 # EXTRACTOR CLASS
 # =============================================================================
+
 
 class ClaudeVisionExtractor:
     """
@@ -395,20 +462,22 @@ class ClaudeVisionExtractor:
                 response = await self._get_client().messages.create(
                     model=MODEL_ID,
                     max_tokens=MAX_TOKENS,
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": b64_image,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": b64_image,
+                                    },
                                 },
-                            },
-                            {"type": "text", "text": EXTRACTION_PROMPT},
-                        ],
-                    }],
+                                {"type": "text", "text": EXTRACTION_PROMPT},
+                            ],
+                        }
+                    ],
                 )
         except Exception as e:
             logger.error(f"Claude Vision API error on page {page_index}: {e}")
@@ -420,7 +489,9 @@ class ClaudeVisionExtractor:
 
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
-        cost_usd = (input_tokens * PRICE_INPUT_PER_M / 1_000_000) + (output_tokens * PRICE_OUTPUT_PER_M / 1_000_000)
+        cost_usd = (input_tokens * PRICE_INPUT_PER_M / 1_000_000) + (
+            output_tokens * PRICE_OUTPUT_PER_M / 1_000_000
+        )
 
         # Log spend — non-fatal, never raises
         try:
@@ -473,10 +544,7 @@ class ClaudeVisionExtractor:
         """
         scan_session_id = str(uuid.uuid4())
 
-        tasks = [
-            self.extract_page(b64, i, media_type)
-            for i, b64 in enumerate(pages)
-        ]
+        tasks = [self.extract_page(b64, i, media_type) for i, b64 in enumerate(pages)]
         page_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_wines: List[Dict[str, Any]] = []
@@ -529,20 +597,22 @@ class ClaudeVisionExtractor:
                 response = await self._get_client().messages.create(
                     model=MODEL_ID,
                     max_tokens=MAX_TOKENS,
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "document",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "application/pdf",
-                                    "data": b64_pdf,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "document",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "application/pdf",
+                                        "data": b64_pdf,
+                                    },
                                 },
-                            },
-                            {"type": "text", "text": EXTRACTION_PROMPT},
-                        ],
-                    }],
+                                {"type": "text", "text": EXTRACTION_PROMPT},
+                            ],
+                        }
+                    ],
                 )
         except Exception as e:
             logger.error(f"Claude Vision PDF API error: {e}")
@@ -554,14 +624,17 @@ class ClaudeVisionExtractor:
         raw_text = response.content[0].text
         logger.info(f"Claude PDF raw response (first 800 chars): {raw_text[:800]!r}")
         parsed, parse_error = parse_json_response(raw_text)
-        logger.info(f"Claude PDF parse_error={parse_error}, wines_found={len(parsed.get('wines', []))}")
+        logger.info(
+            f"Claude PDF parse_error={parse_error}, wines_found={len(parsed.get('wines', []))}"
+        )
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
-        cost_usd = (
-            (input_tokens * PRICE_INPUT_PER_M / 1_000_000) +
-            (output_tokens * PRICE_OUTPUT_PER_M / 1_000_000)
+        cost_usd = (input_tokens * PRICE_INPUT_PER_M / 1_000_000) + (
+            output_tokens * PRICE_OUTPUT_PER_M / 1_000_000
         )
-        logger.info(f"Claude PDF tokens: input={input_tokens} output={output_tokens} cost=${cost_usd:.4f}")
+        logger.info(
+            f"Claude PDF tokens: input={input_tokens} output={output_tokens} cost=${cost_usd:.4f}"
+        )
 
         try:
             get_spend_logger().log(
@@ -594,7 +667,11 @@ class ClaudeVisionExtractor:
             total_input_tokens=input_tokens,
             total_output_tokens=output_tokens,
             needs_review_count=sum(1 for w in wines if w.get("needs_review", False)),
-            page_errors=[{"page": "pdf", "error": "JSON parse error on PDF response"}] if parse_error else [],
+            page_errors=(
+                [{"page": "pdf", "error": "JSON parse error on PDF response"}]
+                if parse_error
+                else []
+            ),
             extraction_method="claude_pdf",
         )
 

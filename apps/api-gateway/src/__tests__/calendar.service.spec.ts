@@ -1,17 +1,17 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
-import { CalendarService } from '../calendar/calendar.service';
-import { DatabaseService } from '../database/database.service';
-import { EventsService } from '../events/events.service';
+import { Test, TestingModule } from "@nestjs/testing";
+import { NotFoundException } from "@nestjs/common";
+import { CalendarService } from "../calendar/calendar.service";
+import { DatabaseService } from "../database/database.service";
+import { EventsService } from "../events/events.service";
 import {
   CalendarEventType,
   CalendarEventSource,
   CalendarEventStatus,
   RecurrenceFrequency,
   RecurrenceEndType,
-} from '../calendar/dto/calendar.dto';
+} from "../calendar/dto/calendar.dto";
 
-describe('CalendarService', () => {
+describe("CalendarService", () => {
   let service: CalendarService;
   let databaseService: DatabaseService;
   let eventsService: EventsService;
@@ -38,7 +38,7 @@ describe('CalendarService', () => {
   };
 
   const mockEventsService = {
-    createEvent: jest.fn().mockResolvedValue({ id: 'event-123' }),
+    createEvent: jest.fn().mockResolvedValue({ id: "event-123" }),
   };
 
   beforeEach(async () => {
@@ -57,31 +57,31 @@ describe('CalendarService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  describe('createEvent', () => {
-    const restaurantId = 'restaurant-123';
-    const userId = 'user-456';
+  describe("createEvent", () => {
+    const restaurantId = "restaurant-123";
+    const userId = "user-456";
 
-    it('should create a simple calendar event', async () => {
+    it("should create a simple calendar event", async () => {
       const dto = {
-        title: 'Wine Tasting',
+        title: "Wine Tasting",
         eventType: CalendarEventType.TASTING,
-        eventDate: '2024-02-15',
+        eventDate: "2024-02-15",
         allDay: true,
       };
 
       const mockCreatedEvent = {
-        id: 'event-789',
+        id: "event-789",
         restaurant_id: restaurantId,
         title: dto.title,
         event_type: dto.eventType,
         event_date: dto.eventDate,
         all_day: dto.allDay,
-        source: 'manual',
-        status: 'pending',
+        source: "manual",
+        status: "pending",
         reminder_enabled: true,
         reminder_days_before: 1,
         is_recurring: false,
@@ -96,18 +96,18 @@ describe('CalendarService', () => {
 
       const result = await service.createEvent(restaurantId, userId, dto);
 
-      expect(result.id).toBe('event-789');
+      expect(result.id).toBe("event-789");
       expect(result.title).toBe(dto.title);
       expect(result.eventType).toBe(dto.eventType);
       expect(result.isRecurring).toBe(false);
       expect(mockEventsService.createEvent).toHaveBeenCalled();
     });
 
-    it('should create a recurring event with recurrence rule', async () => {
+    it("should create a recurring event with recurrence rule", async () => {
       const dto = {
-        title: 'Weekly Inventory Count',
+        title: "Weekly Inventory Count",
         eventType: CalendarEventType.INVENTORY_COUNT,
-        eventDate: '2024-02-01',
+        eventDate: "2024-02-01",
         recurrence: {
           frequency: RecurrenceFrequency.WEEKLY,
           interval: 1,
@@ -117,14 +117,14 @@ describe('CalendarService', () => {
       };
 
       const mockCreatedEvent = {
-        id: 'event-recurring',
+        id: "event-recurring",
         restaurant_id: restaurantId,
         title: dto.title,
         event_type: dto.eventType,
         event_date: dto.eventDate,
         is_recurring: true,
-        source: 'manual',
-        status: 'pending',
+        source: "manual",
+        status: "pending",
         reminder_enabled: true,
         reminder_days_before: 1,
         created_at: new Date().toISOString(),
@@ -132,13 +132,13 @@ describe('CalendarService', () => {
       };
 
       const mockRecurrenceRule = {
-        id: 'rule-123',
+        id: "rule-123",
         restaurant_id: restaurantId,
-        calendar_event_id: 'event-recurring',
-        frequency: 'weekly',
+        calendar_event_id: "event-recurring",
+        frequency: "weekly",
         interval_value: 1,
         days_of_week: [1],
-        end_type: 'never',
+        end_type: "never",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -153,23 +153,23 @@ describe('CalendarService', () => {
 
       expect(result.isRecurring).toBe(true);
       expect(result.recurrenceRule).toBeDefined();
-      expect(result.recurrenceRule?.frequency).toBe('weekly');
+      expect(result.recurrenceRule?.frequency).toBe("weekly");
     });
   });
 
-  describe('getEvent', () => {
-    const restaurantId = 'restaurant-123';
+  describe("getEvent", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should return event when found', async () => {
+    it("should return event when found", async () => {
       const mockEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
-        title: 'Test Event',
-        event_type: 'meeting',
-        event_date: '2024-02-15',
+        title: "Test Event",
+        event_type: "meeting",
+        event_date: "2024-02-15",
         all_day: true,
-        source: 'manual',
-        status: 'pending',
+        source: "manual",
+        status: "pending",
         reminder_enabled: true,
         reminder_days_before: 1,
         is_recurring: false,
@@ -182,38 +182,38 @@ describe('CalendarService', () => {
         error: null,
       });
 
-      const result = await service.getEvent(restaurantId, 'event-123');
+      const result = await service.getEvent(restaurantId, "event-123");
 
-      expect(result.id).toBe('event-123');
-      expect(result.title).toBe('Test Event');
+      expect(result.id).toBe("event-123");
+      expect(result.title).toBe("Test Event");
     });
 
-    it('should throw NotFoundException when event not found', async () => {
+    it("should throw NotFoundException when event not found", async () => {
       mockSupabaseClient.single.mockResolvedValue({
         data: null,
-        error: { message: 'Not found' },
+        error: { message: "Not found" },
       });
 
       await expect(
-        service.getEvent(restaurantId, 'nonexistent'),
+        service.getEvent(restaurantId, "nonexistent"),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
-  describe('listEvents', () => {
-    const restaurantId = 'restaurant-123';
+  describe("listEvents", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should return paginated events list', async () => {
+    it("should return paginated events list", async () => {
       const mockEvents = [
         {
-          id: 'event-1',
+          id: "event-1",
           restaurant_id: restaurantId,
-          title: 'Event 1',
-          event_type: 'meeting',
-          event_date: '2024-02-15',
+          title: "Event 1",
+          event_type: "meeting",
+          event_date: "2024-02-15",
           all_day: true,
-          source: 'manual',
-          status: 'pending',
+          source: "manual",
+          status: "pending",
           reminder_enabled: true,
           reminder_days_before: 1,
           is_recurring: false,
@@ -221,14 +221,14 @@ describe('CalendarService', () => {
           updated_at: new Date().toISOString(),
         },
         {
-          id: 'event-2',
+          id: "event-2",
           restaurant_id: restaurantId,
-          title: 'Event 2',
-          event_type: 'delivery',
-          event_date: '2024-02-16',
+          title: "Event 2",
+          event_type: "delivery",
+          event_date: "2024-02-16",
           all_day: false,
-          source: 'order',
-          status: 'approved',
+          source: "order",
+          status: "approved",
           reminder_enabled: true,
           reminder_days_before: 1,
           is_recurring: false,
@@ -253,7 +253,7 @@ describe('CalendarService', () => {
       expect(result.hasMore).toBe(false);
     });
 
-    it('should filter by date range', async () => {
+    it("should filter by date range", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -261,15 +261,21 @@ describe('CalendarService', () => {
       });
 
       await service.listEvents(restaurantId, {
-        startDate: '2024-02-01',
-        endDate: '2024-02-28',
+        startDate: "2024-02-01",
+        endDate: "2024-02-28",
       });
 
-      expect(mockSupabaseClient.gte).toHaveBeenCalledWith('event_date', '2024-02-01');
-      expect(mockSupabaseClient.lte).toHaveBeenCalledWith('event_date', '2024-02-28');
+      expect(mockSupabaseClient.gte).toHaveBeenCalledWith(
+        "event_date",
+        "2024-02-01",
+      );
+      expect(mockSupabaseClient.lte).toHaveBeenCalledWith(
+        "event_date",
+        "2024-02-28",
+      );
     });
 
-    it('should filter by event type', async () => {
+    it("should filter by event type", async () => {
       mockSupabaseClient.range.mockResolvedValue({
         data: [],
         error: null,
@@ -280,24 +286,27 @@ describe('CalendarService', () => {
         eventType: CalendarEventType.DELIVERY,
       });
 
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('event_type', 'delivery');
+      expect(mockSupabaseClient.eq).toHaveBeenCalledWith(
+        "event_type",
+        "delivery",
+      );
     });
   });
 
-  describe('updateEvent', () => {
-    const restaurantId = 'restaurant-123';
-    const userId = 'user-456';
+  describe("updateEvent", () => {
+    const restaurantId = "restaurant-123";
+    const userId = "user-456";
 
-    it('should update event fields', async () => {
+    it("should update event fields", async () => {
       const existingEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
-        title: 'Original Title',
-        event_type: 'meeting',
-        event_date: '2024-02-15',
+        title: "Original Title",
+        event_type: "meeting",
+        event_date: "2024-02-15",
         all_day: true,
-        source: 'manual',
-        status: 'pending',
+        source: "manual",
+        status: "pending",
         reminder_enabled: true,
         reminder_days_before: 1,
         is_recurring: false,
@@ -307,38 +316,43 @@ describe('CalendarService', () => {
 
       const updatedEvent = {
         ...existingEvent,
-        title: 'Updated Title',
-        status: 'approved',
+        title: "Updated Title",
+        status: "approved",
       };
 
       mockSupabaseClient.single
         .mockResolvedValueOnce({ data: existingEvent, error: null })
         .mockResolvedValueOnce({ data: updatedEvent, error: null });
 
-      const result = await service.updateEvent(restaurantId, userId, 'event-123', {
-        title: 'Updated Title',
-        status: CalendarEventStatus.APPROVED,
-      });
+      const result = await service.updateEvent(
+        restaurantId,
+        userId,
+        "event-123",
+        {
+          title: "Updated Title",
+          status: CalendarEventStatus.APPROVED,
+        },
+      );
 
-      expect(result.title).toBe('Updated Title');
-      expect(result.status).toBe('approved');
+      expect(result.title).toBe("Updated Title");
+      expect(result.status).toBe("approved");
     });
   });
 
-  describe('deleteEvent', () => {
-    const restaurantId = 'restaurant-123';
-    const userId = 'user-456';
+  describe("deleteEvent", () => {
+    const restaurantId = "restaurant-123";
+    const userId = "user-456";
 
-    it('should delete a simple event', async () => {
+    it("should delete a simple event", async () => {
       const existingEvent = {
-        id: 'event-123',
+        id: "event-123",
         restaurant_id: restaurantId,
-        title: 'Test Event',
-        event_type: 'meeting',
-        event_date: '2024-02-15',
+        title: "Test Event",
+        event_type: "meeting",
+        event_date: "2024-02-15",
         all_day: true,
-        source: 'manual',
-        status: 'pending',
+        source: "manual",
+        status: "pending",
         reminder_enabled: true,
         reminder_days_before: 1,
         is_recurring: false,
@@ -355,24 +369,31 @@ describe('CalendarService', () => {
       mockSupabaseClient.eq.mockReturnThis();
       mockSupabaseClient.eq.mockResolvedValue({ error: null });
 
-      const result = await service.deleteEvent(restaurantId, userId, 'event-123');
+      const result = await service.deleteEvent(
+        restaurantId,
+        userId,
+        "event-123",
+      );
 
       expect(result.deleted).toBe(true);
     });
   });
 
-  describe('generateOccurrences', () => {
-    const restaurantId = 'restaurant-123';
+  describe("generateOccurrences", () => {
+    const restaurantId = "restaurant-123";
 
-    it('should call database function to generate occurrences', async () => {
+    it("should call database function to generate occurrences", async () => {
       mockSupabaseClient.rpc.mockResolvedValue({ data: 12, error: null });
 
-      const result = await service.generateOccurrences(restaurantId, 'rule-123');
+      const result = await service.generateOccurrences(
+        restaurantId,
+        "rule-123",
+      );
 
       expect(result.generatedCount).toBe(12);
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
-        'generate_recurring_events',
-        expect.objectContaining({ p_rule_id: 'rule-123' }),
+        "generate_recurring_events",
+        expect.objectContaining({ p_rule_id: "rule-123" }),
       );
     });
   });

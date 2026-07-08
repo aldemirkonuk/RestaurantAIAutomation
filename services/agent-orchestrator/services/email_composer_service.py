@@ -44,6 +44,7 @@ def _format_wine_name_with_volume(wine_name: str, bottle_size_ml: Optional[Any])
 
 try:
     import google.generativeai as genai
+
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -53,6 +54,7 @@ except ImportError:
 @dataclass
 class EmailPayload:
     """Structured email ready for sending"""
+
     to: List[str]
     subject: str
     body_html: str
@@ -67,14 +69,17 @@ class EmailPayload:
 @dataclass
 class StyleProfile:
     """Learned communication style for a vendor"""
-    formality: str = "professional"     # casual, professional, formal
+
+    formality: str = "professional"  # casual, professional, formal
     avg_sentence_length: float = 15.0
     greeting_style: str = "Hi {name},"
     signoff_style: str = "Best regards"
     uses_emoji: bool = False
     avg_paragraph_count: int = 3
     language: str = "en"
-    tone_keywords: List[str] = field(default_factory=lambda: ["professional", "friendly"])
+    tone_keywords: List[str] = field(
+        default_factory=lambda: ["professional", "friendly"]
+    )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "StyleProfile":
@@ -91,10 +96,20 @@ class StyleProfile:
 
 
 TEMPLATE_TAGS = {
-    "vendor_name", "vendor_contact_name", "restaurant_name",
-    "wine_name", "quantity", "price_per_bottle", "total_amount",
-    "order_id", "order_number", "delivery_date", "urgency",
-    "manager_name", "manager_email", "manager_phone",
+    "vendor_name",
+    "vendor_contact_name",
+    "restaurant_name",
+    "wine_name",
+    "quantity",
+    "price_per_bottle",
+    "total_amount",
+    "order_id",
+    "order_number",
+    "delivery_date",
+    "urgency",
+    "manager_name",
+    "manager_email",
+    "manager_phone",
 }
 
 COMPOSE_SYSTEM_PROMPT = """You are composing an email from a restaurant wine buyer to a wine vendor/distributor.
@@ -165,7 +180,9 @@ class EmailComposerService:
         self.google_api_key = config.get("google_api_key")
         self.llm_model_name = config.get("llm_model", "gemini-2.0-flash")
         self.mock_mode = config.get("mock_mode", True)
-        self.default_restaurant_name = config.get("default_restaurant_name", "WineOps Restaurant")
+        self.default_restaurant_name = config.get(
+            "default_restaurant_name", "WineOps Restaurant"
+        )
 
         self.llm_client = None
         if GEMINI_AVAILABLE and self.google_api_key and not self.mock_mode:
@@ -242,7 +259,9 @@ class EmailComposerService:
 
         subject = self._build_subject(intent, tags)
 
-        thread_id, in_reply_to, references = self._resolve_threading(conversation_history)
+        thread_id, in_reply_to, references = self._resolve_threading(
+            conversation_history
+        )
 
         return EmailPayload(
             to=[vendor_email] if vendor_email else [],
@@ -335,10 +354,14 @@ class EmailComposerService:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=request_body, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                async with session.post(
+                    url, json=request_body, timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
                     result = await resp.json()
                     if resp.status == 200 and result.get("success"):
-                        logger.info(f"Email sent: messageId={result.get('messageId')}, threadId={result.get('threadId')}")
+                        logger.info(
+                            f"Email sent: messageId={result.get('messageId')}, threadId={result.get('threadId')}"
+                        )
                         return {
                             "success": True,
                             "message_id": result.get("messageId"),
@@ -346,7 +369,10 @@ class EmailComposerService:
                         }
                     else:
                         logger.error(f"Gateway send failed: {result}")
-                        return {"success": False, "error": result.get("error", "Unknown error")}
+                        return {
+                            "success": False,
+                            "error": result.get("error", "Unknown error"),
+                        }
         except Exception as e:
             logger.error(f"Failed to send via gateway: {e}")
             return {"success": False, "error": str(e)}
@@ -365,11 +391,13 @@ class EmailComposerService:
             return StyleProfile()
 
         try:
-            result = self.database.supabase.table("provider_digital_twins") \
-                .select("communication_style") \
-                .eq("provider_id", provider_id) \
-                .limit(1) \
+            result = (
+                self.database.supabase.table("provider_digital_twins")
+                .select("communication_style")
+                .eq("provider_id", provider_id)
+                .limit(1)
                 .execute()
+            )
 
             if result.data and result.data[0].get("communication_style"):
                 cached = result.data[0]["communication_style"]
@@ -391,7 +419,8 @@ class EmailComposerService:
     ) -> StyleProfile:
         """Analyze vendor's communication style from their inbound messages."""
         inbound = [
-            m for m in conversation_history
+            m
+            for m in conversation_history
             if m.get("direction") == "inbound" and m.get("message_text")
         ]
         if not inbound:
@@ -436,7 +465,7 @@ class EmailComposerService:
 
         sentence_lengths = []
         for t in texts:
-            sentences = re.split(r'[.!?]+', t)
+            sentences = re.split(r"[.!?]+", t)
             for s in sentences:
                 words = s.split()
                 if words:
@@ -446,8 +475,12 @@ class EmailComposerService:
         avg_para = statistics.mean(len(t.split("\n\n")) for t in texts) if texts else 3
 
         all_text = " ".join(texts).lower()
-        has_emoji = bool(re.search(r'[\U0001f600-\U0001f64f\U0001f300-\U0001f5ff]', all_text))
-        is_formal = any(w in all_text for w in ["dear ", "sincerely", "regards", "respectfully"])
+        has_emoji = bool(
+            re.search(r"[\U0001f600-\U0001f64f\U0001f300-\U0001f5ff]", all_text)
+        )
+        is_formal = any(
+            w in all_text for w in ["dear ", "sincerely", "regards", "respectfully"]
+        )
 
         greeting = "Dear" if is_formal else "Hi"
         signoff = "Best regards" if is_formal else "Thanks"
@@ -466,19 +499,22 @@ class EmailComposerService:
             uses_emoji=has_emoji,
             avg_paragraph_count=round(avg_para),
             language="en",
-            tone_keywords=["formal", "business"] if is_formal else ["professional", "friendly"],
+            tone_keywords=(
+                ["formal", "business"] if is_formal else ["professional", "friendly"]
+            ),
         )
 
     async def _cache_style(self, provider_id: str, style_data: Dict) -> None:
         """Cache analyzed style in provider_digital_twins."""
         try:
-            self.database.supabase.table("provider_digital_twins") \
-                .upsert({
+            self.database.supabase.table("provider_digital_twins").upsert(
+                {
                     "provider_id": provider_id,
                     "communication_style": json.dumps(style_data),
                     "style_analyzed_at": datetime.utcnow().isoformat(),
-                }, on_conflict="provider_id") \
-                .execute()
+                },
+                on_conflict="provider_id",
+            ).execute()
         except Exception as e:
             logger.debug(f"Failed to cache style: {e}")
 
@@ -499,7 +535,9 @@ class EmailComposerService:
             return self._fallback_body(tags, style, intent)
 
         history_text = self._format_history(conversation_history)
-        greeting = style.greeting_style.replace("{name}", str(tags.get("vendor_contact_name", "")))
+        greeting = style.greeting_style.replace(
+            "{name}", str(tags.get("vendor_contact_name", ""))
+        )
         signoff = style.signoff_style
 
         style_directives = (
@@ -537,7 +575,9 @@ class EmailComposerService:
 
     def _fallback_body(self, tags: Dict, style: StyleProfile, intent: str) -> str:
         """Template-based fallback when LLM is unavailable."""
-        greeting = style.greeting_style.replace("{name}", str(tags.get("vendor_contact_name", "")))
+        greeting = style.greeting_style.replace(
+            "{name}", str(tags.get("vendor_contact_name", ""))
+        )
         signoff = style.signoff_style
 
         intent_bodies = {
@@ -579,13 +619,15 @@ class EmailComposerService:
         paragraphs = body_text.split("\n\n")
         html_paras = "".join(
             f'<p style="margin: 0 0 12px; line-height: 1.6;">{p.replace(chr(10), "<br/>")}</p>'
-            for p in paragraphs if p.strip()
+            for p in paragraphs
+            if p.strip()
         )
 
         order_ref = tags.get("order_number") or tags.get("order_id", "")
         ref_line = (
             f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {order_ref}</p>'
-            if order_ref else ""
+            if order_ref
+            else ""
         )
 
         return f"""<!DOCTYPE html>
@@ -673,7 +715,9 @@ AI DRAFT — {tags.get('urgency','normal').upper()} PRIORITY
             "invoice_request": f"Invoice Request — Order #{order_num}",
             "follow_up": f"Following Up — {wine}",
         }
-        return subjects.get(intent, f"Regarding {wine} — {tags.get('restaurant_name', '')}")
+        return subjects.get(
+            intent, f"Regarding {wine} — {tags.get('restaurant_name', '')}"
+        )
 
     def _format_history(self, history: List[Dict]) -> str:
         if not history:
@@ -686,7 +730,9 @@ AI DRAFT — {tags.get('urgency','normal').upper()} PRIORITY
             lines.append(f"[{ts[:16]}] {direction}: {text}")
         return "\n".join(lines)
 
-    def _resolve_threading(self, history: List[Dict]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _resolve_threading(
+        self, history: List[Dict]
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Extract threading info from conversation history."""
         if not history:
             return None, None, None
@@ -713,12 +759,16 @@ AI DRAFT — {tags.get('urgency','normal').upper()} PRIORITY
                         references_chain.extend(headers["references"].split())
                     break
 
-        references = " ".join(dict.fromkeys(references_chain)) if references_chain else None
+        references = (
+            " ".join(dict.fromkeys(references_chain)) if references_chain else None
+        )
         return thread_id, in_reply_to, references
 
     @staticmethod
     def _calc_total(order: Dict) -> str:
-        price = order.get("target_price_per_bottle") or order.get("price_per_bottle") or 0
+        price = (
+            order.get("target_price_per_bottle") or order.get("price_per_bottle") or 0
+        )
         qty = order.get("quantity", 0)
         try:
             total = float(price) * int(qty)

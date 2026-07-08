@@ -33,13 +33,13 @@ logger = logging.getLogger(__name__)
 class ToastAPIClient:
     """
     Hybrid Toast POS API Client
-    
+
     Modes:
     - Real: Uses actual Toast API with credentials
     - Mock: Generates realistic wine sales data
     - Hybrid: Tries real API, falls back to mock
     """
-    
+
     # Wine items for mock data generation
     MOCK_WINES = [
         {"name": "Opus One 2019", "price": 45.00, "type": "red"},
@@ -53,7 +53,7 @@ class ToastAPIClient:
         {"name": "Veuve Clicquot Brut", "price": 55.00, "type": "sparkling"},
         {"name": "Rombauer Chardonnay", "price": 28.00, "type": "white"},
     ]
-    
+
     # Time-based sales patterns (hour -> relative probability)
     SALES_PATTERNS = {
         11: 0.3,  # Late morning
@@ -69,7 +69,7 @@ class ToastAPIClient:
         21: 0.8,  # Late dinner
         22: 0.5,  # Late night
         23: 0.3,
-        0: 0.2,   # After midnight
+        0: 0.2,  # After midnight
     }
 
     # Mock menu data
@@ -79,9 +79,24 @@ class ToastAPIClient:
             "name": "Main Wine List",
             "lastModified": "2026-01-10T12:00:00Z",
             "items": [
-                {"guid": "item-001", "name": "Opus One 2019", "price": 4500, "type": "red"},
-                {"guid": "item-002", "name": "Whispering Angel Rosé", "price": 1600, "type": "rosé"},
-                {"guid": "item-003", "name": "Dom Pérignon 2012", "price": 8500, "type": "sparkling"},
+                {
+                    "guid": "item-001",
+                    "name": "Opus One 2019",
+                    "price": 4500,
+                    "type": "red",
+                },
+                {
+                    "guid": "item-002",
+                    "name": "Whispering Angel Rosé",
+                    "price": 1600,
+                    "type": "rosé",
+                },
+                {
+                    "guid": "item-003",
+                    "name": "Dom Pérignon 2012",
+                    "price": 8500,
+                    "type": "sparkling",
+                },
             ],
         },
         {
@@ -89,12 +104,22 @@ class ToastAPIClient:
             "name": "By The Glass",
             "lastModified": "2026-01-12T15:30:00Z",
             "items": [
-                {"guid": "item-101", "name": "Caymus Cabernet 2020", "price": 2400, "type": "red"},
-                {"guid": "item-102", "name": "Cloudy Bay Sauvignon Blanc", "price": 1800, "type": "white"},
+                {
+                    "guid": "item-101",
+                    "name": "Caymus Cabernet 2020",
+                    "price": 2400,
+                    "type": "red",
+                },
+                {
+                    "guid": "item-102",
+                    "name": "Cloudy Bay Sauvignon Blanc",
+                    "price": 1800,
+                    "type": "white",
+                },
             ],
         },
     ]
-    
+
     def __init__(
         self,
         toast_client_id: Optional[str] = None,
@@ -108,31 +133,31 @@ class ToastAPIClient:
         self.restaurant_guid = toast_restaurant_guid
         self.mock_mode = mock_mode
         self.base_url = base_url
-        
+
         # HTTP client
         self.http_client: Optional[httpx.AsyncClient] = None
         self.access_token: Optional[str] = None
         self.token_expires_at: Optional[datetime] = None
-        
+
         # Streaming state
         self.is_streaming = False
         self._stream_task: Optional[asyncio.Task] = None
-        
+
         # Statistics
         self.total_sales_fetched = 0
         self.total_api_calls = 0
         self.mock_sales_generated = 0
-        
+
     async def connect(self) -> bool:
         """Initialize connection to Toast API"""
         logger.info("Initializing Toast API client...")
-        
+
         self.http_client = httpx.AsyncClient(timeout=30.0)
-        
+
         if self.mock_mode:
             logger.info("✓ Toast API client initialized (MOCK mode)")
             return True
-        
+
         # Try to authenticate with real API
         if self.client_id and self.client_secret:
             try:
@@ -148,7 +173,7 @@ class ToastAPIClient:
             logger.info("No Toast credentials provided, using MOCK mode")
             self.mock_mode = True
             return True
-    
+
     async def disconnect(self):
         """Close connections"""
         self.is_streaming = False
@@ -158,20 +183,20 @@ class ToastAPIClient:
                 await self._stream_task
             except asyncio.CancelledError:
                 pass
-        
+
         if self.http_client:
             await self.http_client.aclose()
-        
+
         logger.info("✓ Toast API client disconnected")
-    
+
     async def _authenticate(self) -> str:
         """Authenticate with Toast API and get access token"""
         if self.access_token and self.token_expires_at:
             if datetime.utcnow() < self.token_expires_at - timedelta(minutes=5):
                 return self.access_token
-        
+
         auth_url = f"{self.base_url}/authentication/v1/authentication/login"
-        
+
         response = await self.http_client.post(
             auth_url,
             json={
@@ -181,12 +206,12 @@ class ToastAPIClient:
             },
         )
         response.raise_for_status()
-        
+
         data = response.json()
         self.access_token = data["token"]["accessToken"]
         expires_in = data["token"]["expiresIn"]
         self.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
-        
+
         return self.access_token
 
     async def fetch_menus(self, restaurant_id: Optional[str] = None) -> Dict[str, Any]:
@@ -234,7 +259,9 @@ class ToastAPIClient:
                     return menu
             raise
 
-    async def create_order(self, restaurant_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_order(
+        self, restaurant_id: str, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Create an order (mock or API)."""
         if self.mock_mode:
             return {
@@ -264,7 +291,7 @@ class ToastAPIClient:
                 "items": payload.get("items", []),
                 "created_at": datetime.utcnow().isoformat(),
             }
-    
+
     async def fetch_sales_data(
         self,
         start_time: datetime,
@@ -273,26 +300,26 @@ class ToastAPIClient:
     ) -> List[Dict[str, Any]]:
         """
         Fetch wine sales data from Toast API
-        
+
         Args:
             start_time: Start of time range
             end_time: End of time range
             restaurant_id: Optional restaurant filter
-            
+
         Returns:
             List of sale events
         """
         self.total_api_calls += 1
-        
+
         if self.mock_mode:
             return self._generate_mock_sales(start_time, end_time)
-        
+
         # Real API call
         try:
             token = await self._authenticate()
-            
+
             orders_url = f"{self.base_url}/orders/v2/orders"
-            
+
             response = await self.http_client.get(
                 orders_url,
                 headers={"Authorization": f"Bearer {token}"},
@@ -303,36 +330,47 @@ class ToastAPIClient:
                 },
             )
             response.raise_for_status()
-            
+
             orders = response.json()
-            
+
             # Extract wine sales from orders
             sales = []
             for order in orders:
                 wine_items = self._extract_wine_items(order)
                 sales.extend(wine_items)
-            
+
             self.total_sales_fetched += len(sales)
             return sales
-            
+
         except Exception as e:
             logger.error(f"Toast API error: {e}, falling back to mock")
             return self._generate_mock_sales(start_time, end_time)
-    
+
     def _extract_wine_items(self, order: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract wine items from a Toast order"""
         wine_keywords = [
-            "wine", "cabernet", "merlot", "chardonnay", "pinot",
-            "sauvignon", "riesling", "champagne", "prosecco",
-            "rosé", "rose", "bordeaux", "burgundy", "napa",
+            "wine",
+            "cabernet",
+            "merlot",
+            "chardonnay",
+            "pinot",
+            "sauvignon",
+            "riesling",
+            "champagne",
+            "prosecco",
+            "rosé",
+            "rose",
+            "bordeaux",
+            "burgundy",
+            "napa",
         ]
-        
+
         sales = []
         selections = order.get("checks", [{}])[0].get("selections", [])
-        
+
         for selection in selections:
             item_name = selection.get("displayName", "").lower()
-            
+
             # Check if this is a wine item
             if any(keyword in item_name for keyword in wine_keywords):
                 sale = {
@@ -341,15 +379,16 @@ class ToastAPIClient:
                     "item_name": selection.get("displayName"),
                     "quantity": selection.get("quantity", 1),
                     "price": selection.get("price", 0) / 100,  # Cents to dollars
-                    "timestamp": order.get("closedDate") or datetime.utcnow().isoformat(),
+                    "timestamp": order.get("closedDate")
+                    or datetime.utcnow().isoformat(),
                     "server_name": order.get("server", {}).get("firstName"),
                     "table_name": order.get("table", {}).get("name"),
                     "source": "toast_api",
                 }
                 sales.append(sale)
-        
+
         return sales
-    
+
     def _generate_mock_sales(
         self,
         start_time: datetime,
@@ -358,22 +397,24 @@ class ToastAPIClient:
         """Generate realistic mock wine sales data"""
         sales = []
         current_time = start_time
-        
+
         while current_time < end_time:
             hour = current_time.hour
-            
+
             # Get sales probability for this hour
             probability = self.SALES_PATTERNS.get(hour, 0.3)
-            
+
             # Generate 0-3 sales per 15-minute interval based on probability
             num_sales = 0
             if random.random() < probability:
-                num_sales = random.choices([0, 1, 2, 3], weights=[0.3, 0.4, 0.2, 0.1])[0]
-            
+                num_sales = random.choices([0, 1, 2, 3], weights=[0.3, 0.4, 0.2, 0.1])[
+                    0
+                ]
+
             for _ in range(num_sales):
                 wine = random.choice(self.MOCK_WINES)
                 quantity = random.choices([1, 2, 3], weights=[0.7, 0.25, 0.05])[0]
-                
+
                 sale = {
                     "id": str(uuid4()),
                     "order_guid": f"mock-order-{uuid4().hex[:8]}",
@@ -382,25 +423,31 @@ class ToastAPIClient:
                     "quantity": quantity,
                     "unit_price": wine["price"],
                     "total_price": wine["price"] * quantity,
-                    "timestamp": (current_time + timedelta(minutes=random.randint(0, 14))).isoformat(),
-                    "server_name": random.choice(["Alex", "Jordan", "Sam", "Taylor", "Morgan"]),
+                    "timestamp": (
+                        current_time + timedelta(minutes=random.randint(0, 14))
+                    ).isoformat(),
+                    "server_name": random.choice(
+                        ["Alex", "Jordan", "Sam", "Taylor", "Morgan"]
+                    ),
                     "table_name": f"Table {random.randint(1, 20)}",
                     "source": "mock",
                 }
                 sales.append(sale)
                 self.mock_sales_generated += 1
-            
+
             current_time += timedelta(minutes=15)
-        
+
         self.total_sales_fetched += len(sales)
-        logger.info(f"Generated {len(sales)} mock sales for {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}")
+        logger.info(
+            f"Generated {len(sales)} mock sales for {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}"
+        )
         return sales
-    
+
     def _generate_single_mock_sale(self) -> Dict[str, Any]:
         """Generate a single mock sale (for streaming)"""
         wine = random.choice(self.MOCK_WINES)
         quantity = random.choices([1, 2, 3], weights=[0.7, 0.25, 0.05])[0]
-        
+
         return {
             "id": str(uuid4()),
             "order_guid": f"mock-order-{uuid4().hex[:8]}",
@@ -414,7 +461,7 @@ class ToastAPIClient:
             "table_name": f"Table {random.randint(1, 20)}",
             "source": "mock_stream",
         }
-    
+
     async def stream_sales_continuously(
         self,
         callback: Callable[[Dict[str, Any]], Any],
@@ -423,7 +470,7 @@ class ToastAPIClient:
     ):
         """
         Stream sales data continuously (background task)
-        
+
         Args:
             callback: Async function to call with each sale
             interval_seconds: How often to generate/fetch sales
@@ -431,7 +478,7 @@ class ToastAPIClient:
         """
         self.is_streaming = True
         logger.info(f"Starting Toast sales stream (interval: {interval_seconds}s)")
-        
+
         while self.is_streaming:
             try:
                 if self.mock_mode:
@@ -446,21 +493,21 @@ class ToastAPIClient:
                     # Fetch real sales from last interval
                     end_time = datetime.utcnow()
                     start_time = end_time - timedelta(seconds=interval_seconds)
-                    
+
                     sales = await self.fetch_sales_data(start_time, end_time)
                     for sale in sales:
                         await callback(sale)
-                
+
                 await asyncio.sleep(interval_seconds)
-                
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in sales stream: {e}")
                 await asyncio.sleep(10)  # Back off on error
-        
+
         logger.info("Toast sales stream stopped")
-    
+
     def start_streaming(
         self,
         callback: Callable[[Dict[str, Any]], Any],
@@ -471,11 +518,11 @@ class ToastAPIClient:
             self.stream_sales_continuously(callback, interval_seconds)
         )
         return self._stream_task
-    
+
     def stop_streaming(self):
         """Stop the streaming task"""
         self.is_streaming = False
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """Get client statistics"""
         return {
@@ -496,4 +543,3 @@ def create_toast_client_from_settings(settings) -> ToastAPIClient:
         toast_restaurant_guid=settings.toast_restaurant_guid,
         mock_mode=settings.toast_mock_mode,
     )
-

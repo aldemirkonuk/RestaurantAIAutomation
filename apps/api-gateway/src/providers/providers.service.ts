@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import { EventsService } from '../events/events.service';
-import { EventType, SourcePage } from '../events/dto/event.dto';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
+import { EventsService } from "../events/events.service";
+import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   BulkImportProvidersDto,
   BulkImportResultDto,
@@ -15,16 +20,16 @@ import {
   UpdateProviderContactDto,
   UpdateProviderDto,
   UpdateProviderLocationDto,
-} from './dto/providers.dto';
-import { UpdateIntelligenceDto } from './dto/update-intelligence.dto';
-import { RetroactiveOrderDto } from './dto/retroactive-order.dto';
+} from "./dto/providers.dto";
+import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
+import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
-  if (phone.startsWith('+')) return phone;
-  const digits = phone.replace(/\D/g, '');
+  if (phone.startsWith("+")) return phone;
+  const digits = phone.replace(/\D/g, "");
   if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
   return phone;
 }
 
@@ -72,23 +77,28 @@ export class ProvidersService {
 
     if (dto.catalogue_vendor_id) {
       // Mode A: from catalogue — fetch vendor details and auto-fill
-      const { data: vendor, error: vendorError } = await this.databaseService.supabase
-        .from('vendor_catalogue')
-        .select('*')
-        .eq('id', dto.catalogue_vendor_id)
-        .eq('is_active', true)
-        .single();
+      const { data: vendor, error: vendorError } =
+        await this.databaseService.supabase
+          .from("vendor_catalogue")
+          .select("*")
+          .eq("id", dto.catalogue_vendor_id)
+          .eq("is_active", true)
+          .single();
 
       if (vendorError || !vendor) {
-        throw new NotFoundException(`Vendor catalogue entry not found: ${dto.catalogue_vendor_id}`);
+        throw new NotFoundException(
+          `Vendor catalogue entry not found: ${dto.catalogue_vendor_id}`,
+        );
       }
 
       // Build notes from catalogue type + website + specialties
       const noteParts: string[] = [];
       if (vendor.type) noteParts.push(`Type: ${vendor.type}`);
       if (vendor.website) noteParts.push(`Website: ${vendor.website}`);
-      if (vendor.wine_specialties) noteParts.push(`Specialties: ${vendor.wine_specialties}`);
-      const catalogueNotes = noteParts.length > 0 ? noteParts.join(' | ') : null;
+      if (vendor.wine_specialties)
+        noteParts.push(`Specialties: ${vendor.wine_specialties}`);
+      const catalogueNotes =
+        noteParts.length > 0 ? noteParts.join(" | ") : null;
 
       payload = {
         name: vendor.name,
@@ -104,7 +114,9 @@ export class ProvidersService {
     } else {
       // Mode B: custom provider — requires name
       if (!dto.name) {
-        throw new BadRequestException('name is required when catalogue_vendor_id is not provided');
+        throw new BadRequestException(
+          "name is required when catalogue_vendor_id is not provided",
+        );
       }
 
       payload = {
@@ -128,13 +140,13 @@ export class ProvidersService {
     }
 
     const { data, error } = await this.databaseService.supabase
-      .from('providers')
+      .from("providers")
       .insert(payload)
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to create provider', { error: error.message });
+      this.logger.error("Failed to create provider", { error: error.message });
       throw error;
     }
 
@@ -143,9 +155,9 @@ export class ProvidersService {
     // Mark vendor_added=true in onboarding progress (fire-and-forget)
     if (restaurantId) {
       this.databaseService.supabase
-        .from('user_onboarding_progress')
+        .from("user_onboarding_progress")
         .update({ vendor_added: true })
-        .eq('restaurant_id', restaurantId)
+        .eq("restaurant_id", restaurantId)
         .then(({ error: onboardingErr }) => {
           if (onboardingErr)
             this.logger.warn(
@@ -161,7 +173,7 @@ export class ProvidersService {
           eventType: EventType.PROVIDER_CHANGE,
           sourcePage: SourcePage.PROVIDERS,
           payload: {
-            type: 'added',
+            type: "added",
             providerId: provider.id,
             providerName: provider.name,
             data: {
@@ -171,9 +183,14 @@ export class ProvidersService {
             },
           },
         });
-        this.logger.log('Provider change event emitted', { providerId: provider.id, type: 'added' });
+        this.logger.log("Provider change event emitted", {
+          providerId: provider.id,
+          type: "added",
+        });
       } catch (eventError) {
-        this.logger.warn('Failed to emit provider change event', { error: eventError.message });
+        this.logger.warn("Failed to emit provider change event", {
+          error: eventError.message,
+        });
         // Don't fail the operation if event emission fails
       }
     }
@@ -183,30 +200,33 @@ export class ProvidersService {
 
   async listProviders(restaurantId: string): Promise<ProviderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('providers')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .from("providers")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
 
     if (error) {
-      this.logger.error('Failed to list providers', { error: error.message });
+      this.logger.error("Failed to list providers", { error: error.message });
       throw error;
     }
 
     return (data || []).map((row) => this.mapProviderRow(row as ProviderRow));
   }
 
-  async getProvider(providerId: string, restaurantId: string): Promise<ProviderResponseDto> {
+  async getProvider(
+    providerId: string,
+    restaurantId: string,
+  ): Promise<ProviderResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('providers')
-      .select('*')
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId)
+      .from("providers")
+      .select("*")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
       .single();
 
     if (error) {
-      this.logger.error('Failed to fetch provider', {
+      this.logger.error("Failed to fetch provider", {
         providerId,
         error: error.message,
       });
@@ -257,18 +277,18 @@ export class ProvidersService {
     // a non-empty restaurantId — passing '' would match no UUID rows and cause
     // .single() to throw PGRST116 even when the provider exists.
     let updateQuery = this.databaseService.supabase
-      .from('providers')
+      .from("providers")
       .update(updatePayload)
-      .eq('id', providerId);
+      .eq("id", providerId);
 
     if (restaurantId) {
-      updateQuery = updateQuery.eq('restaurant_id', restaurantId);
+      updateQuery = updateQuery.eq("restaurant_id", restaurantId);
     }
 
-    const { data, error } = await updateQuery.select('*').maybeSingle();
+    const { data, error } = await updateQuery.select("*").maybeSingle();
 
     if (error) {
-      this.logger.error('Failed to update provider', {
+      this.logger.error("Failed to update provider", {
         providerId,
         error: error.message,
       });
@@ -276,7 +296,10 @@ export class ProvidersService {
     }
 
     if (!data) {
-      this.logger.warn('Provider not found for update', { providerId, restaurantId });
+      this.logger.warn("Provider not found for update", {
+        providerId,
+        restaurantId,
+      });
       throw new NotFoundException(`Provider ${providerId} not found`);
     }
 
@@ -289,7 +312,7 @@ export class ProvidersService {
           eventType: EventType.PROVIDER_CHANGE,
           sourcePage: SourcePage.PROVIDERS,
           payload: {
-            type: 'updated',
+            type: "updated",
             providerId: provider.id,
             providerName: provider.name,
             data: {
@@ -300,9 +323,14 @@ export class ProvidersService {
             },
           },
         });
-        this.logger.log('Provider change event emitted', { providerId: provider.id, type: 'updated' });
+        this.logger.log("Provider change event emitted", {
+          providerId: provider.id,
+          type: "updated",
+        });
       } catch (eventError) {
-        this.logger.warn('Failed to emit provider change event', { error: eventError.message });
+        this.logger.warn("Failed to emit provider change event", {
+          error: eventError.message,
+        });
       }
     }
 
@@ -316,23 +344,23 @@ export class ProvidersService {
   ): Promise<void> {
     // First get the provider name for the event
     const { data: existingProvider } = await this.databaseService.supabase
-      .from('providers')
-      .select('name')
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId ?? '')
+      .from("providers")
+      .select("name")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId ?? "")
       .single();
 
     const { error } = await this.databaseService.supabase
-      .from('providers')
+      .from("providers")
       .update({
         is_active: false,
         deleted_at: new Date().toISOString(),
       })
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId ?? '');
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId ?? "");
 
     if (error) {
-      this.logger.error('Failed to delete provider', {
+      this.logger.error("Failed to delete provider", {
         providerId,
         error: error.message,
       });
@@ -346,39 +374,47 @@ export class ProvidersService {
           eventType: EventType.PROVIDER_CHANGE,
           sourcePage: SourcePage.PROVIDERS,
           payload: {
-            type: 'removed',
+            type: "removed",
             providerId,
-            providerName: existingProvider?.name || 'Unknown',
+            providerName: existingProvider?.name || "Unknown",
           },
         });
-        this.logger.log('Provider change event emitted', { providerId, type: 'removed' });
+        this.logger.log("Provider change event emitted", {
+          providerId,
+          type: "removed",
+        });
       } catch (eventError) {
-        this.logger.warn('Failed to emit provider change event', { error: eventError.message });
+        this.logger.warn("Failed to emit provider change event", {
+          error: eventError.message,
+        });
       }
     }
   }
 
   async getProviderOrders(providerId: string) {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('*')
-      .eq('provider_id', providerId)
-      .order('created_at', { ascending: false });
+      .from("procurement_orders")
+      .select("*")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false });
 
     if (error) {
       if (
-        error.code === 'PGRST116' ||
-        error.message?.includes('does not exist') ||
-        error.message?.includes('relation') ||
-        (error as any).code === '42P01'
+        error.code === "PGRST116" ||
+        error.message?.includes("does not exist") ||
+        error.message?.includes("relation") ||
+        (error as any).code === "42P01"
       ) {
-        this.logger.warn('procurement_orders table not available yet, returning empty array', {
-          providerId,
-          errorCode: error.code,
-        });
+        this.logger.warn(
+          "procurement_orders table not available yet, returning empty array",
+          {
+            providerId,
+            errorCode: error.code,
+          },
+        );
         return [];
       }
-      this.logger.error('Failed to fetch provider orders', {
+      this.logger.error("Failed to fetch provider orders", {
         providerId,
         error: error.message,
       });
@@ -390,10 +426,10 @@ export class ProvidersService {
 
   async getProviderPerformance(providerId: string) {
     const { data, error } = await this.databaseService.supabase
-      .from('provider_performance_metrics')
-      .select('*')
-      .eq('provider_id', providerId)
-      .order('calculated_at', { ascending: false })
+      .from("provider_performance_metrics")
+      .select("*")
+      .eq("provider_id", providerId)
+      .order("calculated_at", { ascending: false })
       .limit(1)
       .single();
 
@@ -419,11 +455,11 @@ export class ProvidersService {
     };
 
     const { error } = await this.databaseService.supabase
-      .from('provider_ratings')
+      .from("provider_ratings")
       .insert(payload);
 
     if (error) {
-      this.logger.error('Failed to rate provider', {
+      this.logger.error("Failed to rate provider", {
         providerId,
         error: error.message,
       });
@@ -435,16 +471,21 @@ export class ProvidersService {
   // CONTACTS
   // =========================================================================
 
-  async getProviderContacts(providerId: string): Promise<ProviderContactResponseDto[]> {
+  async getProviderContacts(
+    providerId: string,
+  ): Promise<ProviderContactResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('provider_contacts')
-      .select('*')
-      .eq('provider_id', providerId)
-      .order('is_primary', { ascending: false })
-      .order('name');
+      .from("provider_contacts")
+      .select("*")
+      .eq("provider_id", providerId)
+      .order("is_primary", { ascending: false })
+      .order("name");
 
     if (error) {
-      this.logger.error('Failed to fetch provider contacts', { providerId, error: error.message });
+      this.logger.error("Failed to fetch provider contacts", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -458,10 +499,10 @@ export class ProvidersService {
     // Demote any existing primary contact before inserting a new primary
     if (dto.isPrimary) {
       await this.databaseService.supabase
-        .from('provider_contacts')
+        .from("provider_contacts")
         .update({ is_primary: false })
-        .eq('provider_id', providerId)
-        .eq('is_primary', true);
+        .eq("provider_id", providerId)
+        .eq("is_primary", true);
     }
 
     const payload = {
@@ -474,13 +515,16 @@ export class ProvidersService {
     };
 
     const { data, error } = await this.databaseService.supabase
-      .from('provider_contacts')
+      .from("provider_contacts")
       .insert(payload)
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to add provider contact', { providerId, error: error.message });
+      this.logger.error("Failed to add provider contact", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -500,30 +544,39 @@ export class ProvidersService {
     if (dto.isPrimary !== undefined) updatePayload.is_primary = dto.isPrimary;
 
     const { data, error } = await this.databaseService.supabase
-      .from('provider_contacts')
+      .from("provider_contacts")
       .update(updatePayload)
-      .eq('id', contactId)
-      .eq('provider_id', providerId)
-      .select('*')
+      .eq("id", contactId)
+      .eq("provider_id", providerId)
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to update provider contact', { contactId, error: error.message });
+      this.logger.error("Failed to update provider contact", {
+        contactId,
+        error: error.message,
+      });
       throw error;
     }
 
     return this.mapContactRow(data);
   }
 
-  async deleteProviderContact(providerId: string, contactId: string): Promise<void> {
+  async deleteProviderContact(
+    providerId: string,
+    contactId: string,
+  ): Promise<void> {
     const { error } = await this.databaseService.supabase
-      .from('provider_contacts')
+      .from("provider_contacts")
       .delete()
-      .eq('id', contactId)
-      .eq('provider_id', providerId);
+      .eq("id", contactId)
+      .eq("provider_id", providerId);
 
     if (error) {
-      this.logger.error('Failed to delete provider contact', { contactId, error: error.message });
+      this.logger.error("Failed to delete provider contact", {
+        contactId,
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -540,36 +593,36 @@ export class ProvidersService {
     wineType?: string;
   }): Promise<ProviderResponseDto[]> {
     let query = this.databaseService.supabase
-      .from('providers')
-      .select('*')
-      .eq('restaurant_id', params.restaurantId)
-      .is('deleted_at', null);
+      .from("providers")
+      .select("*")
+      .eq("restaurant_id", params.restaurantId)
+      .is("deleted_at", null);
 
     if (params.isActive !== undefined) {
-      query = query.eq('is_active', params.isActive);
+      query = query.eq("is_active", params.isActive);
     }
 
     if (params.q) {
       // Sanitize user input: strip characters meaningful to PostgREST filter syntax
       // (comma, parentheses, period) to prevent filter-injection via the .or() string.
-      const safeQ = params.q.replace(/[,().]/g, '');
+      const safeQ = params.q.replace(/[,().]/g, "");
       query = query.or(
         `name.ilike.%${safeQ}%,company_name.ilike.%${safeQ}%,contact_name.ilike.%${safeQ}%`,
       );
     }
 
     if (params.specialties?.length) {
-      query = query.overlaps('specialties', params.specialties);
+      query = query.overlaps("specialties", params.specialties);
     }
 
     if (params.wineType) {
-      query = query.contains('specialties', [params.wineType]);
+      query = query.contains("specialties", [params.wineType]);
     }
 
-    const { data, error } = await query.order('name');
+    const { data, error } = await query.order("name");
 
     if (error) {
-      this.logger.error('Failed to search providers', { error: error.message });
+      this.logger.error("Failed to search providers", { error: error.message });
       throw error;
     }
 
@@ -585,25 +638,29 @@ export class ProvidersService {
     wineId?: string,
   ): Promise<{ primary: any | null; alternatives: any[] }> {
     let query = this.databaseService.supabase
-      .from('providers')
-      .select('*')
-      .is('deleted_at', null)
-      .eq('is_active', true)
-      .order('reliability_score', { ascending: false })
+      .from("providers")
+      .select("*")
+      .is("deleted_at", null)
+      .eq("is_active", true)
+      .order("reliability_score", { ascending: false })
       .limit(5);
 
     if (restaurantId) {
-      query = query.eq('restaurant_id', restaurantId);
+      query = query.eq("restaurant_id", restaurantId);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      this.logger.error('Failed to fetch recommendations', { error: error.message });
+      this.logger.error("Failed to fetch recommendations", {
+        error: error.message,
+      });
       throw error;
     }
 
-    const providers = (data || []).map((row) => this.mapProviderRow(row as ProviderRow));
+    const providers = (data || []).map((row) =>
+      this.mapProviderRow(row as ProviderRow),
+    );
     return {
       primary: providers[0] ?? null,
       alternatives: providers.slice(1),
@@ -620,18 +677,21 @@ export class ProvidersService {
     restaurantId: string,
   ): Promise<ProviderResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('providers')
+      .from("providers")
       .update({
         last_contact_date: dto.lastContactDate,
         last_contact_notes: dto.notes ?? null,
       })
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId)
-      .select('*')
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to update last contact date', { providerId, error: error.message });
+      this.logger.error("Failed to update last contact date", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -642,7 +702,9 @@ export class ProvidersService {
   // BULK IMPORT
   // =========================================================================
 
-  async bulkImportProviders(dto: BulkImportProvidersDto): Promise<BulkImportResultDto> {
+  async bulkImportProviders(
+    dto: BulkImportProvidersDto,
+  ): Promise<BulkImportResultDto> {
     let imported = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -653,11 +715,11 @@ export class ProvidersService {
         imported++;
       } catch (err: any) {
         failed++;
-        errors.push(`${providerDto.name}: ${err.message || 'Unknown error'}`);
+        errors.push(`${providerDto.name}: ${err.message || "Unknown error"}`);
       }
     }
 
-    this.logger.log('Bulk import completed', { imported, failed });
+    this.logger.log("Bulk import completed", { imported, failed });
     return { imported, failed, errors };
   }
 
@@ -668,16 +730,22 @@ export class ProvidersService {
   async getIntelligence(
     providerId: string,
     restaurantId: string,
-  ): Promise<{ profile_foundational: Record<string, any>; profile_dynamic: Record<string, any> }> {
+  ): Promise<{
+    profile_foundational: Record<string, any>;
+    profile_dynamic: Record<string, any>;
+  }> {
     const { data, error } = await this.databaseService.supabase
-      .from('providers')
-      .select('profile_foundational, profile_dynamic')
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId)
+      .from("providers")
+      .select("profile_foundational, profile_dynamic")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
       .single();
 
     if (error) {
-      this.logger.error('getIntelligence failed', { providerId, error: error.message });
+      this.logger.error("getIntelligence failed", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -701,26 +769,35 @@ export class ProvidersService {
     }
 
     const { error } = await this.databaseService.supabase
-      .from('providers')
+      .from("providers")
       .update(updatePayload)
-      .eq('id', providerId)
-      .eq('restaurant_id', restaurantId);
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId);
 
     if (error) {
-      this.logger.error('updateIntelligence failed', { providerId, error: error.message });
+      this.logger.error("updateIntelligence failed", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
     return { success: true };
   }
 
-  getProfileSummary(profileDynamic: Record<string, any>): Array<{ key: string; label: string; value: string }> {
-    const priorityKeys = ['response_speed', 'negotiation_style', 'relationship_tier'];
+  getProfileSummary(
+    profileDynamic: Record<string, any>,
+  ): Array<{ key: string; label: string; value: string }> {
+    const priorityKeys = [
+      "response_speed",
+      "negotiation_style",
+      "relationship_tier",
+    ];
     return priorityKeys
       .filter((k) => profileDynamic[k])
       .map((k) => ({
         key: k,
-        label: k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        label: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
         value: String(profileDynamic[k]).slice(0, 20),
       }))
       .slice(0, 3);
@@ -733,70 +810,83 @@ export class ProvidersService {
     providerId: string,
     restaurantId: string,
     dto: RetroactiveOrderDto,
-  ): Promise<{ orderId: string; conversationId: string; interactionId: string }> {
-    const { data: orderData, error: orderError } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .insert({
-        restaurant_id: restaurantId,
-        provider_id: providerId,
-        wine_name: dto.wineName,
-        quantity: dto.quantity ?? null,
-        final_confirmed_cost: dto.finalConfirmedCost ?? null,
-        actual_delivery: dto.invoiceDate ?? null,
-        status: 'delivered',
-        source: 'retroactive',
-      })
-      .select('id')
-      .single();
+  ): Promise<{
+    orderId: string;
+    conversationId: string;
+    interactionId: string;
+  }> {
+    const { data: orderData, error: orderError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .insert({
+          restaurant_id: restaurantId,
+          provider_id: providerId,
+          wine_name: dto.wineName,
+          quantity: dto.quantity ?? null,
+          final_confirmed_cost: dto.finalConfirmedCost ?? null,
+          actual_delivery: dto.invoiceDate ?? null,
+          status: "delivered",
+          source: "retroactive",
+        })
+        .select("id")
+        .single();
 
     if (orderError) {
-      this.logger.error('createRetroactiveOrder: order insert failed', { error: orderError.message });
+      this.logger.error("createRetroactiveOrder: order insert failed", {
+        error: orderError.message,
+      });
       throw orderError;
     }
 
     const orderId = (orderData as any).id as string;
 
-    const { data: convData, error: convError } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .insert({
-        order_id: orderId,
-        provider_id: providerId,
-        restaurant_id: restaurantId,
-        direction: 'INBOUND',
-        channel: 'email',
-        content: dto.rawInvoiceContent ?? '',
-        status: 'DELIVERED',
-        ai_summary: `Retroactive order created from off-app invoice ${dto.invoiceNumber ?? ''}.`,
-      })
-      .select('id')
-      .single();
+    const { data: convData, error: convError } =
+      await this.databaseService.supabase
+        .from("procurement_conversations")
+        .insert({
+          order_id: orderId,
+          provider_id: providerId,
+          restaurant_id: restaurantId,
+          direction: "INBOUND",
+          channel: "email",
+          content: dto.rawInvoiceContent ?? "",
+          status: "DELIVERED",
+          ai_summary: `Retroactive order created from off-app invoice ${dto.invoiceNumber ?? ""}.`,
+        })
+        .select("id")
+        .single();
 
     if (convError) {
-      this.logger.warn('createRetroactiveOrder: conversation insert failed', { error: convError.message });
+      this.logger.warn("createRetroactiveOrder: conversation insert failed", {
+        error: convError.message,
+      });
     }
 
-    const conversationId = convData ? (convData as any).id as string : '';
+    const conversationId = convData ? ((convData as any).id as string) : "";
 
-    const { data: intData, error: intError } = await this.databaseService.supabase
-      .from('order_interactions')
-      .insert({
-        order_id: orderId,
-        interaction_type: 'invoice_received',
-        channel: 'email',
-        content: dto.rawInvoiceContent ?? '',
-        ai_summary: `Invoice ${dto.invoiceNumber ?? 'unknown'} received; retroactive order created.`,
-      })
-      .select('id')
-      .single();
+    const { data: intData, error: intError } =
+      await this.databaseService.supabase
+        .from("order_interactions")
+        .insert({
+          order_id: orderId,
+          interaction_type: "invoice_received",
+          channel: "email",
+          content: dto.rawInvoiceContent ?? "",
+          ai_summary: `Invoice ${dto.invoiceNumber ?? "unknown"} received; retroactive order created.`,
+        })
+        .select("id")
+        .single();
 
     if (intError) {
-      this.logger.warn('createRetroactiveOrder: interaction insert failed', { error: intError.message });
+      this.logger.warn("createRetroactiveOrder: interaction insert failed", {
+        error: intError.message,
+      });
     }
 
     return {
       orderId,
       conversationId,
-      interactionId: intData ? (intData as any).id as string : '',
+      interactionId: intData ? ((intData as any).id as string) : "",
     };
   }
 
@@ -806,16 +896,20 @@ export class ProvidersService {
 
   async getProviderLocations(providerId: string, restaurantId: string) {
     const { data, error } = await this.databaseService.supabase
-      .from('provider_locations')
-      .select('*')
-      .eq('provider_id', providerId)
-      .eq('restaurant_id', restaurantId)
-      .order('is_primary', { ascending: false })
-      .order('created_at');
+      .from("provider_locations")
+      .select("*")
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .order("is_primary", { ascending: false })
+      .order("created_at");
 
     if (error) {
-      if (error.code === '42P01' || error.message?.includes('does not exist')) return [];
-      this.logger.error('Failed to fetch provider locations', { providerId, error: error.message });
+      if (error.code === "42P01" || error.message?.includes("does not exist"))
+        return [];
+      this.logger.error("Failed to fetch provider locations", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -829,79 +923,113 @@ export class ProvidersService {
     }));
   }
 
-  async createProviderLocation(providerId: string, restaurantId: string, dto: CreateProviderLocationDto) {
+  async createProviderLocation(
+    providerId: string,
+    restaurantId: string,
+    dto: CreateProviderLocationDto,
+  ) {
     if (dto.isPrimary) {
       await this.databaseService.supabase
-        .from('provider_locations')
+        .from("provider_locations")
         .update({ is_primary: false })
-        .eq('provider_id', providerId)
-        .eq('restaurant_id', restaurantId);
+        .eq("provider_id", providerId)
+        .eq("restaurant_id", restaurantId);
     }
 
     const { data, error } = await this.databaseService.supabase
-      .from('provider_locations')
+      .from("provider_locations")
       .insert({
         provider_id: providerId,
         restaurant_id: restaurantId,
         name: dto.name,
-        type: dto.type || 'office',
+        type: dto.type || "office",
         address: dto.address || null,
         is_primary: dto.isPrimary ?? false,
       })
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to create provider location', { providerId, error: error.message });
+      this.logger.error("Failed to create provider location", {
+        providerId,
+        error: error.message,
+      });
       throw error;
     }
 
     const row = data as any;
-    return { id: row.id, name: row.name, type: row.type, address: row.address, isPrimary: row.is_primary };
+    return {
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      address: row.address,
+      isPrimary: row.is_primary,
+    };
   }
 
-  async updateProviderLocation(providerId: string, locationId: string, restaurantId: string, dto: UpdateProviderLocationDto) {
+  async updateProviderLocation(
+    providerId: string,
+    locationId: string,
+    restaurantId: string,
+    dto: UpdateProviderLocationDto,
+  ) {
     if (dto.isPrimary) {
       await this.databaseService.supabase
-        .from('provider_locations')
+        .from("provider_locations")
         .update({ is_primary: false })
-        .eq('provider_id', providerId)
-        .eq('restaurant_id', restaurantId);
+        .eq("provider_id", providerId)
+        .eq("restaurant_id", restaurantId);
     }
 
     const { data, error } = await this.databaseService.supabase
-      .from('provider_locations')
+      .from("provider_locations")
       .update({
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.type !== undefined && { type: dto.type }),
         ...(dto.address !== undefined && { address: dto.address }),
         ...(dto.isPrimary !== undefined && { is_primary: dto.isPrimary }),
       })
-      .eq('id', locationId)
-      .eq('provider_id', providerId)
-      .eq('restaurant_id', restaurantId)
-      .select('*')
+      .eq("id", locationId)
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .select("*")
       .single();
 
     if (error) {
-      this.logger.error('Failed to update provider location', { locationId, error: error.message });
+      this.logger.error("Failed to update provider location", {
+        locationId,
+        error: error.message,
+      });
       throw error;
     }
 
     const row = data as any;
-    return { id: row.id, name: row.name, type: row.type, address: row.address, isPrimary: row.is_primary };
+    return {
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      address: row.address,
+      isPrimary: row.is_primary,
+    };
   }
 
-  async deleteProviderLocation(providerId: string, locationId: string, restaurantId: string) {
+  async deleteProviderLocation(
+    providerId: string,
+    locationId: string,
+    restaurantId: string,
+  ) {
     const { error } = await this.databaseService.supabase
-      .from('provider_locations')
+      .from("provider_locations")
       .delete()
-      .eq('id', locationId)
-      .eq('provider_id', providerId)
-      .eq('restaurant_id', restaurantId);
+      .eq("id", locationId)
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId);
 
     if (error) {
-      this.logger.error('Failed to delete provider location', { locationId, error: error.message });
+      this.logger.error("Failed to delete provider location", {
+        locationId,
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -926,13 +1054,9 @@ export class ProvidersService {
     // Phone/email: prefer dedicated columns; fall back to primary_contact JSONB
     // for legacy providers created before the dedicated columns existed.
     const phone =
-      row.contact_phone ??
-      (row.primary_contact as any)?.phone ??
-      undefined;
+      row.contact_phone ?? (row.primary_contact as any)?.phone ?? undefined;
     const email =
-      row.contact_email ??
-      (row.primary_contact as any)?.email ??
-      undefined;
+      row.contact_email ?? (row.primary_contact as any)?.email ?? undefined;
 
     return {
       id: row.id,
@@ -959,7 +1083,8 @@ export class ProvidersService {
       catalogueVendorId: (row as any).catalogue_vendor_id ?? null,
       isCustom: (row as any).is_custom ?? true,
       paymentTerms: row.payment_terms ?? undefined,
-      primaryBusinessType: row.vendor_type ?? (row as any).primary_business_type ?? undefined,
+      primaryBusinessType:
+        row.vendor_type ?? (row as any).primary_business_type ?? undefined,
       knownPersonnel: row.known_personnel ?? undefined,
     };
   }

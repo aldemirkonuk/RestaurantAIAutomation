@@ -2,6 +2,7 @@
 Pydantic models for Phase 24 email intelligence pipeline.
 Per AI-SPEC §4b — all LLM outputs must be parsed against these schemas.
 """
+
 from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, Field

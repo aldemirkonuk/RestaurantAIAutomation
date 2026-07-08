@@ -34,7 +34,7 @@ Requirements: CRIT-01, CRIT-04, CRIT-05, CRIT-06
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import redis as redis_lib
 from supabase import create_client
@@ -54,6 +54,7 @@ def _get_supabase_client():
 # =============================================================================
 # score_lookup_task  (CRIT-01)
 # =============================================================================
+
 
 @celery_app.task(
     name="score.lookup_wine",
@@ -80,13 +81,18 @@ def score_lookup_task(self, wine_id: str) -> Optional[Dict[str, Any]]:
         return asyncio.run(_score_async(wine_id))
     except Exception as exc:
         retry_num = self.request.retries
-        countdown = 60 * (2 ** retry_num)  # 60, 120, 240s
+        countdown = 60 * (2**retry_num)  # 60, 120, 240s
         logger.warning(
             "score_lookup_task failed for wine_id=%s (attempt %d/3): %s. Retrying in %ds.",
-            wine_id, retry_num + 1, exc, countdown,
+            wine_id,
+            retry_num + 1,
+            exc,
+            countdown,
         )
         if retry_num >= self.max_retries - 1:
-            logger.warning("score_lookup_task exhausted retries for wine_id=%s", wine_id)
+            logger.warning(
+                "score_lookup_task exhausted retries for wine_id=%s", wine_id
+            )
             return None
         raise self.retry(exc=exc, countdown=countdown)
     finally:
@@ -102,7 +108,6 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
         build_critic_score_queries,
         parse_serper_score_snippets,
         compute_composite_score,
-        compute_markup_info,
     )
     from services.serper_client import serper_search
     from jobs.web_verify_tasks import check_and_reserve_search_budget
@@ -118,7 +123,9 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
         .execute()
     )
     if not resp.data:
-        logger.warning("_score_async: wine_id=%s not found in master_wine_library", wine_id)
+        logger.warning(
+            "_score_async: wine_id=%s not found in master_wine_library", wine_id
+        )
         return None
 
     wine = resp.data
@@ -140,12 +147,22 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
     sources_found = 0
 
     # Score sources in priority order (5 critic sources)
-    for source_key in ("wine_advocate", "wine_spectator", "vivino", "decanter", "jancis_robinson"):
+    for source_key in (
+        "wine_advocate",
+        "wine_spectator",
+        "vivino",
+        "decanter",
+        "jancis_robinson",
+    ):
         query = queries[source_key]
 
         # Check budget per source call (Pitfall 3: use INCRBYFLOAT atomic check)
         if not check_and_reserve_search_budget():
-            logger.info("_score_async: budget cap reached at source=%s wine_id=%s", source_key, wine_id)
+            logger.info(
+                "_score_async: budget cap reached at source=%s wine_id=%s",
+                source_key,
+                wine_id,
+            )
             break
 
         snippets = await serper_search(query, num_results=5)
@@ -153,8 +170,10 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
         # Log Serper spend
         try:
             get_spend_logger().log(
-                provider="serper", model="serper-search",
-                input_tokens=0, output_tokens=0,
+                provider="serper",
+                model="serper-search",
+                input_tokens=0,
+                output_tokens=0,
                 cost_usd=settings.serper_cost_per_query,
                 restaurant_id=wine_id,
             )
@@ -166,7 +185,10 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
             continue
 
         parsed = parse_serper_score_snippets(
-            [{"title": s["title"], "link": s["link"], "snippet": s["snippet"]} for s in snippets],
+            [
+                {"title": s["title"], "link": s["link"], "snippet": s["snippet"]}
+                for s in snippets
+            ],
             source_key,
         )
         if parsed:
@@ -189,8 +211,10 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
         price_snippets = await serper_search(price_query, num_results=5)
         try:
             get_spend_logger().log(
-                provider="serper", model="serper-search",
-                input_tokens=0, output_tokens=0,
+                provider="serper",
+                model="serper-search",
+                input_tokens=0,
+                output_tokens=0,
                 cost_usd=settings.serper_cost_per_query,
                 restaurant_id=wine_id,
             )
@@ -198,7 +222,10 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
             pass
         if price_snippets:
             price_parsed = parse_serper_score_snippets(
-                [{"title": s["title"], "link": s["link"], "snippet": s["snippet"]} for s in price_snippets],
+                [
+                    {"title": s["title"], "link": s["link"], "snippet": s["snippet"]}
+                    for s in price_snippets
+                ],
                 "wine_searcher",
             )
             if price_parsed:
@@ -208,7 +235,10 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
     merged_scores = {**existing_scores}
     for source, data in new_scores.items():
         existing_entry = merged_scores.get(source, {})
-        if isinstance(existing_entry, dict) and existing_entry.get("normalized_score") is not None:
+        if (
+            isinstance(existing_entry, dict)
+            and existing_entry.get("normalized_score") is not None
+        ):
             pass  # Keep existing score — already verified
         else:
             merged_scores[source] = data
@@ -226,7 +256,9 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
     if retail_price_avg is not None:
         update_payload["retail_price_avg"] = retail_price_avg
 
-    supabase.table("master_wine_library").update(update_payload).eq("id", wine_id).execute()
+    supabase.table("master_wine_library").update(update_payload).eq(
+        "id", wine_id
+    ).execute()
 
     # CRIT-05: Recompute markup for all restaurant_inventory rows (cascade update)
     if retail_price_avg is not None:
@@ -234,7 +266,10 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
 
     logger.info(
         "_score_async: wine_id=%s complete — sources_found=%d composite=%s retail=%s",
-        wine_id, sources_found, composite, retail_price_avg,
+        wine_id,
+        sources_found,
+        composite,
+        retail_price_avg,
     )
     return {
         "wine_id": wine_id,
@@ -266,36 +301,43 @@ def _update_inventory_markup(supabase, wine_id: str, retail_price_avg: float) ->
         if markup_info is None:
             continue
 
-        supabase.table("restaurant_inventory").update({
-            "markup_ratio": markup_info["markup_ratio"],
-            "markup_classification": markup_info["markup_classification"],
-        }).eq("id", row["id"]).execute()
+        supabase.table("restaurant_inventory").update(
+            {
+                "markup_ratio": markup_info["markup_ratio"],
+                "markup_classification": markup_info["markup_classification"],
+            }
+        ).eq("id", row["id"]).execute()
 
         # CRIT-06: Anomaly detection — flag for review
         if markup_info["is_anomaly"]:
             try:
-                supabase.table("field_review_queue").insert({
-                    "submission_id": wine_id,
-                    "field_name": "markup_ratio",
-                    "current_value": str(markup_info["markup_ratio"]),
-                    "confidence": 0.5,
-                    "source": "pricing_anomaly",
-                    "status": "pending",
-                }).execute()
+                supabase.table("field_review_queue").insert(
+                    {
+                        "submission_id": wine_id,
+                        "field_name": "markup_ratio",
+                        "current_value": str(markup_info["markup_ratio"]),
+                        "confidence": 0.5,
+                        "source": "pricing_anomaly",
+                        "status": "pending",
+                    }
+                ).execute()
                 logger.info(
                     "_update_inventory_markup: anomaly flagged wine_id=%s markup_ratio=%s",
-                    wine_id, markup_info["markup_ratio"],
+                    wine_id,
+                    markup_info["markup_ratio"],
                 )
             except Exception as exc:
                 logger.warning(
                     "_update_inventory_markup: failed to insert anomaly for wine_id=%s: %s",
-                    wine_id, exc,
+                    wine_id,
+                    exc,
                 )
 
 
 # =============================================================================
 # dataset_enrich_task  (D-02, CRIT-01 pipeline)
 # =============================================================================
+
 
 @celery_app.task(
     name="score.dataset_enrich_wine",
@@ -319,19 +361,27 @@ def dataset_enrich_task(self, wine_id: str) -> Optional[Dict[str, Any]]:
 
     try:
         from services.dataset_ingestion_service import DatasetIngestionService
+
         service = DatasetIngestionService()
         result = service.enrich_wine(wine_id)
-        logger.info("dataset_enrich_task: wine_id=%s result=%s", wine_id, result.get("status"))
+        logger.info(
+            "dataset_enrich_task: wine_id=%s result=%s", wine_id, result.get("status")
+        )
         return result
     except Exception as exc:
         retry_num = self.request.retries
-        countdown = 60 * (2 ** retry_num)
+        countdown = 60 * (2**retry_num)
         logger.warning(
             "dataset_enrich_task failed for wine_id=%s (attempt %d/3): %s. Retrying in %ds.",
-            wine_id, retry_num + 1, exc, countdown,
+            wine_id,
+            retry_num + 1,
+            exc,
+            countdown,
         )
         if retry_num >= self.max_retries - 1:
-            logger.warning("dataset_enrich_task exhausted retries for wine_id=%s", wine_id)
+            logger.warning(
+                "dataset_enrich_task exhausted retries for wine_id=%s", wine_id
+            )
             return None
         raise self.retry(exc=exc, countdown=countdown)
     finally:
@@ -341,6 +391,7 @@ def dataset_enrich_task(self, wine_id: str) -> Optional[Dict[str, Any]]:
 # =============================================================================
 # rescore_stale_wines_task  (D-03b — nightly beat)
 # =============================================================================
+
 
 @celery_app.task(name="score.rescore_stale_wines")
 def rescore_stale_wines_task() -> Dict[str, Any]:
@@ -365,8 +416,8 @@ def rescore_stale_wines_task() -> Dict[str, Any]:
         scores = wine.get("critic_scores") or {}
         last_updated = wine.get("scores_last_updated_at")
 
-        is_empty = (not scores or scores == {} or scores == "{}")
-        is_stale = (last_updated is None or last_updated < stale_cutoff)
+        is_empty = not scores or scores == {} or scores == "{}"
+        is_stale = last_updated is None or last_updated < stale_cutoff
 
         if is_empty or is_stale:
             score_lookup_task.delay(wine["id"])

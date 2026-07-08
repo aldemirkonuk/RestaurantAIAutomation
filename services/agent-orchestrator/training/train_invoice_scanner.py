@@ -21,14 +21,20 @@ OUTPUT_DIR = PROJECT_ROOT / "services" / "agent-orchestrator" / "models"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train WineOps Invoice Scanner (YOLOv8m)")
+    parser = argparse.ArgumentParser(
+        description="Train WineOps Invoice Scanner (YOLOv8m)"
+    )
     parser.add_argument("--epochs", type=int, default=100, help="Training epochs")
     parser.add_argument("--imgsz", type=int, default=1280, help="Image size (px)")
     parser.add_argument("--batch", type=int, default=8, help="Batch size")
     parser.add_argument("--device", type=str, default="0", help="Device")
     parser.add_argument("--model", type=str, default="yolov8m.pt", help="Base model")
-    parser.add_argument("--patience", type=int, default=20, help="Early-stopping patience")
-    parser.add_argument("--name", type=str, default="invoice_scanner_v1", help="Run name")
+    parser.add_argument(
+        "--patience", type=int, default=20, help="Early-stopping patience"
+    )
+    parser.add_argument(
+        "--name", type=str, default="invoice_scanner_v1", help="Run name"
+    )
     args = parser.parse_args()
 
     data_yaml = DATASET_DIR / "data.yaml"
@@ -63,14 +69,14 @@ def main():
         name=args.name,
         # ----- Augmentation (invoice/document-optimised) -----
         augment=True,
-        mosaic=0.3,           # Low mosaic - invoices are structured documents
-        mixup=0.0,            # No mixup
-        degrees=3.0,          # Very slight rotation (invoices are mostly aligned)
+        mosaic=0.3,  # Low mosaic - invoices are structured documents
+        mixup=0.0,  # No mixup
+        degrees=3.0,  # Very slight rotation (invoices are mostly aligned)
         translate=0.05,
         scale=0.2,
         perspective=0.0003,
-        flipud=0.0,           # Never flip
-        fliplr=0.0,           # Never flip
+        flipud=0.0,  # Never flip
+        fliplr=0.0,  # Never flip
         hsv_h=0.01,
         hsv_s=0.1,
         hsv_v=0.2,
@@ -94,9 +100,14 @@ def main():
     model.export(format="onnx", imgsz=args.imgsz, simplify=True)
     model.export(format="torchscript", imgsz=args.imgsz)
 
-    best_pt = Path(results.save_dir) / "weights" / "best.pt" if hasattr(results, 'save_dir') else None
+    best_pt = (
+        Path(results.save_dir) / "weights" / "best.pt"
+        if hasattr(results, "save_dir")
+        else None
+    )
     if best_pt and best_pt.exists():
         import shutil
+
         dest = OUTPUT_DIR / f"{args.name}.pt"
         shutil.copy2(best_pt, dest)
         print(f"Best weights copied to: {dest}")

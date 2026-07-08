@@ -11,16 +11,12 @@ AI-powered menu scanning with:
 """
 
 from typing import Dict, List, Any, Optional
-from datetime import datetime
 import asyncio
 import base64
 import io
-import json
-import re
 import logging
 
 from core.base_agent import BaseAgent
-from core.database import MasterWineLibrary
 
 # Lazy imports to avoid loading heavy dependencies at startup
 PIL_AVAILABLE = False
@@ -33,6 +29,7 @@ def _check_pil():
     global PIL_AVAILABLE
     try:
         from PIL import Image
+
         PIL_AVAILABLE = True
         return True
     except ImportError:
@@ -42,7 +39,6 @@ def _check_pil():
 def _check_yolo():
     global YOLO_AVAILABLE
     try:
-        from ultralytics import YOLO
         YOLO_AVAILABLE = True
         return True
     except Exception:
@@ -74,7 +70,13 @@ class MenuAnalyzerAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # Model paths
-        self.menu_model_path = config.get("menu_model_path", config.get("yolo_model_path", "datasets/wine_menus_2class/runs/train2/weights/best.pt"))
+        self.menu_model_path = config.get(
+            "menu_model_path",
+            config.get(
+                "yolo_model_path",
+                "datasets/wine_menus_2class/runs/train2/weights/best.pt",
+            ),
+        )
         self.confidence_threshold = config.get("confidence_threshold", 0.3)
         self.mock_mode = config.get("mock_mode", True)
 
@@ -95,12 +97,14 @@ class MenuAnalyzerAgent(BaseAgent):
     def _get_normalizer(self):
         if self._normalizer is None:
             from services.text_normalizer import get_normalizer
+
             self._normalizer = get_normalizer()
         return self._normalizer
 
     def _get_field_parser(self):
         if self._field_parser is None:
             from services.wine_field_parser import get_field_parser
+
             self._field_parser = get_field_parser(
                 google_api_key=self.google_api_key,
                 mock_mode=self.mock_mode,
@@ -110,9 +114,11 @@ class MenuAnalyzerAgent(BaseAgent):
     def _get_wine_matcher(self):
         if self._wine_matcher is None:
             from services.wine_matcher import get_wine_matcher
+
             supabase = None
             try:
                 from core.database import get_supabase_client
+
                 supabase = get_supabase_client()
             except Exception:
                 pass
@@ -137,30 +143,35 @@ class MenuAnalyzerAgent(BaseAgent):
     def _get_menu_parser(self):
         if self._menu_parser is None:
             from services.html_menu_parser import get_menu_parser
+
             self._menu_parser = get_menu_parser()
         return self._menu_parser
 
     def _get_pdf_service(self):
         if self._pdf_service is None:
             from services.pdf_extraction_service import get_pdf_service
+
             self._pdf_service = get_pdf_service()
         return self._pdf_service
 
     def _get_vlm_service(self):
         if self._vlm_service is None:
             from services.vlm_extraction_service import get_vlm_service
+
             self._vlm_service = get_vlm_service()
         return self._vlm_service
 
     def _get_wine_classifier(self):
         if self._wine_classifier is None:
             from services.wine_menu_classifier import get_classifier
+
             self._wine_classifier = get_classifier()
         return self._wine_classifier
 
     def _get_quality_scorer(self):
         if self._quality_scorer is None:
             from services.quality_scorer import get_quality_scorer
+
             self._quality_scorer = get_quality_scorer()
         return self._quality_scorer
 
@@ -308,6 +319,7 @@ class MenuAnalyzerAgent(BaseAgent):
             try:
                 from ultralytics import YOLO
                 from pathlib import Path
+
                 model_path = self.menu_model_path
                 if not Path(model_path).exists():
                     self.logger.warning(
@@ -328,6 +340,7 @@ class MenuAnalyzerAgent(BaseAgent):
             # Initialize Surya OCR (replaces EasyOCR — CPU-native, no language list needed)
             try:
                 from services.pdf_extraction_service import SuryaOCRService
+
                 self.surya_ocr = SuryaOCRService()
                 if self.surya_ocr.is_available:
                     self.logger.info("Surya OCR initialized")
@@ -342,6 +355,7 @@ class MenuAnalyzerAgent(BaseAgent):
             if self.google_api_key:
                 try:
                     import google.generativeai as genai
+
                     genai.configure(api_key=self.google_api_key)
                     self.llm_client = genai.GenerativeModel("gemini-pro")
                     self.logger.info("Gemini Pro client initialized")
@@ -387,14 +401,16 @@ class MenuAnalyzerAgent(BaseAgent):
                     cls_id = int(box.cls[0].cpu().numpy())
                     conf_val = float(box.conf[0].cpu().numpy())
                     label = MENU_CLASS_NAMES.get(cls_id, f"class_{cls_id}")
-                    boxes.append({
-                        "x1": float(xyxyn[0]),
-                        "y1": float(xyxyn[1]),
-                        "x2": float(xyxyn[2]),
-                        "y2": float(xyxyn[3]),
-                        "label": label,
-                        "confidence": round(conf_val, 3),
-                    })
+                    boxes.append(
+                        {
+                            "x1": float(xyxyn[0]),
+                            "y1": float(xyxyn[1]),
+                            "x2": float(xyxyn[2]),
+                            "y2": float(xyxyn[3]),
+                            "label": label,
+                            "confidence": round(conf_val, 3),
+                        }
+                    )
             return boxes
 
         return await loop.run_in_executor(None, _run_inference)
@@ -491,14 +507,15 @@ class MenuAnalyzerAgent(BaseAgent):
         detections = await self._detect_wine_regions(image_source)
 
         # Separate section headers from wine entries
-        section_headers = [
-            d for d in detections if d.get("label") == "section_header"
-        ]
+        section_headers = [d for d in detections if d.get("label") == "section_header"]
         wine_entries = [
-            d for d in detections if d.get("label") == "wine_entry" or d.get("full_image")
+            d
+            for d in detections
+            if d.get("label") == "wine_entry" or d.get("full_image")
         ]
         sub_detections = [
-            d for d in detections
+            d
+            for d in detections
             if d.get("label") not in ("wine_entry", "section_header")
             and not d.get("full_image")
         ]
@@ -555,7 +572,8 @@ class MenuAnalyzerAgent(BaseAgent):
             "wines": enriched_wines,
             "regions_detected": len(detections),
             "section_headers": [
-                e.get("text", "") for e in extracted
+                e.get("text", "")
+                for e in extracted
                 if any(
                     sh.get("bbox") == e.get("region", {}).get("bbox")
                     for sh in section_headers
@@ -567,21 +585,31 @@ class MenuAnalyzerAgent(BaseAgent):
     # LAYER 1: YOLO DETECTION
     # =========================================================================
 
-    async def _detect_wine_regions(
-        self, image_source: str
-    ) -> List[Dict[str, Any]]:
+    async def _detect_wine_regions(self, image_source: str) -> List[Dict[str, Any]]:
         """Detect wine regions using 13-class YOLOv8 model."""
         if self.mock_mode:
             return [
-                {"bbox": [50, 20, 400, 50], "confidence": 0.95, "label": "section_header"},
+                {
+                    "bbox": [50, 20, 400, 50],
+                    "confidence": 0.95,
+                    "label": "section_header",
+                },
                 {"bbox": [50, 60, 400, 140], "confidence": 0.92, "label": "wine_entry"},
                 {"bbox": [50, 60, 200, 80], "confidence": 0.88, "label": "wine_name"},
                 {"bbox": [350, 60, 400, 80], "confidence": 0.94, "label": "price"},
                 {"bbox": [210, 60, 260, 80], "confidence": 0.90, "label": "vintage"},
-                {"bbox": [50, 150, 400, 230], "confidence": 0.90, "label": "wine_entry"},
+                {
+                    "bbox": [50, 150, 400, 230],
+                    "confidence": 0.90,
+                    "label": "wine_entry",
+                },
                 {"bbox": [50, 150, 200, 170], "confidence": 0.87, "label": "wine_name"},
                 {"bbox": [350, 150, 400, 170], "confidence": 0.93, "label": "price"},
-                {"bbox": [50, 240, 400, 320], "confidence": 0.88, "label": "wine_entry"},
+                {
+                    "bbox": [50, 240, 400, 320],
+                    "confidence": 0.88,
+                    "label": "wine_entry",
+                },
             ]
 
         if not self.yolo_model or not _check_pil():
@@ -593,6 +621,7 @@ class MenuAnalyzerAgent(BaseAgent):
 
             if image_source.startswith("http"):
                 import httpx
+
                 async with httpx.AsyncClient() as client:
                     response = await client.get(image_source)
                     image = Image.open(io.BytesIO(response.content))
@@ -606,13 +635,17 @@ class MenuAnalyzerAgent(BaseAgent):
             for result in results:
                 for box in result.boxes:
                     cls_id = int(box.cls)
-                    label = MENU_CLASS_NAMES.get(cls_id, result.names.get(cls_id, f"class_{cls_id}"))
-                    regions.append({
-                        "bbox": box.xyxy[0].tolist(),
-                        "confidence": float(box.conf),
-                        "label": label,
-                        "class_id": cls_id,
-                    })
+                    label = MENU_CLASS_NAMES.get(
+                        cls_id, result.names.get(cls_id, f"class_{cls_id}")
+                    )
+                    regions.append(
+                        {
+                            "bbox": box.xyxy[0].tolist(),
+                            "confidence": float(box.conf),
+                            "label": label,
+                            "class_id": cls_id,
+                        }
+                    )
 
             if not regions:
                 regions = [{"bbox": None, "full_image": True}]
@@ -668,14 +701,16 @@ class MenuAnalyzerAgent(BaseAgent):
             results = []
             for i, (text, label) in enumerate(mock_texts):
                 norm = normalizer.normalize(text)
-                results.append({
-                    "text": text,
-                    "corrected_text": norm["corrected"],
-                    "normalized_text": norm["normalized"],
-                    "region": regions[i] if i < len(regions) else None,
-                    "confidence": 0.90 + (i % 3) * 0.03,
-                    "label": label,
-                })
+                results.append(
+                    {
+                        "text": text,
+                        "corrected_text": norm["corrected"],
+                        "normalized_text": norm["normalized"],
+                        "region": regions[i] if i < len(regions) else None,
+                        "confidence": 0.90 + (i % 3) * 0.03,
+                        "label": label,
+                    }
+                )
             return results
 
         if not self.surya_ocr or not self.surya_ocr.is_available or not _check_pil():
@@ -687,6 +722,7 @@ class MenuAnalyzerAgent(BaseAgent):
 
             if image_source.startswith("http"):
                 import httpx
+
                 async with httpx.AsyncClient() as client:
                     response = await client.get(image_source)
                     image = Image.open(io.BytesIO(response.content))
@@ -711,14 +747,16 @@ class MenuAnalyzerAgent(BaseAgent):
                 )
 
                 norm = normalizer.normalize(region_text)
-                extracted_texts.append({
-                    "text": region_text,
-                    "corrected_text": norm["corrected"],
-                    "normalized_text": norm["normalized"],
-                    "region": region,
-                    "confidence": avg_conf,
-                    "label": region.get("label", "unknown"),
-                })
+                extracted_texts.append(
+                    {
+                        "text": region_text,
+                        "corrected_text": norm["corrected"],
+                        "normalized_text": norm["normalized"],
+                        "region": region,
+                        "confidence": avg_conf,
+                        "label": region.get("label", "unknown"),
+                    }
+                )
 
             return extracted_texts
 
@@ -770,22 +808,28 @@ class MenuAnalyzerAgent(BaseAgent):
                         if label and sub_text:
                             yolo_hints[label] = sub_text
 
-            groups.append({
-                "entry": entry,
-                "ocr_text": ocr_text,
-                "yolo_hints": yolo_hints,
-            })
+            groups.append(
+                {
+                    "entry": entry,
+                    "ocr_text": ocr_text,
+                    "yolo_hints": yolo_hints,
+                }
+            )
 
         # If no wine entries detected, treat each extracted text as a wine entry
         if not groups:
             for ext in extracted_texts:
                 label = ext.get("label", "")
-                if label in ("wine_entry", "unknown") or ext.get("region", {}).get("full_image"):
-                    groups.append({
-                        "entry": ext.get("region", {}),
-                        "ocr_text": ext.get("text", ""),
-                        "yolo_hints": {},
-                    })
+                if label in ("wine_entry", "unknown") or ext.get("region", {}).get(
+                    "full_image"
+                ):
+                    groups.append(
+                        {
+                            "entry": ext.get("region", {}),
+                            "ocr_text": ext.get("text", ""),
+                            "yolo_hints": {},
+                        }
+                    )
 
         return groups
 
@@ -797,10 +841,7 @@ class MenuAnalyzerAgent(BaseAgent):
         # Inner center must be within outer
         inner_cx = (inner[0] + inner[2]) / 2
         inner_cy = (inner[1] + inner[3]) / 2
-        return (
-            outer[0] <= inner_cx <= outer[2]
-            and outer[1] <= inner_cy <= outer[3]
-        )
+        return outer[0] <= inner_cx <= outer[2] and outer[1] <= inner_cy <= outer[3]
 
     @staticmethod
     def _find_section_header(

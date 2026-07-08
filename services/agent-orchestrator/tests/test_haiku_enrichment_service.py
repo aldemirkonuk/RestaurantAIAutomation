@@ -3,6 +3,7 @@ Phase 4: Claude Haiku Enrichment — Unit Tests
 Covers HAIKU-01 through HAIKU-05 (dedup skip, Haiku call, error handling).
 Run: cd services/agent-orchestrator && python -m pytest tests/test_haiku_enrichment_service.py -v
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,11 +12,14 @@ from services.haiku_enrichment_service import HaikuEnrichmentService, Enrichment
 
 # ── Test 1: skip when submission already complete ─────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_skip_when_submission_complete():
     """HAIKU-01: enrich() returns None when submission row already has all 3 fields."""
     service = HaikuEnrichmentService()
-    with patch.object(service, "_is_already_enriched", new=AsyncMock(return_value=True)):
+    with patch.object(
+        service, "_is_already_enriched", new=AsyncMock(return_value=True)
+    ):
         result = await service.enrich(
             wine_id="wine-001",
             wine_name="Opus One",
@@ -26,11 +30,14 @@ async def test_skip_when_submission_complete():
 
 # ── Test 2: skip when master library already complete ─────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_skip_when_master_library_complete():
     """HAIKU-02: enrich() returns None when master_wine_library row already has all 3 fields."""
     service = HaikuEnrichmentService()
-    with patch.object(service, "_is_already_enriched", new=AsyncMock(return_value=True)):
+    with patch.object(
+        service, "_is_already_enriched", new=AsyncMock(return_value=True)
+    ):
         result = await service.enrich(
             wine_id="wine-002",
             wine_name="Barolo",
@@ -40,6 +47,7 @@ async def test_skip_when_master_library_complete():
 
 
 # ── Test 3: calls Haiku and returns EnrichmentResult ─────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_enrich_calls_haiku_and_returns_result():
@@ -59,8 +67,9 @@ async def test_enrich_calls_haiku_and_returns_result():
     mock_anthropic_client = AsyncMock()
     mock_anthropic_client.messages.create = AsyncMock(return_value=mock_response)
 
-    with patch.object(service, "_is_already_enriched", new=AsyncMock(return_value=False)), \
-         patch.object(service, "_get_anthropic", return_value=mock_anthropic_client):
+    with patch.object(
+        service, "_is_already_enriched", new=AsyncMock(return_value=False)
+    ), patch.object(service, "_get_anthropic", return_value=mock_anthropic_client):
         result = await service.enrich(
             wine_id="wine-003",
             wine_name="Chambolle-Musigny",
@@ -79,6 +88,7 @@ async def test_enrich_calls_haiku_and_returns_result():
 
 # ── Test 4: raises ValueError on malformed JSON ───────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_enrich_raises_on_malformed_json():
     """HAIKU-04: enrich() raises ValueError when Haiku returns non-JSON text."""
@@ -91,8 +101,9 @@ async def test_enrich_raises_on_malformed_json():
     mock_anthropic_client = AsyncMock()
     mock_anthropic_client.messages.create = AsyncMock(return_value=mock_response)
 
-    with patch.object(service, "_is_already_enriched", new=AsyncMock(return_value=False)), \
-         patch.object(service, "_get_anthropic", return_value=mock_anthropic_client):
+    with patch.object(
+        service, "_is_already_enriched", new=AsyncMock(return_value=False)
+    ), patch.object(service, "_get_anthropic", return_value=mock_anthropic_client):
         with pytest.raises(ValueError, match="Haiku returned non-JSON"):
             await service.enrich(
                 wine_id="wine-004",
@@ -102,6 +113,7 @@ async def test_enrich_raises_on_malformed_json():
 
 
 # ── Test 5: EnrichmentResult default enrichment_source ───────────────────────
+
 
 def test_enrichment_result_default_source():
     """HAIKU-05: EnrichmentResult.enrichment_source defaults to 'haiku'."""

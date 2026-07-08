@@ -50,7 +50,7 @@ import { useOrders } from '../hooks/queries/useOrderQueries'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
 
-// @ts-ignore - Vite env
+// @ts-expect-error Vite injects import.meta.env at build time
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
   !!value &&

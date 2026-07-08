@@ -5,23 +5,23 @@ import {
   ForbiddenException,
   ConflictException,
   Logger,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../database/database.service';
-import { TokenBlacklistService } from './services/token-blacklist.service';
-import { GmailService } from '../communications/gmail.service';
-import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
-import axios from 'axios';
-import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
-import { JoinViaInviteDto } from './dto/join-via-invite.dto';
-import { InviteDto } from './dto/invite.dto';
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
+import { DatabaseService } from "../database/database.service";
+import { TokenBlacklistService } from "./services/token-blacklist.service";
+import { GmailService } from "../communications/gmail.service";
+import * as bcrypt from "bcrypt";
+import * as crypto from "crypto";
+import axios from "axios";
+import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
+import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
+import { InviteDto } from "./dto/invite.dto";
 
 export interface JwtPayload {
   sub: string; // user_id
   email: string;
-  role: 'owner' | 'manager' | 'staff';
+  role: "owner" | "manager" | "staff";
   /** Present on all tokens issued by this API; omit on very old tokens */
   restaurantId?: string;
   iat?: number;
@@ -43,7 +43,7 @@ export interface RegisterData {
   password: string;
   name: string;
   restaurantId: string;
-  role: 'owner' | 'manager' | 'staff';
+  role: "owner" | "manager" | "staff";
   phone?: string;
 }
 
@@ -62,20 +62,20 @@ export class AuthService {
     private readonly gmailService: GmailService,
   ) {
     this.jwtSecret =
-      this.configService.get<string>('JWT_SECRET') ||
-      'your-secret-key-change-in-production';
+      this.configService.get<string>("JWT_SECRET") ||
+      "your-secret-key-change-in-production";
     this.jwtRefreshSecret =
-      this.configService.get<string>('JWT_REFRESH_SECRET') ||
-      this.jwtSecret + '-refresh';
+      this.configService.get<string>("JWT_REFRESH_SECRET") ||
+      this.jwtSecret + "-refresh";
 
-    if (this.jwtSecret === 'your-secret-key-change-in-production') {
+    if (this.jwtSecret === "your-secret-key-change-in-production") {
       this.logger.warn(
-        'Using default JWT_SECRET — set a proper secret in production!',
+        "Using default JWT_SECRET — set a proper secret in production!",
       );
     }
-    if (!this.configService.get<string>('JWT_REFRESH_SECRET')) {
+    if (!this.configService.get<string>("JWT_REFRESH_SECRET")) {
       this.logger.warn(
-        'JWT_REFRESH_SECRET not set — deriving from JWT_SECRET. Set a separate secret in production!',
+        "JWT_REFRESH_SECRET not set — deriving from JWT_SECRET. Set a separate secret in production!",
       );
     }
   }
@@ -85,22 +85,19 @@ export class AuthService {
    */
   async validateUser(email: string, password: string): Promise<any> {
     const { data: user, error } = await this.databaseService.supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
+      .from("users")
+      .select("*")
+      .eq("email", email)
       .single();
 
     if (error || !user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.password_hash,
-    );
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
 
     // Don't return password
@@ -128,13 +125,13 @@ export class AuthService {
   async register(data: RegisterData): Promise<TokenPair> {
     // Check if user already exists
     const { data: existingUser } = await this.databaseService.supabase
-      .from('users')
-      .select('email')
-      .eq('email', data.email)
+      .from("users")
+      .select("email")
+      .eq("email", data.email)
       .single();
 
     if (existingUser) {
-      throw new UnauthorizedException('Email already registered');
+      throw new UnauthorizedException("Email already registered");
     }
 
     // Hash password
@@ -142,7 +139,7 @@ export class AuthService {
 
     // Create user
     const { data: newUser, error } = await this.databaseService.supabase
-      .from('users')
+      .from("users")
       .insert({
         email: data.email,
         password_hash: passwordHash,
@@ -156,7 +153,7 @@ export class AuthService {
 
     if (error || !newUser) {
       this.logger.error(`Registration failed: ${error?.message}`);
-      throw new UnauthorizedException('Registration failed');
+      throw new UnauthorizedException("Registration failed");
     }
 
     this.logger.log(`New user registered: ${newUser.email}`);
@@ -172,7 +169,7 @@ export class AuthService {
     const googleUser = await this.verifyGoogleToken(googleToken);
 
     const user = await this.findOrCreateOAuthUser({
-      provider: 'google',
+      provider: "google",
       providerId: googleUser.sub,
       email: googleUser.email,
       name: googleUser.name,
@@ -191,7 +188,7 @@ export class AuthService {
     const microsoftUser = await this.verifyMicrosoftToken(microsoftToken);
 
     const user = await this.findOrCreateOAuthUser({
-      provider: 'microsoft',
+      provider: "microsoft",
       providerId: microsoftUser.oid,
       email: microsoftUser.email,
       name: microsoftUser.name,
@@ -212,13 +209,13 @@ export class AuthService {
       });
 
       const { data: user } = await this.databaseService.supabase
-        .from('users')
-        .select('*')
-        .eq('user_id', payload.sub)
+        .from("users")
+        .select("*")
+        .eq("user_id", payload.sub)
         .single();
 
       if (!user) {
-        throw new UnauthorizedException('User not found');
+        throw new UnauthorizedException("User not found");
       }
 
       // Preserve the restaurant the user had switched to — the refresh token
@@ -227,9 +224,12 @@ export class AuthService {
       // reverts the tenant to the default restaurant, causing 500s on resources
       // that belong to the switched-to restaurant.
       const scopedRestaurantId = payload.restaurantId ?? user.restaurant_id;
-      return this.generateTokens({ ...user, restaurant_id: scopedRestaurantId });
+      return this.generateTokens({
+        ...user,
+        restaurant_id: scopedRestaurantId,
+      });
     } catch (error) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException("Invalid refresh token");
     }
   }
 
@@ -243,10 +243,7 @@ export class AuthService {
       } | null;
       if (decoded?.exp) {
         const expiresAt = new Date(decoded.exp * 1000);
-        await this.tokenBlacklistService.blacklistToken(
-          accessToken,
-          expiresAt,
-        );
+        await this.tokenBlacklistService.blacklistToken(accessToken, expiresAt);
       }
     }
     this.logger.log(`User logged out: ${userId}`);
@@ -256,44 +253,52 @@ export class AuthService {
    * Re-issue tokens scoped to a different restaurant the user has access to.
    * Validates that targetRestaurantId belongs to the same organisation(s) as the user.
    */
-  async switchRestaurant(userId: string, targetRestaurantId: string): Promise<TokenPair> {
+  async switchRestaurant(
+    userId: string,
+    targetRestaurantId: string,
+  ): Promise<TokenPair> {
     const { data: user, error: userErr } = await this.databaseService.supabase
-      .from('users')
-      .select('*')
-      .eq('user_id', userId)
+      .from("users")
+      .select("*")
+      .eq("user_id", userId)
       .single();
 
     if (userErr || !user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException("User not found");
     }
 
     const { data: uraAccess } = await this.databaseService.supabase
-      .from('user_restaurant_access')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('restaurant_id', targetRestaurantId)
-      .eq('is_active', true)
+      .from("user_restaurant_access")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("restaurant_id", targetRestaurantId)
+      .eq("is_active", true)
       .maybeSingle();
 
     if (uraAccess) {
-      return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+      return this.generateTokens({
+        ...user,
+        restaurant_id: targetRestaurantId,
+      });
     }
 
     // Legacy fallback: org-level check for users who have no URA row yet
     // Also handles legacy users (no org row) by checking via restaurant → org path.
     const { data: orgMemberships } = await this.databaseService.supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', userId);
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", userId);
 
-    let orgIds: string[] = (orgMemberships ?? []).map((m: any) => m.organization_id);
+    let orgIds: string[] = (orgMemberships ?? []).map(
+      (m: any) => m.organization_id,
+    );
 
     if (orgIds.length === 0) {
       // Legacy fallback: derive org from the user's own restaurant
       const { data: ownRestaurant } = await this.databaseService.supabase
-        .from('restaurants')
-        .select('organization_id')
-        .eq('id', user.restaurant_id)
+        .from("restaurants")
+        .select("organization_id")
+        .eq("id", user.restaurant_id)
         .maybeSingle();
       if (ownRestaurant?.organization_id) {
         orgIds = [ownRestaurant.organization_id];
@@ -301,18 +306,18 @@ export class AuthService {
     }
 
     if (orgIds.length === 0) {
-      throw new ForbiddenException('No organisation membership found');
+      throw new ForbiddenException("No organisation membership found");
     }
 
     const { data: targetRestaurant } = await this.databaseService.supabase
-      .from('restaurants')
-      .select('id, organization_id')
-      .eq('id', targetRestaurantId)
-      .in('organization_id', orgIds)
+      .from("restaurants")
+      .select("id, organization_id")
+      .eq("id", targetRestaurantId)
+      .in("organization_id", orgIds)
       .maybeSingle();
 
     if (!targetRestaurant) {
-      throw new ForbiddenException('Access denied to requested restaurant');
+      throw new ForbiddenException("Access denied to requested restaurant");
     }
 
     // Issue new tokens with the switched restaurant_id
@@ -329,10 +334,10 @@ export class AuthService {
     let studioRoles: string[] = [];
     try {
       const { data } = await this.databaseService.supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.user_id)
-        .is('revoked_at', null);
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.user_id)
+        .is("revoked_at", null);
       studioRoles = (data ?? []).map((r: any) => r.role);
     } catch {
       // Non-critical — studio endpoints will just reject with 403
@@ -342,11 +347,11 @@ export class AuthService {
     if (user.restaurant_id) {
       try {
         const { data: membership } = await this.databaseService.supabase
-          .from('user_restaurant_access')
-          .select('role')
-          .eq('user_id', user.user_id)
-          .eq('restaurant_id', user.restaurant_id)
-          .eq('is_active', true)
+          .from("user_restaurant_access")
+          .select("role")
+          .eq("user_id", user.user_id)
+          .eq("restaurant_id", user.restaurant_id)
+          .eq("is_active", true)
           .maybeSingle();
         if (membership?.role) restaurantRole = membership.role;
       } catch {
@@ -365,12 +370,12 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload, {
       secret: this.jwtSecret,
-      expiresIn: '15m',
+      expiresIn: "15m",
     });
 
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.jwtRefreshSecret,
-      expiresIn: '7d',
+      expiresIn: "7d",
     });
 
     return {
@@ -388,9 +393,10 @@ export class AuthService {
       const response = await axios.get(tokenInfoUrl);
       const data = response.data;
 
-      const expectedClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+      const expectedClientId =
+        this.configService.get<string>("GOOGLE_CLIENT_ID");
       if (expectedClientId && data.aud !== expectedClientId) {
-        throw new UnauthorizedException('Invalid Google token audience');
+        throw new UnauthorizedException("Invalid Google token audience");
       }
 
       return {
@@ -401,7 +407,7 @@ export class AuthService {
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       this.logger.error(`Google token verification failed: ${error}`);
-      throw new UnauthorizedException('Failed to verify Google token');
+      throw new UnauthorizedException("Failed to verify Google token");
     }
   }
 
@@ -410,7 +416,7 @@ export class AuthService {
    */
   private async verifyMicrosoftToken(token: string): Promise<any> {
     try {
-      const response = await axios.get('https://graph.microsoft.com/v1.0/me', {
+      const response = await axios.get("https://graph.microsoft.com/v1.0/me", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -420,7 +426,7 @@ export class AuthService {
       const email = data.mail || data.userPrincipalName;
 
       if (!email) {
-        throw new UnauthorizedException('Microsoft token missing email');
+        throw new UnauthorizedException("Microsoft token missing email");
       }
 
       return {
@@ -431,7 +437,7 @@ export class AuthService {
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       this.logger.error(`Microsoft token verification failed: ${error}`);
-      throw new UnauthorizedException('Failed to verify Microsoft token');
+      throw new UnauthorizedException("Failed to verify Microsoft token");
     }
   }
 
@@ -440,13 +446,13 @@ export class AuthService {
    */
   async validateJwtPayload(payload: JwtPayload): Promise<any> {
     const { data: user } = await this.databaseService.supabase
-      .from('users')
-      .select('*')
-      .eq('user_id', payload.sub)
+      .from("users")
+      .select("*")
+      .eq("user_id", payload.sub)
       .single();
 
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException("User not found");
     }
 
     return user;
@@ -458,11 +464,11 @@ export class AuthService {
    */
   async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
     const { data: existing } = await this.databaseService.supabase
-      .from('users')
-      .select('email')
-      .eq('email', dto.email)
+      .from("users")
+      .select("email")
+      .eq("email", dto.email)
       .maybeSingle();
-    if (existing) throw new BadRequestException('Email already registered');
+    if (existing) throw new BadRequestException("Email already registered");
 
     let orgId: string | null = null;
     let restaurantId: string | null = null;
@@ -470,130 +476,173 @@ export class AuthService {
 
     try {
       const { data: org, error: orgErr } = await this.databaseService.supabase
-        .from('organizations')
+        .from("organizations")
         .insert({ name: `${dto.restaurantName} Group`, owner_id: null })
         .select()
         .single();
-      if (orgErr || !org) throw new Error(orgErr?.message || 'Org creation failed');
+      if (orgErr || !org)
+        throw new Error(orgErr?.message || "Org creation failed");
       orgId = org.id;
 
       // Generate URL-safe slug: "The Oak Room" → "the-oak-room-a3f2"
       const baseSlug = dto.restaurantName
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
-      const slug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const slug = `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`;
 
-      const { data: restaurant, error: restErr } = await this.databaseService.supabase
-        .from('restaurants')
-        .insert({
-          name: dto.restaurantName,
-          slug,
-          email: dto.restaurantEmail || dto.email,  // use dedicated contact email or fall back to owner's
-          address: { street: dto.address },          // restaurants.address is JSONB in the live schema
-          city: dto.city,
-          country: dto.country,
-          state_province: dto.stateProvince,
-          postal_code: dto.postalCode,
-          neighborhood: dto.neighborhood,
-          phone: dto.phone,
-          cuisine_type: dto.cuisineType,
-          timezone: dto.timezone || 'America/New_York',
-          organization_id: org.id,
-        })
-        .select()
-        .single();
-      if (restErr || !restaurant) throw new Error(restErr?.message || 'Restaurant creation failed');
+      const { data: restaurant, error: restErr } =
+        await this.databaseService.supabase
+          .from("restaurants")
+          .insert({
+            name: dto.restaurantName,
+            slug,
+            email: dto.restaurantEmail || dto.email, // use dedicated contact email or fall back to owner's
+            address: { street: dto.address }, // restaurants.address is JSONB in the live schema
+            city: dto.city,
+            country: dto.country,
+            state_province: dto.stateProvince,
+            postal_code: dto.postalCode,
+            neighborhood: dto.neighborhood,
+            phone: dto.phone,
+            cuisine_type: dto.cuisineType,
+            timezone: dto.timezone || "America/New_York",
+            organization_id: org.id,
+          })
+          .select()
+          .single();
+      if (restErr || !restaurant)
+        throw new Error(restErr?.message || "Restaurant creation failed");
       restaurantId = restaurant.id;
 
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
       const { data: user, error: userErr } = await this.databaseService.supabase
-        .from('users')
+        .from("users")
         .insert({
           email: dto.email,
           password_hash: passwordHash,
           name: dto.name,
           restaurant_id: restaurantId,
-          role: 'owner',
+          role: "owner",
           email_verified: false,
         })
         .select()
         .single();
-      if (userErr || !user) throw new Error(userErr?.message || 'User creation failed');
+      if (userErr || !user)
+        throw new Error(userErr?.message || "User creation failed");
       userId = user.user_id;
 
       await this.databaseService.supabase
-        .from('organizations')
+        .from("organizations")
         .update({ owner_id: userId })
-        .eq('id', orgId);
+        .eq("id", orgId);
 
-      await this.databaseService.supabase.from('organization_members').insert({
+      await this.databaseService.supabase.from("organization_members").insert({
         organization_id: orgId,
         user_id: userId,
-        role: 'owner',
+        role: "owner",
       });
 
-      await this.databaseService.supabase.from('user_restaurant_access').insert({
-        user_id: userId,
-        restaurant_id: restaurantId,
-        role: 'owner',
-        invited_via: null,
-        is_active: true,
-      });
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .insert({
+          user_id: userId,
+          restaurant_id: restaurantId,
+          role: "owner",
+          invited_via: null,
+          is_active: true,
+        });
 
       // Seed onboarding progress row (fire-and-forget — never block registration)
       this.databaseService.supabase
-        .from('user_onboarding_progress')
+        .from("user_onboarding_progress")
         .insert({ user_id: userId, restaurant_id: restaurantId })
         .then(({ error }) => {
-          if (error) this.logger.warn(`Failed to seed onboarding_progress (non-fatal): ${error.message}`);
+          if (error)
+            this.logger.warn(
+              `Failed to seed onboarding_progress (non-fatal): ${error.message}`,
+            );
         });
 
       // Both emails are fire-and-forget — Gmail latency must never delay the registration response
-      this.queueEmailVerification(userId, dto.email)
-        .catch((err) => this.logger.warn(`queueEmailVerification failed (non-fatal): ${err.message}`));
+      this.queueEmailVerification(userId, dto.email).catch((err) =>
+        this.logger.warn(
+          `queueEmailVerification failed (non-fatal): ${err.message}`,
+        ),
+      );
 
-      this.gmailService.sendOnboardingEmail({
-        to: dto.email,
-        ownerName: dto.name,
-        restaurantName: dto.restaurantName,
-        restaurantCity: dto.city,
-        frontendBaseUrl: this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app',
-      }).catch((err) => this.logger.warn(`Onboarding email failed (non-fatal): ${err.message}`));
+      this.gmailService
+        .sendOnboardingEmail({
+          to: dto.email,
+          ownerName: dto.name,
+          restaurantName: dto.restaurantName,
+          restaurantCity: dto.city,
+          frontendBaseUrl:
+            this.configService.get("FRONTEND_URL") ||
+            "https://restaurant-ai-automation-web.vercel.app",
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Onboarding email failed (non-fatal): ${err.message}`,
+          ),
+        );
 
       return this.generateTokens(user);
     } catch (err) {
-      if (userId) await this.databaseService.supabase.from('users').delete().eq('user_id', userId);
-      if (restaurantId) await this.databaseService.supabase.from('restaurants').delete().eq('id', restaurantId);
-      if (orgId) await this.databaseService.supabase.from('organizations').delete().eq('id', orgId);
-      this.logger.error(`registerRestaurant rollback triggered: ${err.message}`);
-      throw new BadRequestException('Registration failed: ' + err.message);
+      if (userId)
+        await this.databaseService.supabase
+          .from("users")
+          .delete()
+          .eq("user_id", userId);
+      if (restaurantId)
+        await this.databaseService.supabase
+          .from("restaurants")
+          .delete()
+          .eq("id", restaurantId);
+      if (orgId)
+        await this.databaseService.supabase
+          .from("organizations")
+          .delete()
+          .eq("id", orgId);
+      this.logger.error(
+        `registerRestaurant rollback triggered: ${err.message}`,
+      );
+      throw new BadRequestException("Registration failed: " + err.message);
     }
   }
 
-  private async queueEmailVerification(userId: string, email: string): Promise<void> {
+  private async queueEmailVerification(
+    userId: string,
+    email: string,
+  ): Promise<void> {
     try {
       const { data: verif } = await this.databaseService.supabase
-        .from('email_verifications')
+        .from("email_verifications")
         .insert({ user_id: userId, email })
-        .select('token')
+        .select("token")
         .single();
       if (!verif) return;
 
-      const frontendUrl = this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app';
+      const frontendUrl =
+        this.configService.get("FRONTEND_URL") ||
+        "https://restaurant-ai-automation-web.vercel.app";
       const verifyUrl = `${frontendUrl}/verify-email?token=${verif.token}`;
 
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
       const result = await this.gmailService.sendEmail({
         to: [email],
-        subject: 'Verify your WineOps AI account',
+        subject: "Verify your WineOps AI account",
         html: this.buildVerificationEmailHtml(verifyUrl),
       });
 
       if (!result.success) {
-        this.logger.warn(`Verification email not delivered to ${email}: ${result.error}`);
+        this.logger.warn(
+          `Verification email not delivered to ${email}: ${result.error}`,
+        );
       } else {
-        this.logger.log(`Verification email sent to ${email} (id: ${result.messageId})`);
+        this.logger.log(
+          `Verification email sent to ${email} (id: ${result.messageId})`,
+        );
       }
     } catch (err) {
       this.logger.error(`Failed to queue email verification: ${err.message}`);
@@ -642,19 +691,22 @@ export class AuthService {
    */
   async getInvitePreview(code: string): Promise<object> {
     const { data: invite } = await this.databaseService.supabase
-      .from('organization_invites')
-      .select(`
+      .from("organization_invites")
+      .select(
+        `
         id, role, expires_at, used_at,
         organizations ( name ),
         restaurants ( name, city ),
         users!invited_by ( name )
-      `)
-      .eq('code', code.toUpperCase())
+      `,
+      )
+      .eq("code", code.toUpperCase())
       .maybeSingle();
 
-    if (!invite) return { valid: false, reason: 'not_found' };
-    if (invite.used_at) return { valid: false, reason: 'used' };
-    if (new Date(invite.expires_at) < new Date()) return { valid: false, reason: 'expired' };
+    if (!invite) return { valid: false, reason: "not_found" };
+    if (invite.used_at) return { valid: false, reason: "used" };
+    if (new Date(invite.expires_at) < new Date())
+      return { valid: false, reason: "expired" };
 
     return {
       valid: true,
@@ -670,59 +722,68 @@ export class AuthService {
    * Generate an invite code for a restaurant (owner/manager only).
    * Produces 8-char code from unambiguous charset (no 0/O/1/I).
    */
-  async generateInvite(userId: string, restaurantId: string, dto: InviteDto): Promise<object> {
+  async generateInvite(
+    userId: string,
+    restaurantId: string,
+    dto: InviteDto,
+  ): Promise<object> {
     const { data: user } = await this.databaseService.supabase
-      .from('users')
-      .select('restaurant_id, role')
-      .eq('user_id', userId)
+      .from("users")
+      .select("restaurant_id, role")
+      .eq("user_id", userId)
       .maybeSingle();
     if (!user || user.restaurant_id !== restaurantId) {
-      throw new ForbiddenException('Access denied to this restaurant');
+      throw new ForbiddenException("Access denied to this restaurant");
     }
 
     const { data: restaurant } = await this.databaseService.supabase
-      .from('restaurants')
-      .select('organization_id')
-      .eq('id', restaurantId)
+      .from("restaurants")
+      .select("organization_id")
+      .eq("id", restaurantId)
       .maybeSingle();
     if (!restaurant?.organization_id) {
-      throw new BadRequestException('Restaurant has no organization. Complete registration first.');
+      throw new BadRequestException(
+        "Restaurant has no organization. Complete registration first.",
+      );
     }
 
-    const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code: string;
     let attempts = 0;
     do {
       const bytes = crypto.randomBytes(8);
-      code = Array.from(bytes).map((b) => CHARSET[(b as number) % CHARSET.length]).join('');
+      code = Array.from(bytes)
+        .map((b) => CHARSET[(b as number) % CHARSET.length])
+        .join("");
       const { data: existing } = await this.databaseService.supabase
-        .from('organization_invites')
-        .select('id')
-        .eq('code', code)
+        .from("organization_invites")
+        .select("id")
+        .eq("code", code)
         .maybeSingle();
       if (!existing) break;
       attempts++;
     } while (attempts < 5);
 
     const { data: invite, error } = await this.databaseService.supabase
-      .from('organization_invites')
+      .from("organization_invites")
       .insert({
         organization_id: restaurant.organization_id,
         restaurant_id: restaurantId,
         code,
         invited_by: userId,
-        role: dto.role || 'manager',
+        role: dto.role || "manager",
       })
-      .select('id, code, expires_at')
+      .select("id, code, expires_at")
       .single();
 
-    if (error || !invite) throw new BadRequestException('Failed to generate invite');
+    if (error || !invite)
+      throw new BadRequestException("Failed to generate invite");
 
     // Mark team_member_invited=true in onboarding progress (fire-and-forget)
     this.databaseService.supabase
-      .from('user_onboarding_progress')
+      .from("user_onboarding_progress")
       .update({ team_member_invited: true })
-      .eq('restaurant_id', restaurantId)
+      .eq("restaurant_id", restaurantId)
       .then(({ error: onboardingErr }) => {
         if (onboardingErr)
           this.logger.warn(
@@ -733,7 +794,7 @@ export class AuthService {
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      inviteUrl: `${this.configService.get('FRONTEND_URL') || 'https://restaurant-ai-automation-web.vercel.app'}/invite/${invite.code}`,
+      inviteUrl: `${this.configService.get("FRONTEND_URL") || "https://restaurant-ai-automation-web.vercel.app"}/invite/${invite.code}`,
     };
   }
 
@@ -745,44 +806,47 @@ export class AuthService {
     code: string,
   ): Promise<{ restaurant: string; role: string }> {
     const { data: actor } = await this.databaseService.supabase
-      .from('users')
-      .select('email')
-      .eq('user_id', userId)
+      .from("users")
+      .select("email")
+      .eq("user_id", userId)
       .maybeSingle();
 
-    const { data: invite, error: inviteErr } = await this.databaseService.supabase
-      .from('organization_invites')
-      .update({
-        used_at: new Date().toISOString(),
-        used_by_email: actor?.email ?? null,
-      })
-      .eq('code', code.toUpperCase())
-      .is('used_at', null)
-      .gt('expires_at', new Date().toISOString())
-      .select('id, organization_id, restaurant_id, role, restaurants(name)')
-      .single();
+    const { data: invite, error: inviteErr } =
+      await this.databaseService.supabase
+        .from("organization_invites")
+        .update({
+          used_at: new Date().toISOString(),
+          used_by_email: actor?.email ?? null,
+        })
+        .eq("code", code.toUpperCase())
+        .is("used_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .select("id, organization_id, restaurant_id, role, restaurants(name)")
+        .single();
 
     if (inviteErr || !invite) {
-      throw new BadRequestException('Invite code is invalid, expired, or already used');
+      throw new BadRequestException(
+        "Invite code is invalid, expired, or already used",
+      );
     }
 
     const { data: existingAccess } = await this.databaseService.supabase
-      .from('user_restaurant_access')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('restaurant_id', invite.restaurant_id)
+      .from("user_restaurant_access")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("restaurant_id", invite.restaurant_id)
       .maybeSingle();
 
     if (existingAccess) {
       await this.databaseService.supabase
-        .from('organization_invites')
+        .from("organization_invites")
         .update({ used_at: null, used_by_email: null })
-        .eq('id', invite.id);
-      throw new ConflictException('already_member');
+        .eq("id", invite.id);
+      throw new ConflictException("already_member");
     }
 
     const { error: uraErr } = await this.databaseService.supabase
-      .from('user_restaurant_access')
+      .from("user_restaurant_access")
       .insert({
         user_id: userId,
         restaurant_id: invite.restaurant_id,
@@ -793,23 +857,25 @@ export class AuthService {
 
     if (uraErr) {
       await this.databaseService.supabase
-        .from('organization_invites')
+        .from("organization_invites")
         .update({ used_at: null, used_by_email: null })
-        .eq('id', invite.id);
-      throw new BadRequestException('Failed to grant restaurant access: ' + uraErr.message);
+        .eq("id", invite.id);
+      throw new BadRequestException(
+        "Failed to grant restaurant access: " + uraErr.message,
+      );
     }
 
-    await this.databaseService.supabase.from('organization_members').upsert(
+    await this.databaseService.supabase.from("organization_members").upsert(
       {
         organization_id: invite.organization_id,
         user_id: userId,
         role: invite.role,
         invited_via: invite.id,
       },
-      { onConflict: 'organization_id,user_id' },
+      { onConflict: "organization_id,user_id" },
     );
 
-    const restaurantName = (invite.restaurants as any)?.name ?? 'restaurant';
+    const restaurantName = (invite.restaurants as any)?.name ?? "restaurant";
     return { restaurant: restaurantName, role: invite.role };
   }
 
@@ -818,11 +884,11 @@ export class AuthService {
     restaurantId: string,
   ): Promise<string | null> {
     const { data } = await this.databaseService.supabase
-      .from('user_restaurant_access')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
+      .from("user_restaurant_access")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
       .maybeSingle();
     return data?.role ?? null;
   }
@@ -832,71 +898,77 @@ export class AuthService {
    * User is email_verified: true because owner vouched for them.
    */
   async joinViaInvite(dto: JoinViaInviteDto): Promise<TokenPair> {
-    const { data: invite, error: inviteErr } = await this.databaseService.supabase
-      .from('organization_invites')
-      .update({ used_at: new Date().toISOString(), used_by_email: dto.email })
-      .eq('code', dto.code.toUpperCase())
-      .is('used_at', null)
-      .gt('expires_at', new Date().toISOString())
-      .select('id, organization_id, restaurant_id, role')
-      .single();
+    const { data: invite, error: inviteErr } =
+      await this.databaseService.supabase
+        .from("organization_invites")
+        .update({ used_at: new Date().toISOString(), used_by_email: dto.email })
+        .eq("code", dto.code.toUpperCase())
+        .is("used_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .select("id, organization_id, restaurant_id, role")
+        .single();
 
     if (inviteErr || !invite) {
-      throw new BadRequestException('Invite code is invalid, expired, or already used');
+      throw new BadRequestException(
+        "Invite code is invalid, expired, or already used",
+      );
     }
 
     const { data: existingUser } = await this.databaseService.supabase
-      .from('users')
-      .select('*')
-      .eq('email', dto.email)
+      .from("users")
+      .select("*")
+      .eq("email", dto.email)
       .maybeSingle();
 
     let user: any;
 
     if (existingUser) {
       const { data: existingAccess } = await this.databaseService.supabase
-        .from('user_restaurant_access')
-        .select('id')
-        .eq('user_id', existingUser.user_id)
-        .eq('restaurant_id', invite.restaurant_id)
+        .from("user_restaurant_access")
+        .select("id")
+        .eq("user_id", existingUser.user_id)
+        .eq("restaurant_id", invite.restaurant_id)
         .maybeSingle();
 
       if (existingAccess) {
         await this.databaseService.supabase
-          .from('organization_invites')
+          .from("organization_invites")
           .update({ used_at: null, used_by_email: null })
-          .eq('id', invite.id);
-        throw new ConflictException('already_member');
+          .eq("id", invite.id);
+        throw new ConflictException("already_member");
       }
 
       user = existingUser;
     } else {
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
-      const { data: newUser, error: userErr } = await this.databaseService.supabase
-        .from('users')
-        .insert({
-          email: dto.email,
-          password_hash: passwordHash,
-          name: dto.name,
-          restaurant_id: invite.restaurant_id,
-          role: invite.role,
-          email_verified: true,
-        })
-        .select()
-        .single();
+      const { data: newUser, error: userErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .insert({
+            email: dto.email,
+            password_hash: passwordHash,
+            name: dto.name,
+            restaurant_id: invite.restaurant_id,
+            role: invite.role,
+            email_verified: true,
+          })
+          .select()
+          .single();
 
       if (userErr || !newUser) {
         await this.databaseService.supabase
-          .from('organization_invites')
+          .from("organization_invites")
           .update({ used_at: null, used_by_email: null })
-          .eq('id', invite.id);
-        throw new BadRequestException('User creation failed: ' + userErr?.message);
+          .eq("id", invite.id);
+        throw new BadRequestException(
+          "User creation failed: " + userErr?.message,
+        );
       }
       user = newUser;
     }
 
     const { error: uraErr } = await this.databaseService.supabase
-      .from('user_restaurant_access')
+      .from("user_restaurant_access")
       .insert({
         user_id: user.user_id,
         restaurant_id: invite.restaurant_id,
@@ -907,23 +979,28 @@ export class AuthService {
 
     if (uraErr) {
       await this.databaseService.supabase
-        .from('organization_invites')
+        .from("organization_invites")
         .update({ used_at: null, used_by_email: null })
-        .eq('id', invite.id);
-      throw new BadRequestException('Failed to grant restaurant access: ' + uraErr.message);
+        .eq("id", invite.id);
+      throw new BadRequestException(
+        "Failed to grant restaurant access: " + uraErr.message,
+      );
     }
 
-    await this.databaseService.supabase.from('organization_members').upsert(
+    await this.databaseService.supabase.from("organization_members").upsert(
       {
         organization_id: invite.organization_id,
         user_id: user.user_id,
         role: invite.role,
         invited_via: invite.id,
       },
-      { onConflict: 'organization_id,user_id' },
+      { onConflict: "organization_id,user_id" },
     );
 
-    return this.generateTokens({ ...user, restaurant_id: invite.restaurant_id });
+    return this.generateTokens({
+      ...user,
+      restaurant_id: invite.restaurant_id,
+    });
   }
 
   /**
@@ -932,62 +1009,69 @@ export class AuthService {
    */
   async verifyEmail(token: string): Promise<TokenPair> {
     const { data: verif } = await this.databaseService.supabase
-      .from('email_verifications')
-      .select('id, expires_at, verified_at, user_id')
-      .eq('token', token)
+      .from("email_verifications")
+      .select("id, expires_at, verified_at, user_id")
+      .eq("token", token)
       .maybeSingle();
 
-    if (!verif) throw new BadRequestException('Invalid verification token');
-    if (verif.verified_at) throw new BadRequestException('Email already verified');
+    if (!verif) throw new BadRequestException("Invalid verification token");
+    if (verif.verified_at)
+      throw new BadRequestException("Email already verified");
     if (new Date(verif.expires_at) < new Date()) {
-      throw new BadRequestException('Verification token expired. Please resend.');
+      throw new BadRequestException(
+        "Verification token expired. Please resend.",
+      );
     }
 
     await this.databaseService.supabase
-      .from('email_verifications')
+      .from("email_verifications")
       .update({ verified_at: new Date().toISOString() })
-      .eq('id', verif.id);
+      .eq("id", verif.id);
 
     const { data: user } = await this.databaseService.supabase
-      .from('users')
+      .from("users")
       .update({ email_verified: true })
-      .eq('user_id', verif.user_id)
+      .eq("user_id", verif.user_id)
       .select()
       .single();
 
-    if (!user) throw new BadRequestException('User not found');
+    if (!user) throw new BadRequestException("User not found");
     return this.generateTokens(user);
   }
 
   /**
    * Resend verification email — rate-limited to 1 per minute via resend_count.
    */
-  async resendVerification(userId: string, email: string): Promise<{ sent: boolean }> {
+  async resendVerification(
+    userId: string,
+    email: string,
+  ): Promise<{ sent: boolean }> {
     const { data: verif } = await this.databaseService.supabase
-      .from('email_verifications')
-      .select('id, resend_count, last_resent_at, token')
-      .eq('user_id', userId)
-      .is('verified_at', null)
-      .order('created_at', { ascending: false })
+      .from("email_verifications")
+      .select("id, resend_count, last_resent_at, token")
+      .eq("user_id", userId)
+      .is("verified_at", null)
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (!verif) throw new BadRequestException('No pending verification found');
+    if (!verif) throw new BadRequestException("No pending verification found");
 
     if (verif.last_resent_at) {
-      const secondsSinceLast = (Date.now() - new Date(verif.last_resent_at).getTime()) / 1000;
+      const secondsSinceLast =
+        (Date.now() - new Date(verif.last_resent_at).getTime()) / 1000;
       if (secondsSinceLast < 60) {
-        throw new BadRequestException('Please wait 1 minute before resending');
+        throw new BadRequestException("Please wait 1 minute before resending");
       }
     }
 
     await this.databaseService.supabase
-      .from('email_verifications')
+      .from("email_verifications")
       .update({
         resend_count: verif.resend_count + 1,
         last_resent_at: new Date().toISOString(),
       })
-      .eq('id', verif.id);
+      .eq("id", verif.id);
 
     await this.queueEmailVerification(userId, email);
     return { sent: true };
@@ -999,7 +1083,7 @@ export class AuthService {
    * (or leave restaurant_id null for an onboarding flow).
    */
   async findOrCreateOAuthUser(params: {
-    provider: 'google' | 'microsoft';
+    provider: "google" | "microsoft";
     providerId: string;
     email: string;
     name: string;
@@ -1007,16 +1091,16 @@ export class AuthService {
     const { provider, providerId, email, name } = params;
 
     let { data: user } = await this.databaseService.supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
+      .from("users")
+      .select("*")
+      .eq("email", email)
       .single();
 
     if (!user) {
       // Try to assign to default restaurant so the JWT has a valid restaurantId.
       // If DEFAULT_RESTAURANT_ID is not set, the user will need to complete onboarding.
       const defaultRestaurantId = this.configService.get<string>(
-        'DEFAULT_RESTAURANT_ID',
+        "DEFAULT_RESTAURANT_ID",
       );
 
       const insertData: Record<string, any> = {
@@ -1024,7 +1108,7 @@ export class AuthService {
         name,
         oauth_provider: provider,
         oauth_id: providerId,
-        role: 'manager',
+        role: "manager",
       };
 
       if (defaultRestaurantId) {
@@ -1032,14 +1116,14 @@ export class AuthService {
       }
 
       const { data: newUser, error } = await this.databaseService.supabase
-        .from('users')
+        .from("users")
         .insert(insertData)
         .select()
         .single();
 
       if (error || !newUser) {
         this.logger.error(`OAuth registration failed: ${error?.message}`);
-        throw new UnauthorizedException('OAuth registration failed');
+        throw new UnauthorizedException("OAuth registration failed");
       }
 
       user = newUser;
@@ -1054,9 +1138,9 @@ export class AuthService {
    */
   async checkEmailExists(email: string): Promise<boolean> {
     const { data: existing } = await this.databaseService.supabase
-      .from('users')
-      .select('email')
-      .eq('email', email.toLowerCase().trim())
+      .from("users")
+      .select("email")
+      .eq("email", email.toLowerCase().trim())
       .maybeSingle();
 
     return !!existing;

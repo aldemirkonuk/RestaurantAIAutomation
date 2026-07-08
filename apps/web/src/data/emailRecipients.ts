@@ -67,7 +67,7 @@ export function getSmartSuggestions(category?: string, limit: number = 5): strin
   const recipients = getEmailRecipients()
   
   // Filter by category if provided
-  let filtered = category
+  const filtered = category
     ? recipients.filter(r => r.categories.includes(category.toLowerCase()))
     : recipients
   

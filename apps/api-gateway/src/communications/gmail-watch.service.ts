@@ -1,8 +1,13 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { google, gmail_v1 } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
-import { CacheService } from '../common/cache/cache.service';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { google, gmail_v1 } from "googleapis";
+import { OAuth2Client } from "google-auth-library";
+import { CacheService } from "../common/cache/cache.service";
 
 /**
  * GmailWatchService manages Gmail API push notifications via Google Pub/Sub.
@@ -21,8 +26,8 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   private gmail: gmail_v1.Gmail;
   private isConfigured = false;
   private renewalTimer: NodeJS.Timeout | null = null;
-  private readonly HISTORY_ID_KEY = 'gmail:watch:historyId';
-  private readonly WATCH_EXPIRY_KEY = 'gmail:watch:expiration';
+  private readonly HISTORY_ID_KEY = "gmail:watch:historyId";
+  private readonly WATCH_EXPIRY_KEY = "gmail:watch:expiration";
 
   constructor(
     private readonly configService: ConfigService,
@@ -30,21 +35,21 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    const clientId = this.configService.get<string>('GMAIL_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('GMAIL_CLIENT_SECRET');
-    const refreshToken = this.configService.get<string>('GMAIL_REFRESH_TOKEN');
-    const pubsubTopic = this.configService.get<string>('GMAIL_PUBSUB_TOPIC');
+    const clientId = this.configService.get<string>("GMAIL_CLIENT_ID");
+    const clientSecret = this.configService.get<string>("GMAIL_CLIENT_SECRET");
+    const refreshToken = this.configService.get<string>("GMAIL_REFRESH_TOKEN");
+    const pubsubTopic = this.configService.get<string>("GMAIL_PUBSUB_TOPIC");
 
     if (!clientId || !clientSecret || !refreshToken) {
       this.logger.warn(
-        'Gmail API credentials not configured — Gmail Watch disabled.',
+        "Gmail API credentials not configured — Gmail Watch disabled.",
       );
       return;
     }
 
     if (!pubsubTopic) {
       this.logger.warn(
-        'GMAIL_PUBSUB_TOPIC not set — Gmail Watch disabled. Set it to enable inbound email processing.',
+        "GMAIL_PUBSUB_TOPIC not set — Gmail Watch disabled. Set it to enable inbound email processing.",
       );
       return;
     }
@@ -54,19 +59,22 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
       this.oauth2Client.setCredentials({ refresh_token: refreshToken });
 
       const tokenTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('getAccessToken timed out after 8s')), 8000),
+        setTimeout(
+          () => reject(new Error("getAccessToken timed out after 8s")),
+          8000,
+        ),
       );
       const { token } = await Promise.race([
         this.oauth2Client.getAccessToken(),
         tokenTimeout,
       ]);
       if (!token) {
-        throw new Error('Failed to obtain Gmail access token');
+        throw new Error("Failed to obtain Gmail access token");
       }
 
-      this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+      this.gmail = google.gmail({ version: "v1", auth: this.oauth2Client });
       this.isConfigured = true;
-      this.logger.log('Gmail API initialized for Watch service');
+      this.logger.log("Gmail API initialized for Watch service");
 
       // Start watching
       await this.startWatch();
@@ -81,7 +89,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
         }
       }, SIX_DAYS_MS);
 
-      this.logger.log('Gmail Watch renewal scheduled (every 6 days)');
+      this.logger.log("Gmail Watch renewal scheduled (every 6 days)");
     } catch (error) {
       this.logger.error(`Failed to initialize Gmail Watch: ${error}`);
     }
@@ -100,19 +108,18 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   async startWatch(): Promise<void> {
     if (!this.isConfigured) return;
 
-    const topicName = this.configService.get<string>('GMAIL_PUBSUB_TOPIC');
-    const labelIds =
-      this.configService.get<string>('GMAIL_WATCH_LABEL_IDS')?.split(',') || [
-        'INBOX',
-      ];
+    const topicName = this.configService.get<string>("GMAIL_PUBSUB_TOPIC");
+    const labelIds = this.configService
+      .get<string>("GMAIL_WATCH_LABEL_IDS")
+      ?.split(",") || ["INBOX"];
 
     try {
       const response = await this.gmail.users.watch({
-        userId: 'me',
+        userId: "me",
         requestBody: {
           topicName,
           labelIds,
-          labelFilterBehavior: 'INCLUDE',
+          labelFilterBehavior: "INCLUDE",
         },
       });
 
@@ -121,14 +128,22 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
 
       // Store historyId in Redis for incremental fetches
       if (historyId) {
-        await this.cacheService.set(this.HISTORY_ID_KEY, historyId.toString(), 604800); // 7 days TTL
+        await this.cacheService.set(
+          this.HISTORY_ID_KEY,
+          historyId.toString(),
+          604800,
+        ); // 7 days TTL
       }
       if (expiration) {
-        await this.cacheService.set(this.WATCH_EXPIRY_KEY, expiration.toString(), 604800);
+        await this.cacheService.set(
+          this.WATCH_EXPIRY_KEY,
+          expiration.toString(),
+          604800,
+        );
       }
 
       this.logger.log(
-        `Gmail Watch started — historyId: ${historyId}, expires: ${expiration ? new Date(Number(expiration)).toISOString() : 'unknown'}`,
+        `Gmail Watch started — historyId: ${historyId}, expires: ${expiration ? new Date(Number(expiration)).toISOString() : "unknown"}`,
       );
     } catch (error) {
       this.logger.error(`Failed to start Gmail watch: ${error}`);
@@ -143,8 +158,8 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
     if (!this.isConfigured) return;
 
     try {
-      await this.gmail.users.stop({ userId: 'me' });
-      this.logger.log('Gmail Watch stopped');
+      await this.gmail.users.stop({ userId: "me" });
+      this.logger.log("Gmail Watch stopped");
     } catch (error) {
       this.logger.error(`Failed to stop Gmail watch: ${error}`);
     }
@@ -167,15 +182,17 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   /**
    * Fetch new messages since the last historyId using gmail.users.history.list()
    */
-  async fetchNewMessages(sinceHistoryId: string): Promise<gmail_v1.Schema$Message[]> {
+  async fetchNewMessages(
+    sinceHistoryId: string,
+  ): Promise<gmail_v1.Schema$Message[]> {
     if (!this.isConfigured) return [];
 
     try {
       const historyResponse = await this.gmail.users.history.list({
-        userId: 'me',
+        userId: "me",
         startHistoryId: sinceHistoryId,
-        historyTypes: ['messageAdded'],
-        labelId: 'INBOX',
+        historyTypes: ["messageAdded"],
+        labelId: "INBOX",
       });
 
       const history = historyResponse.data.history || [];
@@ -186,9 +203,9 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
           if (added.message?.id) {
             // Fetch full message
             const fullMessage = await this.gmail.users.messages.get({
-              userId: 'me',
+              userId: "me",
               id: added.message.id,
-              format: 'full',
+              format: "full",
             });
             messages.push(fullMessage.data);
           }
@@ -204,7 +221,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
     } catch (error: any) {
       // 404 means historyId is too old — need a full sync
       if (error?.code === 404) {
-        this.logger.warn('History ID expired — performing full re-watch');
+        this.logger.warn("History ID expired — performing full re-watch");
         await this.startWatch();
         return [];
       }
@@ -224,7 +241,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
     if (!this.isConfigured) return null;
     try {
       const res = await this.gmail.users.messages.attachments.get({
-        userId: 'me',
+        userId: "me",
         messageId,
         id: attachmentId,
       });
@@ -245,9 +262,9 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const response = await this.gmail.users.messages.get({
-        userId: 'me',
+        userId: "me",
         id: messageId,
-        format: 'full',
+        format: "full",
       });
       return response.data;
     } catch (error) {

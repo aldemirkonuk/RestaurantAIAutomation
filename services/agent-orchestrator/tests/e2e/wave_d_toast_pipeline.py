@@ -41,7 +41,7 @@ import hashlib
 import hmac
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import pytest
@@ -61,18 +61,22 @@ E2E_TABLE_NAME = "pos_webhook_logs"
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def toast_webhook_secret() -> str:
     """TOAST_WEBHOOK_SECRET from env — skips Wave D if not set (TEST-PROD-09)."""
     secret = os.environ.get("TOAST_WEBHOOK_SECRET", "")
     if not secret:
-        pytest.skip("TOAST_WEBHOOK_SECRET not set — skipping Wave D Toast pipeline test. Add TOAST_WEBHOOK_SECRET to GitHub Actions secrets to enable Wave D.")  # noqa: E501
+        pytest.skip(
+            "TOAST_WEBHOOK_SECRET not set — skipping Wave D Toast pipeline test. Add TOAST_WEBHOOK_SECRET to GitHub Actions secrets to enable Wave D."
+        )  # noqa: E501
     return secret
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_toast_webhook_payload() -> dict:
     """Minimal Toast webhook payload with deterministic e2e IDs.
@@ -187,6 +191,7 @@ def _build_signed_request(
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
+
 
 class TestToastPipeline:
     """Wave D: Toast webhook → full pipeline (TEST-PROD-04)."""

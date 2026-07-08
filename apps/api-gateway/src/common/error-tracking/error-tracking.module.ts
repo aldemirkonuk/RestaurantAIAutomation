@@ -1,9 +1,9 @@
-import { Module, Global } from '@nestjs/common';
-import { SentryService } from './sentry.service';
+import { Module, Global } from "@nestjs/common";
+import { SentryService } from "./sentry.service";
 
 /**
  * Error Tracking Module
- * 
+ *
  * Global module for centralized error tracking:
  * - Sentry integration
  * - Error capture and reporting

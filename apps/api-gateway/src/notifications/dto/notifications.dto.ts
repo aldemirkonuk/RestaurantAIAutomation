@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString,
   IsOptional,
@@ -11,39 +11,39 @@ import {
   Min,
   Max,
   ValidateNested,
-} from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+} from "class-validator";
+import { Type, Transform } from "class-transformer";
 
 // ============================================================================
 // ENUMS
 // ============================================================================
 
 export enum NotificationType {
-  INVENTORY_LOW_STOCK = 'inventory_low_stock',
-  ORDER_PENDING = 'order_pending',
-  ORDER_DELIVERED = 'order_delivered',
-  PRICE_CHANGE = 'price_change',
-  DELIVERY_SCHEDULED = 'delivery_scheduled',
-  CALENDAR_REMINDER = 'calendar_reminder',
-  SYSTEM = 'system',
-  AI_SUGGESTION = 'ai_suggestion',
-  DRAFT_READY = 'draft_ready',
-  CONSTRAINT_TRIGGERED = 'constraint_triggered',
-  UNKNOWN_SENDER = 'unknown_sender',
-  INVOICE_RECEIVED = 'invoice_received',
+  INVENTORY_LOW_STOCK = "inventory_low_stock",
+  ORDER_PENDING = "order_pending",
+  ORDER_DELIVERED = "order_delivered",
+  PRICE_CHANGE = "price_change",
+  DELIVERY_SCHEDULED = "delivery_scheduled",
+  CALENDAR_REMINDER = "calendar_reminder",
+  SYSTEM = "system",
+  AI_SUGGESTION = "ai_suggestion",
+  DRAFT_READY = "draft_ready",
+  CONSTRAINT_TRIGGERED = "constraint_triggered",
+  UNKNOWN_SENDER = "unknown_sender",
+  INVOICE_RECEIVED = "invoice_received",
 }
 
 export enum NotificationStatus {
-  UNREAD = 'unread',
-  READ = 'read',
-  ARCHIVED = 'archived',
+  UNREAD = "unread",
+  READ = "read",
+  ARCHIVED = "archived",
 }
 
 export enum NotificationPriority {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  CRITICAL = 'critical',
+  LOW = "low",
+  MEDIUM = "medium",
+  HIGH = "high",
+  CRITICAL = "critical",
 }
 
 // ============================================================================
@@ -51,11 +51,11 @@ export enum NotificationPriority {
 // ============================================================================
 
 export class GetNotificationsQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
-  @ApiPropertyOptional({ description: 'Restaurant ID filter' })
+  @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
   @IsOptional()
   restaurantId?: string;
@@ -69,12 +69,12 @@ export class GetNotificationsQueryDto {
   @IsOptional()
   status?: NotificationStatus;
 
-  @ApiPropertyOptional({ description: 'Filter from date (ISO)' })
+  @ApiPropertyOptional({ description: "Filter from date (ISO)" })
   @IsString()
   @IsOptional()
   dateFrom?: string;
 
-  @ApiPropertyOptional({ description: 'Filter to date (ISO)' })
+  @ApiPropertyOptional({ description: "Filter to date (ISO)" })
   @IsString()
   @IsOptional()
   dateTo?: string;
@@ -96,11 +96,11 @@ export class GetNotificationsQueryDto {
 }
 
 export class GetUnreadQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
-  @ApiPropertyOptional({ description: 'Restaurant ID filter' })
+  @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
   @IsOptional()
   restaurantId?: string;
@@ -115,24 +115,24 @@ export class GetUnreadQueryDto {
 }
 
 export class GetUnreadCountQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
-  @ApiPropertyOptional({ description: 'Restaurant ID filter' })
+  @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
   @IsOptional()
   restaurantId?: string;
 }
 
 export class GetPreferencesQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 }
 
 export class GetHistoryQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
@@ -146,18 +146,18 @@ export class GetHistoryQueryDto {
 }
 
 export class MarkAllReadQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
-  @ApiPropertyOptional({ description: 'Restaurant ID filter' })
+  @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
   @IsOptional()
   restaurantId?: string;
 }
 
 export class DeleteAllReadQueryDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 }
@@ -167,9 +167,9 @@ export class DeleteAllReadQueryDto {
 // ============================================================================
 
 export class BulkIdsDto {
-  @ApiProperty({ description: 'Array of notification IDs', type: [String] })
+  @ApiProperty({ description: "Array of notification IDs", type: [String] })
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsUUID("4", { each: true })
   ids: string[];
 }
 
@@ -179,12 +179,12 @@ export class QuietHoursDto {
   @IsOptional()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Start time HH:mm' })
+  @ApiPropertyOptional({ description: "Start time HH:mm" })
   @IsString()
   @IsOptional()
   startTime?: string;
 
-  @ApiPropertyOptional({ description: 'End time HH:mm' })
+  @ApiPropertyOptional({ description: "End time HH:mm" })
   @IsString()
   @IsOptional()
   endTime?: string;
@@ -218,7 +218,7 @@ export class CategoriesDto {
 }
 
 export class UpdatePreferencesDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
@@ -251,17 +251,17 @@ export class UpdatePreferencesDto {
 }
 
 export class PushSubscribeDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 
-  @ApiProperty({ description: 'Web Push subscription object' })
+  @ApiProperty({ description: "Web Push subscription object" })
   @IsObject()
   subscription: Record<string, any>;
 }
 
 export class PushUnsubscribeDto {
-  @ApiProperty({ description: 'User ID' })
+  @ApiProperty({ description: "User ID" })
   @IsUUID()
   userId: string;
 }

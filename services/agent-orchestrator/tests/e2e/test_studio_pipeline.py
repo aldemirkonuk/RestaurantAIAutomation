@@ -49,14 +49,19 @@ OVERRIDE_ID = "ov-e2e-pipe-001"
 
 def _make_jwt(payload: dict) -> str:
     import jwt as pyjwt
+
     return pyjwt.encode(payload, E2E_SECRET, algorithm="HS256")
 
 
 def _make_settings():
-    return type("S", (), {
-        "supabase_jwt_secret": E2E_SECRET,
-        "trust_level_threshold": 5,
-    })()
+    return type(
+        "S",
+        (),
+        {
+            "supabase_jwt_secret": E2E_SECRET,
+            "trust_level_threshold": 5,
+        },
+    )()
 
 
 def _build_supabase(table_map: dict) -> MagicMock:
@@ -73,6 +78,7 @@ def _build_supabase(table_map: dict) -> MagicMock:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestStudioOverridePipeline:
 
     def test_developer_override_auto_promotes(self, test_client):
@@ -81,7 +87,11 @@ class TestStudioOverridePipeline:
         submissions_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
             "id": SUBMISSION_ID,
             "field_confidence": {
-                "wine_name": {"value": "Old Name", "confidence": 0.92, "source": "visible"},
+                "wine_name": {
+                    "value": "Old Name",
+                    "confidence": 0.92,
+                    "source": "visible",
+                },
             },
         }
 
@@ -90,17 +100,23 @@ class TestStudioOverridePipeline:
             {"id": OVERRIDE_ID, "promotion_status": "auto_promoted"}
         ]
 
-        sb = _build_supabase({
-            "master_wine_library_submissions": submissions_mock,
-            "override_events": events_mock,
-        })
+        sb = _build_supabase(
+            {
+                "master_wine_library_submissions": submissions_mock,
+                "override_events": events_mock,
+            }
+        )
         auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=[]), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=[]
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             resp = test_client.post(
                 "/api/v1/studio/overrides",
@@ -138,14 +154,20 @@ class TestStudioOverridePipeline:
             "new_value": "X",
         }
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=[]), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=[]
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             # No reason → 422
-            r1 = test_client.post("/api/v1/studio/overrides", json=base_body, headers=auth)
+            r1 = test_client.post(
+                "/api/v1/studio/overrides", json=base_body, headers=auth
+            )
             assert r1.status_code == 422, r1.text
 
             # Too-short reason (< 5 chars) → 422
@@ -182,17 +204,23 @@ class TestStudioOverridePipeline:
 
         cc_roles = [{"role": "certified_contributor", "promotion_policy": "queue"}]
 
-        sb = _build_supabase({
-            "master_wine_library_submissions": submissions_mock,
-            "override_events": events_mock,
-        })
+        sb = _build_supabase(
+            {
+                "master_wine_library_submissions": submissions_mock,
+                "override_events": events_mock,
+            }
+        )
         auth = {"Authorization": f"Bearer {_make_jwt(CERTIFIED_CONTRIBUTOR_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=cc_roles), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=cc_roles
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             resp = test_client.post(
                 "/api/v1/studio/overrides",
@@ -220,17 +248,23 @@ class TestStudioOverridePipeline:
         }
 
         events_mock = MagicMock()
-        events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = pending_ov
+        events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            pending_ov
+        )
         events_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
 
         sb = _build_supabase({"override_events": events_mock})
         auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=[]), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=[]
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             resp = test_client.patch(
                 f"/api/v1/studio/queue/{OVERRIDE_ID}",
@@ -255,17 +289,23 @@ class TestStudioOverridePipeline:
         }
 
         events_mock = MagicMock()
-        events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = pending_ov
+        events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            pending_ov
+        )
         events_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
 
         sb = _build_supabase({"override_events": events_mock})
         auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=[]), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=[]
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             resp = test_client.patch(
                 f"/api/v1/studio/queue/{OVERRIDE_ID}",
@@ -281,16 +321,22 @@ class TestStudioOverridePipeline:
         approved_ov = {"id": OVERRIDE_ID, "promotion_status": "approved"}
 
         events_mock = MagicMock()
-        events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = approved_ov
+        events_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            approved_ov
+        )
 
         sb = _build_supabase({"override_events": events_mock})
         auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb), \
-             patch("api.studio_routes._get_user_studio_roles", return_value=[]), \
-             patch("api.studio_routes._apply_override_to_submission", return_value=None), \
-             patch("api.studio_routes.check_and_update_trust", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "api.studio_routes._get_user_studio_roles", return_value=[]
+        ), patch(
+            "api.studio_routes._apply_override_to_submission", return_value=None
+        ), patch(
+            "api.studio_routes.check_and_update_trust", return_value=None
+        ):
 
             resp = test_client.patch(
                 f"/api/v1/studio/queue/{OVERRIDE_ID}",
@@ -323,7 +369,9 @@ class TestStudioOverridePipeline:
 
         events_mock = MagicMock()
         # Main overrides query: .select(...).limit(10000).execute().data
-        events_mock.select.return_value.limit.return_value.execute.return_value.data = override_rows
+        events_mock.select.return_value.limit.return_value.execute.return_value.data = (
+            override_rows
+        )
         # Active contributors (last 30d): .select("actor_id").gte(...).execute().data
         events_mock.select.return_value.gte.return_value.execute.return_value.data = [
             {"actor_id": "dev-e2e-001"}
@@ -331,16 +379,21 @@ class TestStudioOverridePipeline:
 
         corr_mock = MagicMock()
         # Field corrections: .select(...).not_.is_(...).limit(10000).execute().data
-        corr_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = []
+        corr_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
-        sb = _build_supabase({
-            "override_events": events_mock,
-            "field_corrections": corr_mock,
-        })
+        sb = _build_supabase(
+            {
+                "override_events": events_mock,
+                "field_corrections": corr_mock,
+            }
+        )
         auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb):
 
             resp = test_client.get("/api/v1/studio/metrics", headers=auth)
 
@@ -357,16 +410,18 @@ class TestStudioOverridePipeline:
     def test_invite_create_and_redeem_flow(self, test_client):
         """Admin creates invite → developer redeems → role_granted='certified_contributor'."""
         token_val = "test-invite-token-e2e-uuid"
-        future_expiry = (
-            datetime.now(timezone.utc) + timedelta(days=7)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        future_expiry = (datetime.now(timezone.utc) + timedelta(days=7)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
         invite_mock = MagicMock()
-        invite_mock.insert.return_value.execute.return_value.data = [{
-            "token": token_val,
-            "role": "certified_contributor",
-            "expires_at": future_expiry,
-        }]
+        invite_mock.insert.return_value.execute.return_value.data = [
+            {
+                "token": token_val,
+                "role": "certified_contributor",
+                "expires_at": future_expiry,
+            }
+        ]
         invite_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
             "token": token_val,
             "role": "certified_contributor",
@@ -378,20 +433,26 @@ class TestStudioOverridePipeline:
 
         user_roles_mock = MagicMock()
 
-        sb = _build_supabase({
-            "invite_tokens": invite_mock,
-            "user_roles": user_roles_mock,
-        })
+        sb = _build_supabase(
+            {
+                "invite_tokens": invite_mock,
+                "user_roles": user_roles_mock,
+            }
+        )
         admin_auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
         dev_auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=sb):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb):
 
             # Admin creates invite
             create_resp = test_client.post(
                 "/api/v1/studio/invite",
-                json={"role": "certified_contributor", "target_email": "new@example.com"},
+                json={
+                    "role": "certified_contributor",
+                    "target_email": "new@example.com",
+                },
                 headers=admin_auth,
             )
             assert create_resp.status_code == 200, create_resp.text

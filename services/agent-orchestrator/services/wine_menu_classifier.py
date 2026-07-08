@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 
 WINE_SIGNALS: Dict[str, List[re.Pattern]] = {
     "wine_type_keywords": [
-        re.compile(r"\b(?:red|white|ros[eé]|sparkling|dessert|fortified)\s+wines?\b", re.I),
+        re.compile(
+            r"\b(?:red|white|ros[eé]|sparkling|dessert|fortified)\s+wines?\b", re.I
+        ),
         re.compile(r"\b(?:reds|whites|bubbles|sparklings)\b", re.I),
     ],
     "wine_regions": [
@@ -84,7 +86,10 @@ WINE_SIGNALS: Dict[str, List[re.Pattern]] = {
         ),
     ],
     "bottle_serving": [
-        re.compile(r"\b(?:750\s*ml|375\s*ml|1\.5\s*[lL]|magnum|glass|bottle|carafe|btl)\b", re.I),
+        re.compile(
+            r"\b(?:750\s*ml|375\s*ml|1\.5\s*[lL]|magnum|glass|bottle|carafe|btl)\b",
+            re.I,
+        ),
     ],
     # Turkish & non-Latin wine signals (producer names, grape varieties, terms)
     "turkish_wine_signals": [
@@ -152,9 +157,11 @@ NON_WINE_SIGNALS: Dict[str, List[re.Pattern]] = {
 # CLASSIFIER RESULT
 # =============================================================================
 
+
 @dataclass
 class ClassificationResult:
     """Result of wine menu classification."""
+
     is_wine_menu: bool
     confidence: float
     estimated_wine_count: int
@@ -169,6 +176,7 @@ class ClassificationResult:
 # CLASSIFIER
 # =============================================================================
 
+
 class WineMenuClassifier:
     """
     Fast local classifier to determine if text is a wine menu.
@@ -176,8 +184,8 @@ class WineMenuClassifier:
     """
 
     # Thresholds
-    WINE_SIGNAL_THRESHOLD = 5       # minimum wine signals to classify as wine menu
-    WINE_DENSITY_THRESHOLD = 0.02   # minimum wine signals per 100 chars
+    WINE_SIGNAL_THRESHOLD = 5  # minimum wine signals to classify as wine menu
+    WINE_DENSITY_THRESHOLD = 0.02  # minimum wine signals per 100 chars
     NON_WINE_RATIO_THRESHOLD = 2.0  # if non-wine/wine ratio > this, not wine menu
 
     def classify(self, text: str) -> ClassificationResult:
@@ -238,12 +246,19 @@ class WineMenuClassifier:
 
         # Determine content type
         content_type, is_wine, confidence = self._determine_type(
-            wine_counts, non_wine_counts, total_wine, total_non_wine,
-            wine_density, estimated_wines, text_len,
+            wine_counts,
+            non_wine_counts,
+            total_wine,
+            total_non_wine,
+            wine_density,
+            estimated_wines,
+            text_len,
         )
 
-        all_details = {**{f"wine_{k}": v for k, v in wine_counts.items()},
-                       **{f"non_{k}": v for k, v in non_wine_counts.items()}}
+        all_details = {
+            **{f"wine_{k}": v for k, v in wine_counts.items()},
+            **{f"non_{k}": v for k, v in non_wine_counts.items()},
+        }
 
         return ClassificationResult(
             is_wine_menu=is_wine,

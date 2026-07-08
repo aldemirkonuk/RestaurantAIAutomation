@@ -22,10 +22,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services.field_confidence import (
-    compute_completeness_from_fc,
     should_auto_block,
     JSONB_ENRICHMENT_KEYS,
-    VISION_FIELDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +35,7 @@ router = APIRouter(prefix="/api/v1/quality", tags=["quality"])
 # REQUEST / RESPONSE MODELS
 # =============================================================================
 
+
 class ReviewQueuePatchRequest(BaseModel):
     """
     PATCH body for /review-queue/{submission_id}.
@@ -46,6 +45,7 @@ class ReviewQueuePatchRequest(BaseModel):
     approvals:   list of field_names approved as-is (no value change needed)
     corrected_by: reviewer identifier (email or user_id string)
     """
+
     corrections: Dict[str, Any] = {}
     approvals: List[str] = []
     corrected_by: Optional[str] = None
@@ -55,10 +55,12 @@ class ReviewQueuePatchRequest(BaseModel):
 # HELPERS
 # =============================================================================
 
+
 def _get_supabase():
     """Return Supabase client. Returns None if not configured."""
     try:
         from config.settings import get_settings
+
         settings = get_settings()
         return settings.supabase_client
     except Exception:
@@ -78,6 +80,7 @@ def _fc_value(fc: Dict[str, Any], field_name: str) -> Any:
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
+
 
 @router.get("/review-queue")
 def get_review_queue(limit: int = 50, offset: int = 0):
@@ -99,7 +102,9 @@ def get_review_queue(limit: int = 50, offset: int = 0):
     try:
         resp = (
             supabase.table("field_review_queue")
-            .select("id, submission_id, field_name, current_value, confidence, source, status, created_at")
+            .select(
+                "id, submission_id, field_name, current_value, confidence, source, status, created_at"
+            )
             .eq("status", "pending")
             .order("confidence", desc=False)
             .range(offset, offset + limit * 10 - 1)  # over-fetch to fill limit groups
@@ -117,13 +122,15 @@ def get_review_queue(limit: int = 50, offset: int = 0):
         sid = row["submission_id"]
         if sid not in grouped:
             grouped[sid] = {"submission_id": sid, "pending_fields": []}
-        grouped[sid]["pending_fields"].append({
-            "review_id": row["id"],
-            "field_name": row["field_name"],
-            "current_value": row["current_value"],
-            "confidence": float(row["confidence"]),
-            "source": row["source"],
-        })
+        grouped[sid]["pending_fields"].append(
+            {
+                "review_id": row["id"],
+                "field_name": row["field_name"],
+                "current_value": row["current_value"],
+                "confidence": float(row["confidence"]),
+                "source": row["source"],
+            }
+        )
 
     # Enrich each group with wine context from submissions table
     submission_ids = list(grouped.keys())
@@ -131,17 +138,23 @@ def get_review_queue(limit: int = 50, offset: int = 0):
         try:
             sub_resp = (
                 supabase.table("master_wine_library_submissions")
-                .select("id, payload, field_confidence, auto_blocked, restaurant_id, status")
+                .select(
+                    "id, payload, field_confidence, auto_blocked, restaurant_id, status"
+                )
                 .in_("id", submission_ids)
                 .execute()
             )
-            for sub in (sub_resp.data or []):
+            for sub in sub_resp.data or []:
                 sid = sub["id"]
                 if sid in grouped:
                     payload = sub.get("payload") or {}
                     fc = sub.get("field_confidence") or {}
-                    grouped[sid]["wine_name"] = payload.get("wine_name") or _fc_value(fc, "wine_name")
-                    grouped[sid]["vintage"] = payload.get("vintage") or _fc_value(fc, "vintage")
+                    grouped[sid]["wine_name"] = payload.get("wine_name") or _fc_value(
+                        fc, "wine_name"
+                    )
+                    grouped[sid]["vintage"] = payload.get("vintage") or _fc_value(
+                        fc, "vintage"
+                    )
                     grouped[sid]["restaurant_id"] = sub.get("restaurant_id")
                     grouped[sid]["auto_blocked"] = sub.get("auto_blocked", False)
                     grouped[sid]["submission_status"] = sub.get("status")
@@ -183,7 +196,9 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
     try:
         resp = (
             supabase.table("master_wine_library_submissions")
-            .select(f"id, payload, field_confidence, status, auto_blocked, restaurant_id, {jsonb_cols}")
+            .select(
+                f"id, payload, field_confidence, status, auto_blocked, restaurant_id, {jsonb_cols}"
+            )
             .eq("id", submission_id)
             .maybe_single()
             .execute()
@@ -193,7 +208,9 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
         raise HTTPException(status_code=503, detail="Database query failed")
 
     if not resp.data:
-        raise HTTPException(status_code=404, detail=f"Submission {submission_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Submission {submission_id} not found"
+        )
 
     submission = resp.data
     if submission.get("status") not in ("pending_review",):
@@ -203,7 +220,7 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
         )
 
     fc: Dict[str, Any] = dict(submission.get("field_confidence") or {})
-    payload: Dict[str, Any] = dict(submission.get("payload") or {})
+    dict(submission.get("payload") or {})
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # 2. Process corrections
@@ -212,18 +229,30 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
         for field_name, corrected_value in body.corrections.items():
             # Get original value from field_confidence
             original_entry = fc.get(field_name) or {}
-            original_value = original_entry.get("value") if isinstance(original_entry, dict) else None
+            original_value = (
+                original_entry.get("value")
+                if isinstance(original_entry, dict)
+                else None
+            )
 
             # Log to field_corrections only if value changed
             if str(original_value) != str(corrected_value):
-                correction_log_rows.append({
-                    "submission_id": submission_id,
-                    "field_name": field_name,
-                    "original_value": str(original_value) if original_value is not None else None,
-                    "corrected_value": str(corrected_value) if corrected_value is not None else None,
-                    "corrected_at": now_iso,
-                    "corrected_by": body.corrected_by,
-                })
+                correction_log_rows.append(
+                    {
+                        "submission_id": submission_id,
+                        "field_name": field_name,
+                        "original_value": (
+                            str(original_value) if original_value is not None else None
+                        ),
+                        "corrected_value": (
+                            str(corrected_value)
+                            if corrected_value is not None
+                            else None
+                        ),
+                        "corrected_at": now_iso,
+                        "corrected_by": body.corrected_by,
+                    }
+                )
 
             # Update field_confidence: human correction = confidence 1.0
             fc[field_name] = {
@@ -234,13 +263,22 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
 
             # Update matching field_review_queue row to status="corrected"
             try:
-                supabase.table("field_review_queue").update({
-                    "status": "corrected",
-                    "reviewer": body.corrected_by,
-                    "reviewed_at": now_iso,
-                }).eq("submission_id", submission_id).eq("field_name", field_name).eq("status", "pending").execute()
+                supabase.table("field_review_queue").update(
+                    {
+                        "status": "corrected",
+                        "reviewer": body.corrected_by,
+                        "reviewed_at": now_iso,
+                    }
+                ).eq("submission_id", submission_id).eq("field_name", field_name).eq(
+                    "status", "pending"
+                ).execute()
             except Exception as exc:
-                logger.warning("field_review_queue update failed for %s.%s: %s", submission_id, field_name, exc)
+                logger.warning(
+                    "field_review_queue update failed for %s.%s: %s",
+                    submission_id,
+                    field_name,
+                    exc,
+                )
 
     # Log corrections to field_corrections table (QUAL-02)
     if correction_log_rows:
@@ -254,25 +292,42 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
         for field_name in body.approvals:
             existing_entry = fc.get(field_name)
             if isinstance(existing_entry, dict):
-                fc[field_name] = {**existing_entry, "confidence": 1.0, "source": "human_approved"}
+                fc[field_name] = {
+                    **existing_entry,
+                    "confidence": 1.0,
+                    "source": "human_approved",
+                }
             # Update field_review_queue row to status="approved"
             try:
-                supabase.table("field_review_queue").update({
-                    "status": "approved",
-                    "reviewer": body.corrected_by,
-                    "reviewed_at": now_iso,
-                }).eq("submission_id", submission_id).eq("field_name", field_name).eq("status", "pending").execute()
+                supabase.table("field_review_queue").update(
+                    {
+                        "status": "approved",
+                        "reviewer": body.corrected_by,
+                        "reviewed_at": now_iso,
+                    }
+                ).eq("submission_id", submission_id).eq("field_name", field_name).eq(
+                    "status", "pending"
+                ).execute()
             except Exception as exc:
-                logger.warning("field_review_queue approval update failed for %s.%s: %s", submission_id, field_name, exc)
+                logger.warning(
+                    "field_review_queue approval update failed for %s.%s: %s",
+                    submission_id,
+                    field_name,
+                    exc,
+                )
 
     # 4. Write updated field_confidence back to submission
     try:
-        supabase.table("master_wine_library_submissions").update({
-            "field_confidence": fc,
-        }).eq("id", submission_id).execute()
+        supabase.table("master_wine_library_submissions").update(
+            {
+                "field_confidence": fc,
+            }
+        ).eq("id", submission_id).execute()
     except Exception as exc:
         logger.error("field_confidence update failed for %s: %s", submission_id, exc)
-        raise HTTPException(status_code=503, detail=f"Failed to update field_confidence: {exc}")
+        raise HTTPException(
+            status_code=503, detail=f"Failed to update field_confidence: {exc}"
+        )
 
     # 5. Check for remaining pending fields
     try:
@@ -285,7 +340,9 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
         )
         remaining_pending = pending_resp.count or 0
     except Exception:
-        remaining_pending = 1  # Assume pending if query fails — err on side of not promoting
+        remaining_pending = (
+            1  # Assume pending if query fails — err on side of not promoting
+        )
 
     # 6. Recompute auto_blocked using field-ratio logic
     still_blocked = should_auto_block(fc) if fc else True
@@ -330,22 +387,30 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
             supabase.table("master_wine_library").insert(promo_row).execute()
             promoted = True
         except Exception as exc:
-            logger.error("master_wine_library promotion failed for %s: %s", submission_id, exc)
+            logger.error(
+                "master_wine_library promotion failed for %s: %s", submission_id, exc
+            )
             raise HTTPException(
                 status_code=503,
                 detail=f"Failed to promote submission to master library: {exc}",
             )
 
     # Update submission status
-    new_status = "approved" if promoted else ("blocked" if still_blocked else "pending_review")
+    new_status = (
+        "approved" if promoted else ("blocked" if still_blocked else "pending_review")
+    )
     try:
-        supabase.table("master_wine_library_submissions").update({
-            "status": new_status,
-            "auto_blocked": still_blocked,
-        }).eq("id", submission_id).execute()
+        supabase.table("master_wine_library_submissions").update(
+            {
+                "status": new_status,
+                "auto_blocked": still_blocked,
+            }
+        ).eq("id", submission_id).execute()
     except Exception as exc:
         logger.error("submission status update failed for %s: %s", submission_id, exc)
-        raise HTTPException(status_code=503, detail=f"Failed to update submission status: {exc}")
+        raise HTTPException(
+            status_code=503, detail=f"Failed to update submission status: {exc}"
+        )
 
     return {
         "submission_id": submission_id,
@@ -374,13 +439,17 @@ def get_calibration():
     try:
         thresholds_resp = (
             supabase.table("confidence_thresholds")
-            .select("field_name, review_threshold, accept_threshold, last_calibrated_at")
+            .select(
+                "field_name, review_threshold, accept_threshold, last_calibrated_at"
+            )
             .order("field_name")
             .execute()
         )
         calibration_resp = (
             supabase.table("field_calibration")
-            .select("field_name, confidence_bin, total_reviewed, total_correct, actual_accuracy, measured_at")
+            .select(
+                "field_name, confidence_bin, total_reviewed, total_correct, actual_accuracy, measured_at"
+            )
             .order("field_name")
             .execute()
         )

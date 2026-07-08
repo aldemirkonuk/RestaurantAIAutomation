@@ -32,6 +32,7 @@ def get_orchestrator():
     (main.py imports this module at the very bottom, after get_orchestrator is defined).
     """
     from main import get_orchestrator as _real  # noqa: PLC0415
+
     return _real()
 
 
@@ -59,10 +60,7 @@ async def get_all_agents_health(_key: str = Depends(verify_admin_key)):
     if orchestrator is None:
         raise HTTPException(status_code=503, detail="Orchestrator not running")
 
-    agents_health = [
-        agent.get_health()
-        for agent in orchestrator.agents.values()
-    ]
+    agents_health = [agent.get_health() for agent in orchestrator.agents.values()]
     return {
         "agents": agents_health,
         "count": len(agents_health),
@@ -107,8 +105,7 @@ async def get_system_metrics(_key: str = Depends(verify_admin_key)):
     if settings.supabase_client is not None:
         try:
             dlq_result = (
-                settings.supabase_client
-                .table("dead_letter_queue")
+                settings.supabase_client.table("dead_letter_queue")
                 .select("id", count="exact")
                 .execute()
             )
@@ -121,8 +118,7 @@ async def get_system_metrics(_key: str = Depends(verify_admin_key)):
     if settings.supabase_client is not None:
         try:
             saga_result = (
-                settings.supabase_client
-                .table("saga_state")
+                settings.supabase_client.table("saga_state")
                 .select("id", count="exact")
                 .eq("status", "running")
                 .execute()

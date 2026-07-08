@@ -62,20 +62,48 @@ class POSIntegrationAgent(BaseAgent):
 
         # Wine detection keywords
         self.wine_category_keywords = [
-            "wine", "vino", "red wine", "white wine", "sparkling", "champagne",
-            "cabernet", "chardonnay", "pinot", "merlot", "sauvignon", "riesling",
-            "zinfandel", "syrah", "bordeaux", "burgundy", "prosecco", "cava",
-            "rosé", "rose", "dessert wine"
+            "wine",
+            "vino",
+            "red wine",
+            "white wine",
+            "sparkling",
+            "champagne",
+            "cabernet",
+            "chardonnay",
+            "pinot",
+            "merlot",
+            "sauvignon",
+            "riesling",
+            "zinfandel",
+            "syrah",
+            "bordeaux",
+            "burgundy",
+            "prosecco",
+            "cava",
+            "rosé",
+            "rose",
+            "dessert wine",
         ]
 
         # Toast menu category names that indicate wine — category-first detection (BUG-04)
         self.wine_menu_categories = [
-            "Wine", "Wines", "Wine List", "Bottle Wine", "Glass Wine",
-            "Sparkling Wine", "Red Wine", "White Wine", "Rose Wine",
-            "Dessert Wine", "By The Glass", "By The Bottle",
+            "Wine",
+            "Wines",
+            "Wine List",
+            "Bottle Wine",
+            "Glass Wine",
+            "Sparkling Wine",
+            "Red Wine",
+            "White Wine",
+            "Rose Wine",
+            "Dessert Wine",
+            "By The Glass",
+            "By The Bottle",
         ]
 
-        self.logger.info(f"POS Integration Agent configured (environment: {self.toast_environment}, mock: {self.mock_mode})")
+        self.logger.info(
+            f"POS Integration Agent configured (environment: {self.toast_environment}, mock: {self.mock_mode})"
+        )
 
     async def initialize(self) -> None:
         """Initialize the agent"""
@@ -84,7 +112,9 @@ class POSIntegrationAgent(BaseAgent):
         # No specific initialization needed beyond BaseAgent
         # The agent is primarily webhook-driven
 
-        self.logger.info("POS Integration Agent initialized and ready to receive webhooks")
+        self.logger.info(
+            "POS Integration Agent initialized and ready to receive webhooks"
+        )
 
     def get_subscribed_routing_keys(self) -> List[tuple]:
         """
@@ -136,14 +166,16 @@ class POSIntegrationAgent(BaseAgent):
             True if signature is valid, False otherwise
         """
         if not self.toast_webhook_secret:
-            self.logger.warning("No Toast webhook secret configured - skipping signature verification")
+            self.logger.warning(
+                "No Toast webhook secret configured - skipping signature verification"
+            )
             return True
 
         try:
             expected_signature = hmac.HMAC(
-                self.toast_webhook_secret.encode('utf-8'),
-                payload.encode('utf-8'),
-                hashlib.sha256
+                self.toast_webhook_secret.encode("utf-8"),
+                payload.encode("utf-8"),
+                hashlib.sha256,
             ).hexdigest()
 
             return hmac.compare_digest(expected_signature, signature)
@@ -155,7 +187,9 @@ class POSIntegrationAgent(BaseAgent):
         self,
         webhook_data: Dict[str, Any],
         signature: Optional[str] = None,
-        raw_payload: Optional[bytes] = None,  # raw bytes from HTTP request body (BUG-05)
+        raw_payload: Optional[
+            bytes
+        ] = None,  # raw bytes from HTTP request body (BUG-05)
     ) -> Dict[str, Any]:
         """
         Main webhook processing entry point
@@ -179,8 +213,9 @@ class POSIntegrationAgent(BaseAgent):
                 # BUG-05 fix: use raw_payload bytes when available; re-serialised
                 # JSON changes byte order / spacing and causes valid signatures to fail.
                 payload_for_sig = (
-                    raw_payload.decode('utf-8') if raw_payload is not None
-                    else json.dumps(webhook_data, separators=(',', ':'), sort_keys=True)
+                    raw_payload.decode("utf-8")
+                    if raw_payload is not None
+                    else json.dumps(webhook_data, separators=(",", ":"), sort_keys=True)
                 )
                 if not self.verify_webhook_signature(payload_for_sig, signature):
                     self.logger.error("Invalid webhook signature")
@@ -198,7 +233,11 @@ class POSIntegrationAgent(BaseAgent):
                 return {"status": "duplicate", "order_guid": order_guid}
 
             # Extract event type for routing (Toast uses eventType/type fields)
-            event_type = webhook_data.get("eventType") or webhook_data.get("type") or event_type_raw
+            event_type = (
+                webhook_data.get("eventType")
+                or webhook_data.get("type")
+                or event_type_raw
+            )
 
             if not event_type:
                 self.logger.error("No event type in webhook data")
@@ -224,7 +263,10 @@ class POSIntegrationAgent(BaseAgent):
             # Mark as processed after successful handling
             await self._mark_processed(
                 idempotency_key,
-                result={"wine_count": result.get("wine_count", 0), "order_guid": order_guid},
+                result={
+                    "wine_count": result.get("wine_count", 0),
+                    "order_guid": order_guid,
+                },
             )
 
             # Log to database
@@ -253,8 +295,12 @@ class POSIntegrationAgent(BaseAgent):
             dict with status key ("accepted", "ignored", "error")
         """
         from core.pos_provider import POSEvent as _POSEvent
+
         if not isinstance(event, _POSEvent):
-            return {"status": "error", "reason": "Invalid event type — expected POSEvent"}
+            return {
+                "status": "error",
+                "reason": "Invalid event type — expected POSEvent",
+            }
 
         # Reconstruct webhook_data-compatible dict from POSEvent for internal processing
         webhook_data = event.raw_payload
@@ -262,19 +308,22 @@ class POSIntegrationAgent(BaseAgent):
         # Delegate to existing internal processing logic via process_toast_webhook
         # using raw_payload as both source and raw_bytes (signature already verified by adapter)
         import json as _json  # noqa: PLC0415
+
         raw_bytes = _json.dumps(webhook_data).encode("utf-8")
 
         try:
             return await self.process_toast_webhook(
                 webhook_data=webhook_data,
-                signature=None,          # Signature already verified by POSProvider adapter
+                signature=None,  # Signature already verified by POSProvider adapter
                 raw_payload=raw_bytes,
             )
         except Exception as exc:
             self.logger.error("process_pos_event error: %s", exc)
             return {"status": "error", "reason": str(exc)}
 
-    async def handle_order_completed(self, webhook_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_order_completed(
+        self, webhook_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Handle completed order from Toast POS
 
@@ -287,7 +336,10 @@ class POSIntegrationAgent(BaseAgent):
             closed_date = order.get("closedDate") or datetime.utcnow().isoformat()
 
             if not restaurant_guid or not order_guid:
-                return {"status": "error", "message": "Missing restaurant or order GUID"}
+                return {
+                    "status": "error",
+                    "message": "Missing restaurant or order GUID",
+                }
 
             # Extract wine items from order
             wine_sales = []
@@ -314,15 +366,21 @@ class POSIntegrationAgent(BaseAgent):
 
             # HARD-02: Check for incomplete webhook (empty selections may need polling)
             if not selections:
-                self.logger.info(f"Order {order_guid} has no selections — triggering polling saga")
-                enriched_items = await self._handle_incomplete_webhook(order_guid, webhook_data)
+                self.logger.info(
+                    f"Order {order_guid} has no selections — triggering polling saga"
+                )
+                enriched_items = await self._handle_incomplete_webhook(
+                    order_guid, webhook_data
+                )
                 if enriched_items:
                     selections = enriched_items
 
             for selection in selections:
                 item_name = selection.get("itemGroup", {}).get("name", "")
                 quantity = selection.get("quantity", 1)
-                price = selection.get("preDiscountPrice", 0) / 100  # Convert cents to dollars
+                price = (
+                    selection.get("preDiscountPrice", 0) / 100
+                )  # Convert cents to dollars
 
                 # Check if this is a wine item (BUG-04: pass full selection for category check)
                 is_wine = self.is_wine_item(item_name, selection=selection)
@@ -349,7 +407,7 @@ class POSIntegrationAgent(BaseAgent):
                         "quantity": quantity,
                         "price": price,
                         "selection_guid": selection.get("guid"),
-                        "voided": selection.get("voided", False)
+                        "voided": selection.get("voided", False),
                     }
                     wine_sales.append(wine_sale)
 
@@ -365,16 +423,18 @@ class POSIntegrationAgent(BaseAgent):
                         restaurant_guid=restaurant_guid,
                         order_guid=order_guid,
                         wine_sale=wine_sale,
-                        sale_timestamp=closed_date
+                        sale_timestamp=closed_date,
                     )
                     events_published += 1
 
-            self.logger.info(f"Published {events_published} wine sale events from order {order_guid}")
+            self.logger.info(
+                f"Published {events_published} wine sale events from order {order_guid}"
+            )
 
             return {
                 "status": "success",
                 "wine_count": len(wine_sales),
-                "events_published": events_published
+                "events_published": events_published,
             }
 
         except Exception as e:
@@ -395,7 +455,7 @@ class POSIntegrationAgent(BaseAgent):
                 restaurant_guid=data.get("restaurantGuid"),
                 order_guid=data.get("orderGuid"),
                 item_name=item_name,
-                quantity=data.get("quantity", 1)
+                quantity=data.get("quantity", 1),
             )
 
             return {"status": "success", "action": "wine_sale_voided"}
@@ -404,7 +464,9 @@ class POSIntegrationAgent(BaseAgent):
             self.logger.error(f"Error handling voided item: {e}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
-    async def handle_order_refunded(self, webhook_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_order_refunded(
+        self, webhook_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Handle refunded order (BUG-06 fix).
 
@@ -427,7 +489,10 @@ class POSIntegrationAgent(BaseAgent):
             items = refund.get("items", [])
 
             if not restaurant_guid or not order_guid:
-                return {"status": "error", "message": "Missing restaurant or order GUID in refund"}
+                return {
+                    "status": "error",
+                    "message": "Missing restaurant or order GUID in refund",
+                }
 
             restaurant_id = await self.get_restaurant_id(restaurant_guid)
 
@@ -515,7 +580,9 @@ class POSIntegrationAgent(BaseAgent):
             self.logger.error(f"Error handling order refunded: {e}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
-    async def handle_menu_modified(self, webhook_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_menu_modified(
+        self, webhook_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle menu modification - update wine library if needed"""
         self.logger.info("Menu modified event received - triggering wine library sync")
 
@@ -529,19 +596,19 @@ class POSIntegrationAgent(BaseAgent):
             "routing_key": "pos.menu.modified",
             "exchange": "pos.events",
             "payload": webhook_data.get("data", {}),
-            "priority": 5
+            "priority": 5,
         }
 
         # Publish to message bus
         await self.message_bus.publish(
-            exchange="pos.events",
-            routing_key="pos.menu.modified",
-            message=event_data
+            exchange="pos.events", routing_key="pos.menu.modified", message=event_data
         )
 
         return {"status": "success", "action": "sync_triggered"}
 
-    def is_wine_item(self, item_name: str, selection: Optional[Dict[str, Any]] = None) -> bool:
+    def is_wine_item(
+        self, item_name: str, selection: Optional[Dict[str, Any]] = None
+    ) -> bool:
         """
         Check if an item is a wine product.
 
@@ -571,7 +638,9 @@ class POSIntegrationAgent(BaseAgent):
         # Step 2: Keyword fallback — only reached when category is empty/absent,
         # meaning Toast did not categorise the item (catches uncategorised wines).
         item_name_lower = item_name.lower()
-        return any(keyword in item_name_lower for keyword in self.wine_category_keywords)
+        return any(
+            keyword in item_name_lower for keyword in self.wine_category_keywords
+        )
 
     # =========================================================================
     # HARD-02: Toast Polling Saga — handles incomplete webhooks with empty items
@@ -611,7 +680,9 @@ class POSIntegrationAgent(BaseAgent):
                 return enriched_items
 
         # All retries exhausted — compensate and publish partial order event
-        await self.compensate_saga(saga_id, error="Toast API polling exhausted after 3 attempts")
+        await self.compensate_saga(
+            saga_id, error="Toast API polling exhausted after 3 attempts"
+        )
         await self.publish(
             exchange_name="pos.events",
             routing_key="pos.partial_order_received",
@@ -646,20 +717,28 @@ class POSIntegrationAgent(BaseAgent):
 
         try:
             import aiohttp
+
             url = f"{self.toast_api_url}/orders/{order_guid}"
             headers = {}
             if self.toast_client_id and self.toast_client_secret:
                 import base64
+
                 creds = f"{self.toast_client_id}:{self.toast_client_secret}"
-                headers["Authorization"] = "Basic " + base64.b64encode(creds.encode()).decode()
+                headers["Authorization"] = (
+                    "Basic " + base64.b64encode(creds.encode()).decode()
+                )
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         checks = data.get("checks", [{}])
                         return checks[0].get("selections", []) if checks else []
-                    self.logger.warning(f"Toast API returned {resp.status} for order {order_guid}")
+                    self.logger.warning(
+                        f"Toast API returned {resp.status} for order {order_guid}"
+                    )
                     return []
         except Exception as e:
             self.logger.error(f"Error polling Toast for order {order_guid}: {e}")
@@ -674,7 +753,7 @@ class POSIntegrationAgent(BaseAgent):
         restaurant_guid: str,
         order_guid: str,
         wine_sale: Dict[str, Any],
-        sale_timestamp: str
+        sale_timestamp: str,
     ):
         """
         Publish a wine sale event to the message bus
@@ -686,7 +765,9 @@ class POSIntegrationAgent(BaseAgent):
         """
         try:
             # Try to match wine name to master wine library
-            wine_id = await self.match_wine_to_library(wine_sale["item_name"], restaurant_guid)
+            wine_id = await self.match_wine_to_library(
+                wine_sale["item_name"], restaurant_guid
+            )
             restaurant_id = await self.get_restaurant_id(restaurant_guid)
 
             event_data = {
@@ -706,19 +787,19 @@ class POSIntegrationAgent(BaseAgent):
                     "price": wine_sale["price"],
                     "sale_timestamp": sale_timestamp,
                     "pos_system": "toast",
-                    "selection_guid": wine_sale["selection_guid"]
+                    "selection_guid": wine_sale["selection_guid"],
                 },
                 "context": {
                     "pos_environment": self.toast_environment,
-                    "sale_type": "completed"
+                    "sale_type": "completed",
                 },
-                "priority": 7
+                "priority": 7,
             }
 
             await self.message_bus.publish(
                 exchange="pos.events",
                 routing_key="pos.sale.completed",
-                message=event_data
+                message=event_data,
             )
 
             self.logger.debug(f"Published wine sale event for {wine_sale['item_name']}")
@@ -727,11 +808,7 @@ class POSIntegrationAgent(BaseAgent):
             self.logger.error(f"Error publishing wine sale event: {e}", exc_info=True)
 
     async def publish_wine_void_event(
-        self,
-        restaurant_guid: str,
-        order_guid: str,
-        item_name: str,
-        quantity: int
+        self, restaurant_guid: str, order_guid: str, item_name: str, quantity: int
     ):
         """Publish a wine void/refund event"""
         try:
@@ -752,15 +829,13 @@ class POSIntegrationAgent(BaseAgent):
                     "wine_id": wine_id,
                     "wine_name": item_name,
                     "quantity": quantity,
-                    "void_timestamp": datetime.utcnow().isoformat()
+                    "void_timestamp": datetime.utcnow().isoformat(),
                 },
-                "priority": 7
+                "priority": 7,
             }
 
             await self.message_bus.publish(
-                exchange="pos.events",
-                routing_key="pos.sale.voided",
-                message=event_data
+                exchange="pos.events", routing_key="pos.sale.voided", message=event_data
             )
 
             self.logger.debug(f"Published wine void event for {item_name}")
@@ -768,7 +843,9 @@ class POSIntegrationAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Error publishing wine void event: {e}", exc_info=True)
 
-    async def match_wine_to_library(self, item_name: str, restaurant_guid: str) -> Optional[str]:
+    async def match_wine_to_library(
+        self, item_name: str, restaurant_guid: str
+    ) -> Optional[str]:
         """
         Match a POS item name to a wine in the master library
 
@@ -782,8 +859,7 @@ class POSIntegrationAgent(BaseAgent):
 
             # Query for best match using Supabase
             result = await self.database.inventory.find_wine_by_name_similarity(
-                wine_name=item_name,
-                restaurant_id=restaurant_id
+                wine_name=item_name, restaurant_id=restaurant_id
             )
 
             if result:
@@ -800,27 +876,33 @@ class POSIntegrationAgent(BaseAgent):
         """Get internal restaurant ID from Toast GUID"""
         try:
             # Use Supabase to query restaurants table
-            response = self.database.supabase.table("restaurants") \
-                .select("id") \
-                .eq("toast_restaurant_guid", restaurant_guid) \
-                .single() \
+            response = (
+                self.database.supabase.table("restaurants")
+                .select("id")
+                .eq("toast_restaurant_guid", restaurant_guid)
+                .single()
                 .execute()
+            )
 
             return response.data.get("id") if response.data else None
         except Exception as e:
             self.logger.error(f"Error getting restaurant ID: {e}")
             return None
 
-    async def log_webhook_event(self, webhook_data: Dict[str, Any], event_type: str, result: Dict[str, Any]):
+    async def log_webhook_event(
+        self, webhook_data: Dict[str, Any], event_type: str, result: Dict[str, Any]
+    ):
         """Log webhook event to database for audit trail"""
         try:
-            await self.database.supabase.table("pos_webhook_logs").insert({
-                "event_type": event_type,
-                "payload": webhook_data,
-                "processing_result": result,
-                "processed_at": datetime.utcnow().isoformat(),
-                "pos_system": "toast"
-            }).execute()
+            await self.database.supabase.table("pos_webhook_logs").insert(
+                {
+                    "event_type": event_type,
+                    "payload": webhook_data,
+                    "processing_result": result,
+                    "processed_at": datetime.utcnow().isoformat(),
+                    "pos_system": "toast",
+                }
+            ).execute()
         except Exception as e:
             self.logger.error(f"Error logging webhook event: {e}")
 
@@ -845,15 +927,15 @@ class POSIntegrationAgent(BaseAgent):
                 "payload": {
                     "restaurant_id": restaurant_id,
                     "sync_status": "completed",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.utcnow().isoformat(),
                 },
-                "correlation_id": message.get("message_id")
+                "correlation_id": message.get("message_id"),
             }
 
             await self.message_bus.publish(
                 exchange="pos.events",
                 routing_key="pos.sync.completed",
-                message=response_data
+                message=response_data,
             )
 
         except Exception as e:

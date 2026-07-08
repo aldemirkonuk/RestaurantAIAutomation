@@ -48,6 +48,7 @@ class DatasetCreatorAgent(BaseAgent):
         supabase = None
         try:
             from core.database import get_supabase_client
+
             supabase = get_supabase_client()
         except Exception:
             pass
@@ -65,15 +66,12 @@ class DatasetCreatorAgent(BaseAgent):
             # Menu/label scan results
             ("scan.events", "scan.menu_completed"),
             ("scan.events", "scan.label_completed"),
-
             # Wine enrichment results
             ("enrichment.events", "enrichment.wine_enriched"),
             ("enrichment.events", "enrichment.book_processed"),
-
             # User corrections (from frontend)
             ("training.events", "training.user_correction"),
             ("training.events", "training.scan_confirmed"),
-
             # Sommelier enrichment
             ("sommelier.events", "sommelier.wine_enriched"),
         ]
@@ -245,7 +243,8 @@ class DatasetCreatorAgent(BaseAgent):
             output_data={
                 "accepted": [self._sanitize_wine(w) for w in accepted_wines],
                 "rejected": [self._sanitize_wine(w) for w in rejected_wines],
-                "acceptance_rate": len(accepted_wines) / max(len(accepted_wines) + len(rejected_wines), 1),
+                "acceptance_rate": len(accepted_wines)
+                / max(len(accepted_wines) + len(rejected_wines), 1),
             },
             model_version=payload.get("model_version", "gemini-2.0-flash"),
             confidence=1.0,

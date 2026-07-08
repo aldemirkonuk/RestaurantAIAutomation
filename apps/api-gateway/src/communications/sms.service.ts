@@ -1,5 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 
 export interface SmsOptions {
   to: string;
@@ -27,24 +27,27 @@ export class SmsService implements OnModuleInit {
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
-    const authId = this.configService.get<string>('PLIVO_AUTH_ID');
-    const authToken = this.configService.get<string>('PLIVO_AUTH_TOKEN');
-    this.fromNumber = this.configService.get<string>('PLIVO_PHONE_NUMBER') || '';
+    const authId = this.configService.get<string>("PLIVO_AUTH_ID");
+    const authToken = this.configService.get<string>("PLIVO_AUTH_TOKEN");
+    this.fromNumber =
+      this.configService.get<string>("PLIVO_PHONE_NUMBER") || "";
 
     if (!authId || !authToken || !this.fromNumber) {
-      this.logger.warn('Plivo credentials not configured. SMS sending will be mocked.');
+      this.logger.warn(
+        "Plivo credentials not configured. SMS sending will be mocked.",
+      );
       return;
     }
 
     try {
       // Dynamic import for Plivo SDK
-      const plivo = await import('plivo');
+      const plivo = await import("plivo");
       this.plivoClient = new plivo.Client(authId, authToken);
       this.isConfigured = true;
-      this.logger.log('Plivo SMS client initialized successfully');
+      this.logger.log("Plivo SMS client initialized successfully");
     } catch (error) {
-      this.logger.error('Failed to initialize Plivo client:', error);
-      this.logger.warn('SMS sending will be mocked.');
+      this.logger.error("Failed to initialize Plivo client:", error);
+      this.logger.warn("SMS sending will be mocked.");
     }
   }
 
@@ -65,14 +68,17 @@ export class SmsService implements OnModuleInit {
         options.message,
       );
 
-      this.logger.log(`SMS sent successfully. Message UUID: ${response.messageUuid}`);
+      this.logger.log(
+        `SMS sent successfully. Message UUID: ${response.messageUuid}`,
+      );
 
       return {
         success: true,
         messageId: response.messageUuid,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       this.logger.error(`Failed to send SMS: ${errorMessage}`);
 
       return {
@@ -108,8 +114,9 @@ export class SmsService implements OnModuleInit {
     currentStock: number;
     threshold: number;
   }): Promise<SmsResult> {
-    const severity = data.currentStock <= data.threshold * 0.5 ? 'CRITICAL' : 'LOW STOCK';
-    
+    const severity =
+      data.currentStock <= data.threshold * 0.5 ? "CRITICAL" : "LOW STOCK";
+
     const message = `🚨 ${severity}: ${data.wineName}
 Stock: ${data.currentStock}/${data.threshold} bottles
 Action needed! Reply REORDER to auto-order.
@@ -188,17 +195,17 @@ Order #${data.orderId.substring(0, 8)}`;
   private mockSendSms(options: SmsOptions): SmsResult {
     const mockId = `mock_sms_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    this.logger.log('='.repeat(50));
-    this.logger.log('MOCK SMS SENT');
-    this.logger.log('='.repeat(50));
+    this.logger.log("=".repeat(50));
+    this.logger.log("MOCK SMS SENT");
+    this.logger.log("=".repeat(50));
     this.logger.log(`To: ${options.to}`);
-    this.logger.log(`From: ${this.fromNumber || '+1234567890'}`);
-    this.logger.log('-'.repeat(50));
+    this.logger.log(`From: ${this.fromNumber || "+1234567890"}`);
+    this.logger.log("-".repeat(50));
     this.logger.log(`Message (${options.message.length} chars):`);
     this.logger.log(options.message);
-    this.logger.log('-'.repeat(50));
+    this.logger.log("-".repeat(50));
     this.logger.log(`Mock Message ID: ${mockId}`);
-    this.logger.log('='.repeat(50));
+    this.logger.log("=".repeat(50));
 
     return {
       success: true,
@@ -225,12 +232,12 @@ Order #${data.orderId.substring(0, 8)}`;
   /**
    * Format phone number to E.164
    */
-  formatToE164(phone: string, defaultCountryCode = '1'): string {
+  formatToE164(phone: string, defaultCountryCode = "1"): string {
     // Remove all non-digit characters
-    const digits = phone.replace(/\D/g, '');
+    const digits = phone.replace(/\D/g, "");
 
     // If already has country code (11+ digits starting with 1 for US)
-    if (digits.length >= 11 && digits.startsWith('1')) {
+    if (digits.length >= 11 && digits.startsWith("1")) {
       return `+${digits}`;
     }
 

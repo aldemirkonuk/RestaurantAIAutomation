@@ -24,11 +24,13 @@ class GhostInventoryAgent(BaseAgent):
         routing_key = message.get("routing_key")
         payload = message.get("payload", {})
 
-        self.logger.info({
-            "message": "Ghost inventory event received",
-            "routing_key": routing_key,
-            "payload_keys": list(payload.keys()),
-        })
+        self.logger.info(
+            {
+                "message": "Ghost inventory event received",
+                "routing_key": routing_key,
+                "payload_keys": list(payload.keys()),
+            }
+        )
 
         # TODO: Compare POS vs physical counts and write to inventory_discrepancies
         # TODO: Update inventory_trust_scores based on variance

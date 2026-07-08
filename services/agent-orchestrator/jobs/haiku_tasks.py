@@ -58,7 +58,7 @@ def haiku_enrich_task(
         return result
     except Exception as exc:
         retry_num = self.request.retries  # 0, 1, 2
-        countdown = 60 * (2 ** retry_num)  # 60, 120, 240
+        countdown = 60 * (2**retry_num)  # 60, 120, 240
         logger.warning(
             f"haiku.enrich_wine failed for wine_id={wine_id} "
             f"(attempt {retry_num + 1}/3): {exc}. "
@@ -120,7 +120,9 @@ async def _enrich_async(
         if val is not None:
             update_payload[jsonb_key] = val
 
-    supabase.table("master_wine_library_submissions").update(update_payload).eq("id", wine_id).execute()
+    supabase.table("master_wine_library_submissions").update(update_payload).eq(
+        "id", wine_id
+    ).execute()
 
     # WSRCH-07: Trigger web verification if eligible
     # Late import to avoid circular deps (web_verify_tasks imports celery_app which imports haiku_tasks)
@@ -131,13 +133,18 @@ async def _enrich_async(
 
         producer_value = merged_fc.get("producer", {}).get("value") or ""
         normalized_producer = normalize_producer_name(producer_value)
-        producer_in_graph = lookup_producer(normalized_producer) is not None if normalized_producer else False
+        producer_in_graph = (
+            lookup_producer(normalized_producer) is not None
+            if normalized_producer
+            else False
+        )
 
         if _should_web_verify(merged_fc, producer_in_graph):
             web_verify_task.delay(wine_id)
             logger.info(
                 "haiku_tasks: queued web_verify_task for wine_id=%s (producer_in_graph=%s)",
-                wine_id, producer_in_graph,
+                wine_id,
+                producer_in_graph,
             )
             # web_verify_tasks will trigger ontology_validate_task at its end (primary path)
         else:
@@ -145,6 +152,7 @@ async def _enrich_async(
             # Ensures every wine gets ontology validation even if web search was skipped
             try:
                 from jobs.ontology_tasks import ontology_validate_task
+
                 ontology_validate_task.delay(wine_id)
                 logger.info(
                     "haiku_tasks: queued ontology_validate_task directly for wine_id=%s "
@@ -154,17 +162,21 @@ async def _enrich_async(
             except Exception as onto_exc:
                 logger.warning(
                     "haiku_tasks: failed to queue ontology_validate_task for wine_id=%s: %s",
-                    wine_id, onto_exc,
+                    wine_id,
+                    onto_exc,
                 )
     except Exception as exc:
         # Non-fatal: enrichment already complete; web verification can run later
         logger.warning(
             "haiku_tasks: failed to queue web_verify_task for wine_id=%s: %s",
-            wine_id, exc,
+            wine_id,
+            exc,
         )
 
     logger.info(
         "Enriched wine_id=%s (%s): %d FC fields merged, enrichment_source=haiku",
-        wine_id, wine_name, len(result.field_confidence),
+        wine_id,
+        wine_name,
+        len(result.field_confidence),
     )
     return {"fields_enriched": len(result.field_confidence), "wine_id": wine_id}

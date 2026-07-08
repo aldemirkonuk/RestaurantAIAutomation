@@ -1,13 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+import { Injectable, Logger } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   CreateEventDto,
   CreateEventResponseDto,
   EventListResponseDto,
   EventResponseDto,
   GetEventsQueryDto,
-} from './dto/event.dto';
+} from "./dto/event.dto";
 
 interface EventRow {
   id: string;
@@ -65,7 +65,7 @@ export class EventsService {
    */
   private resetMetrics(): void {
     this.logger.log({
-      message: 'Resetting event metrics',
+      message: "Resetting event metrics",
       metrics: { ...this.metrics },
     });
     this.metrics.totalIngested = 0;
@@ -79,13 +79,18 @@ export class EventsService {
   /**
    * Increment metric counters
    */
-  private incrementMetrics(eventType: string, sourcePage: string, deduped: boolean): void {
+  private incrementMetrics(
+    eventType: string,
+    sourcePage: string,
+    deduped: boolean,
+  ): void {
     this.metrics.totalIngested++;
     if (deduped) {
       this.metrics.totalDeduped++;
     }
     this.metrics.byType[eventType] = (this.metrics.byType[eventType] || 0) + 1;
-    this.metrics.bySource[sourcePage] = (this.metrics.bySource[sourcePage] || 0) + 1;
+    this.metrics.bySource[sourcePage] =
+      (this.metrics.bySource[sourcePage] || 0) + 1;
   }
 
   async createEvent(
@@ -99,7 +104,7 @@ export class EventsService {
 
     // Structured log: Event ingestion started
     this.logger.log({
-      message: 'Event ingestion started',
+      message: "Event ingestion started",
       restaurantId,
       userId,
       eventType: dto.eventType,
@@ -123,15 +128,15 @@ export class EventsService {
     };
 
     const { data, error } = await this.databaseService.supabase
-      .from('events')
+      .from("events")
       .insert(insertPayload)
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
       const isDuplicate =
-        error.code === '23505' ||
-        error.message?.includes('uq_events_idempotency');
+        error.code === "23505" ||
+        error.message?.includes("uq_events_idempotency");
 
       if (isDuplicate && idempotencyKey) {
         const existing = await this.findByIdempotencyKey(
@@ -145,7 +150,7 @@ export class EventsService {
 
           // Structured log: Event deduplicated
           this.logger.log({
-            message: 'Event deduplicated',
+            message: "Event deduplicated",
             restaurantId,
             eventId: existing.id,
             eventType: dto.eventType,
@@ -165,7 +170,7 @@ export class EventsService {
 
       // Structured log: Event ingestion failed
       this.logger.error({
-        message: 'Event ingestion failed',
+        message: "Event ingestion failed",
         restaurantId,
         eventType: dto.eventType,
         sourcePage: dto.sourcePage,
@@ -183,7 +188,7 @@ export class EventsService {
 
     // Structured log: Event ingestion completed
     this.logger.log({
-      message: 'Event ingestion completed',
+      message: "Event ingestion completed",
       restaurantId,
       eventId: data.id,
       eventType: dto.eventType,
@@ -194,7 +199,7 @@ export class EventsService {
 
     this.websocketGateway.server
       .to(`restaurant:${restaurantId}`)
-      .emit('event:new', data);
+      .emit("event:new", data);
 
     return {
       ...this.mapEventRow(data),
@@ -214,7 +219,7 @@ export class EventsService {
 
     // Structured log: List events query started
     this.logger.debug({
-      message: 'List events query started',
+      message: "List events query started",
       restaurantId,
       filters: {
         eventType: query.eventType,
@@ -226,33 +231,33 @@ export class EventsService {
     });
 
     let supabaseQuery = this.databaseService.supabase
-      .from('events')
-      .select('*', { count: 'exact' })
-      .eq('restaurant_id', restaurantId);
+      .from("events")
+      .select("*", { count: "exact" })
+      .eq("restaurant_id", restaurantId);
 
     if (query.eventType) {
-      supabaseQuery = supabaseQuery.eq('event_type', query.eventType);
+      supabaseQuery = supabaseQuery.eq("event_type", query.eventType);
     }
 
     if (query.sourcePage) {
-      supabaseQuery = supabaseQuery.eq('source_page', query.sourcePage);
+      supabaseQuery = supabaseQuery.eq("source_page", query.sourcePage);
     }
 
     if (query.after) {
-      supabaseQuery = supabaseQuery.gt('created_at', query.after);
+      supabaseQuery = supabaseQuery.gt("created_at", query.after);
     }
 
     if (query.before) {
-      supabaseQuery = supabaseQuery.lt('created_at', query.before);
+      supabaseQuery = supabaseQuery.lt("created_at", query.before);
     }
 
     const { data, error, count } = await supabaseQuery
-      .order('created_at', { ascending: false })
+      .order("created_at", { ascending: false })
       .range(fromIndex, toIndex);
 
     if (error) {
       this.logger.error({
-        message: 'List events query failed',
+        message: "List events query failed",
         restaurantId,
         errorCode: error.code,
         errorMessage: error.message,
@@ -266,7 +271,7 @@ export class EventsService {
 
     // Structured log: List events query completed
     this.logger.debug({
-      message: 'List events query completed',
+      message: "List events query completed",
       restaurantId,
       resultCount: events.length,
       total,
@@ -288,11 +293,11 @@ export class EventsService {
     idempotencyKey: string,
   ): Promise<EventResponseDto | null> {
     const { data, error } = await this.databaseService.supabase
-      .from('events')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('idempotency_key', idempotencyKey)
-      .order('created_at', { ascending: false })
+      .from("events")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("idempotency_key", idempotencyKey)
+      .order("created_at", { ascending: false })
       .limit(1)
       .single();
 

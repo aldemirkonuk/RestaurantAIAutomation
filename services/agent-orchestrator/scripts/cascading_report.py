@@ -101,11 +101,7 @@ def parse_junit_xml(xml_path: Path) -> List[Dict]:
         tree = ET.parse(xml_path)
         root = tree.getroot()
         # Handle both <testsuite> (root) and <testsuites> (wrapper)
-        testsuites = (
-            root.findall("testsuite")
-            if root.tag == "testsuites"
-            else [root]
-        )
+        testsuites = root.findall("testsuite") if root.tag == "testsuites" else [root]
         for suite in testsuites:
             for testcase in suite.findall("testcase"):
                 failure = testcase.find("failure")
@@ -121,21 +117,25 @@ def parse_junit_xml(xml_path: Path) -> List[Dict]:
                     message = error.get("message", str(error.text or ""))[:500]
                 elif skipped is not None:
                     status = "skipped"
-                results.append({
-                    "classname": testcase.get("classname", ""),
-                    "name": testcase.get("name", ""),
-                    "time": float(testcase.get("time", "0")),
-                    "status": status,
-                    "message": message,
-                })
+                results.append(
+                    {
+                        "classname": testcase.get("classname", ""),
+                        "name": testcase.get("name", ""),
+                        "time": float(testcase.get("time", "0")),
+                        "status": status,
+                        "message": message,
+                    }
+                )
     except Exception as exc:
-        results.append({
-            "classname": "ParseError",
-            "name": str(xml_path.name),
-            "time": 0.0,
-            "status": "error",
-            "message": f"Failed to parse JUnit XML: {exc}",
-        })
+        results.append(
+            {
+                "classname": "ParseError",
+                "name": str(xml_path.name),
+                "time": 0.0,
+                "status": "error",
+                "message": f"Failed to parse JUnit XML: {exc}",
+            }
+        )
     return results
 
 
@@ -230,24 +230,26 @@ def determine_root_causes(failed_waves: Set[str]) -> List[Dict]:
             frozen_key,
             SUGGESTED_FIXES.get(frozenset([root]), FALLBACK_FIX),
         )
-        clusters.append({
-            "root_cause_wave": root,
-            "cascaded_waves": sorted(cluster_waves - {root}),
-            "all_failed_waves": sorted(cluster_waves),
-            "suggested_fix": suggested_fix,
-        })
+        clusters.append(
+            {
+                "root_cause_wave": root,
+                "cascaded_waves": sorted(cluster_waves - {root}),
+                "all_failed_waves": sorted(cluster_waves),
+                "suggested_fix": suggested_fix,
+            }
+        )
 
     # Append any unassigned failures as standalone clusters
     unassigned = failed_waves - assigned
     for wave in sorted(unassigned):
-        clusters.append({
-            "root_cause_wave": wave,
-            "cascaded_waves": [],
-            "all_failed_waves": [wave],
-            "suggested_fix": SUGGESTED_FIXES.get(
-                frozenset([wave]), FALLBACK_FIX
-            ),
-        })
+        clusters.append(
+            {
+                "root_cause_wave": wave,
+                "cascaded_waves": [],
+                "all_failed_waves": [wave],
+                "suggested_fix": SUGGESTED_FIXES.get(frozenset([wave]), FALLBACK_FIX),
+            }
+        )
 
     return clusters
 

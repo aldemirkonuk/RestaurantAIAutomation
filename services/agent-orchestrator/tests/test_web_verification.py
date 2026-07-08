@@ -22,7 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.web_verification_service import (
     check_concordance,
     apply_concordance_result,
-    apply_producer_graph_enrichment,
     WineVerificationResult,
     REGION_ALIASES,
     NUMERIC_FIELDS,
@@ -34,6 +33,7 @@ from jobs.web_verify_tasks import _should_web_verify
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def existing_fc_burgundy() -> Dict[str, Any]:
@@ -51,9 +51,24 @@ def existing_fc_burgundy() -> Dict[str, Any]:
 def existing_fc_all_verified() -> Dict[str, Any]:
     """FC where all fields are high-confidence and web_verified — should be skipped."""
     return {
-        "wine_name": {"value": "Puligny-Montrachet", "confidence": 0.97, "source": "visible", "verification_status": "web_verified"},
-        "region": {"value": "Burgundy", "confidence": 0.95, "source": "web_verified", "verification_status": "web_verified"},
-        "country": {"value": "France", "confidence": 0.97, "source": "web_verified", "verification_status": "web_verified"},
+        "wine_name": {
+            "value": "Puligny-Montrachet",
+            "confidence": 0.97,
+            "source": "visible",
+            "verification_status": "web_verified",
+        },
+        "region": {
+            "value": "Burgundy",
+            "confidence": 0.95,
+            "source": "web_verified",
+            "verification_status": "web_verified",
+        },
+        "country": {
+            "value": "France",
+            "confidence": 0.97,
+            "source": "web_verified",
+            "verification_status": "web_verified",
+        },
     }
 
 
@@ -61,7 +76,11 @@ def existing_fc_all_verified() -> Dict[str, Any]:
 def existing_fc_low_confidence() -> Dict[str, Any]:
     """FC with one low-confidence field — should trigger web search."""
     return {
-        "wine_name": {"value": "Barolo Riserva", "confidence": 0.97, "source": "visible"},
+        "wine_name": {
+            "value": "Barolo Riserva",
+            "confidence": 0.97,
+            "source": "visible",
+        },
         "region": {"value": "Piedmont", "confidence": 0.60, "source": "knowledge"},
     }
 
@@ -69,6 +88,7 @@ def existing_fc_low_confidence() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # WSRCH-03: Concordance engine — unit tests (Tests 1–5)
 # ---------------------------------------------------------------------------
+
 
 def test_concordance_exact_match(existing_fc_burgundy):
     """Test 1: Exact string match → concordance."""
@@ -110,9 +130,9 @@ def test_concordance_region_alias():
         {"value": "Bourgogne", "confidence": 0.85, "source": "knowledge"},
         "Burgundy",
     )
-    assert result == "concordance", (
-        f"Expected 'concordance' for Bourgogne vs Burgundy alias, got {result!r}"
-    )
+    assert (
+        result == "concordance"
+    ), f"Expected 'concordance' for Bourgogne vs Burgundy alias, got {result!r}"
 
 
 def test_concordance_numeric_tolerance():
@@ -123,15 +143,15 @@ def test_concordance_numeric_tolerance():
         {"value": "13.5", "confidence": 0.85, "source": "visible"},
         "13.50",
     )
-    assert result == "concordance", (
-        f"Expected 'concordance' for 13.5 vs 13.50 (numeric tolerance), got {result!r}"
-    )
+    assert (
+        result == "concordance"
+    ), f"Expected 'concordance' for 13.5 vs 13.50 (numeric tolerance), got {result!r}"
 
 
 def test_concordance_color_synonyms():
     """Test: Color synonym matching — 'deep garnet' vs 'red' → concordance via COLOR_SYNONYMS."""
     from services.web_verification_service import COLOR_SYNONYMS
-    
+
     # Verify COLOR_SYNONYMS has expected mappings
     assert "deep garnet" in COLOR_SYNONYMS, "COLOR_SYNONYMS must have 'deep garnet'"
     assert COLOR_SYNONYMS["deep garnet"] == "red", "deep garnet must map to red"
@@ -139,25 +159,25 @@ def test_concordance_color_synonyms():
     assert COLOR_SYNONYMS["ruby"] == "red", "ruby must map to red"
     assert "pale yellow" in COLOR_SYNONYMS, "COLOR_SYNONYMS must have 'pale yellow'"
     assert COLOR_SYNONYMS["pale yellow"] == "white", "pale yellow must map to white"
-    
+
     # Test concordance with color synonyms
     result = check_concordance(
         "color",
         {"value": "red", "confidence": 0.85, "source": "knowledge"},
         "deep garnet",
     )
-    assert result == "concordance", (
-        f"Expected 'concordance' for red vs deep garnet (color synonym), got {result!r}"
-    )
-    
+    assert (
+        result == "concordance"
+    ), f"Expected 'concordance' for red vs deep garnet (color synonym), got {result!r}"
+
     result2 = check_concordance(
         "color",
         {"value": "white", "confidence": 0.85, "source": "knowledge"},
         "pale yellow",
     )
-    assert result2 == "concordance", (
-        f"Expected 'concordance' for white vs pale yellow (color synonym), got {result2!r}"
-    )
+    assert (
+        result2 == "concordance"
+    ), f"Expected 'concordance' for white vs pale yellow (color synonym), got {result2!r}"
 
 
 def test_concordance_grape_variety_substring():
@@ -167,34 +187,35 @@ def test_concordance_grape_variety_substring():
         {"value": "Cabernet Sauvignon", "confidence": 0.85, "source": "visible"},
         "87% Cabernet Sauvignon, 8% Merlot, 5% Cabernet Franc",
     )
-    assert result == "web_data_more_complete", (
-        f"Expected 'web_data_more_complete' for substring match (blend breakdown), got {result!r}"
-    )
-    
+    assert (
+        result == "web_data_more_complete"
+    ), f"Expected 'web_data_more_complete' for substring match (blend breakdown), got {result!r}"
+
     # Test reverse case: web data less specific
     result2 = check_concordance(
         "grape_variety",
         {"value": "Cabernet Sauvignon", "confidence": 0.85, "source": "visible"},
         "Cabernet",
     )
-    assert result2 == "concordance", (
-        f"Expected 'concordance' for web data less specific (Cabernet vs Cabernet Sauvignon), got {result2!r}"
-    )
-    
+    assert (
+        result2 == "concordance"
+    ), f"Expected 'concordance' for web data less specific (Cabernet vs Cabernet Sauvignon), got {result2!r}"
+
     # Test no substring match → contradiction
     result3 = check_concordance(
         "grape_variety",
         {"value": "Cabernet Sauvignon", "confidence": 0.85, "source": "visible"},
         "Pinot Noir",
     )
-    assert result3 == "contradiction", (
-        f"Expected 'contradiction' for completely different grape varieties, got {result3!r}"
-    )
+    assert (
+        result3 == "contradiction"
+    ), f"Expected 'contradiction' for completely different grape varieties, got {result3!r}"
 
 
 # ---------------------------------------------------------------------------
 # WSRCH-03 + WSRCH-06: apply_concordance_result — Tests 6–7
 # ---------------------------------------------------------------------------
+
 
 def test_apply_concordance_boosts_confidence():
     """Test 6: Concordance → confidence boosted to >= 0.95, verification_status='web_verified'."""
@@ -204,12 +225,12 @@ def test_apply_concordance_boosts_confidence():
     updated = apply_concordance_result(
         existing_fc, "region", "Burgundy", web_confidence=0.9, concordance="concordance"
     )
-    assert updated["region"]["confidence"] >= 0.95, (
-        f"Expected confidence >= 0.95 after concordance boost, got {updated['region']['confidence']}"
-    )
-    assert updated["region"]["verification_status"] == "web_verified", (
-        f"Expected verification_status='web_verified', got {updated['region'].get('verification_status')!r}"
-    )
+    assert (
+        updated["region"]["confidence"] >= 0.95
+    ), f"Expected confidence >= 0.95 after concordance boost, got {updated['region']['confidence']}"
+    assert (
+        updated["region"]["verification_status"] == "web_verified"
+    ), f"Expected verification_status='web_verified', got {updated['region'].get('verification_status')!r}"
 
 
 def test_apply_contradiction_flags_both_values():
@@ -218,30 +239,38 @@ def test_apply_contradiction_flags_both_values():
         "region": {"value": "Bordeaux", "confidence": 0.85, "source": "knowledge"}
     }
     updated = apply_concordance_result(
-        existing_fc, "region", "Burgundy", web_confidence=0.9, concordance="contradiction"
+        existing_fc,
+        "region",
+        "Burgundy",
+        web_confidence=0.9,
+        concordance="contradiction",
     )
-    assert updated["region"]["verification_status"] == "contradicted", (
-        f"Expected verification_status='contradicted', got {updated['region'].get('verification_status')!r}"
-    )
-    assert updated["region"].get("contradicted_value") == "Burgundy", (
-        f"Expected contradicted_value='Burgundy', got {updated['region'].get('contradicted_value')!r}"
-    )
+    assert (
+        updated["region"]["verification_status"] == "contradicted"
+    ), f"Expected verification_status='contradicted', got {updated['region'].get('verification_status')!r}"
+    assert (
+        updated["region"].get("contradicted_value") == "Burgundy"
+    ), f"Expected contradicted_value='Burgundy', got {updated['region'].get('contradicted_value')!r}"
     # Original value preserved — not overwritten by contradiction
-    assert updated["region"]["value"] == "Bordeaux", (
-        "Contradiction must not overwrite existing value"
-    )
+    assert (
+        updated["region"]["value"] == "Bordeaux"
+    ), "Contradiction must not overwrite existing value"
 
 
 # ---------------------------------------------------------------------------
 # WSRCH-05: Producer normalization — Test 8
 # ---------------------------------------------------------------------------
 
+
 def test_normalize_producer_name_unicode():
     """Test 8 (WSRCH-05): Unicode transliteration + slugification."""
-    assert normalize_producer_name("Château Müller-Catoir") == "chateau-muller-catoir", (
-        "Unicode normalization failed"
+    assert (
+        normalize_producer_name("Château Müller-Catoir") == "chateau-muller-catoir"
+    ), "Unicode normalization failed"
+    assert (
+        normalize_producer_name("Domaine de la Romanée-Conti")
+        == "domaine-de-la-romanee-conti"
     )
-    assert normalize_producer_name("Domaine de la Romanée-Conti") == "domaine-de-la-romanee-conti"
     assert normalize_producer_name(None) == "", "None input must return empty string"
     assert normalize_producer_name("") == "", "Empty string must return empty string"
     assert normalize_producer_name("DRC") == "drc", "Simple name normalization failed"
@@ -256,33 +285,35 @@ def test_normalize_producer_name_unicode():
 # WSRCH-07: Tiered search strategy — Test 9
 # ---------------------------------------------------------------------------
 
+
 def test_tiered_search_strategy(existing_fc_low_confidence, existing_fc_all_verified):
     """Test 9 (WSRCH-07): _should_web_verify tiered eligibility."""
     # (a) Low confidence → should verify
-    assert _should_web_verify(existing_fc_low_confidence, producer_in_graph=True) is True, (
-        "Should verify when FC has field with confidence < 0.8"
-    )
+    assert (
+        _should_web_verify(existing_fc_low_confidence, producer_in_graph=True) is True
+    ), "Should verify when FC has field with confidence < 0.8"
     # All high-confidence + web_verified + known producer → skip
-    assert _should_web_verify(existing_fc_all_verified, producer_in_graph=True) is False, (
-        "Should NOT verify when all fields >= 0.8 and web_verified"
-    )
+    assert (
+        _should_web_verify(existing_fc_all_verified, producer_in_graph=True) is False
+    ), "Should NOT verify when all fields >= 0.8 and web_verified"
     # (b) Unknown producer always triggers verification
-    assert _should_web_verify(existing_fc_all_verified, producer_in_graph=False) is True, (
-        "Should verify when producer not in graph (always)"
-    )
+    assert (
+        _should_web_verify(existing_fc_all_verified, producer_in_graph=False) is True
+    ), "Should verify when producer not in graph (always)"
     # (c) Never verified (no verification_status) with known producer but low FC
     never_verified_fc = {
         "region": {"value": "Burgundy", "confidence": 0.9, "source": "knowledge"},
         # no verification_status key
     }
-    assert _should_web_verify(never_verified_fc, producer_in_graph=True) is True, (
-        "Should verify when wine has never been web-verified"
-    )
+    assert (
+        _should_web_verify(never_verified_fc, producer_in_graph=True) is True
+    ), "Should verify when wine has never been web-verified"
 
 
 # ---------------------------------------------------------------------------
 # WSRCH-08: Daily budget cap — Test 10
 # ---------------------------------------------------------------------------
+
 
 def test_budget_cap_enforced():
     """Test 10 (WSRCH-08): check_and_reserve_search_budget() via mocked Redis INCRBYFLOAT."""
@@ -293,23 +324,29 @@ def test_budget_cap_enforced():
     mock_redis.incrbyfloat.return_value = 5.1
     with patch("jobs.web_verify_tasks.redis_lib.from_url", return_value=mock_redis):
         result = check_and_reserve_search_budget(cost_per_search=0.001)
-    assert result is False, f"Expected False when daily total 5.1 > cap 5.0, got {result}"
+    assert (
+        result is False
+    ), f"Expected False when daily total 5.1 > cap 5.0, got {result}"
     # The undo increment should have been called
-    assert mock_redis.incrbyfloat.call_count == 2, (
-        "Expected 2 INCRBYFLOAT calls (increment + undo)"
-    )
+    assert (
+        mock_redis.incrbyfloat.call_count == 2
+    ), "Expected 2 INCRBYFLOAT calls (increment + undo)"
 
     # Case B: Redis INCRBYFLOAT returns 0.5 (under cap) → should return True
     mock_redis_ok = MagicMock()
     mock_redis_ok.incrbyfloat.return_value = 0.5
     with patch("jobs.web_verify_tasks.redis_lib.from_url", return_value=mock_redis_ok):
         result_ok = check_and_reserve_search_budget(cost_per_search=0.001)
-    assert result_ok is True, f"Expected True when daily total 0.5 < cap 5.0, got {result_ok}"
+    assert (
+        result_ok is True
+    ), f"Expected True when daily total 0.5 < cap 5.0, got {result_ok}"
 
     # Case C: Redis unavailable → fail open (return True)
     mock_redis_fail = MagicMock()
     mock_redis_fail.incrbyfloat.side_effect = ConnectionError("Redis unavailable")
-    with patch("jobs.web_verify_tasks.redis_lib.from_url", return_value=mock_redis_fail):
+    with patch(
+        "jobs.web_verify_tasks.redis_lib.from_url", return_value=mock_redis_fail
+    ):
         result_fail_open = check_and_reserve_search_budget(cost_per_search=0.001)
     assert result_fail_open is True, "Redis failure must fail open (return True)"
 
@@ -317,6 +354,7 @@ def test_budget_cap_enforced():
 # ---------------------------------------------------------------------------
 # WSRCH-09: E2E integration test — full mock pipeline
 # ---------------------------------------------------------------------------
+
 
 def test_e2e_web_verify_flow():
     """
@@ -336,8 +374,16 @@ def test_e2e_web_verify_flow():
         "id": wine_id,
         "payload": {"wine_name": "Puligny-Montrachet", "producer": "Domaine Leflaive"},
         "field_confidence": {
-            "wine_name": {"value": "Puligny-Montrachet", "confidence": 0.97, "source": "visible"},
-            "producer": {"value": "Domaine Leflaive", "confidence": 0.82, "source": "visible"},
+            "wine_name": {
+                "value": "Puligny-Montrachet",
+                "confidence": 0.97,
+                "source": "visible",
+            },
+            "producer": {
+                "value": "Domaine Leflaive",
+                "confidence": 0.82,
+                "source": "visible",
+            },
             "region": {"value": "Burgundy", "confidence": 0.55, "source": "knowledge"},
             "vintage": {"value": "2019", "confidence": 0.97, "source": "visible"},
         },
@@ -345,8 +391,18 @@ def test_e2e_web_verify_flow():
 
     # Mock Serper results (2 organic results mentioning Burgundy)
     mock_serper_results = [
-        {"title": "Domaine Leflaive Puligny-Montrachet 2019", "link": "https://wine-searcher.com/...", "snippet": "From Burgundy, France. Domaine Leflaive produces world-class white Burgundy.", "position": 1},
-        {"title": "Leflaive 2019 Puligny Review", "link": "https://vivino.com/...", "snippet": "Domaine Leflaive Puligny-Montrachet 2019 Burgundy. 93 pts.", "position": 2},
+        {
+            "title": "Domaine Leflaive Puligny-Montrachet 2019",
+            "link": "https://wine-searcher.com/...",
+            "snippet": "From Burgundy, France. Domaine Leflaive produces world-class white Burgundy.",
+            "position": 1,
+        },
+        {
+            "title": "Leflaive 2019 Puligny Review",
+            "link": "https://vivino.com/...",
+            "snippet": "Domaine Leflaive Puligny-Montrachet 2019 Burgundy. 93 pts.",
+            "position": 2,
+        },
     ]
 
     # Mock WineVerificationResult — Gemini confirms region=Burgundy, country=France
@@ -364,7 +420,9 @@ def test_e2e_web_verify_flow():
     def mock_update_chain(*args, **kwargs):
         """Capture the update payload for assertion."""
         mock_chain = MagicMock()
-        mock_chain.eq.return_value = MagicMock(execute=MagicMock(return_value=MagicMock(data=[{}])))
+        mock_chain.eq.return_value = MagicMock(
+            execute=MagicMock(return_value=MagicMock(data=[{}]))
+        )
 
         # Extract the payload from the first argument (dict passed to .update())
         if args:
@@ -374,40 +432,67 @@ def test_e2e_web_verify_flow():
     # Build Supabase mock
     mock_supabase = MagicMock()
     mock_supabase.table.return_value = MagicMock(
-        select=MagicMock(return_value=MagicMock(
-            eq=MagicMock(return_value=MagicMock(
-                maybe_single=MagicMock(return_value=MagicMock(
-                    execute=MagicMock(return_value=MagicMock(data=mock_wine_row))
-                ))
-            ))
-        )),
+        select=MagicMock(
+            return_value=MagicMock(
+                eq=MagicMock(
+                    return_value=MagicMock(
+                        maybe_single=MagicMock(
+                            return_value=MagicMock(
+                                execute=MagicMock(
+                                    return_value=MagicMock(data=mock_wine_row)
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        ),
         update=mock_update_chain,
     )
 
     with (
         patch("jobs.web_verify_tasks.create_client", return_value=mock_supabase),
-        patch("services.web_verification_service.create_client", return_value=mock_supabase),
-        patch("jobs.web_verify_tasks.redis_lib.from_url", return_value=MagicMock(
-            set=MagicMock(return_value=True),
-            delete=MagicMock(),
-            incrbyfloat=MagicMock(return_value=0.001),
-            expire=MagicMock(),
-        )),
-        patch("services.serper_client.serper_search", new_callable=AsyncMock, return_value=mock_serper_results),
-        patch("services.web_verification_service.parse_search_results", new_callable=AsyncMock, return_value=mock_verification_result),
+        patch(
+            "services.web_verification_service.create_client",
+            return_value=mock_supabase,
+        ),
+        patch(
+            "jobs.web_verify_tasks.redis_lib.from_url",
+            return_value=MagicMock(
+                set=MagicMock(return_value=True),
+                delete=MagicMock(),
+                incrbyfloat=MagicMock(return_value=0.001),
+                expire=MagicMock(),
+            ),
+        ),
+        patch(
+            "services.serper_client.serper_search",
+            new_callable=AsyncMock,
+            return_value=mock_serper_results,
+        ),
+        patch(
+            "services.web_verification_service.parse_search_results",
+            new_callable=AsyncMock,
+            return_value=mock_verification_result,
+        ),
         patch("services.web_verification_service.lookup_producer", return_value=None),
-        patch("services.web_verification_service.upsert_producer", return_value="producer-uuid"),
+        patch(
+            "services.web_verification_service.upsert_producer",
+            return_value="producer-uuid",
+        ),
     ):
         result = asyncio.run(_verify_async(wine_id))
 
     # Assert task returned a successful result
     assert result is not None, "E2E test: _verify_async should return non-None result"
-    assert result.get("wine_id") == wine_id, f"E2E test: expected wine_id={wine_id!r} in result"
+    assert (
+        result.get("wine_id") == wine_id
+    ), f"E2E test: expected wine_id={wine_id!r} in result"
 
     # Assert field_confidence was updated with verification data
-    assert "field_confidence" in captured_update, (
-        "E2E test: Supabase .update() must be called with field_confidence in payload"
-    )
+    assert (
+        "field_confidence" in captured_update
+    ), "E2E test: Supabase .update() must be called with field_confidence in payload"
     updated_region = captured_update["field_confidence"].get("region", {})
     assert updated_region.get("confidence", 0) >= 0.95, (
         f"E2E test: region confidence must be >= 0.95 after concordance boost, "

@@ -1,7 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
-import crypto from 'crypto';
-import { DatabaseService } from '../database/database.service';
-import { GetWinesQueryDto, WineMetaQueryDto, WineSuggestionsQueryDto, SimilarWinesQueryDto } from './dto/wines.dto';
+import { Injectable, Logger } from "@nestjs/common";
+import crypto from "crypto";
+import { DatabaseService } from "../database/database.service";
+import {
+  GetWinesQueryDto,
+  WineMetaQueryDto,
+  WineSuggestionsQueryDto,
+  SimilarWinesQueryDto,
+} from "./dto/wines.dto";
 
 const ML_PER_OZ = 29.5735;
 
@@ -66,13 +71,13 @@ export class WinesService {
   }
 
   private normalizeText(value?: string | null) {
-    if (!value) return '';
+    if (!value) return "";
     return value
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
   }
 
@@ -89,29 +94,39 @@ export class WinesService {
     const parts = [
       this.normalizeText(input.producer),
       this.normalizeText(input.name),
-      input.vintage ? String(input.vintage) : 'nv',
+      input.vintage ? String(input.vintage) : "nv",
       this.normalizeText(input.primary_type),
       this.normalizeText(input.grape_variety),
       this.normalizeText(input.country),
       this.normalizeText(input.region),
       this.normalizeText(input.appellation),
     ];
-    return parts.filter(Boolean).join('|');
+    return parts.filter(Boolean).join("|");
   }
 
   private hashSignature(signature: string) {
-    return crypto.createHash('sha256').update(signature).digest('hex');
+    return crypto.createHash("sha256").update(signature).digest("hex");
   }
 
   private buildNormalizedFields(payload: any) {
     return {
       normalized_name: this.normalizeText(payload?.name),
       normalized_producer: this.normalizeText(payload?.producer),
-      normalized_primary_type: this.normalizeText(payload?.primary_type || payload?.classification?.primary_type),
-      normalized_grape_variety: this.normalizeText(payload?.grape_variety || payload?.classification?.grape_variety),
-      normalized_country: this.normalizeText(payload?.country || payload?.classification?.country),
-      normalized_region: this.normalizeText(payload?.region || payload?.classification?.region),
-      normalized_appellation: this.normalizeText(payload?.appellation || payload?.classification?.appellation),
+      normalized_primary_type: this.normalizeText(
+        payload?.primary_type || payload?.classification?.primary_type,
+      ),
+      normalized_grape_variety: this.normalizeText(
+        payload?.grape_variety || payload?.classification?.grape_variety,
+      ),
+      normalized_country: this.normalizeText(
+        payload?.country || payload?.classification?.country,
+      ),
+      normalized_region: this.normalizeText(
+        payload?.region || payload?.classification?.region,
+      ),
+      normalized_appellation: this.normalizeText(
+        payload?.appellation || payload?.classification?.appellation,
+      ),
     };
   }
 
@@ -122,8 +137,10 @@ export class WinesService {
       name: payload?.name,
       producer: payload?.producer,
       vintage: payload?.vintage ?? null,
-      primary_type: payload?.primary_type || payload?.classification?.primary_type,
-      grape_variety: payload?.grape_variety || payload?.classification?.grape_variety,
+      primary_type:
+        payload?.primary_type || payload?.classification?.primary_type,
+      grape_variety:
+        payload?.grape_variety || payload?.classification?.grape_variety,
       country: payload?.country || payload?.classification?.country,
       region: payload?.region || payload?.classification?.region,
       appellation: payload?.appellation || payload?.classification?.appellation,
@@ -131,16 +148,16 @@ export class WinesService {
     const signatureHash = signature ? this.hashSignature(signature) : null;
 
     const { data, error } = await client
-      .from('master_wine_library_submissions')
+      .from("master_wine_library_submissions")
       .insert({
         restaurant_id: restaurantId || null,
         submitted_by: submittedBy || null,
         payload,
         normalized_fields: normalizedFields,
         signature_hash: signatureHash,
-        status: 'pending',
+        status: "pending",
       })
-      .select('*')
+      .select("*")
       .single();
 
     if (error) {
@@ -154,10 +171,10 @@ export class WinesService {
   async processPendingSubmissions(limit = 50) {
     const client = this.dbService.getClient();
     const { data, error } = await client
-      .from('master_wine_library_submissions')
-      .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .from("master_wine_library_submissions")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
       .limit(limit);
 
     if (error) {
@@ -174,58 +191,69 @@ export class WinesService {
         name: payload?.name,
         producer: payload?.producer,
         vintage: payload?.vintage ?? null,
-        primary_type: payload?.primary_type || payload?.classification?.primary_type,
-        grape_variety: payload?.grape_variety || payload?.classification?.grape_variety,
+        primary_type:
+          payload?.primary_type || payload?.classification?.primary_type,
+        grape_variety:
+          payload?.grape_variety || payload?.classification?.grape_variety,
         country: payload?.country || payload?.classification?.country,
         region: payload?.region || payload?.classification?.region,
-        appellation: payload?.appellation || payload?.classification?.appellation,
+        appellation:
+          payload?.appellation || payload?.classification?.appellation,
       });
       const signatureHash = signature ? this.hashSignature(signature) : null;
 
       if (signatureHash) {
         const { data: existing } = await client
-          .from('master_wine_library')
-          .select('id')
-          .eq('signature_hash', signatureHash)
+          .from("master_wine_library")
+          .select("id")
+          .eq("signature_hash", signatureHash)
           .maybeSingle();
 
         if (existing?.id) {
           await client
-            .from('master_wine_library_submissions')
+            .from("master_wine_library_submissions")
             .update({
-              status: 'merged',
+              status: "merged",
               matched_master_id: existing.id,
-              decision_reason: 'signature_hash_match',
+              decision_reason: "signature_hash_match",
               signature_hash: signatureHash,
             })
-            .eq('id', submission.id);
+            .eq("id", submission.id);
 
-          results.push({ id: submission.id, status: 'merged', matchedId: existing.id });
+          results.push({
+            id: submission.id,
+            status: "merged",
+            matchedId: existing.id,
+          });
           continue;
         }
       }
 
       const normalizedFields = this.buildNormalizedFields(payload);
       const nearMatch = await client
-        .from('master_wine_library')
-        .select('id')
-        .eq('normalized_name', normalizedFields.normalized_name)
-        .eq('normalized_producer', normalizedFields.normalized_producer)
+        .from("master_wine_library")
+        .select("id")
+        .eq("normalized_name", normalizedFields.normalized_name)
+        .eq("normalized_producer", normalizedFields.normalized_producer)
         .limit(1);
 
       if (nearMatch.data && nearMatch.data.length > 0) {
         await client
-          .from('master_wine_library_submissions')
+          .from("master_wine_library_submissions")
           .update({
-            status: 'review',
+            status: "review",
             matched_master_id: nearMatch.data[0].id,
-            decision_reason: 'normalized_name_producer_match',
+            decision_reason: "normalized_name_producer_match",
             signature_hash: signatureHash,
             normalized_fields: normalizedFields,
           })
-          .eq('id', submission.id);
+          .eq("id", submission.id);
 
-        results.push({ id: submission.id, status: 'review', matchedId: nearMatch.data[0].id });
+        results.push({
+          id: submission.id,
+          status: "review",
+          matchedId: nearMatch.data[0].id,
+        });
         continue;
       }
 
@@ -235,57 +263,70 @@ export class WinesService {
         producer: payload?.producer,
         vintage: payload?.vintage ?? null,
         price_reference: payload?.price_reference ?? payload?.price ?? null,
-        primary_type: payload?.primary_type || payload?.classification?.primary_type || null,
-        grape_variety: payload?.grape_variety || payload?.classification?.grape_variety || null,
+        primary_type:
+          payload?.primary_type ||
+          payload?.classification?.primary_type ||
+          null,
+        grape_variety:
+          payload?.grape_variety ||
+          payload?.classification?.grape_variety ||
+          null,
         country: payload?.country || payload?.classification?.country || null,
         region: payload?.region || payload?.classification?.region || null,
-        appellation: payload?.appellation || payload?.classification?.appellation || null,
-        sub_region: payload?.sub_region || payload?.classification?.sub_region || null,
+        appellation:
+          payload?.appellation || payload?.classification?.appellation || null,
+        sub_region:
+          payload?.sub_region || payload?.classification?.sub_region || null,
         wine_structure: payload?.wine_structure || null,
         sensory_profile: payload?.sensory_profile || null,
-        quality_classification: payload?.quality_signals || payload?.quality_classification || null,
-        source: payload?.source || 'submission',
+        quality_classification:
+          payload?.quality_signals || payload?.quality_classification || null,
+        source: payload?.source || "submission",
         data_enrichment: payload?.data_enrichment || null,
         signature_hash: signatureHash,
         normalized_name: normalizedFields.normalized_name,
         normalized_producer: normalizedFields.normalized_producer,
-        signature_source: 'submission',
+        signature_source: "submission",
         bottle_size_ml: payload?.bottleSizeMl ?? payload?.bottle_size_ml ?? 750,
       };
 
       const { data: inserted, error: insertError } = await client
-        .from('master_wine_library')
+        .from("master_wine_library")
         .insert(insertPayload)
-        .select('id')
+        .select("id")
         .single();
 
       if (insertError) {
         await client
-          .from('master_wine_library_submissions')
+          .from("master_wine_library_submissions")
           .update({
-            status: 'rejected',
+            status: "rejected",
             decision_reason: insertError.message,
             signature_hash: signatureHash,
             normalized_fields: normalizedFields,
           })
-          .eq('id', submission.id);
+          .eq("id", submission.id);
 
-        results.push({ id: submission.id, status: 'rejected' });
+        results.push({ id: submission.id, status: "rejected" });
         continue;
       }
 
       await client
-        .from('master_wine_library_submissions')
+        .from("master_wine_library_submissions")
         .update({
-          status: 'accepted',
+          status: "accepted",
           matched_master_id: inserted.id,
-          decision_reason: 'inserted_new_master',
+          decision_reason: "inserted_new_master",
           signature_hash: signatureHash,
           normalized_fields: normalizedFields,
         })
-        .eq('id', submission.id);
+        .eq("id", submission.id);
 
-      results.push({ id: submission.id, status: 'accepted', matchedId: inserted.id });
+      results.push({
+        id: submission.id,
+        status: "accepted",
+        matchedId: inserted.id,
+      });
     }
 
     return { processed: results.length, results };
@@ -293,49 +334,54 @@ export class WinesService {
 
   async searchWines(query: GetWinesQueryDto) {
     const client = this.dbService.getClient();
-    let supa = client.from('master_wine_library').select('*');
+    let supa = client.from("master_wine_library").select("*");
 
     if (query.ids) {
-      const ids = query.ids.split(',').map((id) => id.trim()).filter(Boolean);
+      const ids = query.ids
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
       if (ids.length) {
-        supa = supa.in('id', ids);
+        supa = supa.in("id", ids);
       }
     }
 
     if (query.search) {
-      supa = supa.or(`name.ilike.%${query.search}%,producer.ilike.%${query.search}%`);
+      supa = supa.or(
+        `name.ilike.%${query.search}%,producer.ilike.%${query.search}%`,
+      );
     }
 
     if (query.type) {
-      supa = supa.ilike('primary_type', `%${query.type}%`);
+      supa = supa.ilike("primary_type", `%${query.type}%`);
     }
 
     if (query.region) {
-      supa = supa.ilike('region', `%${query.region}%`);
+      supa = supa.ilike("region", `%${query.region}%`);
     }
 
     if (query.country) {
-      supa = supa.ilike('country', `%${query.country}%`);
+      supa = supa.ilike("country", `%${query.country}%`);
     }
 
     if (query.minPrice !== undefined) {
-      supa = supa.gte('price_reference', query.minPrice);
+      supa = supa.gte("price_reference", query.minPrice);
     }
 
     if (query.maxPrice !== undefined) {
-      supa = supa.lte('price_reference', query.maxPrice);
+      supa = supa.lte("price_reference", query.maxPrice);
     }
 
     if (query.sortBy) {
       const column =
-        query.sortBy === 'price'
-          ? 'price_reference'
-          : query.sortBy === 'type'
-          ? 'primary_type'
-          : query.sortBy;
-      supa = supa.order(column, { ascending: query.sortOrder !== 'desc' });
+        query.sortBy === "price"
+          ? "price_reference"
+          : query.sortBy === "type"
+            ? "primary_type"
+            : query.sortBy;
+      supa = supa.order(column, { ascending: query.sortOrder !== "desc" });
     } else {
-      supa = supa.order('name', { ascending: true });
+      supa = supa.order("name", { ascending: true });
     }
 
     if (query.limit) {
@@ -358,13 +404,13 @@ export class WinesService {
   async getWineById(wineId: string) {
     const client = this.dbService.getClient();
     const { data, error } = await client
-      .from('master_wine_library')
-      .select('*')
-      .eq('id', wineId)
+      .from("master_wine_library")
+      .select("*")
+      .eq("id", wineId)
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      if (error.code === "PGRST116") {
         return null;
       }
       throw error;
@@ -376,9 +422,9 @@ export class WinesService {
   async getWineCategories() {
     const client = this.dbService.getClient();
     const { data, error } = await client
-      .from('master_wine_library')
-      .select('primary_type')
-      .not('primary_type', 'is', null);
+      .from("master_wine_library")
+      .select("primary_type")
+      .not("primary_type", "is", null);
 
     if (error) throw error;
     const types = (data || []).map((row) => row.primary_type).filter(Boolean);
@@ -387,10 +433,10 @@ export class WinesService {
 
   async getWineRegions(query: WineMetaQueryDto) {
     const client = this.dbService.getClient();
-    let supa = client.from('master_wine_library').select('region, country');
+    let supa = client.from("master_wine_library").select("region, country");
 
     if (query.country) {
-      supa = supa.ilike('country', `%${query.country}%`);
+      supa = supa.ilike("country", `%${query.country}%`);
     }
 
     const { data, error } = await supa;
@@ -402,9 +448,9 @@ export class WinesService {
   async getWineCountries() {
     const client = this.dbService.getClient();
     const { data, error } = await client
-      .from('master_wine_library')
-      .select('country')
-      .not('country', 'is', null);
+      .from("master_wine_library")
+      .select("country")
+      .not("country", "is", null);
 
     if (error) throw error;
     const countries = (data || []).map((row) => row.country).filter(Boolean);
@@ -418,8 +464,10 @@ export class WinesService {
 
     const client = this.dbService.getClient();
     const { data, error } = await client
-      .from('master_wine_library')
-      .select('id, wine_id, name, producer, vintage, price_reference, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at')
+      .from("master_wine_library")
+      .select(
+        "id, wine_id, name, producer, vintage, price_reference, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
+      )
       .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
       .limit(query.limit || 10);
 
@@ -432,23 +480,20 @@ export class WinesService {
     if (!wine) return [];
 
     const client = this.dbService.getClient();
-    let supa = client
-      .from('master_wine_library')
-      .select('*')
-      .neq('id', wineId);
+    let supa = client.from("master_wine_library").select("*").neq("id", wineId);
 
     if (wine.category) {
-      supa = supa.ilike('primary_type', `%${wine.category}%`);
+      supa = supa.ilike("primary_type", `%${wine.category}%`);
     }
 
     if (wine.region) {
-      supa = supa.ilike('region', `%${wine.region}%`);
+      supa = supa.ilike("region", `%${wine.region}%`);
     }
 
     if (wine.price) {
       supa = supa
-        .gte('price_reference', wine.price * 0.7)
-        .lte('price_reference', wine.price * 1.3);
+        .gte("price_reference", wine.price * 0.7)
+        .lte("price_reference", wine.price * 1.3);
     }
 
     const { data, error } = await supa.limit(query.limit || 5);

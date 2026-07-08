@@ -1,10 +1,11 @@
 """Tests for BUG-03, BUG-04, BUG-05, BUG-06 in POSIntegrationAgent."""
+
 import hashlib
 import hmac
 import json
 import inspect
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from agents.pos_integration_agent import POSIntegrationAgent
 
@@ -19,14 +20,39 @@ def _make_agent(config=None):
     agent.toast_webhook_secret = "test-secret-key"
     agent.toast_environment = "sandbox"
     agent.wine_category_keywords = [
-        "wine", "vino", "red wine", "white wine", "sparkling", "champagne",
-        "cabernet", "chardonnay", "pinot", "merlot", "sauvignon", "riesling",
-        "zinfandel", "syrah", "bordeaux", "burgundy", "prosecco", "cava",
-        "rosé", "rose", "dessert wine",
+        "wine",
+        "vino",
+        "red wine",
+        "white wine",
+        "sparkling",
+        "champagne",
+        "cabernet",
+        "chardonnay",
+        "pinot",
+        "merlot",
+        "sauvignon",
+        "riesling",
+        "zinfandel",
+        "syrah",
+        "bordeaux",
+        "burgundy",
+        "prosecco",
+        "cava",
+        "rosé",
+        "rose",
+        "dessert wine",
     ]
     agent.wine_menu_categories = [
-        "Wine", "Wines", "Wine List", "Bottle Wine", "Glass Wine",
-        "Sparkling Wine", "Red Wine", "White Wine", "Rose Wine", "Dessert Wine",
+        "Wine",
+        "Wines",
+        "Wine List",
+        "Bottle Wine",
+        "Glass Wine",
+        "Sparkling Wine",
+        "Red Wine",
+        "White Wine",
+        "Rose Wine",
+        "Dessert Wine",
     ]
     if config:
         for k, v in config.items():
@@ -38,14 +64,17 @@ def _make_agent(config=None):
 # BUG-03: hmac.HMAC not hmac.new
 # ---------------------------------------------------------------------------
 
+
 class TestBUG03HmacAPI:
     def test_verify_webhook_signature_uses_hmac_HMAC(self):
         """verify_webhook_signature source must reference hmac.HMAC, not hmac.new."""
         source = inspect.getsource(POSIntegrationAgent.verify_webhook_signature)
-        assert "hmac.new(" not in source, \
-            "BUG-03: deprecated hmac.new() still present — replace with hmac.HMAC()"
-        assert "hmac.HMAC(" in source, \
-            "BUG-03: hmac.HMAC() constructor not found in verify_webhook_signature"
+        assert (
+            "hmac.new(" not in source
+        ), "BUG-03: deprecated hmac.new() still present — replace with hmac.HMAC()"
+        assert (
+            "hmac.HMAC(" in source
+        ), "BUG-03: hmac.HMAC() constructor not found in verify_webhook_signature"
 
     def test_verify_webhook_signature_correct_result(self):
         agent = _make_agent()
@@ -67,6 +96,7 @@ class TestBUG03HmacAPI:
 # ---------------------------------------------------------------------------
 # BUG-05: Signature must be verified against raw bytes, not re-serialized JSON
 # ---------------------------------------------------------------------------
+
 
 class TestBUG05SignatureRawBytes:
     @pytest.mark.asyncio
@@ -96,13 +126,16 @@ class TestBUG05SignatureRawBytes:
             raw_payload=raw_payload_str.encode("utf-8"),
         )
         # Signature should verify correctly when raw_payload is provided
-        assert result.get("status") != "error" or result.get("message") != "Invalid signature", \
-            "BUG-05: signature verification failed because raw_payload was not used"
+        assert (
+            result.get("status") != "error"
+            or result.get("message") != "Invalid signature"
+        ), "BUG-05: signature verification failed because raw_payload was not used"
 
 
 # ---------------------------------------------------------------------------
 # BUG-04: Wine detection — category-first, keyword fallback
 # ---------------------------------------------------------------------------
+
 
 class TestBUG04WineDetection:
     def test_category_wine_list_no_keywords(self):
@@ -145,6 +178,7 @@ class TestBUG04WineDetection:
 # BUG-06: Refund logic separated from void logic
 # ---------------------------------------------------------------------------
 
+
 class TestBUG06RefundLogic:
     @pytest.mark.asyncio
     async def test_refund_publishes_POSSaleRefunded_not_voided(self):
@@ -171,19 +205,23 @@ class TestBUG06RefundLogic:
                 "refund": {
                     "amount": 4500,
                     "reason": "customer_request",
-                    "items": [{"guid": "sel-1", "name": "Caymus Cabernet", "quantity": 1}],
-                }
-            }
+                    "items": [
+                        {"guid": "sel-1", "name": "Caymus Cabernet", "quantity": 1}
+                    ],
+                },
+            },
         }
 
         await agent.handle_order_refunded(webhook_data)
 
         assert len(published_events) >= 1, "Expected at least one published event"
         event_types = [e.get("event_type") for e in published_events]
-        assert "POSSaleRefunded" in event_types, \
-            f"BUG-06: expected POSSaleRefunded, got {event_types}"
-        assert "POSSaleVoided" not in event_types, \
-            "BUG-06: refund must not publish POSSaleVoided"
+        assert (
+            "POSSaleRefunded" in event_types
+        ), f"BUG-06: expected POSSaleRefunded, got {event_types}"
+        assert (
+            "POSSaleVoided" not in event_types
+        ), "BUG-06: refund must not publish POSSaleVoided"
 
     @pytest.mark.asyncio
     async def test_refund_event_contains_amount_and_reason(self):
@@ -209,18 +247,27 @@ class TestBUG06RefundLogic:
                 "refund": {
                     "amount": 9000,
                     "reason": "quality_issue",
-                    "items": [{"guid": "sel-2", "name": "Opus One", "quantity": 2,
-                               "menuGroup": {"category": "Red Wine"}}],
-                }
-            }
+                    "items": [
+                        {
+                            "guid": "sel-2",
+                            "name": "Opus One",
+                            "quantity": 2,
+                            "menuGroup": {"category": "Red Wine"},
+                        }
+                    ],
+                },
+            },
         }
 
         await agent.handle_order_refunded(webhook_data)
-        refund_events = [e for e in published_events if e.get("event_type") == "POSSaleRefunded"]
+        refund_events = [
+            e for e in published_events if e.get("event_type") == "POSSaleRefunded"
+        ]
         assert refund_events, "No POSSaleRefunded event published"
         payload = refund_events[0]["payload"]
-        assert payload.get("refund_amount_dollars") == 90.0, \
-            f"Expected refund_amount_dollars=90.0, got {payload.get('refund_amount_dollars')}"
+        assert (
+            payload.get("refund_amount_dollars") == 90.0
+        ), f"Expected refund_amount_dollars=90.0, got {payload.get('refund_amount_dollars')}"
         assert payload.get("reason") == "quality_issue"
 
     @pytest.mark.asyncio
@@ -237,7 +284,11 @@ class TestBUG06RefundLogic:
 
         webhook_data = {
             "eventType": "OrderRefunded",
-            "data": {"restaurantGuid": "r", "orderGuid": "o", "refund": {"amount": 1000, "reason": "x", "items": []}}
+            "data": {
+                "restaurantGuid": "r",
+                "orderGuid": "o",
+                "refund": {"amount": 1000, "reason": "x", "items": []},
+            },
         }
         await agent.handle_order_refunded(webhook_data)
         agent.handle_item_voided.assert_not_called()

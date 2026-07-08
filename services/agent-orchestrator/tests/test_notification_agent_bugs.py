@@ -1,7 +1,8 @@
 """Tests for BUG-07 (Redis rate limits) and BUG-08 (batch task monitoring)."""
+
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 from agents.notification_agent import NotificationAgent
 
 
@@ -51,6 +52,7 @@ def _make_agent(config=None):
 # BUG-07: Redis-backed rate limits
 # ---------------------------------------------------------------------------
 
+
 class TestBUG07RedisRateLimits:
     def test_check_rate_limit_calls_redis_get(self):
         """_check_rate_limit must query Redis, not self.rate_limit_counters."""
@@ -61,6 +63,7 @@ class TestBUG07RedisRateLimits:
         agent._redis = mock_redis
 
         import asyncio
+
         result = asyncio.get_event_loop().run_until_complete(
             agent._check_rate_limit("rest-1", "sms")
         )
@@ -118,7 +121,9 @@ class TestBUG07RedisRateLimits:
 
         mock_redis.incr.assert_called_once_with("wineops:ratelimit:rest-1:sms:hour")
         # expire called only when counter == 1 (first increment sets TTL)
-        mock_redis.expire.assert_called_once_with("wineops:ratelimit:rest-1:sms:hour", 3600)
+        mock_redis.expire.assert_called_once_with(
+            "wineops:ratelimit:rest-1:sms:hour", 3600
+        )
 
     def test_increment_subsequent_does_not_reset_expire(self):
         """_increment_rate_limit must NOT reset TTL on subsequent increments (counter > 1)."""
@@ -140,6 +145,7 @@ class TestBUG07RedisRateLimits:
 # BUG-08: Batch processor task monitoring
 # ---------------------------------------------------------------------------
 
+
 class TestBUG08BatchTaskMonitoring:
     @pytest.mark.asyncio
     async def test_initialize_stores_batch_task(self):
@@ -152,15 +158,18 @@ class TestBUG08BatchTaskMonitoring:
             mock_aioredis.from_url = AsyncMock(return_value=mock_redis)
             await agent.initialize()
 
-        assert agent._batch_task is not None, \
-            "BUG-08: self._batch_task not set in initialize()"
-        assert isinstance(agent._batch_task, asyncio.Task), \
-            "BUG-08: self._batch_task is not an asyncio.Task"
+        assert (
+            agent._batch_task is not None
+        ), "BUG-08: self._batch_task not set in initialize()"
+        assert isinstance(
+            agent._batch_task, asyncio.Task
+        ), "BUG-08: self._batch_task is not an asyncio.Task"
 
     @pytest.mark.asyncio
     async def test_health_check_reports_running_task(self):
         """health_check returns batch_processor_running=True when task is running."""
         agent = _make_agent()
+
         # Create a long-running task
         async def never_done():
             await asyncio.sleep(9999)

@@ -4,8 +4,8 @@
  *           Vendor Outbound (AI-composed, style-adapted)
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from './template-config';
-import { baseTemplate, tableRow, alertBox } from './base-template';
+import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 // ============================================================================
 // Manager Review Template (internal — shown to manager before sending)
@@ -22,20 +22,20 @@ export interface ManagerReviewEmailData {
   totalAmount?: number;
   aiDraftedMessage: string;
   sessionType?: string;
-  urgency?: 'normal' | 'high' | 'critical';
+  urgency?: "normal" | "high" | "critical";
   dashboardBaseUrl?: string;
 }
 
 export function managerReviewTemplate(data: ManagerReviewEmailData): string {
   const { colors } = EMAIL_CONFIG;
-  const baseUrl = data.dashboardBaseUrl || 'https://app.wineops.ai';
+  const baseUrl = data.dashboardBaseUrl || "https://app.wineops.ai";
 
   const urgencyColors = {
     normal: colors.info,
     high: colors.warning,
     critical: colors.danger,
   };
-  const urgencyColor = urgencyColors[data.urgency || 'normal'];
+  const urgencyColor = urgencyColors[data.urgency || "normal"];
 
   const actionButtons = `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 25px 0;">
@@ -70,7 +70,7 @@ export function managerReviewTemplate(data: ManagerReviewEmailData): string {
 
   const content = `
     <div style="display: inline-block; padding: 6px 12px; background-color: ${urgencyColor}; color: #ffffff; font-size: 12px; font-weight: 600; border-radius: 4px; margin-bottom: 15px;">
-      AI DRAFT — ${(data.urgency || 'normal').toUpperCase()} PRIORITY
+      AI DRAFT — ${(data.urgency || "normal").toUpperCase()} PRIORITY
     </div>
 
     <h2 style="margin: 0 0 5px; color: ${colors.gray[900]}; font-size: 20px; font-weight: bold;">
@@ -81,11 +81,11 @@ export function managerReviewTemplate(data: ManagerReviewEmailData): string {
     </p>
 
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${tableRow('Provider', data.providerName)}
-      ${tableRow('Contact', data.vendorContactName || 'N/A')}
-      ${tableRow('Wine', `${data.wineName} x${data.quantity}`)}
-      ${data.pricePerBottle ? tableRow('Target Price', `${formatCurrency(data.pricePerBottle)}/bottle`) : ''}
-      ${data.totalAmount ? tableRow('Est. Total', formatCurrency(data.totalAmount)) : ''}
+      ${tableRow("Provider", data.providerName)}
+      ${tableRow("Contact", data.vendorContactName || "N/A")}
+      ${tableRow("Wine", `${data.wineName} x${data.quantity}`)}
+      ${data.pricePerBottle ? tableRow("Target Price", `${formatCurrency(data.pricePerBottle)}/bottle`) : ""}
+      ${data.totalAmount ? tableRow("Est. Total", formatCurrency(data.totalAmount)) : ""}
     </table>
 
     <div style="margin: 20px 0; padding: 20px; background-color: ${colors.gray[50]}; border: 1px solid ${colors.gray[200]}; border-radius: 8px;">
@@ -107,7 +107,6 @@ ${data.aiDraftedMessage}
   });
 }
 
-
 // ============================================================================
 // Vendor Outbound Template (sent to the actual vendor)
 // ============================================================================
@@ -128,8 +127,8 @@ export interface VendorOutboundEmailData {
 
 export function vendorOutboundTemplate(data: VendorOutboundEmailData): string {
   const { colors, styles } = EMAIL_CONFIG;
-  const restaurantName = data.restaurantName || 'WineOps AI';
-  const senderName = data.senderName || 'Restaurant Manager';
+  const restaurantName = data.restaurantName || "WineOps AI";
+  const senderName = data.senderName || "Restaurant Manager";
 
   const signatureBlock = `
     <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top: 30px; border-top: 1px solid ${colors.gray[200]}; padding-top: 15px;">
@@ -138,20 +137,21 @@ export function vendorOutboundTemplate(data: VendorOutboundEmailData): string {
           <p style="margin: 0; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">
             ${senderName}
           </p>
-          ${data.senderTitle ? `<p style="margin: 2px 0 0; color: ${colors.gray[500]}; font-size: 13px;">${data.senderTitle}</p>` : ''}
+          ${data.senderTitle ? `<p style="margin: 2px 0 0; color: ${colors.gray[500]}; font-size: 13px;">${data.senderTitle}</p>` : ""}
           <p style="margin: 2px 0 0; color: ${colors.primary}; font-size: 13px; font-weight: 500;">
             ${restaurantName}
           </p>
-          ${data.senderEmail ? `<p style="margin: 2px 0 0; color: ${colors.gray[500]}; font-size: 12px;">${data.senderEmail}</p>` : ''}
-          ${data.senderPhone ? `<p style="margin: 2px 0 0; color: ${colors.gray[500]}; font-size: 12px;">${data.senderPhone}</p>` : ''}
+          ${data.senderEmail ? `<p style="margin: 2px 0 0; color: ${colors.gray[500]}; font-size: 12px;">${data.senderEmail}</p>` : ""}
+          ${data.senderPhone ? `<p style="margin: 2px 0 0; color: ${colors.gray[500]}; font-size: 12px;">${data.senderPhone}</p>` : ""}
         </td>
       </tr>
     </table>
   `;
 
-  const orderRef = data.orderNumber || data.orderId
-    ? `<p style="margin: 0 0 15px; color: ${colors.gray[400]}; font-size: 11px;">Ref: ${data.orderNumber || data.orderId}</p>`
-    : '';
+  const orderRef =
+    data.orderNumber || data.orderId
+      ? `<p style="margin: 0 0 15px; color: ${colors.gray[400]}; font-size: 11px;">Ref: ${data.orderNumber || data.orderId}</p>`
+      : "";
 
   return `
 <!DOCTYPE html>
@@ -184,7 +184,6 @@ export function vendorOutboundTemplate(data: VendorOutboundEmailData): string {
   `.trim();
 }
 
-
 // ============================================================================
 // Conversation Summary Template (sent to manager after vendor replies)
 // ============================================================================
@@ -201,9 +200,11 @@ export interface ConversationSummaryEmailData {
   dashboardBaseUrl?: string;
 }
 
-export function conversationSummaryTemplate(data: ConversationSummaryEmailData): string {
+export function conversationSummaryTemplate(
+  data: ConversationSummaryEmailData,
+): string {
   const { colors } = EMAIL_CONFIG;
-  const baseUrl = data.dashboardBaseUrl || 'https://app.wineops.ai';
+  const baseUrl = data.dashboardBaseUrl || "https://app.wineops.ai";
 
   const sentimentColors: Record<string, string> = {
     positive: colors.success,
@@ -242,9 +243,13 @@ export function conversationSummaryTemplate(data: ConversationSummaryEmailData):
       <div style="color: ${colors.gray[800]}; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${data.latestMessage}</div>
     </div>
 
-    ${data.threadSummary ? `
-    ${alertBox({ type: 'info', title: 'AI Thread Summary', message: data.threadSummary })}
-    ` : ''}
+    ${
+      data.threadSummary
+        ? `
+    ${alertBox({ type: "info", title: "AI Thread Summary", message: data.threadSummary })}
+    `
+        : ""
+    }
   `;
 
   return baseTemplate({
@@ -252,7 +257,7 @@ export function conversationSummaryTemplate(data: ConversationSummaryEmailData):
     preheader: `${data.providerName} replied about ${data.wineName} — ${data.detectedIntent}`,
     content,
     ctaButton: {
-      text: 'View Full Conversation',
+      text: "View Full Conversation",
       url: `${baseUrl}/orders/${data.orderId}?tab=conversation`,
       color: EMAIL_CONFIG.colors.primary,
     },

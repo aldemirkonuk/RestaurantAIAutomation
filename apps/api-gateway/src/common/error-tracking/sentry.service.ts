@@ -1,10 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as Sentry from '@sentry/node';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as Sentry from "@sentry/node";
 
 /**
  * Sentry Error Tracking Service
- * 
+ *
  * Provides centralized error tracking and monitoring:
  * - Automatic error capture
  * - Custom error reporting
@@ -26,11 +26,12 @@ export class SentryService implements OnModuleInit {
    * Initialize Sentry SDK
    */
   initialize(): void {
-    const dsn = this.configService.get<string>('SENTRY_DSN');
-    const environment = this.configService.get<string>('NODE_ENV') || 'development';
+    const dsn = this.configService.get<string>("SENTRY_DSN");
+    const environment =
+      this.configService.get<string>("NODE_ENV") || "development";
 
     if (!dsn) {
-      this.logger.warn('Sentry DSN not configured - error tracking disabled');
+      this.logger.warn("Sentry DSN not configured - error tracking disabled");
       return;
     }
 
@@ -38,16 +39,16 @@ export class SentryService implements OnModuleInit {
       Sentry.init({
         dsn,
         environment,
-        tracesSampleRate: environment === 'production' ? 0.1 : 1.0,
-        profilesSampleRate: environment === 'production' ? 0.1 : 1.0,
+        tracesSampleRate: environment === "production" ? 0.1 : 1.0,
+        profilesSampleRate: environment === "production" ? 0.1 : 1.0,
         integrations: [
           // Add integrations as needed
         ],
         beforeSend(event) {
           // Filter out sensitive data
           if (event.request?.headers) {
-            delete event.request.headers['authorization'];
-            delete event.request.headers['cookie'];
+            delete event.request.headers["authorization"];
+            delete event.request.headers["cookie"];
           }
           return event;
         },
@@ -72,7 +73,10 @@ export class SentryService implements OnModuleInit {
    */
   captureException(error: Error, context?: Record<string, any>): string | null {
     if (!this.initialized) {
-      this.logger.error(`Error (Sentry disabled): ${error.message}`, error.stack);
+      this.logger.error(
+        `Error (Sentry disabled): ${error.message}`,
+        error.stack,
+      );
       return null;
     }
 
@@ -80,14 +84,20 @@ export class SentryService implements OnModuleInit {
       extra: context,
     });
 
-    this.logger.error(`Error captured: ${error.message} (Event ID: ${eventId})`);
+    this.logger.error(
+      `Error captured: ${error.message} (Event ID: ${eventId})`,
+    );
     return eventId;
   }
 
   /**
    * Capture a message
    */
-  captureMessage(message: string, level: Sentry.SeverityLevel = 'info', context?: Record<string, any>): string | null {
+  captureMessage(
+    message: string,
+    level: Sentry.SeverityLevel = "info",
+    context?: Record<string, any>,
+  ): string | null {
     if (!this.initialized) {
       this.logger.log(`Message (Sentry disabled): ${message}`);
       return null;
@@ -104,7 +114,12 @@ export class SentryService implements OnModuleInit {
   /**
    * Set user context for error tracking
    */
-  setUser(user: { id: string; email?: string; username?: string; restaurantId?: string }): void {
+  setUser(user: {
+    id: string;
+    email?: string;
+    username?: string;
+    restaurantId?: string;
+  }): void {
     if (!this.initialized) return;
 
     Sentry.setUser({

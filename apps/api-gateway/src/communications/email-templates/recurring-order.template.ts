@@ -2,8 +2,8 @@
  * Recurring Order Reminder Email Template
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from './template-config';
-import { baseTemplate, tableRow, alertBox } from './base-template';
+import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 export interface RecurringOrderReminderData {
   restaurantName: string;
@@ -21,13 +21,15 @@ export interface RecurringOrderReminderData {
   notes?: string;
 }
 
-export function recurringOrderReminderTemplate(data: RecurringOrderReminderData): string {
+export function recurringOrderReminderTemplate(
+  data: RecurringOrderReminderData,
+): string {
   const { colors } = EMAIL_CONFIG;
 
   const frequencyLabels: Record<string, string> = {
-    weekly: 'Weekly',
-    biweekly: 'Every 2 Weeks',
-    monthly: 'Monthly',
+    weekly: "Weekly",
+    biweekly: "Every 2 Weeks",
+    monthly: "Monthly",
   };
 
   const itemsHtml = `
@@ -41,14 +43,18 @@ export function recurringOrderReminderTemplate(data: RecurringOrderReminderData)
         </tr>
       </thead>
       <tbody>
-        ${data.items.map((item, index) => `
-          <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+        ${data.items
+          .map(
+            (item, index) => `
+          <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${item.name}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
             <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[700]}; font-size: 14px;">${formatCurrency(item.unitPrice)}</td>
             <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.quantity * item.unitPrice)}</td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join("")}
         <tr style="background-color: ${colors.gray[100]};">
           <td colspan="3" style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">Estimated Total</td>
           <td style="padding: 12px 15px; text-align: right; color: ${colors.primary}; font-size: 16px; font-weight: bold;">${formatCurrency(data.totalAmount)}</td>
@@ -71,24 +77,29 @@ export function recurringOrderReminderTemplate(data: RecurringOrderReminderData)
     </p>
 
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${tableRow('Provider', data.providerName)}
-      ${tableRow('Scheduled Date', formatDate(data.scheduledDate))}
-      ${tableRow('Frequency', frequencyLabels[data.frequency] || data.frequency)}
-      ${data.lastOrderDate ? tableRow('Last Order', formatDate(data.lastOrderDate)) : ''}
+      ${tableRow("Provider", data.providerName)}
+      ${tableRow("Scheduled Date", formatDate(data.scheduledDate))}
+      ${tableRow("Frequency", frequencyLabels[data.frequency] || data.frequency)}
+      ${data.lastOrderDate ? tableRow("Last Order", formatDate(data.lastOrderDate)) : ""}
     </table>
 
-    ${data.notes ? alertBox({
-      type: 'info',
-      title: 'Order Notes',
-      message: data.notes,
-    }) : ''}
+    ${
+      data.notes
+        ? alertBox({
+            type: "info",
+            title: "Order Notes",
+            message: data.notes,
+          })
+        : ""
+    }
 
     ${itemsHtml}
 
     ${alertBox({
-      type: 'warning',
-      title: 'Action Required',
-      message: 'This recurring order is scheduled to be placed in 2 days. Review the items and approve or modify the order.',
+      type: "warning",
+      title: "Action Required",
+      message:
+        "This recurring order is scheduled to be placed in 2 days. Review the items and approve or modify the order.",
     })}
   `;
 
@@ -97,8 +108,8 @@ export function recurringOrderReminderTemplate(data: RecurringOrderReminderData)
     preheader: `Your ${data.frequency} order from ${data.providerName} is scheduled for ${formatDate(data.scheduledDate)}`,
     content,
     ctaButton: {
-      text: 'Review Order',
-      url: '#',
+      text: "Review Order",
+      url: "#",
       color: colors.primary,
     },
   });

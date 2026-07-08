@@ -6,11 +6,12 @@ Covers:
 - Toast polling saga: trigger, advance, complete, compensate, PartialOrderReceived publish
 - Edge cases: invalid signature, refund idempotency, missing order_guid
 """
+
 import pytest
 import hmac
 import hashlib
 import json
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from agents.pos_integration_agent import POSIntegrationAgent
 
@@ -18,6 +19,7 @@ from agents.pos_integration_agent import POSIntegrationAgent
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_webhook_payload(order_guid="g-1", event_type="OrderCompleted", items=None):
     """Build a minimal Toast-like webhook payload."""
@@ -38,6 +40,7 @@ def make_valid_signature(secret: str, body: str) -> str:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def agent():
     """Build POSIntegrationAgent with minimal mocks (no real DB / message bus)."""
@@ -45,11 +48,13 @@ def agent():
     mock_db = MagicMock()
     mock_db.supabase = MagicMock()
     # Idempotency table: empty = key not seen yet
-    mock_db.supabase.table.return_value.select.return_value.eq.return_value \
-        .execute.return_value.data = []
+    mock_db.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+        []
+    )
     # Saga insert returns a saga_id
-    mock_db.supabase.table.return_value.insert.return_value.execute.return_value \
-        .data = [{"saga_id": "saga-1"}]
+    mock_db.supabase.table.return_value.insert.return_value.execute.return_value.data = [
+        {"saga_id": "saga-1"}
+    ]
 
     config = {
         "toast_webhook_secret": "test-secret",
@@ -67,7 +72,9 @@ def agent():
     a.compensate_saga = AsyncMock()
     a.publish = AsyncMock()
     a.log_webhook_event = AsyncMock()
-    a.handle_order_completed = AsyncMock(return_value={"status": "success", "wine_count": 1})
+    a.handle_order_completed = AsyncMock(
+        return_value={"status": "success", "wine_count": 1}
+    )
     a.handle_order_refunded = AsyncMock(return_value={"status": "success"})
     a.handle_item_voided = AsyncMock(return_value={"status": "success"})
     a.handle_menu_modified = AsyncMock(return_value={"status": "success"})
@@ -80,10 +87,12 @@ def full_agent():
     mock_bus = MagicMock()
     mock_db = MagicMock()
     mock_db.supabase = MagicMock()
-    mock_db.supabase.table.return_value.select.return_value.eq.return_value \
-        .execute.return_value.data = []
-    mock_db.supabase.table.return_value.insert.return_value.execute.return_value \
-        .data = [{"saga_id": "saga-1"}]
+    mock_db.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+        []
+    )
+    mock_db.supabase.table.return_value.insert.return_value.execute.return_value.data = [
+        {"saga_id": "saga-1"}
+    ]
 
     config = {
         "toast_webhook_secret": "test-secret",
@@ -111,6 +120,7 @@ def full_agent():
 # Class TestHARD02WebhookDedup
 # ===========================================================================
 
+
 class TestHARD02WebhookDedup:
     """4 tests: composite-key idempotency in process_toast_webhook."""
 
@@ -119,7 +129,9 @@ class TestHARD02WebhookDedup:
         """Same order_guid:event_type processed twice — second call returns duplicate."""
         # First call: not a duplicate
         agent._check_idempotency = AsyncMock(return_value=False)
-        payload = make_webhook_payload(order_guid="guid-123", event_type="OrderCompleted")
+        payload = make_webhook_payload(
+            order_guid="guid-123", event_type="OrderCompleted"
+        )
         # Add eventType for routing
         payload["eventType"] = "OrderCompleted"
         result1 = await agent.process_toast_webhook(payload)
@@ -128,14 +140,17 @@ class TestHARD02WebhookDedup:
         # Second call: idempotency key already seen
         agent._check_idempotency = AsyncMock(return_value=True)
         result2 = await agent.process_toast_webhook(payload)
-        assert result2.get("status") == "duplicate", \
-            f"Expected 'duplicate', got: {result2}"
+        assert (
+            result2.get("status") == "duplicate"
+        ), f"Expected 'duplicate', got: {result2}"
 
     @pytest.mark.asyncio
     async def test_first_webhook_processed(self, agent):
         """Unique key: processing completes and _mark_processed is called."""
         agent._check_idempotency = AsyncMock(return_value=False)
-        payload = make_webhook_payload(order_guid="unique-guid-1", event_type="OrderCompleted")
+        payload = make_webhook_payload(
+            order_guid="unique-guid-1", event_type="OrderCompleted"
+        )
         payload["eventType"] = "OrderCompleted"
 
         result = await agent.process_toast_webhook(payload)
@@ -149,21 +164,26 @@ class TestHARD02WebhookDedup:
     async def test_idempotency_key_is_composite(self, agent):
         """_check_idempotency must be called with composite 'guid-123:OrderCompleted' key."""
         agent._check_idempotency = AsyncMock(return_value=False)
-        payload = make_webhook_payload(order_guid="guid-123", event_type="OrderCompleted")
+        payload = make_webhook_payload(
+            order_guid="guid-123", event_type="OrderCompleted"
+        )
         payload["eventType"] = "OrderCompleted"
 
         await agent.process_toast_webhook(payload)
 
         agent._check_idempotency.assert_called_once()
         key_used = agent._check_idempotency.call_args[0][0]
-        assert key_used == "guid-123:OrderCompleted", \
-            f"Expected composite key 'guid-123:OrderCompleted', got: '{key_used}'"
+        assert (
+            key_used == "guid-123:OrderCompleted"
+        ), f"Expected composite key 'guid-123:OrderCompleted', got: '{key_used}'"
 
     @pytest.mark.asyncio
     async def test_idempotency_fail_open(self, agent):
         """If _check_idempotency raises, the webhook is still processed (fail open)."""
         agent._check_idempotency = AsyncMock(side_effect=Exception("DB unavailable"))
-        payload = make_webhook_payload(order_guid="guid-err", event_type="OrderCompleted")
+        payload = make_webhook_payload(
+            order_guid="guid-err", event_type="OrderCompleted"
+        )
         payload["eventType"] = "OrderCompleted"
 
         # Should not propagate the exception; should return an error or success
@@ -175,6 +195,7 @@ class TestHARD02WebhookDedup:
 # ===========================================================================
 # Class TestHARD02WineDetection
 # ===========================================================================
+
 
 class TestHARD02WineDetection:
     """4 tests: log_decision called per item with correct confidence values."""
@@ -209,7 +230,9 @@ class TestHARD02WineDetection:
         # Positional or keyword — handle both
         if call_kwargs.kwargs:
             confidence = call_kwargs.kwargs.get("confidence")
-            assert confidence == 0.9, f"Expected confidence=0.9 for category match, got {confidence}"
+            assert (
+                confidence == 0.9
+            ), f"Expected confidence=0.9 for category match, got {confidence}"
         else:
             # positional: (decision_type, inputs, output, reasoning, confidence, restaurant_id)
             assert call_kwargs.args[4] == 0.9
@@ -243,7 +266,9 @@ class TestHARD02WineDetection:
         call_kwargs = full_agent.log_decision.call_args
         if call_kwargs.kwargs:
             confidence = call_kwargs.kwargs.get("confidence")
-            assert confidence == 0.7, f"Expected confidence=0.7 for keyword match, got {confidence}"
+            assert (
+                confidence == 0.7
+            ), f"Expected confidence=0.7 for keyword match, got {confidence}"
         else:
             assert call_kwargs.args[4] == 0.7
 
@@ -279,8 +304,9 @@ class TestHARD02WineDetection:
             output = call_kwargs.kwargs.get("output", {})
         else:
             output = call_kwargs.args[2]
-        assert output.get("is_wine") is False, \
-            f"Expected is_wine=False for Burger, got: {output}"
+        assert (
+            output.get("is_wine") is False
+        ), f"Expected is_wine=False for Burger, got: {output}"
 
     @pytest.mark.asyncio
     async def test_decision_log_inputs_contain_item_name(self, full_agent):
@@ -313,13 +339,15 @@ class TestHARD02WineDetection:
             inputs = call_kwargs.kwargs.get("inputs", {})
         else:
             inputs = call_kwargs.args[1]
-        assert "item_name" in inputs, \
-            f"Expected 'item_name' in log_decision inputs, got keys: {list(inputs.keys())}"
+        assert (
+            "item_name" in inputs
+        ), f"Expected 'item_name' in log_decision inputs, got keys: {list(inputs.keys())}"
 
 
 # ===========================================================================
 # Class TestHARD02ToastPollingSaga
 # ===========================================================================
+
 
 class TestHARD02ToastPollingSaga:
     """5 tests: Toast polling saga start, advance, complete/compensate, PartialOrderReceived."""
@@ -334,9 +362,14 @@ class TestHARD02ToastPollingSaga:
 
         full_agent.start_saga.assert_called_once()
         call_kwargs = full_agent.start_saga.call_args
-        saga_type = call_kwargs.args[0] if call_kwargs.args else call_kwargs.kwargs.get("saga_type")
-        assert saga_type == "toast_order_enrichment", \
-            f"Expected saga_type='toast_order_enrichment', got: '{saga_type}'"
+        saga_type = (
+            call_kwargs.args[0]
+            if call_kwargs.args
+            else call_kwargs.kwargs.get("saga_type")
+        )
+        assert (
+            saga_type == "toast_order_enrichment"
+        ), f"Expected saga_type='toast_order_enrichment', got: '{saga_type}'"
 
     @pytest.mark.asyncio
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -346,11 +379,15 @@ class TestHARD02ToastPollingSaga:
 
         await full_agent._handle_incomplete_webhook("order-adv-1", {})
 
-        assert full_agent.advance_saga.call_count == 3, \
-            f"Expected 3 advance_saga calls, got {full_agent.advance_saga.call_count}"
+        assert (
+            full_agent.advance_saga.call_count == 3
+        ), f"Expected 3 advance_saga calls, got {full_agent.advance_saga.call_count}"
         steps = [c.args[1] for c in full_agent.advance_saga.call_args_list]
-        assert steps == ["POLL_ATTEMPT_1", "POLL_ATTEMPT_2", "POLL_ATTEMPT_3"], \
-            f"Unexpected saga steps: {steps}"
+        assert steps == [
+            "POLL_ATTEMPT_1",
+            "POLL_ATTEMPT_2",
+            "POLL_ATTEMPT_3",
+        ], f"Unexpected saga steps: {steps}"
 
     @pytest.mark.asyncio
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -374,11 +411,14 @@ class TestHARD02ToastPollingSaga:
         await full_agent._handle_incomplete_webhook("order-comp-1", {})
 
         full_agent.compensate_saga.assert_called_once()
-        error_arg = full_agent.compensate_saga.call_args.args[1] \
-            if len(full_agent.compensate_saga.call_args.args) > 1 \
+        error_arg = (
+            full_agent.compensate_saga.call_args.args[1]
+            if len(full_agent.compensate_saga.call_args.args) > 1
             else full_agent.compensate_saga.call_args.kwargs.get("error", "")
-        assert "exhausted" in error_arg.lower() or "3" in error_arg, \
-            f"Expected exhaustion error message, got: '{error_arg}'"
+        )
+        assert (
+            "exhausted" in error_arg.lower() or "3" in error_arg
+        ), f"Expected exhaustion error message, got: '{error_arg}'"
 
     @pytest.mark.asyncio
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -386,7 +426,9 @@ class TestHARD02ToastPollingSaga:
         """After saga exhaustion, PartialOrderReceived event published to pos.events exchange."""
         full_agent._poll_toast_for_order = AsyncMock(return_value=[])
 
-        await full_agent._handle_incomplete_webhook("order-partial-1", {"restaurant_id": "r-1"})
+        await full_agent._handle_incomplete_webhook(
+            "order-partial-1", {"restaurant_id": "r-1"}
+        )
 
         full_agent.publish.assert_called_once()
         publish_call = full_agent.publish.call_args
@@ -394,18 +436,22 @@ class TestHARD02ToastPollingSaga:
         exchange = publish_call.kwargs.get("exchange_name") or (
             publish_call.args[0] if publish_call.args else None
         )
-        assert exchange == "pos.events", f"Expected exchange 'pos.events', got: '{exchange}'"
+        assert (
+            exchange == "pos.events"
+        ), f"Expected exchange 'pos.events', got: '{exchange}'"
         # Check message body contains PartialOrderReceived
         msg_body = publish_call.kwargs.get("message_body") or (
             publish_call.args[2] if len(publish_call.args) > 2 else {}
         )
-        assert msg_body.get("event_type") == "PartialOrderReceived", \
-            f"Expected event_type='PartialOrderReceived', got: {msg_body.get('event_type')}"
+        assert (
+            msg_body.get("event_type") == "PartialOrderReceived"
+        ), f"Expected event_type='PartialOrderReceived', got: {msg_body.get('event_type')}"
 
 
 # ===========================================================================
 # Class TestHARD02EdgeCases
 # ===========================================================================
+
 
 class TestHARD02EdgeCases:
     """3 tests: invalid signature, refund idempotency, missing order_guid."""
@@ -471,8 +517,9 @@ class TestHARD02EdgeCases:
         # Should not raise; idempotency key is ":OrderCompleted"
         agent._check_idempotency.assert_called_once()
         key = agent._check_idempotency.call_args[0][0]
-        assert key == ":OrderCompleted", \
-            f"Expected ':OrderCompleted' for missing guid, got: '{key}'"
+        assert (
+            key == ":OrderCompleted"
+        ), f"Expected ':OrderCompleted' for missing guid, got: '{key}'"
         # Result should not be an exception-driven crash
         assert result is not None
 
@@ -482,7 +529,9 @@ class TestHARD02EdgeCases:
 
     @pytest.mark.asyncio
     @patch("asyncio.sleep", new_callable=AsyncMock)
-    async def test_top_level_items_triggers_saga_when_selections_empty(self, mock_sleep, full_agent):
+    async def test_top_level_items_triggers_saga_when_selections_empty(
+        self, mock_sleep, full_agent
+    ):
         """Payload with top-level items=[] and no nested order selections triggers saga."""
         full_agent._poll_toast_for_order = AsyncMock(return_value=[])
 
@@ -538,7 +587,7 @@ class TestHARD02EdgeCases:
             "order_guid": "guid-tl-wine",
         }
 
-        result = await full_agent.handle_order_completed(webhook_data)
+        await full_agent.handle_order_completed(webhook_data)
 
         # Saga must NOT have been triggered — items came from top level
         full_agent.start_saga.assert_not_called()

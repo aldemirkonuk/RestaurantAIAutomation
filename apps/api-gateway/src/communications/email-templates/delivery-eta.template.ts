@@ -2,8 +2,8 @@
  * Delivery ETA Notification Email Template
  */
 
-import { EMAIL_CONFIG, formatDate } from './template-config';
-import { baseTemplate, metricBox, tableRow, alertBox } from './base-template';
+import { EMAIL_CONFIG, formatDate } from "./template-config";
+import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface DeliveryETAData {
   restaurantName: string;
@@ -34,12 +34,16 @@ export function deliveryETATemplate(data: DeliveryETAData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.items.map((item, index) => `
-          <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+        ${data.items
+          .map(
+            (item, index) => `
+          <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${item.name}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join("")}
       </tbody>
     </table>
   `;
@@ -49,14 +53,14 @@ export function deliveryETATemplate(data: DeliveryETAData): string {
       <tr>
         ${metricBox({
           value: data.totalItems,
-          label: 'Total Items',
-          backgroundColor: '#eff6ff',
+          label: "Total Items",
+          backgroundColor: "#eff6ff",
           textColor: colors.info,
         })}
         <td width="15px"></td>
         ${metricBox({
           value: data.items.length,
-          label: 'Wine Types',
+          label: "Wine Types",
           backgroundColor: colors.gray[100],
           textColor: colors.gray[700],
         })}
@@ -78,37 +82,42 @@ export function deliveryETATemplate(data: DeliveryETAData): string {
     </p>
 
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${tableRow('Expected Date', formatDate(data.expectedDate))}
-      ${data.expectedTimeWindow ? tableRow('Time Window', data.expectedTimeWindow) : ''}
-      ${tableRow('Provider', data.providerName)}
-      ${data.trackingNumber ? tableRow('Tracking #', data.trackingNumber) : ''}
-      ${data.driverName ? tableRow('Driver', data.driverName) : ''}
-      ${data.driverPhone ? tableRow('Driver Phone', data.driverPhone) : ''}
+      ${tableRow("Expected Date", formatDate(data.expectedDate))}
+      ${data.expectedTimeWindow ? tableRow("Time Window", data.expectedTimeWindow) : ""}
+      ${tableRow("Provider", data.providerName)}
+      ${data.trackingNumber ? tableRow("Tracking #", data.trackingNumber) : ""}
+      ${data.driverName ? tableRow("Driver", data.driverName) : ""}
+      ${data.driverPhone ? tableRow("Driver Phone", data.driverPhone) : ""}
     </table>
 
     ${metricsHtml}
     ${itemsHtml}
 
-    ${data.specialInstructions ? alertBox({
-      type: 'info',
-      title: 'Special Instructions',
-      message: data.specialInstructions,
-    }) : ''}
+    ${
+      data.specialInstructions
+        ? alertBox({
+            type: "info",
+            title: "Special Instructions",
+            message: data.specialInstructions,
+          })
+        : ""
+    }
 
     ${alertBox({
-      type: 'warning',
-      title: 'Preparation Needed',
-      message: 'Ensure receiving area is clear and staff is available to check delivery against the order.',
+      type: "warning",
+      title: "Preparation Needed",
+      message:
+        "Ensure receiving area is clear and staff is available to check delivery against the order.",
     })}
   `;
 
   return baseTemplate({
     title: `Delivery ETA - Order #${data.orderId}`,
-    preheader: `Delivery from ${data.providerName} expected ${formatDate(data.expectedDate)}${data.expectedTimeWindow ? ` (${data.expectedTimeWindow})` : ''}`,
+    preheader: `Delivery from ${data.providerName} expected ${formatDate(data.expectedDate)}${data.expectedTimeWindow ? ` (${data.expectedTimeWindow})` : ""}`,
     content,
     ctaButton: {
-      text: 'View Order Details',
-      url: '#',
+      text: "View Order Details",
+      url: "#",
       color: colors.info,
     },
   });

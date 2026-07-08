@@ -57,7 +57,6 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "ste.": "sainte",
     "ss.": "societa semplice",
     "srl": "societa a responsabilita limitata",
-
     # --- Grapes ---
     "cab.": "cabernet",
     "cab ": "cabernet ",
@@ -120,7 +119,6 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "verd.": "verdejo",
     "muscat.": "muscatel",
     "musc.": "muscatel",
-
     # --- Regions ---
     "bdx": "bordeaux",
     "bdx.": "bordeaux",
@@ -129,7 +127,7 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "champ.": "champagne",
     "cham.": "champagne",
     "b.v.": "barossa valley",
-    "n.v.": "napa valley",
+    "napa v.": "napa valley",
     "son.": "sonoma",
     "wilm.": "willamette",
     "rha.": "rhone",
@@ -153,7 +151,6 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "cdr": "cotes du rhone",
     "cdp": "chateauneuf du pape",
     "cdp.": "chateauneuf du pape",
-
     # --- Turkish ---
     "byz": "beyaz",
     "byz.": "beyaz",
@@ -165,7 +162,6 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "şar.": "sarap",
     "kav.": "kavaklidere",
     "dlc.": "doluca",
-
     # --- Classifications ---
     "rsv": "reserve",
     "rsv.": "reserve",
@@ -193,7 +189,6 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "jov.": "joven",
     "clas.": "classico",
     "clss.": "classico",
-
     # --- Appellations ---
     "doc": "denominazione di origine controllata",
     "docg": "denominazione di origine controllata e garantita",
@@ -207,7 +202,6 @@ WINE_ABBREVIATIONS: Dict[str, str] = {
     "qba": "qualitatswein bestimmter anbaugebiete",
     "qmp": "qualitatswein mit pradikat",
     "ava": "american viticultural area",
-
     # --- Other / Serving ---
     "btl": "bottle",
     "btl.": "bottle",
@@ -264,7 +258,6 @@ OCR_CORRECTIONS: Dict[str, str] = {
     "2O23": "2023",
     "2O24": "2024",
     "2O25": "2025",
-
     # --- Common OCR misreads for wine terms ---
     "Sauv1gnon": "Sauvignon",
     "Cab3rnet": "Cabernet",
@@ -292,7 +285,6 @@ OCR_CORRECTIONS: Dict[str, str] = {
     "Tempranl11o": "Tempranillo",
     "Grenacne": "Grenache",
     "Rieslling": "Riesling",
-
     # --- Missing accents (OCR frequently drops diacritics) ---
     "Chateau": "Château",
     "chateau": "château",
@@ -317,7 +309,6 @@ OCR_CORRECTIONS: Dict[str, str] = {
     "Gruner": "Grüner",
     "Kumkapi": "Kumkapı",
     "Sarap": "Şarap",
-
     # --- Currency / symbol misreads ---
     "S ": "$ ",
     "€ ": "€ ",
@@ -331,11 +322,29 @@ OCR_CORRECTIONS: Dict[str, str] = {
 # =============================================================================
 
 ACCENT_MAP: Dict[str, str] = {
-    "à": "a", "á": "a", "â": "a", "ã": "a", "ä": "a", "å": "a",
-    "è": "e", "é": "e", "ê": "e", "ë": "e",
-    "ì": "i", "í": "i", "î": "i", "ï": "i",
-    "ò": "o", "ó": "o", "ô": "o", "õ": "o", "ö": "o",
-    "ù": "u", "ú": "u", "û": "u", "ü": "u",
+    "à": "a",
+    "á": "a",
+    "â": "a",
+    "ã": "a",
+    "ä": "a",
+    "å": "a",
+    "è": "e",
+    "é": "e",
+    "ê": "e",
+    "ë": "e",
+    "ì": "i",
+    "í": "i",
+    "î": "i",
+    "ï": "i",
+    "ò": "o",
+    "ó": "o",
+    "ô": "o",
+    "õ": "o",
+    "ö": "o",
+    "ù": "u",
+    "ú": "u",
+    "û": "u",
+    "ü": "u",
     "ñ": "n",
     "ç": "c",
     "ğ": "g",
@@ -356,35 +365,111 @@ ACCENT_MAP: Dict[str, str] = {
 
 WINE_TYPE_KEYWORDS: Dict[str, List[str]] = {
     "red": [
-        "red", "rouge", "rojo", "rosso", "kirmizi", "kırmızı", "rot", "tinto",
-        "cabernet", "merlot", "pinot noir", "syrah", "shiraz", "malbec",
-        "sangiovese", "nebbiolo", "tempranillo", "zinfandel", "grenache",
-        "mourvedre", "barbera", "primitivo", "carmenere", "petit verdot",
+        "red",
+        "rouge",
+        "rojo",
+        "rosso",
+        "kirmizi",
+        "kırmızı",
+        "rot",
+        "tinto",
+        "cabernet",
+        "merlot",
+        "pinot noir",
+        "syrah",
+        "shiraz",
+        "malbec",
+        "sangiovese",
+        "nebbiolo",
+        "tempranillo",
+        "zinfandel",
+        "grenache",
+        "mourvedre",
+        "barbera",
+        "primitivo",
+        "carmenere",
+        "petit verdot",
     ],
     "white": [
-        "white", "blanc", "blanco", "bianco", "beyaz", "weiss", "weiß", "branco",
-        "chardonnay", "sauvignon blanc", "riesling", "pinot grigio", "pinot gris",
-        "viognier", "gewurztraminer", "albarino", "verdejo", "gruner veltliner",
-        "trebbiano", "vermentino", "muscadet", "chenin blanc", "semillon",
+        "white",
+        "blanc",
+        "blanco",
+        "bianco",
+        "beyaz",
+        "weiss",
+        "weiß",
+        "branco",
+        "chardonnay",
+        "sauvignon blanc",
+        "riesling",
+        "pinot grigio",
+        "pinot gris",
+        "viognier",
+        "gewurztraminer",
+        "albarino",
+        "verdejo",
+        "gruner veltliner",
+        "trebbiano",
+        "vermentino",
+        "muscadet",
+        "chenin blanc",
+        "semillon",
     ],
     "rose": [
-        "rose", "rosé", "rosato", "rosado", "roze",
+        "rose",
+        "rosé",
+        "rosato",
+        "rosado",
+        "roze",
     ],
     "sparkling": [
-        "sparkling", "champagne", "prosecco", "cava", "cremant", "crémant",
-        "sekt", "spumante", "brut", "extra brut", "brut nature", "metodo classico",
-        "methode traditionnelle", "methode champenoise", "blanc de blancs",
-        "blanc de noirs", "dosage zero",
+        "sparkling",
+        "champagne",
+        "prosecco",
+        "cava",
+        "cremant",
+        "crémant",
+        "sekt",
+        "spumante",
+        "brut",
+        "extra brut",
+        "brut nature",
+        "metodo classico",
+        "methode traditionnelle",
+        "methode champenoise",
+        "blanc de blancs",
+        "blanc de noirs",
+        "dosage zero",
     ],
     "dessert": [
-        "dessert", "sweet", "port", "porto", "sherry", "madeira", "sauternes",
-        "tokaji", "ice wine", "eiswein", "vin santo", "moscato d'asti",
-        "late harvest", "vendange tardive", "selection de grains nobles",
-        "trockenbeerenauslese", "beerenauslese", "auslese",
+        "dessert",
+        "sweet",
+        "port",
+        "porto",
+        "sherry",
+        "madeira",
+        "sauternes",
+        "tokaji",
+        "ice wine",
+        "eiswein",
+        "vin santo",
+        "moscato d'asti",
+        "late harvest",
+        "vendange tardive",
+        "selection de grains nobles",
+        "trockenbeerenauslese",
+        "beerenauslese",
+        "auslese",
     ],
     "fortified": [
-        "fortified", "port", "porto", "sherry", "madeira", "marsala",
-        "vermouth", "vin doux naturel",
+        "fortified",
+        "port",
+        "porto",
+        "sherry",
+        "madeira",
+        "marsala",
+        "vermouth",
+        "vin doux naturel",
     ],
 }
 
@@ -393,10 +478,11 @@ WINE_TYPE_KEYWORDS: Dict[str, List[str]] = {
 # NORMALIZER CLASS
 # =============================================================================
 
+
 class WineTextNormalizer:
     """
     Multi-step text normalization pipeline for wine OCR text.
-    
+
     Pipeline:
     1. Unicode normalization
     2. OCR error correction

@@ -4,14 +4,14 @@ import {
   ExecutionContext,
   CallHandler,
   HttpException,
-} from '@nestjs/common';
-import { Observable, throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
-import { SentryService } from './sentry.service';
+} from "@nestjs/common";
+import { Observable, throwError } from "rxjs";
+import { catchError } from "rxjs/operators";
+import { SentryService } from "./sentry.service";
 
 /**
  * Sentry Interceptor
- * 
+ *
  * Automatically captures exceptions from controllers:
  * - Captures unhandled exceptions
  * - Adds request context

@@ -58,7 +58,9 @@ class _DbFacade:
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="Live idempotency test against Supabase")
+    parser = argparse.ArgumentParser(
+        description="Live idempotency test against Supabase"
+    )
     parser.add_argument(
         "--cleanup",
         action="store_true",
@@ -70,11 +72,16 @@ async def main() -> int:
         load_dotenv(_ROOT / ".env")
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv(
-        "SUPABASE_SERVICE_ROLE_KEY"
+    key = (
+        os.getenv("SUPABASE_SERVICE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     if not url or not key:
-        print("Missing SUPABASE_URL or service key (SUPABASE_SERVICE_KEY / SUPABASE_KEY).", file=sys.stderr)
+        print(
+            "Missing SUPABASE_URL or service key (SUPABASE_SERVICE_KEY / SUPABASE_KEY).",
+            file=sys.stderr,
+        )
         return 1
 
     message_id = os.getenv("MESSAGE_ID", "msg-001")
@@ -82,7 +89,9 @@ async def main() -> int:
     supabase = create_client(url, key)
     # Ensure a clean run for the default id
     try:
-        supabase.table("idempotency_keys").delete().eq("message_id", message_id).execute()
+        supabase.table("idempotency_keys").delete().eq(
+            "message_id", message_id
+        ).execute()
     except Exception as exc:
         print(f"Warning: pre-delete skipped: {exc}", file=sys.stderr)
 
@@ -111,10 +120,14 @@ async def main() -> int:
     data = row.data
     assert data and data.get("message_id") == message_id, f"Row missing in DB: {data!r}"
     print("OK — idempotency live test passed.")
-    print(f"  message_id={message_id!r} agent_name={data.get('agent_name')!r} result={data.get('result')!r}")
+    print(
+        f"  message_id={message_id!r} agent_name={data.get('agent_name')!r} result={data.get('result')!r}"
+    )
 
     if args.cleanup:
-        supabase.table("idempotency_keys").delete().eq("message_id", message_id).execute()
+        supabase.table("idempotency_keys").delete().eq(
+            "message_id", message_id
+        ).execute()
         print("Cleanup: deleted idempotency_keys row.")
 
     return 0

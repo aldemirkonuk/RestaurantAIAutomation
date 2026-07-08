@@ -1,19 +1,28 @@
-import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
-import { DatabaseService } from '../database/database.service';
-import { EventsService } from '../events/events.service';
-import { InventoryLedgerService } from '../inventory-ledger/inventory-ledger.service';
-import { OrchestratorService } from '../common/orchestrator/orchestrator.service';
-import { InboundResponderService } from '../common/orchestrator/inbound-responder.service';
-import { InboundAddressService } from '../common/orchestrator/inbound-address.service';
-import { GmailService } from '../communications/gmail.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  Optional,
+  UnprocessableEntityException,
+} from "@nestjs/common";
+import { Interval } from "@nestjs/schedule";
+import { DatabaseService } from "../database/database.service";
+import { EventsService } from "../events/events.service";
+import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
+import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
+import { InboundResponderService } from "../common/orchestrator/inbound-responder.service";
+import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
+import { GmailService } from "../communications/gmail.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   StockType,
   TransactionSource,
   TransactionType,
-} from '../inventory-ledger/dto/inventory-ledger.dto';
-import { EventType, SourcePage } from '../events/dto/event.dto';
+} from "../inventory-ledger/dto/inventory-ledger.dto";
+import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
   OrderFilterDto,
@@ -21,8 +30,8 @@ import {
   OrderResponseDto,
   ProcurementOrderStatus,
   UpdateOrderDto,
-} from './dto/procurement.dto';
-import { ApproveDraftDto } from './dto/approve-draft.dto';
+} from "./dto/procurement.dto";
+import { ApproveDraftDto } from "./dto/approve-draft.dto";
 
 interface ProcurementOrderRow {
   id: string;
@@ -72,17 +81,23 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     opts?: { instruction?: string; regenerate?: boolean; force?: boolean },
-  ): Promise<{ triggered: boolean; draftId?: string; needsApproval?: boolean; autoSendScheduled?: boolean; reason?: string }> {
+  ): Promise<{
+    triggered: boolean;
+    draftId?: string;
+    needsApproval?: boolean;
+    autoSendScheduled?: boolean;
+    reason?: string;
+  }> {
     if (!this.inboundResponder) {
-      return { triggered: false, reason: 'Responder service unavailable' };
+      return { triggered: false, reason: "Responder service unavailable" };
     }
 
     // Confirm the order belongs to this restaurant.
     const { data: order } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('id, provider_id')
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
+      .from("procurement_orders")
+      .select("id, provider_id")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
       .single();
     if (!order) {
       throw new NotFoundException(`Order ${orderId} not found`);
@@ -91,25 +106,28 @@ export class ProcurementService {
     // Regenerate: clear any waiting/scheduled draft so the responder writes a fresh one.
     if (opts?.regenerate) {
       await this.databaseService.supabase
-        .from('procurement_conversations')
-        .update({ status: 'DISCARDED', scheduled_send_at: null })
-        .eq('restaurant_id', restaurantId)
-        .eq('order_id', orderId)
-        .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED']);
+        .from("procurement_conversations")
+        .update({ status: "DISCARDED", scheduled_send_at: null })
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
     }
 
     // Find the most recent inbound vendor reply for this order.
     const { data: inbound } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('id, provider_id, gmail_thread_id, message_id, email_headers')
-      .eq('order_id', orderId)
-      .eq('direction', 'inbound')
-      .order('created_at', { ascending: false })
+      .from("procurement_conversations")
+      .select("id, provider_id, gmail_thread_id, message_id, email_headers")
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (!inbound) {
-      return { triggered: false, reason: 'No inbound vendor reply found for this order' };
+      return {
+        triggered: false,
+        reason: "No inbound vendor reply found for this order",
+      };
     }
 
     const row = inbound as any;
@@ -117,7 +135,10 @@ export class ProcurementService {
     // A7 — the live pipeline discarded attachment bytes after the first vision pass, so a
     // manual (re)generate used to lose all vision context. They're persisted now (D2), so
     // re-hydrate them from Storage and feed them back to the responder.
-    const inboundAttachments = await this.loadPersistedAttachmentsForVision(restaurantId, row.id);
+    const inboundAttachments = await this.loadPersistedAttachmentsForVision(
+      restaurantId,
+      row.id,
+    );
     const result = await this.inboundResponder.analyzeAndDraftReply({
       inboundConversationId: row.id,
       orderId,
@@ -127,7 +148,9 @@ export class ProcurementService {
       inboundRfc822MessageId: row.message_id || headers.message_id || null,
       inboundReferences: headers.references || null,
       inboundSubject: headers.subject || null,
-      inboundAttachments: inboundAttachments.length ? inboundAttachments : undefined,
+      inboundAttachments: inboundAttachments.length
+        ? inboundAttachments
+        : undefined,
       instruction: opts?.instruction,
       forceReply: opts?.force,
     });
@@ -148,7 +171,7 @@ export class ProcurementService {
     restaurantId: string,
     userId: string,
     order: OrderResponseDto,
-    changeType: 'created' | 'approved' | 'delivered' | 'cancelled',
+    changeType: "created" | "approved" | "delivered" | "cancelled",
   ): Promise<void> {
     try {
       await this.eventsService.createEvent(restaurantId, userId, {
@@ -165,9 +188,14 @@ export class ProcurementService {
           totalCost: order.totalCost,
         },
       });
-      this.logger.log('Order change event emitted', { orderId: order.id, type: changeType });
+      this.logger.log("Order change event emitted", {
+        orderId: order.id,
+        type: changeType,
+      });
     } catch (error) {
-      this.logger.warn('Failed to emit order change event', { error: error.message });
+      this.logger.warn("Failed to emit order change event", {
+        error: error.message,
+      });
       // Don't fail the operation if event emission fails
     }
   }
@@ -178,21 +206,27 @@ export class ProcurementService {
     dto: CreateOrderDto,
   ): Promise<OrderResponseDto> {
     // Guard: restaurant must have at least one active provider before placing orders
-    const { count: providerCount, error: countError } = await this.databaseService.supabase
-      .from('providers')
-      .select('*', { count: 'exact', head: true })
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true);
+    const { count: providerCount, error: countError } =
+      await this.databaseService.supabase
+        .from("providers")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true);
 
     if (countError) {
-      this.logger.error('Failed to count active providers', { restaurantId, error: countError.message });
-      throw new InternalServerErrorException('Could not verify vendor availability. Please try again.');
+      this.logger.error("Failed to count active providers", {
+        restaurantId,
+        error: countError.message,
+      });
+      throw new InternalServerErrorException(
+        "Could not verify vendor availability. Please try again.",
+      );
     }
     if (providerCount === 0) {
       throw new ForbiddenException({
-        reason: 'no_vendors',
-        message: 'You must add at least one vendor before placing orders.',
-        redirect: '/providers',
+        reason: "no_vendors",
+        message: "You must add at least one vendor before placing orders.",
+        redirect: "/providers",
       });
     }
 
@@ -207,7 +241,7 @@ export class ProcurementService {
       inventory_id: dto.inventoryId,
       provider_id: dto.providerId,
       quantity: dto.quantity,
-      unit_type: dto.unitType ?? 'bottles',
+      unit_type: dto.unitType ?? "bottles",
       bottles_total: bottlesTotal,
       quoted_price: dto.quotedPrice ?? null,
       negotiated_price: dto.negotiatedPrice ?? null,
@@ -222,13 +256,13 @@ export class ProcurementService {
     };
 
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
+      .from("procurement_orders")
       .insert(payload)
-      .select('*, inventory:inventory_id(wine_name)')
+      .select("*, inventory:inventory_id(wine_name)")
       .single();
 
     if (error) {
-      this.logger.error('Failed to create procurement order', {
+      this.logger.error("Failed to create procurement order", {
         restaurantId,
         error: error.message,
       });
@@ -238,47 +272,50 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     const order = this.mapOrderRow(orderRow);
 
     // Emit order_change event for cross-page sync
-    await this.emitOrderChangeEvent(restaurantId, userId, order, 'created');
+    await this.emitOrderChangeEvent(restaurantId, userId, order, "created");
 
     // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
     if (dto.providerId && this.orchestratorService) {
       // Resolve provider name and restaurant name in parallel.
-      let resolvedProviderName = '';
-      let resolvedRestaurantName = '';
+      let resolvedProviderName = "";
+      let resolvedRestaurantName = "";
       try {
         const [provResult, restResult] = await Promise.all([
           this.databaseService.supabase
-            .from('providers')
-            .select('name')
-            .eq('id', dto.providerId)
-            .eq('restaurant_id', restaurantId)
+            .from("providers")
+            .select("name")
+            .eq("id", dto.providerId)
+            .eq("restaurant_id", restaurantId)
             .single(),
           this.databaseService.supabase
-            .from('restaurants')
-            .select('name')
-            .eq('id', restaurantId)
+            .from("restaurants")
+            .select("name")
+            .eq("id", restaurantId)
             .single(),
         ]);
-        resolvedProviderName = (provResult.data as any)?.name || '';
-        resolvedRestaurantName = (restResult.data as any)?.name || '';
-      } catch { /* non-fatal */ }
+        resolvedProviderName = (provResult.data as any)?.name || "";
+        resolvedRestaurantName = (restResult.data as any)?.name || "";
+      } catch {
+        /* non-fatal */
+      }
 
       const draftPayload = {
         order_id: order.id,
-        order_number: order.orderNumber || '',
+        order_number: order.orderNumber || "",
         restaurant_id: restaurantId,
         provider_id: dto.providerId,
         provider_name: resolvedProviderName,
-        wine_name: order.wineName || '',
+        wine_name: order.wineName || "",
         quantity: order.quantity,
         target_price_per_bottle: dto.quotedPrice ?? null,
-        urgency: dto.isEmergency ? 'urgent' : 'normal',
+        urgency: dto.isEmergency ? "urgent" : "normal",
         restaurant_name: resolvedRestaurantName,
       };
 
@@ -292,19 +329,21 @@ export class ProcurementService {
       } catch (httpErr: any) {
         this.logger.error(
           `[createOrder] HTTP draft trigger failed for order ${order.id} ` +
-          `(restaurant ${restaurantId}). Error: ${httpErr?.message}. ` +
-          `Ensure AGENT_ORCHESTRATOR_URL and ADMIN_API_KEY are set in Railway env vars.`,
+            `(restaurant ${restaurantId}). Error: ${httpErr?.message}. ` +
+            `Ensure AGENT_ORCHESTRATOR_URL and ADMIN_API_KEY are set in Railway env vars.`,
         );
       }
 
       // Secondary: also publish to RabbitMQ for any async consumers (best-effort).
       try {
         await this.orchestratorService.publishEvent(
-          'procurement.events',
-          'procurement.order.created',
+          "procurement.events",
+          "procurement.order.created",
           draftPayload,
         );
-      } catch { /* non-fatal — RabbitMQ is optional */ }
+      } catch {
+        /* non-fatal — RabbitMQ is optional */
+      }
     }
 
     return order;
@@ -320,32 +359,32 @@ export class ProcurementService {
     const toIndex = fromIndex + limit - 1;
 
     let supabaseQuery = this.databaseService.supabase
-      .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name)', { count: 'exact' })
-      .eq('restaurant_id', restaurantId);
+      .from("procurement_orders")
+      .select("*, inventory:inventory_id(wine_name)", { count: "exact" })
+      .eq("restaurant_id", restaurantId);
 
     if (query.status) {
-      supabaseQuery = supabaseQuery.eq('status', query.status);
+      supabaseQuery = supabaseQuery.eq("status", query.status);
     }
 
     if (query.providerId) {
-      supabaseQuery = supabaseQuery.eq('provider_id', query.providerId);
+      supabaseQuery = supabaseQuery.eq("provider_id", query.providerId);
     }
 
     if (query.dateFrom) {
-      supabaseQuery = supabaseQuery.gte('created_at', query.dateFrom);
+      supabaseQuery = supabaseQuery.gte("created_at", query.dateFrom);
     }
 
     if (query.dateTo) {
-      supabaseQuery = supabaseQuery.lte('created_at', query.dateTo);
+      supabaseQuery = supabaseQuery.lte("created_at", query.dateTo);
     }
 
     const { data, error, count } = await supabaseQuery
-      .order('created_at', { ascending: false })
+      .order("created_at", { ascending: false })
       .range(fromIndex, toIndex);
 
     if (error) {
-      this.logger.error('Failed to list procurement orders', {
+      this.logger.error("Failed to list procurement orders", {
         restaurantId,
         error: error.message,
       });
@@ -355,7 +394,10 @@ export class ProcurementService {
     const orders = (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
-        wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+        wine_name:
+          row.inventory?.wine_name ||
+          (row.inventory as any)?.wine?.name ||
+          null,
       };
       return this.mapOrderRow(orderRow);
     });
@@ -375,14 +417,14 @@ export class ProcurementService {
     orderId: string,
   ): Promise<OrderResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name)')
-      .eq('restaurant_id', restaurantId)
-      .eq('id', orderId)
+      .from("procurement_orders")
+      .select("*, inventory:inventory_id(wine_name)")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
       .single();
 
     if (error) {
-      this.logger.error('Failed to fetch procurement order', {
+      this.logger.error("Failed to fetch procurement order", {
         restaurantId,
         orderId,
         error: error.message,
@@ -393,7 +435,8 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     return this.mapOrderRow(orderRow);
@@ -411,17 +454,22 @@ export class ProcurementService {
         ProcurementOrderStatus.APPROVAL_NEEDED,
         ProcurementOrderStatus.NEGOTIATING,
       ];
-      const { data: existing, error: fetchError } = await this.databaseService.supabase
-        .from('procurement_orders')
-        .select('status')
-        .eq('restaurant_id', restaurantId)
-        .eq('id', orderId)
-        .single();
+      const { data: existing, error: fetchError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("status")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .single();
 
-      if (!fetchError && existing && BLOCKED_STATUSES.includes((existing as any).status)) {
+      if (
+        !fetchError &&
+        existing &&
+        BLOCKED_STATUSES.includes((existing as any).status)
+      ) {
         throw new UnprocessableEntityException({
-          reason: 'order_not_approved',
-          message: 'Location can only be assigned after the order is approved.',
+          reason: "order_not_approved",
+          message: "Location can only be assigned after the order is approved.",
         });
       }
     }
@@ -444,15 +492,15 @@ export class ProcurementService {
     };
 
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
+      .from("procurement_orders")
       .update(updatePayload)
-      .eq('restaurant_id', restaurantId)
-      .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name)')
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .select("*, inventory:inventory_id(wine_name)")
       .single();
 
     if (error) {
-      this.logger.error('Failed to update procurement order', {
+      this.logger.error("Failed to update procurement order", {
         restaurantId,
         orderId,
         error: error.message,
@@ -463,7 +511,8 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     return this.mapOrderRow(orderRow);
@@ -478,9 +527,9 @@ export class ProcurementService {
     // Capture current order state BEFORE cancelling so we can decide
     // whether to release shadow stock (only if order was in an active state).
     const { data: preCancelRow } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('status, inventory_id, quantity')
-      .eq('id', orderId)
+      .from("procurement_orders")
+      .select("status, inventory_id, quantity")
+      .eq("id", orderId)
       .single();
 
     const order = await this.updateOrder(restaurantId, orderId, {
@@ -492,14 +541,18 @@ export class ProcurementService {
     // appear in the active conversations panel after order cancellation.
     try {
       await this.databaseService.supabase
-        .from('procurement_conversations')
-        .update({ status: 'CANCELLED' })
-        .eq('restaurant_id', restaurantId)
-        .eq('order_id', orderId)
-        .eq('status', 'PENDING_APPROVAL');
-      this.logger.log(`Cascaded PENDING_APPROVAL conversations to CANCELLED for order ${orderId}`);
+        .from("procurement_conversations")
+        .update({ status: "CANCELLED" })
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("status", "PENDING_APPROVAL");
+      this.logger.log(
+        `Cascaded PENDING_APPROVAL conversations to CANCELLED for order ${orderId}`,
+      );
     } catch (cascadeError: any) {
-      this.logger.warn(`cancelOrder conversation cascade failed (non-fatal): ${cascadeError?.message}`);
+      this.logger.warn(
+        `cancelOrder conversation cascade failed (non-fatal): ${cascadeError?.message}`,
+      );
     }
 
     // Cancel any pending calendar delivery event linked to this order.
@@ -507,44 +560,60 @@ export class ProcurementService {
 
     // Release shadow stock if the order had already been approved/sent and
     // inventory was reserved (shadow_stock was incremented for this order).
-    const preStatus = (preCancelRow as any)?.status ?? '';
+    const preStatus = (preCancelRow as any)?.status ?? "";
     const RESERVED_STATUSES = [
       ProcurementOrderStatus.APPROVED,
       ProcurementOrderStatus.CONFIRMED,
       ProcurementOrderStatus.IN_TRANSIT,
     ];
-    if (order.inventoryId && order.quantity && RESERVED_STATUSES.includes(preStatus as ProcurementOrderStatus)) {
-      await this.releaseOrderShadowStock(restaurantId, order.inventoryId, order.quantity);
+    if (
+      order.inventoryId &&
+      order.quantity &&
+      RESERVED_STATUSES.includes(preStatus as ProcurementOrderStatus)
+    ) {
+      await this.releaseOrderShadowStock(
+        restaurantId,
+        order.inventoryId,
+        order.quantity,
+      );
     }
 
     // Emit order_change event for cross-page sync
-    await this.emitOrderChangeEvent(restaurantId, userId, order, 'cancelled');
+    await this.emitOrderChangeEvent(restaurantId, userId, order, "cancelled");
 
     return order;
   }
 
   /** Cancel the calendar delivery event tagged with orderId (non-fatal). */
-  private async cancelCalendarEventForOrder(restaurantId: string, orderId: string): Promise<void> {
+  private async cancelCalendarEventForOrder(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<void> {
     try {
       const { data: events } = await this.databaseService.supabase
-        .from('calendar_events')
-        .select('id, tags')
-        .eq('restaurant_id', restaurantId)
-        .eq('event_type', 'delivery')
-        .not('status', 'in', '("COMPLETED","CANCELLED")');
+        .from("calendar_events")
+        .select("id, tags")
+        .eq("restaurant_id", restaurantId)
+        .eq("event_type", "delivery")
+        .not("status", "in", '("COMPLETED","CANCELLED")');
 
-      const match = (events || []).find(e => {
+      const match = (events || []).find((e) => {
         try {
-          const tags = typeof e.tags === 'string' ? JSON.parse(e.tags) : e.tags;
+          const tags = typeof e.tags === "string" ? JSON.parse(e.tags) : e.tags;
           return tags?.order_id === orderId;
-        } catch { return false; }
+        } catch {
+          return false;
+        }
       });
 
       if (match) {
         await this.databaseService.supabase
-          .from('calendar_events')
-          .update({ status: 'CANCELLED', description: `Order ${orderId} was cancelled.` })
-          .eq('id', (match as any).id);
+          .from("calendar_events")
+          .update({
+            status: "CANCELLED",
+            description: `Order ${orderId} was cancelled.`,
+          })
+          .eq("id", (match as any).id);
         this.logger.log(`Calendar event cancelled for order ${orderId}`);
       }
     } catch (e: any) {
@@ -560,24 +629,26 @@ export class ProcurementService {
   ): Promise<void> {
     try {
       const { data: inv } = await this.databaseService.supabase
-        .from('restaurant_inventory')
-        .select('shadow_stock, in_transit_quantity')
-        .eq('restaurant_id', restaurantId)
-        .eq('id', inventoryId)
+        .from("restaurant_inventory")
+        .select("shadow_stock, in_transit_quantity")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
         .single();
 
       if (inv) {
         const currentShadow = (inv as any).shadow_stock ?? 0;
         const currentInTransit = (inv as any).in_transit_quantity ?? 0;
         await this.databaseService.supabase
-          .from('restaurant_inventory')
+          .from("restaurant_inventory")
           .update({
             shadow_stock: Math.max(0, currentShadow - quantity),
             in_transit_quantity: Math.max(0, currentInTransit - quantity),
           })
-          .eq('restaurant_id', restaurantId)
-          .eq('id', inventoryId);
-        this.logger.log(`Released ${quantity} shadow/in-transit stock for inventory ${inventoryId}`);
+          .eq("restaurant_id", restaurantId)
+          .eq("id", inventoryId);
+        this.logger.log(
+          `Released ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
+        );
       }
     } catch (e: any) {
       this.logger.warn(`releaseOrderShadowStock failed: ${e?.message}`);
@@ -592,24 +663,26 @@ export class ProcurementService {
   ): Promise<void> {
     try {
       const { data: inv } = await this.databaseService.supabase
-        .from('restaurant_inventory')
-        .select('shadow_stock, in_transit_quantity')
-        .eq('restaurant_id', restaurantId)
-        .eq('id', inventoryId)
+        .from("restaurant_inventory")
+        .select("shadow_stock, in_transit_quantity")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
         .single();
 
       if (inv) {
         const currentShadow = (inv as any).shadow_stock ?? 0;
         const currentInTransit = (inv as any).in_transit_quantity ?? 0;
         await this.databaseService.supabase
-          .from('restaurant_inventory')
+          .from("restaurant_inventory")
           .update({
             shadow_stock: currentShadow + quantity,
             in_transit_quantity: currentInTransit + quantity,
           })
-          .eq('restaurant_id', restaurantId)
-          .eq('id', inventoryId);
-        this.logger.log(`Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`);
+          .eq("restaurant_id", restaurantId)
+          .eq("id", inventoryId);
+        this.logger.log(
+          `Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
+        );
       }
     } catch (e: any) {
       this.logger.warn(`reserveOrderShadowStock failed: ${e?.message}`);
@@ -622,19 +695,19 @@ export class ProcurementService {
     userId: string,
   ): Promise<OrderResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
+      .from("procurement_orders")
       .update({
         status: ProcurementOrderStatus.APPROVED,
         approved_at: new Date().toISOString(),
         approved_by: userId,
       })
-      .eq('restaurant_id', restaurantId)
-      .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name)')
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .select("*, inventory:inventory_id(wine_name)")
       .single();
 
     if (error) {
-      this.logger.error('Failed to approve procurement order', {
+      this.logger.error("Failed to approve procurement order", {
         restaurantId,
         orderId,
         error: error.message,
@@ -645,14 +718,19 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     const order = this.mapOrderRow(orderRow);
 
     // Reserve shadow stock so managers can see "X bottles on order" before delivery.
     if (order.inventoryId && order.quantity) {
-      await this.reserveOrderShadowStock(restaurantId, order.inventoryId, order.quantity);
+      await this.reserveOrderShadowStock(
+        restaurantId,
+        order.inventoryId,
+        order.quantity,
+      );
     }
 
     // NOTE: Calendar event is intentionally NOT created here.
@@ -661,30 +739,33 @@ export class ProcurementService {
     // confirmed provider communication, not just internal approval.
 
     // Emit order_change event for cross-page sync
-    await this.emitOrderChangeEvent(restaurantId, userId, order, 'approved');
+    await this.emitOrderChangeEvent(restaurantId, userId, order, "approved");
 
     // Trigger AI to draft vendor email via ProviderConversationAgent
     if (this.orchestratorService) {
       try {
         await this.orchestratorService.publishEvent(
-          'procurement.events',
-          'procurement.conversation_request',
+          "procurement.events",
+          "procurement.conversation_request",
           {
-            intent_type: 'order_inquiry',
+            intent_type: "order_inquiry",
             order_id: orderId,
             provider_id: (data as ProcurementOrderRow).provider_id,
             restaurant_id: restaurantId,
-            wine_name: order.wineName || '',
+            wine_name: order.wineName || "",
             quantity: order.quantity,
             target_price: order.negotiatedPrice || order.quotedPrice || 0,
-            max_acceptable_price: (order.negotiatedPrice || order.quotedPrice || 0) * 1.1,
-            urgency: order.isEmergency ? 'high' : 'normal',
-            channel_preference: 'email',
+            max_acceptable_price:
+              (order.negotiatedPrice || order.quotedPrice || 0) * 1.1,
+            urgency: order.isEmergency ? "high" : "normal",
+            channel_preference: "email",
           },
         );
         this.logger.log(`Conversation intent published for order ${orderId}`);
       } catch (err: any) {
-        this.logger.error(`Failed to publish conversation intent: ${err?.message}`);
+        this.logger.error(
+          `Failed to publish conversation intent: ${err?.message}`,
+        );
       }
     }
 
@@ -698,20 +779,20 @@ export class ProcurementService {
     quantityReceived?: number,
   ): Promise<OrderResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
+      .from("procurement_orders")
       .update({
         status: ProcurementOrderStatus.DELIVERED,
         delivered_at: new Date().toISOString(),
         received_by: userId,
         quantity_received: quantityReceived ?? null,
       })
-      .eq('restaurant_id', restaurantId)
-      .eq('id', orderId)
-      .select('*, inventory:inventory_id(wine_name)')
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .select("*, inventory:inventory_id(wine_name)")
       .single();
 
     if (error) {
-      this.logger.error('Failed to mark procurement order delivered', {
+      this.logger.error("Failed to mark procurement order delivered", {
         restaurantId,
         orderId,
         error: error.message,
@@ -722,7 +803,8 @@ export class ProcurementService {
     const row = data as any;
     const orderRow: ProcurementOrderRow = {
       ...row,
-      wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
     const order = this.mapOrderRow(orderRow);
@@ -730,36 +812,43 @@ export class ProcurementService {
     const resolvedQuantity = quantityReceived ?? order.quantity ?? 0;
 
     if (!order.inventoryId) {
-      this.logger.warn(`markDelivered: order ${orderId} has no inventoryId — stock update skipped`);
+      this.logger.warn(
+        `markDelivered: order ${orderId} has no inventoryId — stock update skipped`,
+      );
     } else if (resolvedQuantity <= 0) {
-      this.logger.warn(`markDelivered: order ${orderId} resolved quantity is ${resolvedQuantity} — stock update skipped`);
+      this.logger.warn(
+        `markDelivered: order ${orderId} resolved quantity is ${resolvedQuantity} — stock update skipped`,
+      );
     }
 
     if (order.inventoryId && resolvedQuantity > 0) {
       const idempotencyKey = `order-delivered:${orderId}`;
       const { data: existingEvent } = await this.databaseService.supabase
-        .from('inventory_events')
-        .select('id')
-        .eq('idempotency_key', idempotencyKey)
+        .from("inventory_events")
+        .select("id")
+        .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
 
       if (!existingEvent) {
         try {
-          const { data: inventoryRow, error: inventoryError } = await this.databaseService.supabase
-            .from('restaurant_inventory')
-            .select('master_wine_id')
-            .eq('restaurant_id', restaurantId)
-            .eq('id', order.inventoryId)
-            .single();
+          const { data: inventoryRow, error: inventoryError } =
+            await this.databaseService.supabase
+              .from("restaurant_inventory")
+              .select("master_wine_id")
+              .eq("restaurant_id", restaurantId)
+              .eq("id", order.inventoryId)
+              .single();
 
-          const masterWineId = inventoryError ? null : inventoryRow?.master_wine_id;
+          const masterWineId = inventoryError
+            ? null
+            : inventoryRow?.master_wine_id;
 
           if (masterWineId) {
             const { data: currentStock } = await this.databaseService.supabase
-              .from('restaurant_inventory')
-              .select('shadow_stock, stock_live, in_transit_quantity')
-              .eq('restaurant_id', restaurantId)
-              .eq('id', order.inventoryId)
+              .from("restaurant_inventory")
+              .select("shadow_stock, stock_live, in_transit_quantity")
+              .eq("restaurant_id", restaurantId)
+              .eq("id", order.inventoryId)
               .single();
 
             const currentShadow = currentStock?.shadow_stock ?? 0;
@@ -767,36 +856,43 @@ export class ProcurementService {
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
 
             await this.databaseService.supabase
-              .from('restaurant_inventory')
+              .from("restaurant_inventory")
               .update({
                 shadow_stock: Math.max(0, currentShadow - resolvedQuantity),
                 stock_live: currentLive + resolvedQuantity,
-                in_transit_quantity: Math.max(0, currentInTransit - resolvedQuantity),
+                in_transit_quantity: Math.max(
+                  0,
+                  currentInTransit - resolvedQuantity,
+                ),
               })
-              .eq('restaurant_id', restaurantId)
-              .eq('id', order.inventoryId);
+              .eq("restaurant_id", restaurantId)
+              .eq("id", order.inventoryId);
 
-            await this.inventoryLedgerService.createTransaction(restaurantId, userId, {
-              inventoryId: order.inventoryId,
-              wineId: masterWineId,
-              transactionType: TransactionType.PURCHASE,
-              source: TransactionSource.ORDER,
-              quantityChange: resolvedQuantity,
-              stockType: StockType.LIVE,
-              orderId,
-              referenceType: 'order',
-              referenceId: orderId,
-              reason: 'Order delivered — shadow to physical conversion',
-            });
+            await this.inventoryLedgerService.createTransaction(
+              restaurantId,
+              userId,
+              {
+                inventoryId: order.inventoryId,
+                wineId: masterWineId,
+                transactionType: TransactionType.PURCHASE,
+                source: TransactionSource.ORDER,
+                quantityChange: resolvedQuantity,
+                stockType: StockType.LIVE,
+                orderId,
+                referenceType: "order",
+                referenceId: orderId,
+                reason: "Order delivered — shadow to physical conversion",
+              },
+            );
           }
 
-          await this.databaseService.supabase.from('inventory_events').insert({
+          await this.databaseService.supabase.from("inventory_events").insert({
             restaurant_id: restaurantId,
             inventory_id: order.inventoryId,
             master_wine_id: masterWineId ?? null,
-            event_type: 'order_delivered',
+            event_type: "order_delivered",
             quantity_change: resolvedQuantity,
-            source: 'procurement',
+            source: "procurement",
             idempotency_key: idempotencyKey,
             metadata: {
               orderId,
@@ -804,10 +900,13 @@ export class ProcurementService {
             },
           });
         } catch (eventError) {
-          this.logger.warn('Failed to record inventory event for delivered order', {
-            orderId,
-            error: eventError?.message ?? eventError,
-          });
+          this.logger.warn(
+            "Failed to record inventory event for delivered order",
+            {
+              orderId,
+              error: eventError?.message ?? eventError,
+            },
+          );
         }
       }
     }
@@ -816,7 +915,7 @@ export class ProcurementService {
     await this.updateCalendarEventForDelivery(restaurantId, orderId, order);
 
     // Emit order_change event for cross-page sync (triggers inventory update)
-    await this.emitOrderChangeEvent(restaurantId, userId, order, 'delivered');
+    await this.emitOrderChangeEvent(restaurantId, userId, order, "delivered");
 
     return order;
   }
@@ -827,26 +926,26 @@ export class ProcurementService {
   private async createCalendarEventForOrder(
     restaurantId: string,
     order: OrderResponseDto,
-    trigger: 'approved' | 'created',
+    trigger: "approved" | "created",
   ): Promise<void> {
     try {
       // Calculate expected delivery date (7 days from now if not specified)
       const expectedDate = new Date();
       expectedDate.setDate(expectedDate.getDate() + 7);
-      const eventDate = expectedDate.toISOString().split('T')[0];
+      const eventDate = expectedDate.toISOString().split("T")[0];
 
       const { error } = await this.databaseService.supabase
-        .from('calendar_events')
+        .from("calendar_events")
         .insert({
           restaurant_id: restaurantId,
           title: `Delivery: ${order.orderNumber}`,
           description: `Expected delivery for order ${order.orderNumber} (${order.quantity} bottles)`,
-          event_type: 'delivery',
+          event_type: "delivery",
           event_date: eventDate,
-          event_time: '10:00',
+          event_time: "10:00",
           all_day: false,
-          status: 'SCHEDULED',
-          priority: order.isEmergency ? 'HIGH' : 'MEDIUM',
+          status: "SCHEDULED",
+          priority: order.isEmergency ? "HIGH" : "MEDIUM",
           tags: JSON.stringify({
             order_id: order.id,
             order_number: order.orderNumber,
@@ -859,9 +958,13 @@ export class ProcurementService {
         });
 
       if (error) {
-        this.logger.warn(`Failed to create calendar event for order ${order.id}: ${error.message}`);
+        this.logger.warn(
+          `Failed to create calendar event for order ${order.id}: ${error.message}`,
+        );
       } else {
-        this.logger.log(`Calendar event created for order ${order.orderNumber} delivery`);
+        this.logger.log(
+          `Calendar event created for order ${order.orderNumber} delivery`,
+        );
       }
     } catch (e) {
       this.logger.warn(`Calendar event creation failed: ${e?.message}`);
@@ -879,16 +982,16 @@ export class ProcurementService {
     try {
       // Find the calendar event for this order using tags
       const { data: events } = await this.databaseService.supabase
-        .from('calendar_events')
-        .select('id, tags')
-        .eq('restaurant_id', restaurantId)
-        .eq('event_type', 'delivery')
-        .neq('status', 'COMPLETED');
+        .from("calendar_events")
+        .select("id, tags")
+        .eq("restaurant_id", restaurantId)
+        .eq("event_type", "delivery")
+        .neq("status", "COMPLETED");
 
       // Find the event that references this order
-      const matchingEvent = (events || []).find(e => {
+      const matchingEvent = (events || []).find((e) => {
         try {
-          const tags = typeof e.tags === 'string' ? JSON.parse(e.tags) : e.tags;
+          const tags = typeof e.tags === "string" ? JSON.parse(e.tags) : e.tags;
           return tags?.order_id === orderId;
         } catch {
           return false;
@@ -897,35 +1000,37 @@ export class ProcurementService {
 
       if (matchingEvent) {
         await this.databaseService.supabase
-          .from('calendar_events')
+          .from("calendar_events")
           .update({
-            status: 'COMPLETED',
+            status: "COMPLETED",
             description: `Delivered: ${order.orderNumber} (${order.quantity} bottles). Actual delivery: ${order.deliveredAt}`,
           })
-          .eq('id', matchingEvent.id);
+          .eq("id", matchingEvent.id);
 
-        this.logger.log(`Calendar event updated to COMPLETED for order ${order.orderNumber}`);
+        this.logger.log(
+          `Calendar event updated to COMPLETED for order ${order.orderNumber}`,
+        );
       }
     } catch (e) {
-      this.logger.warn(`Calendar event update on delivery failed: ${e?.message}`);
+      this.logger.warn(
+        `Calendar event update on delivery failed: ${e?.message}`,
+      );
     }
   }
 
-  async listPendingOrders(
-    restaurantId: string,
-  ): Promise<OrderResponseDto[]> {
+  async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('*, inventory:inventory_id(wine_name)')
-      .eq('restaurant_id', restaurantId)
-      .in('status', [
+      .from("procurement_orders")
+      .select("*, inventory:inventory_id(wine_name)")
+      .eq("restaurant_id", restaurantId)
+      .in("status", [
         ProcurementOrderStatus.PENDING,
         ProcurementOrderStatus.APPROVAL_NEEDED,
       ])
-      .order('created_at', { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) {
-      this.logger.error('Failed to list pending orders', {
+      this.logger.error("Failed to list pending orders", {
         restaurantId,
         error: error.message,
       });
@@ -935,7 +1040,10 @@ export class ProcurementService {
     return (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
-        wine_name: row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+        wine_name:
+          row.inventory?.wine_name ||
+          (row.inventory as any)?.wine?.name ||
+          null,
       };
       return this.mapOrderRow(orderRow);
     });
@@ -971,7 +1079,7 @@ export class ProcurementService {
     const year = now.getUTCFullYear();
     const suffix = Math.floor(Math.random() * 100000)
       .toString()
-      .padStart(5, '0');
+      .padStart(5, "0");
     return `ORD-${year}-${suffix}`;
   }
 
@@ -985,40 +1093,56 @@ export class ProcurementService {
     dto: ApproveDraftDto,
   ): Promise<{ conversationId: string; sentAt: string }> {
     // Fetch conversation + provider email before updating
-    const { data: conv, error: fetchError } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact), procurement_orders!inner(inventory:inventory_id(wine_name))')
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL')
-      .single();
+    const { data: conv, error: fetchError } =
+      await this.databaseService.supabase
+        .from("procurement_conversations")
+        .select(
+          "id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact), procurement_orders!inner(inventory:inventory_id(wine_name))",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("status", "PENDING_APPROVAL")
+        .single();
 
     if (fetchError || !conv) {
-      this.logger.error('approveDraft fetch failed', { restaurantId, orderId, fetchError: fetchError?.message });
-      throw new NotFoundException('No pending draft found for this order');
+      this.logger.error("approveDraft fetch failed", {
+        restaurantId,
+        orderId,
+        fetchError: fetchError?.message,
+      });
+      throw new NotFoundException("No pending draft found for this order");
     }
 
     // Gate: don't send a draft that's stale because a newer vendor reply just
     // arrived and is still being analyzed.
-    if (await this.newerReplyStillAnalyzing(orderId, (conv as any).created_at)) {
+    if (
+      await this.newerReplyStillAnalyzing(orderId, (conv as any).created_at)
+    ) {
       throw new BadRequestException(
-        'A newer vendor reply just arrived and the AI is still reading it. Please wait a moment and review the updated draft before sending.',
+        "A newer vendor reply just arrived and the AI is still reading it. Please wait a moment and review the updated draft before sending.",
       );
     }
 
-    const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? '';
+    const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
     const providerEmail = (conv as any).providers?.contact_email ?? null;
-    const providerName = (conv as any).providers?.name ?? 'Provider';
+    const providerName = (conv as any).providers?.name ?? "Provider";
     const rawOrder = (conv as any).procurement_orders;
-    const wineName = rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? 'Wine Order';
+    const wineName =
+      rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? "Wine Order";
 
     // Reply-threading metadata. AI-generated replies (and any draft created as a
     // reply to an inbound vendor email) carry the original Gmail thread id plus
     // the RFC822 In-Reply-To / References so the approved email lands in the same
     // thread instead of starting a new one. Initial outbound drafts have none of
     // these, so the email is sent fresh exactly as before.
-    const emailHeaders = ((conv as any).email_headers ?? {}) as Record<string, any>;
-    const subject = emailHeaders.subject || (conv as any).subject || `Order Request: ${wineName}`;
+    const emailHeaders = ((conv as any).email_headers ?? {}) as Record<
+      string,
+      any
+    >;
+    const subject =
+      emailHeaders.subject ||
+      (conv as any).subject ||
+      `Order Request: ${wineName}`;
     const replyThreadId = (conv as any).gmail_thread_id || undefined;
     const replyInReplyTo = emailHeaders.in_reply_to || undefined;
     const replyReferences = emailHeaders.references || undefined;
@@ -1026,30 +1150,35 @@ export class ProcurementService {
     // Send the email BEFORE committing SENT status — if delivery fails the
     // conversation stays PENDING_APPROVAL and the manager can retry.
     if (!providerEmail) {
-      throw new BadRequestException(`Provider has no email address — cannot send order email for order ${orderId}`);
+      throw new BadRequestException(
+        `Provider has no email address — cannot send order email for order ${orderId}`,
+      );
     }
 
     const emailHtml = this.buildEmailHtml(rawEmailBody);
-    const { gmailMessageId, gmailThreadId, rfc822MessageId } = await this.sendProviderEmail({
-      to: providerEmail,
-      cc: dto.ccEmails,
-      subject,
-      html: emailHtml,
-      restaurantId,
-      threadId: replyThreadId,
-      inReplyTo: replyInReplyTo,
-      references: replyReferences,
-      recipientFirstName: this.resolveFirstName((conv as any).providers),
-      senderName: await this.resolveSenderName(restaurantId),
-    });
+    const { gmailMessageId, gmailThreadId, rfc822MessageId } =
+      await this.sendProviderEmail({
+        to: providerEmail,
+        cc: dto.ccEmails,
+        subject,
+        html: emailHtml,
+        restaurantId,
+        threadId: replyThreadId,
+        inReplyTo: replyInReplyTo,
+        references: replyReferences,
+        recipientFirstName: this.resolveFirstName((conv as any).providers),
+        senderName: await this.resolveSenderName(restaurantId),
+      });
     if (gmailThreadId) {
-      this.logger.log(`Provider email sent to ${providerEmail} for order ${orderId} — threadId: ${gmailThreadId}`);
+      this.logger.log(
+        `Provider email sent to ${providerEmail} for order ${orderId} — threadId: ${gmailThreadId}`,
+      );
     }
 
     const sentAt = new Date().toISOString();
     const updatePayload: Record<string, any> = {
       sent_at: sentAt,
-      status: 'SENT',
+      status: "SENT",
       ...(gmailMessageId && { gmail_message_id: gmailMessageId }),
       ...(gmailThreadId && { gmail_thread_id: gmailThreadId }),
       ...(rfc822MessageId && { message_id: rfc822MessageId }),
@@ -1059,16 +1188,20 @@ export class ProcurementService {
     }
 
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
+      .from("procurement_conversations")
       .update(updatePayload)
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL')
-      .select('id, sent_at')
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .select("id, sent_at")
       .single();
 
     if (error) {
-      this.logger.error('approveDraft DB update failed after email sent', { restaurantId, orderId, error: error.message });
+      this.logger.error("approveDraft DB update failed after email sent", {
+        restaurantId,
+        orderId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -1077,10 +1210,10 @@ export class ProcurementService {
     // delivery window is meaningful.
     try {
       const { data: orderRow } = await this.databaseService.supabase
-        .from('procurement_orders')
-        .select('*, inventory:inventory_id(wine_name)')
-        .eq('id', orderId)
-        .eq('restaurant_id', restaurantId)
+        .from("procurement_orders")
+        .select("*, inventory:inventory_id(wine_name)")
+        .eq("id", orderId)
+        .eq("restaurant_id", restaurantId)
         .single();
       if (orderRow) {
         const raw = orderRow as any;
@@ -1088,10 +1221,16 @@ export class ProcurementService {
           ...raw,
           wine_name: raw.inventory?.wine_name || null,
         };
-        await this.createCalendarEventForOrder(restaurantId, this.mapOrderRow(mappedRow), 'approved');
+        await this.createCalendarEventForOrder(
+          restaurantId,
+          this.mapOrderRow(mappedRow),
+          "approved",
+        );
       }
     } catch (e: any) {
-      this.logger.warn(`Calendar creation after draft approval failed: ${e?.message}`);
+      this.logger.warn(
+        `Calendar creation after draft approval failed: ${e?.message}`,
+      );
     }
 
     return { conversationId: (data as any).id, sentAt: (data as any).sent_at };
@@ -1103,31 +1242,40 @@ export class ProcurementService {
 
   /** Convert plain-text body to simple HTML (paragraph/line breaks); pass HTML through. */
   private buildEmailHtml(rawBody: string): string {
-    const body = rawBody ?? '';
+    const body = rawBody ?? "";
     const isHtml = /<[a-z][\s\S]*>/i.test(body);
     return isHtml
       ? body
-      : body.split(/\n\n+/).map((p) => `<p style="margin:0 0 1em 0">${p.replace(/\n/g, '<br>')}</p>`).join('');
+      : body
+          .split(/\n\n+/)
+          .map(
+            (p) =>
+              `<p style="margin:0 0 1em 0">${p.replace(/\n/g, "<br>")}</p>`,
+          )
+          .join("");
   }
 
   /** Provider first name: contact_first_name → primary_contact.name → company name. */
   private resolveFirstName(provider: any): string {
-    if (!provider) return '';
-    const direct = (provider.contact_first_name || '').toString().trim();
+    if (!provider) return "";
+    const direct = (provider.contact_first_name || "").toString().trim();
     if (direct) return direct.split(/\s+/)[0];
     const pc = provider.primary_contact;
-    const pcName = (pc && typeof pc === 'object' ? (pc as any).name : '') || '';
+    const pcName = (pc && typeof pc === "object" ? (pc as any).name : "") || "";
     if (String(pcName).trim()) return String(pcName).trim().split(/\s+/)[0];
-    const company = (provider.name || '').toString().trim();
+    const company = (provider.name || "").toString().trim();
     if (company) return company.split(/\s+/)[0];
-    return '';
+    return "";
   }
 
   /** Rewrite a leading generic greeting ("Hi there,", "Hello,", "Hi Acme,") to use the first name. */
   private personalizeGreeting(html: string, firstName?: string): string {
     if (!html || !firstName || !firstName.trim()) return html;
     const name = firstName.trim();
-    return html.replace(/(^|>)(\s*)(hi|hello|hey|dear)\b[^,<]*,/i, `$1$2Hi ${name},`);
+    return html.replace(
+      /(^|>)(\s*)(hi|hello|hey|dear)\b[^,<]*,/i,
+      `$1$2Hi ${name},`,
+    );
   }
 
   /**
@@ -1136,11 +1284,18 @@ export class ProcurementService {
    * "[Your Name]", etc.) with the real sender name. This is the safety net that
    * cleans up whatever the draft generator (Python agent or LLM) produced.
    */
-  private applyEmailPlaceholders(html: string, firstName?: string, senderName?: string): string {
+  private applyEmailPlaceholders(
+    html: string,
+    firstName?: string,
+    senderName?: string,
+  ): string {
     let out = this.personalizeGreeting(html, firstName);
-    const sig = (senderName || '').trim();
+    const sig = (senderName || "").trim();
     // Replace any leftover [Manager Name] / [Your Name] / [Name] / [Signature] placeholder.
-    out = out.replace(/\[\s*(manager\s*name|your\s*name|name|signature|manager)\s*\]/gi, sig);
+    out = out.replace(
+      /\[\s*(manager\s*name|your\s*name|name|signature|manager)\s*\]/gi,
+      sig,
+    );
     return out;
   }
 
@@ -1152,31 +1307,31 @@ export class ProcurementService {
   private async resolveSenderName(restaurantId: string): Promise<string> {
     try {
       const { data: t } = await this.databaseService.supabase
-        .from('communication_templates')
-        .select('body')
-        .eq('restaurant_id', restaurantId)
-        .eq('type', 'sender_identity')
-        .eq('is_active', true)
+        .from("communication_templates")
+        .select("body")
+        .eq("restaurant_id", restaurantId)
+        .eq("type", "sender_identity")
+        .eq("is_active", true)
         .maybeSingle();
-      const configured = String((t as any)?.body || '').trim();
-      if (configured) return configured.split('\n')[0].trim();
+      const configured = String((t as any)?.body || "").trim();
+      if (configured) return configured.split("\n")[0].trim();
 
       const { data: b } = await this.databaseService.supabase
-        .from('restaurant_branding')
-        .select('display_name')
-        .eq('restaurant_id', restaurantId)
+        .from("restaurant_branding")
+        .select("display_name")
+        .eq("restaurant_id", restaurantId)
         .maybeSingle();
       if ((b as any)?.display_name && String((b as any).display_name).trim()) {
         return String((b as any).display_name).trim();
       }
       const { data: r } = await this.databaseService.supabase
-        .from('restaurants')
-        .select('name')
-        .eq('id', restaurantId)
+        .from("restaurants")
+        .select("name")
+        .eq("id", restaurantId)
         .maybeSingle();
-      return String((r as any)?.name || '').trim();
+      return String((r as any)?.name || "").trim();
     } catch {
-      return '';
+      return "";
     }
   }
 
@@ -1192,7 +1347,11 @@ export class ProcurementService {
     recipientFirstName?: string;
     senderName?: string;
     restaurantId?: string;
-  }): Promise<{ gmailMessageId?: string; gmailThreadId?: string; rfc822MessageId?: string }> {
+  }): Promise<{
+    gmailMessageId?: string;
+    gmailThreadId?: string;
+    rfc822MessageId?: string;
+  }> {
     if (!this.gmailService) return {};
     // Phase 3 — outbound unification (interim). When the restaurant has a dedicated inbound
     // address (INBOUND_EMAIL_DOMAIN configured), set Reply-To to it so vendor replies come back
@@ -1200,13 +1359,18 @@ export class ProcurementService {
     // No-op until the domain is provisioned, so the shared-Gmail path is unaffected.
     const replyTo =
       params.restaurantId && this.inboundAddress
-        ? (await this.inboundAddress.addressFor(params.restaurantId)) || undefined
+        ? (await this.inboundAddress.addressFor(params.restaurantId)) ||
+          undefined
         : undefined;
     const result = await this.gmailService.sendEmail({
       to: [params.to],
       cc: params.cc && params.cc.length > 0 ? params.cc : undefined,
       subject: params.subject,
-      html: this.applyEmailPlaceholders(params.html, params.recipientFirstName, params.senderName),
+      html: this.applyEmailPlaceholders(
+        params.html,
+        params.recipientFirstName,
+        params.senderName,
+      ),
       threadId: params.threadId,
       inReplyTo: params.inReplyTo,
       references: params.references,
@@ -1214,8 +1378,8 @@ export class ProcurementService {
     });
     if (!result.success) {
       throw new BadRequestException(
-        `Email could not be delivered to ${params.to}: ${result.error ?? 'unknown error'}. ` +
-          'Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).',
+        `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+          "Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).",
       );
     }
     return {
@@ -1225,14 +1389,19 @@ export class ProcurementService {
     };
   }
 
-  private emitConvUpdate(restaurantId: string, orderId: string, providerId: string | null, conversationId: string): void {
+  private emitConvUpdate(
+    restaurantId: string,
+    orderId: string,
+    providerId: string | null,
+    conversationId: string,
+  ): void {
     try {
       this.websocketGateway?.emitConversationUpdated(restaurantId, {
         conversation_id: conversationId,
         order_id: orderId,
         provider_id: providerId || undefined,
-        direction: 'outbound',
-        channel: 'email',
+        direction: "outbound",
+        channel: "email",
       });
     } catch {
       /* best-effort */
@@ -1254,10 +1423,12 @@ export class ProcurementService {
     let due: any[] = [];
     try {
       const { data } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .select('id, order_id, restaurant_id, provider_id, content, message_text, gmail_thread_id, email_headers, created_at')
-        .eq('status', 'AUTO_SEND_SCHEDULED')
-        .lte('scheduled_send_at', new Date().toISOString())
+        .from("procurement_conversations")
+        .select(
+          "id, order_id, restaurant_id, provider_id, content, message_text, gmail_thread_id, email_headers, created_at",
+        )
+        .eq("status", "AUTO_SEND_SCHEDULED")
+        .lte("scheduled_send_at", new Date().toISOString())
         .limit(20);
       due = (data as any[]) || [];
     } catch (e: any) {
@@ -1269,26 +1440,32 @@ export class ProcurementService {
     for (const row of due) {
       // Atomic claim — only one worker wins; a cancel (which flips status) loses the race.
       const { data: claimed } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .update({ status: 'AUTO_SENDING' })
-        .eq('id', row.id)
-        .eq('status', 'AUTO_SEND_SCHEDULED')
-        .select('id')
+        .from("procurement_conversations")
+        .update({ status: "AUTO_SENDING" })
+        .eq("id", row.id)
+        .eq("status", "AUTO_SEND_SCHEDULED")
+        .select("id")
         .maybeSingle();
       if (!claimed) continue;
 
       try {
         const { data: order } = await this.databaseService.supabase
-          .from('procurement_orders')
-          .select('id, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)')
-          .eq('id', row.order_id)
+          .from("procurement_orders")
+          .select(
+            "id, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+          )
+          .eq("id", row.order_id)
           .single();
         const providerEmail = (order as any)?.providers?.contact_email ?? null;
-        const wineName = (order as any)?.restaurant_inventory?.wine_name ?? 'Wine Order';
+        const wineName =
+          (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
 
         // Respect a late pause, and never send without a recipient.
         if ((order as any)?.ai_autonomy_paused === true || !providerEmail) {
-          await this.revertScheduledToDraft(row.id, !providerEmail ? 'no provider email' : 'order paused');
+          await this.revertScheduledToDraft(
+            row.id,
+            !providerEmail ? "no provider email" : "order paused",
+          );
           continue;
         }
 
@@ -1297,27 +1474,48 @@ export class ProcurementService {
         // to a one-tap approval draft and let the manager review against the latest reply
         // (the responder will re-draft against it). Never auto-send a stale reply.
         if (await this.newerInboundSince(row.order_id, row.created_at)) {
-          await this.revertScheduledToDraft(row.id, 'newer vendor reply arrived');
+          await this.revertScheduledToDraft(
+            row.id,
+            "newer vendor reply arrived",
+          );
           try {
-            this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
-              id: row.id,
-              title: 'AI held a reply — a newer vendor email arrived',
-              message: 'The scheduled auto-send was paused because the vendor replied again. Review the updated draft before sending.',
-              type: 'warning',
-              action_url: `/orders?order=${row.order_id}`,
-            });
-            void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
-              type: 'vendor_reply',
-              title: 'AI held a reply — a newer vendor email arrived',
-              message: 'The scheduled auto-send was paused because the vendor replied again. Review the updated draft before sending.',
-              priority: 'high',
-              actionUrl: `/orders?order=${row.order_id}`,
-              metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id, reason: 'newer_inbound_pending' },
-            });
+            this.websocketGateway?.emitRestaurantNotification(
+              row.restaurant_id,
+              {
+                id: row.id,
+                title: "AI held a reply — a newer vendor email arrived",
+                message:
+                  "The scheduled auto-send was paused because the vendor replied again. Review the updated draft before sending.",
+                type: "warning",
+                action_url: `/orders?order=${row.order_id}`,
+              },
+            );
+            void this.inboundResponder?.persistManagerNotification(
+              row.restaurant_id,
+              {
+                type: "vendor_reply",
+                title: "AI held a reply — a newer vendor email arrived",
+                message:
+                  "The scheduled auto-send was paused because the vendor replied again. Review the updated draft before sending.",
+                priority: "high",
+                actionUrl: `/orders?order=${row.order_id}`,
+                metadata: {
+                  order_id: row.order_id,
+                  draft_id: row.id,
+                  provider_id: row.provider_id,
+                  reason: "newer_inbound_pending",
+                },
+              },
+            );
           } catch {
             /* best-effort */
           }
-          this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
+          this.emitConvUpdate(
+            row.restaurant_id,
+            row.order_id,
+            row.provider_id,
+            row.id,
+          );
           continue;
         }
 
@@ -1325,7 +1523,7 @@ export class ProcurementService {
         const ids = await this.sendProviderEmail({
           to: providerEmail,
           subject: headers.subject || `Re: Order Request: ${wineName}`,
-          html: this.buildEmailHtml(row.content ?? row.message_text ?? ''),
+          html: this.buildEmailHtml(row.content ?? row.message_text ?? ""),
           restaurantId: row.restaurant_id,
           threadId: row.gmail_thread_id || undefined,
           inReplyTo: headers.in_reply_to || undefined,
@@ -1335,57 +1533,82 @@ export class ProcurementService {
         });
 
         await this.databaseService.supabase
-          .from('procurement_conversations')
+          .from("procurement_conversations")
           .update({
-            status: 'AUTO_SENT',
+            status: "AUTO_SENT",
             sent_at: new Date().toISOString(),
             scheduled_send_at: null,
             ...(ids.gmailMessageId && { gmail_message_id: ids.gmailMessageId }),
             ...(ids.gmailThreadId && { gmail_thread_id: ids.gmailThreadId }),
             ...(ids.rfc822MessageId && { message_id: ids.rfc822MessageId }),
           })
-          .eq('id', row.id);
+          .eq("id", row.id);
 
-        this.logger.log(`Auto-sent reply ${row.id} for order ${row.order_id} to ${providerEmail}`);
+        this.logger.log(
+          `Auto-sent reply ${row.id} for order ${row.order_id} to ${providerEmail}`,
+        );
         try {
           this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
             id: row.id,
-            title: 'AI auto-sent a vendor reply',
+            title: "AI auto-sent a vendor reply",
             message: `Reply sent to ${providerEmail}.`,
-            type: 'success',
+            type: "success",
             action_url: `/orders?order=${row.order_id}`,
           });
-          void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
-            type: 'vendor_reply',
-            title: 'AI auto-sent a vendor reply',
-            message: `Reply sent to ${providerEmail}.`,
-            priority: 'medium',
-            actionUrl: `/orders?order=${row.order_id}`,
-            metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id },
-          });
+          void this.inboundResponder?.persistManagerNotification(
+            row.restaurant_id,
+            {
+              type: "vendor_reply",
+              title: "AI auto-sent a vendor reply",
+              message: `Reply sent to ${providerEmail}.`,
+              priority: "medium",
+              actionUrl: `/orders?order=${row.order_id}`,
+              metadata: {
+                order_id: row.order_id,
+                draft_id: row.id,
+                provider_id: row.provider_id,
+              },
+            },
+          );
         } catch {
           /* best-effort */
         }
-        this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
+        this.emitConvUpdate(
+          row.restaurant_id,
+          row.order_id,
+          row.provider_id,
+          row.id,
+        );
       } catch (e: any) {
-        this.logger.error(`Auto-send failed for ${row.id} (order ${row.order_id}): ${e?.message}`);
-        await this.revertScheduledToDraft(row.id, 'send failed');
+        this.logger.error(
+          `Auto-send failed for ${row.id} (order ${row.order_id}): ${e?.message}`,
+        );
+        await this.revertScheduledToDraft(row.id, "send failed");
         try {
           this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
             id: row.id,
-            title: 'AI auto-send failed — needs your approval',
-            message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
-            type: 'warning',
+            title: "AI auto-send failed — needs your approval",
+            message:
+              "The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.",
+            type: "warning",
             action_url: `/orders?order=${row.order_id}`,
           });
-          void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
-            type: 'vendor_reply',
-            title: 'AI auto-send failed — needs your approval',
-            message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
-            priority: 'high',
-            actionUrl: `/orders?order=${row.order_id}`,
-            metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id },
-          });
+          void this.inboundResponder?.persistManagerNotification(
+            row.restaurant_id,
+            {
+              type: "vendor_reply",
+              title: "AI auto-send failed — needs your approval",
+              message:
+                "The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.",
+              priority: "high",
+              actionUrl: `/orders?order=${row.order_id}`,
+              metadata: {
+                order_id: row.order_id,
+                draft_id: row.id,
+                provider_id: row.provider_id,
+              },
+            },
+          );
         } catch {
           /* best-effort */
         }
@@ -1393,25 +1616,36 @@ export class ProcurementService {
     }
   }
 
-  private async revertScheduledToDraft(conversationId: string, reason: string): Promise<void> {
+  private async revertScheduledToDraft(
+    conversationId: string,
+    reason: string,
+  ): Promise<void> {
     await this.databaseService.supabase
-      .from('procurement_conversations')
-      .update({ status: 'PENDING_APPROVAL', scheduled_send_at: null })
-      .eq('id', conversationId);
-    this.logger.log(`Auto-send reverted to PENDING_APPROVAL for ${conversationId} (${reason}).`);
+      .from("procurement_conversations")
+      .update({ status: "PENDING_APPROVAL", scheduled_send_at: null })
+      .eq("id", conversationId);
+    this.logger.log(
+      `Auto-send reverted to PENDING_APPROVAL for ${conversationId} (${reason}).`,
+    );
   }
 
   /** Undo a scheduled auto-send: revert it to a normal draft for one-tap approval. */
-  async cancelScheduledSend(restaurantId: string, orderId: string): Promise<{ cancelled: boolean }> {
+  async cancelScheduledSend(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{ cancelled: boolean }> {
     const { data } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .update({ status: 'PENDING_APPROVAL', scheduled_send_at: null })
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .eq('status', 'AUTO_SEND_SCHEDULED')
-      .select('id');
+      .from("procurement_conversations")
+      .update({ status: "PENDING_APPROVAL", scheduled_send_at: null })
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "AUTO_SEND_SCHEDULED")
+      .select("id");
     const cancelled = !!(data && (data as any[]).length);
-    if (cancelled) this.logger.log(`Manager cancelled scheduled auto-send for order ${orderId}.`);
+    if (cancelled)
+      this.logger.log(
+        `Manager cancelled scheduled auto-send for order ${orderId}.`,
+      );
     return { cancelled };
   }
 
@@ -1427,35 +1661,44 @@ export class ProcurementService {
     ccEmails?: string[],
   ): Promise<{ conversationId: string; sentAt: string }> {
     if (!content || !content.trim()) {
-      throw new BadRequestException('Reply content cannot be empty');
+      throw new BadRequestException("Reply content cannot be empty");
     }
 
     const { data: order } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('id, provider_id, providers!left(contact_email), restaurant_inventory:inventory_id(wine_name)')
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
+      .from("procurement_orders")
+      .select(
+        "id, provider_id, providers!left(contact_email), restaurant_inventory:inventory_id(wine_name)",
+      )
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
       .single();
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
-    const wineName = (order as any)?.restaurant_inventory?.wine_name ?? 'Wine Order';
+    const wineName =
+      (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
     if (!providerEmail) {
-      throw new BadRequestException('Provider has no email address — cannot send reply');
+      throw new BadRequestException(
+        "Provider has no email address — cannot send reply",
+      );
     }
 
     // Thread to the vendor's latest inbound message if there is one.
     const { data: lastInbound } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('gmail_thread_id, message_id, email_headers')
-      .eq('order_id', orderId)
-      .eq('direction', 'inbound')
-      .order('created_at', { ascending: false })
+      .from("procurement_conversations")
+      .select("gmail_thread_id, message_id, email_headers")
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
+    const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<
+      string,
+      any
+    >;
     const subject = inHeaders.subject || `Re: Order Request: ${wineName}`;
     const threadId = (lastInbound as any)?.gmail_thread_id || undefined;
-    const inReplyTo = (lastInbound as any)?.message_id || inHeaders.message_id || undefined;
+    const inReplyTo =
+      (lastInbound as any)?.message_id || inHeaders.message_id || undefined;
     const references = inHeaders.references || undefined;
 
     const ids = await this.sendProviderEmail({
@@ -1471,53 +1714,74 @@ export class ProcurementService {
 
     const sentAt = new Date().toISOString();
     const { data: inserted, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
+      .from("procurement_conversations")
       .insert({
         order_id: orderId,
         restaurant_id: restaurantId,
         provider_id: (order as any).provider_id,
-        direction: 'outbound',
-        channel: 'email',
+        direction: "outbound",
+        channel: "email",
         content,
         message_text: content,
         ai_generated: false,
-        status: 'SENT',
+        status: "SENT",
         sent_at: sentAt,
-        outbound_email_type: 'MANUAL_REPLY',
+        outbound_email_type: "MANUAL_REPLY",
         gmail_thread_id: ids.gmailThreadId || threadId || null,
         gmail_message_id: ids.gmailMessageId || null,
         message_id: ids.rfc822MessageId || null,
-        email_headers: { subject, in_reply_to: inReplyTo || null, references: references || null },
+        email_headers: {
+          subject,
+          in_reply_to: inReplyTo || null,
+          references: references || null,
+        },
       })
-      .select('id, sent_at')
+      .select("id, sent_at")
       .single();
     if (error) {
-      this.logger.error(`manualReply insert failed for order ${orderId}: ${error.message}`);
+      this.logger.error(
+        `manualReply insert failed for order ${orderId}: ${error.message}`,
+      );
       throw error;
     }
 
     // A manual reply supersedes any waiting AI draft for this order.
     await this.databaseService.supabase
-      .from('procurement_conversations')
-      .update({ status: 'DISCARDED', scheduled_send_at: null })
-      .eq('order_id', orderId)
-      .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED']);
+      .from("procurement_conversations")
+      .update({ status: "DISCARDED", scheduled_send_at: null })
+      .eq("order_id", orderId)
+      .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
 
-    this.emitConvUpdate(restaurantId, orderId, (order as any).provider_id, (inserted as any).id);
-    return { conversationId: (inserted as any).id, sentAt: (inserted as any).sent_at };
+    this.emitConvUpdate(
+      restaurantId,
+      orderId,
+      (order as any).provider_id,
+      (inserted as any).id,
+    );
+    return {
+      conversationId: (inserted as any).id,
+      sentAt: (inserted as any).sent_at,
+    };
   }
 
   /** Pause or resume AI autonomy for a single order (manager grabs the wheel). */
-  async setOrderAiPaused(restaurantId: string, orderId: string, paused: boolean): Promise<{ paused: boolean }> {
+  async setOrderAiPaused(
+    restaurantId: string,
+    orderId: string,
+    paused: boolean,
+  ): Promise<{ paused: boolean }> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_orders')
+      .from("procurement_orders")
       .update({ ai_autonomy_paused: paused })
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
-      .select('id');
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .select("id");
     if (error) throw error;
-    if (!data || (data as any[]).length === 0) throw new NotFoundException(`Order ${orderId} not found`);
-    this.logger.log(`AI autonomy ${paused ? 'paused' : 'resumed'} for order ${orderId}.`);
+    if (!data || (data as any[]).length === 0)
+      throw new NotFoundException(`Order ${orderId} not found`);
+    this.logger.log(
+      `AI autonomy ${paused ? "paused" : "resumed"} for order ${orderId}.`,
+    );
     return { paused };
   }
 
@@ -1536,20 +1800,24 @@ export class ProcurementService {
   ): Promise<{ score: number; eligible: boolean; completedOrders: number }> {
     try {
       const { data: provider } = await this.databaseService.supabase
-        .from('providers')
-        .select('rating')
-        .eq('id', providerId)
+        .from("providers")
+        .select("rating")
+        .eq("id", providerId)
         .maybeSingle();
       const { count } = await this.databaseService.supabase
-        .from('procurement_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('restaurant_id', restaurantId)
-        .eq('provider_id', providerId)
-        .in('status', ['CONFIRMED', 'DELIVERED', 'COMPLETED']);
+        .from("procurement_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId)
+        .eq("provider_id", providerId)
+        .in("status", ["CONFIRMED", "DELIVERED", "COMPLETED"]);
       const completedOrders = count ?? 0;
-      const ratingScore = Math.min(1, Number((provider as any)?.rating ?? 0) / 5);
+      const ratingScore = Math.min(
+        1,
+        Number((provider as any)?.rating ?? 0) / 5,
+      );
       const historyScore = Math.min(1, completedOrders / 5);
-      const score = Math.round((ratingScore * 0.5 + historyScore * 0.5) * 100) / 100;
+      const score =
+        Math.round((ratingScore * 0.5 + historyScore * 0.5) * 100) / 100;
       const eligible = completedOrders >= 3 && score >= 0.7;
       return { score, eligible, completedOrders };
     } catch {
@@ -1563,16 +1831,19 @@ export class ProcurementService {
    * last 10 minutes. Blocks acting on a now-stale draft/deal while the AI is still
    * reading the latest reply — but won't lock forever if analysis permanently failed.
    */
-  private async newerReplyStillAnalyzing(orderId: string, draftCreatedAt?: string | null): Promise<boolean> {
+  private async newerReplyStillAnalyzing(
+    orderId: string,
+    draftCreatedAt?: string | null,
+  ): Promise<boolean> {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     let q = this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('id')
-      .eq('order_id', orderId)
-      .eq('direction', 'inbound')
-      .is('detected_intent', null)
-      .gt('created_at', tenMinAgo);
-    if (draftCreatedAt) q = q.gt('created_at', draftCreatedAt);
+      .from("procurement_conversations")
+      .select("id")
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .is("detected_intent", null)
+      .gt("created_at", tenMinAgo);
+    if (draftCreatedAt) q = q.gt("created_at", draftCreatedAt);
     const { data } = await q.limit(1);
     return !!(data && (data as any[]).length);
   }
@@ -1589,34 +1860,42 @@ export class ProcurementService {
   ): Promise<Array<{ filename: string; mime_type: string; data: string }>> {
     const MAX_FILES = 3;
     const MAX_BYTES = 5 * 1024 * 1024; // mirror the ingestion cap
-    const out: Array<{ filename: string; mime_type: string; data: string }> = [];
+    const out: Array<{ filename: string; mime_type: string; data: string }> =
+      [];
     try {
       const { data: rows } = await this.databaseService.supabase
-        .from('conversation_attachments')
-        .select('filename, mime_type, size_bytes, storage_path')
-        .eq('restaurant_id', restaurantId)
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+        .from("conversation_attachments")
+        .select("filename, mime_type, size_bytes, storage_path")
+        .eq("restaurant_id", restaurantId)
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true })
         .limit(MAX_FILES);
       for (const r of (rows as any[]) || []) {
-        const mime = (r.mime_type ?? '').toString();
-        const isVisionable = mime.startsWith('image/') || mime === 'application/pdf';
+        const mime = (r.mime_type ?? "").toString();
+        const isVisionable =
+          mime.startsWith("image/") || mime === "application/pdf";
         if (!isVisionable || !r.storage_path) continue;
         if (r.size_bytes != null && r.size_bytes > MAX_BYTES) continue;
         try {
           const { data: blob } = await this.databaseService.supabase.storage
-            .from('vendor-attachments')
+            .from("vendor-attachments")
             .download(r.storage_path);
           if (!blob) continue;
           const buf = Buffer.from(await (blob as any).arrayBuffer());
           if (buf.byteLength > MAX_BYTES) continue;
-          out.push({ filename: r.filename ?? 'attachment', mime_type: mime, data: buf.toString('base64') });
+          out.push({
+            filename: r.filename ?? "attachment",
+            mime_type: mime,
+            data: buf.toString("base64"),
+          });
         } catch {
           /* best-effort — skip an object we can't fetch */
         }
       }
     } catch (e: any) {
-      this.logger.warn(`loadPersistedAttachmentsForVision failed for ${conversationId}: ${e?.message}`);
+      this.logger.warn(
+        `loadPersistedAttachmentsForVision failed for ${conversationId}: ${e?.message}`,
+      );
     }
     return out;
   }
@@ -1626,49 +1905,71 @@ export class ProcurementService {
    * time). Unlike newerReplyStillAnalyzing, this fires whether or not the AI has analyzed
    * the new reply: a scheduled auto-send should never fire once the vendor has spoken again.
    */
-  private async newerInboundSince(orderId: string, sinceIso?: string | null): Promise<boolean> {
+  private async newerInboundSince(
+    orderId: string,
+    sinceIso?: string | null,
+  ): Promise<boolean> {
     if (!sinceIso) return false;
     const { data } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('id')
-      .eq('order_id', orderId)
-      .eq('direction', 'inbound')
-      .gt('created_at', sinceIso)
+      .from("procurement_conversations")
+      .select("id")
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .gt("created_at", sinceIso)
       .limit(1);
     return !!(data && (data as any[]).length);
   }
 
   /** Latest unresolved AI deal proposal for an order (drives the approval modal). */
-  async getDealProposal(restaurantId: string, orderId: string): Promise<Record<string, any> | null> {
+  async getDealProposal(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Record<string, any> | null> {
     const { data: order } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('id, status, provider_id, providers!left(name)')
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
+      .from("procurement_orders")
+      .select("id, status, provider_id, providers!left(name)")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!order) return null;
-    const terminal = ['CONFIRMED', 'APPROVED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'FAILED'];
-    if (terminal.includes(String((order as any).status || '').toUpperCase())) return null;
+    const terminal = [
+      "CONFIRMED",
+      "APPROVED",
+      "IN_TRANSIT",
+      "DELIVERED",
+      "COMPLETED",
+      "CANCELLED",
+      "REJECTED",
+      "FAILED",
+    ];
+    if (terminal.includes(String((order as any).status || "").toUpperCase()))
+      return null;
 
     const { data: rows } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('id, conversation_context, rolling_summary, created_at')
-      .eq('order_id', orderId)
-      .eq('direction', 'inbound')
-      .order('created_at', { ascending: false })
+      .from("procurement_conversations")
+      .select("id, conversation_context, rolling_summary, created_at")
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
       .limit(6);
 
     const row = (rows || []).find(
-      (r: any) => r.conversation_context?.deal_proposal && !r.conversation_context?.deal_resolved_at,
+      (r: any) =>
+        r.conversation_context?.deal_proposal &&
+        !r.conversation_context?.deal_resolved_at,
     );
     if (!row) return null;
 
     const proposal = (row as any).conversation_context.deal_proposal;
-    const trust = await this.getVendorTrust(restaurantId, (order as any).provider_id);
+    const trust = await this.getVendorTrust(
+      restaurantId,
+      (order as any).provider_id,
+    );
     return {
       orderId,
       conversationId: (row as any).id,
-      providerName: proposal.providerName || (order as any).providers?.name || 'Provider',
+      providerName:
+        proposal.providerName || (order as any).providers?.name || "Provider",
       wineName: proposal.wineName,
       quantity: proposal.quantity,
       proposedPrice: proposal.proposedPrice,
@@ -1678,7 +1979,8 @@ export class ProcurementService {
       specialConditions: proposal.specialConditions || [],
       commercialTerms: proposal.commercialTerms ?? null,
       sourceQuote: proposal.sourceQuote,
-      conversationSummary: proposal.summary || (row as any).rolling_summary || '',
+      conversationSummary:
+        proposal.summary || (row as any).rolling_summary || "",
       dealKind: proposal.dealKind,
       urgency: proposal.urgency,
       confidence: proposal.confidence,
@@ -1688,25 +1990,30 @@ export class ProcurementService {
   }
 
   /** Mark the latest deal proposal on an order resolved so the modal stops showing it. */
-  private async resolveLatestDealProposal(orderId: string, resolution: string): Promise<void> {
+  private async resolveLatestDealProposal(
+    orderId: string,
+    resolution: string,
+  ): Promise<void> {
     const { data: rows } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select('id, conversation_context')
-      .eq('order_id', orderId)
-      .eq('direction', 'inbound')
-      .order('created_at', { ascending: false })
+      .from("procurement_conversations")
+      .select("id, conversation_context")
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
       .limit(6);
     const row = (rows || []).find(
-      (r: any) => r.conversation_context?.deal_proposal && !r.conversation_context?.deal_resolved_at,
+      (r: any) =>
+        r.conversation_context?.deal_proposal &&
+        !r.conversation_context?.deal_resolved_at,
     );
     if (!row) return;
     const ctx = { ...((row as any).conversation_context || {}) };
     ctx.deal_resolved_at = new Date().toISOString();
     ctx.deal_resolution = resolution;
     await this.databaseService.supabase
-      .from('procurement_conversations')
+      .from("procurement_conversations")
       .update({ conversation_context: ctx })
-      .eq('id', (row as any).id);
+      .eq("id", (row as any).id);
   }
 
   /**
@@ -1716,26 +2023,34 @@ export class ProcurementService {
   async confirmDeal(
     restaurantId: string,
     orderId: string,
-    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+    opts: {
+      finalPrice?: number;
+      quantity?: number;
+      sendConfirmation?: boolean;
+    },
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
     const { data: order } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('id, provider_id, quantity, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)')
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
+      .from("procurement_orders")
+      .select(
+        "id, provider_id, quantity, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+      )
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
       .single();
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
     // Gate: don't commit terms while a newer reply is still being analyzed.
     if (await this.newerReplyStillAnalyzing(orderId, null)) {
       throw new BadRequestException(
-        'A newer vendor reply just arrived and the AI is still reading it. Please review the updated terms before confirming.',
+        "A newer vendor reply just arrived and the AI is still reading it. Please review the updated terms before confirming.",
       );
     }
 
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
-    const greetName = this.resolveFirstName((order as any)?.providers) || 'there';
-    const wineName = (order as any)?.restaurant_inventory?.wine_name ?? 'the wine';
+    const greetName =
+      this.resolveFirstName((order as any)?.providers) || "there";
+    const wineName =
+      (order as any)?.restaurant_inventory?.wine_name ?? "the wine";
     const quantity = opts.quantity ?? (order as any).quantity;
     const finalPrice = opts.finalPrice ?? null;
 
@@ -1756,10 +2071,10 @@ export class ProcurementService {
     if (opts.quantity != null) update.quantity = opts.quantity;
 
     const { error: upErr } = await this.databaseService.supabase
-      .from('procurement_orders')
+      .from("procurement_orders")
       .update(update)
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId);
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId);
     if (upErr) throw upErr;
 
     // Send the vendor a confirmation (manager-authorized, so commitment language is fine).
@@ -1767,16 +2082,23 @@ export class ProcurementService {
     if (opts.sendConfirmation !== false && providerEmail) {
       try {
         const { data: lastInbound } = await this.databaseService.supabase
-          .from('procurement_conversations')
-          .select('gmail_thread_id, message_id, email_headers')
-          .eq('order_id', orderId)
-          .eq('direction', 'inbound')
-          .order('created_at', { ascending: false })
+          .from("procurement_conversations")
+          .select("gmail_thread_id, message_id, email_headers")
+          .eq("order_id", orderId)
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
-        const subject = inHeaders.subject || `Re: Order Confirmation: ${wineName}`;
-        const priceLine = finalPrice != null ? ` at $${Number(finalPrice).toFixed(2)} per bottle` : '';
+        const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<
+          string,
+          any
+        >;
+        const subject =
+          inHeaders.subject || `Re: Order Confirmation: ${wineName}`;
+        const priceLine =
+          finalPrice != null
+            ? ` at $${Number(finalPrice).toFixed(2)} per bottle`
+            : "";
         const body =
           `Hi ${greetName},\n\n` +
           `We'd like to confirm our order: ${quantity} bottles of ${wineName}${priceLine}. ` +
@@ -1788,56 +2110,76 @@ export class ProcurementService {
           html: this.buildEmailHtml(body),
           restaurantId,
           threadId: (lastInbound as any)?.gmail_thread_id || undefined,
-          inReplyTo: (lastInbound as any)?.message_id || inHeaders.message_id || undefined,
+          inReplyTo:
+            (lastInbound as any)?.message_id ||
+            inHeaders.message_id ||
+            undefined,
           references: inHeaders.references || undefined,
           senderName: await this.resolveSenderName(restaurantId),
         });
-        await this.databaseService.supabase.from('procurement_conversations').insert({
-          order_id: orderId,
-          restaurant_id: restaurantId,
-          provider_id: (order as any).provider_id,
-          direction: 'outbound',
-          channel: 'email',
-          content: body,
-          message_text: body,
-          ai_generated: false,
-          status: 'SENT',
-          sent_at: new Date().toISOString(),
-          outbound_email_type: 'ORDER_CONFIRMATION',
-          gmail_thread_id: ids.gmailThreadId || (lastInbound as any)?.gmail_thread_id || null,
-          gmail_message_id: ids.gmailMessageId || null,
-          message_id: ids.rfc822MessageId || null,
-          email_headers: { subject },
-        });
+        await this.databaseService.supabase
+          .from("procurement_conversations")
+          .insert({
+            order_id: orderId,
+            restaurant_id: restaurantId,
+            provider_id: (order as any).provider_id,
+            direction: "outbound",
+            channel: "email",
+            content: body,
+            message_text: body,
+            ai_generated: false,
+            status: "SENT",
+            sent_at: new Date().toISOString(),
+            outbound_email_type: "ORDER_CONFIRMATION",
+            gmail_thread_id:
+              ids.gmailThreadId ||
+              (lastInbound as any)?.gmail_thread_id ||
+              null,
+            gmail_message_id: ids.gmailMessageId || null,
+            message_id: ids.rfc822MessageId || null,
+            email_headers: { subject },
+          });
         sentConfirmation = true;
       } catch (e: any) {
-        this.logger.warn(`confirmDeal: confirmation email failed for order ${orderId}: ${e?.message}`);
+        this.logger.warn(
+          `confirmDeal: confirmation email failed for order ${orderId}: ${e?.message}`,
+        );
       }
     }
 
     // Resolve the proposal + clear any waiting drafts; the deal is done.
-    await this.resolveLatestDealProposal(orderId, 'confirmed');
+    await this.resolveLatestDealProposal(orderId, "confirmed");
     await this.databaseService.supabase
-      .from('procurement_conversations')
-      .update({ status: 'DISCARDED', scheduled_send_at: null })
-      .eq('order_id', orderId)
-      .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED']);
+      .from("procurement_conversations")
+      .update({ status: "DISCARDED", scheduled_send_at: null })
+      .eq("order_id", orderId)
+      .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
 
-    this.emitConvUpdate(restaurantId, orderId, (order as any).provider_id, orderId);
-    this.logger.log(`Deal confirmed for order ${orderId} (price=${finalPrice ?? 'unchanged'}, qty=${quantity}, emailed=${sentConfirmation}).`);
+    this.emitConvUpdate(
+      restaurantId,
+      orderId,
+      (order as any).provider_id,
+      orderId,
+    );
+    this.logger.log(
+      `Deal confirmed for order ${orderId} (price=${finalPrice ?? "unchanged"}, qty=${quantity}, emailed=${sentConfirmation}).`,
+    );
     return { confirmed: true, sentConfirmation };
   }
 
   /** Decline an AI-detected deal without committing — order stays in negotiation. */
-  async dismissDeal(restaurantId: string, orderId: string): Promise<{ dismissed: boolean }> {
+  async dismissDeal(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{ dismissed: boolean }> {
     const { data: order } = await this.databaseService.supabase
-      .from('procurement_orders')
-      .select('id')
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
+      .from("procurement_orders")
+      .select("id")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
-    await this.resolveLatestDealProposal(orderId, 'dismissed');
+    await this.resolveLatestDealProposal(orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
     return { dismissed: true };
   }
@@ -1847,15 +2189,19 @@ export class ProcurementService {
     orderId: string,
   ): Promise<{ success: boolean }> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .update({ status: 'DISCARDED' })
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL')
-      .select('id');
+      .from("procurement_conversations")
+      .update({ status: "DISCARDED" })
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .select("id");
 
     if (error) {
-      this.logger.error('discardDraft failed', { restaurantId, orderId, error: error.message });
+      this.logger.error("discardDraft failed", {
+        restaurantId,
+        orderId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -1867,8 +2213,8 @@ export class ProcurementService {
 
     if (this.orchestratorService) {
       await this.orchestratorService.publishEvent(
-        'provider.events',
-        'provider.draft.discarded',
+        "provider.events",
+        "provider.draft.discarded",
         { order_id: orderId, restaurant_id: restaurantId },
       );
     }
@@ -1882,19 +2228,23 @@ export class ProcurementService {
     newContent: string,
   ): Promise<{ success: boolean }> {
     if (!newContent || newContent.trim().length === 0) {
-      throw new BadRequestException('Draft content cannot be empty');
+      throw new BadRequestException("Draft content cannot be empty");
     }
 
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
+      .from("procurement_conversations")
       .update({ content: newContent })
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL')
-      .select('id');
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .select("id");
 
     if (error) {
-      this.logger.error('editDraft failed', { restaurantId, orderId, error: error.message });
+      this.logger.error("editDraft failed", {
+        restaurantId,
+        orderId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -1912,19 +2262,21 @@ export class ProcurementService {
     orderId: string,
   ): Promise<Record<string, any> | null> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select(`
+      .from("procurement_conversations")
+      .select(
+        `
         id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
         providers!left(name, contact_email),
         procurement_orders!inner(
           order_number,
           inventory:inventory_id(wine_name)
         )
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .eq('status', 'PENDING_APPROVAL')
-      .order('created_at', { ascending: false })
+      `,
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .order("created_at", { ascending: false })
       .limit(1)
       .single();
 
@@ -1952,8 +2304,9 @@ export class ProcurementService {
    */
   async getActiveConversations(restaurantId: string): Promise<any[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select(`
+      .from("procurement_conversations")
+      .select(
+        `
         id,
         order_id,
         provider_id,
@@ -1968,13 +2321,17 @@ export class ProcurementService {
           inventory:inventory_id(wine_name)
         ),
         providers!left(name, contact_email)
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'PENDING_APPROVAL')
-      .order('created_at', { ascending: false });
+      `,
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "PENDING_APPROVAL")
+      .order("created_at", { ascending: false });
 
     if (error) {
-      this.logger.error('getActiveConversations failed', { restaurantId, error: error.message });
+      this.logger.error("getActiveConversations failed", {
+        restaurantId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -2001,11 +2358,18 @@ export class ProcurementService {
    * D-03: Used by the Procurement Emails tab on /communications.
    */
   async getConversationHistory(restaurantId: string): Promise<any[]> {
-    const HISTORY_STATUSES = ['AUTO_SENT', 'APPROVED', 'SENT', 'COMPLETED', 'CLOSED'];
+    const HISTORY_STATUSES = [
+      "AUTO_SENT",
+      "APPROVED",
+      "SENT",
+      "COMPLETED",
+      "CLOSED",
+    ];
 
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select(`
+      .from("procurement_conversations")
+      .select(
+        `
         id,
         order_id,
         provider_id,
@@ -2022,14 +2386,18 @@ export class ProcurementService {
           inventory:inventory_id(wine_name)
         ),
         providers!left(name)
-      `)
-      .eq('restaurant_id', restaurantId)
-      .in('status', HISTORY_STATUSES)
-      .order('created_at', { ascending: false })
+      `,
+      )
+      .eq("restaurant_id", restaurantId)
+      .in("status", HISTORY_STATUSES)
+      .order("created_at", { ascending: false })
       .limit(100);
 
     if (error) {
-      this.logger.error('getConversationHistory failed', { restaurantId, error: error.message });
+      this.logger.error("getConversationHistory failed", {
+        restaurantId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -2052,10 +2420,14 @@ export class ProcurementService {
     }));
   }
 
-  async getOrderConversations(restaurantId: string, orderId: string): Promise<any[]> {
+  async getOrderConversations(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<any[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('procurement_conversations')
-      .select(`
+      .from("procurement_conversations")
+      .select(
+        `
         id,
         order_id,
         provider_id,
@@ -2080,13 +2452,18 @@ export class ProcurementService {
           inventory:inventory_id(wine_name)
         ),
         providers!left(name, contact_email)
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .order('created_at', { ascending: true });
+      `,
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true });
 
     if (error) {
-      this.logger.error('getOrderConversations failed', { restaurantId, orderId, error: error.message });
+      this.logger.error("getOrderConversations failed", {
+        restaurantId,
+        orderId,
+        error: error.message,
+      });
       throw error;
     }
 
@@ -2096,7 +2473,9 @@ export class ProcurementService {
       status: row.status,
       // DB stores direction lowercase ('inbound'/'outbound'); the UI compares
       // against uppercase, so normalize here or inbound replies render as rounds.
-      direction: String(row.direction ?? 'outbound').toUpperCase() as 'OUTBOUND' | 'INBOUND',
+      direction: String(row.direction ?? "outbound").toUpperCase() as
+        | "OUTBOUND"
+        | "INBOUND",
       emailType: row.outbound_email_type,
       roundCount: row.round_count,
       createdAt: row.created_at,
@@ -2108,7 +2487,8 @@ export class ProcurementService {
       detectedIntent: row.detected_intent ?? null,
       detectedSentiment: row.detected_sentiment ?? null,
       aiGenerated: row.ai_generated ?? null,
-      specialConditions: row.conversation_context?.analysis?.special_conditions ?? [],
+      specialConditions:
+        row.conversation_context?.analysis?.special_conditions ?? [],
       // Triage classification (P6 card): email_class, is_automated, requires_reply,
       // injection_suspected, confidence, transport. Null on outbound / pre-triage rows.
       classification: row.conversation_context?.classification ?? null,
@@ -2127,15 +2507,24 @@ export class ProcurementService {
   }
 
   /** D2 — list an order's persisted email attachments with short-lived signed URLs. */
-  async getOrderAttachments(restaurantId: string, orderId: string): Promise<any[]> {
+  async getOrderAttachments(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<any[]> {
     const { data, error } = await this.databaseService.supabase
-      .from('conversation_attachments')
-      .select('id, conversation_id, filename, mime_type, size_bytes, storage_path, created_at')
-      .eq('restaurant_id', restaurantId)
-      .eq('order_id', orderId)
-      .order('created_at', { ascending: true });
+      .from("conversation_attachments")
+      .select(
+        "id, conversation_id, filename, mime_type, size_bytes, storage_path, created_at",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true });
     if (error) {
-      this.logger.error('getOrderAttachments failed', { restaurantId, orderId, error: error.message });
+      this.logger.error("getOrderAttachments failed", {
+        restaurantId,
+        orderId,
+        error: error.message,
+      });
       return [];
     }
     const out: any[] = [];
@@ -2143,7 +2532,7 @@ export class ProcurementService {
       let url: string | null = null;
       try {
         const { data: signed } = await this.databaseService.supabase.storage
-          .from('vendor-attachments')
+          .from("vendor-attachments")
           .createSignedUrl(row.storage_path, 3600);
         url = signed?.signedUrl ?? null;
       } catch {

@@ -1,4 +1,5 @@
 """Unit tests for Sentry initialization startup behavior (OBS-01)."""
+
 import logging
 import pytest
 from unittest.mock import patch
@@ -32,7 +33,9 @@ def _run_sentry_init(dsn, environment):
 
 
 def test_production_raises_without_dsn():
-    with pytest.raises(ValueError, match="SENTRY_DSN is required when ENVIRONMENT=production"):
+    with pytest.raises(
+        ValueError, match="SENTRY_DSN is required when ENVIRONMENT=production"
+    ):
         _run_sentry_init(dsn=None, environment="production")
 
 
@@ -50,7 +53,8 @@ def test_default_environment_does_not_raise(caplog):
 
 def test_valid_dsn_calls_sentry_init():
     import sentry_sdk
-    with patch.object(sentry_sdk, "init") as mock_init:
+
+    with patch.object(sentry_sdk, "init"):
         _run_sentry_init(dsn="https://fake@sentry.io/1", environment="production")
         # Note: the inner patch in _run_sentry_init wins; verify via direct call path
     # Verifies no exception raised with valid DSN

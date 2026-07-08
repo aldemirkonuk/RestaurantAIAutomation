@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsOptional, IsString } from "class-validator";
 
 export class CreateTemplateDto {
   @ApiProperty()
@@ -15,7 +15,7 @@ export class CreateTemplateDto {
   @IsString()
   body: string;
 
-  @ApiProperty({ description: 'Template type: email, sms, etc.' })
+  @ApiProperty({ description: "Template type: email, sms, etc." })
   @IsString()
   type: string;
 }

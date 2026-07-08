@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException, HttpStatus } from '@nestjs/common';
-import { ProvidersController } from './providers.controller';
-import { ProvidersService } from './providers.service';
+import { Test, TestingModule } from "@nestjs/testing";
+import { HttpException, HttpStatus } from "@nestjs/common";
+import { ProvidersController } from "./providers.controller";
+import { ProvidersService } from "./providers.service";
 import {
   CreateProviderContactDto,
   UpdateProviderContactDto,
@@ -10,9 +10,9 @@ import {
   ProviderResponseDto,
   BulkImportProvidersDto,
   BulkImportResultDto,
-} from './dto/providers.dto';
+} from "./dto/providers.dto";
 
-describe('ProvidersController', () => {
+describe("ProvidersController", () => {
   let controller: ProvidersController;
   let providersService: ProvidersService;
 
@@ -44,49 +44,53 @@ describe('ProvidersController', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(controller).toBeDefined();
   });
 
-  describe('GET /providers/:id/contacts', () => {
-    const providerId = 'provider-123';
+  describe("GET /providers/:id/contacts", () => {
+    const providerId = "provider-123";
 
-    it('should return provider contacts', async () => {
+    it("should return provider contacts", async () => {
       const expectedResponse: ProviderContactResponseDto[] = [
         {
-          id: 'contact-1',
+          id: "contact-1",
           providerId,
-          name: 'John Doe',
-          email: 'john@example.com',
-          phone: '+1234567890',
-          role: 'Sales Manager',
+          name: "John Doe",
+          email: "john@example.com",
+          phone: "+1234567890",
+          role: "Sales Manager",
           isPrimary: true,
         },
         {
-          id: 'contact-2',
+          id: "contact-2",
           providerId,
-          name: 'Jane Smith',
-          email: 'jane@example.com',
-          phone: '+0987654321',
-          role: 'Account Manager',
+          name: "Jane Smith",
+          email: "jane@example.com",
+          phone: "+0987654321",
+          role: "Account Manager",
           isPrimary: false,
         },
       ];
 
-      mockProvidersService.getProviderContacts.mockResolvedValue(expectedResponse);
+      mockProvidersService.getProviderContacts.mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.getProviderContacts(providerId);
 
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
-      expect(result[0]).toHaveProperty('id');
-      expect(result[0]).toHaveProperty('providerId');
-      expect(result[0]).toHaveProperty('name');
-      expect(result[0]).toHaveProperty('isPrimary');
-      expect(mockProvidersService.getProviderContacts).toHaveBeenCalledWith(providerId);
+      expect(result[0]).toHaveProperty("id");
+      expect(result[0]).toHaveProperty("providerId");
+      expect(result[0]).toHaveProperty("name");
+      expect(result[0]).toHaveProperty("isPrimary");
+      expect(mockProvidersService.getProviderContacts).toHaveBeenCalledWith(
+        providerId,
+      );
     });
 
-    it('should return empty array when no contacts', async () => {
+    it("should return empty array when no contacts", async () => {
       mockProvidersService.getProviderContacts.mockResolvedValue([]);
 
       const result = await controller.getProviderContacts(providerId);
@@ -94,28 +98,30 @@ describe('ProvidersController', () => {
       expect(result).toEqual([]);
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockProvidersService.getProviderContacts.mockRejectedValue(new Error('Database error'));
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockProvidersService.getProviderContacts.mockRejectedValue(
+        new Error("Database error"),
+      );
 
       await expect(controller.getProviderContacts(providerId)).rejects.toThrow(
-        new HttpException('Database error', HttpStatus.INTERNAL_SERVER_ERROR),
+        new HttpException("Database error", HttpStatus.INTERNAL_SERVER_ERROR),
       );
     });
   });
 
-  describe('POST /providers/:id/contacts', () => {
-    const providerId = 'provider-123';
+  describe("POST /providers/:id/contacts", () => {
+    const providerId = "provider-123";
     const createDto: CreateProviderContactDto = {
-      name: 'New Contact',
-      email: 'new@example.com',
-      phone: '+1111111111',
-      role: 'Manager',
+      name: "New Contact",
+      email: "new@example.com",
+      phone: "+1111111111",
+      role: "Manager",
       isPrimary: false,
     };
 
-    it('should create provider contact', async () => {
+    it("should create provider contact", async () => {
       const expectedResponse: ProviderContactResponseDto = {
-        id: 'contact-new',
+        id: "contact-new",
         providerId,
         name: createDto.name,
         email: createDto.email,
@@ -124,47 +130,60 @@ describe('ProvidersController', () => {
         isPrimary: createDto.isPrimary,
       };
 
-      mockProvidersService.addProviderContact.mockResolvedValue(expectedResponse);
+      mockProvidersService.addProviderContact.mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.addProviderContact(providerId, createDto);
 
       expect(result).toEqual(expectedResponse);
-      expect(result.id).toBe('contact-new');
+      expect(result.id).toBe("contact-new");
       expect(result.name).toBe(createDto.name);
-      expect(mockProvidersService.addProviderContact).toHaveBeenCalledWith(providerId, createDto);
+      expect(mockProvidersService.addProviderContact).toHaveBeenCalledWith(
+        providerId,
+        createDto,
+      );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockProvidersService.addProviderContact.mockRejectedValue(new Error('Validation error'));
-
-      await expect(controller.addProviderContact(providerId, createDto)).rejects.toThrow(
-        HttpException,
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockProvidersService.addProviderContact.mockRejectedValue(
+        new Error("Validation error"),
       );
+
+      await expect(
+        controller.addProviderContact(providerId, createDto),
+      ).rejects.toThrow(HttpException);
     });
   });
 
-  describe('PATCH /providers/:id/contacts/:contactId', () => {
-    const providerId = 'provider-123';
-    const contactId = 'contact-456';
+  describe("PATCH /providers/:id/contacts/:contactId", () => {
+    const providerId = "provider-123";
+    const contactId = "contact-456";
     const updateDto: UpdateProviderContactDto = {
-      name: 'Updated Name',
-      email: 'updated@example.com',
+      name: "Updated Name",
+      email: "updated@example.com",
     };
 
-    it('should update provider contact', async () => {
+    it("should update provider contact", async () => {
       const expectedResponse: ProviderContactResponseDto = {
         id: contactId,
         providerId,
         name: updateDto.name,
         email: updateDto.email,
-        phone: '+1234567890',
-        role: 'Manager',
+        phone: "+1234567890",
+        role: "Manager",
         isPrimary: false,
       };
 
-      mockProvidersService.updateProviderContact.mockResolvedValue(expectedResponse);
+      mockProvidersService.updateProviderContact.mockResolvedValue(
+        expectedResponse,
+      );
 
-      const result = await controller.updateProviderContact(providerId, contactId, updateDto);
+      const result = await controller.updateProviderContact(
+        providerId,
+        contactId,
+        updateDto,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(result.name).toBe(updateDto.name);
@@ -176,8 +195,10 @@ describe('ProvidersController', () => {
       );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockProvidersService.updateProviderContact.mockRejectedValue(new Error('Not found'));
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockProvidersService.updateProviderContact.mockRejectedValue(
+        new Error("Not found"),
+      );
 
       await expect(
         controller.updateProviderContact(providerId, contactId, updateDto),
@@ -185,14 +206,17 @@ describe('ProvidersController', () => {
     });
   });
 
-  describe('DELETE /providers/:id/contacts/:contactId', () => {
-    const providerId = 'provider-123';
-    const contactId = 'contact-456';
+  describe("DELETE /providers/:id/contacts/:contactId", () => {
+    const providerId = "provider-123";
+    const contactId = "contact-456";
 
-    it('should delete provider contact', async () => {
+    it("should delete provider contact", async () => {
       mockProvidersService.deleteProviderContact.mockResolvedValue(undefined);
 
-      const result = await controller.deleteProviderContact(providerId, contactId);
+      const result = await controller.deleteProviderContact(
+        providerId,
+        contactId,
+      );
 
       expect(result).toEqual({ success: true });
       expect(mockProvidersService.deleteProviderContact).toHaveBeenCalledWith(
@@ -201,23 +225,25 @@ describe('ProvidersController', () => {
       );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockProvidersService.deleteProviderContact.mockRejectedValue(new Error('Delete failed'));
-
-      await expect(controller.deleteProviderContact(providerId, contactId)).rejects.toThrow(
-        HttpException,
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockProvidersService.deleteProviderContact.mockRejectedValue(
+        new Error("Delete failed"),
       );
+
+      await expect(
+        controller.deleteProviderContact(providerId, contactId),
+      ).rejects.toThrow(HttpException);
     });
   });
 
-  describe('GET /providers/search', () => {
-    it('should search providers with query param', async () => {
-      const query = 'wine';
+  describe("GET /providers/search", () => {
+    it("should search providers with query param", async () => {
+      const query = "wine";
       const expectedResponse: ProviderResponseDto[] = [
         {
-          id: 'provider-1',
-          name: 'Wine Distributor Inc',
-          specialties: ['red', 'white'],
+          id: "provider-1",
+          name: "Wine Distributor Inc",
+          specialties: ["red", "white"],
           isActive: true,
         },
       ];
@@ -235,26 +261,31 @@ describe('ProvidersController', () => {
       });
     });
 
-    it('should handle multiple query parameters', async () => {
-      const query = 'wine';
-      const restaurantId = 'restaurant-123';
-      const specialties = ['red', 'white'];
-      const isActive = 'true';
+    it("should handle multiple query parameters", async () => {
+      const query = "wine";
+      const restaurantId = "restaurant-123";
+      const specialties = ["red", "white"];
+      const isActive = "true";
 
       mockProvidersService.searchProviders.mockResolvedValue([]);
 
-      await controller.searchProviders(query, restaurantId, specialties, isActive);
+      await controller.searchProviders(
+        query,
+        restaurantId,
+        specialties,
+        isActive,
+      );
 
       expect(mockProvidersService.searchProviders).toHaveBeenCalledWith({
         q: query,
         restaurantId,
-        specialties: ['red', 'white'],
+        specialties: ["red", "white"],
         isActive: true,
       });
     });
 
-    it('should handle single specialty string', async () => {
-      const specialties = 'red';
+    it("should handle single specialty string", async () => {
+      const specialties = "red";
 
       mockProvidersService.searchProviders.mockResolvedValue([]);
 
@@ -263,70 +294,90 @@ describe('ProvidersController', () => {
       expect(mockProvidersService.searchProviders).toHaveBeenCalledWith({
         q: undefined,
         restaurantId: undefined,
-        specialties: ['red'],
+        specialties: ["red"],
         isActive: undefined,
       });
     });
   });
 
-  describe('GET /providers/:id/recommendations', () => {
-    const providerId = 'provider-123';
-    const restaurantId = 'restaurant-456';
+  describe("GET /providers/:id/recommendations", () => {
+    const providerId = "provider-123";
+    const restaurantId = "restaurant-456";
 
-    it('should return recommendations', async () => {
+    it("should return recommendations", async () => {
       const expectedResponse = {
         recommendations: [
           {
-            providerId: 'provider-1',
+            providerId: "provider-1",
             score: 0.95,
-            reason: 'High reliability score',
+            reason: "High reliability score",
           },
         ],
       };
 
-      mockProvidersService.getRecommendations.mockResolvedValue(expectedResponse);
+      mockProvidersService.getRecommendations.mockResolvedValue(
+        expectedResponse,
+      );
 
-      const result = await controller.getProviderRecommendations(providerId, restaurantId);
+      const result = await controller.getProviderRecommendations(
+        providerId,
+        restaurantId,
+      );
 
       expect(result).toEqual(expectedResponse);
-      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(restaurantId, undefined);
+      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
+        restaurantId,
+        undefined,
+      );
     });
 
-    it('should pass wineId when provided', async () => {
-      const wineId = 'wine-789';
+    it("should pass wineId when provided", async () => {
+      const wineId = "wine-789";
 
       mockProvidersService.getRecommendations.mockResolvedValue({});
 
-      await controller.getProviderRecommendations(providerId, restaurantId, wineId);
+      await controller.getProviderRecommendations(
+        providerId,
+        restaurantId,
+        wineId,
+      );
 
-      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(restaurantId, wineId);
+      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
+        restaurantId,
+        wineId,
+      );
     });
 
-    it('should use empty string when restaurantId not provided', async () => {
+    it("should use empty string when restaurantId not provided", async () => {
       mockProvidersService.getRecommendations.mockResolvedValue({});
 
       await controller.getProviderRecommendations(providerId);
 
-      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith('', undefined);
+      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
+        "",
+        undefined,
+      );
     });
   });
 
-  describe('PATCH /providers/:id/contact-date', () => {
-    const providerId = 'provider-123';
+  describe("PATCH /providers/:id/contact-date", () => {
+    const providerId = "provider-123";
     const updateDto: UpdateContactDateDto = {
-      lastContactDate: '2024-02-15',
-      notes: 'Discussed new wine selection',
+      lastContactDate: "2024-02-15",
+      notes: "Discussed new wine selection",
     };
 
-    it('should update contact date', async () => {
+    it("should update contact date", async () => {
       const expectedResponse: ProviderResponseDto = {
         id: providerId,
-        name: 'Test Provider',
+        name: "Test Provider",
         lastContactDate: updateDto.lastContactDate,
         lastContactNotes: updateDto.notes,
       };
 
-      mockProvidersService.updateLastContactDate.mockResolvedValue(expectedResponse);
+      mockProvidersService.updateLastContactDate.mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.updateContactDate(providerId, updateDto);
 
@@ -338,55 +389,63 @@ describe('ProvidersController', () => {
       );
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockProvidersService.updateLastContactDate.mockRejectedValue(new Error('Update failed'));
-
-      await expect(controller.updateContactDate(providerId, updateDto)).rejects.toThrow(
-        HttpException,
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockProvidersService.updateLastContactDate.mockRejectedValue(
+        new Error("Update failed"),
       );
+
+      await expect(
+        controller.updateContactDate(providerId, updateDto),
+      ).rejects.toThrow(HttpException);
     });
   });
 
-  describe('POST /providers/import', () => {
+  describe("POST /providers/import", () => {
     const bulkImportDto: BulkImportProvidersDto = {
-      restaurantId: 'restaurant-123',
+      restaurantId: "restaurant-123",
       providers: [
         {
-          name: 'Provider 1',
-          specialties: ['red'],
+          name: "Provider 1",
+          specialties: ["red"],
         },
         {
-          name: 'Provider 2',
-          specialties: ['white'],
+          name: "Provider 2",
+          specialties: ["white"],
         },
       ],
     };
 
-    it('should bulk import providers', async () => {
+    it("should bulk import providers", async () => {
       const expectedResponse: BulkImportResultDto = {
         imported: 2,
         failed: 0,
         errors: [],
       };
 
-      mockProvidersService.bulkImportProviders.mockResolvedValue(expectedResponse);
+      mockProvidersService.bulkImportProviders.mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.importProviders(bulkImportDto);
 
       expect(result).toEqual(expectedResponse);
       expect(result.imported).toBe(2);
       expect(result.failed).toBe(0);
-      expect(mockProvidersService.bulkImportProviders).toHaveBeenCalledWith(bulkImportDto);
+      expect(mockProvidersService.bulkImportProviders).toHaveBeenCalledWith(
+        bulkImportDto,
+      );
     });
 
-    it('should handle partial failures', async () => {
+    it("should handle partial failures", async () => {
       const expectedResponse: BulkImportResultDto = {
         imported: 1,
         failed: 1,
-        errors: ['Provider 2 validation failed'],
+        errors: ["Provider 2 validation failed"],
       };
 
-      mockProvidersService.bulkImportProviders.mockResolvedValue(expectedResponse);
+      mockProvidersService.bulkImportProviders.mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.importProviders(bulkImportDto);
 
@@ -396,10 +455,14 @@ describe('ProvidersController', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw INTERNAL_SERVER_ERROR on service failure', async () => {
-      mockProvidersService.bulkImportProviders.mockRejectedValue(new Error('Import failed'));
+    it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
+      mockProvidersService.bulkImportProviders.mockRejectedValue(
+        new Error("Import failed"),
+      );
 
-      await expect(controller.importProviders(bulkImportDto)).rejects.toThrow(HttpException);
+      await expect(controller.importProviders(bulkImportDto)).rejects.toThrow(
+        HttpException,
+      );
     });
   });
 });

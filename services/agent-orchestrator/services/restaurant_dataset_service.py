@@ -33,8 +33,10 @@ RESTAURANT_MENUS_DIR = PROJECT_ROOT / "datasets" / "restaurant_menus"
 # DATA MODELS
 # =============================================================================
 
+
 class RestaurantWineEntry(BaseModel):
     """A single wine on a restaurant's menu."""
+
     master_wine_id: Optional[str] = None
     wine_name: str
     producer: Optional[str] = None
@@ -54,6 +56,7 @@ class RestaurantWineEntry(BaseModel):
 
 class RestaurantMenuSection(BaseModel):
     """A section in the restaurant's wine menu."""
+
     name: str
     hierarchy_path: str = ""
     wines: List[RestaurantWineEntry] = Field(default_factory=list)
@@ -61,6 +64,7 @@ class RestaurantMenuSection(BaseModel):
 
 class RestaurantMenuSnapshot(BaseModel):
     """A point-in-time snapshot of a restaurant's wine menu."""
+
     restaurant_id: Optional[str] = None
     restaurant_name: str
     city: str
@@ -87,6 +91,7 @@ class RestaurantMenuSnapshot(BaseModel):
 # =============================================================================
 # SERVICE
 # =============================================================================
+
 
 class RestaurantDatasetService:
     """
@@ -177,7 +182,7 @@ class RestaurantDatasetService:
             metadata: Additional metadata from OpenTable discovery, etc.
         """
         wines_data = parse_result.get("wines", [])
-        sections_data = parse_result.get("sections", [])
+        parse_result.get("sections", [])
 
         # Build sections with their wines
         section_map: Dict[str, RestaurantMenuSection] = {}
@@ -193,8 +198,12 @@ class RestaurantDatasetService:
                 region=wine.get("region"),
                 grape_variety=wine.get("grape_variety"),
                 classification=wine.get("classification"),
-                price_bottle=wine.get("price") if wine.get("serving_type") != "glass" else None,
-                price_glass=wine.get("price") if wine.get("serving_type") == "glass" else None,
+                price_bottle=(
+                    wine.get("price") if wine.get("serving_type") != "glass" else None
+                ),
+                price_glass=(
+                    wine.get("price") if wine.get("serving_type") == "glass" else None
+                ),
                 currency=wine.get("price_currency", "USD"),
                 serving_type=wine.get("serving_type"),
                 menu_position=i + 1,
@@ -215,11 +224,13 @@ class RestaurantDatasetService:
         # Build final sections list
         sections = list(section_map.values())
         if unsectioned_wines:
-            sections.append(RestaurantMenuSection(
-                name="Uncategorized",
-                hierarchy_path="",
-                wines=unsectioned_wines,
-            ))
+            sections.append(
+                RestaurantMenuSection(
+                    name="Uncategorized",
+                    hierarchy_path="",
+                    wines=unsectioned_wines,
+                )
+            )
 
         # Apply metadata from OpenTable discovery if available
         cuisine_type = None
@@ -284,11 +295,13 @@ class RestaurantDatasetService:
         cities = []
         for f in sorted(RESTAURANT_MENUS_DIR.glob("*.jsonl")):
             line_count = sum(1 for line in open(f) if line.strip())
-            cities.append({
-                "city": f.stem.replace("_", " ").title(),
-                "file": f.name,
-                "restaurant_count": line_count,
-            })
+            cities.append(
+                {
+                    "city": f.stem.replace("_", " ").title(),
+                    "file": f.name,
+                    "restaurant_count": line_count,
+                }
+            )
         return cities
 
     # =========================================================================
@@ -299,6 +312,7 @@ class RestaurantDatasetService:
     def _slugify(text: str) -> str:
         """Convert text to URL-safe slug for filenames."""
         import re
+
         slug = text.lower().strip()
         slug = re.sub(r"[^\w\s-]", "", slug)
         slug = re.sub(r"[\s-]+", "_", slug)
@@ -310,19 +324,25 @@ class RestaurantDatasetService:
             return None
 
         try:
-            result = self._supabase.table("restaurant_wine_menus").insert({
-                "restaurant_name": data["restaurant_name"],
-                "city": data["city"],
-                "state": data.get("state"),
-                "menu_date": data["menu_date"],
-                "source_type": data["source_type"],
-                "source_url": data.get("source_url"),
-                "extraction_method": data["extraction_method"],
-                "extraction_confidence": data["extraction_confidence"],
-                "human_verified": data["human_verified"],
-                "total_wines": data["total_wines"],
-                "menu_data": data,
-            }).execute()
+            result = (
+                self._supabase.table("restaurant_wine_menus")
+                .insert(
+                    {
+                        "restaurant_name": data["restaurant_name"],
+                        "city": data["city"],
+                        "state": data.get("state"),
+                        "menu_date": data["menu_date"],
+                        "source_type": data["source_type"],
+                        "source_url": data.get("source_url"),
+                        "extraction_method": data["extraction_method"],
+                        "extraction_confidence": data["extraction_confidence"],
+                        "human_verified": data["human_verified"],
+                        "total_wines": data["total_wines"],
+                        "menu_data": data,
+                    }
+                )
+                .execute()
+            )
 
             if result.data:
                 return result.data[0].get("id")

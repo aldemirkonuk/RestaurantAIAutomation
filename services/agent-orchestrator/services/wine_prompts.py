@@ -9,7 +9,7 @@ Layer 2: Schema Documentation (per-field definitions)
 Layer 3: Dynamic Runtime Block (injected per scan)
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 
 
 # =============================================================================
@@ -194,6 +194,7 @@ LAYER_2_SCHEMA_PROMPT = """## WINE PARSED FIELDS SCHEMA
 # LAYER 3 — DYNAMIC RUNTIME BLOCK (INJECTED PER SCAN)
 # =============================================================================
 
+
 def build_layer_3_prompt(
     ocr_text: str,
     ocr_confidence: float = 0.0,
@@ -225,7 +226,9 @@ def build_layer_3_prompt(
         if section_header:
             parts.append(f"Section header: {section_header}")
         if adjacent_wines:
-            parts.append(f"Adjacent wines on menu: {', '.join(str(w) for w in adjacent_wines[:5])}")
+            parts.append(
+                f"Adjacent wines on menu: {', '.join(str(w) for w in adjacent_wines[:5])}"
+            )
         if price is not None:
             currency = price_currency or "USD"
             parts.append(f"Listed price: {currency} {price}")
@@ -243,9 +246,15 @@ def build_layer_3_prompt(
 
     # Task instruction
     parts.append("### TASK")
-    parts.append("Identify this wine and return a JSON object matching the WineParsedFields schema.")
-    parts.append("Apply the Layer 1 Cap Rule. Include field_confidences and field_sources for every field.")
-    parts.append("If you cannot identify the wine with confidence >= 0.50, return with overall_confidence < 0.50 and library_tier = 4.")
+    parts.append(
+        "Identify this wine and return a JSON object matching the WineParsedFields schema."
+    )
+    parts.append(
+        "Apply the Layer 1 Cap Rule. Include field_confidences and field_sources for every field."
+    )
+    parts.append(
+        "If you cannot identify the wine with confidence >= 0.50, return with overall_confidence < 0.50 and library_tier = 4."
+    )
 
     return "\n".join(parts)
 
@@ -253,6 +262,7 @@ def build_layer_3_prompt(
 # =============================================================================
 # COMPOSITE PROMPT BUILDER
 # =============================================================================
+
 
 def build_wine_prompt(
     ocr_text: str,

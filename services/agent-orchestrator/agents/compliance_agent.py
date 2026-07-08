@@ -23,11 +23,13 @@ class ComplianceAgent(BaseAgent):
         routing_key = message.get("routing_key")
         payload = message.get("payload", {})
 
-        self.logger.info({
-            "message": "Compliance event received",
-            "routing_key": routing_key,
-            "payload_keys": list(payload.keys()),
-        })
+        self.logger.info(
+            {
+                "message": "Compliance event received",
+                "routing_key": routing_key,
+                "payload_keys": list(payload.keys()),
+            }
+        )
 
         # TODO: Insert compliance_deadlines
         # TODO: Generate compliance_reports and excise_tax_records

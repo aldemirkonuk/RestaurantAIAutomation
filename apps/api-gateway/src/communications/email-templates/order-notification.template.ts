@@ -3,8 +3,8 @@
  * Includes: Order Approval, Delivery Notification
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from './template-config';
-import { baseTemplate, tableRow, alertBox } from './base-template';
+import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 // ============================================================================
 // Order Approval Template
@@ -12,7 +12,10 @@ import { baseTemplate, tableRow, alertBox } from './base-template';
 
 function wineNameWithFormat(name: string, bottleSizeMl?: number): string {
   if (!bottleSizeMl || bottleSizeMl <= 0) return name;
-  const vol = bottleSizeMl >= 1000 && bottleSizeMl % 100 === 0 ? `${bottleSizeMl / 1000}L` : `${bottleSizeMl}ml`;
+  const vol =
+    bottleSizeMl >= 1000 && bottleSizeMl % 100 === 0
+      ? `${bottleSizeMl / 1000}L`
+      : `${bottleSizeMl}ml`;
   return `${name} (${vol})`;
 }
 
@@ -28,21 +31,21 @@ export interface OrderApprovalData {
   totalAmount: number;
   requestedBy: string;
   requestedAt: Date | string;
-  urgency?: 'normal' | 'high' | 'critical';
+  urgency?: "normal" | "high" | "critical";
   notes?: string;
 }
 
 export function orderApprovalTemplate(data: OrderApprovalData): string {
   const { colors } = EMAIL_CONFIG;
-  
+
   const urgencyColors = {
     normal: colors.info,
     high: colors.warning,
     critical: colors.danger,
   };
-  
-  const urgencyColor = urgencyColors[data.urgency || 'normal'];
-  const urgencyLabel = data.urgency ? data.urgency.toUpperCase() : 'NORMAL';
+
+  const urgencyColor = urgencyColors[data.urgency || "normal"];
+  const urgencyLabel = data.urgency ? data.urgency.toUpperCase() : "NORMAL";
 
   // Order items table
   const itemsHtml = `
@@ -56,14 +59,18 @@ export function orderApprovalTemplate(data: OrderApprovalData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.items.map((item, index) => `
-          <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+        ${data.items
+          .map(
+            (item, index) => `
+          <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${wineNameWithFormat(item.name, item.bottleSizeMl)}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
             <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[700]}; font-size: 14px;">${formatCurrency(item.unitPrice)}</td>
             <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.quantity * item.unitPrice)}</td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join("")}
         <tr style="background-color: ${colors.gray[100]};">
           <td colspan="3" style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">Total</td>
           <td style="padding: 12px 15px; text-align: right; color: ${colors.primary}; font-size: 16px; font-weight: bold;">${formatCurrency(data.totalAmount)}</td>
@@ -88,16 +95,20 @@ export function orderApprovalTemplate(data: OrderApprovalData): string {
 
     <!-- Order Details -->
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${tableRow('Requested By', data.requestedBy)}
-      ${tableRow('Requested At', formatDate(data.requestedAt))}
-      ${tableRow('Provider', data.providerName)}
+      ${tableRow("Requested By", data.requestedBy)}
+      ${tableRow("Requested At", formatDate(data.requestedAt))}
+      ${tableRow("Provider", data.providerName)}
     </table>
 
-    ${data.notes ? alertBox({
-      type: 'info',
-      title: 'Notes',
-      message: data.notes,
-    }) : ''}
+    ${
+      data.notes
+        ? alertBox({
+            type: "info",
+            title: "Notes",
+            message: data.notes,
+          })
+        : ""
+    }
 
     <!-- Items -->
     ${itemsHtml}
@@ -108,8 +119,8 @@ export function orderApprovalTemplate(data: OrderApprovalData): string {
     preheader: `Order #${data.orderId} requires approval - ${formatCurrency(data.totalAmount)}`,
     content,
     ctaButton: {
-      text: 'Review Order',
-      url: '#',
+      text: "Review Order",
+      url: "#",
       color: colors.primary,
     },
   });
@@ -129,21 +140,27 @@ export interface DeliveryNotificationData {
     received?: number;
     bottleSizeMl?: number;
   }>;
-  status: 'scheduled' | 'in_transit' | 'delivered' | 'partial';
+  status: "scheduled" | "in_transit" | "delivered" | "partial";
   trackingNumber?: string;
   notes?: string;
 }
 
-export function deliveryNotificationTemplate(data: DeliveryNotificationData): string {
+export function deliveryNotificationTemplate(
+  data: DeliveryNotificationData,
+): string {
   const { colors } = EMAIL_CONFIG;
-  
+
   const statusConfig = {
-    scheduled: { label: 'Scheduled', color: colors.info, bg: '#eff6ff' },
-    in_transit: { label: 'In Transit', color: colors.warning, bg: '#fef3c7' },
-    delivered: { label: 'Delivered', color: colors.success, bg: '#ecfdf5' },
-    partial: { label: 'Partial Delivery', color: colors.warning, bg: '#fef3c7' },
+    scheduled: { label: "Scheduled", color: colors.info, bg: "#eff6ff" },
+    in_transit: { label: "In Transit", color: colors.warning, bg: "#fef3c7" },
+    delivered: { label: "Delivered", color: colors.success, bg: "#ecfdf5" },
+    partial: {
+      label: "Partial Delivery",
+      color: colors.warning,
+      bg: "#fef3c7",
+    },
   };
-  
+
   const status = statusConfig[data.status];
 
   // Items table
@@ -153,25 +170,37 @@ export function deliveryNotificationTemplate(data: DeliveryNotificationData): st
         <tr style="background-color: ${colors.gray[50]};">
           <th style="padding: 12px 15px; text-align: left; color: ${colors.gray[600]}; font-size: 12px; font-weight: 600;">Item</th>
           <th style="padding: 12px 15px; text-align: center; color: ${colors.gray[600]}; font-size: 12px; font-weight: 600;">Ordered</th>
-          ${data.status === 'delivered' || data.status === 'partial' ? `
+          ${
+            data.status === "delivered" || data.status === "partial"
+              ? `
           <th style="padding: 12px 15px; text-align: center; color: ${colors.gray[600]}; font-size: 12px; font-weight: 600;">Received</th>
-          ` : ''}
+          `
+              : ""
+          }
         </tr>
       </thead>
       <tbody>
-        ${data.items.map((item, index) => {
-          const isShort = item.received !== undefined && item.received < item.quantity;
-          return `
-          <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : colors.gray[50]};">
+        ${data.items
+          .map((item, index) => {
+            const isShort =
+              item.received !== undefined && item.received < item.quantity;
+            return `
+          <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${wineNameWithFormat(item.name, item.bottleSizeMl)}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
-            ${data.status === 'delivered' || data.status === 'partial' ? `
+            ${
+              data.status === "delivered" || data.status === "partial"
+                ? `
             <td style="padding: 12px 15px; text-align: center; color: ${isShort ? colors.danger : colors.success}; font-size: 14px; font-weight: 600;">
-              ${item.received ?? item.quantity}${isShort ? ' (SHORT)' : ''}
+              ${item.received ?? item.quantity}${isShort ? " (SHORT)" : ""}
             </td>
-            ` : ''}
+            `
+                : ""
+            }
           </tr>
-        `}).join('')}
+        `;
+          })
+          .join("")}
       </tbody>
     </table>
   `;
@@ -192,16 +221,20 @@ export function deliveryNotificationTemplate(data: DeliveryNotificationData): st
 
     <!-- Delivery Details -->
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
-      ${tableRow('Delivery Date', formatDate(data.deliveryDate))}
-      ${tableRow('Provider', data.providerName)}
-      ${data.trackingNumber ? tableRow('Tracking #', data.trackingNumber) : ''}
+      ${tableRow("Delivery Date", formatDate(data.deliveryDate))}
+      ${tableRow("Provider", data.providerName)}
+      ${data.trackingNumber ? tableRow("Tracking #", data.trackingNumber) : ""}
     </table>
 
-    ${data.notes ? alertBox({
-      type: data.status === 'partial' ? 'warning' : 'info',
-      title: 'Delivery Notes',
-      message: data.notes,
-    }) : ''}
+    ${
+      data.notes
+        ? alertBox({
+            type: data.status === "partial" ? "warning" : "info",
+            title: "Delivery Notes",
+            message: data.notes,
+          })
+        : ""
+    }
 
     <!-- Items -->
     ${itemsHtml}
@@ -212,8 +245,8 @@ export function deliveryNotificationTemplate(data: DeliveryNotificationData): st
     preheader: `${status.label} - Order from ${data.providerName}`,
     content,
     ctaButton: {
-      text: 'View Order Details',
-      url: '#',
+      text: "View Order Details",
+      url: "#",
       color: colors.primary,
     },
   });

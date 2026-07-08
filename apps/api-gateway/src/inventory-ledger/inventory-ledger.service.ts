@@ -1,7 +1,7 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import { EventsService } from '../events/events.service';
-import { EventType, SourcePage } from '../events/dto/event.dto';
+import { Injectable, Logger, BadRequestException } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
+import { EventsService } from "../events/events.service";
+import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateInventoryTransactionDto,
   GetTransactionsQueryDto,
@@ -14,7 +14,7 @@ import {
   TransactionType,
   TransactionSource,
   StockType,
-} from './dto/inventory-ledger.dto';
+} from "./dto/inventory-ledger.dto";
 
 // ============================================================================
 // DATABASE ROW INTERFACE
@@ -73,7 +73,7 @@ export class InventoryLedgerService {
     const startTime = Date.now();
 
     this.logger.log({
-      message: 'Creating inventory transaction',
+      message: "Creating inventory transaction",
       restaurantId,
       userId,
       inventoryId: dto.inventoryId,
@@ -83,12 +83,12 @@ export class InventoryLedgerService {
 
     // Validate quantity change is not zero
     if (dto.quantityChange === 0) {
-      throw new BadRequestException('Quantity change cannot be zero');
+      throw new BadRequestException("Quantity change cannot be zero");
     }
 
     // Use the database function for atomic operation
     const { data, error } = await this.databaseService.supabase.rpc(
-      'record_inventory_transaction',
+      "record_inventory_transaction",
       {
         p_restaurant_id: restaurantId,
         p_inventory_id: dto.inventoryId,
@@ -96,14 +96,14 @@ export class InventoryLedgerService {
         p_transaction_type: dto.transactionType,
         p_source: dto.source,
         p_quantity_change: dto.quantityChange,
-        p_stock_type: dto.stockType || 'live',
+        p_stock_type: dto.stockType || "live",
         p_reference_type: dto.referenceType || null,
         p_reference_id: dto.referenceId || null,
         p_pos_transaction_id: dto.posTransactionId || null,
         p_order_id: dto.orderId || null,
         p_unit_cost: dto.unitCost || null,
         p_performed_by: userId,
-        p_performed_by_type: 'user',
+        p_performed_by_type: "user",
         p_reason: dto.reason || null,
         p_notes: dto.notes || null,
         p_metadata: dto.metadata || {},
@@ -112,7 +112,7 @@ export class InventoryLedgerService {
 
     if (error) {
       this.logger.error({
-        message: 'Failed to create inventory transaction',
+        message: "Failed to create inventory transaction",
         restaurantId,
         inventoryId: dto.inventoryId,
         error: error.message,
@@ -140,11 +140,11 @@ export class InventoryLedgerService {
         },
       });
     } catch (e) {
-      this.logger.warn('Failed to emit inventory change event', e);
+      this.logger.warn("Failed to emit inventory change event", e);
     }
 
     this.logger.log({
-      message: 'Inventory transaction created',
+      message: "Inventory transaction created",
       restaurantId,
       transactionId: transaction.id,
       quantityBefore: transaction.quantityBefore,
@@ -169,7 +169,7 @@ export class InventoryLedgerService {
     const errors: { index: number; error: string }[] = [];
 
     this.logger.log({
-      message: 'Creating bulk inventory transactions',
+      message: "Creating bulk inventory transactions",
       restaurantId,
       count: dto.transactions.length,
     });
@@ -188,7 +188,7 @@ export class InventoryLedgerService {
     }
 
     this.logger.log({
-      message: 'Bulk transactions completed',
+      message: "Bulk transactions completed",
       restaurantId,
       successCount: createdIds.length,
       failedCount: errors.length,
@@ -212,10 +212,10 @@ export class InventoryLedgerService {
     transactionId: string,
   ): Promise<InventoryTransactionResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('inventory_transactions')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('id', transactionId)
+      .from("inventory_transactions")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", transactionId)
       .single();
 
     if (error || !data) {
@@ -236,47 +236,50 @@ export class InventoryLedgerService {
     const toIndex = fromIndex + limit - 1;
 
     this.logger.debug({
-      message: 'Listing inventory transactions',
+      message: "Listing inventory transactions",
       restaurantId,
       query,
     });
 
     let supabaseQuery = this.databaseService.supabase
-      .from('inventory_transactions')
-      .select('*', { count: 'exact' })
-      .eq('restaurant_id', restaurantId);
+      .from("inventory_transactions")
+      .select("*", { count: "exact" })
+      .eq("restaurant_id", restaurantId);
 
     if (query.inventoryId) {
-      supabaseQuery = supabaseQuery.eq('inventory_id', query.inventoryId);
+      supabaseQuery = supabaseQuery.eq("inventory_id", query.inventoryId);
     }
 
     if (query.wineId) {
-      supabaseQuery = supabaseQuery.eq('wine_id', query.wineId);
+      supabaseQuery = supabaseQuery.eq("wine_id", query.wineId);
     }
 
     if (query.transactionType) {
-      supabaseQuery = supabaseQuery.eq('transaction_type', query.transactionType);
+      supabaseQuery = supabaseQuery.eq(
+        "transaction_type",
+        query.transactionType,
+      );
     }
 
     if (query.source) {
-      supabaseQuery = supabaseQuery.eq('source', query.source);
+      supabaseQuery = supabaseQuery.eq("source", query.source);
     }
 
     if (query.startDate) {
-      supabaseQuery = supabaseQuery.gte('transaction_date', query.startDate);
+      supabaseQuery = supabaseQuery.gte("transaction_date", query.startDate);
     }
 
     if (query.endDate) {
-      supabaseQuery = supabaseQuery.lte('transaction_date', query.endDate);
+      supabaseQuery = supabaseQuery.lte("transaction_date", query.endDate);
     }
 
     const { data, error, count } = await supabaseQuery
-      .order('transaction_date', { ascending: false })
+      .order("transaction_date", { ascending: false })
       .range(fromIndex, toIndex);
 
     if (error) {
       this.logger.error({
-        message: 'Failed to list transactions',
+        message: "Failed to list transactions",
         restaurantId,
         error: error.message,
         durationMs: Date.now() - startTime,
@@ -290,7 +293,7 @@ export class InventoryLedgerService {
     const total = count ?? transactions.length;
 
     this.logger.debug({
-      message: 'Transactions listed',
+      message: "Transactions listed",
       restaurantId,
       resultCount: transactions.length,
       total,
@@ -317,7 +320,7 @@ export class InventoryLedgerService {
     stockType: StockType = StockType.LIVE,
   ): Promise<InventoryBalanceResponseDto> {
     const { data, error } = await this.databaseService.supabase.rpc(
-      'get_inventory_balance_at',
+      "get_inventory_balance_at",
       {
         p_inventory_id: inventoryId,
         p_as_of: asOf,
@@ -327,7 +330,7 @@ export class InventoryLedgerService {
 
     if (error) {
       this.logger.error({
-        message: 'Failed to get balance at point in time',
+        message: "Failed to get balance at point in time",
         inventoryId,
         asOf,
         error: error.message,
@@ -348,15 +351,17 @@ export class InventoryLedgerService {
     inventoryId: string,
     days: number = 30,
   ): Promise<InventoryTransactionResponseDto[]> {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const startDate = new Date(
+      Date.now() - days * 24 * 60 * 60 * 1000,
+    ).toISOString();
 
     const { data, error } = await this.databaseService.supabase
-      .from('inventory_transactions')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('inventory_id', inventoryId)
-      .gte('transaction_date', startDate)
-      .order('transaction_date', { ascending: false });
+      .from("inventory_transactions")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .gte("transaction_date", startDate)
+      .order("transaction_date", { ascending: false });
 
     if (error) {
       throw error;
@@ -375,11 +380,11 @@ export class InventoryLedgerService {
     endDate: string,
   ): Promise<TransactionSummaryResponseDto> {
     const { data, error } = await this.databaseService.supabase
-      .from('inventory_transactions')
-      .select('transaction_type, source, quantity_change')
-      .eq('restaurant_id', restaurantId)
-      .gte('transaction_date', startDate)
-      .lte('transaction_date', endDate);
+      .from("inventory_transactions")
+      .select("transaction_type, source, quantity_change")
+      .eq("restaurant_id", restaurantId)
+      .gte("transaction_date", startDate)
+      .lte("transaction_date", endDate);
 
     if (error) {
       throw error;
@@ -442,11 +447,12 @@ export class InventoryLedgerService {
     notes?: string,
   ): Promise<InventoryTransactionResponseDto> {
     // Get current balance
-    const { data: currentData, error: currentError } = await this.databaseService.supabase
-      .from('restaurant_inventory')
-      .select('live_stock')
-      .eq('id', inventoryId)
-      .single();
+    const { data: currentData, error: currentError } =
+      await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("live_stock")
+        .eq("id", inventoryId)
+        .single();
 
     if (currentError || !currentData) {
       throw new BadRequestException(`Inventory item not found: ${inventoryId}`);
@@ -456,7 +462,7 @@ export class InventoryLedgerService {
     const difference = actualCount - currentStock;
 
     if (difference === 0) {
-      throw new BadRequestException('No adjustment needed - counts match');
+      throw new BadRequestException("No adjustment needed - counts match");
     }
 
     return this.createTransaction(restaurantId, userId, {
@@ -507,20 +513,20 @@ export class InventoryLedgerService {
 
   private mapTransactionTypeToChangeType(
     type: TransactionType,
-  ): 'add' | 'remove' | 'adjust' | 'transfer' {
+  ): "add" | "remove" | "adjust" | "transfer" {
     switch (type) {
       case TransactionType.PURCHASE:
       case TransactionType.RETURN:
       case TransactionType.INITIAL:
-        return 'add';
+        return "add";
       case TransactionType.SALE:
       case TransactionType.WASTE:
       case TransactionType.COMP:
-        return 'remove';
+        return "remove";
       case TransactionType.TRANSFER:
-        return 'transfer';
+        return "transfer";
       default:
-        return 'adjust';
+        return "adjust";
     }
   }
 }

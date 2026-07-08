@@ -1,13 +1,19 @@
-import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
-import { GmailService } from './gmail.service';
-import { SmsService } from './sms.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
-import { DatabaseService } from '../database/database.service';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  Optional,
+  forwardRef,
+} from "@nestjs/common";
+import { GmailService } from "./gmail.service";
+import { SmsService } from "./sms.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { DatabaseService } from "../database/database.service";
 import {
   LowStockAlertDto,
   MultiChannelResultDto,
   CommunicationResultDto,
-} from './dto/communication.dto';
+} from "./dto/communication.dto";
 
 export interface LowStockAlertPayload {
   wineName: string;
@@ -34,7 +40,8 @@ export class CommunicationsService {
     private readonly gmailService: GmailService,
     private readonly smsService: SmsService,
     private readonly databaseService: DatabaseService,
-    @Optional() @Inject(forwardRef(() => WebsocketGateway))
+    @Optional()
+    @Inject(forwardRef(() => WebsocketGateway))
     private readonly websocketGateway?: WebsocketGateway,
   ) {}
 
@@ -46,7 +53,9 @@ export class CommunicationsService {
     recipients: AlertRecipients,
   ): Promise<MultiChannelResultDto> {
     this.logger.log(`Sending low stock alert for: ${payload.wineName}`);
-    this.logger.log(`Recipients - Emails: ${recipients.emails.join(', ')}, Phones: ${recipients.phones?.join(', ') || 'none'}`);
+    this.logger.log(
+      `Recipients - Emails: ${recipients.emails.join(", ")}, Phones: ${recipients.phones?.join(", ") || "none"}`,
+    );
 
     const results: MultiChannelResultDto = {
       success: true,
@@ -71,7 +80,7 @@ export class CommunicationsService {
           success: emailResult.success,
           messageId: emailResult.messageId,
           error: emailResult.error,
-          channel: 'email',
+          channel: "email",
         };
 
         if (!emailResult.success) {
@@ -80,8 +89,8 @@ export class CommunicationsService {
       } catch (error) {
         results.email = {
           success: false,
-          error: error instanceof Error ? error.message : 'Email send failed',
-          channel: 'email',
+          error: error instanceof Error ? error.message : "Email send failed",
+          channel: "email",
         };
         results.success = false;
       }
@@ -102,7 +111,7 @@ export class CommunicationsService {
             success: smsResult.success,
             messageId: smsResult.messageId,
             error: smsResult.error,
-            channel: 'sms',
+            channel: "sms",
           };
 
           if (!smsResult.success) {
@@ -112,8 +121,8 @@ export class CommunicationsService {
       } catch (error) {
         results.sms = {
           success: false,
-          error: error instanceof Error ? error.message : 'SMS send failed',
-          channel: 'sms',
+          error: error instanceof Error ? error.message : "SMS send failed",
+          channel: "sms",
         };
         results.success = false;
       }
@@ -122,13 +131,17 @@ export class CommunicationsService {
     // Send WebSocket notification
     if (payload.restaurantId && this.websocketGateway) {
       try {
-        const severity = payload.currentStock <= payload.threshold * 0.5 ? 'Critical' : 'Low Stock';
-        const emoji = payload.currentStock <= payload.threshold * 0.5 ? '🚨' : '⚠️';
+        const severity =
+          payload.currentStock <= payload.threshold * 0.5
+            ? "Critical"
+            : "Low Stock";
+        const emoji =
+          payload.currentStock <= payload.threshold * 0.5 ? "🚨" : "⚠️";
 
         this.websocketGateway.server
           .to(`restaurant:${payload.restaurantId}`)
-          .emit('notification:new', {
-            type: 'low_stock',
+          .emit("notification:new", {
+            type: "low_stock",
             title: `${emoji} ${severity}: ${payload.wineName}`,
             body: `Only ${payload.currentStock} bottles remaining (threshold: ${payload.threshold})`,
             data: {
@@ -140,22 +153,25 @@ export class CommunicationsService {
             },
             requireInteraction: payload.currentStock <= payload.threshold * 0.5,
             actions: [
-              { action: 'reorder', title: '🛒 Reorder Now' },
-              { action: 'view', title: '📊 View Inventory' },
+              { action: "reorder", title: "🛒 Reorder Now" },
+              { action: "view", title: "📊 View Inventory" },
             ],
           });
 
         results.websocket = {
           success: true,
-          channel: 'websocket',
+          channel: "websocket",
         };
 
-        this.logger.log(`WebSocket notification sent to restaurant:${payload.restaurantId}`);
+        this.logger.log(
+          `WebSocket notification sent to restaurant:${payload.restaurantId}`,
+        );
       } catch (error) {
         results.websocket = {
           success: false,
-          error: error instanceof Error ? error.message : 'WebSocket send failed',
-          channel: 'websocket',
+          error:
+            error instanceof Error ? error.message : "WebSocket send failed",
+          channel: "websocket",
         };
       }
     }
@@ -188,7 +204,7 @@ export class CommunicationsService {
       success: result.success,
       messageId: result.messageId,
       error: result.error,
-      channel: 'sms',
+      channel: "sms",
     };
   }
 
@@ -203,11 +219,22 @@ export class CommunicationsService {
       lowStockCount: number;
       totalValue: number;
       topSellers: Array<{ name: string; sold: number; revenue: number }>;
-      lowStockItems: Array<{ name: string; current: number; threshold: number }>;
-      conversationSummaries?: Array<{ provider: string; summary: string; status: string; messageCount: number }>;
+      lowStockItems: Array<{
+        name: string;
+        current: number;
+        threshold: number;
+      }>;
+      conversationSummaries?: Array<{
+        provider: string;
+        summary: string;
+        status: string;
+        messageCount: number;
+      }>;
     };
   }): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending weekly report to: ${data.recipientEmails.join(', ')}`);
+    this.logger.log(
+      `Sending weekly report to: ${data.recipientEmails.join(", ")}`,
+    );
 
     const html = this.generateWeeklyReportHtml(data.reportData);
 
@@ -221,7 +248,7 @@ export class CommunicationsService {
       success: result.success,
       messageId: result.messageId,
       error: result.error,
-      channel: 'email',
+      channel: "email",
     };
   }
 
@@ -234,7 +261,12 @@ export class CommunicationsService {
     totalValue: number;
     topSellers: Array<{ name: string; sold: number; revenue: number }>;
     lowStockItems: Array<{ name: string; current: number; threshold: number }>;
-    conversationSummaries?: Array<{ provider: string; summary: string; status: string; messageCount: number }>;
+    conversationSummaries?: Array<{
+      provider: string;
+      summary: string;
+      status: string;
+      messageCount: number;
+    }>;
   }): string {
     const topSellersRows = data.topSellers
       .map(
@@ -246,7 +278,7 @@ export class CommunicationsService {
       </tr>
     `,
       )
-      .join('');
+      .join("");
 
     const lowStockRows = data.lowStockItems
       .map(
@@ -258,7 +290,7 @@ export class CommunicationsService {
       </tr>
     `,
       )
-      .join('');
+      .join("");
 
     return `
 <!DOCTYPE html>
@@ -273,7 +305,7 @@ export class CommunicationsService {
     <tr>
       <td style="padding: 30px; background: linear-gradient(135deg, #7c2d12 0%, #991b1b 100%); text-align: center;">
         <h1 style="margin: 0; color: #ffffff; font-size: 28px;">📊 Weekly Wine Report</h1>
-        <p style="margin: 10px 0 0; color: rgba(255,255,255,0.8);">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <p style="margin: 10px 0 0; color: rgba(255,255,255,0.8);">${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
       </td>
     </tr>
     
@@ -317,7 +349,9 @@ export class CommunicationsService {
     </tr>
     
     <!-- Low Stock Items -->
-    ${data.lowStockItems.length > 0 ? `
+    ${
+      data.lowStockItems.length > 0
+        ? `
     <tr>
       <td style="padding: 0 30px 30px;">
         <h2 style="margin: 0 0 15px; color: #111827; font-size: 18px;">⚠️ Low Stock Alert</h2>
@@ -331,10 +365,14 @@ export class CommunicationsService {
         </table>
       </td>
     </tr>
-    ` : ''}
+    `
+        : ""
+    }
 
     <!-- Conversation Summaries -->
-    ${data.conversationSummaries && data.conversationSummaries.length > 0 ? `
+    ${
+      data.conversationSummaries && data.conversationSummaries.length > 0
+        ? `
     <tr>
       <td style="padding: 0 30px 30px;">
         <h2 style="margin: 0 0 15px; color: #111827; font-size: 18px;">💬 Vendor Communication Summary</h2>
@@ -345,22 +383,28 @@ export class CommunicationsService {
             <th style="padding: 12px; text-align: center; font-weight: 600; color: #1e40af;">Messages</th>
             <th style="padding: 12px; text-align: center; font-weight: 600; color: #1e40af;">Status</th>
           </tr>
-          ${data.conversationSummaries.map(c => `
+          ${data.conversationSummaries
+            .map(
+              (c) => `
           <tr>
             <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: 500;">${c.provider}</td>
             <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 13px;">${c.summary}</td>
             <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">${c.messageCount}</td>
             <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-              <span style="display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; background: ${c.status === 'sent' || c.status === 'active' ? '#d1fae5' : '#dbeafe'}; color: ${c.status === 'sent' || c.status === 'active' ? '#059669' : '#2563eb'};">
+              <span style="display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; background: ${c.status === "sent" || c.status === "active" ? "#d1fae5" : "#dbeafe"}; color: ${c.status === "sent" || c.status === "active" ? "#059669" : "#2563eb"};">
                 ${c.status}
               </span>
             </td>
           </tr>
-          `).join('')}
+          `,
+            )
+            .join("")}
         </table>
       </td>
     </tr>
-    ` : ''}
+    `
+        : ""
+    }
     
     <!-- Footer -->
     <tr>
@@ -383,10 +427,10 @@ export class CommunicationsService {
   async findProviderByEmail(email: string, restaurantId: string) {
     try {
       const { data, error } = await this.databaseService.supabase
-        .from('providers')
-        .select('id, name, contact_name, contact_email')
-        .eq('restaurant_id', restaurantId)
-        .ilike('contact_email', `%${email}%`)
+        .from("providers")
+        .select("id, name, contact_name, contact_email")
+        .eq("restaurant_id", restaurantId)
+        .ilike("contact_email", `%${email}%`)
         .limit(1)
         .maybeSingle();
 
@@ -421,7 +465,7 @@ export class CommunicationsService {
   }) {
     try {
       const { data, error } = await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .insert({
           restaurant_id: params.restaurantId,
           provider_id: params.providerId || null,
@@ -436,11 +480,13 @@ export class CommunicationsService {
           detected_sentiment: params.detected_sentiment || null,
           delivery_status: params.status,
         })
-        .select('id')
+        .select("id")
         .single();
 
       if (error) {
-        this.logger.warn(`Failed to store outbound conversation: ${error.message}`);
+        this.logger.warn(
+          `Failed to store outbound conversation: ${error.message}`,
+        );
         return { data: null, error };
       }
 

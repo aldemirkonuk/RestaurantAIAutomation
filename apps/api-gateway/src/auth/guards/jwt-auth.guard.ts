@@ -1,11 +1,15 @@
-import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { TokenBlacklistService } from '../services/token-blacklist.service';
+import {
+  Injectable,
+  ExecutionContext,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
+import { Reflector } from "@nestjs/core";
+import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
+import { TokenBlacklistService } from "../services/token-blacklist.service";
 
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {
+export class JwtAuthGuard extends AuthGuard("jwt") {
   constructor(
     private reflector: Reflector,
     private tokenBlacklistService: TokenBlacklistService,
@@ -26,14 +30,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers?.authorization as string | undefined;
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.substring('Bearer '.length)
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.substring("Bearer ".length)
       : null;
 
     if (token) {
-      const isBlacklisted = await this.tokenBlacklistService.isBlacklisted(token);
+      const isBlacklisted =
+        await this.tokenBlacklistService.isBlacklisted(token);
       if (isBlacklisted) {
-        throw new UnauthorizedException('Token is blacklisted');
+        throw new UnauthorizedException("Token is blacklisted");
       }
     }
 
@@ -42,12 +47,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       const userId = request.user?.userId || request.user?.id;
       const restaurantId = request.user?.restaurantId;
       const userIdIsUuid =
-        typeof userId === 'string' &&
+        typeof userId === "string" &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
           userId,
         );
       const restaurantIdIsUuid =
-        typeof restaurantId === 'string' &&
+        typeof restaurantId === "string" &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
           restaurantId,
         );
@@ -55,4 +60,3 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return canActivate;
   }
 }
-

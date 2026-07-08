@@ -10,7 +10,7 @@ Endpoints for human reviewers to manage the wine library:
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -27,8 +27,10 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 # REQUEST / RESPONSE MODELS
 # =============================================================================
 
+
 class TierUpdateRequest(BaseModel):
     """Request to update a wine's governance tier."""
+
     library_tier: int = Field(ge=0, le=4, description="New tier (0-4)")
     reason: Optional[str] = None
     canonical_name_verified: Optional[bool] = None
@@ -36,13 +38,19 @@ class TierUpdateRequest(BaseModel):
 
 class AliasAddRequest(BaseModel):
     """Request to add a name alias for a wine."""
-    alias_name: str = Field(description="Alternative name / OCR variant / regional name")
-    alias_source: str = Field(default="human_review", description="How alias was discovered")
+
+    alias_name: str = Field(
+        description="Alternative name / OCR variant / regional name"
+    )
+    alias_source: str = Field(
+        default="human_review", description="How alias was discovered"
+    )
     language: Optional[str] = None
 
 
 class WineEditRequest(BaseModel):
     """Request to edit wine fields during review."""
+
     fields: Dict[str, Any] = Field(description="Dict of field_name: corrected_value")
     field_sources: Optional[Dict[str, str]] = Field(
         default=None,
@@ -52,6 +60,7 @@ class WineEditRequest(BaseModel):
 
 class ReviewQueueFilters(BaseModel):
     """Filters for the review queue."""
+
     tier: Optional[int] = Field(default=None, ge=0, le=4)
     restaurant_id: Optional[str] = None
     limit: int = Field(default=50, ge=1, le=200)
@@ -61,6 +70,7 @@ class ReviewQueueFilters(BaseModel):
 # =============================================================================
 # ROUTES
 # =============================================================================
+
 
 @router.get("/wines/pending")
 async def get_pending_wines(
@@ -75,6 +85,7 @@ async def get_pending_wines(
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
@@ -115,8 +126,9 @@ async def update_wine_tier(wine_id: str, request: TierUpdateRequest):
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
@@ -135,10 +147,12 @@ async def update_wine_tier(wine_id: str, request: TierUpdateRequest):
         update_data["canonical_name_verified"] = True
 
     try:
-        result = supabase.table("master_wine_library") \
-            .update(update_data) \
-            .eq("id", wine_id) \
+        result = (
+            supabase.table("master_wine_library")
+            .update(update_data)
+            .eq("id", wine_id)
             .execute()
+        )
 
         if not result.data:
             raise HTTPException(status_code=404, detail=f"Wine {wine_id} not found")
@@ -152,7 +166,9 @@ async def update_wine_tier(wine_id: str, request: TierUpdateRequest):
             "success": True,
             "wine_id": wine_id,
             "new_tier": request.library_tier,
-            "canonical_name_verified": update_data.get("canonical_name_verified", False),
+            "canonical_name_verified": update_data.get(
+                "canonical_name_verified", False
+            ),
         }
 
     except HTTPException:
@@ -171,8 +187,9 @@ async def add_wine_alias(wine_id: str, request: AliasAddRequest):
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
@@ -180,11 +197,13 @@ async def add_wine_alias(wine_id: str, request: AliasAddRequest):
 
     try:
         # Verify wine exists
-        wine = supabase.table("master_wine_library") \
-            .select("id, name, producer") \
-            .eq("id", wine_id) \
-            .single() \
+        wine = (
+            supabase.table("master_wine_library")
+            .select("id, name, producer")
+            .eq("id", wine_id)
+            .single()
             .execute()
+        )
 
         if not wine.data:
             raise HTTPException(status_code=404, detail=f"Wine {wine_id} not found")
@@ -198,7 +217,7 @@ async def add_wine_alias(wine_id: str, request: AliasAddRequest):
             "created_at": datetime.utcnow().isoformat(),
         }
 
-        result = supabase.table("wine_aliases").insert(alias_data).execute()
+        supabase.table("wine_aliases").insert(alias_data).execute()
 
         logger.info(
             f"Alias added for wine {wine_id}: '{request.alias_name}' "
@@ -227,8 +246,9 @@ async def edit_wine_fields(wine_id: str, request: WineEditRequest):
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
@@ -236,11 +256,13 @@ async def edit_wine_fields(wine_id: str, request: WineEditRequest):
 
     try:
         # Fetch current wine data
-        wine = supabase.table("master_wine_library") \
-            .select("*") \
-            .eq("id", wine_id) \
-            .single() \
+        wine = (
+            supabase.table("master_wine_library")
+            .select("*")
+            .eq("id", wine_id)
+            .single()
             .execute()
+        )
 
         if not wine.data:
             raise HTTPException(status_code=404, detail=f"Wine {wine_id} not found")
@@ -253,9 +275,9 @@ async def edit_wine_fields(wine_id: str, request: WineEditRequest):
         for field_name, new_value in request.fields.items():
             update_data[field_name] = new_value
             # Human edits are documented sources with full confidence
-            current_field_sources[field_name] = (
-                request.field_sources or {}
-            ).get(field_name, "documented")
+            current_field_sources[field_name] = (request.field_sources or {}).get(
+                field_name, "documented"
+            )
             current_field_confidences[field_name] = 1.0  # Human-verified = 1.0
 
         update_data["field_sources"] = current_field_sources
@@ -264,12 +286,14 @@ async def edit_wine_fields(wine_id: str, request: WineEditRequest):
 
         # Recalculate overall confidence with updated field confidences
         from services.governance import compute_overall_confidence
-        update_data["confidence"] = compute_overall_confidence(current_field_confidences)
 
-        result = supabase.table("master_wine_library") \
-            .update(update_data) \
-            .eq("id", wine_id) \
-            .execute()
+        update_data["confidence"] = compute_overall_confidence(
+            current_field_confidences
+        )
+
+        supabase.table("master_wine_library").update(update_data).eq(
+            "id", wine_id
+        ).execute()
 
         logger.info(f"Wine {wine_id} edited: fields={list(request.fields.keys())}")
 
@@ -294,8 +318,9 @@ async def get_governance_stats():
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
@@ -309,9 +334,11 @@ async def get_governance_stats():
         }
 
     try:
-        all_wines = supabase.table("master_wine_library") \
-            .select("library_tier, canonical_name_verified") \
+        all_wines = (
+            supabase.table("master_wine_library")
+            .select("library_tier, canonical_name_verified")
             .execute()
+        )
 
         if not all_wines.data:
             return {
@@ -355,20 +382,23 @@ async def get_pending_submissions(
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
 
     try:
-        result = supabase.table("master_wine_library_submissions") \
-            .select("*") \
-            .eq("status", "pending_review") \
-            .order("created_at", desc=True) \
-            .range(offset, offset + limit - 1) \
+        result = (
+            supabase.table("master_wine_library_submissions")
+            .select("*")
+            .eq("status", "pending_review")
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
             .execute()
+        )
 
         return {
             "total": len(result.data) if result.data else 0,
@@ -387,8 +417,9 @@ async def approve_submission(submission_id: str):
     """
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
@@ -396,11 +427,13 @@ async def approve_submission(submission_id: str):
 
     try:
         # Fetch submission
-        sub = supabase.table("master_wine_library_submissions") \
-            .select("*") \
-            .eq("id", submission_id) \
-            .single() \
+        sub = (
+            supabase.table("master_wine_library_submissions")
+            .select("*")
+            .eq("id", submission_id)
+            .single()
             .execute()
+        )
 
         if not sub.data:
             raise HTTPException(status_code=404, detail="Submission not found")
@@ -419,10 +452,9 @@ async def approve_submission(submission_id: str):
         supabase.table("master_wine_library").insert(wine_data).execute()
 
         # Update submission status
-        supabase.table("master_wine_library_submissions") \
-            .update({"status": "approved", "reviewed_at": datetime.utcnow().isoformat()}) \
-            .eq("id", submission_id) \
-            .execute()
+        supabase.table("master_wine_library_submissions").update(
+            {"status": "approved", "reviewed_at": datetime.utcnow().isoformat()}
+        ).eq("id", submission_id).execute()
 
         return {"success": True, "submission_id": submission_id, "action": "approved"}
 
@@ -438,21 +470,21 @@ async def reject_submission(submission_id: str, reason: Optional[str] = None):
     """Reject a library submission."""
     try:
         from core.database import get_supabase_client
+
         supabase = get_supabase_client()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
 
     try:
-        supabase.table("master_wine_library_submissions") \
-            .update({
+        supabase.table("master_wine_library_submissions").update(
+            {
                 "status": "rejected",
                 "reviewed_at": datetime.utcnow().isoformat(),
-            }) \
-            .eq("id", submission_id) \
-            .execute()
+            }
+        ).eq("id", submission_id).execute()
 
         return {"success": True, "submission_id": submission_id, "action": "rejected"}
 

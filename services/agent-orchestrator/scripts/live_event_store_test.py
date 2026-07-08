@@ -52,8 +52,10 @@ async def main() -> int:
         load_dotenv(_ROOT / ".env")
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv(
-        "SUPABASE_SERVICE_ROLE_KEY"
+    key = (
+        os.getenv("SUPABASE_SERVICE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     if not url or not key:
         print("Missing SUPABASE_URL or service key.", file=sys.stderr)
@@ -82,7 +84,9 @@ async def main() -> int:
 
     row = (
         supabase.table("event_store")
-        .select("aggregate_type, aggregate_id, sequence_number, correlation_id, event_type")
+        .select(
+            "aggregate_type, aggregate_id, sequence_number, correlation_id, event_type"
+        )
         .eq("aggregate_type", "inventory")
         .eq("aggregate_id", aggregate_id)
         .eq("sequence_number", 1)

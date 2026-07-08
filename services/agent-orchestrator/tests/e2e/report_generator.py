@@ -9,13 +9,10 @@ only response bodies and tracebacks (already redacted of secrets in tests).
 """
 
 import json
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import pytest
 
 
 class E2EReportGenerator:
@@ -51,6 +48,7 @@ class E2EReportGenerator:
 
         if call.excinfo is not None:
             import _pytest.outcomes as _outcomes
+
             if isinstance(call.excinfo.value, _outcomes.Skipped):
                 outcome = "skipped"
                 error = None

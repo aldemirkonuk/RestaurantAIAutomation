@@ -16,14 +16,11 @@ Usage:
 """
 
 import asyncio
-import json
 import csv
 import io
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
-from uuid import uuid4
+from typing import Dict, Any, Optional
 import sys
-import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -37,23 +34,23 @@ class WeeklyReportDemo:
     """
     Demonstrates weekly report generation and delivery
     """
-    
+
     def __init__(self, send_email: bool = False, send_sms: bool = False):
         self.settings = get_settings()
         self.db: Optional[DatabaseClient] = None
         self.message_bus: Optional[MessageBus] = None
         self.send_email = send_email
         self.send_sms = send_sms
-        
+
         # Demo data
         self.restaurant_id = None
         self.manager_email = None
         self.manager_phone = None
-        
+
     async def setup(self):
         """Initialize connections"""
         print("🔌 Setting up Weekly Report Demo...")
-        
+
         self.db = DatabaseClient(
             supabase_url=self.settings.supabase_url,
             supabase_key=self.settings.supabase_service_role_key,
@@ -61,11 +58,11 @@ class WeeklyReportDemo:
         )
         await self.db.connect()
         print("   ✅ Database connected")
-        
+
         self.message_bus = MessageBus(self.settings.rabbitmq_url)
         await self.message_bus.connect()
         print("   ✅ Message bus connected")
-        
+
     async def teardown(self):
         """Cleanup"""
         if self.db:
@@ -73,13 +70,15 @@ class WeeklyReportDemo:
         if self.message_bus:
             await self.message_bus.disconnect()
         print("✅ Demo cleanup complete")
-    
+
     async def get_restaurant_data(self):
         """Get restaurant and manager info"""
         print("\n📋 Loading restaurant data...")
-        
+
         # Get restaurant
-        restaurants = self.db.supabase.table("restaurants").select("*").limit(1).execute()
+        restaurants = (
+            self.db.supabase.table("restaurants").select("*").limit(1).execute()
+        )
         if restaurants.data:
             self.restaurant_id = restaurants.data[0]["id"]
             restaurant_name = restaurants.data[0].get("name", "Demo Restaurant")
@@ -90,20 +89,22 @@ class WeeklyReportDemo:
             print("   ⚠️ No restaurant found - using demo data")
             self.restaurant_id = "demo-restaurant"
             self.manager_email = "demo@wineops.ai"
-        
+
         # Get manager phone from preferences
-        prefs = self.db.supabase.table("manager_preferences").select("*").limit(1).execute()
+        prefs = (
+            self.db.supabase.table("manager_preferences").select("*").limit(1).execute()
+        )
         if prefs.data:
             self.manager_phone = prefs.data[0].get("phone_number", "+1234567890")
         else:
             self.manager_phone = "+1234567890"
-        
+
         print(f"   ✅ Phone: {self.manager_phone}")
-    
+
     async def collect_report_data(self) -> Dict[str, Any]:
         """
         Collect all data for the weekly report
-        
+
         Sections:
         - Financials (revenue, costs, margins)
         - Purchases (orders, spending)
@@ -111,11 +112,11 @@ class WeeklyReportDemo:
         - Low stock alerts
         """
         print("\n📊 Collecting report data...")
-        
+
         # Date range (last 7 days)
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=7)
-        
+
         report_data = {
             "report_type": "weekly",
             "period": {
@@ -126,27 +127,31 @@ class WeeklyReportDemo:
             "generated_at": datetime.utcnow().isoformat(),
             "restaurant_id": self.restaurant_id,
         }
-        
+
         # 1. FINANCIALS
         print("   📈 Collecting financials...")
         try:
-            sales = self.db.supabase.table("sales_events") \
-                .select("*") \
-                .eq("restaurant_id", self.restaurant_id) \
-                .gte("created_at", start_date.isoformat()) \
+            sales = (
+                self.db.supabase.table("sales_events")
+                .select("*")
+                .eq("restaurant_id", self.restaurant_id)
+                .gte("created_at", start_date.isoformat())
                 .execute()
-            
+            )
+
             sales_data = sales.data or []
             total_revenue = sum(s.get("total_price", 0) for s in sales_data)
             bottles_sold = sum(s.get("quantity", 0) for s in sales_data)
-            
+
             report_data["financials"] = {
                 "total_revenue": round(total_revenue, 2),
                 "bottles_sold": bottles_sold,
-                "avg_bottle_price": round(total_revenue / bottles_sold, 2) if bottles_sold > 0 else 0,
+                "avg_bottle_price": (
+                    round(total_revenue / bottles_sold, 2) if bottles_sold > 0 else 0
+                ),
                 "transaction_count": len(sales_data),
             }
-        except Exception as e:
+        except Exception:
             # Use demo data if no sales
             report_data["financials"] = {
                 "total_revenue": 4250.00,
@@ -156,29 +161,37 @@ class WeeklyReportDemo:
             }
         print(f"      Revenue: ${report_data['financials']['total_revenue']}")
         print(f"      Bottles Sold: {report_data['financials']['bottles_sold']}")
-        
+
         # 2. PURCHASES
         print("   🛒 Collecting purchases...")
         try:
-            orders = self.db.supabase.table("procurement_orders") \
-                .select("*") \
-                .eq("restaurant_id", self.restaurant_id) \
-                .gte("created_at", start_date.isoformat()) \
+            orders = (
+                self.db.supabase.table("procurement_orders")
+                .select("*")
+                .eq("restaurant_id", self.restaurant_id)
+                .gte("created_at", start_date.isoformat())
                 .execute()
-            
+            )
+
             orders_data = orders.data or []
             total_spent = sum(o.get("total_cost", 0) or 0 for o in orders_data)
             completed = [o for o in orders_data if o.get("status") == "COMPLETED"]
-            pending = [o for o in orders_data if o.get("status") in ["PENDING", "APPROVED", "CONFIRMED"]]
-            
+            pending = [
+                o
+                for o in orders_data
+                if o.get("status") in ["PENDING", "APPROVED", "CONFIRMED"]
+            ]
+
             report_data["purchases"] = {
                 "total_orders": len(orders_data),
                 "completed_orders": len(completed),
                 "pending_orders": len(pending),
                 "total_spent": round(total_spent, 2),
-                "bottles_ordered": sum(o.get("bottles_total", 0) or 0 for o in orders_data),
+                "bottles_ordered": sum(
+                    o.get("bottles_total", 0) or 0 for o in orders_data
+                ),
             }
-        except Exception as e:
+        except Exception:
             report_data["purchases"] = {
                 "total_orders": 5,
                 "completed_orders": 3,
@@ -188,28 +201,32 @@ class WeeklyReportDemo:
             }
         print(f"      Orders: {report_data['purchases']['total_orders']}")
         print(f"      Spent: ${report_data['purchases']['total_spent']}")
-        
+
         # 3. INVENTORY USAGE
         print("   📦 Collecting inventory usage...")
         try:
-            inventory = self.db.supabase.table("restaurant_inventory") \
-                .select("*, master_wine_library(name, primary_type)") \
-                .eq("restaurant_id", self.restaurant_id) \
+            inventory = (
+                self.db.supabase.table("restaurant_inventory")
+                .select("*, master_wine_library(name, primary_type)")
+                .eq("restaurant_id", self.restaurant_id)
                 .execute()
-            
+            )
+
             inv_data = inventory.data or []
             total_stock = sum(i.get("stock_live", 0) for i in inv_data)
-            
+
             # Calculate velocity (sales per day)
             avg_velocity = report_data["financials"]["bottles_sold"] / 7
-            
+
             report_data["inventory"] = {
                 "total_items": len(inv_data),
                 "total_bottles": total_stock,
                 "avg_daily_usage": round(avg_velocity, 1),
-                "turnover_rate": round(report_data["financials"]["bottles_sold"] / max(total_stock, 1), 2),
+                "turnover_rate": round(
+                    report_data["financials"]["bottles_sold"] / max(total_stock, 1), 2
+                ),
             }
-        except Exception as e:
+        except Exception:
             report_data["inventory"] = {
                 "total_items": 45,
                 "total_bottles": 312,
@@ -217,8 +234,10 @@ class WeeklyReportDemo:
                 "turnover_rate": 0.41,
             }
         print(f"      Total Items: {report_data['inventory']['total_items']}")
-        print(f"      Daily Usage: {report_data['inventory']['avg_daily_usage']} bottles")
-        
+        print(
+            f"      Daily Usage: {report_data['inventory']['avg_daily_usage']} bottles"
+        )
+
         # 4. LOW STOCK ALERTS
         print("   ⚠️ Collecting low stock alerts...")
         try:
@@ -227,28 +246,45 @@ class WeeklyReportDemo:
             for item in inv_data:
                 if item.get("stock_live", 0) <= item.get("threshold_min", 3):
                     wine_info = item.get("master_wine_library", {}) or {}
-                    low_stock.append({
-                        "name": wine_info.get("name", "Unknown"),
-                        "type": wine_info.get("primary_type", "unknown"),
-                        "stock": item.get("stock_live", 0),
-                        "threshold": item.get("threshold_min", 3),
-                    })
-            
+                    low_stock.append(
+                        {
+                            "name": wine_info.get("name", "Unknown"),
+                            "type": wine_info.get("primary_type", "unknown"),
+                            "stock": item.get("stock_live", 0),
+                            "threshold": item.get("threshold_min", 3),
+                        }
+                    )
+
             report_data["low_stock_alerts"] = {
                 "count": len(low_stock),
                 "items": low_stock[:5],  # Top 5
             }
-        except Exception as e:
+        except Exception:
             report_data["low_stock_alerts"] = {
                 "count": 3,
                 "items": [
-                    {"name": "Château Demo Reserve", "type": "red", "stock": 3, "threshold": 4},
-                    {"name": "Cloudy Bay Sauvignon", "type": "white", "stock": 2, "threshold": 5},
-                    {"name": "Dom Pérignon 2012", "type": "sparkling", "stock": 1, "threshold": 2},
+                    {
+                        "name": "Château Demo Reserve",
+                        "type": "red",
+                        "stock": 3,
+                        "threshold": 4,
+                    },
+                    {
+                        "name": "Cloudy Bay Sauvignon",
+                        "type": "white",
+                        "stock": 2,
+                        "threshold": 5,
+                    },
+                    {
+                        "name": "Dom Pérignon 2012",
+                        "type": "sparkling",
+                        "stock": 1,
+                        "threshold": 2,
+                    },
                 ],
             }
         print(f"      Low Stock Items: {report_data['low_stock_alerts']['count']}")
-        
+
         # 5. TOP PERFORMERS
         print("   🏆 Identifying top performers...")
         report_data["top_performers"] = {
@@ -264,24 +300,33 @@ class WeeklyReportDemo:
                 "rosé": {"percentage": 10, "revenue": 425.00},
             },
         }
-        
+
         # 6. GROSS MARGIN
-        gross_margin = report_data["financials"]["total_revenue"] - report_data["purchases"]["total_spent"]
-        margin_pct = (gross_margin / report_data["financials"]["total_revenue"] * 100) if report_data["financials"]["total_revenue"] > 0 else 0
-        
+        gross_margin = (
+            report_data["financials"]["total_revenue"]
+            - report_data["purchases"]["total_spent"]
+        )
+        margin_pct = (
+            (gross_margin / report_data["financials"]["total_revenue"] * 100)
+            if report_data["financials"]["total_revenue"] > 0
+            else 0
+        )
+
         report_data["margins"] = {
             "gross_margin": round(gross_margin, 2),
             "margin_percentage": round(margin_pct, 1),
         }
-        
-        print(f"\n   ✅ Data collection complete!")
-        print(f"   Gross Margin: ${report_data['margins']['gross_margin']} ({report_data['margins']['margin_percentage']}%)")
-        
+
+        print("\n   ✅ Data collection complete!")
+        print(
+            f"   Gross Margin: ${report_data['margins']['gross_margin']} ({report_data['margins']['margin_percentage']}%)"
+        )
+
         return report_data
-    
+
     def generate_email_html(self, data: Dict[str, Any]) -> str:
         """Generate HTML email report"""
-        
+
         # Low stock items HTML
         low_stock_html = ""
         for item in data["low_stock_alerts"]["items"]:
@@ -292,7 +337,7 @@ class WeeklyReportDemo:
                 <td style="padding: 8px; border-bottom: 1px solid #eee; color: #dc3545;">{item['stock']}/{item['threshold']}</td>
             </tr>
             """
-        
+
         # Top wines HTML
         top_wines_html = ""
         for wine in data["top_performers"]["wines"]:
@@ -303,7 +348,7 @@ class WeeklyReportDemo:
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">${wine['revenue']:.2f}</td>
             </tr>
             """
-        
+
         html = f"""
 <!DOCTYPE html>
 <html>
@@ -457,46 +502,54 @@ class WeeklyReportDemo:
 </html>
 """
         return html
-    
+
     def generate_csv_report(self, data: Dict[str, Any]) -> str:
         """Generate CSV report"""
         output = io.StringIO()
         writer = csv.writer(output)
-        
+
         # Header
         writer.writerow(["WineOps Weekly Report"])
-        writer.writerow([f"Period: {data['period']['start']} to {data['period']['end']}"])
+        writer.writerow(
+            [f"Period: {data['period']['start']} to {data['period']['end']}"]
+        )
         writer.writerow([])
-        
+
         # Financials
         writer.writerow(["FINANCIAL SUMMARY"])
         writer.writerow(["Metric", "Value"])
-        writer.writerow(["Total Revenue", f"${data['financials']['total_revenue']:.2f}"])
-        writer.writerow(["Bottles Sold", data['financials']['bottles_sold']])
-        writer.writerow(["Avg Bottle Price", f"${data['financials']['avg_bottle_price']:.2f}"])
-        writer.writerow(["Transactions", data['financials']['transaction_count']])
+        writer.writerow(
+            ["Total Revenue", f"${data['financials']['total_revenue']:.2f}"]
+        )
+        writer.writerow(["Bottles Sold", data["financials"]["bottles_sold"]])
+        writer.writerow(
+            ["Avg Bottle Price", f"${data['financials']['avg_bottle_price']:.2f}"]
+        )
+        writer.writerow(["Transactions", data["financials"]["transaction_count"]])
         writer.writerow([])
-        
+
         # Purchases
         writer.writerow(["PROCUREMENT SUMMARY"])
         writer.writerow(["Metric", "Value"])
-        writer.writerow(["Total Orders", data['purchases']['total_orders']])
-        writer.writerow(["Completed", data['purchases']['completed_orders']])
-        writer.writerow(["Pending", data['purchases']['pending_orders']])
+        writer.writerow(["Total Orders", data["purchases"]["total_orders"]])
+        writer.writerow(["Completed", data["purchases"]["completed_orders"]])
+        writer.writerow(["Pending", data["purchases"]["pending_orders"]])
         writer.writerow(["Total Spent", f"${data['purchases']['total_spent']:.2f}"])
         writer.writerow([])
-        
+
         # Low Stock
         writer.writerow(["LOW STOCK ALERTS"])
         writer.writerow(["Wine", "Type", "Current Stock", "Threshold"])
         for item in data["low_stock_alerts"]["items"]:
-            writer.writerow([item['name'], item['type'], item['stock'], item['threshold']])
-        
+            writer.writerow(
+                [item["name"], item["type"], item["stock"], item["threshold"]]
+            )
+
         return output.getvalue()
-    
+
     def generate_sms_summary(self, data: Dict[str, Any]) -> str:
         """Generate SMS-friendly summary (160 chars max per message)"""
-        
+
         summary = f"""📊 WEEKLY REPORT
 Week {data['period']['week_number']}
 
@@ -506,41 +559,43 @@ Week {data['period']['week_number']}
 ⚠️ Low Stock: {data['low_stock_alerts']['count']} items
 
 Reply DETAILS for full report"""
-        
+
         return summary
-    
+
     async def send_report_email(self, html: str, data: Dict[str, Any]):
         """Send report via email"""
         if not self.send_email:
             print("\n   📧 Email preview (--send-email to actually send):")
             print(f"   To: {self.manager_email}")
-            print(f"   Subject: 📊 Weekly WineOps Report - Week {data['period']['week_number']}")
+            print(
+                f"   Subject: 📊 Weekly WineOps Report - Week {data['period']['week_number']}"
+            )
             return
-        
+
         try:
             from services.email_client import EmailClient
-            
+
             email_client = EmailClient(
                 backend="gmail",
                 gmail_user=self.settings.gmail_user,
                 gmail_password=self.settings.gmail_password,
                 mock_mode=False,
             )
-            
+
             result = await email_client.send_email(
                 to_email=self.manager_email,
                 subject=f"📊 Weekly WineOps Report - Week {data['period']['week_number']}",
                 html_body=html,
             )
-            
+
             if result:
                 print(f"\n   ✅ Email sent to {self.manager_email}")
             else:
-                print(f"\n   ❌ Failed to send email")
-                
+                print("\n   ❌ Failed to send email")
+
         except Exception as e:
             print(f"\n   ❌ Email error: {e}")
-    
+
     async def send_report_sms(self, summary: str, data: Dict[str, Any]):
         """Send report summary via SMS"""
         if not self.send_sms:
@@ -550,107 +605,116 @@ Reply DETAILS for full report"""
             print(f"   {'-'*40}")
             print(f"   {summary}")
             return
-        
+
         try:
             from services.sms_client import SMSClient
-            
+
             sms_client = SMSClient(
                 plivo_auth_id=self.settings.plivo_auth_id,
                 plivo_auth_token=self.settings.plivo_auth_token,
                 from_number=self.settings.plivo_phone_number,
                 mock_mode=False,
             )
-            
+
             result = await sms_client.send_sms(
                 to_number=self.manager_phone,
                 message=summary,
             )
-            
+
             if result:
                 print(f"\n   ✅ SMS sent to {self.manager_phone}")
             else:
-                print(f"\n   ❌ Failed to send SMS")
-                
+                print("\n   ❌ Failed to send SMS")
+
         except Exception as e:
             print(f"\n   ❌ SMS error: {e}")
-    
+
     async def run_demo(self):
         """Run the weekly report demo"""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("📅 WEEKLY REPORT DEMO - Monday 9:00 AM")
-        print("="*70)
+        print("=" * 70)
         print(f"Date: {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}")
-        
+
         try:
             await self.setup()
             await self.get_restaurant_data()
-            
+
             # Step 1: Trigger report
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("⏰ STEP 1: Report Triggered")
-            print("="*60)
+            print("=" * 60)
             print("   Trigger: Monday 9:00 AM (scheduled)")
             print("   Template: Weekly Performance Report")
-            
+
             # Step 2: Collect data
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("🤖 STEP 2: AI Collects Data")
-            print("="*60)
+            print("=" * 60)
             data = await self.collect_report_data()
-            
+
             # Step 3: Generate reports
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("📄 STEP 3: Generate Report Formats")
-            print("="*60)
-            
+            print("=" * 60)
+
             # HTML
             html = self.generate_email_html(data)
             print(f"   ✅ HTML Report: {len(html):,} characters")
-            
+
             # CSV
             csv_report = self.generate_csv_report(data)
             print(f"   ✅ CSV Report: {len(csv_report.split(chr(10)))} rows")
-            
+
             # SMS Summary
             sms_summary = self.generate_sms_summary(data)
             print(f"   ✅ SMS Summary: {len(sms_summary)} characters")
-            
+
             # Step 4: Send Email
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("📧 STEP 4: Send Email Report")
-            print("="*60)
+            print("=" * 60)
             await self.send_report_email(html, data)
-            
+
             # Step 5: Send SMS
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("📱 STEP 5: Send SMS Summary")
-            print("="*60)
+            print("=" * 60)
             await self.send_report_sms(sms_summary, data)
-            
+
             # Summary
-            print("\n" + "="*70)
+            print("\n" + "=" * 70)
             print("🎉 WEEKLY REPORT DEMO COMPLETE!")
-            print("="*70)
-            print(f"\n📊 Report Summary:")
-            print(f"   Period: Week {data['period']['week_number']} ({data['period']['start']} to {data['period']['end']})")
+            print("=" * 70)
+            print("\n📊 Report Summary:")
+            print(
+                f"   Period: Week {data['period']['week_number']} ({data['period']['start']} to {data['period']['end']})"
+            )
             print(f"   Revenue: ${data['financials']['total_revenue']:,.2f}")
             print(f"   Bottles Sold: {data['financials']['bottles_sold']}")
-            print(f"   Gross Margin: ${data['margins']['gross_margin']:,.2f} ({data['margins']['margin_percentage']}%)")
+            print(
+                f"   Gross Margin: ${data['margins']['gross_margin']:,.2f} ({data['margins']['margin_percentage']}%)"
+            )
             print(f"   Low Stock Alerts: {data['low_stock_alerts']['count']}")
-            print(f"\n📬 Delivery:")
-            print(f"   Email: {self.manager_email} {'✅ SENT' if self.send_email else '(preview only)'}")
-            print(f"   SMS: {self.manager_phone} {'✅ SENT' if self.send_sms else '(preview only)'}")
-            
+            print("\n📬 Delivery:")
+            print(
+                f"   Email: {self.manager_email} {'✅ SENT' if self.send_email else '(preview only)'}"
+            )
+            print(
+                f"   SMS: {self.manager_phone} {'✅ SENT' if self.send_sms else '(preview only)'}"
+            )
+
             # Save HTML to file for preview
             output_path = Path(__file__).parent / "weekly_report_preview.html"
             with open(output_path, "w") as f:
                 f.write(html)
             print(f"\n   📄 HTML saved to: {output_path}")
-            print(f"   Open in browser to preview the email")
-            
+            print("   Open in browser to preview the email")
+
         except Exception as e:
             print(f"\n❌ Error: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             await self.teardown()
@@ -658,12 +722,12 @@ Reply DETAILS for full report"""
 
 async def main():
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Weekly Report Demo")
     parser.add_argument("--send-email", action="store_true", help="Actually send email")
     parser.add_argument("--send-sms", action="store_true", help="Actually send SMS")
     args = parser.parse_args()
-    
+
     demo = WeeklyReportDemo(
         send_email=args.send_email,
         send_sms=args.send_sms,
@@ -673,4 +737,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

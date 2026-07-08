@@ -116,30 +116,41 @@ _HAIKU_PATCH = "api.onboarding_routes.haiku_enrich_task"
 
 def _make_jwt(payload: dict, secret: str = E2E_SECRET) -> str:
     import jwt as pyjwt
+
     return pyjwt.encode(payload, secret, algorithm="HS256")
 
 
 def _make_settings(jwt_secret: str = E2E_SECRET):
-    return type("S", (), {
-        "supabase_jwt_secret": jwt_secret,
-        "trust_level_threshold": 5,
-    })()
+    return type(
+        "S",
+        (),
+        {
+            "supabase_jwt_secret": jwt_secret,
+            "trust_level_threshold": 5,
+        },
+    )()
 
 
 def _make_extraction_result_mock():
     """Minimal valid ClaudeExtractionResult for cap-check-fails-open test."""
     result = MagicMock()
-    result.wines = [{
-        "wine_name": "Test Wine",
-        "producer": "Test Producer",
-        "vintage": 2021,
-        "field_confidence": {
-            "wine_name": {"value": "Test Wine", "confidence": 0.95, "source": "visible"},
-            "vintage": {"value": "2021", "confidence": 0.90, "source": "visible"},
-        },
-        "completeness_score": 0.90,
-        "needs_review": False,
-    }]
+    result.wines = [
+        {
+            "wine_name": "Test Wine",
+            "producer": "Test Producer",
+            "vintage": 2021,
+            "field_confidence": {
+                "wine_name": {
+                    "value": "Test Wine",
+                    "confidence": 0.95,
+                    "source": "visible",
+                },
+                "vintage": {"value": "2021", "confidence": 0.90, "source": "visible"},
+            },
+            "completeness_score": 0.90,
+            "needs_review": False,
+        }
+    ]
     result.total_wines = 1
     result.total_cost_usd = 0.003
     result.scan_session_id = str(uuid.uuid4())
@@ -153,6 +164,7 @@ def _make_extraction_result_mock():
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestErrorResilience:
 
     def test_extract_returns_503_when_extractor_fails(self, test_client):
@@ -162,10 +174,13 @@ class TestErrorResilience:
         (error detail exposed, but no raw stack trace).
         """
         mock_extractor = MagicMock()
-        mock_extractor.extract_menu = AsyncMock(side_effect=RuntimeError("All pages failed: API timeout"))
+        mock_extractor.extract_menu = AsyncMock(
+            side_effect=RuntimeError("All pages failed: API timeout")
+        )
 
-        with patch(_SUPABASE_PATCH, return_value=None), \
-             patch(_EXTRACTOR_PATCH, return_value=mock_extractor):
+        with patch(_SUPABASE_PATCH, return_value=None), patch(
+            _EXTRACTOR_PATCH, return_value=mock_extractor
+        ):
 
             resp = test_client.post(
                 "/api/v1/onboarding/extract",
@@ -174,7 +189,9 @@ class TestErrorResilience:
 
         assert resp.status_code == 503, resp.text
         detail = resp.json().get("detail", "")
-        assert "All pages failed" in detail, f"Expected informative error, got: {detail}"
+        assert (
+            "All pages failed" in detail
+        ), f"Expected informative error, got: {detail}"
         # No raw Python stack trace in the response body
         assert "Traceback" not in detail
         assert "File " not in detail
@@ -198,8 +215,9 @@ class TestErrorResilience:
         """
         auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings()), \
-             patch("api.studio_routes._get_supabase", return_value=None):
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=None):
 
             resp = test_client.post(
                 "/api/v1/studio/overrides",
@@ -222,21 +240,26 @@ class TestErrorResilience:
         """
         # research_run_stats: fails — simulates a missing or empty table
         stats_mock = MagicMock()
-        stats_mock.select.return_value.order.return_value.limit.return_value.execute.side_effect = (
-            Exception("research_run_stats: relation does not exist")
+        stats_mock.select.return_value.order.return_value.limit.return_value.execute.side_effect = Exception(
+            "research_run_stats: relation does not exist"
         )
 
         # Other tables return empty results — metrics gracefully default to 0
         citations_mock = MagicMock()
-        citations_mock.select.return_value.limit.return_value.execute.return_value.data = []
+        citations_mock.select.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
         runs_mock = MagicMock()
         runs_mock.select.return_value.limit.return_value.execute.return_value.data = []
 
         corrections_mock = MagicMock()
-        corrections_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = []
+        corrections_mock.select.return_value.not_.is_.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
 
         sb = MagicMock()
+
         def _table(name: str):
             return {
                 "research_run_stats": stats_mock,
@@ -244,6 +267,7 @@ class TestErrorResilience:
                 "research_runs": runs_mock,
                 "field_corrections": corrections_mock,
             }.get(name, MagicMock())
+
         sb.table.side_effect = _table
 
         with patch("api.research_routes._get_supabase", return_value=sb):
@@ -294,7 +318,10 @@ class TestErrorResilience:
         bad_jwt = _make_jwt(DEVELOPER_PAYLOAD, secret=WRONG_SECRET)
         auth = {"Authorization": f"Bearer {bad_jwt}"}
 
-        with patch("config.settings.get_settings", return_value=_make_settings(jwt_secret=E2E_SECRET)):
+        with patch(
+            "config.settings.get_settings",
+            return_value=_make_settings(jwt_secret=E2E_SECRET),
+        ):
             resp = test_client.get("/api/v1/studio/me/roles", headers=auth)
 
         assert resp.status_code == 200, resp.text
@@ -310,23 +337,27 @@ class TestErrorResilience:
         """
         # Build supabase where api_spend query raises (simulates DB error for that table)
         api_spend_mock = MagicMock()
-        api_spend_mock.select.return_value.eq.return_value.execute.side_effect = Exception(
-            "api_spend: connection reset"
+        api_spend_mock.select.return_value.eq.return_value.execute.side_effect = (
+            Exception("api_spend: connection reset")
         )
 
         submissions_mock = MagicMock()
-        submissions_mock.insert.return_value.execute.return_value.data = [{"id": "sub-cap-fail-001"}]
+        submissions_mock.insert.return_value.execute.return_value.data = [
+            {"id": "sub-cap-fail-001"}
+        ]
 
         review_queue_mock = MagicMock()
         review_queue_mock.insert.return_value.execute.return_value.data = [{}]
 
         sb = MagicMock()
+
         def _table(name: str):
             return {
                 "api_spend": api_spend_mock,
                 "master_wine_library_submissions": submissions_mock,
                 "field_review_queue": review_queue_mock,
             }.get(name, MagicMock())
+
         sb.table.side_effect = _table
 
         # Extractor returns a valid result — extraction should succeed
@@ -337,9 +368,9 @@ class TestErrorResilience:
         mock_haiku = MagicMock()
         mock_haiku.delay = MagicMock()
 
-        with patch(_SUPABASE_PATCH, return_value=sb), \
-             patch(_EXTRACTOR_PATCH, return_value=mock_extractor), \
-             patch(_HAIKU_PATCH, mock_haiku):
+        with patch(_SUPABASE_PATCH, return_value=sb), patch(
+            _EXTRACTOR_PATCH, return_value=mock_extractor
+        ), patch(_HAIKU_PATCH, mock_haiku):
 
             resp = test_client.post(
                 "/api/v1/onboarding/extract",
@@ -347,6 +378,10 @@ class TestErrorResilience:
             )
 
         # Extraction must succeed despite api_spend query failure (fail-open)
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200, got {resp.status_code}: {resp.text}"
         # Submission was inserted (extraction ran)
-        assert submissions_mock.insert.called, "Extraction did not run — cap check was not fail-open"
+        assert (
+            submissions_mock.insert.called
+        ), "Extraction did not run — cap check was not fail-open"

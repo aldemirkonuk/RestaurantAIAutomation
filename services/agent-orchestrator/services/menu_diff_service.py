@@ -8,6 +8,7 @@ Upserts restaurant_wine_roster to reflect the new current state.
 CRITICAL GUARD: empty new_wines list is always skipped — it signals a crawl
 failure, not "all wines removed". Treat it as a no-op.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,13 +47,17 @@ class MenuDiffService:
                 "menu_diff: skipping diff for restaurant_id=%s — empty crawl result",
                 restaurant_id,
             )
-            return {"added": 0, "removed": 0, "price_changed": 0, "skipped": True, "reason": "empty_crawl"}
+            return {
+                "added": 0,
+                "removed": 0,
+                "price_changed": 0,
+                "skipped": True,
+                "reason": "empty_crawl",
+            }
 
         # Build lookup from new crawl (keyed by signature_hash)
         new_hashes: Dict[str, Dict[str, Any]] = {
-            w["signature_hash"]: w
-            for w in new_wines
-            if w.get("signature_hash")
+            w["signature_hash"]: w for w in new_wines if w.get("signature_hash")
         }
 
         if not new_hashes:
@@ -61,7 +66,13 @@ class MenuDiffService:
                 len(new_wines),
                 restaurant_id,
             )
-            return {"added": 0, "removed": 0, "price_changed": 0, "skipped": True, "reason": "no_hashes"}
+            return {
+                "added": 0,
+                "removed": 0,
+                "price_changed": 0,
+                "skipped": True,
+                "reason": "no_hashes",
+            }
 
         # Fetch current roster
         old_roster: Dict[str, Dict[str, Any]] = self._fetch_roster(restaurant_id)
@@ -71,8 +82,7 @@ class MenuDiffService:
         removed_hashes = set(old_roster) - set(new_hashes)
         shared_hashes = set(new_hashes) & set(old_roster)
         price_changed_hashes = {
-            h for h in shared_hashes
-            if self._price_gate(new_hashes[h], old_roster[h])
+            h for h in shared_hashes if self._price_gate(new_hashes[h], old_roster[h])
         }
 
         # Build menu_changes events
@@ -80,26 +90,38 @@ class MenuDiffService:
         events: List[Dict[str, Any]] = []
 
         for h in added_hashes:
-            events.append(self._change_event(
-                restaurant_id, h, "added",
-                old_value=None,
-                new_value=new_hashes[h],
-                detected_at=now_iso,
-            ))
+            events.append(
+                self._change_event(
+                    restaurant_id,
+                    h,
+                    "added",
+                    old_value=None,
+                    new_value=new_hashes[h],
+                    detected_at=now_iso,
+                )
+            )
         for h in removed_hashes:
-            events.append(self._change_event(
-                restaurant_id, h, "removed",
-                old_value=old_roster[h],
-                new_value=None,
-                detected_at=now_iso,
-            ))
+            events.append(
+                self._change_event(
+                    restaurant_id,
+                    h,
+                    "removed",
+                    old_value=old_roster[h],
+                    new_value=None,
+                    detected_at=now_iso,
+                )
+            )
         for h in price_changed_hashes:
-            events.append(self._change_event(
-                restaurant_id, h, "price_change",
-                old_value=old_roster[h],
-                new_value=new_hashes[h],
-                detected_at=now_iso,
-            ))
+            events.append(
+                self._change_event(
+                    restaurant_id,
+                    h,
+                    "price_change",
+                    old_value=old_roster[h],
+                    new_value=new_hashes[h],
+                    detected_at=now_iso,
+                )
+            )
 
         # Persist events
         if events:
@@ -107,7 +129,10 @@ class MenuDiffService:
                 self.supabase.table("menu_changes").insert(events).execute()
                 logger.info(
                     "menu_diff: restaurant_id=%s — %d added, %d removed, %d price_changed",
-                    restaurant_id, len(added_hashes), len(removed_hashes), len(price_changed_hashes),
+                    restaurant_id,
+                    len(added_hashes),
+                    len(removed_hashes),
+                    len(price_changed_hashes),
                 )
             except Exception as exc:
                 logger.error("menu_diff: failed to insert menu_changes: %s", exc)
@@ -132,13 +157,17 @@ class MenuDiffService:
         try:
             resp = (
                 self.supabase.table("restaurant_wine_roster")
-                .select("signature_hash, wine_name, price_reference, first_seen_at, last_seen_at")
+                .select(
+                    "signature_hash, wine_name, price_reference, first_seen_at, last_seen_at"
+                )
                 .eq("restaurant_id", restaurant_id)
                 .execute()
             )
             return {row["signature_hash"]: row for row in (resp.data or [])}
         except Exception as exc:
-            logger.error("menu_diff: failed to fetch roster for %s: %s", restaurant_id, exc)
+            logger.error(
+                "menu_diff: failed to fetch roster for %s: %s", restaurant_id, exc
+            )
             return {}
 
     @staticmethod
@@ -209,14 +238,16 @@ class MenuDiffService:
             h = wine.get("signature_hash")
             if not h:
                 continue
-            rows.append({
-                "restaurant_id": restaurant_id,
-                "signature_hash": h,
-                "wine_name": wine.get("wine_name"),
-                "price_reference": wine.get("price_reference"),
-                "first_seen_at": now_iso,
-                "last_seen_at": now_iso,
-            })
+            rows.append(
+                {
+                    "restaurant_id": restaurant_id,
+                    "signature_hash": h,
+                    "wine_name": wine.get("wine_name"),
+                    "price_reference": wine.get("price_reference"),
+                    "first_seen_at": now_iso,
+                    "last_seen_at": now_iso,
+                }
+            )
         if not rows:
             return
         try:
@@ -225,5 +256,7 @@ class MenuDiffService:
                 on_conflict="restaurant_id,signature_hash",
             ).execute()
         except Exception as exc:
-            logger.error("menu_diff: failed to upsert roster for %s: %s", restaurant_id, exc)
+            logger.error(
+                "menu_diff: failed to upsert roster for %s: %s", restaurant_id, exc
+            )
             raise

@@ -23,38 +23,78 @@ logger = setup_logger(__name__)
 # CONFIGURATION
 # =============================================================================
 
+
 class AgentTier(str, Enum):
     """Agent tier determines startup behavior."""
-    CORE = "core"           # Always start on boot
-    ON_DEMAND = "on_demand" # Lazy-loaded when first message arrives
-    OPTIONAL = "optional"   # Disabled unless feature flag is set
+
+    CORE = "core"  # Always start on boot
+    ON_DEMAND = "on_demand"  # Lazy-loaded when first message arrives
+    OPTIONAL = "optional"  # Disabled unless feature flag is set
 
 
 @dataclass
 class AgentSpec:
     """Specification for a registered agent."""
+
     name: str
     agent_class: Type
     tier: AgentTier = AgentTier.ON_DEMAND
     dependencies: List[str] = field(default_factory=list)
-    feature_flag: Optional[str] = None  # Env var name (e.g., "FEATURE_VISUAL_VERIFICATION")
-    idle_timeout_seconds: int = 300     # 5 minutes default
+    feature_flag: Optional[str] = (
+        None  # Env var name (e.g., "FEATURE_VISUAL_VERIFICATION")
+    )
+    idle_timeout_seconds: int = 300  # 5 minutes default
     description: str = ""
 
 
 # Default agent configurations
 DEFAULT_AGENT_SPECS: Dict[str, dict] = {
     # Core agents (always start)
-    "buffer_manager": {"tier": AgentTier.CORE, "dependencies": [], "description": "Processes POS events with buffering"},
-    "inventory_engine": {"tier": AgentTier.CORE, "dependencies": ["buffer_manager"], "description": "Core inventory management"},
-    "inequality_detector": {"tier": AgentTier.CORE, "dependencies": ["inventory_engine"], "description": "Detects stock inequalities"},
-    "state_invariant_enforcer": {"tier": AgentTier.CORE, "dependencies": ["inventory_engine"], "description": "Global guardrails"},
-    "notification_agent": {"tier": AgentTier.CORE, "dependencies": [], "description": "Communication layer"},
-    "procurement_agent": {"tier": AgentTier.CORE, "dependencies": ["inventory_engine", "notification_agent"], "description": "Procurement logic"},
-    "calendar_agent": {"tier": AgentTier.CORE, "dependencies": [], "description": "Calendar integration"},
-    "reporting_agent": {"tier": AgentTier.CORE, "dependencies": [], "description": "Report generation"},
-    "pos_integration_agent": {"tier": AgentTier.CORE, "dependencies": [], "description": "POS data ingestion"},
-
+    "buffer_manager": {
+        "tier": AgentTier.CORE,
+        "dependencies": [],
+        "description": "Processes POS events with buffering",
+    },
+    "inventory_engine": {
+        "tier": AgentTier.CORE,
+        "dependencies": ["buffer_manager"],
+        "description": "Core inventory management",
+    },
+    "inequality_detector": {
+        "tier": AgentTier.CORE,
+        "dependencies": ["inventory_engine"],
+        "description": "Detects stock inequalities",
+    },
+    "state_invariant_enforcer": {
+        "tier": AgentTier.CORE,
+        "dependencies": ["inventory_engine"],
+        "description": "Global guardrails",
+    },
+    "notification_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": [],
+        "description": "Communication layer",
+    },
+    "procurement_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": ["inventory_engine", "notification_agent"],
+        "description": "Procurement logic",
+    },
+    "calendar_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": [],
+        "description": "Calendar integration",
+    },
+    "reporting_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": [],
+        "description": "Report generation",
+    },
+    "pos_integration_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": [],
+        "description": "POS data ingestion",
+    },
     # Phase 2 agents (on-demand)
     "visual_verification_agent": {
         "tier": AgentTier.ON_DEMAND,
@@ -79,19 +119,39 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": ["procurement_agent"],
         "description": "Request for quotation",
     },
-
     # P1 agents (optional)
-    "ghost_inventory_agent": {"tier": AgentTier.OPTIONAL, "dependencies": ["inventory_engine"], "description": "Ghost inventory detection"},
-    "negotiation_playbook_agent": {"tier": AgentTier.OPTIONAL, "dependencies": ["procurement_agent"], "description": "Negotiation playbooks"},
-    "auto_pilot_agent": {"tier": AgentTier.OPTIONAL, "dependencies": ["procurement_agent"], "description": "Auto-pilot procurement"},
-    "compliance_agent": {"tier": AgentTier.OPTIONAL, "dependencies": [], "description": "Compliance checks"},
-    "shrinkage_detective_agent": {"tier": AgentTier.OPTIONAL, "dependencies": ["inventory_engine"], "description": "Shrinkage detection"},
+    "ghost_inventory_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": ["inventory_engine"],
+        "description": "Ghost inventory detection",
+    },
+    "negotiation_playbook_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": ["procurement_agent"],
+        "description": "Negotiation playbooks",
+    },
+    "auto_pilot_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": ["procurement_agent"],
+        "description": "Auto-pilot procurement",
+    },
+    "compliance_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": [],
+        "description": "Compliance checks",
+    },
+    "shrinkage_detective_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": ["inventory_engine"],
+        "description": "Shrinkage detection",
+    },
 }
 
 
 # =============================================================================
 # LAZY AGENT PROXY
 # =============================================================================
+
 
 class LazyAgentProxy:
     """
@@ -164,10 +224,12 @@ class LazyAgentProxy:
         if self._instance and self._is_started and not self._is_suspended:
             try:
                 # Stop consuming from queues but keep instance in memory
-                if hasattr(self._instance, 'pause'):
+                if hasattr(self._instance, "pause"):
                     await self._instance.pause()
                 self._is_suspended = True
-                logger.info(f"Suspended idle agent: {self.spec.name} (idle for {self.idle_seconds:.0f}s)")
+                logger.info(
+                    f"Suspended idle agent: {self.spec.name} (idle for {self.idle_seconds:.0f}s)"
+                )
             except Exception as e:
                 logger.warning(f"Failed to suspend agent {self.spec.name}: {e}")
 
@@ -175,9 +237,9 @@ class LazyAgentProxy:
         """Resume a suspended agent."""
         if self._instance and self._is_suspended:
             try:
-                if hasattr(self._instance, 'resume'):
+                if hasattr(self._instance, "resume"):
                     await self._instance.resume()
-                elif hasattr(self._instance, 'start'):
+                elif hasattr(self._instance, "start"):
                     await self._instance.start()
                 self._is_suspended = False
                 self._last_activity = time.time()
@@ -189,7 +251,7 @@ class LazyAgentProxy:
         """Stop and unload the agent."""
         if self._instance:
             try:
-                if hasattr(self._instance, 'stop'):
+                if hasattr(self._instance, "stop"):
                     await self._instance.stop()
                 self._is_started = False
                 self._is_suspended = False
@@ -226,6 +288,7 @@ class LazyAgentProxy:
 # =============================================================================
 # AGENT REGISTRY
 # =============================================================================
+
 
 class AgentRegistry:
     """
@@ -310,7 +373,9 @@ class AgentRegistry:
         if not spec:
             raise ValueError(f"Agent {name} not registered")
 
-        proxy = LazyAgentProxy(spec=spec, factory=factory, factory_kwargs=factory_kwargs)
+        proxy = LazyAgentProxy(
+            spec=spec, factory=factory, factory_kwargs=factory_kwargs
+        )
         self._proxies[name] = proxy
         return proxy
 
@@ -330,7 +395,8 @@ class AgentRegistry:
     def get_startup_order(self) -> List[str]:
         """Get agents in dependency-resolved startup order (only CORE tier)."""
         core_agents = [
-            name for name, spec in self._specs.items()
+            name
+            for name, spec in self._specs.items()
             if spec.tier == AgentTier.CORE and self.is_enabled(name)
         ]
 
@@ -364,6 +430,7 @@ class AgentRegistry:
 
     async def start_suspend_monitor(self, check_interval: int = 60):
         """Start background task that auto-suspends idle agents."""
+
         async def _monitor():
             while True:
                 await asyncio.sleep(check_interval)

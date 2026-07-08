@@ -15,7 +15,6 @@ import smtplib
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional
 
 from jobs.celery_app import celery_app
 
@@ -81,11 +80,14 @@ def _already_alerted(supabase, provider: str, month: str) -> bool:
 def _record_alert(supabase, provider: str, month: str) -> None:
     """Upsert spend_alert_state row to suppress duplicate alerts."""
     try:
-        supabase.table("spend_alert_state").upsert({
-            "provider": provider,
-            "last_alert_month": month,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }, on_conflict="provider").execute()
+        supabase.table("spend_alert_state").upsert(
+            {
+                "provider": provider,
+                "last_alert_month": month,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+            on_conflict="provider",
+        ).execute()
     except Exception as exc:
         logger.warning("Could not record alert state for %s: %s", provider, exc)
 
@@ -119,9 +121,13 @@ def _send_alert_email(
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
             server.login(settings.gmail_user, settings.gmail_password)
-            server.sendmail(settings.gmail_user, settings.manager_email, msg.as_string())
+            server.sendmail(
+                settings.gmail_user, settings.manager_email, msg.as_string()
+            )
 
-        logger.info("Cap alert email sent for %s/%s (spend=%.4f)", provider, month, spend)
+        logger.info(
+            "Cap alert email sent for %s/%s (spend=%.4f)", provider, month, spend
+        )
     except Exception as exc:
         logger.warning("Failed to send cap alert email: %s", exc)
 
@@ -134,29 +140,41 @@ def monthly_cap_check_task(self):
     """
     try:
         from config.settings import get_settings
+
         settings = get_settings()
         if not settings.supabase_url or not settings.supabase_key:
             logger.debug("Supabase not configured — skipping monthly cap check")
             return
 
         from supabase import create_client
+
         supabase = create_client(settings.supabase_url, settings.supabase_key)
 
         month = _get_current_month()
 
         for provider, threshold in MONTHLY_CAP_THRESHOLDS.items():
             spend = _get_monthly_spend(supabase, provider, month)
-            logger.debug("Monthly spend check: provider=%s month=%s spend=%.4f threshold=%.2f",
-                         provider, month, spend, threshold)
+            logger.debug(
+                "Monthly spend check: provider=%s month=%s spend=%.4f threshold=%.2f",
+                provider,
+                month,
+                spend,
+                threshold,
+            )
 
             if spend >= threshold:
                 if _already_alerted(supabase, provider, month):
-                    logger.debug("Alert already sent for %s/%s — suppressing", provider, month)
+                    logger.debug(
+                        "Alert already sent for %s/%s — suppressing", provider, month
+                    )
                     continue
 
                 logger.warning(
                     "COST CAP BREACH: provider=%s month=%s spend=%.4f >= threshold=%.2f",
-                    provider, month, spend, threshold,
+                    provider,
+                    month,
+                    spend,
+                    threshold,
                 )
                 _send_alert_email(settings, provider, month, spend, threshold)
                 _record_alert(supabase, provider, month)

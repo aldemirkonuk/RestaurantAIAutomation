@@ -1,6 +1,7 @@
 """
 Unit tests for FuzzyMatcher (D-32-15 invoice matching).
 """
+
 import pytest
 from services.fuzzy_matcher import get_fuzzy_matcher
 

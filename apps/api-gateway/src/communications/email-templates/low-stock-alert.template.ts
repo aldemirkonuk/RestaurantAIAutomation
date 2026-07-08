@@ -2,8 +2,12 @@
  * Low Stock Alert Email Template
  */
 
-import { EMAIL_CONFIG, getSeverityColor, getSeverityLabel } from './template-config';
-import { baseTemplate, metricBox, alertBox } from './base-template';
+import {
+  EMAIL_CONFIG,
+  getSeverityColor,
+  getSeverityLabel,
+} from "./template-config";
+import { baseTemplate, metricBox, alertBox } from "./base-template";
 
 export interface LowStockAlertData {
   wineName: string;
@@ -22,8 +26,8 @@ export function lowStockAlertTemplate(data: LowStockAlertData): string {
   const { colors } = EMAIL_CONFIG;
   const severity = getSeverityLabel(data.currentStock, data.threshold);
   const severityColor = getSeverityColor(data.currentStock, data.threshold);
-  
-  const daysUntilStockout = data.avgDailySales 
+
+  const daysUntilStockout = data.avgDailySales
     ? Math.ceil(data.currentStock / data.avgDailySales)
     : null;
 
@@ -33,46 +37,60 @@ export function lowStockAlertTemplate(data: LowStockAlertData): string {
       <tr>
         ${metricBox({
           value: data.currentStock,
-          label: 'Current Stock',
-          backgroundColor: '#fef2f2',
+          label: "Current Stock",
+          backgroundColor: "#fef2f2",
           textColor: colors.danger,
         })}
         <td width="15px"></td>
         ${metricBox({
           value: data.threshold,
-          label: 'Min Threshold',
+          label: "Min Threshold",
           backgroundColor: colors.gray[100],
           textColor: colors.gray[700],
         })}
       </tr>
     </table>
-    ${data.avgDailySales || daysUntilStockout ? `
+    ${
+      data.avgDailySales || daysUntilStockout
+        ? `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 20px;">
       <tr>
-        ${data.avgDailySales ? metricBox({
-          value: data.avgDailySales.toFixed(1),
-          label: 'Avg Daily Sales',
-          backgroundColor: colors.gray[100],
-          textColor: colors.gray[700],
-        }) : '<td width="50%"></td>'}
+        ${
+          data.avgDailySales
+            ? metricBox({
+                value: data.avgDailySales.toFixed(1),
+                label: "Avg Daily Sales",
+                backgroundColor: colors.gray[100],
+                textColor: colors.gray[700],
+              })
+            : '<td width="50%"></td>'
+        }
         <td width="15px"></td>
-        ${daysUntilStockout ? metricBox({
-          value: `~${daysUntilStockout}`,
-          label: 'Days Until Stockout',
-          backgroundColor: '#fef2f2',
-          textColor: colors.danger,
-        }) : '<td width="50%"></td>'}
+        ${
+          daysUntilStockout
+            ? metricBox({
+                value: `~${daysUntilStockout}`,
+                label: "Days Until Stockout",
+                backgroundColor: "#fef2f2",
+                textColor: colors.danger,
+              })
+            : '<td width="50%"></td>'
+        }
       </tr>
     </table>
-    ` : ''}
+    `
+        : ""
+    }
   `;
 
   // Build the recommendation section
-  const recommendationHtml = data.recommendedQty ? alertBox({
-    type: 'warning',
-    title: 'Recommended Action',
-    message: `Order ${data.recommendedQty} bottles from ${data.preferredSupplier || 'your preferred supplier'}${data.estimatedDelivery ? `. Estimated delivery: ${data.estimatedDelivery}` : ''}`,
-  }) : '';
+  const recommendationHtml = data.recommendedQty
+    ? alertBox({
+        type: "warning",
+        title: "Recommended Action",
+        message: `Order ${data.recommendedQty} bottles from ${data.preferredSupplier || "your preferred supplier"}${data.estimatedDelivery ? `. Estimated delivery: ${data.estimatedDelivery}` : ""}`,
+      })
+    : "";
 
   // Main content
   const content = `
@@ -103,8 +121,8 @@ export function lowStockAlertTemplate(data: LowStockAlertData): string {
     preheader: `Only ${data.currentStock} bottles remaining - ${data.wineName}`,
     content,
     ctaButton: {
-      text: 'View Inventory',
-      url: '#', // Replace with actual URL
+      text: "View Inventory",
+      url: "#", // Replace with actual URL
       color: colors.primary,
     },
   });

@@ -6,7 +6,6 @@ All external dependencies (Supabase, filesystem) are mocked.
 No live connections required.
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from services.dataset_ingestion_service import (
@@ -21,6 +20,7 @@ from services.dataset_ingestion_service import (
 # =============================================================================
 # _field_match: fuzzy string comparison
 # =============================================================================
+
 
 class TestFieldMatch:
     """_field_match uses SequenceMatcher with threshold=0.85."""
@@ -58,6 +58,7 @@ class TestFieldMatch:
 # =============================================================================
 # wine_matches: field counting
 # =============================================================================
+
 
 class TestWineMatches:
     """wine_matches counts matching fields (0-4) between library record and DB wine."""
@@ -122,27 +123,57 @@ class TestWineMatches:
     def test_two_field_match_meets_threshold(self):
         """name + vintage matches → count >= MIN_MATCH_COUNT."""
         lib = {"name": "Barolo", "producer": None, "vintage": 2018, "appellation": None}
-        db = {"name": "Barolo", "producer": "Some Producer", "vintage": "2018", "appellation": None}
+        db = {
+            "name": "Barolo",
+            "producer": "Some Producer",
+            "vintage": "2018",
+            "appellation": None,
+        }
         count = wine_matches(lib, db)
         assert count >= MIN_MATCH_COUNT
 
     def test_partial_producer_only_does_not_match_if_name_differs(self):
         """Producer match alone (1 field) is below MIN_MATCH_COUNT."""
-        lib = {"name": "Margaux", "producer": "Chateau Margaux", "vintage": None, "appellation": None}
-        db = {"name": "Pauillac", "producer": "Chateau Margaux", "vintage": None, "appellation": None}
+        lib = {
+            "name": "Margaux",
+            "producer": "Chateau Margaux",
+            "vintage": None,
+            "appellation": None,
+        }
+        db = {
+            "name": "Pauillac",
+            "producer": "Chateau Margaux",
+            "vintage": None,
+            "appellation": None,
+        }
         count = wine_matches(lib, db)
         assert count < MIN_MATCH_COUNT  # only 1 field: producer
 
     def test_vintage_mismatch_not_counted(self):
         lib = {"name": "Barolo", "producer": None, "vintage": 2015, "appellation": None}
-        db = {"name": "Barolo", "producer": None, "vintage": "2019", "appellation": None}
+        db = {
+            "name": "Barolo",
+            "producer": None,
+            "vintage": "2019",
+            "appellation": None,
+        }
         count = wine_matches(lib, db)
         assert count == 1  # only name matches
 
     def test_none_vintage_not_counted(self):
         """If either vintage is None, vintage field is not counted."""
-        lib = {"name": "Barolo", "producer": None, "vintage": None, "appellation": "Barolo DOCG"}
-        db = {"name": "Barolo", "producer": None, "vintage": "2019", "appellation": "Barolo DOCG"}
+        lib = {
+            "name": "Barolo",
+            "producer": None,
+            "vintage": None,
+            "appellation": "Barolo DOCG",
+        }
+        db = {
+            "name": "Barolo",
+            "producer": None,
+            "vintage": "2019",
+            "appellation": "Barolo DOCG",
+        }
         count = wine_matches(lib, db)
         assert count == 2  # name + appellation, vintage skipped
 
@@ -151,15 +182,21 @@ class TestWineMatches:
 # discover_datasets: file discovery
 # =============================================================================
 
+
 class TestDiscoverDatasets:
 
     def test_returns_empty_list_when_no_files(self, tmp_path, monkeypatch):
         """No crash when no dataset files found — returns empty list."""
         import services.dataset_ingestion_service as dis
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-            {"glob": str(tmp_path / "*.csv"), "format": "csv"},
-        ])
+
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+                {"glob": str(tmp_path / "*.csv"), "format": "csv"},
+            ],
+        )
         result = discover_datasets()
         assert result == []
 
@@ -171,9 +208,13 @@ class TestDiscoverDatasets:
         test_file = tmp_path / "test_wines.jsonl"
         test_file.write_text('{"name": "Barolo"}\n')
 
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-        ])
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+            ],
+        )
         result = discover_datasets()
         assert len(result) == 1
         assert "path" in result[0]
@@ -182,9 +223,14 @@ class TestDiscoverDatasets:
     def test_skips_nonexistent_directory(self, monkeypatch):
         """Non-existent glob path returns empty list without error."""
         import services.dataset_ingestion_service as dis
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": "/nonexistent/path/*.jsonl", "format": "jsonl"},
-        ])
+
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": "/nonexistent/path/*.jsonl", "format": "jsonl"},
+            ],
+        )
         result = discover_datasets()
         assert isinstance(result, list)
         assert result == []
@@ -193,6 +239,7 @@ class TestDiscoverDatasets:
 # =============================================================================
 # DatasetIngestionService.enrich_wine: non-destructive guard
 # =============================================================================
+
 
 class TestDatasetIngestionServiceNonDestructive:
     """Pre-populated JSONB columns must NOT be overwritten."""
@@ -203,14 +250,13 @@ class TestDatasetIngestionServiceNonDestructive:
 
         mock_supabase = MagicMock()
         (
-            mock_supabase.table.return_value
-            .select.return_value
-            .eq.return_value
-            .maybe_single.return_value
-            .execute.return_value
+            mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value
         ).data = None
 
-        with patch("services.dataset_ingestion_service._get_supabase_client", return_value=mock_supabase):
+        with patch(
+            "services.dataset_ingestion_service._get_supabase_client",
+            return_value=mock_supabase,
+        ):
             result = service.enrich_wine("nonexistent-wine-id")
 
         assert result["status"] == "not_found"
@@ -220,9 +266,13 @@ class TestDatasetIngestionServiceNonDestructive:
         """If no dataset files discovered, returns status=skipped without error."""
         import services.dataset_ingestion_service as dis
 
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-        ])
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+            ],
+        )
 
         db_wine = {
             "id": "wine-skip",
@@ -237,14 +287,13 @@ class TestDatasetIngestionServiceNonDestructive:
 
         mock_supabase = MagicMock()
         (
-            mock_supabase.table.return_value
-            .select.return_value
-            .eq.return_value
-            .maybe_single.return_value
-            .execute.return_value
+            mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value
         ).data = db_wine
 
-        with patch("services.dataset_ingestion_service._get_supabase_client", return_value=mock_supabase):
+        with patch(
+            "services.dataset_ingestion_service._get_supabase_client",
+            return_value=mock_supabase,
+        ):
             svc = dis.DatasetIngestionService()
             result = svc.enrich_wine("wine-skip")
 
@@ -258,19 +307,28 @@ class TestDatasetIngestionServiceNonDestructive:
 
         # Create a matching JSONL record
         test_file = tmp_path / "wines.jsonl"
-        test_file.write_text(json.dumps({
-            "name": "Barolo",
-            "producer": "Gaja",
-            "vintage": "2019",
-            "classification": {"appellation": "Barolo DOCG"},
-            "wine_structure": {"body": "full", "acidity": "high"},
-            "sensory_profile": {"primary_aromas": ["cherry", "leather"]},
-            "quality_signals": {},
-        }) + "\n")
+        test_file.write_text(
+            json.dumps(
+                {
+                    "name": "Barolo",
+                    "producer": "Gaja",
+                    "vintage": "2019",
+                    "classification": {"appellation": "Barolo DOCG"},
+                    "wine_structure": {"body": "full", "acidity": "high"},
+                    "sensory_profile": {"primary_aromas": ["cherry", "leather"]},
+                    "quality_signals": {},
+                }
+            )
+            + "\n"
+        )
 
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-        ])
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+            ],
+        )
 
         db_wine = {
             "id": "wine-populated",
@@ -278,30 +336,32 @@ class TestDatasetIngestionServiceNonDestructive:
             "producer": "Gaja",
             "vintage": "2019",
             "appellation": "Barolo DOCG",
-            "wine_structure": {"body": "medium", "acidity": "medium"},  # already populated
+            "wine_structure": {
+                "body": "medium",
+                "acidity": "medium",
+            },  # already populated
             "sensory_profile": {},
             "quality_signals": {},
         }
 
         mock_supabase = MagicMock()
         (
-            mock_supabase.table.return_value
-            .select.return_value
-            .eq.return_value
-            .maybe_single.return_value
-            .execute.return_value
+            mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value
         ).data = db_wine
 
-        with patch("services.dataset_ingestion_service._get_supabase_client", return_value=mock_supabase):
+        with patch(
+            "services.dataset_ingestion_service._get_supabase_client",
+            return_value=mock_supabase,
+        ):
             svc = dis.DatasetIngestionService()
-            result = svc.enrich_wine("wine-populated")
+            svc.enrich_wine("wine-populated")
 
         # wine_structure must NOT appear in any update payload
         for c in mock_supabase.table.return_value.update.call_args_list:
             update_payload = c[0][0]
-            assert "wine_structure" not in update_payload, (
-                "wine_structure should NOT be overwritten when already populated"
-            )
+            assert (
+                "wine_structure" not in update_payload
+            ), "wine_structure should NOT be overwritten when already populated"
 
     def test_empty_jsonb_gets_enriched(self, tmp_path, monkeypatch):
         """Empty JSONB columns ({}) are enriched with dataset data."""
@@ -309,19 +369,28 @@ class TestDatasetIngestionServiceNonDestructive:
         import json
 
         test_file = tmp_path / "wines.jsonl"
-        test_file.write_text(json.dumps({
-            "name": "Barolo",
-            "producer": "Gaja",
-            "vintage": "2019",
-            "classification": {"appellation": "Barolo DOCG"},
-            "wine_structure": {"body": "full", "acidity": "high"},
-            "sensory_profile": {},
-            "quality_signals": {},
-        }) + "\n")
+        test_file.write_text(
+            json.dumps(
+                {
+                    "name": "Barolo",
+                    "producer": "Gaja",
+                    "vintage": "2019",
+                    "classification": {"appellation": "Barolo DOCG"},
+                    "wine_structure": {"body": "full", "acidity": "high"},
+                    "sensory_profile": {},
+                    "quality_signals": {},
+                }
+            )
+            + "\n"
+        )
 
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-        ])
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+            ],
+        )
 
         db_wine = {
             "id": "wine-empty-jsonb",
@@ -329,21 +398,20 @@ class TestDatasetIngestionServiceNonDestructive:
             "producer": "Gaja",
             "vintage": "2019",
             "appellation": "Barolo DOCG",
-            "wine_structure": {},       # empty — should be enriched
+            "wine_structure": {},  # empty — should be enriched
             "sensory_profile": {},
             "quality_signals": {},
         }
 
         mock_supabase = MagicMock()
         (
-            mock_supabase.table.return_value
-            .select.return_value
-            .eq.return_value
-            .maybe_single.return_value
-            .execute.return_value
+            mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value
         ).data = db_wine
 
-        with patch("services.dataset_ingestion_service._get_supabase_client", return_value=mock_supabase):
+        with patch(
+            "services.dataset_ingestion_service._get_supabase_client",
+            return_value=mock_supabase,
+        ):
             svc = dis.DatasetIngestionService()
             result = svc.enrich_wine("wine-empty-jsonb")
 
@@ -351,25 +419,36 @@ class TestDatasetIngestionServiceNonDestructive:
         assert result["status"] == "enriched"
         assert "wine_structure" in result.get("fields_written", [])
 
-    def test_all_populated_returns_skipped_already_populated(self, tmp_path, monkeypatch):
+    def test_all_populated_returns_skipped_already_populated(
+        self, tmp_path, monkeypatch
+    ):
         """If all 3 JSONB columns are populated, returns status=skipped."""
         import services.dataset_ingestion_service as dis
         import json
 
         test_file = tmp_path / "wines.jsonl"
-        test_file.write_text(json.dumps({
-            "name": "Barolo",
-            "producer": "Gaja",
-            "vintage": "2019",
-            "classification": {"appellation": "Barolo DOCG"},
-            "wine_structure": {"body": "full"},
-            "sensory_profile": {"primary_aromas": ["cherry"]},
-            "quality_signals": {"quality_level": "premium"},
-        }) + "\n")
+        test_file.write_text(
+            json.dumps(
+                {
+                    "name": "Barolo",
+                    "producer": "Gaja",
+                    "vintage": "2019",
+                    "classification": {"appellation": "Barolo DOCG"},
+                    "wine_structure": {"body": "full"},
+                    "sensory_profile": {"primary_aromas": ["cherry"]},
+                    "quality_signals": {"quality_level": "premium"},
+                }
+            )
+            + "\n"
+        )
 
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-        ])
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+            ],
+        )
 
         db_wine = {
             "id": "wine-all-pop",
@@ -377,21 +456,20 @@ class TestDatasetIngestionServiceNonDestructive:
             "producer": "Gaja",
             "vintage": "2019",
             "appellation": "Barolo DOCG",
-            "wine_structure": {"body": "medium"},       # populated
+            "wine_structure": {"body": "medium"},  # populated
             "sensory_profile": {"aromas": ["cherry"]},  # populated
-            "quality_signals": {"quality_level": "good"}, # populated
+            "quality_signals": {"quality_level": "good"},  # populated
         }
 
         mock_supabase = MagicMock()
         (
-            mock_supabase.table.return_value
-            .select.return_value
-            .eq.return_value
-            .maybe_single.return_value
-            .execute.return_value
+            mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value
         ).data = db_wine
 
-        with patch("services.dataset_ingestion_service._get_supabase_client", return_value=mock_supabase):
+        with patch(
+            "services.dataset_ingestion_service._get_supabase_client",
+            return_value=mock_supabase,
+        ):
             svc = dis.DatasetIngestionService()
             result = svc.enrich_wine("wine-all-pop")
 
@@ -404,19 +482,28 @@ class TestDatasetIngestionServiceNonDestructive:
         import json
 
         test_file = tmp_path / "wines.jsonl"
-        test_file.write_text(json.dumps({
-            "name": "Dom Perignon",
-            "producer": "Moet & Chandon",
-            "vintage": "2015",
-            "classification": {"appellation": "Champagne"},
-            "wine_structure": {},
-            "sensory_profile": {},
-            "quality_signals": {},
-        }) + "\n")
+        test_file.write_text(
+            json.dumps(
+                {
+                    "name": "Dom Perignon",
+                    "producer": "Moet & Chandon",
+                    "vintage": "2015",
+                    "classification": {"appellation": "Champagne"},
+                    "wine_structure": {},
+                    "sensory_profile": {},
+                    "quality_signals": {},
+                }
+            )
+            + "\n"
+        )
 
-        monkeypatch.setattr(dis, "DATASET_SOURCES", [
-            {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
-        ])
+        monkeypatch.setattr(
+            dis,
+            "DATASET_SOURCES",
+            [
+                {"glob": str(tmp_path / "*.jsonl"), "format": "jsonl"},
+            ],
+        )
 
         db_wine = {
             "id": "wine-no-match",
@@ -431,14 +518,13 @@ class TestDatasetIngestionServiceNonDestructive:
 
         mock_supabase = MagicMock()
         (
-            mock_supabase.table.return_value
-            .select.return_value
-            .eq.return_value
-            .maybe_single.return_value
-            .execute.return_value
+            mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value
         ).data = db_wine
 
-        with patch("services.dataset_ingestion_service._get_supabase_client", return_value=mock_supabase):
+        with patch(
+            "services.dataset_ingestion_service._get_supabase_client",
+            return_value=mock_supabase,
+        ):
             svc = dis.DatasetIngestionService()
             result = svc.enrich_wine("wine-no-match")
 

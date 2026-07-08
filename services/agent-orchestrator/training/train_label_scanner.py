@@ -21,13 +21,17 @@ OUTPUT_DIR = PROJECT_ROOT / "services" / "agent-orchestrator" / "models"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train WineOps Label Scanner (YOLOv8m)")
+    parser = argparse.ArgumentParser(
+        description="Train WineOps Label Scanner (YOLOv8m)"
+    )
     parser.add_argument("--epochs", type=int, default=120, help="Training epochs")
     parser.add_argument("--imgsz", type=int, default=1280, help="Image size (px)")
     parser.add_argument("--batch", type=int, default=8, help="Batch size")
     parser.add_argument("--device", type=str, default="0", help="Device")
     parser.add_argument("--model", type=str, default="yolov8m.pt", help="Base model")
-    parser.add_argument("--patience", type=int, default=20, help="Early-stopping patience")
+    parser.add_argument(
+        "--patience", type=int, default=20, help="Early-stopping patience"
+    )
     parser.add_argument("--name", type=str, default="label_scanner_v1", help="Run name")
     args = parser.parse_args()
 
@@ -63,17 +67,17 @@ def main():
         name=args.name,
         # ----- Augmentation (label-optimised) -----
         augment=True,
-        mosaic=0.8,           # Higher mosaic OK for labels (each label is one item)
-        mixup=0.0,            # No mixup - text must remain readable
-        degrees=15.0,         # Labels can be photographed at angles
+        mosaic=0.8,  # Higher mosaic OK for labels (each label is one item)
+        mixup=0.0,  # No mixup - text must remain readable
+        degrees=15.0,  # Labels can be photographed at angles
         translate=0.15,
         scale=0.4,
-        perspective=0.001,    # More perspective warp for bottle photos
-        flipud=0.0,           # Don't flip vertically
-        fliplr=0.5,           # Horizontal flip OK (symmetric labels)
+        perspective=0.001,  # More perspective warp for bottle photos
+        flipud=0.0,  # Don't flip vertically
+        fliplr=0.5,  # Horizontal flip OK (symmetric labels)
         hsv_h=0.015,
         hsv_s=0.3,
-        hsv_v=0.4,            # Higher value range for varied lighting
+        hsv_v=0.4,  # Higher value range for varied lighting
     )
 
     # Validate
@@ -94,9 +98,14 @@ def main():
     model.export(format="onnx", imgsz=args.imgsz, simplify=True)
     model.export(format="torchscript", imgsz=args.imgsz)
 
-    best_pt = Path(results.save_dir) / "weights" / "best.pt" if hasattr(results, 'save_dir') else None
+    best_pt = (
+        Path(results.save_dir) / "weights" / "best.pt"
+        if hasattr(results, "save_dir")
+        else None
+    )
     if best_pt and best_pt.exists():
         import shutil
+
         dest = OUTPUT_DIR / f"{args.name}.pt"
         shutil.copy2(best_pt, dest)
         print(f"Best weights copied to: {dest}")

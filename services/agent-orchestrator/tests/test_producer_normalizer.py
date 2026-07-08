@@ -1,7 +1,7 @@
 """
 Unit tests for normalize_wine_fields() — producer field cleanup.
 """
-import pytest
+
 import sys
 import os
 
@@ -14,7 +14,11 @@ def _make_wine(producer: str, vintage=None, region=None, country=None) -> dict:
     """Helper: create a minimal wine dict with nested {value, confidence, source} entries."""
     wine = {
         "producer": {"value": producer, "confidence": 0.85, "source": "visible"},
-        "vintage": {"value": vintage, "confidence": 0.99 if vintage else 0.0, "source": "visible"},
+        "vintage": {
+            "value": vintage,
+            "confidence": 0.99 if vintage else 0.0,
+            "source": "visible",
+        },
     }
     if region is not None:
         wine["region"] = {"value": region, "confidence": 0.80, "source": "visible"}
@@ -31,6 +35,7 @@ def _get(wine: dict, field: str):
 
 
 # ── Vintage prefix stripping ──────────────────────────────────────────────────
+
 
 def test_strips_vintage_prefix_from_producer():
     wine = _make_wine("2022 Bodegas y Viñedos Toledo")
@@ -63,6 +68,7 @@ def test_no_year_prefix_unchanged():
 
 # ── Region / country stripping ────────────────────────────────────────────────
 
+
 def test_strips_region_suffix_from_producer():
     wine = _make_wine("Domaine de Justices Loire Valley")
     result = normalize_wine_fields(wine)
@@ -92,6 +98,7 @@ def test_producer_not_entirely_stripped():
 
 
 # ── Clean inputs unchanged ────────────────────────────────────────────────────
+
 
 def test_clean_producer_unchanged():
     wine = _make_wine("Antinori", vintage=2018)

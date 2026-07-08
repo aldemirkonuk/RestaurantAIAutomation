@@ -1,19 +1,24 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
-import { DatabaseService } from '../../database/database.service';
-import { WebsocketGateway } from '../../websocket/websocket.gateway';
-import { EmailClass, TransportSignals, replySkipReason } from './email-triage';
-import { CommercialTerms, parseCommercialTerms, validateCommercialTerms, hasCommercialTerms } from './commercial-terms';
-import { SenderReputationService } from './sender-reputation.service';
-import { computePriority } from './priority';
+import { Injectable, Logger, Optional } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import axios from "axios";
+import { DatabaseService } from "../../database/database.service";
+import { WebsocketGateway } from "../../websocket/websocket.gateway";
+import { EmailClass, TransportSignals, replySkipReason } from "./email-triage";
+import {
+  CommercialTerms,
+  parseCommercialTerms,
+  validateCommercialTerms,
+  hasCommercialTerms,
+} from "./commercial-terms";
+import { SenderReputationService } from "./sender-reputation.service";
+import { computePriority } from "./priority";
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 // Claude Haiku 4.5 — fast/cheap, the right tier for this per-reply background call.
 // (Replaces claude-3-5-haiku-20241022, retired 2026-02-19.) For stronger negotiation
 // reasoning, swap to 'claude-opus-4-8' — but that model rejects `temperature`, so drop
 // the temperature field from runLlm() if you do.
-const NEGOTIATION_MODEL = 'claude-haiku-4-5';
+const NEGOTIATION_MODEL = "claude-haiku-4-5";
 
 // Undo window for autonomous sends: a guardrail-clear reply is staged and only
 // actually sent after this delay, giving the manager a chance to cancel/edit it
@@ -23,9 +28,16 @@ const AUTO_SEND_UNDO_MS = 2 * 60 * 1000;
 // Subject patterns that mark an inbound as an automated reply / bounce — never
 // reply to these (prevents auto-send loops with vacation responders, mailers, etc).
 const AUTO_REPLY_SUBJECT_PATTERNS: RegExp[] = [
-  /out of office/i, /auto[\s-]?reply/i, /automatic reply/i, /autoresponder/i,
-  /undeliverable/i, /delivery status notification/i, /mail delivery (failed|subsystem)/i,
-  /do not reply/i, /vacation/i, /away from (the )?office/i,
+  /out of office/i,
+  /auto[\s-]?reply/i,
+  /automatic reply/i,
+  /autoresponder/i,
+  /undeliverable/i,
+  /delivery status notification/i,
+  /mail delivery (failed|subsystem)/i,
+  /do not reply/i,
+  /vacation/i,
+  /away from (the )?office/i,
 ];
 
 /**
@@ -46,10 +58,15 @@ const COMMITMENT_PATTERNS: RegExp[] = [
   /\bplace the order\b/i,
   /\bgo ahead and ship\b/i,
   // Multilingual commitment phrases (FR / IT / ES / DE) — common in the fine-dining wine trade.
-  /\bnous acceptons\b/i, /\bnous confirmons\b/i, /\bbon de commande\b/i,
-  /\baccettiamo\b/i, /\bconfermiamo l'ordine\b/i,
-  /\baceptamos\b/i, /\bconfirmamos el pedido\b/i,
-  /\bwir akzeptieren\b/i, /\bbestellung aufgeben\b/i,
+  /\bnous acceptons\b/i,
+  /\bnous confirmons\b/i,
+  /\bbon de commande\b/i,
+  /\baccettiamo\b/i,
+  /\bconfermiamo l'ordine\b/i,
+  /\baceptamos\b/i,
+  /\bconfirmamos el pedido\b/i,
+  /\bwir akzeptieren\b/i,
+  /\bbestellung aufgeben\b/i,
 ];
 
 interface InboundContext {
@@ -64,7 +81,11 @@ interface InboundContext {
   inboundReferences?: string | null;
   inboundSubject?: string | null;
   /** Image/PDF attachments on the vendor email (e.g. a receipt), for the vision model. */
-  inboundAttachments?: Array<{ filename: string; mime_type: string; data: string }>;
+  inboundAttachments?: Array<{
+    filename: string;
+    mime_type: string;
+    data: string;
+  }>;
   /** Optional steering hint for a manual "regenerate" (e.g. "firmer", "warmer"). */
   instruction?: string;
   /** Transport/auth signals derived at ingestion (bulk/list/auto-submitted, SPF/DKIM/DMARC). */
@@ -104,11 +125,11 @@ interface Analysis {
   reply_subject: string;
   reply_body: string;
   // Deal-detection fields — drive the deal-approval modal.
-  deal_ready: boolean;          // vendor has put a concrete, decision-ready deal on the table
-  deal_kind: string;            // 'offer' | 'verification' | 'none'
-  delivery_estimate: string;    // e.g. "3-5 business days" (extracted, else '')
-  urgency: string;              // 'normal' | 'urgent' (limited stock / expiring promo)
-  confidence: number;          // 0..1 — how sure the extraction is
+  deal_ready: boolean; // vendor has put a concrete, decision-ready deal on the table
+  deal_kind: string; // 'offer' | 'verification' | 'none'
+  delivery_estimate: string; // e.g. "3-5 business days" (extracted, else '')
+  urgency: string; // 'normal' | 'urgent' (limited stock / expiring promo)
+  confidence: number; // 0..1 — how sure the extraction is
   // Non-standard terms worth flagging to the manager (delivery delays/specific
   // dates, substitutions, MOQ changes, limited stock, price-valid-until, payment terms).
   special_conditions: string[];
@@ -157,50 +178,69 @@ export class InboundResponderService {
   async analyzeAndDraftReply(ctx: InboundContext): Promise<ResponderResult> {
     try {
       if (!ctx.orderId) {
-        this.logger.debug('Responder skipped — inbound email not matched to an order.');
-        return { drafted: false, reason: 'Inbound email is not matched to an order' };
+        this.logger.debug(
+          "Responder skipped — inbound email not matched to an order.",
+        );
+        return {
+          drafted: false,
+          reason: "Inbound email is not matched to an order",
+        };
       }
 
       // Gate behind the per-restaurant AI negotiation feature flag.
       if (!(await this.isNegotiationEnabled(ctx.restaurantId))) {
-        this.logger.log(`Responder skipped — enable_ai_negotiation off for restaurant ${ctx.restaurantId}.`);
-        return { drafted: false, reason: 'AI negotiation is disabled for this restaurant' };
+        this.logger.log(
+          `Responder skipped — enable_ai_negotiation off for restaurant ${ctx.restaurantId}.`,
+        );
+        return {
+          drafted: false,
+          reason: "AI negotiation is disabled for this restaurant",
+        };
       }
 
-      const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+      const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
       if (!apiKey) {
-        this.logger.warn('Responder skipped — ANTHROPIC_API_KEY not configured.');
-        return { drafted: false, reason: 'ANTHROPIC_API_KEY is not configured' };
+        this.logger.warn(
+          "Responder skipped — ANTHROPIC_API_KEY not configured.",
+        );
+        return {
+          drafted: false,
+          reason: "ANTHROPIC_API_KEY is not configured",
+        };
       }
 
       // Load order + provider + wine + target price (+ pause + status).
       const { data: order } = await this.databaseService.supabase
-        .from('procurement_orders')
-        .select(`
+        .from("procurement_orders")
+        .select(
+          `
           id, order_number, quantity, quoted_price, negotiated_price, final_price, status,
           ai_autonomy_paused, negotiation_attempts,
           providers!left(name, contact_email, contact_first_name, primary_contact),
           restaurant_inventory:inventory_id(wine_name, target_price)
-        `)
-        .eq('id', ctx.orderId)
+        `,
+        )
+        .eq("id", ctx.orderId)
         .single();
 
       if (!order) {
         this.logger.warn(`Responder skipped — order ${ctx.orderId} not found.`);
-        return { drafted: false, reason: 'Order not found' };
+        return { drafted: false, reason: "Order not found" };
       }
 
       const o = order as any;
-      const providerName: string = o.providers?.name ?? 'the supplier';
+      const providerName: string = o.providers?.name ?? "the supplier";
       const providerEmail: string | null = o.providers?.contact_email ?? null;
       const firstName: string = this.resolveFirstName(o.providers);
-      const wineName: string = o.restaurant_inventory?.wine_name ?? 'the wine';
+      const wineName: string = o.restaurant_inventory?.wine_name ?? "the wine";
       const quantity: number = o.quantity ?? 0;
       const paused: boolean = o.ai_autonomy_paused === true;
       // Target = what we last proposed / are anchored to.
       const targetPrice: number | null =
-        this.toNum(o.negotiated_price) ?? this.toNum(o.quoted_price) ??
-        this.toNum(o.restaurant_inventory?.target_price) ?? this.toNum(o.final_price);
+        this.toNum(o.negotiated_price) ??
+        this.toNum(o.quoted_price) ??
+        this.toNum(o.restaurant_inventory?.target_price) ??
+        this.toNum(o.final_price);
 
       // Bulletproofing: never reply to autoresponders / bounces / no-reply traffic —
       // that's how auto-send loops happen. Store + understand it, but draft nothing.
@@ -208,14 +248,16 @@ export class InboundResponderService {
 
       // Full thread transcript so the model can trace the WHOLE flow.
       const { data: thread } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .select('direction, content, message_text, created_at, status')
-        .eq('order_id', ctx.orderId)
-        .order('created_at', { ascending: true });
+        .from("procurement_conversations")
+        .select("direction, content, message_text, created_at, status")
+        .eq("order_id", ctx.orderId)
+        .order("created_at", { ascending: true });
 
       const transcript = this.buildTranscript(thread || []);
       const outboundRounds = (thread || []).filter(
-        (m: any) => m.direction === 'outbound' && ['SENT', 'AUTO_SENT', 'APPROVED'].includes(m.status),
+        (m: any) =>
+          m.direction === "outbound" &&
+          ["SENT", "AUTO_SENT", "APPROVED"].includes(m.status),
       ).length;
 
       // ── 1. UNDERSTAND — runs on EVERY inbound (even if paused / draft pending /
@@ -232,8 +274,10 @@ export class InboundResponderService {
         transportSignals: ctx.transportSignals,
       });
       if (!analysis) {
-        this.logger.warn(`Responder: LLM produced no usable analysis for order ${ctx.orderId}.`);
-        return { drafted: false, reason: 'Could not analyze the vendor reply' };
+        this.logger.warn(
+          `Responder: LLM produced no usable analysis for order ${ctx.orderId}.`,
+        );
+        return { drafted: false, reason: "Could not analyze the vendor reply" };
       }
 
       // ── 2. DECIDE — the four manager-chosen guardrails ─────────────────────
@@ -241,22 +285,36 @@ export class InboundResponderService {
       const senderTrusted = this.senderReputation
         ? await this.senderReputation.isTrusted(ctx.restaurantId, providerEmail)
         : false;
-      const flags = this.computeGuardrails(analysis, targetPrice, quantity, outboundRounds, ctx.transportSignals, senderTrusted);
+      const flags = this.computeGuardrails(
+        analysis,
+        targetPrice,
+        quantity,
+        outboundRounds,
+        ctx.transportSignals,
+        senderTrusted,
+      );
 
       // A decision-ready offer/verification → structured deal proposal for the modal.
       const dealProposal = analysis.deal_ready
-        ? this.buildDealProposal(analysis, o, providerName, wineName, targetPrice, quantity)
+        ? this.buildDealProposal(
+            analysis,
+            o,
+            providerName,
+            wineName,
+            targetPrice,
+            quantity,
+          )
         : null;
 
       // Persist the understanding onto the inbound row ("trace") — always.
       await this.databaseService.supabase
-        .from('procurement_conversations')
+        .from("procurement_conversations")
         .update({
           detected_intent: analysis.intent,
           detected_sentiment: analysis.sentiment,
           // Lead the summary with any special conditions so the manager can't miss them.
           rolling_summary: analysis.special_conditions.length
-            ? `Heads up: ${analysis.special_conditions.join('; ')}. ${analysis.summary}`
+            ? `Heads up: ${analysis.special_conditions.join("; ")}. ${analysis.summary}`
             : analysis.summary,
           conversation_context: {
             analysis: {
@@ -280,7 +338,7 @@ export class InboundResponderService {
             model: NEGOTIATION_MODEL,
           },
         })
-        .eq('id', ctx.inboundConversationId);
+        .eq("id", ctx.inboundConversationId);
 
       // Notify the manager of a decision-ready deal (drives the sidebar CTA +
       // urgent auto-popup). Fires regardless of the reply path below.
@@ -289,36 +347,49 @@ export class InboundResponderService {
         const dealBucket = computePriority({
           relevance: 1,
           savings:
-            dealProposal.finalPrice != null && dealProposal.proposedPrice != null && dealProposal.finalPrice <= dealProposal.proposedPrice
-              ? 0.8 : 0.3,
-          urgency: dealProposal.urgency === 'urgent' ? 0.9 : 0.3,
+            dealProposal.finalPrice != null &&
+            dealProposal.proposedPrice != null &&
+            dealProposal.finalPrice <= dealProposal.proposedPrice
+              ? 0.8
+              : 0.3,
+          urgency: dealProposal.urgency === "urgent" ? 0.9 : 0.3,
           trust: senderTrusted ? 0.85 : 0.6,
         }).bucket;
         this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
           id: ctx.inboundConversationId,
-          title: dealProposal.dealKind === 'verification'
-            ? `${providerName} confirmed — verify the order`
-            : `${providerName} sent an offer to review`,
+          title:
+            dealProposal.dealKind === "verification"
+              ? `${providerName} confirmed — verify the order`
+              : `${providerName} sent an offer to review`,
           message: `${dealProposal.summary}`,
-          type: dealBucket === 'interrupt' ? 'warning' : 'info',
-          action_url: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === 'urgent' ? '&urgent=1' : ''}`,
+          type: dealBucket === "interrupt" ? "warning" : "info",
+          action_url: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
         });
         void this.persistManagerNotification(ctx.restaurantId, {
-          type: dealProposal.dealKind === 'verification' ? 'order_verification' : 'deal',
-          title: dealProposal.dealKind === 'verification'
-            ? `${providerName} confirmed — verify the order`
-            : `${providerName} sent an offer to review`,
+          type:
+            dealProposal.dealKind === "verification"
+              ? "order_verification"
+              : "deal",
+          title:
+            dealProposal.dealKind === "verification"
+              ? `${providerName} confirmed — verify the order`
+              : `${providerName} sent an offer to review`,
           message: dealProposal.summary,
-          priority: dealProposal.urgency === 'urgent' ? 'high' : 'medium',
-          actionUrl: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === 'urgent' ? '&urgent=1' : ''}`,
-          metadata: { order_id: ctx.orderId, conversation_id: ctx.inboundConversationId, provider_id: ctx.providerId, urgency: dealProposal.urgency },
+          priority: dealProposal.urgency === "urgent" ? "high" : "medium",
+          actionUrl: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
+          metadata: {
+            order_id: ctx.orderId,
+            conversation_id: ctx.inboundConversationId,
+            provider_id: ctx.providerId,
+            urgency: dealProposal.urgency,
+          },
         });
         this.websocketGateway.emitConversationUpdated(ctx.restaurantId, {
           conversation_id: ctx.inboundConversationId,
           order_id: ctx.orderId,
           provider_id: ctx.providerId,
-          direction: 'inbound',
-          channel: 'email',
+          direction: "inbound",
+          channel: "email",
         });
       }
 
@@ -326,35 +397,64 @@ export class InboundResponderService {
 
       // ── Close the loop: reflect the negotiation onto the order itself ──────
       if (!paused) {
-        await this.syncOrderState(o, analysis, targetPrice, quantity, autonomyFull);
+        await this.syncOrderState(
+          o,
+          analysis,
+          targetPrice,
+          quantity,
+          autonomyFull,
+        );
       }
 
-      await this.logDecision(ctx, analysis, flags, { paused, autoReply, autonomyFull });
+      await this.logDecision(ctx, analysis, flags, {
+        paused,
+        autoReply,
+        autonomyFull,
+      });
 
       // ── Reasons NOT to draft a reply (analysis already saved above) ────────
       if (paused) {
-        return { drafted: false, reason: 'AI is paused for this order' };
+        return { drafted: false, reason: "AI is paused for this order" };
       }
       if (autoReply) {
-        this.logger.log(`Responder: inbound looks like an autoreply/bounce for order ${ctx.orderId} — analyzed, not replying.`);
-        return { drafted: false, reason: 'Inbound looks like an automated reply — not responding' };
+        this.logger.log(
+          `Responder: inbound looks like an autoreply/bounce for order ${ctx.orderId} — analyzed, not replying.`,
+        );
+        return {
+          drafted: false,
+          reason: "Inbound looks like an automated reply — not responding",
+        };
       }
 
       // ── Triage reply gate: only a genuine, human negotiation reply gets an outbound draft.
       //    Analysis, deal notification, and order sync already ran above — here we decide
       //    whether to REPLY. A suspected injection is quarantined and surfaced to the manager.
       if (analysis.injection_suspected) {
-        this.logger.warn(`Responder: injection_suspected on inbound ${ctx.inboundConversationId} (order ${ctx.orderId}) — quarantined, not drafting.`);
+        this.logger.warn(
+          `Responder: injection_suspected on inbound ${ctx.inboundConversationId} (order ${ctx.orderId}) — quarantined, not drafting.`,
+        );
         void this.persistManagerNotification(ctx.restaurantId, {
-          type: 'security_alert',
+          type: "security_alert",
           title: `Suspicious email from ${providerName} — please review`,
-          message: 'This email appeared to contain instructions aimed at the AI. It was quarantined and no reply was drafted. Review it before acting.',
-          priority: 'high',
+          message:
+            "This email appeared to contain instructions aimed at the AI. It was quarantined and no reply was drafted. Review it before acting.",
+          priority: "high",
           actionUrl: `/orders?order=${ctx.orderId}`,
-          metadata: { order_id: ctx.orderId, conversation_id: ctx.inboundConversationId, reason: 'injection_suspected' },
+          metadata: {
+            order_id: ctx.orderId,
+            conversation_id: ctx.inboundConversationId,
+            reason: "injection_suspected",
+          },
         });
-        void this.senderReputation?.recordSignal(ctx.restaurantId, providerEmail, 'injection');
-        return { drafted: false, reason: 'Possible prompt injection — quarantined for manager review' };
+        void this.senderReputation?.recordSignal(
+          ctx.restaurantId,
+          providerEmail,
+          "injection",
+        );
+        return {
+          drafted: false,
+          reason: "Possible prompt injection — quarantined for manager review",
+        };
       }
       const skipReason = replySkipReason({
         emailClass: analysis.email_class,
@@ -362,28 +462,49 @@ export class InboundResponderService {
         transport: ctx.transportSignals,
       });
       if (skipReason && !ctx.forceReply) {
-        this.logger.log(`Responder: not drafting a reply for order ${ctx.orderId} — ${skipReason}.`);
+        this.logger.log(
+          `Responder: not drafting a reply for order ${ctx.orderId} — ${skipReason}.`,
+        );
         return { drafted: false, reason: skipReason };
       }
       if (skipReason && ctx.forceReply) {
-        this.logger.log(`Responder: reply gate (${skipReason}) overridden by manager for order ${ctx.orderId} — drafting anyway.`);
+        this.logger.log(
+          `Responder: reply gate (${skipReason}) overridden by manager for order ${ctx.orderId} — drafting anyway.`,
+        );
       }
       // Don't pile up: if a reply is already waiting (approval) or scheduled to
       // auto-send, leave it. (Regenerate discards the old one first, upstream.)
       const { data: existingDraft } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .select('id, status')
-        .eq('order_id', ctx.orderId)
-        .in('status', ['PENDING_APPROVAL', 'AUTO_SEND_SCHEDULED', 'AUTO_SENDING'])
+        .from("procurement_conversations")
+        .select("id, status")
+        .eq("order_id", ctx.orderId)
+        .in("status", [
+          "PENDING_APPROVAL",
+          "AUTO_SEND_SCHEDULED",
+          "AUTO_SENDING",
+        ])
         .limit(1);
       if (existingDraft?.length) {
-        this.logger.log(`Responder: a reply is already pending/scheduled for order ${ctx.orderId} — skipping new draft.`);
-        return { drafted: false, draftId: (existingDraft[0] as any).id, reason: 'A reply is already pending or scheduled' };
+        this.logger.log(
+          `Responder: a reply is already pending/scheduled for order ${ctx.orderId} — skipping new draft.`,
+        );
+        return {
+          drafted: false,
+          draftId: (existingDraft[0] as any).id,
+          reason: "A reply is already pending or scheduled",
+        };
       }
 
       // ── 3. DRAFT + decide auto-send vs approval ───────────────────────────
-      const replySubject = this.normalizeReplySubject(analysis.reply_subject, ctx.inboundSubject, wineName);
-      const references = this.buildReferences(ctx.inboundReferences, ctx.inboundRfc822MessageId);
+      const replySubject = this.normalizeReplySubject(
+        analysis.reply_subject,
+        ctx.inboundSubject,
+        wineName,
+      );
+      const references = this.buildReferences(
+        ctx.inboundReferences,
+        ctx.inboundRfc822MessageId,
+      );
 
       // Auto-send only when the per-restaurant switch is ON and NO guardrail trips.
       // Otherwise it waits for one-tap manager approval.
@@ -392,49 +513,52 @@ export class InboundResponderService {
         ? new Date(Date.now() + AUTO_SEND_UNDO_MS).toISOString()
         : null;
 
-      const { data: draft, error: draftError } = await this.databaseService.supabase
-        .from('procurement_conversations')
-        .insert({
-          order_id: ctx.orderId,
-          restaurant_id: ctx.restaurantId,
-          provider_id: ctx.providerId,
-          direction: 'outbound',
-          channel: 'email',
-          content: analysis.reply_body,
-          message_text: analysis.reply_body,
-          ai_generated: true,
-          llm_model: NEGOTIATION_MODEL,
-          status: willAutoSend ? 'AUTO_SEND_SCHEDULED' : 'PENDING_APPROVAL',
-          scheduled_send_at: scheduledSendAt,
-          outbound_email_type: this.mapEmailType(analysis.recommended_action),
-          round_count: outboundRounds + 1,
-          detected_intent: analysis.intent,
-          detected_sentiment: analysis.sentiment,
-          constraint_flags: flags,
-          gmail_thread_id: ctx.gmailThreadId || null,
-          email_headers: {
-            subject: replySubject,
-            in_reply_to: ctx.inboundRfc822MessageId || null,
-            references: references || null,
-          },
-        })
-        .select('id')
-        .single();
+      const { data: draft, error: draftError } =
+        await this.databaseService.supabase
+          .from("procurement_conversations")
+          .insert({
+            order_id: ctx.orderId,
+            restaurant_id: ctx.restaurantId,
+            provider_id: ctx.providerId,
+            direction: "outbound",
+            channel: "email",
+            content: analysis.reply_body,
+            message_text: analysis.reply_body,
+            ai_generated: true,
+            llm_model: NEGOTIATION_MODEL,
+            status: willAutoSend ? "AUTO_SEND_SCHEDULED" : "PENDING_APPROVAL",
+            scheduled_send_at: scheduledSendAt,
+            outbound_email_type: this.mapEmailType(analysis.recommended_action),
+            round_count: outboundRounds + 1,
+            detected_intent: analysis.intent,
+            detected_sentiment: analysis.sentiment,
+            constraint_flags: flags,
+            gmail_thread_id: ctx.gmailThreadId || null,
+            email_headers: {
+              subject: replySubject,
+              in_reply_to: ctx.inboundRfc822MessageId || null,
+              references: references || null,
+            },
+          })
+          .select("id")
+          .single();
 
       if (draftError) {
-        this.logger.error(`Responder: failed to stage draft for order ${ctx.orderId} — ${draftError.message}`);
-        return { drafted: false, reason: 'Failed to stage the reply draft' };
+        this.logger.error(
+          `Responder: failed to stage draft for order ${ctx.orderId} — ${draftError.message}`,
+        );
+        return { drafted: false, reason: "Failed to stage the reply draft" };
       }
 
       this.logger.log(
-        `Responder: staged ${willAutoSend ? 'AUTO_SEND_SCHEDULED' : 'PENDING_APPROVAL'} reply ${draft.id} ` +
+        `Responder: staged ${willAutoSend ? "AUTO_SEND_SCHEDULED" : "PENDING_APPROVAL"} reply ${draft.id} ` +
           `for order ${ctx.orderId} (intent=${analysis.intent}, action=${analysis.recommended_action}, ` +
-          `reasons=[${flags.reasons.join(',')}]).`,
+          `reasons=[${flags.reasons.join(",")}]).`,
       );
 
       const reasonText = flags.reasons.length
-        ? ` (needs your review: ${flags.reasons.map((r) => this.humanReason(r)).join(', ')})`
-        : '';
+        ? ` (needs your review: ${flags.reasons.map((r) => this.humanReason(r)).join(", ")})`
+        : "";
       this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
         id: draft.id,
         title: willAutoSend
@@ -443,28 +567,37 @@ export class InboundResponderService {
         message: willAutoSend
           ? `${analysis.summary} — sending in 2 min unless you cancel.`
           : `${analysis.summary}${reasonText}`,
-        type: willAutoSend ? 'success' : flags.needs_approval ? 'warning' : 'info',
+        type: willAutoSend
+          ? "success"
+          : flags.needs_approval
+            ? "warning"
+            : "info",
         action_url: `/orders?order=${ctx.orderId}`,
       });
       void this.persistManagerNotification(ctx.restaurantId, {
-        type: 'vendor_reply',
+        type: "vendor_reply",
         title: willAutoSend
           ? `AI is auto-sending a reply to ${providerName}`
           : `AI drafted a reply to ${providerName}`,
         message: willAutoSend
           ? `${analysis.summary} — sending in 2 min unless you cancel.`
           : `${analysis.summary}${reasonText}`,
-        priority: flags.needs_approval ? 'high' : 'medium',
+        priority: flags.needs_approval ? "high" : "medium",
         actionUrl: `/orders?order=${ctx.orderId}`,
-        metadata: { order_id: ctx.orderId, draft_id: draft.id, provider_id: ctx.providerId, needs_approval: flags.needs_approval },
+        metadata: {
+          order_id: ctx.orderId,
+          draft_id: draft.id,
+          provider_id: ctx.providerId,
+          needs_approval: flags.needs_approval,
+        },
       });
 
       this.websocketGateway.emitConversationUpdated(ctx.restaurantId, {
         conversation_id: draft.id,
         order_id: ctx.orderId,
         provider_id: ctx.providerId,
-        direction: 'outbound',
-        channel: 'email',
+        direction: "outbound",
+        channel: "email",
       });
 
       return {
@@ -474,8 +607,13 @@ export class InboundResponderService {
         autoSendScheduled: willAutoSend,
       };
     } catch (err: any) {
-      this.logger.error(`Responder unexpected error for order ${ctx.orderId}: ${err?.message}`);
-      return { drafted: false, reason: 'Unexpected error while drafting the reply' };
+      this.logger.error(
+        `Responder unexpected error for order ${ctx.orderId}: ${err?.message}`,
+      );
+      return {
+        drafted: false,
+        reason: "Unexpected error while drafting the reply",
+      };
     }
   }
 
@@ -493,7 +631,11 @@ export class InboundResponderService {
       transcript: string;
       instruction?: string;
       firstName?: string;
-      attachments?: Array<{ filename: string; mime_type: string; data: string }>;
+      attachments?: Array<{
+        filename: string;
+        mime_type: string;
+        data: string;
+      }>;
       transportSignals?: TransportSignals;
     },
   ): Promise<Analysis | null> {
@@ -503,23 +645,27 @@ export class InboundResponderService {
         : `We have no fixed target price on record — aim for a fair market price and defer final pricing to the manager.`;
     const steerLine = input.instruction
       ? `\nMANAGER STEERING for this reply (follow it): ${input.instruction}\n`
-      : '';
-    const greetName = (input.firstName && input.firstName.trim()) ? input.firstName.trim() : '';
+      : "";
+    const greetName =
+      input.firstName && input.firstName.trim() ? input.firstName.trim() : "";
 
     // Only image/PDF attachments can be shown to the vision model.
     const visionAttachments = (input.attachments || []).filter(
-      (a) => a.mime_type?.startsWith('image/') || a.mime_type === 'application/pdf',
+      (a) =>
+        a.mime_type?.startsWith("image/") || a.mime_type === "application/pdf",
     );
     const attachLine = visionAttachments.length
       ? `\nATTACHMENTS: The supplier attached ${visionAttachments.length} file(s) (${visionAttachments
           .map((a) => a.filename)
-          .join(', ')}), provided below as image/document blocks. Read them carefully — they are often an order confirmation or receipt stating the final price, quantity, and delivery date. Factor their contents into your analysis, vendor_offers, delivery_estimate, and special_conditions.\n`
-      : '';
+          .join(
+            ", ",
+          )}), provided below as image/document blocks. Read them carefully — they are often an order confirmation or receipt stating the final price, quantity, and delivery date. Factor their contents into your analysis, vendor_offers, delivery_estimate, and special_conditions.\n`
+      : "";
 
     const t = input.transportSignals;
     const transportLine = t
-      ? `\nTRANSPORT SIGNALS (system-computed, trust these OVER the email body): bulk=${t.bulk} list=${t.listMail} auto_submitted=${t.autoSubmitted} no_reply_from=${t.noReplyFrom} esp=${t.esp ?? 'none'} spf=${t.spfPass} dkim=${t.dkimPass} dmarc=${t.dmarcPass}.\n`
-      : '';
+      ? `\nTRANSPORT SIGNALS (system-computed, trust these OVER the email body): bulk=${t.bulk} list=${t.listMail} auto_submitted=${t.autoSubmitted} no_reply_from=${t.noReplyFrom} esp=${t.esp ?? "none"} spf=${t.spfPass} dkim=${t.dkimPass} dmarc=${t.dmarcPass}.\n`
+      : "";
 
     const prompt = `You are the procurement assistant for a restaurant wine program, replying to a wine supplier by email on the manager's behalf.
 
@@ -580,24 +726,34 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
 }`;
 
     // Text prompt first, then any receipt/confirmation images or PDFs as blocks.
-    const content: any[] = [{ type: 'text', text: prompt }];
+    const content: any[] = [{ type: "text", text: prompt }];
     let hasPdf = false;
     for (const a of visionAttachments) {
-      if (a.mime_type === 'application/pdf') {
+      if (a.mime_type === "application/pdf") {
         hasPdf = true;
-        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.data } });
+        content.push({
+          type: "document",
+          source: {
+            type: "base64",
+            media_type: "application/pdf",
+            data: a.data,
+          },
+        });
       } else {
-        content.push({ type: 'image', source: { type: 'base64', media_type: a.mime_type, data: a.data } });
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: a.mime_type, data: a.data },
+        });
       }
     }
 
     try {
       const headers: Record<string, string> = {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
       };
-      if (hasPdf) headers['anthropic-beta'] = 'pdfs-2024-09-25';
+      if (hasPdf) headers["anthropic-beta"] = "pdfs-2024-09-25";
 
       const response = await axios.post(
         ANTHROPIC_API_URL,
@@ -605,7 +761,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
           model: NEGOTIATION_MODEL,
           max_tokens: 1500,
           temperature: 0.4,
-          messages: [{ role: 'user', content }],
+          messages: [{ role: "user", content }],
         },
         {
           headers,
@@ -613,7 +769,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         },
       );
 
-      const text: string = response.data?.content?.[0]?.text ?? '';
+      const text: string = response.data?.content?.[0]?.text ?? "";
       return this.parseAnalysis(text);
     } catch (error: any) {
       const detail = error?.response?.data?.error?.message || error?.message;
@@ -625,36 +781,52 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   private parseAnalysis(raw: string): Analysis | null {
     if (!raw) return null;
     // Strip markdown fences and isolate the JSON object.
-    let text = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
+    let text = raw
+      .trim()
+      .replace(/^```(?:json)?/i, "")
+      .replace(/```$/i, "")
+      .trim();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
     if (start === -1 || end === -1) return null;
     text = text.slice(start, end + 1);
     try {
       const p = JSON.parse(text);
-      if (!p.reply_body || typeof p.reply_body !== 'string') return null;
+      if (!p.reply_body || typeof p.reply_body !== "string") return null;
       return {
-        intent: String(p.intent || 'general'),
-        sentiment: String(p.sentiment || 'neutral'),
-        summary: String(p.summary || ''),
+        intent: String(p.intent || "general"),
+        sentiment: String(p.sentiment || "neutral"),
+        summary: String(p.summary || ""),
         vendor_offers: Array.isArray(p.vendor_offers) ? p.vendor_offers : [],
         key_facts: Array.isArray(p.key_facts) ? p.key_facts.map(String) : [],
-        recommended_action: String(p.recommended_action || 'clarify'),
-        reasoning: String(p.reasoning || ''),
-        reply_subject: String(p.reply_subject || ''),
+        recommended_action: String(p.recommended_action || "clarify"),
+        reasoning: String(p.reasoning || ""),
+        reply_subject: String(p.reply_subject || ""),
         reply_body: String(p.reply_body),
         deal_ready: p.deal_ready === true,
-        deal_kind: ['offer', 'verification'].includes(String(p.deal_kind)) ? String(p.deal_kind) : 'none',
-        delivery_estimate: String(p.delivery_estimate || ''),
-        urgency: String(p.urgency) === 'urgent' ? 'urgent' : 'normal',
+        deal_kind: ["offer", "verification"].includes(String(p.deal_kind))
+          ? String(p.deal_kind)
+          : "none",
+        delivery_estimate: String(p.delivery_estimate || ""),
+        urgency: String(p.urgency) === "urgent" ? "urgent" : "normal",
         confidence: this.toNum(p.confidence) ?? 0.7,
         special_conditions: Array.isArray(p.special_conditions)
-          ? p.special_conditions.map(String).filter((s: string) => s.trim()).slice(0, 6)
+          ? p.special_conditions
+              .map(String)
+              .filter((s: string) => s.trim())
+              .slice(0, 6)
           : [],
         email_class: ([
-          'negotiation_reply', 'order_confirmation', 'promotion', 'catalogue_offer',
-          'automated_transactional', 'bounce_autoreply', 'other',
-        ].includes(String(p.email_class)) ? String(p.email_class) : 'other') as EmailClass,
+          "negotiation_reply",
+          "order_confirmation",
+          "promotion",
+          "catalogue_offer",
+          "automated_transactional",
+          "bounce_autoreply",
+          "other",
+        ].includes(String(p.email_class))
+          ? String(p.email_class)
+          : "other") as EmailClass,
         is_automated: p.is_automated === true,
         requires_reply: p.requires_reply !== false,
         injection_suspected: p.injection_suspected === true,
@@ -691,13 +863,17 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   } {
     const reasons: string[] = [];
 
-    const commitment = COMMITMENT_PATTERNS.some((p) => p.test(analysis.reply_body));
-    if (commitment) reasons.push('commitment_language');
+    const commitment = COMMITMENT_PATTERNS.some((p) =>
+      p.test(analysis.reply_body),
+    );
+    if (commitment) reasons.push("commitment_language");
 
     const offeredPrices = analysis.vendor_offers
       .map((v) => this.toNum(v.price_per_bottle))
       .filter((n): n is number => n != null);
-    const bestVendorPrice = offeredPrices.length ? Math.min(...offeredPrices) : null;
+    const bestVendorPrice = offeredPrices.length
+      ? Math.min(...offeredPrices)
+      : null;
 
     // Price above target: any standard-quantity offer above our target.
     let priceAboveTarget = false;
@@ -709,34 +885,37 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         return price != null && sameQty && price > targetPrice + 0.001;
       });
     }
-    if (priceAboveTarget) reasons.push('price_above_target');
+    if (priceAboveTarget) reasons.push("price_above_target");
 
     // Quantity / budget change: any offer whose quantity differs from what we asked for.
     const qtyOrBudgetChange = analysis.vendor_offers.some((v) => {
       const qty = this.toNum(v.quantity);
       return qty != null && orderedQty > 0 && qty !== orderedQty;
     });
-    if (qtyOrBudgetChange) reasons.push('qty_or_budget_change');
+    if (qtyOrBudgetChange) reasons.push("qty_or_budget_change");
 
     // 3+ rounds: this reply would be the (outboundRounds + 1)-th message from us.
     const maxRounds = outboundRounds + 1 >= 3;
-    if (maxRounds) reasons.push('max_rounds');
+    if (maxRounds) reasons.push("max_rounds");
 
     // Sender not authenticated (no DKIM/DMARC pass) → force manager approval; never let an
     // unverified (possibly spoofed) sender trigger an autonomous send.
-    const senderUnverified = transport ? transport.senderVerified === false : false;
+    const senderUnverified = transport
+      ? transport.senderVerified === false
+      : false;
     // A manager-trusted domain bypasses this gate (trust never lifts the other guardrails).
-    if (senderUnverified && !senderTrusted) reasons.push('sender_unverified');
+    if (senderUnverified && !senderTrusted) reasons.push("sender_unverified");
 
     // Commercial-terms guardrails — a case/unit price mismatch, an unmet MOQ, ambiguous
     // currency, or (on a concrete deal) an unstated tax basis all force manager review.
     const ct = analysis.commercial_terms;
     if (ct) {
       const ctv = validateCommercialTerms(ct, orderedQty);
-      if (ctv.price_inconsistent) reasons.push('price_inconsistent');
-      if (ctv.moq_not_met) reasons.push('moq_not_met');
-      if (ctv.currency_ambiguous) reasons.push('currency_ambiguous');
-      if (ctv.tax_status_unknown && analysis.deal_ready) reasons.push('tax_status_unknown');
+      if (ctv.price_inconsistent) reasons.push("price_inconsistent");
+      if (ctv.moq_not_met) reasons.push("moq_not_met");
+      if (ctv.currency_ambiguous) reasons.push("currency_ambiguous");
+      if (ctv.tax_status_unknown && analysis.deal_ready)
+        reasons.push("tax_status_unknown");
     }
 
     return {
@@ -761,9 +940,9 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   private async isNegotiationEnabled(restaurantId: string): Promise<boolean> {
     try {
       const { data, error } = await this.databaseService.supabase
-        .from('restaurant_feature_flags')
-        .select('enable_ai_negotiation')
-        .eq('restaurant_id', restaurantId)
+        .from("restaurant_feature_flags")
+        .select("enable_ai_negotiation")
+        .eq("restaurant_id", restaurantId)
         .maybeSingle();
       if (error || !data) return true; // no row -> defaults enabled
       return (data as any).enable_ai_negotiation !== false;
@@ -773,12 +952,14 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   }
 
   /** Read enable_ai_autonomous_send; default OFF unless explicitly enabled. */
-  private async isAutonomousSendEnabled(restaurantId: string): Promise<boolean> {
+  private async isAutonomousSendEnabled(
+    restaurantId: string,
+  ): Promise<boolean> {
     try {
       const { data, error } = await this.databaseService.supabase
-        .from('restaurant_feature_flags')
-        .select('enable_ai_autonomous_send')
-        .eq('restaurant_id', restaurantId)
+        .from("restaurant_feature_flags")
+        .select("enable_ai_autonomous_send")
+        .eq("restaurant_id", restaurantId)
         .maybeSingle();
       if (error || !data) return false; // default OFF — manager approves until flipped on
       return (data as any).enable_ai_autonomous_send === true;
@@ -788,22 +969,22 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   }
 
   private isAutoReplyLike(subject?: string | null): boolean {
-    const s = (subject || '').replace(/^subject:\s*/i, '');
+    const s = (subject || "").replace(/^subject:\s*/i, "");
     if (!s.trim()) return false;
     return AUTO_REPLY_SUBJECT_PATTERNS.some((p) => p.test(s));
   }
 
   /** First name for the greeting: contact_first_name → primary_contact.name → company. */
   private resolveFirstName(provider: any): string {
-    if (!provider) return '';
-    const direct = (provider.contact_first_name || '').toString().trim();
+    if (!provider) return "";
+    const direct = (provider.contact_first_name || "").toString().trim();
     if (direct) return direct.split(/\s+/)[0];
     const pc = provider.primary_contact;
-    const pcName = (pc && typeof pc === 'object' ? pc.name : '') || '';
+    const pcName = (pc && typeof pc === "object" ? pc.name : "") || "";
     if (String(pcName).trim()) return String(pcName).trim().split(/\s+/)[0];
-    const company = (provider.name || '').toString().trim();
+    const company = (provider.name || "").toString().trim();
     if (company) return company.split(/\s+/)[0];
-    return '';
+    return "";
   }
 
   /** Build the structured deal proposal the approval modal renders. */
@@ -817,25 +998,36 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   ): Record<string, any> {
     const sameQtyOffer = analysis.vendor_offers.find((v) => {
       const q = this.toNum(v.quantity);
-      return this.toNum(v.price_per_bottle) != null && (q == null || orderedQty === 0 || q === orderedQty);
+      return (
+        this.toNum(v.price_per_bottle) != null &&
+        (q == null || orderedQty === 0 || q === orderedQty)
+      );
     });
-    const bestOffer = sameQtyOffer || analysis.vendor_offers.find((v) => this.toNum(v.price_per_bottle) != null);
-    const finalPrice = this.toNum(bestOffer?.price_per_bottle) ?? targetPrice ?? 0;
+    const bestOffer =
+      sameQtyOffer ||
+      analysis.vendor_offers.find(
+        (v) => this.toNum(v.price_per_bottle) != null,
+      );
+    const finalPrice =
+      this.toNum(bestOffer?.price_per_bottle) ?? targetPrice ?? 0;
     const quantity = this.toNum(bestOffer?.quantity) ?? orderedQty;
     return {
-      dealKind: analysis.deal_kind === 'verification' ? 'verification' : 'offer',
+      dealKind:
+        analysis.deal_kind === "verification" ? "verification" : "offer",
       wineName,
       providerName,
       quantity,
       proposedPrice: targetPrice ?? finalPrice,
       finalPrice,
-      deliveryEstimate: analysis.delivery_estimate || '3-5 business days',
-      conditions: bestOffer?.conditions || '',
-      sourceQuote: bestOffer?.quote || '',
+      deliveryEstimate: analysis.delivery_estimate || "3-5 business days",
+      conditions: bestOffer?.conditions || "",
+      sourceQuote: bestOffer?.quote || "",
       summary: analysis.summary,
       specialConditions: analysis.special_conditions || [],
-      commercialTerms: hasCommercialTerms(analysis.commercial_terms) ? analysis.commercial_terms : null,
-      urgency: analysis.urgency === 'urgent' ? 'urgent' : 'normal',
+      commercialTerms: hasCommercialTerms(analysis.commercial_terms)
+        ? analysis.commercial_terms
+        : null,
+      urgency: analysis.urgency === "urgent" ? "urgent" : "normal",
       confidence: analysis.confidence,
       detectedAt: new Date().toISOString(),
     };
@@ -857,20 +1049,33 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     try {
       const sameQtyOffer = analysis.vendor_offers.find((v) => {
         const q = this.toNum(v.quantity);
-        return this.toNum(v.price_per_bottle) != null && (q == null || orderedQty === 0 || q === orderedQty);
+        return (
+          this.toNum(v.price_per_bottle) != null &&
+          (q == null || orderedQty === 0 || q === orderedQty)
+        );
       });
       const vendorPrice = this.toNum(sameQtyOffer?.price_per_bottle);
 
-      const currentStatus = String(order.status || '').toUpperCase();
+      const currentStatus = String(order.status || "").toUpperCase();
       // ORDERED (CONFIRMED) and beyond are terminal — don't rewind a placed order.
       // APPROVED is intentionally NOT terminal here: a matching vendor receipt
       // should still advance an approved order to ORDERED.
-      const terminal = ['CONFIRMED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'FAILED'];
+      const terminal = [
+        "CONFIRMED",
+        "IN_TRANSIT",
+        "DELIVERED",
+        "COMPLETED",
+        "CANCELLED",
+        "REJECTED",
+        "FAILED",
+      ];
       if (terminal.includes(currentStatus)) return;
 
       const accepted =
-        analysis.intent === 'price_acceptance' ||
-        (vendorPrice != null && targetPrice != null && vendorPrice <= targetPrice + 0.001);
+        analysis.intent === "price_acceptance" ||
+        (vendorPrice != null &&
+          targetPrice != null &&
+          vendorPrice <= targetPrice + 0.001);
 
       const update: Record<string, any> = {
         last_negotiation_at: new Date().toISOString(),
@@ -883,36 +1088,46 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       // price/qty must match), advance APPROVED -> ORDERED (CONFIRMED). A stated term
       // that DOESN'T match leaves the order in APPROVED for the manager to review.
       const isVerification =
-        analysis.deal_kind === 'verification' || analysis.intent === 'order_confirmation';
-      const approvedPrice = this.toNum(order.final_price) ?? this.toNum(order.negotiated_price);
+        analysis.deal_kind === "verification" ||
+        analysis.intent === "order_confirmation";
+      const approvedPrice =
+        this.toNum(order.final_price) ?? this.toNum(order.negotiated_price);
       const receiptQty = this.toNum(sameQtyOffer?.quantity);
       const priceContradicts =
-        approvedPrice != null && vendorPrice != null && Math.abs(vendorPrice - approvedPrice) > 0.01;
+        approvedPrice != null &&
+        vendorPrice != null &&
+        Math.abs(vendorPrice - approvedPrice) > 0.01;
       const qtyContradicts =
         orderedQty > 0 && receiptQty != null && receiptQty !== orderedQty;
-      const receiptMatches = isVerification && !priceContradicts && !qtyContradicts;
+      const receiptMatches =
+        isVerification && !priceContradicts && !qtyContradicts;
 
-      if (currentStatus === 'APPROVED') {
+      if (currentStatus === "APPROVED") {
         if (receiptMatches) {
-          update.status = 'CONFIRMED'; // -> UI "ordered"
+          update.status = "CONFIRMED"; // -> UI "ordered"
           update.confirmed_at = new Date().toISOString();
         }
         // Otherwise stay APPROVED — a mismatched/unclear receipt needs manager review.
       } else if (accepted && autonomyFull && vendorPrice != null) {
         // Vendor accepted our terms and full autonomy is on: we agree the deal, but
         // this is APPROVED (not yet placed) until a matching receipt arrives.
-        update.status = 'APPROVED';
+        update.status = "APPROVED";
         update.final_price = vendorPrice;
-      } else if (currentStatus === 'PENDING' || currentStatus === 'APPROVAL_NEEDED') {
-        update.status = 'NEGOTIATING';
+      } else if (
+        currentStatus === "PENDING" ||
+        currentStatus === "APPROVAL_NEEDED"
+      ) {
+        update.status = "NEGOTIATING";
       }
 
       await this.databaseService.supabase
-        .from('procurement_orders')
+        .from("procurement_orders")
         .update(update)
-        .eq('id', order.id);
+        .eq("id", order.id);
     } catch (e: any) {
-      this.logger.warn(`syncOrderState failed for order ${order.id}: ${e?.message}`);
+      this.logger.warn(
+        `syncOrderState failed for order ${order.id}: ${e?.message}`,
+      );
     }
   }
 
@@ -924,10 +1139,10 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     meta: { paused: boolean; autoReply: boolean; autonomyFull: boolean },
   ): Promise<void> {
     try {
-      await this.databaseService.supabase.from('decision_log').insert({
-        agent_name: 'InboundResponder',
+      await this.databaseService.supabase.from("decision_log").insert({
+        agent_name: "InboundResponder",
         restaurant_id: ctx.restaurantId,
-        decision_type: 'inbound_email_response',
+        decision_type: "inbound_email_response",
         inputs: {
           order_id: ctx.orderId,
           provider_id: ctx.providerId,
@@ -953,15 +1168,17 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   }
 
   private buildTranscript(messages: any[]): string {
-    if (!messages.length) return '(no prior messages)';
+    if (!messages.length) return "(no prior messages)";
     return messages
       .map((m) => {
-        const who = m.direction === 'inbound' ? `${'Supplier'}` : 'Us';
-        const body = (m.content || m.message_text || '').toString().trim();
-        const when = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '';
+        const who = m.direction === "inbound" ? `${"Supplier"}` : "Us";
+        const body = (m.content || m.message_text || "").toString().trim();
+        const when = m.created_at
+          ? new Date(m.created_at).toISOString().slice(0, 10)
+          : "";
         return `[${when}] ${who}: ${body}`;
       })
-      .join('\n\n');
+      .join("\n\n");
   }
 
   private normalizeReplySubject(
@@ -969,56 +1186,61 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     inboundSubject?: string | null,
     wineName?: string,
   ): string {
-    const ensureRe = (s: string) => (/^re:/i.test(s.trim()) ? s.trim() : `Re: ${s.trim()}`);
+    const ensureRe = (s: string) =>
+      /^re:/i.test(s.trim()) ? s.trim() : `Re: ${s.trim()}`;
     if (fromLlm && fromLlm.trim()) return ensureRe(fromLlm);
     if (inboundSubject && inboundSubject.trim()) {
-      const cleaned = inboundSubject.replace(/^subject:\s*/i, '').trim();
+      const cleaned = inboundSubject.replace(/^subject:\s*/i, "").trim();
       return ensureRe(cleaned);
     }
-    return `Re: Order Request: ${wineName ?? 'Wine Order'}`;
+    return `Re: Order Request: ${wineName ?? "Wine Order"}`;
   }
 
-  private buildReferences(existing?: string | null, latest?: string | null): string {
+  private buildReferences(
+    existing?: string | null,
+    latest?: string | null,
+  ): string {
     const parts: string[] = [];
     if (existing && existing.trim()) parts.push(existing.trim());
-    if (latest && latest.trim() && !parts.join(' ').includes(latest.trim())) parts.push(latest.trim());
-    return parts.join(' ').trim();
+    if (latest && latest.trim() && !parts.join(" ").includes(latest.trim()))
+      parts.push(latest.trim());
+    return parts.join(" ").trim();
   }
 
   private mapEmailType(action: string): string {
-    switch ((action || '').toLowerCase()) {
-      case 'accept':
-        return 'ACCEPTANCE_CONFIRM_REQUEST';
-      case 'counter':
-        return 'COUNTER_OFFER';
-      case 'escalate':
-        return 'ESCALATION';
-      case 'clarify':
+    switch ((action || "").toLowerCase()) {
+      case "accept":
+        return "ACCEPTANCE_CONFIRM_REQUEST";
+      case "counter":
+        return "COUNTER_OFFER";
+      case "escalate":
+        return "ESCALATION";
+      case "clarify":
       default:
-        return 'CLARIFICATION';
+        return "CLARIFICATION";
     }
   }
 
   private humanReason(reason: string): string {
     switch (reason) {
-      case 'commitment_language':
-        return 'contains commitment language';
-      case 'price_above_target':
-        return 'price above target';
-      case 'qty_or_budget_change':
-        return 'changes quantity/budget';
-      case 'max_rounds':
-        return '3+ negotiation rounds';
-      case 'sender_unverified':
-        return 'sender not verified (SPF/DKIM/DMARC)';
-      case 'price_inconsistent':
-        return 'case vs unit price mismatch';
-      case 'moq_not_met':
-        return 'minimum order not met';
-      case 'currency_ambiguous':
-        return 'ambiguous currency';
-      case 'tax_status_unknown':
-        return 'tax basis not stated';
+      case "commitment_language":
+        return "contains commitment language";
+      case "price_above_target":
+        return "price above target";
+      case "qty_or_budget_change":
+        return "changes quantity/budget";
+      case "max_rounds":
+        return "3+ negotiation rounds";
+      case "sender_unverified":
+        return "sender not verified (SPF/DKIM/DMARC)";
+      case "price_inconsistent":
+        return "case vs unit price mismatch";
+      case "moq_not_met":
+        return "minimum order not met";
+      case "currency_ambiguous":
+        return "ambiguous currency";
+      case "tax_status_unknown":
+        return "tax basis not stated";
       default:
         return reason;
     }
@@ -1026,7 +1248,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
 
   private toNum(v: any): number | null {
     if (v == null) return null;
-    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    const n = typeof v === "number" ? v : parseFloat(String(v));
     return Number.isFinite(n) ? n : null;
   }
 
@@ -1042,7 +1264,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       type: string;
       title: string;
       message: string;
-      priority?: 'low' | 'medium' | 'high' | 'critical';
+      priority?: "low" | "medium" | "high" | "critical";
       actionUrl?: string;
       metadata?: Record<string, any>;
     },
@@ -1057,33 +1279,39 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         type: n.type,
         title: n.title.slice(0, 500),
         message: n.message,
-        priority: n.priority ?? 'medium',
-        status: 'unread',
+        priority: n.priority ?? "medium",
+        status: "unread",
         action_url: n.actionUrl ?? null,
         metadata: n.metadata ?? {},
         created_at: now,
       }));
-      await this.databaseService.supabase.from('notifications').insert(rows);
+      await this.databaseService.supabase.from("notifications").insert(rows);
     } catch (e: any) {
-      this.logger.warn(`persistManagerNotification failed for restaurant ${restaurantId}: ${e?.message}`);
+      this.logger.warn(
+        `persistManagerNotification failed for restaurant ${restaurantId}: ${e?.message}`,
+      );
     }
   }
 
   /** Active member user_ids for a restaurant (URA membership, fallback to users.restaurant_id). */
-  private async resolveRestaurantMemberIds(restaurantId: string): Promise<string[]> {
+  private async resolveRestaurantMemberIds(
+    restaurantId: string,
+  ): Promise<string[]> {
     try {
       const { data: ura } = await this.databaseService.supabase
-        .from('user_restaurant_access')
-        .select('user_id')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true);
+        .from("user_restaurant_access")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true);
       const uraIds = (ura || []).map((r: any) => r.user_id).filter(Boolean);
       if (uraIds.length) return Array.from(new Set(uraIds));
       const { data: users } = await this.databaseService.supabase
-        .from('users')
-        .select('user_id')
-        .eq('restaurant_id', restaurantId);
-      return Array.from(new Set((users || []).map((u: any) => u.user_id).filter(Boolean)));
+        .from("users")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId);
+      return Array.from(
+        new Set((users || []).map((u: any) => u.user_id).filter(Boolean)),
+      );
     } catch {
       return [];
     }

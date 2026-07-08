@@ -14,13 +14,13 @@
  */
 
 export type EmailClass =
-  | 'negotiation_reply'
-  | 'order_confirmation'
-  | 'promotion'
-  | 'catalogue_offer'
-  | 'automated_transactional'
-  | 'bounce_autoreply'
-  | 'other';
+  | "negotiation_reply"
+  | "order_confirmation"
+  | "promotion"
+  | "catalogue_offer"
+  | "automated_transactional"
+  | "bounce_autoreply"
+  | "other";
 
 /**
  * RFC-standard markers of bulk / automated / authenticated mail, distilled from the
@@ -55,7 +55,9 @@ export interface TransportSignals {
 type HeaderMap = Record<string, string | number | null | undefined>;
 
 /** Lower-case every header name and stringify values, tolerating a partial/empty map. */
-function normalizeHeaders(headers: HeaderMap | null | undefined): Record<string, string> {
+function normalizeHeaders(
+  headers: HeaderMap | null | undefined,
+): Record<string, string> {
   const out: Record<string, string> = {};
   if (!headers) return out;
   for (const [k, v] of Object.entries(headers)) {
@@ -65,12 +67,14 @@ function normalizeHeaders(headers: HeaderMap | null | undefined): Record<string,
 }
 
 /** Pull the bare email address out of a `From`/`Return-Path` header value. */
-export function extractEmailAddress(fromHeader: string | null | undefined): string {
-  const s = (fromHeader ?? '').toString();
+export function extractEmailAddress(
+  fromHeader: string | null | undefined,
+): string {
+  const s = (fromHeader ?? "").toString();
   const angled = s.match(/<([^>]+)>/);
   const raw = (angled ? angled[1] : s).trim().toLowerCase();
   const bare = raw.match(/[^\s<>]+@[^\s<>]+/);
-  return bare ? bare[0] : '';
+  return bare ? bare[0] : "";
 }
 
 const NO_REPLY_LOCALPART =
@@ -78,25 +82,40 @@ const NO_REPLY_LOCALPART =
 
 /** ESP / bulk-sender fingerprints keyed off common headers. */
 function detectEsp(h: Record<string, string>): string | null {
-  const mailer = (h['x-mailer'] || '').toLowerCase();
-  if (h['x-sg-eid'] || h['x-sendgrid-eid'] || mailer.includes('sendgrid')) return 'sendgrid';
-  if (h['x-mc-user'] || mailer.includes('mailchimp') || (h['feedback-id'] || '').includes('mc')) return 'mailchimp';
-  if (h['x-cmail-id'] || mailer.includes('campaign monitor')) return 'campaignmonitor';
-  if (mailer.includes('mailgun') || h['x-mailgun-sid']) return 'mailgun';
-  if (h['x-ses-outgoing'] || mailer.includes('amazon ses')) return 'ses';
-  if (h['x-campaignid'] || h['x-campaign'] || h['x-mailer-version']) return 'esp';
-  if (h['feedback-id']) return 'esp';
+  const mailer = (h["x-mailer"] || "").toLowerCase();
+  if (h["x-sg-eid"] || h["x-sendgrid-eid"] || mailer.includes("sendgrid"))
+    return "sendgrid";
+  if (
+    h["x-mc-user"] ||
+    mailer.includes("mailchimp") ||
+    (h["feedback-id"] || "").includes("mc")
+  )
+    return "mailchimp";
+  if (h["x-cmail-id"] || mailer.includes("campaign monitor"))
+    return "campaignmonitor";
+  if (mailer.includes("mailgun") || h["x-mailgun-sid"]) return "mailgun";
+  if (h["x-ses-outgoing"] || mailer.includes("amazon ses")) return "ses";
+  if (h["x-campaignid"] || h["x-campaign"] || h["x-mailer-version"])
+    return "esp";
+  if (h["feedback-id"]) return "esp";
   return null;
 }
 
 /** Read an `spf=/dkim=/dmarc=` verdict from an Authentication-Results value. */
-function readAuthMethod(value: string, method: 'spf' | 'dkim' | 'dmarc'): boolean | null {
+function readAuthMethod(
+  value: string,
+  method: "spf" | "dkim" | "dmarc",
+): boolean | null {
   if (!value) return null;
-  const m = value.toLowerCase().match(
-    new RegExp(`\\b${method}=(pass|fail|none|neutral|softfail|hardfail|temperror|permerror|policy)`),
-  );
+  const m = value
+    .toLowerCase()
+    .match(
+      new RegExp(
+        `\\b${method}=(pass|fail|none|neutral|softfail|hardfail|temperror|permerror|policy)`,
+      ),
+    );
   if (!m) return null;
-  return m[1] === 'pass';
+  return m[1] === "pass";
 }
 
 /**
@@ -109,31 +128,39 @@ export function deriveTransportSignals(
 ): TransportSignals {
   const h = normalizeHeaders(headers);
 
-  const precedence = (h['precedence'] || '').toLowerCase();
-  const bulk = ['bulk', 'list', 'junk'].includes(precedence.trim());
+  const precedence = (h["precedence"] || "").toLowerCase();
+  const bulk = ["bulk", "list", "junk"].includes(precedence.trim());
 
-  const listMail = Boolean(h['list-unsubscribe'] || h['list-id'] || h['list-help']);
+  const listMail = Boolean(
+    h["list-unsubscribe"] || h["list-id"] || h["list-help"],
+  );
 
-  const autoSub = (h['auto-submitted'] || '').toLowerCase().trim();
+  const autoSub = (h["auto-submitted"] || "").toLowerCase().trim();
   const autoSubmitted =
-    (autoSub !== '' && autoSub !== 'no') || Boolean(h['x-autoreply'] || h['x-autorespond'] || h['x-auto-response-suppress']);
+    (autoSub !== "" && autoSub !== "no") ||
+    Boolean(
+      h["x-autoreply"] || h["x-autorespond"] || h["x-auto-response-suppress"],
+    );
 
-  const fromValue = fromHeaderOverride ?? h['from'] ?? '';
+  const fromValue = fromHeaderOverride ?? h["from"] ?? "";
   const fromAddr = extractEmailAddress(fromValue);
-  const returnPathAddr = extractEmailAddress(h['return-path']);
-  const localPart = (addr: string) => addr.split('@')[0] || '';
+  const returnPathAddr = extractEmailAddress(h["return-path"]);
+  const localPart = (addr: string) => addr.split("@")[0] || "";
   const noReplyFrom =
-    (fromAddr !== '' && NO_REPLY_LOCALPART.test(localPart(fromAddr))) ||
-    (returnPathAddr !== '' && NO_REPLY_LOCALPART.test(localPart(returnPathAddr)));
+    (fromAddr !== "" && NO_REPLY_LOCALPART.test(localPart(fromAddr))) ||
+    (returnPathAddr !== "" &&
+      NO_REPLY_LOCALPART.test(localPart(returnPathAddr)));
 
   const esp = detectEsp(h);
 
-  const auth = `${h['authentication-results'] || ''} ${h['arc-authentication-results'] || ''}`.trim();
-  const spfPass = readAuthMethod(auth, 'spf');
-  const dkimPass = readAuthMethod(auth, 'dkim');
-  const dmarcPass = readAuthMethod(auth, 'dmarc');
+  const auth =
+    `${h["authentication-results"] || ""} ${h["arc-authentication-results"] || ""}`.trim();
+  const spfPass = readAuthMethod(auth, "spf");
+  const dkimPass = readAuthMethod(auth, "dkim");
+  const dmarcPass = readAuthMethod(auth, "dmarc");
 
-  const isAutomated = bulk || listMail || autoSubmitted || noReplyFrom || esp !== null;
+  const isAutomated =
+    bulk || listMail || autoSubmitted || noReplyFrom || esp !== null;
   const senderVerified = dmarcPass === true || dkimPass === true;
 
   return {
@@ -152,17 +179,35 @@ export function deriveTransportSignals(
 
 /** Promo/marketing keyword density in the subject + body (Layer B heuristic). */
 const PROMO_KEYWORDS = [
-  'unsubscribe', '% off', 'sale', 'discount', 'limited time', 'limited stock',
-  'exclusive', 'allocation', 'new arrival', 'new release', 'closeout', 'clearance',
-  'special offer', 'promo', 'deal', 'flash', 'this week only', 'while supplies last',
+  "unsubscribe",
+  "% off",
+  "sale",
+  "discount",
+  "limited time",
+  "limited stock",
+  "exclusive",
+  "allocation",
+  "new arrival",
+  "new release",
+  "closeout",
+  "clearance",
+  "special offer",
+  "promo",
+  "deal",
+  "flash",
+  "this week only",
+  "while supplies last",
 ];
 
 /**
  * Light structural signal that a message reads like marketing. Not authoritative on its
  * own — it biases the classifier and catches ESPs that strip transport headers.
  */
-export function looksPromotional(subject: string | null | undefined, body: string | null | undefined): boolean {
-  const text = `${subject ?? ''}\n${body ?? ''}`.toLowerCase();
+export function looksPromotional(
+  subject: string | null | undefined,
+  body: string | null | undefined,
+): boolean {
+  const text = `${subject ?? ""}\n${body ?? ""}`.toLowerCase();
   if (!text.trim()) return false;
   let hits = 0;
   for (const kw of PROMO_KEYWORDS) if (text.includes(kw)) hits += 1;
@@ -175,7 +220,12 @@ export function looksPromotional(subject: string | null | undefined, body: strin
  * class — this is only the cheap, deterministic half.
  */
 export function transportImpliesNoReply(signals: TransportSignals): boolean {
-  return signals.bulk || signals.listMail || signals.autoSubmitted || signals.noReplyFrom;
+  return (
+    signals.bulk ||
+    signals.listMail ||
+    signals.autoSubmitted ||
+    signals.noReplyFrom
+  );
 }
 
 /**
@@ -190,13 +240,19 @@ export function replySkipReason(input: {
   injectionSuspected: boolean;
   transport?: TransportSignals | null;
 }): string | null {
-  if (input.injectionSuspected) return 'possible prompt injection — quarantined for manager review';
+  if (input.injectionSuspected)
+    return "possible prompt injection — quarantined for manager review";
   if (input.transport && transportImpliesNoReply(input.transport)) {
-    return 'transport signals mark this as bulk / automated / no-reply';
+    return "transport signals mark this as bulk / automated / no-reply";
   }
   const noReplyClasses: EmailClass[] = [
-    'order_confirmation', 'promotion', 'catalogue_offer', 'automated_transactional', 'bounce_autoreply',
+    "order_confirmation",
+    "promotion",
+    "catalogue_offer",
+    "automated_transactional",
+    "bounce_autoreply",
   ];
-  if (noReplyClasses.includes(input.emailClass)) return `classified as ${input.emailClass} — no reply needed`;
+  if (noReplyClasses.includes(input.emailClass))
+    return `classified as ${input.emailClass} — no reply needed`;
   return null; // negotiation_reply or other → draft as before
 }

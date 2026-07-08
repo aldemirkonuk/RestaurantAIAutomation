@@ -15,17 +15,17 @@ Architecture (D-32-01 through D-32-08):
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
 from core.base_agent import BaseAgent
 from services.constraint_engine import get_constraint_engine
-from services.fuzzy_matcher import get_fuzzy_matcher  # noqa: F401 — available for invoice matching
+from services.fuzzy_matcher import (
+    get_fuzzy_matcher,
+)  # noqa: F401 — available for invoice matching
 from services.model_clients import get_haiku_client, get_haiku_semaphore
 from services.spend_logger import get_spend_logger
 
@@ -37,13 +37,13 @@ logger = logging.getLogger(__name__)
 
 # GAP-1 (C-08 / C-21): PII detection patterns — discrete mode on match
 PII_PATTERNS = [
-    re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),              # SSN
-    re.compile(r'\b\d{9}\b'),                            # 9-digit routing number
-    re.compile(r'\b4[0-9]{12}(?:[0-9]{3})?\b'),          # Visa card
-    re.compile(r'\b5[1-5][0-9]{14}\b'),                  # Mastercard
-    re.compile(r'\b3[47][0-9]{13}\b'),                   # Amex
-    re.compile(r'\brouting.{0,20}number\b', re.IGNORECASE),
-    re.compile(r'\bssn\b|\bsocial.{0,10}security\b', re.IGNORECASE),
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),  # SSN
+    re.compile(r"\b\d{9}\b"),  # 9-digit routing number
+    re.compile(r"\b4[0-9]{12}(?:[0-9]{3})?\b"),  # Visa card
+    re.compile(r"\b5[1-5][0-9]{14}\b"),  # Mastercard
+    re.compile(r"\b3[47][0-9]{13}\b"),  # Amex
+    re.compile(r"\brouting.{0,20}number\b", re.IGNORECASE),
+    re.compile(r"\bssn\b|\bsocial.{0,10}security\b", re.IGNORECASE),
 ]
 
 # D-32-02: Email type constants
@@ -56,6 +56,7 @@ EMAIL_TYPE_WINE_INQUIRY = "WINE_INQUIRY"
 # ──────────────────────────────────────────────────────────────────────────────
 # Agent
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class ProviderCommunicationAgent(BaseAgent):
     """
@@ -92,7 +93,10 @@ class ProviderCommunicationAgent(BaseAgent):
             ("procurement.events", "procurement.order.created"),
             ("provider.events", "provider.draft.approved"),
             ("provider.events", "provider.draft.discarded"),
-            ("provider.events", "provider.invoice.received"),  # D-32-15: off-app invoice match
+            (
+                "provider.events",
+                "provider.invoice.received",
+            ),  # D-32-15: off-app invoice match
         ]
 
     async def process_message(self, message: Dict[str, Any]) -> None:
@@ -128,9 +132,13 @@ class ProviderCommunicationAgent(BaseAgent):
             else:
                 self.logger.warning(f"Unhandled routing key: {routing_key}")
                 return
-            await self._mark_processed(idempotency_key, {"status": "ok", "routing_key": routing_key})
+            await self._mark_processed(
+                idempotency_key, {"status": "ok", "routing_key": routing_key}
+            )
         except Exception as exc:
-            self.logger.error(f"ProviderCommunicationAgent failed [{routing_key}]: {exc}")
+            self.logger.error(
+                f"ProviderCommunicationAgent failed [{routing_key}]: {exc}"
+            )
             await self._send_to_dlq(
                 message=payload,
                 error=str(exc),
@@ -167,22 +175,17 @@ class ProviderCommunicationAgent(BaseAgent):
     _SYSTEM_PROMPT = (
         "You are a wine procurement email specialist writing on behalf of a restaurant manager. "
         "Your drafts are concise, warm but professional, and always scannable at a glance.\n\n"
-
         "EMAIL TYPE RULES\n"
         "PRICE_INQUIRY  — goal: get a quote. No price commitment. No budget disclosed. "
         "Ask: wine name + qty + format, then request current pricing and availability. "
         "Tone: direct. Max 100 words.\n"
-
         "DEMAND_OFFER   — goal: propose our target price. Cite volume or relationship as "
         "justification. Ask if they can meet or approach it. No competitor references. "
         "Tone: collegial, firm. Max 110 words.\n"
-
         "PROMO_INQUIRY  — goal: get full promo terms. Reference the promotion by name if known. "
         "Ask: price, minimum qty, end date. Tone: enthusiastic but businesslike. Max 100 words.\n"
-
         "WINE_INQUIRY   — goal: check if provider carries this wine and at what price. "
         "Describe wine precisely (name, vintage, style). Tone: curious, friendly. Max 100 words.\n\n"
-
         "STRUCTURE (all types)\n"
         "1. Greeting — address the recipient by their contact first name if provided; "
         "otherwise the company name. Never open with a bare 'Hello,' or 'Hi there,' when a name is available.\n"
@@ -190,9 +193,8 @@ class ProviderCommunicationAgent(BaseAgent):
         "3. Close — one line. End with 'Best regards,' followed by the sender/restaurant name "
         "if provided in the context; otherwise just 'Best regards,'. "
         "NEVER write a literal placeholder such as [Manager Name] or [Your Name].\n\n"
-
         "HARD RULES (never violate)\n"
-        "• Return ONLY valid JSON: {\"subject\": \"...\", \"body\": \"...\"} — no markdown, no preamble.\n"
+        '• Return ONLY valid JSON: {"subject": "...", "body": "..."} — no markdown, no preamble.\n'
         "• No bank details, routing numbers, or card numbers.\n"
         "• No competitor supplier names.\n"
         "• Never fabricate facts not present in the context."
@@ -220,7 +222,9 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             result = (
                 self.database.supabase.table("providers")
-                .select("name, close_relationship, relationship_health_score, ai_personality_notes")
+                .select(
+                    "name, close_relationship, relationship_health_score, ai_personality_notes"
+                )
                 .eq("id", provider_id)
                 .eq("restaurant_id", restaurant_id)
                 .single()
@@ -280,9 +284,9 @@ class ProviderCommunicationAgent(BaseAgent):
             self.logger.warning(f"Failed to fetch negotiation facts: {exc}")
 
         # ── Compressed user message ──
-        wine    = payload.get("wine_name") or "wine"
-        qty     = payload.get("quantity") or "TBD"
-        target  = payload.get("target_price_per_bottle")
+        wine = payload.get("wine_name") or "wine"
+        qty = payload.get("quantity") or "TBD"
+        target = payload.get("target_price_per_bottle")
         urgency = payload.get("urgency") or "normal"
 
         provider_line = f"provider: {provider_name}"
@@ -336,12 +340,16 @@ class ProviderCommunicationAgent(BaseAgent):
         provider_id = payload.get("provider_id", "")
 
         if not all([order_id, restaurant_id, provider_id]):
-            self.logger.warning(f"Missing required fields in order.created payload: {payload}")
+            self.logger.warning(
+                f"Missing required fields in order.created payload: {payload}"
+            )
             return
 
         # Step 1: Daily rate limit (D-32-04)
         rate_key = f"negotiation_draft:{restaurant_id}:day"
-        if await self._check_and_increment_rate_limit(rate_key, self.settings.negotiation_draft_daily_cap):
+        if await self._check_and_increment_rate_limit(
+            rate_key, self.settings.negotiation_draft_daily_cap
+        ):
             await self._notify(
                 restaurant_id=restaurant_id,
                 notification_type="rate_limit_reached",
@@ -400,7 +408,10 @@ class ProviderCommunicationAgent(BaseAgent):
                 message="Order context violates hard constraints. Manual drafting required.",
                 priority="high",
                 action_url="/orders",
-                metadata={"order_id": order_id, "constraints": pre_check.triggered_hard},
+                metadata={
+                    "order_id": order_id,
+                    "constraints": pre_check.triggered_hard,
+                },
             )
             return
 
@@ -440,7 +451,9 @@ class ProviderCommunicationAgent(BaseAgent):
         # Step 6: Draft lock — prevent duplicates for same order (T-32-03-03)
         lock_key = f"draft_lock:{order_id}"
         if not await self._acquire_draft_lock(lock_key):
-            self.logger.info(f"Draft lock held for order {order_id} — skipping duplicate")
+            self.logger.info(
+                f"Draft lock held for order {order_id} — skipping duplicate"
+            )
             return
 
         # Step 7: Haiku draft generation
@@ -453,11 +466,13 @@ class ProviderCommunicationAgent(BaseAgent):
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=256,
-                    system=[{
-                        "type": "text",
-                        "text": self._SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},
-                    }],
+                    system=[
+                        {
+                            "type": "text",
+                            "text": self._SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
                     messages=[{"role": "user", "content": prompt}],
                 )
             raw = response.content[0].text if response.content else "{}"
@@ -478,7 +493,9 @@ class ProviderCommunicationAgent(BaseAgent):
                     f"live_input={input_tokens} output={output_tokens} order={order_id}"
                 )
         except (json.JSONDecodeError, Exception) as exc:
-            self.logger.error(f"Haiku draft generation failed for order {order_id}: {exc}")
+            self.logger.error(
+                f"Haiku draft generation failed for order {order_id}: {exc}"
+            )
             draft_json = {
                 "subject": (
                     f"Inquiry: {payload.get('wine_name', 'Wine')} — "
@@ -532,13 +549,18 @@ class ProviderCommunicationAgent(BaseAgent):
                 message="AI draft violates hard constraints. Manual drafting required.",
                 priority="high",
                 action_url="/orders",
-                metadata={"order_id": order_id, "constraints": post_check.triggered_hard},
+                metadata={
+                    "order_id": order_id,
+                    "constraints": post_check.triggered_hard,
+                },
             )
             return
 
         # Step 9b: Disclaimer append (D-32-08 — non-removable)
         restaurant_name = payload.get("restaurant_name", "the restaurant")
-        disclaimer = self.settings.wineops_disclaimer.format(restaurant_name=restaurant_name)
+        disclaimer = self.settings.wineops_disclaimer.format(
+            restaurant_name=restaurant_name
+        )
         full_draft = f"{draft_body}\n\n{disclaimer}"
 
         # Step 10: Auto-send gate (D-32-07 — 3-gate check)
@@ -550,36 +572,42 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             conv_result = (
                 self.database.supabase.table("procurement_conversations")
-                .insert({
-                    "order_id": order_id,
-                    "provider_id": provider_id,
-                    "restaurant_id": restaurant_id,
-                    "direction": "outbound",
-                    "channel": "email",
-                    # message_text is NOT NULL — must always be present
-                    "message_text": full_draft,
-                    # content is the nullable alias read by NestJS getPendingDraft
-                    "content": full_draft,
-                    "ai_generated": True,
-                    "status": final_status,
-                    "outbound_email_type": email_type,
-                    "round_count": 0,
-                    "disclaimer_appended": True,
-                    "constraint_flags": constraint_flags,
-                    "rolling_summary": None,
-                })
+                .insert(
+                    {
+                        "order_id": order_id,
+                        "provider_id": provider_id,
+                        "restaurant_id": restaurant_id,
+                        "direction": "outbound",
+                        "channel": "email",
+                        # message_text is NOT NULL — must always be present
+                        "message_text": full_draft,
+                        # content is the nullable alias read by NestJS getPendingDraft
+                        "content": full_draft,
+                        "ai_generated": True,
+                        "status": final_status,
+                        "outbound_email_type": email_type,
+                        "round_count": 0,
+                        "disclaimer_appended": True,
+                        "constraint_flags": constraint_flags,
+                        "rolling_summary": None,
+                    }
+                )
                 .execute()
             )
             if conv_result.data:
                 conversation_id = conv_result.data[0].get("id")
         except Exception as exc:
-            self.logger.error(f"Failed to insert procurement_conversation for order {order_id}: {exc}")
+            self.logger.error(
+                f"Failed to insert procurement_conversation for order {order_id}: {exc}"
+            )
             raise
 
         # Step 12: Post-insert action
         provider_name = payload.get("provider_name") or "Provider"
-        order_number  = payload.get("order_number") or f"#{order_id[:8]}"
-        order_display = order_number if order_number.startswith("#") else f"#{order_number}"
+        order_number = payload.get("order_number") or f"#{order_id[:8]}"
+        order_display = (
+            order_number if order_number.startswith("#") else f"#{order_number}"
+        )
 
         if auto_send:
             # D-32-07: Auto-send path — publish event for downstream Gmail send
@@ -595,7 +623,9 @@ class ProviderCommunicationAgent(BaseAgent):
                     },
                 )
             except Exception as exc:
-                self.logger.warning(f"Failed to publish auto_approved event (non-critical): {exc}")
+                self.logger.warning(
+                    f"Failed to publish auto_approved event (non-critical): {exc}"
+                )
         else:
             # Manual approval path: notify manager
             # Title is kept short for the bell icon (one line, no wrapping).
@@ -624,7 +654,11 @@ class ProviderCommunicationAgent(BaseAgent):
         # Decision log (T-32-03-01 repudiation mitigation)
         await self.log_decision(
             decision_type="outbound_draft_generated",
-            inputs={"order_id": order_id, "email_type": email_type, "provider_id": provider_id},
+            inputs={
+                "order_id": order_id,
+                "email_type": email_type,
+                "provider_id": provider_id,
+            },
             output={
                 "conversation_id": conversation_id,
                 "constraint_flags": constraint_flags,
@@ -662,7 +696,8 @@ class ProviderCommunicationAgent(BaseAgent):
                 "was_modified": bool(modified),
             },
             output={"status": "APPROVED"},
-            reasoning="Manager approved outbound draft" + (" with edits" if modified else ""),
+            reasoning="Manager approved outbound draft"
+            + (" with edits" if modified else ""),
             confidence=1.0,
             restaurant_id=restaurant_id,
         )
@@ -850,13 +885,15 @@ class ProviderCommunicationAgent(BaseAgent):
                 "message": message,
                 "priority": priority,
                 "action_url": action_url,
-                "status": "unread",   # VERIFIED: notifications uses status='unread'
+                "status": "unread",  # VERIFIED: notifications uses status='unread'
             }
             if user_id:
                 insert_payload["user_id"] = user_id
             if metadata:
                 insert_payload["metadata"] = metadata
-            self.database.supabase.table("notifications").insert(insert_payload).execute()
+            self.database.supabase.table("notifications").insert(
+                insert_payload
+            ).execute()
         except Exception as exc:
             self.logger.warning(f"Notification insert failed (non-critical): {exc}")
 
@@ -912,9 +949,14 @@ class ProviderCommunicationAgent(BaseAgent):
             # JSONB merge: profile_dynamic = profile_dynamic || new_fields (Python-level)
             # T-32-06-01: restaurant_id scoping enforced; no eval; values stored as strings
             try:
-                existing = self.database.supabase.table("providers").select(
-                    "profile_dynamic"
-                ).eq("id", provider_id).eq("restaurant_id", restaurant_id).single().execute()
+                existing = (
+                    self.database.supabase.table("providers")
+                    .select("profile_dynamic")
+                    .eq("id", provider_id)
+                    .eq("restaurant_id", restaurant_id)
+                    .single()
+                    .execute()
+                )
                 if existing.data:
                     current_dynamic = existing.data.get("profile_dynamic") or {}
                     merged = {**current_dynamic, **new_fields}
@@ -922,12 +964,20 @@ class ProviderCommunicationAgent(BaseAgent):
                         {"profile_dynamic": merged}
                     ).eq("id", provider_id).eq("restaurant_id", restaurant_id).execute()
             except Exception as exc:
-                self.logger.warning(f"profile_dynamic update failed (non-critical): {exc}")
+                self.logger.warning(
+                    f"profile_dynamic update failed (non-critical): {exc}"
+                )
 
             # SpendLogger (TOKENBDGT-03)
             try:
-                input_tokens = response.usage.input_tokens if hasattr(response, "usage") else len(prompt) // 4
-                output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 60
+                input_tokens = (
+                    response.usage.input_tokens
+                    if hasattr(response, "usage")
+                    else len(prompt) // 4
+                )
+                output_tokens = (
+                    response.usage.output_tokens if hasattr(response, "usage") else 60
+                )
                 cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
                 get_spend_logger().log(
                     provider="anthropic",
@@ -942,14 +992,19 @@ class ProviderCommunicationAgent(BaseAgent):
 
             await self.log_decision(
                 decision_type="dynamic_profile_extracted",
-                inputs={"provider_id": provider_id, "fields_extracted": list(new_fields.keys())},
+                inputs={
+                    "provider_id": provider_id,
+                    "fields_extracted": list(new_fields.keys()),
+                },
                 output={"merged_fields": list(new_fields.keys())},
                 reasoning=f"Extracted {len(new_fields)} dynamic fields from conversation",
                 confidence=0.80,
                 restaurant_id=restaurant_id,
             )
         except Exception as exc:
-            self.logger.warning(f"_extract_dynamic_profile failed (non-critical): {exc}")
+            self.logger.warning(
+                f"_extract_dynamic_profile failed (non-critical): {exc}"
+            )
 
     # =========================================================================
     # PROGRESSIVE SUMMARIZATION (OUTBOUND-04 / TOKENBDGT-04)
@@ -1022,24 +1077,34 @@ class ProviderCommunicationAgent(BaseAgent):
             if commitment_type not in valid_commitment_types:
                 commitment_type = "INDICATIVE"
             try:
-                self.database.supabase.table("negotiation_facts").insert({
-                    "provider_id": provider_id,
-                    "restaurant_id": restaurant_id,
-                    "conversation_id": conversation_id,
-                    "fact_field": fact["field"],
-                    "fact_value": fact["value"],
-                    "fact_type": fact.get("type", "general"),
-                    "commitment_type": commitment_type,
-                    "confidence": fact.get("confidence", 0.7),
-                    "source_message": full_conversation[-500:],
-                }).execute()
+                self.database.supabase.table("negotiation_facts").insert(
+                    {
+                        "provider_id": provider_id,
+                        "restaurant_id": restaurant_id,
+                        "conversation_id": conversation_id,
+                        "fact_field": fact["field"],
+                        "fact_value": fact["value"],
+                        "fact_type": fact.get("type", "general"),
+                        "commitment_type": commitment_type,
+                        "confidence": fact.get("confidence", 0.7),
+                        "source_message": full_conversation[-500:],
+                    }
+                ).execute()
             except Exception as exc:
-                self.logger.warning(f"negotiation_facts INSERT failed (non-critical): {exc}")
+                self.logger.warning(
+                    f"negotiation_facts INSERT failed (non-critical): {exc}"
+                )
 
         # SpendLogger (TOKENBDGT-03)
         try:
-            input_tokens = response.usage.input_tokens if hasattr(response, "usage") else len(prompt) // 4
-            output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 100
+            input_tokens = (
+                response.usage.input_tokens
+                if hasattr(response, "usage")
+                else len(prompt) // 4
+            )
+            output_tokens = (
+                response.usage.output_tokens if hasattr(response, "usage") else 100
+            )
             cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
             get_spend_logger().log(
                 provider="anthropic",
@@ -1060,7 +1125,9 @@ class ProviderCommunicationAgent(BaseAgent):
             confidence=0.85,
             restaurant_id=restaurant_id,
         )
-        self.logger.info(f"Summarized conversation {conversation_id} at round {round_count}: {len(facts)} facts")
+        self.logger.info(
+            f"Summarized conversation {conversation_id} at round {round_count}: {len(facts)} facts"
+        )
 
     # =========================================================================
     # INVOICE EVENT BRIDGE (D-32-15 — triggered by provider.invoice.received)
@@ -1077,11 +1144,14 @@ class ProviderCommunicationAgent(BaseAgent):
         email_body = payload.get("email_body", "")
 
         if not (restaurant_id and provider_id and email_body):
-            self.logger.debug("_handle_invoice_received_event: missing required fields, skipping")
+            self.logger.debug(
+                "_handle_invoice_received_event: missing required fields, skipping"
+            )
             return
 
         try:
             from agents.visual_verification_agent import VisualVerificationAgent
+
             vva = VisualVerificationAgent.__new__(VisualVerificationAgent)
             vva.logger = self.logger
             extracted = await vva._extract_invoice_from_email_text(email_body)
@@ -1117,11 +1187,16 @@ class ProviderCommunicationAgent(BaseAgent):
         """
         try:
             # Fetch open orders for this restaurant/provider
-            orders_result = self.database.supabase.table("procurement_orders").select(
-                "id, wine_name, quantity, created_at, status"
-            ).eq("restaurant_id", restaurant_id).eq("provider_id", provider_id).in_(
-                "status", ["PENDING", "CONFIRMED", "DRAFT"]
-            ).order("created_at", desc=True).limit(20).execute()
+            orders_result = (
+                self.database.supabase.table("procurement_orders")
+                .select("id, wine_name, quantity, created_at, status")
+                .eq("restaurant_id", restaurant_id)
+                .eq("provider_id", provider_id)
+                .in_("status", ["PENDING", "CONFIRMED", "DRAFT"])
+                .order("created_at", desc=True)
+                .limit(20)
+                .execute()
+            )
 
             if not orders_result.data:
                 # No open orders → C-25 orphan scenario
@@ -1135,19 +1210,24 @@ class ProviderCommunicationAgent(BaseAgent):
                     ),
                     priority="medium",
                     action_url=f"/providers/{provider_id}",
-                    metadata={"provider_id": provider_id, "invoice": extracted_invoice, "match_class": "no_match"},
+                    metadata={
+                        "provider_id": provider_id,
+                        "invoice": extracted_invoice,
+                        "match_class": "no_match",
+                    },
                 )
                 return
 
             fm = get_fuzzy_matcher()
             line_items = extracted_invoice.get("line_items", [{}])
             extracted_wine = line_items[0].get("wine_name", "") if line_items else ""
-            extracted_qty = float(line_items[0].get("quantity", 0)) if line_items else None
+            extracted_qty = (
+                float(line_items[0].get("quantity", 0)) if line_items else None
+            )
             extracted_date = extracted_invoice.get("invoice_date")
 
             orders_with_names = [
-                {**o, "provider_name": provider_name}
-                for o in orders_result.data
+                {**o, "provider_name": provider_name} for o in orders_result.data
             ]
 
             best = fm.best_order_match(

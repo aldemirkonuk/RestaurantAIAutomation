@@ -19,8 +19,7 @@ import io
 import json
 import logging
 import base64
-import hashlib
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -34,11 +33,31 @@ class WineBookScraper:
 
     # Fields we extract per wine entry (matches master_wine_library schema)
     WINE_FIELDS = [
-        "name", "producer", "region", "country", "grape_variety", "vintage",
-        "wine_type", "color", "alcohol_pct", "tasting_notes", "description",
-        "avg_price", "barcode", "upc", "ean", "sku", "image_url",
-        "sub_region", "appellation", "appellation_class", "is_blend",
-        "body", "sweetness", "food_pairings", "classification",
+        "name",
+        "producer",
+        "region",
+        "country",
+        "grape_variety",
+        "vintage",
+        "wine_type",
+        "color",
+        "alcohol_pct",
+        "tasting_notes",
+        "description",
+        "avg_price",
+        "barcode",
+        "upc",
+        "ean",
+        "sku",
+        "image_url",
+        "sub_region",
+        "appellation",
+        "appellation_class",
+        "is_blend",
+        "body",
+        "sweetness",
+        "food_pairings",
+        "classification",
     ]
 
     def __init__(
@@ -58,6 +77,7 @@ class WineBookScraper:
             return self._genai_client
         try:
             from google import genai
+
             self._genai_client = genai.Client(api_key=self.google_api_key)
             return self._genai_client
         except ImportError:
@@ -72,7 +92,7 @@ class WineBookScraper:
     ) -> Dict[str, Any]:
         """
         Main entry point: process an entire PDF and extract wine entries.
-        
+
         Returns:
             {
                 "wines_extracted": int,
@@ -107,35 +127,45 @@ class WineBookScraper:
             if page_type == "text":
                 text = page_data.get("text", "")
                 if text.strip():
-                    all_text_chunks.append({
-                        "page": i + 1,
-                        "text": text,
-                        "type": "text_extract",
-                    })
+                    all_text_chunks.append(
+                        {
+                            "page": i + 1,
+                            "text": text,
+                            "type": "text_extract",
+                        }
+                    )
             elif page_type == "image":
-                all_image_pages.append({
-                    "page": i + 1,
-                    "image_bytes": page_data.get("image_bytes"),
-                })
+                all_image_pages.append(
+                    {
+                        "page": i + 1,
+                        "image_bytes": page_data.get("image_bytes"),
+                    }
+                )
 
         # Step 3: Process image-heavy pages with Gemini Vision
         for img_page in all_image_pages:
             try:
                 vision_text = await self._extract_with_vision(img_page["image_bytes"])
                 if vision_text:
-                    all_text_chunks.append({
-                        "page": img_page["page"],
-                        "text": vision_text,
-                        "type": "vision_extract",
-                    })
+                    all_text_chunks.append(
+                        {
+                            "page": img_page["page"],
+                            "text": vision_text,
+                            "type": "vision_extract",
+                        }
+                    )
             except Exception as e:
-                errors.append(f"Vision extraction failed for page {img_page['page']}: {e}")
+                errors.append(
+                    f"Vision extraction failed for page {img_page['page']}: {e}"
+                )
 
         # Step 4: Combine all text and chunk by wine entry
-        combined_text = "\n\n".join([
-            f"--- Page {c['page']} ({c['type']}) ---\n{c['text']}"
-            for c in sorted(all_text_chunks, key=lambda x: x["page"])
-        ])
+        combined_text = "\n\n".join(
+            [
+                f"--- Page {c['page']} ({c['type']}) ---\n{c['text']}"
+                for c in sorted(all_text_chunks, key=lambda x: x["page"])
+            ]
+        )
 
         # Step 5: Extract structured wine data from chunks
         wines = await self._extract_wines_from_text(combined_text, source_name)
@@ -172,6 +202,7 @@ class WineBookScraper:
         pages = []
         try:
             import PyPDF2
+
             reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
 
             for i, page in enumerate(reader.pages):
@@ -198,10 +229,13 @@ class WineBookScraper:
 
         return pages
 
-    def _render_page_as_image(self, pdf_bytes: bytes, page_index: int) -> Optional[bytes]:
+    def _render_page_as_image(
+        self, pdf_bytes: bytes, page_index: int
+    ) -> Optional[bytes]:
         """Render a specific PDF page as a JPEG image for Vision processing."""
         try:
             from pdf2image import convert_from_bytes
+
             images = convert_from_bytes(
                 pdf_bytes,
                 first_page=page_index + 1,
@@ -252,18 +286,24 @@ class WineBookScraper:
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=[
-                    types.Content(parts=[
-                        types.Part(text=(
-                            "Extract ALL wine entries from this page image. "
-                            "For each wine, extract: name, producer, vintage, region, country, "
-                            "grape variety, wine type, tasting notes, price if visible. "
-                            "Return as structured text, one wine per paragraph."
-                        )),
-                        types.Part(inline_data=types.Blob(
-                            mime_type="image/jpeg",
-                            data=base64.b64decode(image_b64),
-                        )),
-                    ]),
+                    types.Content(
+                        parts=[
+                            types.Part(
+                                text=(
+                                    "Extract ALL wine entries from this page image. "
+                                    "For each wine, extract: name, producer, vintage, region, country, "
+                                    "grape variety, wine type, tasting notes, price if visible. "
+                                    "Return as structured text, one wine per paragraph."
+                                )
+                            ),
+                            types.Part(
+                                inline_data=types.Blob(
+                                    mime_type="image/jpeg",
+                                    data=base64.b64decode(image_b64),
+                                )
+                            ),
+                        ]
+                    ),
                 ],
                 config=types.GenerateContentConfig(temperature=0.1),
             )
@@ -283,14 +323,16 @@ class WineBookScraper:
         Handles chunking for large texts.
         """
         if self.mock_mode:
-            return [{
-                "name": "Mock Wine from Book",
-                "producer": "Mock Publisher",
-                "wine_type": "red",
-                "country": "France",
-                "region": "Bordeaux",
-                "source": "mock_book_extraction",
-            }]
+            return [
+                {
+                    "name": "Mock Wine from Book",
+                    "producer": "Mock Publisher",
+                    "wine_type": "red",
+                    "country": "France",
+                    "region": "Bordeaux",
+                    "source": "mock_book_extraction",
+                }
+            ]
 
         if not self.google_api_key:
             return []
@@ -354,7 +396,9 @@ Return ONLY a valid JSON array. If no wines found, return []."""
 
                 result_text = response.text.strip()
                 if "```json" in result_text:
-                    result_text = result_text.split("```json")[1].split("```")[0].strip()
+                    result_text = (
+                        result_text.split("```json")[1].split("```")[0].strip()
+                    )
                 elif "```" in result_text:
                     result_text = result_text.split("```")[1].split("```")[0].strip()
 
@@ -364,7 +408,9 @@ Return ONLY a valid JSON array. If no wines found, return []."""
                 elif isinstance(wines, dict):
                     all_wines.append(wines)
 
-                logger.info(f"Chunk {chunk_idx + 1}/{len(chunks)}: extracted {len(wines) if isinstance(wines, list) else 1} wines")
+                logger.info(
+                    f"Chunk {chunk_idx + 1}/{len(chunks)}: extracted {len(wines) if isinstance(wines, list) else 1} wines"
+                )
 
             except Exception as e:
                 logger.error(f"Wine extraction from chunk {chunk_idx + 1} failed: {e}")
@@ -387,12 +433,24 @@ Return ONLY a valid JSON array. If no wines found, return []."""
 
         # String fields with max lengths
         string_fields = {
-            "producer": 255, "region": 255, "country": 100,
-            "grape_variety": 255, "wine_type": 50, "color": 50,
-            "tasting_notes": None, "description": None,
-            "barcode": 100, "upc": 50, "ean": 50, "sku": 100,
-            "image_url": None, "appellation": 255, "appellation_class": 100,
-            "body": 50, "sweetness": 50, "classification": 255,
+            "producer": 255,
+            "region": 255,
+            "country": 100,
+            "grape_variety": 255,
+            "wine_type": 50,
+            "color": 50,
+            "tasting_notes": None,
+            "description": None,
+            "barcode": 100,
+            "upc": 50,
+            "ean": 50,
+            "sku": 100,
+            "image_url": None,
+            "appellation": 255,
+            "appellation_class": 100,
+            "body": 50,
+            "sweetness": 50,
+            "classification": 255,
         }
 
         for field, max_len in string_fields.items():
@@ -467,9 +525,9 @@ Return ONLY a valid JSON array. If no wines found, return []."""
                     # Update existing (merge non-null fields)
                     update_data = {k: v for k, v in wine.items() if v is not None}
                     update_data["updated_at"] = datetime.utcnow().isoformat()
-                    self.supabase.table("master_wine_library").update(
-                        update_data
-                    ).eq("id", existing.data[0]["id"]).execute()
+                    self.supabase.table("master_wine_library").update(update_data).eq(
+                        "id", existing.data[0]["id"]
+                    ).execute()
                 else:
                     # Insert new
                     self.supabase.table("master_wine_library").insert(wine).execute()

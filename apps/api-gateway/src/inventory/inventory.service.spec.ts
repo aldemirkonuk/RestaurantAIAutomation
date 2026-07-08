@@ -1,9 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException } from '@nestjs/common';
-import { InventoryService } from './inventory.service';
-import { DatabaseService } from '../database/database.service';
+import { Test, TestingModule } from "@nestjs/testing";
+import { HttpException } from "@nestjs/common";
+import { InventoryService } from "./inventory.service";
+import { DatabaseService } from "../database/database.service";
 
-describe('InventoryService', () => {
+describe("InventoryService", () => {
   let service: InventoryService;
 
   // Each test configures specific return values via these jest.fn references.
@@ -52,59 +52,77 @@ describe('InventoryService', () => {
     service = module.get<InventoryService>(InventoryService);
   });
 
-  describe('createInventoryItem — wine_name population (regression: Bug 1)', () => {
-    it('returns a non-null wineName when the master wine library resolves a name', async () => {
+  describe("createInventoryItem — wine_name population (regression: Bug 1)", () => {
+    it("returns a non-null wineName when the master wine library resolves a name", async () => {
       // Call 1: no existing inventory item (duplicate check → PGRST116 = not found)
       // Call 2: master_wine_library name lookup → 'Château Pétrus'
       // Call 3: the INSERT .single() → full row with wine_name populated
       mockSingle
-        .mockResolvedValueOnce({ data: null, error: { code: 'PGRST116', message: 'not found' } })
-        .mockResolvedValueOnce({ data: { name: 'Château Pétrus' }, error: null })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: "PGRST116", message: "not found" },
+        })
+        .mockResolvedValueOnce({
+          data: { name: "Château Pétrus" },
+          error: null,
+        })
         .mockResolvedValueOnce({
           data: {
-            id: 'inv-uuid-1',
-            restaurant_id: 'rest-1',
-            master_wine_id: 'mw-1',
-            wine_name: 'Château Pétrus',
+            id: "inv-uuid-1",
+            restaurant_id: "rest-1",
+            master_wine_id: "mw-1",
+            wine_name: "Château Pétrus",
             stock_live: 6,
-            master_wine_library: { name: 'Château Pétrus', bottle_size_ml: 750 },
-            restaurants: { default_pour_ml: 150, measurement_unit: 'oz' },
+            master_wine_library: {
+              name: "Château Pétrus",
+              bottle_size_ml: 750,
+            },
+            restaurants: { default_pour_ml: 150, measurement_unit: "oz" },
           },
           error: null,
         });
 
-      const result = await service.createInventoryItem('rest-1', {
-        wineId: 'mw-1',
+      const result = await service.createInventoryItem("rest-1", {
+        wineId: "mw-1",
         stockLive: 6,
         providerId: null,
         thresholdMin: 6,
         thresholdMax: 24,
       } as any);
 
-      expect(result.wineName).toBe('Château Pétrus');
-      expect(result.wine_name).toBe('Château Pétrus');
+      expect(result.wineName).toBe("Château Pétrus");
+      expect(result.wine_name).toBe("Château Pétrus");
     });
 
-    it('includes wine_name in the INSERT payload sent to Supabase', async () => {
+    it("includes wine_name in the INSERT payload sent to Supabase", async () => {
       // Real call order:
       //  1. master_wine_library name lookup  → single()
       //  2. restaurant_inventory existing check → single() — PGRST116 = not found → proceed to INSERT
       //  3. INSERT .select().single() → inserted row
       mockSingle
-        .mockResolvedValueOnce({ data: { name: 'Barolo Riserva' }, error: null })
-        .mockResolvedValueOnce({ data: null, error: { code: 'PGRST116', message: 'not found' } })
+        .mockResolvedValueOnce({
+          data: { name: "Barolo Riserva" },
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: "PGRST116", message: "not found" },
+        })
         .mockResolvedValueOnce({
           data: {
-            id: 'inv-uuid-2',
-            wine_name: 'Barolo Riserva',
-            master_wine_library: { name: 'Barolo Riserva', bottle_size_ml: 750 },
-            restaurants: { default_pour_ml: 150, measurement_unit: 'oz' },
+            id: "inv-uuid-2",
+            wine_name: "Barolo Riserva",
+            master_wine_library: {
+              name: "Barolo Riserva",
+              bottle_size_ml: 750,
+            },
+            restaurants: { default_pour_ml: 150, measurement_unit: "oz" },
           },
           error: null,
         });
 
-      await service.createInventoryItem('rest-1', {
-        wineId: 'mw-2',
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-2",
         stockLive: 3,
         providerId: null,
         thresholdMin: 6,
@@ -113,28 +131,31 @@ describe('InventoryService', () => {
 
       // Verify the insert call received an object containing wine_name
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
-      expect(insertCall).toMatchObject({ wine_name: 'Barolo Riserva' });
+      expect(insertCall).toMatchObject({ wine_name: "Barolo Riserva" });
     });
 
-    it('falls back to master_wine_library.name via mapInventoryItem when wine_name column is null', () => {
+    it("falls back to master_wine_library.name via mapInventoryItem when wine_name column is null", () => {
       // Access the private method via bracket notation for the unit test
       const row = {
-        id: 'inv-3',
+        id: "inv-3",
         wine_name: null,
-        master_wine_library: { name: 'Pinot Noir Reserve', bottle_size_ml: 750 },
+        master_wine_library: {
+          name: "Pinot Noir Reserve",
+          bottle_size_ml: 750,
+        },
         restaurants: { default_pour_ml: 150 },
         bottle_size_ml: null,
         pour_size_ml: null,
         glasses_per_bottle_override: null,
       };
       const result = (service as any).mapInventoryItem(row);
-      expect(result.wineName).toBe('Pinot Noir Reserve');
-      expect(result.wine_name).toBe('Pinot Noir Reserve');
+      expect(result.wineName).toBe("Pinot Noir Reserve");
+      expect(result.wine_name).toBe("Pinot Noir Reserve");
     });
 
-    it('never returns wineName as undefined — returns null when no source available', () => {
+    it("never returns wineName as undefined — returns null when no source available", () => {
       const row = {
-        id: 'inv-4',
+        id: "inv-4",
         wine_name: null,
         master_wine_library: null,
         restaurants: null,

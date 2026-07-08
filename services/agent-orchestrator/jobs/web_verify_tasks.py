@@ -28,7 +28,6 @@ from supabase import create_client
 
 from config.settings import get_settings
 from jobs.celery_app import celery_app
-from services.field_confidence import merge_field_confidence
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -42,6 +41,7 @@ def _get_supabase_client():
 # ---------------------------------------------------------------------------
 # Budget cap helper (WSRCH-08)
 # ---------------------------------------------------------------------------
+
 
 def check_and_reserve_search_budget(
     cost_per_search: Optional[float] = None,
@@ -65,7 +65,7 @@ def check_and_reserve_search_budget(
     """
     try:
         cost = cost_per_search or settings.serper_cost_per_query  # 0.001
-        cap = settings.web_search_daily_budget_usd                  # 5.0
+        cap = settings.web_search_daily_budget_usd  # 5.0
 
         r = redis_lib.from_url(settings.celery_broker_url)
         today_key = f"web_search:daily_spend:{date.today().isoformat()}"
@@ -78,18 +78,22 @@ def check_and_reserve_search_budget(
             r.incrbyfloat(today_key, -cost)
             logger.warning(
                 "web_verify: daily budget cap reached (%.4f > %.2f) — task skipped",
-                new_total, cap,
+                new_total,
+                cap,
             )
             return False
         return True
     except Exception as exc:
-        logger.warning("check_and_reserve_search_budget: Redis error (fail open): %s", exc)
+        logger.warning(
+            "check_and_reserve_search_budget: Redis error (fail open): %s", exc
+        )
         return True  # fail open — never block verification on Redis infra issue
 
 
 # ---------------------------------------------------------------------------
 # Tiered search eligibility (WSRCH-07)
 # ---------------------------------------------------------------------------
+
 
 def _should_web_verify(
     fc: Dict[str, Dict[str, Any]],
@@ -124,8 +128,8 @@ def _should_web_verify(
 
     # (c) never web-verified
     never_verified = not any(
-        isinstance(entry, dict) and
-        entry.get("verification_status") not in (None, "unverified")
+        isinstance(entry, dict)
+        and entry.get("verification_status") not in (None, "unverified")
         for entry in fc.values()
     )
     return never_verified
@@ -134,6 +138,7 @@ def _should_web_verify(
 # ---------------------------------------------------------------------------
 # Celery task (WSRCH-01)
 # ---------------------------------------------------------------------------
+
 
 @celery_app.task(
     name="web_verify.verify_wine",
@@ -162,7 +167,8 @@ def web_verify_task(self, wine_id: str) -> Optional[dict]:
     acquired = r.set(lock_key, "1", nx=True, ex=3600)
     if not acquired:
         logger.info(
-            "web_verify_task: deduplicated for wine_id=%s (already queued/running)", wine_id
+            "web_verify_task: deduplicated for wine_id=%s (already queued/running)",
+            wine_id,
         )
         return None
 
@@ -171,10 +177,13 @@ def web_verify_task(self, wine_id: str) -> Optional[dict]:
         return result
     except Exception as exc:
         retry_num = self.request.retries  # 0, 1, 2
-        countdown = 60 * (2 ** retry_num)  # 60, 120, 240
+        countdown = 60 * (2**retry_num)  # 60, 120, 240
         logger.warning(
             "web_verify_task failed for wine_id=%s (attempt %d/3): %s. Retrying in %ds.",
-            wine_id, retry_num + 1, exc, countdown,
+            wine_id,
+            retry_num + 1,
+            exc,
+            countdown,
         )
         if retry_num >= self.max_retries - 1:
             logger.warning(
@@ -192,6 +201,7 @@ def web_verify_task(self, wine_id: str) -> Optional[dict]:
 # Async implementation
 # ---------------------------------------------------------------------------
 
+
 async def _verify_async(wine_id: str) -> Optional[dict]:
     """
     Core async verification logic. Called from web_verify_task via asyncio.run().
@@ -208,7 +218,10 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
         lookup_producer,
         upsert_producer,
     )
-    from services.producer_normalization import normalize_producer_name, build_search_query
+    from services.producer_normalization import (
+        normalize_producer_name,
+        build_search_query,
+    )
     from services.serper_client import serper_search
 
     supabase = _get_supabase_client()
@@ -229,19 +242,13 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
     existing_fc: Dict[str, Any] = resp.data.get("field_confidence") or {}
 
     wine_name = (
-        existing_fc.get("wine_name", {}).get("value")
-        or payload.get("wine_name")
-        or ""
+        existing_fc.get("wine_name", {}).get("value") or payload.get("wine_name") or ""
     )
     producer_raw = (
-        existing_fc.get("producer", {}).get("value")
-        or payload.get("producer")
-        or ""
+        existing_fc.get("producer", {}).get("value") or payload.get("producer") or ""
     )
     vintage = (
-        existing_fc.get("vintage", {}).get("value")
-        or payload.get("vintage")
-        or None
+        existing_fc.get("vintage", {}).get("value") or payload.get("vintage") or None
     )
 
     if not wine_name:
@@ -269,10 +276,12 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
         updated_fc = apply_producer_graph_enrichment(updated_fc, producer_row)
         logger.info(
             "_verify_async: wine_id=%s enriched from producer graph (producer=%r)",
-            wine_id, producer_raw,
+            wine_id,
+            producer_raw,
         )
         fields_verified = sum(
-            1 for v in updated_fc.values()
+            1
+            for v in updated_fc.values()
             if isinstance(v, dict) and v.get("verification_status") == "producer_graph"
         )
     else:
@@ -285,7 +294,9 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
             return {"wine_id": wine_id, "status": "skipped_budget_cap"}
 
         # Build search query per WSRCH-01 spec
-        query = build_search_query(producer_raw, wine_name, str(vintage) if vintage else None)
+        query = build_search_query(
+            producer_raw, wine_name, str(vintage) if vintage else None
+        )
         logger.info("_verify_async: searching wine_id=%s query=%r", wine_id, query)
 
         # Execute Serper search
@@ -313,7 +324,10 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
 
         # WSRCH-02: Parse snippets via Gemini 2.5 Flash
         verification_result = await parse_search_results(
-            snippets=[{"title": s["title"], "snippet": s["snippet"], "link": s["link"]} for s in snippets],
+            snippets=[
+                {"title": s["title"], "snippet": s["snippet"], "link": s["link"]}
+                for s in snippets
+            ],
             wine_name=wine_name,
             producer=producer_raw or None,
             vintage=str(vintage) if vintage else None,
@@ -357,8 +371,10 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
                 logger.info(
                     "_verify_async: contradiction on field=%r wine_id=%s "
                     "existing=%r web=%r",
-                    field_name, wine_id,
-                    existing_entry.get("value"), web_value,
+                    field_name,
+                    wine_id,
+                    existing_entry.get("value"),
+                    web_value,
                 )
 
         # WSRCH-05: Upsert producer into knowledge graph if we have enough data
@@ -380,13 +396,16 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
 
     logger.info(
         "_verify_async: wine_id=%s complete — %d fields verified, producer_in_graph=%s",
-        wine_id, fields_verified, producer_in_graph,
+        wine_id,
+        fields_verified,
+        producer_in_graph,
     )
 
     # ONTO-05: Trigger ontology cross-validation after web verification (primary path)
     # Non-fatal: web verification is already complete; ontology failure cannot block it
     try:
         from jobs.ontology_tasks import ontology_validate_task
+
         ontology_validate_task.delay(wine_id)
         logger.info(
             "_verify_async: queued ontology_validate_task for wine_id=%s", wine_id
@@ -394,7 +413,8 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
     except Exception as exc:
         logger.warning(
             "_verify_async: failed to queue ontology_validate_task for wine_id=%s: %s",
-            wine_id, exc,
+            wine_id,
+            exc,
         )
 
     return {

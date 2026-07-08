@@ -9,7 +9,7 @@
  * responder stays the only place that decides what to do with the flags.
  */
 
-export type TaxStatus = 'included' | 'excluded' | 'unknown';
+export type TaxStatus = "included" | "excluded" | "unknown";
 
 export interface DiscountTier {
   threshold_qty: number | null;
@@ -60,7 +60,7 @@ export function emptyCommercialTerms(): CommercialTerms {
     min_order_qty: null,
     min_order_unit: null,
     discount_tiers: [],
-    tax_status: 'unknown',
+    tax_status: "unknown",
     tax_rate_pct: null,
     price_valid_until: null,
     payment_terms: null,
@@ -73,7 +73,8 @@ export function emptyCommercialTerms(): CommercialTerms {
 
 function num(v: any): number | null {
   if (v == null) return null;
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[,$€£\s]/g, ''));
+  const n =
+    typeof v === "number" ? v : parseFloat(String(v).replace(/[,$€£\s]/g, ""));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -83,30 +84,46 @@ function str(v: any): string | null {
   return s ? s : null;
 }
 
-const KNOWN_CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'CAD', 'AUD', 'JPY', 'NZD'];
+const KNOWN_CURRENCIES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "CHF",
+  "CAD",
+  "AUD",
+  "JPY",
+  "NZD",
+];
 
 function normalizeCurrency(v: any): string | null {
-  const s = (str(v) || '').toUpperCase();
+  const s = (str(v) || "").toUpperCase();
   if (!s) return null;
   if (KNOWN_CURRENCIES.includes(s)) return s;
-  if (s.includes('$')) return 'USD';
-  if (s.includes('€') || s.includes('EUR')) return 'EUR';
-  if (s.includes('£') || s.includes('GBP')) return 'GBP';
+  if (s.includes("$")) return "USD";
+  if (s.includes("€") || s.includes("EUR")) return "EUR";
+  if (s.includes("£") || s.includes("GBP")) return "GBP";
   return s.length === 3 ? s : null;
 }
 
 function normalizeTax(v: any): TaxStatus {
-  const s = (str(v) || '').toLowerCase();
-  if (s.includes('includ') || s === 'inc' || s.includes('incl')) return 'included';
-  if (s.includes('exclud') || s === 'exc' || s.includes('excl') || s.includes('plus tax') || s.includes('+ tax')) {
-    return 'excluded';
+  const s = (str(v) || "").toLowerCase();
+  if (s.includes("includ") || s === "inc" || s.includes("incl"))
+    return "included";
+  if (
+    s.includes("exclud") ||
+    s === "exc" ||
+    s.includes("excl") ||
+    s.includes("plus tax") ||
+    s.includes("+ tax")
+  ) {
+    return "excluded";
   }
-  return 'unknown';
+  return "unknown";
 }
 
 /** Coerce raw LLM output into safe, typed commercial terms. Never throws. */
 export function parseCommercialTerms(raw: any): CommercialTerms {
-  if (!raw || typeof raw !== 'object') return emptyCommercialTerms();
+  if (!raw || typeof raw !== "object") return emptyCommercialTerms();
   const tiers: DiscountTier[] = Array.isArray(raw.discount_tiers)
     ? raw.discount_tiers.slice(0, 8).map((t: any) => ({
         threshold_qty: num(t?.threshold_qty),
@@ -131,7 +148,10 @@ export function parseCommercialTerms(raw: any): CommercialTerms {
     delivery_lead_time: str(raw.delivery_lead_time),
     stock_status: str(raw.stock_status),
     stock_qty_available: num(raw.stock_qty_available),
-    source_quotes: raw.source_quotes && typeof raw.source_quotes === 'object' ? (raw.source_quotes as Record<string, string>) : null,
+    source_quotes:
+      raw.source_quotes && typeof raw.source_quotes === "object"
+        ? (raw.source_quotes as Record<string, string>)
+        : null,
   };
 }
 
@@ -142,7 +162,7 @@ export function hasCommercialTerms(t: CommercialTerms): boolean {
     t.case_price != null ||
     t.min_order_qty != null ||
     t.discount_tiers.length > 0 ||
-    t.tax_status !== 'unknown' ||
+    t.tax_status !== "unknown" ||
     t.payment_terms != null ||
     t.stock_status != null ||
     t.price_valid_until != null
@@ -154,18 +174,28 @@ export function hasCommercialTerms(t: CommercialTerms): boolean {
  * we have no target). Pure — the caller decides which flags become guardrail reasons (e.g.
  * tax_status_unknown only matters on a decision-ready deal).
  */
-export function validateCommercialTerms(t: CommercialTerms, orderedQty: number): CommercialTermsValidation {
+export function validateCommercialTerms(
+  t: CommercialTerms,
+  orderedQty: number,
+): CommercialTermsValidation {
   let priceInconsistent = false;
-  if (t.case_price != null && t.bottles_per_case != null && t.bottles_per_case > 0 && t.unit_price != null && t.unit_price > 0) {
+  if (
+    t.case_price != null &&
+    t.bottles_per_case != null &&
+    t.bottles_per_case > 0 &&
+    t.unit_price != null &&
+    t.unit_price > 0
+  ) {
     const derived = t.case_price / t.bottles_per_case;
     priceInconsistent = Math.abs(derived - t.unit_price) / t.unit_price > 0.02;
   }
-  const moqNotMet = t.min_order_qty != null && orderedQty > 0 && t.min_order_qty > orderedQty;
+  const moqNotMet =
+    t.min_order_qty != null && orderedQty > 0 && t.min_order_qty > orderedQty;
 
   return {
     price_inconsistent: priceInconsistent,
     moq_not_met: moqNotMet,
-    tax_status_unknown: t.tax_status === 'unknown',
+    tax_status_unknown: t.tax_status === "unknown",
     currency_ambiguous: t.currency_ambiguous === true,
   };
 }

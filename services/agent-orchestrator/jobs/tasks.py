@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 import json
 
 from supabase import create_client
@@ -13,7 +13,9 @@ settings = Settings()
 logger = setup_logger(__name__)
 
 
-async def _publish_event(exchange: str, routing_key: str, payload: Dict[str, Any]) -> None:
+async def _publish_event(
+    exchange: str, routing_key: str, payload: Dict[str, Any]
+) -> None:
     message_bus = MessageBus(settings.rabbitmq_url)
     await message_bus.connect()
     try:
@@ -93,8 +95,8 @@ DLQ_BACKOFF_MULTIPLIER = 2
 def calculate_next_retry_at(retry_count: int) -> datetime:
     """Calculate next retry time with exponential backoff"""
     delay = min(
-        DLQ_BASE_DELAY_SECONDS * (DLQ_BACKOFF_MULTIPLIER ** retry_count),
-        DLQ_MAX_DELAY_SECONDS
+        DLQ_BASE_DELAY_SECONDS * (DLQ_BACKOFF_MULTIPLIER**retry_count),
+        DLQ_MAX_DELAY_SECONDS,
     )
     return datetime.utcnow() + timedelta(seconds=delay)
 
@@ -103,13 +105,13 @@ def calculate_next_retry_at(retry_count: int) -> datetime:
 def process_dlq_pending(self) -> Dict[str, Any]:
     """
     Process pending items in the Dead Letter Queue.
-    
+
     This task:
     1. Fetches events with status='pending' or 'retrying' where next_retry_at <= NOW
     2. Attempts to re-process each event
     3. Updates status based on success/failure
     4. Schedules next retry with exponential backoff
-    
+
     Should be scheduled via Celery Beat to run every minute.
     """
     return asyncio.run(_process_dlq_pending_async())
@@ -118,7 +120,7 @@ def process_dlq_pending(self) -> Dict[str, Any]:
 async def _process_dlq_pending_async() -> Dict[str, Any]:
     """Async implementation of DLQ processing"""
     supabase = _get_supabase_client()
-    
+
     stats = {
         "processed": 0,
         "succeeded": 0,
@@ -126,29 +128,31 @@ async def _process_dlq_pending_async() -> Dict[str, Any]:
         "exhausted": 0,
         "errors": [],
     }
-    
+
     try:
         # Fetch items ready for retry
-        response = supabase.table("event_dead_letters") \
-            .select("*") \
-            .in_("status", ["pending", "retrying"]) \
-            .lte("next_retry_at", datetime.utcnow().isoformat()) \
-            .order("next_retry_at", desc=False) \
-            .limit(50) \
+        response = (
+            supabase.table("event_dead_letters")
+            .select("*")
+            .in_("status", ["pending", "retrying"])
+            .lte("next_retry_at", datetime.utcnow().isoformat())
+            .order("next_retry_at", desc=False)
+            .limit(50)
             .execute()
-        
+        )
+
         if not response.data:
             logger.info("No DLQ items ready for retry")
             return stats
-        
+
         logger.info(f"Processing {len(response.data)} DLQ items")
-        
+
         for dlq_item in response.data:
             stats["processed"] += 1
-            
+
             try:
                 success = await _retry_dlq_event(supabase, dlq_item)
-                
+
                 if success:
                     stats["succeeded"] += 1
                     # Mark as resolved
@@ -156,22 +160,20 @@ async def _process_dlq_pending_async() -> Dict[str, Any]:
                         supabase,
                         dlq_item["id"],
                         "resolved",
-                        resolved_at=datetime.utcnow().isoformat()
+                        resolved_at=datetime.utcnow().isoformat(),
                     )
                     logger.info(f"DLQ item {dlq_item['id']} resolved successfully")
                 else:
                     # Increment retry count
                     retry_count = dlq_item.get("retry_count", 0) + 1
                     max_retries = dlq_item.get("max_retries", DLQ_MAX_RETRIES)
-                    
+
                     if retry_count >= max_retries:
                         stats["exhausted"] += 1
-                        await _update_dlq_status(
-                            supabase,
-                            dlq_item["id"],
-                            "exhausted"
+                        await _update_dlq_status(supabase, dlq_item["id"], "exhausted")
+                        logger.warning(
+                            f"DLQ item {dlq_item['id']} exhausted after {retry_count} retries"
                         )
-                        logger.warning(f"DLQ item {dlq_item['id']} exhausted after {retry_count} retries")
                     else:
                         stats["failed"] += 1
                         next_retry = calculate_next_retry_at(retry_count)
@@ -181,23 +183,20 @@ async def _process_dlq_pending_async() -> Dict[str, Any]:
                             "retrying",
                             retry_count=retry_count,
                             next_retry_at=next_retry.isoformat(),
-                            last_retry_at=datetime.utcnow().isoformat()
+                            last_retry_at=datetime.utcnow().isoformat(),
                         )
                         logger.info(
                             f"DLQ item {dlq_item['id']} scheduled for retry "
                             f"#{retry_count} at {next_retry.isoformat()}"
                         )
-            
+
             except Exception as e:
-                stats["errors"].append({
-                    "dlq_id": dlq_item["id"],
-                    "error": str(e)
-                })
+                stats["errors"].append({"dlq_id": dlq_item["id"], "error": str(e)})
                 logger.error(f"Error processing DLQ item {dlq_item['id']}: {e}")
-        
+
         logger.info(f"DLQ processing complete: {stats}")
         return stats
-        
+
     except Exception as e:
         logger.error(f"DLQ processing failed: {e}")
         stats["errors"].append({"error": str(e)})
@@ -207,7 +206,7 @@ async def _process_dlq_pending_async() -> Dict[str, Any]:
 async def _retry_dlq_event(supabase, dlq_item: Dict[str, Any]) -> bool:
     """
     Attempt to re-process a dead letter event.
-    
+
     Returns True if successful, False otherwise.
     """
     try:
@@ -223,68 +222,60 @@ async def _retry_dlq_event(supabase, dlq_item: Dict[str, Any]) -> bool:
             "trace_id": dlq_item.get("trace_id"),
             "correlation_id": f"dlq_retry_{dlq_item['id']}",
         }
-        
+
         # Try to insert into events table
-        response = supabase.table("events") \
-            .insert(event_payload) \
-            .execute()
-        
+        response = supabase.table("events").insert(event_payload).execute()
+
         if response.data:
             # Update DLQ with resolved event ID
-            supabase.table("event_dead_letters") \
-                .update({"resolved_event_id": response.data[0]["id"]}) \
-                .eq("id", dlq_item["id"]) \
-                .execute()
+            supabase.table("event_dead_letters").update(
+                {"resolved_event_id": response.data[0]["id"]}
+            ).eq("id", dlq_item["id"]).execute()
             return True
-        
+
         return False
-        
+
     except Exception as e:
-        error_code = getattr(e, 'code', 'UNKNOWN')
-        
+        error_code = getattr(e, "code", "UNKNOWN")
+
         # Check if it's a duplicate (idempotency key exists)
-        if '23505' in str(e) or 'duplicate' in str(e).lower():
-            logger.info(f"DLQ item {dlq_item['id']} is a duplicate - marking as resolved")
+        if "23505" in str(e) or "duplicate" in str(e).lower():
+            logger.info(
+                f"DLQ item {dlq_item['id']} is a duplicate - marking as resolved"
+            )
             return True
-        
+
         # Update error details
-        supabase.table("event_dead_letters") \
-            .update({
-                "error_details": json.dumps({
-                    "retry_error": str(e),
-                    "retry_error_code": error_code,
-                    "retry_timestamp": datetime.utcnow().isoformat()
-                })
-            }) \
-            .eq("id", dlq_item["id"]) \
-            .execute()
-        
+        supabase.table("event_dead_letters").update(
+            {
+                "error_details": json.dumps(
+                    {
+                        "retry_error": str(e),
+                        "retry_error_code": error_code,
+                        "retry_timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
+            }
+        ).eq("id", dlq_item["id"]).execute()
+
         return False
 
 
-async def _update_dlq_status(
-    supabase,
-    dlq_id: str,
-    status: str,
-    **kwargs
-) -> None:
+async def _update_dlq_status(supabase, dlq_id: str, status: str, **kwargs) -> None:
     """Update DLQ item status and related fields"""
     update_data = {"status": status, **kwargs}
-    
-    supabase.table("event_dead_letters") \
-        .update(update_data) \
-        .eq("id", dlq_id) \
-        .execute()
+
+    supabase.table("event_dead_letters").update(update_data).eq("id", dlq_id).execute()
 
 
 @celery_app.task(name="dlq.cleanup_old", bind=True)
 def cleanup_old_dlq_items(self, days_old: int = 30) -> Dict[str, Any]:
     """
     Clean up old resolved/exhausted DLQ items.
-    
+
     This task removes DLQ items older than specified days
     that are in terminal states (resolved, exhausted, ignored).
-    
+
     Should be scheduled via Celery Beat to run daily.
     """
     return asyncio.run(_cleanup_old_dlq_items_async(days_old))
@@ -293,26 +284,30 @@ def cleanup_old_dlq_items(self, days_old: int = 30) -> Dict[str, Any]:
 async def _cleanup_old_dlq_items_async(days_old: int) -> Dict[str, Any]:
     """Async implementation of DLQ cleanup"""
     supabase = _get_supabase_client()
-    
+
     cutoff_date = (datetime.utcnow() - timedelta(days=days_old)).isoformat()
-    
+
     try:
         # Delete old resolved/exhausted items
-        response = supabase.table("event_dead_letters") \
-            .delete() \
-            .in_("status", ["resolved", "exhausted", "ignored"]) \
-            .lt("failed_at", cutoff_date) \
+        response = (
+            supabase.table("event_dead_letters")
+            .delete()
+            .in_("status", ["resolved", "exhausted", "ignored"])
+            .lt("failed_at", cutoff_date)
             .execute()
-        
+        )
+
         deleted_count = len(response.data) if response.data else 0
-        
-        logger.info(f"Cleaned up {deleted_count} old DLQ items (older than {days_old} days)")
-        
+
+        logger.info(
+            f"Cleaned up {deleted_count} old DLQ items (older than {days_old} days)"
+        )
+
         return {
             "deleted": deleted_count,
             "cutoff_date": cutoff_date,
         }
-        
+
     except Exception as e:
         logger.error(f"DLQ cleanup failed: {e}")
         return {"error": str(e)}
@@ -327,44 +322,58 @@ def get_dlq_stats() -> Dict[str, Any]:
 async def _get_dlq_stats_async() -> Dict[str, Any]:
     """Async implementation of DLQ stats"""
     supabase = _get_supabase_client()
-    
+
     try:
         # Get counts by status
         statuses = ["pending", "retrying", "exhausted", "resolved", "ignored"]
         stats = {"by_status": {}, "by_error_code": {}, "total": 0}
-        
+
         for status in statuses:
-            response = supabase.table("event_dead_letters") \
-                .select("id", count="exact") \
-                .eq("status", status) \
+            response = (
+                supabase.table("event_dead_letters")
+                .select("id", count="exact")
+                .eq("status", status)
                 .execute()
-            
-            count = response.count if hasattr(response, 'count') else len(response.data or [])
+            )
+
+            count = (
+                response.count
+                if hasattr(response, "count")
+                else len(response.data or [])
+            )
             stats["by_status"][status] = count
             stats["total"] += count
-        
+
         # Get items ready for retry
-        ready_response = supabase.table("event_dead_letters") \
-            .select("id", count="exact") \
-            .in_("status", ["pending", "retrying"]) \
-            .lte("next_retry_at", datetime.utcnow().isoformat()) \
+        ready_response = (
+            supabase.table("event_dead_letters")
+            .select("id", count="exact")
+            .in_("status", ["pending", "retrying"])
+            .lte("next_retry_at", datetime.utcnow().isoformat())
             .execute()
-        
-        stats["ready_for_retry"] = ready_response.count if hasattr(ready_response, 'count') else len(ready_response.data or [])
-        
+        )
+
+        stats["ready_for_retry"] = (
+            ready_response.count
+            if hasattr(ready_response, "count")
+            else len(ready_response.data or [])
+        )
+
         # Get error code breakdown
-        error_response = supabase.table("event_dead_letters") \
-            .select("error_code") \
-            .in_("status", ["pending", "retrying", "exhausted"]) \
+        error_response = (
+            supabase.table("event_dead_letters")
+            .select("error_code")
+            .in_("status", ["pending", "retrying", "exhausted"])
             .execute()
-        
+        )
+
         if error_response.data:
             for item in error_response.data:
                 code = item.get("error_code", "UNKNOWN")
                 stats["by_error_code"][code] = stats["by_error_code"].get(code, 0) + 1
-        
+
         return stats
-        
+
     except Exception as e:
         logger.error(f"Failed to get DLQ stats: {e}")
         return {"error": str(e)}
@@ -373,6 +382,7 @@ async def _get_dlq_stats_async() -> Dict[str, Any]:
 # =============================================================================
 # WINE MENU SCRAPING TASKS
 # =============================================================================
+
 
 @celery_app.task(name="scraping.daily_crawl", bind=True, max_retries=1)
 def daily_crawl_task(self) -> Dict[str, Any]:
@@ -429,6 +439,7 @@ async def _daily_crawl_async() -> Dict[str, Any]:
 
         try:
             from services.opentable_discovery import get_discovery_service
+
             discovery = get_discovery_service()
             pending = discovery.get_pending_restaurants(city)
 
@@ -460,7 +471,9 @@ async def _daily_crawl_async() -> Dict[str, Any]:
                             continue
                         text_to_parse = result.extracted_text
 
-                    elif result.content_type == ContentType.PDF_LINK and result.pdf_bytes:
+                    elif (
+                        result.content_type == ContentType.PDF_LINK and result.pdf_bytes
+                    ):
                         stats["pdfs_downloaded"] += 1
                         pdf_result = await pdf_service.extract_from_bytes(
                             result.pdf_bytes, "menu", name
@@ -522,7 +535,9 @@ async def _daily_crawl_async() -> Dict[str, Any]:
 
 
 @celery_app.task(name="scraping.discovery", bind=True, max_retries=1)
-def discovery_task(self, city_slug: Optional[str] = None, max_pages: int = 5) -> Dict[str, Any]:
+def discovery_task(
+    self, city_slug: Optional[str] = None, max_pages: int = 5
+) -> Dict[str, Any]:
     """
     Discover new restaurants via Google Maps + OpenTable (unified).
 
@@ -551,22 +566,26 @@ async def _discovery_async(city_slug: Optional[str], max_pages: int) -> Dict[str
                 city_name=city_config["name"],
                 state=city_config["state"],
             )
-            stats["cities"].append({
-                "city": result.city,
-                "google_maps": result.google_maps_found,
-                "opentable": result.opentable_found,
-                "after_dedup": result.total_after_dedup,
-                "duplicates_removed": result.duplicates_removed,
-                "saved_to_db": result.saved_to_db,
-                "auto_chained": result.auto_chained,
-            })
+            stats["cities"].append(
+                {
+                    "city": result.city,
+                    "google_maps": result.google_maps_found,
+                    "opentable": result.opentable_found,
+                    "after_dedup": result.total_after_dedup,
+                    "duplicates_removed": result.duplicates_removed,
+                    "saved_to_db": result.saved_to_db,
+                    "auto_chained": result.auto_chained,
+                }
+            )
             stats["total_new"] += result.total_after_dedup
             stats["total_deduped"] += result.duplicates_removed
         except Exception as e:
-            stats["cities"].append({
-                "city": city_config["name"],
-                "error": str(e),
-            })
+            stats["cities"].append(
+                {
+                    "city": city_config["name"],
+                    "error": str(e),
+                }
+            )
 
     return stats
 
@@ -584,7 +603,7 @@ async def _research_unknowns_async(max_wines: int) -> Dict[str, Any]:
     """Async implementation of unknown wine research."""
     from services.wine_research_service import get_research_service
 
-    research = get_research_service()
+    get_research_service()
     stats = {"researched": 0, "auto_added": 0, "needs_review": 0}
 
     # In production, query Supabase for unmatched wines

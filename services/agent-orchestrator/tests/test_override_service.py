@@ -7,7 +7,7 @@ check_and_update_trust is a SYNCHRONOUS def — never use await.
 Signature: check_and_update_trust(supabase, user_id: str, approved: bool, threshold: int = 5)
 Returns None. Calls supabase.rpc("increment_trust_counter", {"p_user_id": user_id}) on approve.
 """
-import pytest
+
 from unittest.mock import MagicMock
 
 
@@ -25,7 +25,9 @@ class TestCheckAndUpdateTrust:
             "consecutive_approved_overrides": consecutive_approved
         }
         # update chain for policy flip or streak reset
-        mock_sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{}]
+        mock_sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+            {}
+        ]
         return mock_sb
 
     def test_increment_trust_counter_rpc_called_on_approve(self):
@@ -46,7 +48,9 @@ class TestCheckAndUpdateTrust:
         from services.override_service import check_and_update_trust
 
         mock_sb = MagicMock()
-        mock_sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{}]
+        mock_sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+            {}
+        ]
 
         result = check_and_update_trust(mock_sb, user_id="u-002", approved=False)
         mock_sb.rpc.assert_not_called()
@@ -57,11 +61,15 @@ class TestCheckAndUpdateTrust:
         from services.override_service import check_and_update_trust
 
         mock_sb = MagicMock()
-        mock_sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{}]
+        mock_sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+            {}
+        ]
 
         check_and_update_trust(mock_sb, user_id="u-002", approved=False)
         update_call = mock_sb.table.return_value.update.call_args_list
-        assert any("consecutive_approved_overrides" in str(call) for call in update_call)
+        assert any(
+            "consecutive_approved_overrides" in str(call) for call in update_call
+        )
 
     def test_threshold_reached_flips_policy_to_auto_promote(self):
         """When count reaches threshold, update sets promotion_policy=auto_promote."""

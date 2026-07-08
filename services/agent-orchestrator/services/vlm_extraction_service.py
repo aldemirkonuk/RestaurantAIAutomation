@@ -16,7 +16,6 @@ Cost:
 """
 
 import base64
-import io
 import json
 import logging
 import os
@@ -24,7 +23,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from google import genai as _genai
-from google.genai.client import AsyncClient
 from pydantic import BaseModel, Field
 
 from services.spend_logger import get_spend_logger
@@ -36,8 +34,10 @@ logger = logging.getLogger(__name__)
 # DATA MODELS
 # =============================================================================
 
+
 class VLMExtractionResult(BaseModel):
     """Result of VLM-based extraction."""
+
     wines: List[Dict[str, Any]] = Field(default_factory=list)
     sections: List[Dict[str, Any]] = Field(default_factory=list)
     section_hierarchy: Dict[str, Any] = Field(default_factory=dict)
@@ -185,6 +185,7 @@ Return ONLY valid JSON matching the same schema as a vision extraction."""
 # VLM SERVICE
 # =============================================================================
 
+
 class VLMExtractionService:
     """Gemini Vision/TEXT extraction service — primary labeler for gold dataset."""
 
@@ -199,6 +200,7 @@ class VLMExtractionService:
             return
         try:
             from google import genai
+
             self._client = genai.Client()
             self._initialized = True
             logger.info("Gemini client initialized for VLM extraction")
@@ -211,6 +213,7 @@ class VLMExtractionService:
         if self._training_store is None:
             try:
                 from services.training_data_store import get_training_store
+
                 self._training_store = get_training_store()
             except Exception:
                 logger.warning("Training data store not available")
@@ -243,7 +246,9 @@ class VLMExtractionService:
                 extraction_method="gemini_vision",
             )
 
-        prompt = MENU_VISION_PROMPT if document_type == "menu" else INVOICE_VISION_PROMPT
+        prompt = (
+            MENU_VISION_PROMPT if document_type == "menu" else INVOICE_VISION_PROMPT
+        )
         if restaurant_name:
             prompt += f"\n\nRestaurant: {restaurant_name}"
 
@@ -368,9 +373,7 @@ class VLMExtractionService:
     # RESPONSE PARSING
     # =========================================================================
 
-    def _parse_response(
-        self, raw_text: str, method: str
-    ) -> VLMExtractionResult:
+    def _parse_response(self, raw_text: str, method: str) -> VLMExtractionResult:
         """Parse the JSON response from Gemini."""
         result = VLMExtractionResult(extraction_method=method)
         result.raw_response = raw_text
@@ -503,6 +506,7 @@ Return ONLY valid JSON (no markdown fences):
 # GEMINI FLASH CRAWLER EXTRACTOR (Phase 2 — crawl pipeline only)
 # =============================================================================
 
+
 class GeminiFlashCrawlerExtractor:
     """
     Async Gemini Flash extractor for the background crawl pipeline.
@@ -581,7 +585,7 @@ class GeminiFlashCrawlerExtractor:
             start = cleaned.find("{")
             end = cleaned.rfind("}")
             if start != -1 and end != -1:
-                cleaned = cleaned[start:end + 1]
+                cleaned = cleaned[start : end + 1]
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as e:
@@ -594,8 +598,7 @@ class GeminiFlashCrawlerExtractor:
         result.total_wines = len(wines)
         result.sections = data.get("sections", [])
         result.confidence = (
-            sum(w.get("confidence", 0.5) for w in wines) / len(wines)
-            if wines else 0.0
+            sum(w.get("confidence", 0.5) for w in wines) / len(wines) if wines else 0.0
         )
         return result
 

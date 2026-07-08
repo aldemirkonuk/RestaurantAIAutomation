@@ -23,11 +23,13 @@ class AutoPilotAgent(BaseAgent):
         routing_key = message.get("routing_key")
         payload = message.get("payload", {})
 
-        self.logger.info({
-            "message": "Auto-pilot event received",
-            "routing_key": routing_key,
-            "payload_keys": list(payload.keys()),
-        })
+        self.logger.info(
+            {
+                "message": "Auto-pilot event received",
+                "routing_key": routing_key,
+                "payload_keys": list(payload.keys()),
+            }
+        )
 
         # TODO: Evaluate auto_pilot_rules
         # TODO: Create procurement orders when rules are triggered

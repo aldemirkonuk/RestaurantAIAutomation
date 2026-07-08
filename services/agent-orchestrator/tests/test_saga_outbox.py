@@ -5,7 +5,7 @@ Unit tests for saga state management, event store append, and outbox publisher (
 import asyncio
 import uuid
 from typing import Dict, Any, List
-from unittest.mock import MagicMock, AsyncMock, call
+from unittest.mock import MagicMock, AsyncMock
 import pytest
 
 from core.base_agent import BaseAgent
@@ -15,6 +15,7 @@ from core.outbox_publisher import OutboxPublisher
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class ConcreteAgent(BaseAgent):
     async def initialize(self) -> None:
@@ -57,13 +58,16 @@ def make_publisher():
 # start_saga
 # ---------------------------------------------------------------------------
 
+
 class TestStartSaga:
 
     def test_creates_row_with_in_progress_status(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.insert.return_value.execute.return_value = (
+            make_result([])
+        )
 
-        saga_id = asyncio.get_event_loop().run_until_complete(
+        asyncio.get_event_loop().run_until_complete(
             agent.start_saga("order_fulfillment", {"order_id": "123"})
         )
 
@@ -77,7 +81,9 @@ class TestStartSaga:
 
     def test_returns_saga_id_as_uuid_string(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.insert.return_value.execute.return_value = (
+            make_result([])
+        )
 
         saga_id = asyncio.get_event_loop().run_until_complete(
             agent.start_saga("order_fulfillment", {})
@@ -88,7 +94,9 @@ class TestStartSaga:
 
     def test_sets_deadline_at(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.insert.return_value.execute.return_value = (
+            make_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent.start_saga("order_fulfillment", {}, deadline_minutes=30)
@@ -100,7 +108,9 @@ class TestStartSaga:
 
     def test_raises_on_db_error(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
+        supabase.table.return_value.insert.return_value.execute.side_effect = Exception(
+            "DB error"
+        )
 
         with pytest.raises(Exception, match="DB error"):
             asyncio.get_event_loop().run_until_complete(
@@ -112,14 +122,17 @@ class TestStartSaga:
 # advance_saga
 # ---------------------------------------------------------------------------
 
+
 class TestAdvanceSaga:
 
     def test_updates_current_step(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            make_result([{"compensations": []}])
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = make_result(
+            [{"compensations": []}]
+        )
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent.advance_saga("saga-1", "step_2")
@@ -130,35 +143,41 @@ class TestAdvanceSaga:
 
     def test_appends_compensation_info(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            make_result([{"compensations": []}])
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = make_result(
+            [{"compensations": []}]
+        )
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
         asyncio.get_event_loop().run_until_complete(
-            agent.advance_saga("saga-1", "step_2", compensation_info={"action": "rollback_order"})
+            agent.advance_saga(
+                "saga-1", "step_2", compensation_info={"action": "rollback_order"}
+            )
         )
 
         update_args = supabase.table.return_value.update.call_args[0][0]
         assert len(update_args["compensations"]) == 1
         assert update_args["compensations"][0]["step"] == "step_2"
-        assert update_args["compensations"][0]["compensation"] == {"action": "rollback_order"}
+        assert update_args["compensations"][0]["compensation"] == {
+            "action": "rollback_order"
+        }
 
 
 # ---------------------------------------------------------------------------
 # complete_saga
 # ---------------------------------------------------------------------------
 
+
 class TestCompleteSaga:
 
     def test_sets_status_to_completed(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
-
-        asyncio.get_event_loop().run_until_complete(
-            agent.complete_saga("saga-1")
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
         )
+
+        asyncio.get_event_loop().run_until_complete(agent.complete_saga("saga-1"))
 
         update_args = supabase.table.return_value.update.call_args[0][0]
         assert update_args["status"] == "COMPLETED"
@@ -169,14 +188,17 @@ class TestCompleteSaga:
 # compensate_saga
 # ---------------------------------------------------------------------------
 
+
 class TestCompensateSaga:
 
     def test_sets_status_to_compensated(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            make_result([{"saga_type": "order_fulfillment", "compensations": []}])
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = make_result(
+            [{"saga_type": "order_fulfillment", "compensations": []}]
+        )
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
         asyncio.get_event_loop().run_until_complete(
             agent.compensate_saga("saga-1", "timeout")
@@ -188,8 +210,9 @@ class TestCompensateSaga:
 
     def test_handles_missing_saga_gracefully(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
         # Should not raise
         asyncio.get_event_loop().run_until_complete(
@@ -201,11 +224,14 @@ class TestCompensateSaga:
 # append_event
 # ---------------------------------------------------------------------------
 
+
 class TestAppendEvent:
 
     def test_inserts_to_event_store(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.insert.return_value.execute.return_value = (
+            make_result([])
+        )
         agg_id = str(uuid.uuid4())
 
         asyncio.get_event_loop().run_until_complete(
@@ -223,10 +249,14 @@ class TestAppendEvent:
     def test_includes_correlation_id(self):
         agent, supabase = make_agent()
         agent._current_correlation_id = "trace-abc"
-        supabase.table.return_value.insert.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.insert.return_value.execute.return_value = (
+            make_result([])
+        )
 
         asyncio.get_event_loop().run_until_complete(
-            agent.append_event("inventory", str(uuid.uuid4()), "stock.decremented", {}, 1)
+            agent.append_event(
+                "inventory", str(uuid.uuid4()), "stock.decremented", {}, 1
+            )
         )
 
         insert_args = supabase.table.return_value.insert.call_args[0][0]
@@ -234,12 +264,15 @@ class TestAppendEvent:
 
     def test_raises_on_db_error(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.insert.return_value.execute.side_effect = \
-            Exception("unique constraint violation")
+        supabase.table.return_value.insert.return_value.execute.side_effect = Exception(
+            "unique constraint violation"
+        )
 
         with pytest.raises(Exception):
             asyncio.get_event_loop().run_until_complete(
-                agent.append_event("inventory", str(uuid.uuid4()), "stock.decremented", {}, 1)
+                agent.append_event(
+                    "inventory", str(uuid.uuid4()), "stock.decremented", {}, 1
+                )
             )
 
 
@@ -247,12 +280,14 @@ class TestAppendEvent:
 # OutboxPublisher
 # ---------------------------------------------------------------------------
 
+
 class TestOutboxPublisher:
 
     def test_polls_unpublished_rows(self):
         publisher, supabase, _ = make_publisher()
-        supabase.table.return_value.select.return_value.eq.return_value.order.return_value \
-            .limit.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = make_result(
+            []
+        )
 
         asyncio.get_event_loop().run_until_complete(publisher.poll_and_publish())
 
@@ -262,14 +297,24 @@ class TestOutboxPublisher:
 
     def test_dispatches_to_rabbitmq(self):
         publisher, supabase, message_bus = make_publisher()
-        rows = [{"id": 1, "exchange": "orders", "routing_key": "order.created",
-                 "payload": {"order_id": "123"}}]
-        supabase.table.return_value.select.return_value.eq.return_value.order.return_value \
-            .limit.return_value.execute.return_value = make_result(rows)
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        rows = [
+            {
+                "id": 1,
+                "exchange": "orders",
+                "routing_key": "order.created",
+                "payload": {"order_id": "123"},
+            }
+        ]
+        supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = make_result(
+            rows
+        )
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
-        count = asyncio.get_event_loop().run_until_complete(publisher.poll_and_publish())
+        count = asyncio.get_event_loop().run_until_complete(
+            publisher.poll_and_publish()
+        )
 
         message_bus.publish.assert_called_once_with(
             exchange_name="orders",
@@ -280,11 +325,20 @@ class TestOutboxPublisher:
 
     def test_marks_published_after_dispatch(self):
         publisher, supabase, _ = make_publisher()
-        rows = [{"id": 42, "exchange": "orders", "routing_key": "order.created", "payload": {}}]
-        supabase.table.return_value.select.return_value.eq.return_value.order.return_value \
-            .limit.return_value.execute.return_value = make_result(rows)
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        rows = [
+            {
+                "id": 42,
+                "exchange": "orders",
+                "routing_key": "order.created",
+                "payload": {},
+            }
+        ]
+        supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = make_result(
+            rows
+        )
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
         asyncio.get_event_loop().run_until_complete(publisher.poll_and_publish())
 
@@ -298,25 +352,32 @@ class TestOutboxPublisher:
             {"id": 1, "exchange": "ex", "routing_key": "rk", "payload": {}},
             {"id": 2, "exchange": "ex", "routing_key": "rk", "payload": {}},
         ]
-        supabase.table.return_value.select.return_value.eq.return_value.order.return_value \
-            .limit.return_value.execute.return_value = make_result(rows)
-        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = \
-            make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = make_result(
+            rows
+        )
+        supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = make_result(
+            []
+        )
 
         # First call fails, second succeeds
         message_bus.publish.side_effect = [Exception("connection lost"), True]
 
-        count = asyncio.get_event_loop().run_until_complete(publisher.poll_and_publish())
+        count = asyncio.get_event_loop().run_until_complete(
+            publisher.poll_and_publish()
+        )
 
         assert count == 1  # second row still published
         assert message_bus.publish.call_count == 2
 
     def test_noop_when_no_unpublished_rows(self):
         publisher, supabase, message_bus = make_publisher()
-        supabase.table.return_value.select.return_value.eq.return_value.order.return_value \
-            .limit.return_value.execute.return_value = make_result([])
+        supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = make_result(
+            []
+        )
 
-        count = asyncio.get_event_loop().run_until_complete(publisher.poll_and_publish())
+        count = asyncio.get_event_loop().run_until_complete(
+            publisher.poll_and_publish()
+        )
 
         assert count == 0
         message_bus.publish.assert_not_called()
