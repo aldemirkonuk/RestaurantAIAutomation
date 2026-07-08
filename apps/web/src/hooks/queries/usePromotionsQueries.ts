@@ -69,6 +69,7 @@ export interface ProspectAttachmentDto extends ProspectAttachmentMetaDto {
 
 export interface ProspectDto {
   id: string
+  restaurant_id: string | null
   domain: string
   sender_email: string | null
   sender_name: string | null
@@ -84,11 +85,18 @@ export interface ProspectDto {
   last_seen_at: string | null
 }
 
-/** D1 — cold-email prospects (unknown-sender vendor outreach) captured for review. */
-export function useProspects() {
+/**
+ * D1 — cold-email prospects (unknown-sender vendor outreach) captured for review.
+ * `acrossLocations` (Phase 5) returns open prospects across every restaurant the user belongs to,
+ * each row carrying restaurant_id so the surface can filter/label by location.
+ */
+export function useProspects(acrossLocations = false) {
   return useQuery({
-    queryKey: ['prospects'],
-    queryFn: () => apiClient.get('/prospects').then((r) => r.data as ProspectDto[]),
+    queryKey: ['prospects', acrossLocations ? 'all' : 'active'],
+    queryFn: () =>
+      apiClient
+        .get('/prospects', { params: acrossLocations ? { scope: 'all' } : undefined })
+        .then((r) => r.data as ProspectDto[]),
     staleTime: 30_000,
   })
 }

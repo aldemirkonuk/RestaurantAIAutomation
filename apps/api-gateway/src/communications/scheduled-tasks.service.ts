@@ -78,6 +78,36 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
+   * Phase 4 — nightly tenant-isolation assertion (runs every day at 3:15 AM).
+   * Calls the tenant_isolation_report() SQL function and logs a WARNING when any orphaned-row
+   * count is non-zero, so cross-tenant leakage / misattribution surfaces before a human notices.
+   * Best-effort: never throws, never blocks other crons.
+   */
+  @Cron('15 3 * * *', {
+    name: 'tenant-isolation-check',
+    timeZone: 'America/New_York',
+  })
+  async checkTenantIsolation() {
+    try {
+      const { data, error } = await this.databaseService.supabase.rpc('tenant_isolation_report');
+      if (error) {
+        this.logger.warn(`Tenant isolation check unavailable: ${error.message}`);
+        return;
+      }
+      const report = (data ?? {}) as Record<string, number | string>;
+      const orphaned =
+        Number(report.prospects_orphaned ?? 0) + Number(report.inbound_addr_orphaned ?? 0);
+      if (orphaned > 0) {
+        this.logger.error(`TENANT_ISOLATION_VIOLATION ${JSON.stringify(report)}`);
+      } else {
+        this.logger.log(`Tenant isolation OK ${JSON.stringify(report)}`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`Tenant isolation check failed: ${e?.message}`);
+    }
+  }
+
+  /**
    * Daily SMS Summary - Runs every day at 9:00 AM
    */
   @Cron('0 9 * * *', {

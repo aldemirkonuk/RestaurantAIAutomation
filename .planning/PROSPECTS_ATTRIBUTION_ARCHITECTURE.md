@@ -185,6 +185,20 @@ All config-gated; no-op until `INBOUND_EMAIL_DOMAIN` + `INBOUND_WEBHOOK_SECRET` 
 2. Point the provider's inbound webhook at `POST /api/v1/webhooks/inbound-email` with the shared secret.
 3. Set env on api-gateway: `INBOUND_EMAIL_DOMAIN`, `INBOUND_WEBHOOK_SECRET`, `INBOUND_EMAIL_PROVIDER` (optional label). Addresses auto-provision per restaurant on first outbound/lookup.
 
+### Phase 4 — SHIPPED (2026-07-08)
+Migration `20260708170000_p4_tenant_rls_policies.sql` (applied to `exzueerziesmczwlhomd`).
+- **Per-tenant RLS policies** on `providers`, `procurement_conversations`, `email_prospects`,
+  `sender_reputation`, `conversation_attachments`, `restaurant_inbound_addresses` — keyed on
+  `user_restaurant_access` via `auth.uid()`, matching the existing `provider_locations` pattern.
+  Non-breaking: those tables were RLS-enabled with 0 policies (deny-by-default; service-role
+  bypasses), and no frontend reads them via the anon key. Closes the premortem "RLS enabled but
+  policyless" finding; triage rows (`restaurant_id IS NULL`) stay operator-only.
+- **Nightly isolation assertion**: `tenant_isolation_report()` SQL function + `ScheduledTasksService.checkTenantIsolation` cron (03:15) logs `TENANT_ISOLATION_VIOLATION` when any orphaned count > 0. Baseline verified 0 violations across 9 live restaurants.
+- **Deferred within Phase 4**: flipping tenant reads to a per-request authenticated client is intentionally NOT done — the app uses its own JWT (not Supabase Auth), so `auth.uid()` isn't populated for app queries. RLS here is defense-in-depth, ready for any future authed-client access; a full switch would mean adopting Supabase Auth (separate migration).
+
+### Phase 5 — SHIPPED (2026-07-08)
+- **Backend**: `GET /prospects?scope=all` returns open prospects across every restaurant the caller belongs to (`ProspectsService.accessibleRestaurantIds` + `listAcross`), each row carrying `restaurant_id`. Never spans beyond the caller's `user_restaurant_access` memberships.
+- **Frontend** (`Promotions.tsx`): when a user has >1 location, the Prospects tab shows **location filter chips** (per-location counts, toggle to show/hide) and a **per-row location label**; single-location users are unchanged. Promote/dismiss stay strictly row-scoped (never "all").
+
 ### Deferred
-- **Phase 4 (full per-tenant RLS)** and **Phase 5 (multi-restaurant chip UX)** — not yet built.
 - **CI**: pre-existing ruff/black/eslint-config debt + Security-Scan `security-events` permission bug — deferred per owner.

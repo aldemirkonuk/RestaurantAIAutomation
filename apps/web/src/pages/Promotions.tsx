@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Tag, ShieldCheck, ShieldAlert, ShieldOff, Clock, Sparkles, Loader2, AlertTriangle, Check,
@@ -10,6 +10,7 @@ import {
   type PromotionDto, type ProspectDto,
 } from '../hooks/queries/usePromotionsQueries'
 import { useNotificationStore } from '../stores'
+import { useAuth } from '../contexts/AuthContext'
 
 type Tab = 'promotions' | 'senders' | 'prospects'
 
@@ -17,7 +18,9 @@ export default function Promotions() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab = (searchParams.get('tab') as Tab) || 'promotions'
   const [tab, setTab] = useState<Tab>(['promotions', 'senders', 'prospects'].includes(initialTab) ? initialTab : 'promotions')
-  const { data: prospects = [] } = useProspects()
+  const { availableRestaurants } = useAuth()
+  const multiLocation = availableRestaurants.length > 1
+  const { data: prospects = [] } = useProspects(multiLocation)
 
   const selectTab = (t: Tab) => {
     setTab(t)
@@ -179,12 +182,22 @@ function SendersTab() {
 /* ─── Prospects (D1 — cold-email vendor outreach) ─────────────────────────────── */
 
 function ProspectsTab() {
-  const { data: prospects = [], isLoading, isError, refetch } = useProspects()
+  const { availableRestaurants } = useAuth()
+  const multiLocation = availableRestaurants.length > 1
+  const nameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const b of availableRestaurants) m.set(b.id, b.name)
+    return m
+  }, [availableRestaurants])
+
+  const { data: prospects = [], isLoading, isError, refetch } = useProspects(multiLocation)
   const promote = usePromoteProspect()
   const dismiss = useDismissProspect()
   const restore = useRestoreProspect()
   const toast = useNotificationStore()
   const [undo, setUndo] = useState<{ id: string; name: string } | null>(null)
+  // Which locations are hidden (empty = show all). Reply/promote is always row-scoped, never "all".
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
 
   if (isLoading) return <Center><Loader2 className="w-5 h-5 text-wine-300 animate-spin" /></Center>
 
@@ -226,25 +239,70 @@ function ProspectsTab() {
     setUndo(null)
   }
 
+  const toggleLoc = (id: string) =>
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const chips = multiLocation ? (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] text-gray-400 mr-0.5">Locations:</span>
+      {availableRestaurants.map((b) => {
+        const active = !hidden.has(b.id)
+        const count = prospects.filter((p) => p.restaurant_id === b.id).length
+        return (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => toggleLoc(b.id)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${active ? 'bg-wine-50 border-wine-200 text-wine-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}
+          >
+            {b.name}
+            <span className={`text-[9px] ${active ? 'text-wine-500' : 'text-gray-300'}`}>{count}</span>
+          </button>
+        )
+      })}
+    </div>
+  ) : null
+
+  const visible = multiLocation ? prospects.filter((p) => p.restaurant_id && !hidden.has(p.restaurant_id)) : prospects
+
   if (!prospects.length) {
     return (
-      <>
+      <div className="space-y-3">
+        {chips}
         {undo && <UndoBar name={undo.name} onUndo={onUndo} onClose={() => setUndo(null)} busy={restore.isPending} />}
         <Empty
           icon={<UserPlus className="w-5 h-5 text-wine-300" />}
           text="No prospects right now"
           hint="This lane is active and listening. Genuine outreach from vendors you haven’t added — an intro or a catalogue — will land here automatically."
         />
-      </>
+      </div>
     )
   }
 
   const busy = promote.isPending || dismiss.isPending
   return (
     <div className="space-y-3">
+      {chips}
       {undo && <UndoBar name={undo.name} onUndo={onUndo} onClose={() => setUndo(null)} busy={restore.isPending} />}
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {prospects.map((p) => <ProspectRow key={p.id} p={p} onPromote={() => onPromote(p)} onDismiss={() => onDismiss(p)} busy={busy} />)}
+        {visible.map((p) => (
+          <ProspectRow
+            key={p.id}
+            p={p}
+            restaurantName={multiLocation && p.restaurant_id ? nameById.get(p.restaurant_id) ?? null : null}
+            onPromote={() => onPromote(p)}
+            onDismiss={() => onDismiss(p)}
+            busy={busy}
+          />
+        ))}
+        {!visible.length && (
+          <div className="px-4 py-6 text-center text-[12px] text-gray-400">No prospects for the selected location{hidden.size !== 1 ? 's' : ''}.</div>
+        )}
         <div className="flex items-start gap-2 px-4 py-2.5 bg-gray-50/60">
           <AlertTriangle className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
           <p className="text-[11px] text-gray-500">Prospects are never auto-replied to and their content is treated as untrusted. Add one as a vendor to create a supplier you can order from.</p>
@@ -268,7 +326,7 @@ function UndoBar({ name, onUndo, onClose, busy }: { name: string; onUndo: () => 
   )
 }
 
-function ProspectRow({ p, onPromote, onDismiss, busy }: { p: ProspectDto; onPromote: () => void; onDismiss: () => void; busy: boolean }) {
+function ProspectRow({ p, restaurantName, onPromote, onDismiss, busy }: { p: ProspectDto; restaurantName?: string | null; onPromote: () => void; onDismiss: () => void; busy: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const reasons = (p.capture_reason || '').split('+').filter(Boolean)
@@ -285,6 +343,11 @@ function ProspectRow({ p, onPromote, onDismiss, busy }: { p: ProspectDto; onProm
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-semibold text-gray-900 truncate">{p.sender_name || p.domain}</p>
             {p.message_count > 1 && <span className="text-[9px] font-medium text-gray-400">{p.message_count} emails</span>}
+            {restaurantName && (
+              <span className="inline-flex items-center text-[9px] font-semibold text-wine-700 bg-wine-50 border border-wine-100 rounded-full px-1.5 py-0.5">
+                {restaurantName}
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-gray-500 font-mono truncate">{p.sender_email || p.domain}</p>
           {p.subject && <p className="text-[11.5px] text-gray-700 mt-0.5 truncate">{p.subject}</p>}

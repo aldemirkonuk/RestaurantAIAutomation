@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, HttpException, HttpStatus, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards, HttpException, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -21,8 +21,18 @@ export class ProspectsController {
   ) {}
 
   @Get()
-  async list(@CurrentUser() user: { userId: string; restaurantId: string }): Promise<any[]> {
+  async list(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query('scope') scope?: string,
+  ): Promise<any[]> {
     try {
+      // Phase 5 — multi-location view. `?scope=all` returns open prospects across every restaurant
+      // the caller is a member of (each row carries restaurant_id for chip filtering/labelling).
+      // Default stays scoped to the active restaurant.
+      if (scope === 'all') {
+        const ids = await this.prospects.accessibleRestaurantIds(user.userId, user.restaurantId);
+        return await this.prospects.listAcross(ids);
+      }
       return await this.prospects.list(user.restaurantId);
     } catch (error: any) {
       throw new HttpException(error.message || 'Failed to load prospects', HttpStatus.INTERNAL_SERVER_ERROR);

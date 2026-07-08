@@ -244,11 +244,50 @@ export class ProspectsService {
     }
   }
 
+  /** Restaurant ids the user may see prospects for (their active + any other memberships). */
+  async accessibleRestaurantIds(userId: string, activeRestaurantId: string): Promise<string[]> {
+    try {
+      const { data } = await this.databaseService.supabase
+        .from('user_restaurant_access')
+        .select('restaurant_id')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+      const ids = ((data as any[]) || []).map((r) => r.restaurant_id).filter(Boolean);
+      const set = new Set<string>(ids);
+      if (activeRestaurantId) set.add(activeRestaurantId);
+      return set.size ? Array.from(set) : activeRestaurantId ? [activeRestaurantId] : [];
+    } catch {
+      return activeRestaurantId ? [activeRestaurantId] : [];
+    }
+  }
+
+  /**
+   * Open prospects across several restaurants the caller has access to (Phase 5 multi-location
+   * view). Each row carries restaurant_id so the surface can label + filter with chips. Never
+   * spans beyond the caller's memberships — the controller passes only accessible ids.
+   */
+  async listAcross(restaurantIds: string[]): Promise<any[]> {
+    if (!restaurantIds.length) return [];
+    try {
+      const { data } = await this.databaseService.supabase
+        .from('email_prospects')
+        .select('id, restaurant_id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at')
+        .in('restaurant_id', restaurantIds)
+        .eq('status', 'new')
+        .order('last_seen_at', { ascending: false })
+        .limit(300);
+      return ((data as any[]) || []).map((r) => this.toDto(r));
+    } catch {
+      return [];
+    }
+  }
+
   /** Normalize a row into the DTO the surface expects (attachment metadata only, no URLs). */
   private toDto(r: any): any {
     const attachments = Array.isArray(r?.attachments) ? r.attachments : [];
     return {
       id: r.id,
+      restaurant_id: r.restaurant_id ?? null,
       domain: r.domain,
       sender_email: r.sender_email,
       sender_name: r.sender_name,
