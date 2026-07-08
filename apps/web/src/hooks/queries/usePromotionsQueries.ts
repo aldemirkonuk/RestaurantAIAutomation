@@ -57,6 +57,16 @@ export function useSetSenderTrust() {
   })
 }
 
+export interface ProspectAttachmentMetaDto {
+  filename: string
+  mime_type: string | null
+  size_bytes: number | null
+}
+
+export interface ProspectAttachmentDto extends ProspectAttachmentMetaDto {
+  url: string | null
+}
+
 export interface ProspectDto {
   id: string
   domain: string
@@ -64,7 +74,10 @@ export interface ProspectDto {
   sender_name: string | null
   subject: string | null
   snippet: string | null
+  body_preview: string | null
+  capture_reason: string | null
   has_attachments: boolean
+  attachments: ProspectAttachmentMetaDto[]
   message_count: number
   status: string
   first_seen_at: string | null
@@ -80,11 +93,21 @@ export function useProspects() {
   })
 }
 
-/** Promote a prospect to a real provider (D1). */
+/** Signed download URLs for a prospect's persisted attachments — fetched on demand (D1). */
+export function useProspectAttachments(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['prospect-attachments', id],
+    queryFn: () => apiClient.get(`/prospects/${id}/attachments`).then((r) => r.data as ProspectAttachmentDto[]),
+    enabled,
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** Add a prospect as a real vendor/provider (D1). */
 export function usePromoteProspect() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => apiClient.post(`/prospects/${id}/promote`).then((r) => r.data as { promoted: boolean; providerId?: string }),
+    mutationFn: (id: string) => apiClient.post(`/prospects/${id}/promote`).then((r) => r.data as { promoted: boolean; providerId?: string; reused?: boolean }),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['prospects'] })
       qc.invalidateQueries({ queryKey: ['providers'] })
@@ -97,6 +120,15 @@ export function useDismissProspect() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.post(`/prospects/${id}/dismiss`).then((r) => r.data as { dismissed: boolean }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['prospects'] }),
+  })
+}
+
+/** Restore a dismissed prospect back to the open list — undo a dismiss (D1). */
+export function useRestoreProspect() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiClient.post(`/prospects/${id}/restore`).then((r) => r.data as { restored: boolean }),
     onSettled: () => qc.invalidateQueries({ queryKey: ['prospects'] }),
   })
 }

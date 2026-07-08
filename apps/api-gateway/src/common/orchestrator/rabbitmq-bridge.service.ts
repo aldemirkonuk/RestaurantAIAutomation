@@ -560,16 +560,53 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
         // drop mass marketing blasts (bulk/list transport) so this never becomes a spam magnet.
         const isBulkBlast = transportSignals.bulk || transportSignals.listMail || transportSignals.autoSubmitted;
-        const looksOutreach = attachments.length > 0 || looksPromotional(subject, body);
+        const promotional = looksPromotional(subject, body);
+        const looksOutreach = attachments.length > 0 || promotional;
         if (looksOutreach && !isBulkBlast) {
           const senderName = (from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] || '').trim() || null;
-          void this.prospects.captureFromColdEmail({
+          // Provenance the manager can see: WHY this was captured.
+          const captureReason =
+            [attachments.length > 0 ? 'attachment' : null, promotional ? 'promotional' : null]
+              .filter(Boolean)
+              .join('+') || null;
+          // Make the attachment chip real: persist bytes + keep refs on the prospect row.
+          const persistedRefs = await this.persistProspectAttachments(
+            this.prospects.domainOf(senderEmail),
+            attachments,
+          );
+          const result = await this.prospects.captureFromColdEmail({
             senderEmail,
             senderName,
             subject,
             body,
             hasAttachments: attachments.length > 0,
+            captureReason,
+            attachments: persistedRefs,
+            gmailMessageId: gmailMessageId || null,
+            gmailThreadId: gmailThreadId || null,
+            bodyPreview: body,
           });
+          // Digest/notify parity with promotions — only for a NEW, attributed prospect. Triage
+          // rows belong to no tenant, so there is no one to notify (they are logged instead).
+          if (result.captured && result.isNew && !result.isTriage && result.restaurantId) {
+            const label = senderName || this.prospects.domainOf(senderEmail);
+            const message = `${label} reached out${attachments.length ? ' with an attachment' : ''}. Review it in Promotions → Prospects.`;
+            this.websocketGateway.emitRestaurantNotification(result.restaurantId, {
+              id: `prospect-${result.restaurantId}-${Date.now()}`,
+              title: `New vendor prospect: ${label}`,
+              message,
+              type: 'info',
+              action_url: '/promotions?tab=prospects',
+            });
+            void this.inboundResponder.persistManagerNotification(result.restaurantId, {
+              type: 'prospect',
+              title: `New vendor prospect: ${label}`,
+              message,
+              priority: 'low',
+              actionUrl: '/promotions?tab=prospects',
+              metadata: { kind: 'prospect', domain: result.domain },
+            });
+          }
         } else {
           this.logger.warn(`handleInboundEmail: no provider found for ${senderEmail} (not leaded)`);
         }
@@ -741,6 +778,47 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`persistAttachments: failed for ${a?.filename} — ${e?.message}`);
       }
     }
+  }
+
+  /**
+   * Persist cold-email (prospect) attachments to the private vendor-attachments bucket and
+   * return refs to store on the prospect row. No conversation exists yet, so these live under a
+   * `prospects/<domain>/` prefix, deduped by content hash. Best-effort — never throws.
+   */
+  private async persistProspectAttachments(
+    domain: string,
+    attachments: Array<{ filename: string; mime_type: string; data: string }>,
+  ): Promise<Array<{ filename: string; mime_type: string | null; size_bytes: number; storage_path: string; sha256: string }>> {
+    const out: Array<{ filename: string; mime_type: string | null; size_bytes: number; storage_path: string; sha256: string }> = [];
+    if (!Array.isArray(attachments) || !attachments.length) return out;
+    const safeDomain = (domain || 'unknown').replace(/[^\w.\-]+/g, '_').slice(0, 80);
+    for (const a of attachments) {
+      try {
+        if (!a?.data) continue;
+        const buffer = Buffer.from(a.data, 'base64');
+        if (!buffer.length) continue;
+        const sha256 = createHash('sha256').update(buffer).digest('hex');
+        const safeName = (a.filename || 'attachment').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+        const path = `prospects/${safeDomain}/${sha256.slice(0, 16)}-${safeName}`;
+        const { error: upErr } = await this.databaseService.supabase.storage
+          .from('vendor-attachments')
+          .upload(path, buffer, { contentType: a.mime_type || 'application/octet-stream', upsert: true });
+        if (upErr) {
+          this.logger.warn(`persistProspectAttachments: upload failed for ${safeName} — ${upErr.message}`);
+          continue;
+        }
+        out.push({
+          filename: a.filename || safeName,
+          mime_type: a.mime_type || null,
+          size_bytes: buffer.length,
+          storage_path: path,
+          sha256,
+        });
+      } catch (e: any) {
+        this.logger.warn(`persistProspectAttachments: failed for ${a?.filename} — ${e?.message}`);
+      }
+    }
+    return out;
   }
 
   // ===========================================================================
