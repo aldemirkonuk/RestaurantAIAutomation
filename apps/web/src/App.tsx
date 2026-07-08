@@ -65,6 +65,7 @@ const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 
 // Standard pages (lazy loaded)
 const Providers = lazyWithRefresh(() => import('./pages/Providers'))
+const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
@@ -158,6 +159,7 @@ function App() {
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/providers" element={<Providers />} />
+                  <Route path="/promotions" element={<Promotions />} />
                   <Route path="/team" element={<PlaceholderPage title="Team" />} />
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/communications" element={<Communications />} />

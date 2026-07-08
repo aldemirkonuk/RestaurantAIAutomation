@@ -19,6 +19,9 @@ import * as amqplib from 'amqplib';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { DatabaseService } from '../../database/database.service';
 import { InboundResponderService } from './inbound-responder.service';
+import { deriveTransportSignals } from './email-triage';
+import { createHash } from 'crypto';
+import { PromotionExtractorService } from './promotion-extractor.service';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -41,6 +44,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     private readonly websocketGateway: WebsocketGateway,
     private readonly databaseService: DatabaseService,
     private readonly inboundResponder: InboundResponderService,
+    private readonly promotionExtractor: PromotionExtractorService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -530,6 +534,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const inReplyTo: string = payload.in_reply_to || '';
     const references: string = payload.references || '';
     const receivedAt: string = payload.received_at || new Date().toISOString();
+    // Transport/auth signals (bulk, list, auto-submitted, SPF/DKIM/DMARC) derived from the
+    // full header map the ingestion path already publishes on payload.headers. Captured now
+    // for triage classification + sender verification — nothing gates on them yet (shadow phase).
+    const rawHeaders =
+      payload.headers && typeof payload.headers === 'object' ? payload.headers : {};
+    const transportSignals = deriveTransportSignals(rawHeaders, from);
 
     const emailMatch = from.match(/<([^>]+)>/) || [null, from.trim()];
     const senderEmail = emailMatch[1]?.toLowerCase();
@@ -539,7 +549,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       // 1. Find provider by email
       const { data: providers } = await this.databaseService.supabase
         .from('providers')
-        .select('id, restaurant_id')
+        .select('id, restaurant_id, name')
         .ilike('contact_email', senderEmail)
         .limit(1);
       const provider = providers?.[0];
@@ -601,7 +611,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           gmail_thread_id: gmailThreadId || null,
           gmail_message_id: gmailMessageId || null,
           message_id: messageIdHeader || null,
-          email_headers: { from, subject, message_id: messageIdHeader, in_reply_to: inReplyTo, references, gmail_thread_id: gmailThreadId },
+          email_headers: { from, subject, message_id: messageIdHeader, in_reply_to: inReplyTo, references, gmail_thread_id: gmailThreadId, transport: transportSignals },
           confidence_score: orderId ? 1.0 : null,
         })
         .select('id')
@@ -613,6 +623,21 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       }
 
       this.logger.log(`handleInboundEmail: stored inbound row ${inserted.id} (order=${orderId}, thread=${gmailThreadId})`);
+
+      // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
+      void this.persistAttachments(inserted.id, orderId, restaurantId, provider.id, attachments);
+
+      // Promotions lane (D3) — deterministic extract → provider_promotions + notify. Runs
+      // for every provider-matched inbound; self-gates cheaply via the promo pre-filter.
+      void this.promotionExtractor.extractAndStore({
+        conversationId: inserted.id,
+        restaurantId,
+        providerId: provider.id,
+        providerName: (provider as any).name ?? null,
+        subject,
+        body,
+        transport: transportSignals,
+      });
 
       // 5. Notify frontend
       this.websocketGateway.emitRestaurantNotification(restaurantId, {
@@ -646,10 +671,57 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           inboundReferences: references || null,
           inboundSubject: subject || null,
           inboundAttachments: attachments,
+          transportSignals,
         });
       }
     } catch (err: any) {
       this.logger.error(`handleInboundEmail: unexpected error — ${err?.message}`);
+    }
+  }
+
+  /**
+   * D2 — persist inbound image/PDF attachments to the private `vendor-attachments`
+   * Storage bucket and record refs in `conversation_attachments`. The vision flow still
+   * uses the in-event base64; this runs alongside it so the manager can view what the AI
+   * read and we keep a durable, deduped copy. Best-effort — never throws, never blocks.
+   */
+  private async persistAttachments(
+    conversationId: string,
+    orderId: string | null,
+    restaurantId: string,
+    providerId: string | null,
+    attachments: Array<{ filename: string; mime_type: string; data: string }>,
+  ): Promise<void> {
+    if (!Array.isArray(attachments) || !attachments.length) return;
+    for (const a of attachments) {
+      try {
+        if (!a?.data) continue;
+        const buffer = Buffer.from(a.data, 'base64');
+        if (!buffer.length) continue;
+        const sha256 = createHash('sha256').update(buffer).digest('hex');
+        const safeName = (a.filename || 'attachment').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+        const path = `${restaurantId}/${conversationId}/${sha256.slice(0, 16)}-${safeName}`;
+        const { error: upErr } = await this.databaseService.supabase.storage
+          .from('vendor-attachments')
+          .upload(path, buffer, { contentType: a.mime_type || 'application/octet-stream', upsert: true });
+        if (upErr) {
+          this.logger.warn(`persistAttachments: upload failed for ${safeName} — ${upErr.message}`);
+          continue;
+        }
+        await this.databaseService.supabase.from('conversation_attachments').insert({
+          conversation_id: conversationId,
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          provider_id: providerId,
+          filename: a.filename || safeName,
+          mime_type: a.mime_type || null,
+          size_bytes: buffer.length,
+          storage_path: path,
+          sha256,
+        });
+      } catch (e: any) {
+        this.logger.warn(`persistAttachments: failed for ${a?.filename} — ${e?.message}`);
+      }
     }
   }
 

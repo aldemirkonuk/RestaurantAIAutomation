@@ -1306,6 +1306,14 @@ export class ProcurementService {
             type: 'success',
             action_url: `/orders?order=${row.order_id}`,
           });
+          void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+            type: 'vendor_reply',
+            title: 'AI auto-sent a vendor reply',
+            message: `Reply sent to ${providerEmail}.`,
+            priority: 'medium',
+            actionUrl: `/orders?order=${row.order_id}`,
+            metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id },
+          });
         } catch {
           /* best-effort */
         }
@@ -1320,6 +1328,14 @@ export class ProcurementService {
             message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
             type: 'warning',
             action_url: `/orders?order=${row.order_id}`,
+          });
+          void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+            type: 'vendor_reply',
+            title: 'AI auto-send failed — needs your approval',
+            message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
+            priority: 'high',
+            actionUrl: `/orders?order=${row.order_id}`,
+            metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id },
           });
         } catch {
           /* best-effort */
@@ -1549,6 +1565,7 @@ export class ProcurementService {
       deliveryEstimate: proposal.deliveryEstimate,
       conditions: proposal.conditions,
       specialConditions: proposal.specialConditions || [],
+      commercialTerms: proposal.commercialTerms ?? null,
       sourceQuote: proposal.sourceQuote,
       conversationSummary: proposal.summary || (row as any).rolling_summary || '',
       dealKind: proposal.dealKind,
@@ -1945,6 +1962,7 @@ export class ProcurementService {
         detected_sentiment,
         ai_generated,
         conversation_context,
+        email_headers,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -1987,6 +2005,45 @@ export class ProcurementService {
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
       providerName: row.providers?.name ?? null,
       providerEmail: row.providers?.contact_email ?? null,
+      // Sender authentication (DKIM/DMARC) captured on inbound rows in Phase 0; null on
+      // outbound rows and on inbound rows that predate transport capture.
+      senderVerified: row.email_headers?.transport?.senderVerified ?? null,
     }));
+  }
+
+  /** D2 — list an order's persisted email attachments with short-lived signed URLs. */
+  async getOrderAttachments(restaurantId: string, orderId: string): Promise<any[]> {
+    const { data, error } = await this.databaseService.supabase
+      .from('conversation_attachments')
+      .select('id, conversation_id, filename, mime_type, size_bytes, storage_path, created_at')
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      this.logger.error('getOrderAttachments failed', { restaurantId, orderId, error: error.message });
+      return [];
+    }
+    const out: any[] = [];
+    for (const row of (data as any[]) || []) {
+      let url: string | null = null;
+      try {
+        const { data: signed } = await this.databaseService.supabase.storage
+          .from('vendor-attachments')
+          .createSignedUrl(row.storage_path, 3600);
+        url = signed?.signedUrl ?? null;
+      } catch {
+        /* best-effort — a missing object just yields no url */
+      }
+      out.push({
+        id: row.id,
+        conversationId: row.conversation_id,
+        filename: row.filename,
+        mimeType: row.mime_type,
+        sizeBytes: row.size_bytes,
+        createdAt: row.created_at,
+        url,
+      });
+    }
+    return out;
   }
 }

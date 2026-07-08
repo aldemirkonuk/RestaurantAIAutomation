@@ -15,6 +15,7 @@ import {
   Bell,
   HelpCircle,
   Truck,
+  Tag,
   Shield,
   Sparkles,
   Bot,
@@ -47,6 +48,7 @@ const mainNavItems: NavItem[] = [
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Wine Library', href: '/wines', icon: Wine },
   { name: 'Providers', href: '/providers', icon: Truck },
+  { name: 'Promotions', href: '/promotions', icon: Tag },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
 ]
 

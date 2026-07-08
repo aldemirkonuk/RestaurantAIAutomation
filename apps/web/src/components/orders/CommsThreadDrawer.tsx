@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '../../contexts/ToastContext'
@@ -6,7 +6,7 @@ import {
   X, Send, Clock, CheckCircle, Loader2, RefreshCw,
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
   ArrowRight, MessageSquare, Activity, Mail, Pause, Play, Bot, PenLine, XCircle,
-  AlertTriangle, MailSearch,
+  AlertTriangle, MailSearch, ShieldCheck, ShieldAlert, Paperclip, FileText,
 } from 'lucide-react'
 import {
   useOrderConversations,
@@ -19,9 +19,11 @@ import {
   useConfirmDeal,
   useDismissDeal,
   useForceFetchReplies,
+  useOrderAttachments,
   orderConversationKeys,
   dealProposalKeys,
   type OrderConversationDto,
+  type OrderAttachmentDto,
 } from '../../hooks/queries/useDraftEmailQueries'
 import { DealApprovalModal } from './DealApprovalModal'
 
@@ -181,6 +183,17 @@ export function CommsThreadDrawer({
   const [showManualComposer, setShowManualComposer] = useState(false)
   const [manualText, setManualText] = useState('')
   const { data: conversations = [], isLoading } = useOrderConversations(isOpen ? orderId : null)
+  // D2 — persisted attachments for this order, grouped by the message they arrived on.
+  const { data: orderAttachments = [] } = useOrderAttachments(isOpen ? orderId : null)
+  const attachmentsByConv = useMemo(() => {
+    const m = new Map<string, OrderAttachmentDto[]>()
+    for (const a of orderAttachments) {
+      const arr = m.get(a.conversationId) ?? []
+      arr.push(a)
+      m.set(a.conversationId, arr)
+    }
+    return m
+  }, [orderAttachments])
   const generateAiReply = useGenerateAiReply()
   const manualReply = useManualReply()
   const toggleAiPaused = useToggleAiPaused()
@@ -194,6 +207,9 @@ export function CommsThreadDrawer({
   const aiPaused = conversations[0]?.aiPaused ?? false
   const providerName = conversations[0]?.providerName
   const providerEmail = conversations[0]?.providerEmail
+  // Header trust signal: did the vendor's most recent inbound email pass DKIM/DMARC?
+  // null when there is no inbound yet or the row predates Phase 0 transport capture.
+  const senderVerified = [...conversations].reverse().find(c => c.direction === 'INBOUND')?.senderVerified ?? null
   const sentConvs = conversations.filter(c => ['SENT', 'AUTO_SENT', 'APPROVED', 'COMPLETED', 'CLOSED'].includes(c.status))
 
   // The latest message being a vendor reply (with no AI draft waiting yet) is the
@@ -408,6 +424,16 @@ export function CommsThreadDrawer({
                       {providerEmail && (
                         <span className="text-[10px] text-gray-400 truncate max-w-[120px] hidden sm:block">{providerEmail}</span>
                       )}
+                      {senderVerified === true && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-emerald-700" title="Sender passed DKIM/DMARC authentication">
+                          <ShieldCheck className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                      {senderVerified === false && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-700" title="Sender failed DKIM/DMARC — replies need your approval">
+                          <ShieldAlert className="w-3 h-3" /> Unverified
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <span className="text-[11px] text-gray-400">No provider assigned</span>
@@ -507,6 +533,7 @@ export function CommsThreadDrawer({
               ) : activeTab === 'thread' ? (
                 <ThreadTab
                   conversations={conversations}
+                  attachmentsByConv={attachmentsByConv}
                   isCancelled={isCancelled}
                   onOpenDraftPanel={onOpenDraftPanel}
                   onClose={onClose}
@@ -553,6 +580,24 @@ export function CommsThreadDrawer({
                       >
                         <XCircle className="w-4 h-4" />
                       </button>
+                    </div>
+                    {/* To / Subject — email-composer identity (sketch 6b) */}
+                    <div className="mb-2 border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-gray-100">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-12 flex-shrink-0">To</span>
+                        {(providerName || providerEmail) ? (
+                          <span className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full pl-[3px] pr-2 py-[2px] min-w-0">
+                            <span className="w-4 h-4 rounded-full bg-wine-800 flex items-center justify-center text-[8px] font-black text-white flex-shrink-0">{initials(providerName || 'P')}</span>
+                            <span className="text-[10.5px] font-medium text-gray-700 truncate">{providerName || providerEmail}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10.5px] text-gray-400">the provider</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 px-2.5 py-1.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-12 flex-shrink-0">Subject</span>
+                        <span className="text-[10.5px] font-medium text-gray-700 truncate">Re: Order — {orderWineName ?? 'Wine'}</span>
+                      </div>
                     </div>
                     <textarea
                       value={manualText}
@@ -776,34 +821,115 @@ function EmptyState() {
   )
 }
 
-// ─── Thread tab (activity-feed rows) ─────────────────────────────────────────
-function ThreadTab({ conversations, isCancelled, onOpenDraftPanel, onClose }: {
+// ─── Day grouping for the feed (sticky headers — 5a/7a calm-column style) ───────
+function isSameDay(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false
+  const da = new Date(a), db = new Date(b)
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
+}
+function formatDayHeader(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (isSameDay(iso, today.toISOString())) return 'Today'
+  if (isSameDay(iso, yesterday.toISOString())) return 'Yesterday'
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
+// ─── Thread tab (calm single-column feed with sticky day headers) ────────────────
+function ThreadTab({ conversations, attachmentsByConv, isCancelled, onOpenDraftPanel, onClose }: {
   conversations: OrderConversationDto[]
+  attachmentsByConv: Map<string, OrderAttachmentDto[]>
   isCancelled: boolean
   onOpenDraftPanel: () => void
   onClose: () => void
 }) {
   return (
-    <div className="py-3">
-      {conversations.map((conv, idx) => (
-        <ThreadEvent
-          key={conv.id}
-          conv={conv}
-          isLast={idx === conversations.length - 1}
-          isLatest={idx === conversations.length - 1}
-          isCancelled={isCancelled}
-          onOpenDraftPanel={onOpenDraftPanel}
-          onClose={onClose}
-          defaultOpen={idx === conversations.length - 1}
-        />
-      ))}
+    <div className="pb-3">
+      {conversations.map((conv, idx) => {
+        const showDay = idx === 0 || !isSameDay(conversations[idx - 1]?.createdAt, conv.createdAt)
+        return (
+          <div key={conv.id}>
+            {showDay && (
+              <div className="sticky top-0 z-[5] px-4 py-1.5 bg-gray-50/95 backdrop-blur-sm border-y border-gray-100">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  {formatDayHeader(conv.createdAt)}
+                </span>
+              </div>
+            )}
+            <ThreadEvent
+              conv={conv}
+              attachments={attachmentsByConv.get(conv.id) ?? []}
+              isLast={idx === conversations.length - 1}
+              isLatest={idx === conversations.length - 1}
+              isCancelled={isCancelled}
+              onOpenDraftPanel={onOpenDraftPanel}
+              onClose={onClose}
+              defaultOpen={idx === conversations.length - 1}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Attachment cards (D2 — persisted vendor attachments) ───────────────────────
+function formatBytes(n: number | null): string {
+  if (n == null) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
+  if (!items.length) return null
+  return (
+    <div className="px-3 py-2 bg-white border-t border-gray-100">
+      <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+        <Paperclip className="w-3 h-3" /> Attachments the AI read
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((a) => {
+          const isImage = (a.mimeType ?? '').startsWith('image/')
+          return (
+            <a
+              key={a.id}
+              href={a.url ?? undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={a.filename}
+              className={`flex items-center gap-2 border border-gray-200 rounded-lg p-1.5 transition-colors ${
+                a.url ? 'hover:border-wine-300 hover:bg-wine-50/40' : 'opacity-60 pointer-events-none'
+              }`}
+            >
+              {isImage && a.url ? (
+                <img src={a.url} alt={a.filename} className="w-9 h-9 rounded object-cover border border-gray-100 flex-shrink-0" />
+              ) : (
+                <span className="w-9 h-9 rounded bg-gray-50 border border-gray-100 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-4 h-4 text-wine-600" />
+                </span>
+              )}
+              <span className="min-w-0 max-w-[130px]">
+                <span className="block text-[10.5px] font-medium text-gray-700 truncate">{a.filename}</span>
+                <span className="block text-[9px] text-gray-400">{formatBytes(a.sizeBytes)}</span>
+              </span>
+            </a>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
 // ─── Single timeline event ────────────────────────────────────────────────────
-function ThreadEvent({ conv, isLast, isLatest, isCancelled, onOpenDraftPanel, onClose, defaultOpen }: {
+function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenDraftPanel, onClose, defaultOpen }: {
   conv: OrderConversationDto
+  attachments: OrderAttachmentDto[]
   isLast: boolean
   isLatest: boolean
   isCancelled: boolean
@@ -918,6 +1044,8 @@ function ThreadEvent({ conv, isLast, isLatest, isCancelled, onOpenDraftPanel, on
                     </ul>
                   </div>
                 )}
+
+                {attachments.length > 0 && <AttachmentCards items={attachments} />}
 
                 {/* Footer row */}
                 <div className="flex items-center justify-between px-3 py-2 bg-white border-t border-gray-100">

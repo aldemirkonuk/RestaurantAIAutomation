@@ -154,6 +154,8 @@ export interface OrderConversationDto {
   wineName: string | null
   providerName: string | null
   providerEmail: string | null
+  /** Latest inbound sender authentication (DKIM/DMARC); null when unknown / pre-Phase-0. */
+  senderVerified?: boolean | null
 }
 
 export const orderConversationKeys = {
@@ -172,6 +174,30 @@ export function useOrderConversations(orderId: string | null) {
     staleTime: 10_000,
     // Keep the live undo countdown / auto-send status fresh while the drawer is open.
     refetchInterval: 15_000,
+  })
+}
+
+export interface OrderAttachmentDto {
+  id: string
+  conversationId: string
+  filename: string
+  mimeType: string | null
+  sizeBytes: number | null
+  createdAt: string
+  /** short-lived signed URL to the persisted bytes (D2); null if it couldn't be signed. */
+  url: string | null
+}
+
+/** Persisted vendor email attachments for an order (D2), with signed URLs. */
+export function useOrderAttachments(orderId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['order-attachments', orderId ?? ''],
+    queryFn: () =>
+      apiClient
+        .get(`/procurement/orders/${orderId}/attachments`)
+        .then((r) => r.data as OrderAttachmentDto[]),
+    enabled: !!orderId && enabled,
+    staleTime: 30_000,
   })
 }
 
@@ -251,6 +277,32 @@ export function useForceFetchReplies() {
   })
 }
 
+export interface DiscountTierDto {
+  threshold_qty: number | null
+  unit: string | null
+  discount_pct: number | null
+  discount_amount: number | null
+}
+
+export interface CommercialTermsDto {
+  currency: string | null
+  currency_ambiguous: boolean
+  unit_price: number | null
+  case_price: number | null
+  bottles_per_case: number | null
+  min_order_qty: number | null
+  min_order_unit: string | null
+  discount_tiers: DiscountTierDto[]
+  tax_status: 'included' | 'excluded' | 'unknown'
+  tax_rate_pct: number | null
+  price_valid_until: string | null
+  payment_terms: string | null
+  delivery_lead_time: string | null
+  stock_status: 'in_stock' | 'limited' | 'allocation' | 'out_of_stock' | null
+  stock_qty_available: number | null
+  source_quotes?: Record<string, string> | null
+}
+
 export interface DealProposalDto {
   orderId: string
   conversationId: string
@@ -262,6 +314,7 @@ export interface DealProposalDto {
   deliveryEstimate: string
   conditions: string
   specialConditions: string[]
+  commercialTerms?: CommercialTermsDto | null
   sourceQuote: string
   conversationSummary: string
   dealKind: 'offer' | 'verification'
