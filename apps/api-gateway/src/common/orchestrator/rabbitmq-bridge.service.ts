@@ -20,6 +20,7 @@ import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { DatabaseService } from '../../database/database.service';
 import { InboundResponderService } from './inbound-responder.service';
 import { deriveTransportSignals } from './email-triage';
+import { createHash } from 'crypto';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -621,6 +622,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log(`handleInboundEmail: stored inbound row ${inserted.id} (order=${orderId}, thread=${gmailThreadId})`);
 
+      // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
+      void this.persistAttachments(inserted.id, orderId, restaurantId, provider.id, attachments);
+
       // 5. Notify frontend
       this.websocketGateway.emitRestaurantNotification(restaurantId, {
         id: inserted.id,
@@ -658,6 +662,52 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (err: any) {
       this.logger.error(`handleInboundEmail: unexpected error — ${err?.message}`);
+    }
+  }
+
+  /**
+   * D2 — persist inbound image/PDF attachments to the private `vendor-attachments`
+   * Storage bucket and record refs in `conversation_attachments`. The vision flow still
+   * uses the in-event base64; this runs alongside it so the manager can view what the AI
+   * read and we keep a durable, deduped copy. Best-effort — never throws, never blocks.
+   */
+  private async persistAttachments(
+    conversationId: string,
+    orderId: string | null,
+    restaurantId: string,
+    providerId: string | null,
+    attachments: Array<{ filename: string; mime_type: string; data: string }>,
+  ): Promise<void> {
+    if (!Array.isArray(attachments) || !attachments.length) return;
+    for (const a of attachments) {
+      try {
+        if (!a?.data) continue;
+        const buffer = Buffer.from(a.data, 'base64');
+        if (!buffer.length) continue;
+        const sha256 = createHash('sha256').update(buffer).digest('hex');
+        const safeName = (a.filename || 'attachment').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+        const path = `${restaurantId}/${conversationId}/${sha256.slice(0, 16)}-${safeName}`;
+        const { error: upErr } = await this.databaseService.supabase.storage
+          .from('vendor-attachments')
+          .upload(path, buffer, { contentType: a.mime_type || 'application/octet-stream', upsert: true });
+        if (upErr) {
+          this.logger.warn(`persistAttachments: upload failed for ${safeName} — ${upErr.message}`);
+          continue;
+        }
+        await this.databaseService.supabase.from('conversation_attachments').insert({
+          conversation_id: conversationId,
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          provider_id: providerId,
+          filename: a.filename || safeName,
+          mime_type: a.mime_type || null,
+          size_bytes: buffer.length,
+          storage_path: path,
+          sha256,
+        });
+      } catch (e: any) {
+        this.logger.warn(`persistAttachments: failed for ${a?.filename} — ${e?.message}`);
+      }
     }
   }
 

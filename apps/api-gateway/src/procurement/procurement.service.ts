@@ -1994,4 +1994,40 @@ export class ProcurementService {
       senderVerified: row.email_headers?.transport?.senderVerified ?? null,
     }));
   }
+
+  /** D2 — list an order's persisted email attachments with short-lived signed URLs. */
+  async getOrderAttachments(restaurantId: string, orderId: string): Promise<any[]> {
+    const { data, error } = await this.databaseService.supabase
+      .from('conversation_attachments')
+      .select('id, conversation_id, filename, mime_type, size_bytes, storage_path, created_at')
+      .eq('restaurant_id', restaurantId)
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      this.logger.error('getOrderAttachments failed', { restaurantId, orderId, error: error.message });
+      return [];
+    }
+    const out: any[] = [];
+    for (const row of (data as any[]) || []) {
+      let url: string | null = null;
+      try {
+        const { data: signed } = await this.databaseService.supabase.storage
+          .from('vendor-attachments')
+          .createSignedUrl(row.storage_path, 3600);
+        url = signed?.signedUrl ?? null;
+      } catch {
+        /* best-effort — a missing object just yields no url */
+      }
+      out.push({
+        id: row.id,
+        conversationId: row.conversation_id,
+        filename: row.filename,
+        mimeType: row.mime_type,
+        sizeBytes: row.size_bytes,
+        createdAt: row.created_at,
+        url,
+      });
+    }
+    return out;
+  }
 }

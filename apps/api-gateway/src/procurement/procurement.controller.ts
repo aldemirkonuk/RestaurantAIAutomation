@@ -463,6 +463,25 @@ export class ProcurementController {
     }
   }
 
+  @Get('orders/:id/attachments')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: "List an order's persisted email attachments (with signed URLs)" })
+  @ApiResponse({ status: 200 })
+  async getOrderAttachments(
+    @Param('id') orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.procurementService.getOrderAttachments(user.restaurantId, orderId);
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to get order attachments',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get('orders/:id/draft')
   @UseGuards(JwtAuthGuard)
   @Header('Cache-Control', 'no-store')
