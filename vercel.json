@@ -1,6 +1,6 @@
 {
   "$schema": "https://vercel.com/schema.json",
-  "installCommand": "corepack enable && corepack prepare pnpm@8.15.0 --activate && pnpm install --frozen-lockfile",
+  "installCommand": "corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile",
   "buildCommand": "pnpm exec turbo run build --filter=@wineops/web",
   "outputDirectory": "apps/web/dist",
   "framework": null,

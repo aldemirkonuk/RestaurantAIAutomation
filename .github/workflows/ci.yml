@@ -55,7 +55,7 @@ jobs:
         run: |
           cd services/agent-orchestrator
           pip install -r requirements.txt
-          pip install ruff black pylint
+          pip install "ruff==0.8.4" "black==24.10.0"
 
       - name: Run Ruff
         run: |
@@ -188,6 +188,9 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
