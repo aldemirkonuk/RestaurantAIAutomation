@@ -21,6 +21,7 @@ import { DatabaseService } from '../../database/database.service';
 import { InboundResponderService } from './inbound-responder.service';
 import { deriveTransportSignals } from './email-triage';
 import { createHash } from 'crypto';
+import { PromotionExtractorService } from './promotion-extractor.service';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -43,6 +44,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     private readonly websocketGateway: WebsocketGateway,
     private readonly databaseService: DatabaseService,
     private readonly inboundResponder: InboundResponderService,
+    private readonly promotionExtractor: PromotionExtractorService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -547,7 +549,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       // 1. Find provider by email
       const { data: providers } = await this.databaseService.supabase
         .from('providers')
-        .select('id, restaurant_id')
+        .select('id, restaurant_id, name')
         .ilike('contact_email', senderEmail)
         .limit(1);
       const provider = providers?.[0];
@@ -624,6 +626,18 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
       // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
       void this.persistAttachments(inserted.id, orderId, restaurantId, provider.id, attachments);
+
+      // Promotions lane (D3) — deterministic extract → provider_promotions + notify. Runs
+      // for every provider-matched inbound; self-gates cheaply via the promo pre-filter.
+      void this.promotionExtractor.extractAndStore({
+        conversationId: inserted.id,
+        restaurantId,
+        providerId: provider.id,
+        providerName: (provider as any).name ?? null,
+        subject,
+        body,
+        transport: transportSignals,
+      });
 
       // 5. Notify frontend
       this.websocketGateway.emitRestaurantNotification(restaurantId, {
