@@ -789,7 +789,26 @@ function EmptyState() {
   )
 }
 
-// ─── Thread tab (activity-feed rows) ─────────────────────────────────────────
+// ─── Day grouping for the feed (sticky headers — 5a/7a calm-column style) ───────
+function isSameDay(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false
+  const da = new Date(a), db = new Date(b)
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
+}
+function formatDayHeader(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (isSameDay(iso, today.toISOString())) return 'Today'
+  if (isSameDay(iso, yesterday.toISOString())) return 'Yesterday'
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
+// ─── Thread tab (calm single-column feed with sticky day headers) ────────────────
 function ThreadTab({ conversations, isCancelled, onOpenDraftPanel, onClose }: {
   conversations: OrderConversationDto[]
   isCancelled: boolean
@@ -797,19 +816,30 @@ function ThreadTab({ conversations, isCancelled, onOpenDraftPanel, onClose }: {
   onClose: () => void
 }) {
   return (
-    <div className="py-3">
-      {conversations.map((conv, idx) => (
-        <ThreadEvent
-          key={conv.id}
-          conv={conv}
-          isLast={idx === conversations.length - 1}
-          isLatest={idx === conversations.length - 1}
-          isCancelled={isCancelled}
-          onOpenDraftPanel={onOpenDraftPanel}
-          onClose={onClose}
-          defaultOpen={idx === conversations.length - 1}
-        />
-      ))}
+    <div className="pb-3">
+      {conversations.map((conv, idx) => {
+        const showDay = idx === 0 || !isSameDay(conversations[idx - 1]?.createdAt, conv.createdAt)
+        return (
+          <div key={conv.id}>
+            {showDay && (
+              <div className="sticky top-0 z-[5] px-4 py-1.5 bg-gray-50/95 backdrop-blur-sm border-y border-gray-100">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  {formatDayHeader(conv.createdAt)}
+                </span>
+              </div>
+            )}
+            <ThreadEvent
+              conv={conv}
+              isLast={idx === conversations.length - 1}
+              isLatest={idx === conversations.length - 1}
+              isCancelled={isCancelled}
+              onOpenDraftPanel={onOpenDraftPanel}
+              onClose={onClose}
+              defaultOpen={idx === conversations.length - 1}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }
