@@ -3,6 +3,7 @@ import { DatabaseService } from '../../database/database.service';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { looksPromotional, TransportSignals } from './email-triage';
 import { extractPromotion } from './promo-extract';
+import { computePriority } from './priority';
 
 interface PromoContext {
   conversationId: string;
@@ -58,13 +59,26 @@ export class PromotionExtractorService {
       if (promo.free_shipping) discount_value.free_shipping = true;
       if (promo.currency) discount_value.currency = promo.currency;
 
-      const conditions: Record<string, any> = { signature: promo.signature };
+      const applicableWines = await this.matchApplicableWines(ctx.restaurantId, `${ctx.subject ?? ''}\n${ctx.body ?? ''}`);
+
+      // D4 — priority (relevance × savings × urgency × trust) → interrupt / surface / digest.
+      const daysToExpiry = promo.valid_until != null ? (new Date(promo.valid_until).getTime() - Date.now()) / 86_400_000 : null;
+      const urgency =
+        daysToExpiry != null && daysToExpiry <= 3 ? 0.9 :
+        daysToExpiry != null && daysToExpiry <= 7 ? 0.6 :
+        promo.promo_type === 'closeout' ? 0.7 : 0.2;
+      const savings =
+        promo.discount_pct != null ? Math.min(1, promo.discount_pct / 30) :
+        promo.discount_amount != null ? 0.6 : promo.free_shipping ? 0.4 : 0.2;
+      const relevance = applicableWines.length > 0 ? Math.min(1, 0.5 + applicableWines.length * 0.2) : 0.1;
+      const trust = ctx.transport?.senderVerified === true ? 0.7 : ctx.transport?.senderVerified === false ? 0.3 : 0.5;
+      const { bucket } = computePriority({ relevance, savings, urgency, trust });
+
+      const conditions: Record<string, any> = { signature: promo.signature, priority: bucket };
       if (promo.threshold_qty != null) conditions.min_qty = promo.threshold_qty;
       if (promo.threshold_amount != null) conditions.min_amount = promo.threshold_amount;
       if (promo.promo_code) conditions.code = promo.promo_code;
       if (promo.valid_text) conditions.valid_text = promo.valid_text;
-
-      const applicableWines = await this.matchApplicableWines(ctx.restaurantId, `${ctx.subject ?? ''}\n${ctx.body ?? ''}`);
 
       const { data: inserted, error } = await this.databaseService.supabase
         .from('provider_promotions')
@@ -90,22 +104,22 @@ export class PromotionExtractorService {
         return { stored: false, reason: 'insert failed' };
       }
 
-      // Notify (notify-only). Priority: relevant to wines we buy, or expiring within a week.
+      // Notify by D4 bucket: interrupt (loud) / surface (info) / digest (filed, no toast → no fatigue).
       const relevant = applicableWines.length > 0;
-      const expiringSoon =
-        promo.valid_until != null && new Date(promo.valid_until).getTime() - Date.now() < 7 * 86_400_000;
       const provider = ctx.providerName || 'A supplier';
-      this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
-        id: inserted.id,
-        title: relevant ? `${provider} promo on wines you buy` : `${provider} promotion`,
-        message: `${promo.summary}${relevant ? ` — matches ${applicableWines.length} of your wines` : ''}.`,
-        type: relevant || expiringSoon ? 'warning' : 'info',
-        action_url: `/providers?promotions=1`,
-      });
+      if (bucket !== 'digest') {
+        this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
+          id: inserted.id,
+          title: relevant ? `${provider} promo on wines you buy` : `${provider} promotion`,
+          message: `${promo.summary}${relevant ? ` — matches ${applicableWines.length} of your wines` : ''}.`,
+          type: bucket === 'interrupt' ? 'warning' : 'info',
+          action_url: `/providers?promotions=1`,
+        });
+      }
 
       this.logger.log(
         `PromotionExtractor: stored ${promo.promo_type} promo ${inserted.id} for provider ${ctx.providerId} ` +
-          `(conf=${promo.confidence}, relevant=${relevant}).`,
+          `(conf=${promo.confidence}, priority=${bucket}, relevant=${relevant}).`,
       );
       return { stored: true };
     } catch (e: any) {
