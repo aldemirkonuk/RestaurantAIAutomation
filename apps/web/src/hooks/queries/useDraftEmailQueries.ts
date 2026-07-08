@@ -300,6 +300,7 @@ export interface CommercialTermsDto {
   delivery_lead_time: string | null
   stock_status: 'in_stock' | 'limited' | 'allocation' | 'out_of_stock' | null
   stock_qty_available: number | null
+  source_quotes?: Record<string, string> | null
 }
 
 export interface DealProposalDto {

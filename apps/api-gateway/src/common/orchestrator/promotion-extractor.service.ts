@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { DatabaseService } from '../../database/database.service';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { looksPromotional, TransportSignals } from './email-triage';
@@ -125,6 +126,41 @@ export class PromotionExtractorService {
     } catch (e: any) {
       this.logger.warn(`PromotionExtractor failed: ${e?.message}`);
       return { stored: false, reason: 'error' };
+    }
+  }
+
+  /**
+   * Daily digest — one quiet summary per restaurant of the digest-bucket promos filed in the
+   * last 24h, so low-priority offers reach the manager without interrupting during the day.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async sendDailyDigests(): Promise<void> {
+    try {
+      const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const { data } = await this.databaseService.supabase
+        .from('provider_promotions')
+        .select('restaurant_id')
+        .gte('created_at', since)
+        .eq('is_active', true)
+        .contains('conditions', { priority: 'digest' });
+      const byRestaurant = new Map<string, number>();
+      for (const r of (data as any[]) || []) {
+        if (!(r as any).restaurant_id) continue;
+        const id = (r as any).restaurant_id;
+        byRestaurant.set(id, (byRestaurant.get(id) ?? 0) + 1);
+      }
+      for (const [restaurantId, count] of byRestaurant) {
+        this.websocketGateway.emitRestaurantNotification(restaurantId, {
+          id: `promo-digest-${restaurantId}-${Date.now()}`,
+          title: `${count} new promotion${count !== 1 ? 's' : ''} today`,
+          message: `${count} vendor offer${count !== 1 ? 's were' : ' was'} filed since yesterday. Review them in Promotions.`,
+          type: 'info',
+          action_url: '/promotions',
+        });
+      }
+      if (byRestaurant.size) this.logger.log(`Promo digest sent to ${byRestaurant.size} restaurant(s).`);
+    } catch (e: any) {
+      this.logger.warn(`sendDailyDigests failed: ${e?.message}`);
     }
   }
 

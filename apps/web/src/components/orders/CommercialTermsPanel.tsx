@@ -105,14 +105,22 @@ export function CommercialTermsPanel({ terms, orderQty }: Props) {
             {terms.unit_price != null && (
               <div className={bothPrices ? (priceInconsistent ? 'p-3 border-r border-dashed border-amber-300' : 'p-3 border-r border-gray-200') : 'p-3'}>
                 <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Unit price</div>
-                <div className="text-xl font-bold text-wine-700 leading-none">{fmt.format(terms.unit_price)}</div>
+                <div className="text-xl font-bold text-wine-700 leading-none">
+                  {terms.source_quotes?.unit_price
+                    ? <span className="border-b border-dashed border-wine-300 cursor-help" title={`“${terms.source_quotes.unit_price}”`}>{fmt.format(terms.unit_price)}</span>
+                    : fmt.format(terms.unit_price)}
+                </div>
                 <div className="text-[11px] text-gray-500 mt-1">per bottle</div>
               </div>
             )}
             {terms.case_price != null && (
               <div className="p-3">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Case price</div>
-                <div className="text-xl font-bold text-gray-900 leading-none">{fmt.format(terms.case_price)}</div>
+                <div className="text-xl font-bold text-gray-900 leading-none">
+                  {terms.source_quotes?.case_price
+                    ? <span className="border-b border-dashed border-gray-300 cursor-help" title={`“${terms.source_quotes.case_price}”`}>{fmt.format(terms.case_price)}</span>
+                    : fmt.format(terms.case_price)}
+                </div>
                 {derivedCaseUnit != null && (
                   <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-1 flex-wrap">
                     <span>{terms.bottles_per_case} btl → <span className="font-medium text-gray-900">{fmt.format(derivedCaseUnit)}/btl</span></span>

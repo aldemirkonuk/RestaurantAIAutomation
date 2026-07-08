@@ -34,6 +34,8 @@ export interface CommercialTerms {
   delivery_lead_time: string | null; // e.g. "3-5 business days"
   stock_status: string | null; // in_stock | limited | allocation | out_of_stock
   stock_qty_available: number | null;
+  /** field name → the supplier's exact phrase it was read from (provenance). */
+  source_quotes: Record<string, string> | null;
 }
 
 export interface CommercialTermsValidation {
@@ -65,6 +67,7 @@ export function emptyCommercialTerms(): CommercialTerms {
     delivery_lead_time: null,
     stock_status: null,
     stock_qty_available: null,
+    source_quotes: null,
   };
 }
 
@@ -128,6 +131,7 @@ export function parseCommercialTerms(raw: any): CommercialTerms {
     delivery_lead_time: str(raw.delivery_lead_time),
     stock_status: str(raw.stock_status),
     stock_qty_available: num(raw.stock_qty_available),
+    source_quotes: raw.source_quotes && typeof raw.source_quotes === 'object' ? (raw.source_quotes as Record<string, string>) : null,
   };
 }
 

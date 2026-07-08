@@ -1306,6 +1306,14 @@ export class ProcurementService {
             type: 'success',
             action_url: `/orders?order=${row.order_id}`,
           });
+          void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+            type: 'vendor_reply',
+            title: 'AI auto-sent a vendor reply',
+            message: `Reply sent to ${providerEmail}.`,
+            priority: 'medium',
+            actionUrl: `/orders?order=${row.order_id}`,
+            metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id },
+          });
         } catch {
           /* best-effort */
         }
@@ -1320,6 +1328,14 @@ export class ProcurementService {
             message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
             type: 'warning',
             action_url: `/orders?order=${row.order_id}`,
+          });
+          void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+            type: 'vendor_reply',
+            title: 'AI auto-send failed — needs your approval',
+            message: 'The scheduled reply could not be sent automatically. It is back in your queue for one-tap approval.',
+            priority: 'high',
+            actionUrl: `/orders?order=${row.order_id}`,
+            metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id },
           });
         } catch {
           /* best-effort */
