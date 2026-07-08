@@ -567,6 +567,24 @@ export function CommsThreadDrawer({
                         <XCircle className="w-4 h-4" />
                       </button>
                     </div>
+                    {/* To / Subject — email-composer identity (sketch 6b) */}
+                    <div className="mb-2 border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-gray-100">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-12 flex-shrink-0">To</span>
+                        {(providerName || providerEmail) ? (
+                          <span className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full pl-[3px] pr-2 py-[2px] min-w-0">
+                            <span className="w-4 h-4 rounded-full bg-wine-800 flex items-center justify-center text-[8px] font-black text-white flex-shrink-0">{initials(providerName || 'P')}</span>
+                            <span className="text-[10.5px] font-medium text-gray-700 truncate">{providerName || providerEmail}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10.5px] text-gray-400">the provider</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 px-2.5 py-1.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-12 flex-shrink-0">Subject</span>
+                        <span className="text-[10.5px] font-medium text-gray-700 truncate">Re: Order — {orderWineName ?? 'Wine'}</span>
+                      </div>
+                    </div>
                     <textarea
                       value={manualText}
                       onChange={(e) => setManualText(e.target.value)}
