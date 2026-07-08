@@ -56,3 +56,47 @@ export function useSetSenderTrust() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['sender-reputation'] }),
   })
 }
+
+export interface ProspectDto {
+  id: string
+  domain: string
+  sender_email: string | null
+  sender_name: string | null
+  subject: string | null
+  snippet: string | null
+  has_attachments: boolean
+  message_count: number
+  status: string
+  first_seen_at: string | null
+  last_seen_at: string | null
+}
+
+/** D1 — cold-email prospects (unknown-sender vendor outreach) captured for review. */
+export function useProspects() {
+  return useQuery({
+    queryKey: ['prospects'],
+    queryFn: () => apiClient.get('/prospects').then((r) => r.data as ProspectDto[]),
+    staleTime: 30_000,
+  })
+}
+
+/** Promote a prospect to a real provider (D1). */
+export function usePromoteProspect() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiClient.post(`/prospects/${id}/promote`).then((r) => r.data as { promoted: boolean; providerId?: string }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['prospects'] })
+      qc.invalidateQueries({ queryKey: ['providers'] })
+    },
+  })
+}
+
+/** Dismiss a prospect (D1). */
+export function useDismissProspect() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiClient.post(`/prospects/${id}/dismiss`).then((r) => r.data as { dismissed: boolean }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['prospects'] }),
+  })
+}

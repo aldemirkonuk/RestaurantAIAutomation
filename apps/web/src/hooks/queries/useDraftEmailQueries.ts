@@ -94,9 +94,13 @@ export function useApproveDraft() {
 export function useGenerateAiReply() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (orderId: string) =>
-      apiClient
-        .post(`/procurement/orders/${orderId}/generate-ai-reply`)
+    // Accepts a bare orderId, or { orderId, force, instruction } for the P6 triage
+    // escape hatches ("Reply anyway" forces past the reply gate; "Treat as offer"
+    // adds an instruction). Normalized below so existing call sites keep working.
+    mutationFn: (arg: string | { orderId: string; force?: boolean; instruction?: string }) => {
+      const { orderId, force, instruction } = typeof arg === 'string' ? { orderId: arg, force: undefined, instruction: undefined } : arg
+      return apiClient
+        .post(`/procurement/orders/${orderId}/generate-ai-reply`, { force, instruction })
         .then(
           (r) =>
             r.data as {
@@ -105,8 +109,10 @@ export function useGenerateAiReply() {
               needsApproval?: boolean
               reason?: string
             },
-        ),
-    onSettled: (_data, _error, orderId) => {
+        )
+    },
+    onSettled: (_data, _error, arg) => {
+      const orderId = typeof arg === 'string' ? arg : arg.orderId
       queryClient.invalidateQueries({ queryKey: draftKeys.all })
       queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) })
       queryClient.invalidateQueries({ queryKey: activeConversationKeys.all })
@@ -146,6 +152,15 @@ export interface OrderConversationDto {
   detectedSentiment?: string | null
   aiGenerated?: boolean | null
   specialConditions?: string[]
+  /** Triage classification for an inbound row (P6). Null on outbound / pre-triage rows. */
+  classification?: {
+    email_class?: string | null
+    is_automated?: boolean | null
+    requires_reply?: boolean | null
+    injection_suspected?: boolean | null
+    confidence?: number | null
+    transport?: Record<string, any> | null
+  } | null
   orderNumber: string | null
   quantity: number | null
   quotedPrice: number | null

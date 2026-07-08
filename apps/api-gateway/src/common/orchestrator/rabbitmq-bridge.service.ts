@@ -19,9 +19,10 @@ import * as amqplib from 'amqplib';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { DatabaseService } from '../../database/database.service';
 import { InboundResponderService } from './inbound-responder.service';
-import { deriveTransportSignals } from './email-triage';
+import { deriveTransportSignals, looksPromotional } from './email-triage';
 import { createHash } from 'crypto';
 import { PromotionExtractorService } from './promotion-extractor.service';
+import { ProspectsService } from './prospects.service';
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -45,6 +46,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     private readonly databaseService: DatabaseService,
     private readonly inboundResponder: InboundResponderService,
     private readonly promotionExtractor: PromotionExtractorService,
+    private readonly prospects: ProspectsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -554,7 +556,23 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         .limit(1);
       const provider = providers?.[0];
       if (!provider) {
-        this.logger.warn(`handleInboundEmail: no provider found for ${senderEmail}`);
+        // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
+        // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
+        // drop mass marketing blasts (bulk/list transport) so this never becomes a spam magnet.
+        const isBulkBlast = transportSignals.bulk || transportSignals.listMail || transportSignals.autoSubmitted;
+        const looksOutreach = attachments.length > 0 || looksPromotional(subject, body);
+        if (looksOutreach && !isBulkBlast) {
+          const senderName = (from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] || '').trim() || null;
+          void this.prospects.captureFromColdEmail({
+            senderEmail,
+            senderName,
+            subject,
+            body,
+            hasAttachments: attachments.length > 0,
+          });
+        } else {
+          this.logger.warn(`handleInboundEmail: no provider found for ${senderEmail} (not leaded)`);
+        }
         return;
       }
 

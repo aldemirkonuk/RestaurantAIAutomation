@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DatabaseService } from '../../database/database.service';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { looksPromotional, TransportSignals } from './email-triage';
 import { extractPromotion } from './promo-extract';
 import { computePriority } from './priority';
+import { InboundResponderService } from './inbound-responder.service';
 
 interface PromoContext {
   conversationId: string;
@@ -31,6 +32,7 @@ export class PromotionExtractorService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly websocketGateway: WebsocketGateway,
+    @Optional() private readonly inboundResponder?: InboundResponderService,
   ) {}
 
   async extractAndStore(ctx: PromoContext): Promise<{ stored: boolean; reason?: string }> {
@@ -139,29 +141,66 @@ export class PromotionExtractorService {
       const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
       const { data } = await this.databaseService.supabase
         .from('provider_promotions')
-        .select('restaurant_id')
+        .select('restaurant_id, promo_type, discount_value, providers!left(name)')
         .gte('created_at', since)
         .eq('is_active', true)
         .contains('conditions', { priority: 'digest' });
-      const byRestaurant = new Map<string, number>();
+
+      // Group the last 24h of digest-bucket promos per restaurant, keeping a few concrete
+      // offer lines so the rollup is useful at a glance (not just a count).
+      const byRestaurant = new Map<string, { count: number; lines: string[] }>();
       for (const r of (data as any[]) || []) {
-        if (!(r as any).restaurant_id) continue;
         const id = (r as any).restaurant_id;
-        byRestaurant.set(id, (byRestaurant.get(id) ?? 0) + 1);
+        if (!id) continue;
+        const entry = byRestaurant.get(id) ?? { count: 0, lines: [] };
+        entry.count += 1;
+        if (entry.lines.length < 3) {
+          const line = this.digestLine(r);
+          if (line) entry.lines.push(line);
+        }
+        byRestaurant.set(id, entry);
       }
-      for (const [restaurantId, count] of byRestaurant) {
+
+      for (const [restaurantId, { count, lines }] of byRestaurant) {
+        const title = `${count} new promotion${count !== 1 ? 's' : ''} today`;
+        const detail = lines.length
+          ? `${lines.join(' · ')}${count > lines.length ? ` · +${count - lines.length} more` : ''}. Review them in Promotions.`
+          : `${count} vendor offer${count !== 1 ? 's were' : ' was'} filed since yesterday. Review them in Promotions.`;
+
+        // Live toast for connected clients …
         this.websocketGateway.emitRestaurantNotification(restaurantId, {
           id: `promo-digest-${restaurantId}-${Date.now()}`,
-          title: `${count} new promotion${count !== 1 ? 's' : ''} today`,
-          message: `${count} vendor offer${count !== 1 ? 's were' : ' was'} filed since yesterday. Review them in Promotions.`,
+          title,
+          message: detail,
           type: 'info',
           action_url: '/promotions',
+        });
+        // … and a durable inbox notification so an offline manager still gets the digest (A8).
+        void this.inboundResponder?.persistManagerNotification(restaurantId, {
+          type: 'promo_digest',
+          title,
+          message: detail,
+          priority: 'low',
+          actionUrl: '/promotions',
+          metadata: { kind: 'promo_digest', count, date: new Date().toISOString().slice(0, 10) },
         });
       }
       if (byRestaurant.size) this.logger.log(`Promo digest sent to ${byRestaurant.size} restaurant(s).`);
     } catch (e: any) {
       this.logger.warn(`sendDailyDigests failed: ${e?.message}`);
     }
+  }
+
+  /** One human line for a digest promo row, e.g. "Acme — 15% off" or "A supplier — free shipping". */
+  private digestLine(row: any): string | null {
+    const provider = row?.providers?.name || 'A supplier';
+    const dv = (row?.discount_value ?? {}) as Record<string, any>;
+    let offer = '';
+    if (dv.percent != null) offer = `${dv.percent}% off`;
+    else if (dv.amount != null) offer = `${dv.currency === 'EUR' ? '€' : dv.currency === 'GBP' ? '£' : '$'}${dv.amount} off`;
+    else if (dv.free_shipping) offer = 'free shipping';
+    else if (row?.promo_type) offer = String(row.promo_type).replace(/_/g, ' ');
+    return offer ? `${provider} — ${offer}` : provider;
   }
 
   /** Names of our inventory wines mentioned in the promo text (simple contains match). */

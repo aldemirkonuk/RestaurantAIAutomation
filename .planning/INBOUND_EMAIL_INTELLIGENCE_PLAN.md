@@ -441,6 +441,36 @@ output can, by itself, cause a send, a commitment, or an order-state change.**
   `price_inconsistent` / `moq_not_met` / `currency_ambiguous` / `tax_status_unknown` (the last only on a concrete
   deal). Verified: `tsc` clean; **55 orchestrator tests pass** (11 new). Backend only — deal-modal UI rows for the
   terms are the follow-up.
-- ⏭ **Still open (each its own PR):** deal-modal UI rows for commercial terms, promotions → `provider_promotions`
-  + Promotions UI (§5), the Inbound Triage Card + attachment viewer (§4/D2), sender-trust store + auto-suspend (D5),
-  and persisting the auto-send cron's notifications (extend A8 to `procurement.service`).
+- ✅ **Shipped (PR #29, merged + live):** deal-modal UI rows for commercial terms, promotions → `provider_promotions`
+  + Promotions UI (§5), attachment viewer (§4/D2), sender-trust store + auto-suspend (D5), D4 priority on promos + deals,
+  the daily promo digest cron, per-field price provenance, and persisting the auto-send cron's notifications (A8).
+
+**2026-07-08 — follow-up batch (post-PR-#29 polish + robustness, committed to `main`).**
+- ✅ **Non-price provenance** — the deal modal's `source_quotes` dotted-underline now covers MOQ, payment, lead time,
+  price-valid, currency, tax, stock, and the discount ladder — not just unit/case price. Degrades to plain text when
+  a field has no supporting quote. (`CommercialTermsPanel.tsx`.)
+- ✅ **A17 stale-send cancel** — the auto-send cron now reverts a scheduled reply to a one-tap draft (and notifies the
+  manager) if a newer vendor reply arrived after the draft was staged, so we never auto-send a now-stale message.
+  (`procurement.service.processScheduledAutoSends` + `newerInboundSince`.)
+- ✅ **A7 regenerate-with-attachments** — a manual (re)generate re-hydrates the inbound message's persisted attachments
+  (D2) from Storage and feeds them back to the responder's vision pass, so regenerate no longer loses vision context.
+  (`procurement.service.loadPersistedAttachmentsForVision`.)
+- ✅ **Richer digest delivery** — the 9am promo digest now lists a few concrete offers (provider + discount) and is
+  persisted as a durable inbox notification via the shared `persistManagerNotification`, so an offline manager still
+  gets it. (`promotion-extractor.sendDailyDigests`.)
+- ✅ **P6 Inbound Triage Card** — the comms drawer surfaces the AI's classification of the latest inbound (class,
+  confidence, automated/injection) with manager escape hatches: **Reply anyway** (forces past the reply gate — never
+  past the injection quarantine) and **Treat as offer**. Backend adds a `forceReply` flag + persists `confidence` and
+  exposes `classification` on the conversation DTO. (`CommsThreadDrawer.tsx`, `inbound-responder`, `procurement.*`.)
+- ✅ **D1 Prospects lane** — genuine unknown-sender vendor outreach (intro / catalogue / offer, usually with an
+  attachment) is captured as a digest-only **Prospect** instead of being dropped at provider lookup; mass marketing
+  blasts (bulk/list transport) are still dropped. Deduped by domain, never auto-replied, one-tap **Promote to vendor**.
+  New `email_prospects` table + `ProspectsService`/`ProspectsController` + a Prospects tab on `/promotions`.
+  *Caveat:* the inbound Gmail mailbox is a single shared account, so cold emails are attributed to `DEFAULT_RESTAURANT_ID`
+  (or the sole restaurant); genuinely multi-restaurant attribution needs per-restaurant mailboxes.
+- **Verified:** api-gateway `tsc --noEmit` clean; **82 orchestrator tests pass**; changed web files type-clean
+  (pre-existing `packages/ui` dep errors unrelated). All new paths are best-effort (try/catch, table-missing tolerant).
+- ⚠️ **One manual step:** the D1 `email_prospects` migration (`supabase/migrations/20260708140000_d1_email_prospects.sql`)
+  must be applied live via the Supabase MCP. The code degrades gracefully until then (empty prospects list, no capture).
+- ⏭ **Still genuinely-optional:** digest *email* (blocked on Gmail creds / Phase 23), CSV/XLSX/DOCX vendor attachments
+  (A6), the mis-match human-triage queue (A12), and the D2 hot/cold attachment lifecycle tiering.

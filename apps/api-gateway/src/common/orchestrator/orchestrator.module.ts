@@ -5,14 +5,16 @@ import { InboundResponderService } from './inbound-responder.service';
 import { PromotionExtractorService } from './promotion-extractor.service';
 import { SenderReputationService } from './sender-reputation.service';
 import { SenderTrustController } from './sender-trust.controller';
+import { ProspectsService } from './prospects.service';
+import { ProspectsController } from './prospects.controller';
 import { WebsocketModule } from '../../websocket/websocket.module';
 import { AuthModule } from '../../auth/auth.module';
 import { HealthProxyController, MetricsProxyController } from './health-proxy.controller';
 
 @Module({
   imports: [WebsocketModule, forwardRef(() => AuthModule)],
-  controllers: [HealthProxyController, MetricsProxyController, SenderTrustController],
-  providers: [OrchestratorService, RabbitMqBridgeService, InboundResponderService, PromotionExtractorService, SenderReputationService],
-  exports: [OrchestratorService, RabbitMqBridgeService, InboundResponderService, PromotionExtractorService, SenderReputationService],
+  controllers: [HealthProxyController, MetricsProxyController, SenderTrustController, ProspectsController],
+  providers: [OrchestratorService, RabbitMqBridgeService, InboundResponderService, PromotionExtractorService, SenderReputationService, ProspectsService],
+  exports: [OrchestratorService, RabbitMqBridgeService, InboundResponderService, PromotionExtractorService, SenderReputationService, ProspectsService],
 })
 export class OrchestratorModule {}

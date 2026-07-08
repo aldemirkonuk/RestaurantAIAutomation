@@ -7,6 +7,7 @@ import {
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
   ArrowRight, MessageSquare, Activity, Mail, Pause, Play, Bot, PenLine, XCircle,
   AlertTriangle, MailSearch, ShieldCheck, ShieldAlert, Paperclip, FileText,
+  Filter, Tag,
 } from 'lucide-react'
 import {
   useOrderConversations,
@@ -358,6 +359,43 @@ export function CommsThreadDrawer({
   // Latest message is a reply the AI hasn't summarized yet (no draft/deal staged).
   const awaitingAnalysis = !!latestInbound && !latestInboundAnalyzed && !pendingConv && !scheduledConv && !dealProposal && !isCancelled && !isDelivered
 
+  // ── P6 triage card: surface the classification of the latest inbound + escape hatches ──
+  // Show it when the AI filed the message instead of drafting (automated/promo/catalogue/…)
+  // so the manager can override with "Reply anyway" or "Treat as offer".
+  const triage = latestInbound?.classification ?? null
+  const gateSkipped =
+    !!triage && (triage.is_automated === true || (!!triage.email_class && triage.email_class !== 'negotiation_reply'))
+  const showTriageCard =
+    !!triage && gateSkipped && latestInboundAnalyzed && !pendingConv && !scheduledConv && !dealProposal && !isCancelled && !isDelivered
+
+  const handleReplyAnyway = () => {
+    if (!orderId) return
+    setReplyError(null)
+    generateAiReply.mutate(
+      { orderId, force: true },
+      {
+        onSuccess: (res) => { if (!res.triggered && res.reason) setReplyError(res.reason) },
+        onError: () => setReplyError('Could not draft a reply. Please try again.'),
+      },
+    )
+  }
+  const handleTreatAsOffer = () => {
+    if (!orderId) return
+    setReplyError(null)
+    generateAiReply.mutate(
+      {
+        orderId,
+        force: true,
+        instruction:
+          'Treat this vendor email as a concrete, decision-ready commercial offer: extract the commercial terms (price, quantity, MOQ, validity) and, if they are complete enough to act on, prepare it as a deal for my approval.',
+      },
+      {
+        onSuccess: (res) => { if (!res.triggered && res.reason) setReplyError(res.reason) },
+        onError: () => setReplyError('Could not process this as an offer. Please try again.'),
+      },
+    )
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -520,6 +558,16 @@ export function CommsThreadDrawer({
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ── Triage card (P6) — AI filed this instead of replying ── */}
+            {showTriageCard && triage && (
+              <TriageCard
+                triage={triage}
+                busy={busy}
+                onReplyAnyway={handleReplyAnyway}
+                onTreatAsOffer={handleTreatAsOffer}
+              />
             )}
 
             {/* ── Body ── */}
@@ -773,6 +821,85 @@ export function CommsThreadDrawer({
         isSubmitting={confirmDeal.isPending || dismissDeal.isPending}
       />
     </>
+  )
+}
+
+// ─── Triage card (P6 — classification + manager escape hatches) ─────────────────
+const CLASS_LABELS: Record<string, string> = {
+  promotion: 'Marketing / promotion',
+  catalogue_offer: 'Catalogue / portfolio',
+  automated_transactional: 'Automated notification',
+  bounce_autoreply: 'Auto-reply / bounce',
+  order_confirmation: 'Order confirmation',
+  negotiation_reply: 'Negotiation reply',
+  other: 'Other',
+}
+
+function TriageCard({ triage, busy, onReplyAnyway, onTreatAsOffer }: {
+  triage: NonNullable<OrderConversationDto['classification']>
+  busy: boolean
+  onReplyAnyway: () => void
+  onTreatAsOffer: () => void
+}) {
+  const injection = triage.injection_suspected === true
+  const label = (triage.email_class && CLASS_LABELS[triage.email_class]) || 'Filed'
+  const conf = typeof triage.confidence === 'number' ? Math.round(triage.confidence * 100) : null
+
+  return (
+    <div className={`flex-shrink-0 px-4 py-3 border-b ${injection ? 'bg-red-50 border-red-200' : 'bg-blue-50/60 border-blue-100'}`}>
+      <div className="flex items-start gap-2">
+        <span className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${injection ? 'bg-red-100' : 'bg-blue-100'}`}>
+          {injection ? <ShieldAlert className="w-3.5 h-3.5 text-red-600" /> : <Filter className="w-3.5 h-3.5 text-blue-600" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`text-[11px] font-bold ${injection ? 'text-red-700' : 'text-blue-800'}`}>
+              {injection ? 'Quarantined — possible prompt injection' : `AI filed this: ${label}`}
+            </span>
+            {!injection && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-blue-700 bg-blue-100 rounded-full px-1.5 py-0.5">
+                <Tag className="w-2.5 h-2.5" /> no reply drafted
+              </span>
+            )}
+            {conf != null && (
+              <span className="text-[9px] font-medium text-gray-500">{conf}% confident</span>
+            )}
+            {triage.is_automated && !injection && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-medium text-gray-500">
+                <Bot className="w-2.5 h-2.5" /> automated
+              </span>
+            )}
+          </div>
+          <p className={`text-[10.5px] mt-0.5 leading-snug ${injection ? 'text-red-600' : 'text-gray-500'}`}>
+            {injection
+              ? 'This email appeared to contain instructions aimed at the AI. Review it before acting — the AI will not reply to it.'
+              : 'The AI understood this message but didn’t reply because of how it was classified. Override if it’s actually worth a response.'}
+          </p>
+
+          {!injection && (
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onReplyAnyway}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border bg-white border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-60 transition-colors"
+              >
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PenLine className="w-3.5 h-3.5" />}
+                Reply anyway
+              </button>
+              <button
+                type="button"
+                onClick={onTreatAsOffer}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border bg-white border-wine-200 text-wine-700 hover:bg-wine-50 disabled:opacity-60 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Treat as offer
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

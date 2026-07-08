@@ -69,7 +69,7 @@ export class ProcurementService {
   async generateAiReply(
     restaurantId: string,
     orderId: string,
-    opts?: { instruction?: string; regenerate?: boolean },
+    opts?: { instruction?: string; regenerate?: boolean; force?: boolean },
   ): Promise<{ triggered: boolean; draftId?: string; needsApproval?: boolean; autoSendScheduled?: boolean; reason?: string }> {
     if (!this.inboundResponder) {
       return { triggered: false, reason: 'Responder service unavailable' };
@@ -112,6 +112,10 @@ export class ProcurementService {
 
     const row = inbound as any;
     const headers = (row.email_headers ?? {}) as Record<string, any>;
+    // A7 — the live pipeline discarded attachment bytes after the first vision pass, so a
+    // manual (re)generate used to lose all vision context. They're persisted now (D2), so
+    // re-hydrate them from Storage and feed them back to the responder.
+    const inboundAttachments = await this.loadPersistedAttachmentsForVision(restaurantId, row.id);
     const result = await this.inboundResponder.analyzeAndDraftReply({
       inboundConversationId: row.id,
       orderId,
@@ -121,7 +125,9 @@ export class ProcurementService {
       inboundRfc822MessageId: row.message_id || headers.message_id || null,
       inboundReferences: headers.references || null,
       inboundSubject: headers.subject || null,
+      inboundAttachments: inboundAttachments.length ? inboundAttachments : undefined,
       instruction: opts?.instruction,
+      forceReply: opts?.force,
     });
 
     return {
@@ -1236,7 +1242,7 @@ export class ProcurementService {
     try {
       const { data } = await this.databaseService.supabase
         .from('procurement_conversations')
-        .select('id, order_id, restaurant_id, provider_id, content, message_text, gmail_thread_id, email_headers')
+        .select('id, order_id, restaurant_id, provider_id, content, message_text, gmail_thread_id, email_headers, created_at')
         .eq('status', 'AUTO_SEND_SCHEDULED')
         .lte('scheduled_send_at', new Date().toISOString())
         .limit(20);
@@ -1270,6 +1276,35 @@ export class ProcurementService {
         // Respect a late pause, and never send without a recipient.
         if ((order as any)?.ai_autonomy_paused === true || !providerEmail) {
           await this.revertScheduledToDraft(row.id, !providerEmail ? 'no provider email' : 'order paused');
+          continue;
+        }
+
+        // A17 — stale-send guard: a newer vendor reply arrived after this draft was
+        // staged, so the reply is now potentially answering the wrong message. Revert
+        // to a one-tap approval draft and let the manager review against the latest reply
+        // (the responder will re-draft against it). Never auto-send a stale reply.
+        if (await this.newerInboundSince(row.order_id, row.created_at)) {
+          await this.revertScheduledToDraft(row.id, 'newer vendor reply arrived');
+          try {
+            this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
+              id: row.id,
+              title: 'AI held a reply — a newer vendor email arrived',
+              message: 'The scheduled auto-send was paused because the vendor replied again. Review the updated draft before sending.',
+              type: 'warning',
+              action_url: `/orders?order=${row.order_id}`,
+            });
+            void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+              type: 'vendor_reply',
+              title: 'AI held a reply — a newer vendor email arrived',
+              message: 'The scheduled auto-send was paused because the vendor replied again. Review the updated draft before sending.',
+              priority: 'high',
+              actionUrl: `/orders?order=${row.order_id}`,
+              metadata: { order_id: row.order_id, draft_id: row.id, provider_id: row.provider_id, reason: 'newer_inbound_pending' },
+            });
+          } catch {
+            /* best-effort */
+          }
+          this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
           continue;
         }
 
@@ -1524,6 +1559,67 @@ export class ProcurementService {
       .gt('created_at', tenMinAgo);
     if (draftCreatedAt) q = q.gt('created_at', draftCreatedAt);
     const { data } = await q.limit(1);
+    return !!(data && (data as any[]).length);
+  }
+
+  /**
+   * A7 — re-hydrate an inbound message's persisted attachments (D2) into the base64 shape
+   * the responder's vision pass expects. Downloads image/PDF bytes from the private
+   * vendor-attachments bucket. Best-effort and capped: a missing/oversized object is skipped
+   * so a manual regenerate degrades gracefully rather than failing.
+   */
+  private async loadPersistedAttachmentsForVision(
+    restaurantId: string,
+    conversationId: string,
+  ): Promise<Array<{ filename: string; mime_type: string; data: string }>> {
+    const MAX_FILES = 3;
+    const MAX_BYTES = 5 * 1024 * 1024; // mirror the ingestion cap
+    const out: Array<{ filename: string; mime_type: string; data: string }> = [];
+    try {
+      const { data: rows } = await this.databaseService.supabase
+        .from('conversation_attachments')
+        .select('filename, mime_type, size_bytes, storage_path')
+        .eq('restaurant_id', restaurantId)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(MAX_FILES);
+      for (const r of (rows as any[]) || []) {
+        const mime = (r.mime_type ?? '').toString();
+        const isVisionable = mime.startsWith('image/') || mime === 'application/pdf';
+        if (!isVisionable || !r.storage_path) continue;
+        if (r.size_bytes != null && r.size_bytes > MAX_BYTES) continue;
+        try {
+          const { data: blob } = await this.databaseService.supabase.storage
+            .from('vendor-attachments')
+            .download(r.storage_path);
+          if (!blob) continue;
+          const buf = Buffer.from(await (blob as any).arrayBuffer());
+          if (buf.byteLength > MAX_BYTES) continue;
+          out.push({ filename: r.filename ?? 'attachment', mime_type: mime, data: buf.toString('base64') });
+        } catch {
+          /* best-effort — skip an object we can't fetch */
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`loadPersistedAttachmentsForVision failed for ${conversationId}: ${e?.message}`);
+    }
+    return out;
+  }
+
+  /**
+   * A17 — true if any inbound vendor reply arrived after `sinceIso` (the draft's staging
+   * time). Unlike newerReplyStillAnalyzing, this fires whether or not the AI has analyzed
+   * the new reply: a scheduled auto-send should never fire once the vendor has spoken again.
+   */
+  private async newerInboundSince(orderId: string, sinceIso?: string | null): Promise<boolean> {
+    if (!sinceIso) return false;
+    const { data } = await this.databaseService.supabase
+      .from('procurement_conversations')
+      .select('id')
+      .eq('order_id', orderId)
+      .eq('direction', 'inbound')
+      .gt('created_at', sinceIso)
+      .limit(1);
     return !!(data && (data as any[]).length);
   }
 
@@ -1997,6 +2093,9 @@ export class ProcurementService {
       detectedSentiment: row.detected_sentiment ?? null,
       aiGenerated: row.ai_generated ?? null,
       specialConditions: row.conversation_context?.analysis?.special_conditions ?? [],
+      // Triage classification (P6 card): email_class, is_automated, requires_reply,
+      // injection_suspected, confidence, transport. Null on outbound / pre-triage rows.
+      classification: row.conversation_context?.classification ?? null,
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,
       quotedPrice: row.procurement_orders?.quoted_price ?? null,

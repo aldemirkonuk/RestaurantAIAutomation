@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
 status: in_progress
-last_updated: "2026-05-19T23:03:23.553Z"
+last_updated: "2026-07-08T15:30:00.000Z"
 progress:
   total_phases: 17
   completed_phases: 12
@@ -19,7 +19,8 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0. Railway redeploy needed for backend changes.
+**Current focus:** Session 2026-07-08 (follow-up) — inbound-email-intelligence polish + robustness batch on `main` (post-PR-#29). Shipped: non-price provenance in the deal modal; A17 stale-send cancel; A7 regenerate-with-attachments; richer + durable 9am promo digest; P6 Inbound Triage Card (Reply-anyway / Treat-as-offer, `forceReply`); D1 Prospects lane (`email_prospects` table + ProspectsService/Controller + `/promotions` Prospects tab). Verified: api-gateway tsc clean, 82 orchestrator tests pass, web files type-clean. **Manual step pending:** apply `20260708140000_d1_email_prospects.sql` live via Supabase MCP (code degrades gracefully until then).
+**Earlier focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0.
 
 ---
 

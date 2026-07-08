@@ -269,13 +269,14 @@ export class ProcurementController {
   @ApiResponse({ status: 200, description: 'Responder triggered (draft staged asynchronously)' })
   async generateAiReply(
     @Param('id') orderId: string,
-    @Body() body: { instruction?: string; regenerate?: boolean },
+    @Body() body: { instruction?: string; regenerate?: boolean; force?: boolean },
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ triggered: boolean; draftId?: string; needsApproval?: boolean; autoSendScheduled?: boolean; reason?: string }> {
     try {
       return await this.procurementService.generateAiReply(user.restaurantId, orderId, {
         instruction: body?.instruction,
         regenerate: body?.regenerate,
+        force: body?.force,
       });
     } catch (error: any) {
       if (error instanceof ForbiddenException) throw error;

@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import {
   Tag, ShieldCheck, ShieldAlert, ShieldOff, Clock, Sparkles, Loader2, AlertTriangle, Check,
+  UserPlus, X, Paperclip, Mail,
 } from 'lucide-react'
 import {
   useActivePromotions, useSenderReputation, useSetSenderTrust,
-  type PromotionDto,
+  useProspects, usePromoteProspect, useDismissProspect,
+  type PromotionDto, type ProspectDto,
 } from '../hooks/queries/usePromotionsQueries'
 
-type Tab = 'promotions' | 'senders'
+type Tab = 'promotions' | 'senders' | 'prospects'
 
 export default function Promotions() {
   const [tab, setTab] = useState<Tab>('promotions')
+  const { data: prospects = [] } = useProspects()
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
       <div className="flex items-center gap-2 mb-1">
@@ -28,14 +31,17 @@ export default function Promotions() {
         <TabBtn active={tab === 'senders'} onClick={() => setTab('senders')} icon={<ShieldCheck className="w-3.5 h-3.5" />}>
           Trusted senders
         </TabBtn>
+        <TabBtn active={tab === 'prospects'} onClick={() => setTab('prospects')} icon={<UserPlus className="w-3.5 h-3.5" />} badge={prospects.length}>
+          Prospects
+        </TabBtn>
       </div>
 
-      {tab === 'promotions' ? <PromotionsTab /> : <SendersTab />}
+      {tab === 'promotions' ? <PromotionsTab /> : tab === 'senders' ? <SendersTab /> : <ProspectsTab />}
     </div>
   )
 }
 
-function TabBtn({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+function TabBtn({ active, onClick, icon, children, badge }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode; badge?: number }) {
   return (
     <button
       type="button"
@@ -46,6 +52,11 @@ function TabBtn({ active, onClick, icon, children }: { active: boolean; onClick:
     >
       {icon}
       {children}
+      {badge != null && badge > 0 && (
+        <span className={`inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold ${active ? 'bg-wine-100 text-wine-700' : 'bg-gray-100 text-gray-500'}`}>
+          {badge}
+        </span>
+      )}
     </button>
   )
 }
@@ -150,6 +161,71 @@ function SendersTab() {
       <div className="flex items-start gap-2 px-4 py-2.5 bg-gray-50/60">
         <AlertTriangle className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
         <p className="text-[11px] text-gray-500">Trust only lifts the sender-verification gate — every other guardrail still applies, and trust auto-suspends on an injection attempt or spam.</p>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Prospects (D1 — cold-email vendor outreach) ─────────────────────────────── */
+
+function ProspectsTab() {
+  const { data: prospects = [], isLoading } = useProspects()
+  const promote = usePromoteProspect()
+  const dismiss = useDismissProspect()
+  if (isLoading) return <Center><Loader2 className="w-5 h-5 text-wine-300 animate-spin" /></Center>
+  if (!prospects.length) {
+    return <Empty icon={<UserPlus className="w-5 h-5 text-wine-300" />} text="No prospects yet" hint="Genuine outreach from vendors you haven’t added — an intro or a catalogue — lands here. Promote one to start ordering." />
+  }
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+      {prospects.map((p) => <ProspectRow key={p.id} p={p} onPromote={() => promote.mutate(p.id)} onDismiss={() => dismiss.mutate(p.id)} busy={promote.isPending || dismiss.isPending} />)}
+      <div className="flex items-start gap-2 px-4 py-2.5 bg-gray-50/60">
+        <AlertTriangle className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+        <p className="text-[11px] text-gray-500">Prospects are never auto-replied to and their content is treated as untrusted. Promote one to create a provider you can order from.</p>
+      </div>
+    </div>
+  )
+}
+
+function ProspectRow({ p, onPromote, onDismiss, busy }: { p: ProspectDto; onPromote: () => void; onDismiss: () => void; busy: boolean }) {
+  return (
+    <div className="flex items-start gap-3 px-4 py-3">
+      <span className="w-8 h-8 rounded-lg bg-wine-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Mail className="w-4 h-4 text-wine-600" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-semibold text-gray-900 truncate">{p.sender_name || p.domain}</p>
+          {p.has_attachments && (
+            <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-1.5 py-0.5">
+              <Paperclip className="w-2.5 h-2.5" /> attachment
+            </span>
+          )}
+          {p.message_count > 1 && (
+            <span className="text-[9px] font-medium text-gray-400">{p.message_count} emails</span>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-500 font-mono truncate">{p.sender_email || p.domain}</p>
+        {p.subject && <p className="text-[11.5px] text-gray-700 mt-0.5 truncate">{p.subject}</p>}
+        {p.snippet && <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{p.snippet}</p>}
+      </div>
+      <div className="flex flex-col gap-1.5 flex-shrink-0">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onPromote}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 transition-colors"
+        >
+          <UserPlus className="w-3.5 h-3.5" /> Promote
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDismiss}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-60 transition-colors"
+        >
+          <X className="w-3.5 h-3.5" /> Dismiss
+        </button>
       </div>
     </div>
   )

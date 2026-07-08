@@ -69,6 +69,12 @@ interface InboundContext {
   instruction?: string;
   /** Transport/auth signals derived at ingestion (bulk/list/auto-submitted, SPF/DKIM/DMARC). */
   transportSignals?: TransportSignals;
+  /**
+   * Manager escape hatch (P6 triage card): draft a reply even though the triage gate would
+   * normally skip it (e.g. classified promotion/automated). Never bypasses the injection
+   * quarantine — a suspected-injection email is still refused.
+   */
+  forceReply?: boolean;
 }
 
 interface VendorOffer {
@@ -266,6 +272,7 @@ export class InboundResponderService {
               is_automated: analysis.is_automated,
               requires_reply: analysis.requires_reply,
               injection_suspected: analysis.injection_suspected,
+              confidence: analysis.confidence,
               transport: ctx.transportSignals ?? null,
             },
             deal_proposal: dealProposal,
@@ -354,9 +361,12 @@ export class InboundResponderService {
         injectionSuspected: false,
         transport: ctx.transportSignals,
       });
-      if (skipReason) {
+      if (skipReason && !ctx.forceReply) {
         this.logger.log(`Responder: not drafting a reply for order ${ctx.orderId} — ${skipReason}.`);
         return { drafted: false, reason: skipReason };
+      }
+      if (skipReason && ctx.forceReply) {
+        this.logger.log(`Responder: reply gate (${skipReason}) overridden by manager for order ${ctx.orderId} — drafting anyway.`);
       }
       // Don't pile up: if a reply is already waiting (approval) or scheduled to
       // auto-send, leave it. (Regenerate discards the old one first, upstream.)

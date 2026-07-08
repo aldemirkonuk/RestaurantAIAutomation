@@ -40,6 +40,13 @@ export function CommercialTermsPanel({ terms, orderQty }: Props) {
 
   const qty = orderQty ?? 0
 
+  // Per-field provenance: the supplier's exact phrase a value was read from (source_quotes).
+  // Absent → no affordance (degrades to plain text), mirroring the price fields.
+  const quote = (key: string): string | undefined => {
+    const q = terms.source_quotes?.[key]
+    return q && q.trim() ? q.trim() : undefined
+  }
+
   // ── advisories derived client-side (mirrors backend validateCommercialTerms) ──
   const derivedCaseUnit =
     terms.case_price != null && terms.bottles_per_case ? terms.case_price / terms.bottles_per_case : null
@@ -71,17 +78,19 @@ export function CommercialTermsPanel({ terms, orderQty }: Props) {
       label: 'Min order',
       value: `${terms.min_order_qty} ${terms.min_order_unit ?? 'bottles'}${moqNotMet ? ' · not met' : ''}`,
       amber: moqNotMet,
+      quote: quote('min_order_qty'),
     },
-    terms.payment_terms && { key: 'pay', label: 'Payment', value: terms.payment_terms },
-    terms.delivery_lead_time && { key: 'lead', label: 'Lead time', value: terms.delivery_lead_time },
+    terms.payment_terms && { key: 'pay', label: 'Payment', value: terms.payment_terms, quote: quote('payment_terms') },
+    terms.delivery_lead_time && { key: 'lead', label: 'Lead time', value: terms.delivery_lead_time, quote: quote('delivery_lead_time') },
     terms.price_valid_until && {
       key: 'valid',
       label: 'Price valid',
       value: `${formatDay(terms.price_valid_until)}${validDays != null ? ` · ${validDays}d` : ''}`,
       amber: validDays != null && validDays <= 7,
       clock: true,
+      quote: quote('price_valid_until'),
     },
-  ].filter(Boolean) as Array<{ key: string; label: string; value: string; amber?: boolean; clock?: boolean }>
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; amber?: boolean; clock?: boolean; quote?: string }>
 
   const tiers = (terms.discount_tiers ?? []).filter((t) => t.threshold_qty != null && (t.threshold_qty as number) > 0)
 
@@ -157,7 +166,9 @@ export function CommercialTermsPanel({ terms, orderQty }: Props) {
               <dt className={`text-[9px] font-bold uppercase tracking-wider mb-0.5 ${cell.amber ? 'text-amber-700' : 'text-gray-400'}`}>{cell.label}</dt>
               <dd className={`text-[13px] font-medium m-0 flex items-center gap-1 ${cell.amber ? 'text-amber-800' : 'text-gray-900'}`}>
                 {cell.clock && <Clock className="w-3 h-3 shrink-0" aria-hidden />}
-                {cell.value}
+                {cell.quote
+                  ? <span className={`border-b border-dashed cursor-help ${cell.amber ? 'border-amber-400' : 'border-gray-300'}`} title={`“${cell.quote}”`}>{cell.value}</span>
+                  : cell.value}
               </dd>
             </div>
           ))}
@@ -165,18 +176,18 @@ export function CommercialTermsPanel({ terms, orderQty }: Props) {
       )}
 
       {/* Discount ladder */}
-      {tiers.length > 0 && <TierLadder tiers={tiers} orderQty={qty > 0 ? qty : null} moq={terms.min_order_qty ?? null} moqNotMet={moqNotMet} />}
+      {tiers.length > 0 && <TierLadder tiers={tiers} orderQty={qty > 0 ? qty : null} moq={terms.min_order_qty ?? null} moqNotMet={moqNotMet} sourceQuote={quote('discount_tiers')} />}
 
       {/* Metadata chips */}
       <div className="flex items-center gap-1.5 flex-wrap" aria-label="Quote metadata">
-        {terms.currency && <Chip amber={currencyAmbiguous}>{currencyAmbiguous ? `currency unclear — assumed ${currency}` : currency}</Chip>}
+        {terms.currency && <Chip amber={currencyAmbiguous} quote={quote('currency')}>{currencyAmbiguous ? `currency unclear — assumed ${currency}` : currency}</Chip>}
         {taxUnknown ? (
           <Chip amber>Tax basis unstated — confirm before ordering</Chip>
         ) : (
-          terms.tax_status && <Chip>Tax {terms.tax_status}</Chip>
+          terms.tax_status && <Chip quote={quote('tax_status')}>Tax {terms.tax_status}</Chip>
         )}
         {terms.stock_status && terms.stock_status !== 'in_stock' && (
-          <Chip amber dot>
+          <Chip amber dot quote={quote('stock_status')}>
             {terms.stock_status === 'limited' && `Limited stock${terms.stock_qty_available != null ? ` · ${terms.stock_qty_available} btl left` : ''}`}
             {terms.stock_status === 'allocation' && 'On allocation'}
             {terms.stock_status === 'out_of_stock' && 'Out of stock'}
@@ -187,18 +198,19 @@ export function CommercialTermsPanel({ terms, orderQty }: Props) {
   )
 }
 
-function Chip({ children, amber, dot }: { children: ReactNode; amber?: boolean; dot?: boolean }) {
+function Chip({ children, amber, dot, quote }: { children: ReactNode; amber?: boolean; dot?: boolean; quote?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1 border ${amber ? 'text-amber-800 bg-amber-50 border-amber-200' : 'text-gray-500 bg-gray-50 border-gray-100'}`}
+      className={`inline-flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1 border ${amber ? 'text-amber-800 bg-amber-50 border-amber-200' : 'text-gray-500 bg-gray-50 border-gray-100'} ${quote ? 'cursor-help' : ''}`}
+      title={quote ? `“${quote}”` : undefined}
     >
       {dot && <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${amber ? 'bg-amber-500' : 'bg-emerald-500'}`} />}
-      {children}
+      {quote ? <span className={`border-b border-dashed ${amber ? 'border-amber-400' : 'border-gray-300'}`}>{children}</span> : children}
     </span>
   )
 }
 
-function TierLadder({ tiers, orderQty, moq, moqNotMet }: { tiers: DiscountTierDto[]; orderQty: number | null; moq: number | null; moqNotMet: boolean }) {
+function TierLadder({ tiers, orderQty, moq, moqNotMet, sourceQuote }: { tiers: DiscountTierDto[]; orderQty: number | null; moq: number | null; moqNotMet: boolean; sourceQuote?: string }) {
   const sorted = [...tiers].sort((a, b) => (a.threshold_qty as number) - (b.threshold_qty as number))
   const max = sorted[sorted.length - 1].threshold_qty as number
   if (!(max > 0)) return null
@@ -210,7 +222,10 @@ function TierLadder({ tiers, orderQty, moq, moqNotMet }: { tiers: DiscountTierDt
   return (
     <div aria-label="Volume discount tiers">
       <div className="flex items-baseline justify-between mb-3.5">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Volume discounts</span>
+        <span
+          className={`text-[9px] font-bold uppercase tracking-wider text-gray-400 ${sourceQuote ? 'border-b border-dashed border-gray-300 cursor-help' : ''}`}
+          title={sourceQuote ? `“${sourceQuote}”` : undefined}
+        >Volume discounts</span>
         {moqNotMet && moq != null && orderQty != null ? (
           <span className="text-[11px] font-bold text-amber-700">{moq - orderQty} below minimum</span>
         ) : nextTier && orderQty != null ? (
