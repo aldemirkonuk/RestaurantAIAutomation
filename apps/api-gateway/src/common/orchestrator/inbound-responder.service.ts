@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { DatabaseService } from '../../database/database.service';
 import { WebsocketGateway } from '../../websocket/websocket.gateway';
 import { EmailClass, TransportSignals, replySkipReason } from './email-triage';
 import { CommercialTerms, parseCommercialTerms, validateCommercialTerms, hasCommercialTerms } from './commercial-terms';
+import { SenderReputationService } from './sender-reputation.service';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 // Claude Haiku 4.5 — fast/cheap, the right tier for this per-reply background call.
@@ -138,6 +139,7 @@ export class InboundResponderService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     private readonly websocketGateway: WebsocketGateway,
+    @Optional() private readonly senderReputation?: SenderReputationService,
   ) {}
 
   /**
@@ -183,6 +185,7 @@ export class InboundResponderService {
 
       const o = order as any;
       const providerName: string = o.providers?.name ?? 'the supplier';
+      const providerEmail: string | null = o.providers?.contact_email ?? null;
       const firstName: string = this.resolveFirstName(o.providers);
       const wineName: string = o.restaurant_inventory?.wine_name ?? 'the wine';
       const quantity: number = o.quantity ?? 0;
@@ -227,7 +230,11 @@ export class InboundResponderService {
       }
 
       // ── 2. DECIDE — the four manager-chosen guardrails ─────────────────────
-      const flags = this.computeGuardrails(analysis, targetPrice, quantity, outboundRounds, ctx.transportSignals);
+      // D5 — a manager-trusted (and not suspended) domain lifts the sender-unverified gate.
+      const senderTrusted = this.senderReputation
+        ? await this.senderReputation.isTrusted(ctx.restaurantId, providerEmail)
+        : false;
+      const flags = this.computeGuardrails(analysis, targetPrice, quantity, outboundRounds, ctx.transportSignals, senderTrusted);
 
       // A decision-ready offer/verification → structured deal proposal for the modal.
       const dealProposal = analysis.deal_ready
@@ -329,6 +336,7 @@ export class InboundResponderService {
           actionUrl: `/orders?order=${ctx.orderId}`,
           metadata: { order_id: ctx.orderId, conversation_id: ctx.inboundConversationId, reason: 'injection_suspected' },
         });
+        void this.senderReputation?.recordSignal(ctx.restaurantId, providerEmail, 'injection');
         return { drafted: false, reason: 'Possible prompt injection — quarantined for manager review' };
       }
       const skipReason = replySkipReason({
@@ -648,6 +656,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     orderedQty: number,
     outboundRounds: number,
     transport?: TransportSignals,
+    senderTrusted?: boolean,
   ): {
     needs_approval: boolean;
     reasons: string[];
@@ -696,7 +705,8 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     // Sender not authenticated (no DKIM/DMARC pass) → force manager approval; never let an
     // unverified (possibly spoofed) sender trigger an autonomous send.
     const senderUnverified = transport ? transport.senderVerified === false : false;
-    if (senderUnverified) reasons.push('sender_unverified');
+    // A manager-trusted domain bypasses this gate (trust never lifts the other guardrails).
+    if (senderUnverified && !senderTrusted) reasons.push('sender_unverified');
 
     // Commercial-terms guardrails — a case/unit price mismatch, an unmet MOQ, ambiguous
     // currency, or (on a concrete deal) an unstated tax basis all force manager review.
