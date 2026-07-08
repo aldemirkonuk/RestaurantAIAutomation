@@ -1946,6 +1946,7 @@ export class ProcurementService {
         detected_sentiment,
         ai_generated,
         conversation_context,
+        email_headers,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -1988,6 +1989,9 @@ export class ProcurementService {
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
       providerName: row.providers?.name ?? null,
       providerEmail: row.providers?.contact_email ?? null,
+      // Sender authentication (DKIM/DMARC) captured on inbound rows in Phase 0; null on
+      // outbound rows and on inbound rows that predate transport capture.
+      senderVerified: row.email_headers?.transport?.senderVerified ?? null,
     }));
   }
 }

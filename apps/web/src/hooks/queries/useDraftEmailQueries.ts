@@ -154,6 +154,8 @@ export interface OrderConversationDto {
   wineName: string | null
   providerName: string | null
   providerEmail: string | null
+  /** Latest inbound sender authentication (DKIM/DMARC); null when unknown / pre-Phase-0. */
+  senderVerified?: boolean | null
 }
 
 export const orderConversationKeys = {

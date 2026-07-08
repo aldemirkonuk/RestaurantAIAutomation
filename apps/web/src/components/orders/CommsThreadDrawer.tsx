@@ -6,7 +6,7 @@ import {
   X, Send, Clock, CheckCircle, Loader2, RefreshCw,
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
   ArrowRight, MessageSquare, Activity, Mail, Pause, Play, Bot, PenLine, XCircle,
-  AlertTriangle, MailSearch,
+  AlertTriangle, MailSearch, ShieldCheck, ShieldAlert,
 } from 'lucide-react'
 import {
   useOrderConversations,
@@ -194,6 +194,9 @@ export function CommsThreadDrawer({
   const aiPaused = conversations[0]?.aiPaused ?? false
   const providerName = conversations[0]?.providerName
   const providerEmail = conversations[0]?.providerEmail
+  // Header trust signal: did the vendor's most recent inbound email pass DKIM/DMARC?
+  // null when there is no inbound yet or the row predates Phase 0 transport capture.
+  const senderVerified = [...conversations].reverse().find(c => c.direction === 'INBOUND')?.senderVerified ?? null
   const sentConvs = conversations.filter(c => ['SENT', 'AUTO_SENT', 'APPROVED', 'COMPLETED', 'CLOSED'].includes(c.status))
 
   // The latest message being a vendor reply (with no AI draft waiting yet) is the
@@ -407,6 +410,16 @@ export function CommsThreadDrawer({
                       <span className="text-[11.5px] font-medium text-gray-700 truncate max-w-[140px]">{providerName}</span>
                       {providerEmail && (
                         <span className="text-[10px] text-gray-400 truncate max-w-[120px] hidden sm:block">{providerEmail}</span>
+                      )}
+                      {senderVerified === true && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-emerald-700" title="Sender passed DKIM/DMARC authentication">
+                          <ShieldCheck className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                      {senderVerified === false && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-700" title="Sender failed DKIM/DMARC — replies need your approval">
+                          <ShieldAlert className="w-3 h-3" /> Unverified
+                        </span>
                       )}
                     </span>
                   ) : (
