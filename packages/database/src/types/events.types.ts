@@ -334,7 +334,10 @@ export type EventPayloadMap = {
  */
 export interface TypedEvent<T extends EventType> extends Omit<EventResponse, 'payload'> {
   eventType: T
-  payload: EventPayloadMap[T]
+  // Intersect with Record<string, unknown> so TypedEvent<T> stays assignable to
+  // EventResponse (whose payload is Record<string, unknown>); required for the
+  // isEventType type predicate below to be valid.
+  payload: EventPayloadMap[T] & Record<string, unknown>
 }
 
 /**

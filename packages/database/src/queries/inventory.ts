@@ -1,9 +1,7 @@
 import { getSupabaseClient } from "../client"
 import type {
   InventoryItem,
-  InventoryFilters,
   InventorySummary,
-  Wine,
 } from "../types/database.types"
 
 /**
@@ -45,16 +43,12 @@ export async function getInventoryWithWines(restaurantId: string) {
  * Get low stock items
  */
 export async function getLowStockItems(restaurantId: string): Promise<InventoryItem[]> {
-  const supabase = getSupabaseClient()
-  const { data, error } = await supabase
-    .from("restaurant_inventory")
-    .select("*")
-    .eq("restaurant_id", restaurantId)
-    .lte("stock_live", supabase.rpc("threshold_min")) // stock_live <= threshold_min
-    .order("stock_live", { ascending: true })
-
-  if (error) throw error
-  return data || []
+  // PostgREST cannot compare two columns in a filter, so fetch the restaurant's
+  // inventory and evaluate stock_live <= threshold_min in memory.
+  const items = await getRestaurantInventory(restaurantId)
+  return items
+    .filter((item) => item.stock_live <= item.threshold_min)
+    .sort((a, b) => a.stock_live - b.stock_live)
 }
 
 /**

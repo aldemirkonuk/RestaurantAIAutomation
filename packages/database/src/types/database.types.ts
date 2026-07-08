@@ -3,6 +3,10 @@
  * These types match the DATABASE_SCHEMA.sql structure
  */
 
+// Shape matches @supabase/supabase-js expectations (GenericSchema): every table
+// needs Row/Insert/Update/Relationships, and the schema needs
+// Views/Functions/Enums/CompositeTypes. Without these the client resolves
+// Insert/Update argument types to `never`.
 export interface Database {
   public: {
     Tables: {
@@ -10,48 +14,60 @@ export interface Database {
         Row: Restaurant
         Insert: Omit<Restaurant, "restaurant_id" | "created_at">
         Update: Partial<Omit<Restaurant, "restaurant_id" | "created_at">>
+        Relationships: []
       }
       users: {
         Row: User
         Insert: Omit<User, "user_id" | "created_at">
         Update: Partial<Omit<User, "user_id" | "created_at">>
+        Relationships: []
       }
       master_wine_library: {
         Row: Wine
-        Insert: Omit<Wine, "created_at" | "updated_at">
-        Update: Partial<Omit<Wine, "wine_id" | "created_at" | "updated_at">>
+        Insert: Omit<Wine, "wine_id" | "created_at" | "updated_at">
+        Update: Partial<Omit<Wine, "wine_id" | "created_at">>
+        Relationships: []
       }
       restaurant_inventory: {
         Row: InventoryItem
         Insert: Omit<InventoryItem, "inventory_id" | "created_at" | "last_updated">
         Update: Partial<Omit<InventoryItem, "inventory_id" | "created_at">>
+        Relationships: []
       }
       providers: {
         Row: Provider
         Insert: Omit<Provider, "provider_id" | "created_at">
         Update: Partial<Omit<Provider, "provider_id" | "created_at">>
+        Relationships: []
       }
       procurement_orders: {
         Row: ProcurementOrder
         Insert: Omit<ProcurementOrder, "order_id" | "created_at">
         Update: Partial<Omit<ProcurementOrder, "order_id" | "created_at">>
+        Relationships: []
       }
       audit_logs: {
         Row: AuditLog
         Insert: Omit<AuditLog, "log_id" | "timestamp">
         Update: never
+        Relationships: []
       }
       notification_preferences: {
         Row: NotificationPreference
         Insert: Omit<NotificationPreference, "preference_id" | "created_at">
         Update: Partial<Omit<NotificationPreference, "preference_id" | "created_at">>
+        Relationships: []
       }
     }
+    Views: { [_ in never]: never }
+    Functions: { [_ in never]: never }
+    Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
   }
 }
 
 // Core entity types
-export interface Restaurant {
+export type Restaurant = {
   restaurant_id: string
   name: string
   address?: string
@@ -69,7 +85,7 @@ export interface RestaurantSettings {
   timezone?: string
 }
 
-export interface User {
+export type User = {
   user_id: string
   restaurant_id: string
   email: string
@@ -79,7 +95,7 @@ export interface User {
   created_at: string
 }
 
-export interface Wine {
+export type Wine = {
   wine_id: string
   name: string
   producer?: string
@@ -123,7 +139,7 @@ export interface ProviderInfo {
   price_per_bottle?: number
 }
 
-export interface InventoryItem {
+export type InventoryItem = {
   inventory_id: string
   restaurant_id: string
   wine_id: string
@@ -135,7 +151,7 @@ export interface InventoryItem {
   created_at: string
 }
 
-export interface Provider {
+export type Provider = {
   provider_id: string
   name: string
   contact_email?: string
@@ -147,7 +163,7 @@ export interface Provider {
   created_at: string
 }
 
-export interface ProcurementOrder {
+export type ProcurementOrder = {
   order_id: string
   restaurant_id: string
   wine_id: string
@@ -169,7 +185,7 @@ export interface NegotiationMessage {
   price_offered?: number
 }
 
-export interface AuditLog {
+export type AuditLog = {
   log_id: string
   log_type: string
   event_type: string
@@ -180,7 +196,7 @@ export interface AuditLog {
   timestamp: string
 }
 
-export interface NotificationPreference {
+export type NotificationPreference = {
   preference_id: string
   user_id: string
   email_enabled: boolean

@@ -1,5 +1,5 @@
 import { getSupabaseClient } from "../client"
-import type { Wine, WineSearchResult } from "../types/database.types"
+import type { Wine } from "../types/database.types"
 
 /**
  * Get all wines from master library
@@ -150,15 +150,18 @@ export async function getRecommendedWines(
   const wine = await getWineById(wineId)
   if (!wine) return []
 
-  // Simple recommendation: same type and region
+  // Simple recommendation: same type and region (skip filters the source wine
+  // does not define, since PostgREST .eq cannot take an undefined value)
   const supabase = getSupabaseClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from("master_wine_library")
     .select("*")
-    .eq("type", wine.type)
-    .eq("region", wine.region)
     .neq("wine_id", wineId)
-    .limit(limit)
+
+  if (wine.type) query = query.eq("type", wine.type)
+  if (wine.region) query = query.eq("region", wine.region)
+
+  const { data, error } = await query.limit(limit)
 
   if (error) throw error
   return data || []
