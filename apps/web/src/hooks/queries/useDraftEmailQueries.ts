@@ -177,6 +177,30 @@ export function useOrderConversations(orderId: string | null) {
   })
 }
 
+export interface OrderAttachmentDto {
+  id: string
+  conversationId: string
+  filename: string
+  mimeType: string | null
+  sizeBytes: number | null
+  createdAt: string
+  /** short-lived signed URL to the persisted bytes (D2); null if it couldn't be signed. */
+  url: string | null
+}
+
+/** Persisted vendor email attachments for an order (D2), with signed URLs. */
+export function useOrderAttachments(orderId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['order-attachments', orderId ?? ''],
+    queryFn: () =>
+      apiClient
+        .get(`/procurement/orders/${orderId}/attachments`)
+        .then((r) => r.data as OrderAttachmentDto[]),
+    enabled: !!orderId && enabled,
+    staleTime: 30_000,
+  })
+}
+
 /** Manager writes & sends their own threaded reply (bypasses the AI draft). */
 export function useManualReply() {
   const queryClient = useQueryClient()
