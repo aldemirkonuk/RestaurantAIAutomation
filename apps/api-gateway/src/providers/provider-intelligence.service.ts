@@ -140,7 +140,7 @@ export class ProviderIntelligenceService {
     const { data, error } = await this.databaseService.supabase
       .from('provider_promotions')
       .select('*, providers(id, name)')
-      .eq('status', 'active')
+      .eq('is_active', true)
       .order('end_date', { ascending: true });
 
     if (error) {
@@ -158,7 +158,7 @@ export class ProviderIntelligenceService {
     const { data, error } = await this.databaseService.supabase
       .from('provider_promotions')
       .select('*, providers(id, name)')
-      .eq('status', 'active')
+      .eq('is_active', true)
       .lte('end_date', cutoff.toISOString().split('T')[0])
       .order('end_date', { ascending: true });
 
@@ -197,7 +197,7 @@ export class ProviderIntelligenceService {
     const { data, error } = await this.databaseService.supabase
       .from('provider_promotions')
       .select('*, providers(id, name)')
-      .eq('status', 'active')
+      .eq('is_active', true)
       .order('promo_type')
       .order('provider_id');
 
@@ -361,7 +361,7 @@ export class ProviderIntelligenceService {
           .from('provider_promotions')
           .select('id')
           .eq('provider_id', provider.id)
-          .eq('status', 'active'),
+          .eq('is_active', true),
         this.databaseService.supabase
           .from('provider_sentiment_history')
           .select('sentiment_score')
