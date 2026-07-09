@@ -20,8 +20,8 @@ class TestCheckAndUpdateTrust:
         # RPC call for increment_trust_counter (approve path)
         mock_sb.rpc.return_value.execute.return_value = None
         # Post-increment count lookup:
-        # .table.select.eq.eq.is_.single.execute.data
-        mock_sb.table.return_value.select.return_value.eq.return_value.eq.return_value.is_.return_value.single.return_value.execute.return_value.data = {
+        # .table.select.eq.eq.is_.maybe_single.execute.data
+        mock_sb.table.return_value.select.return_value.eq.return_value.eq.return_value.is_.return_value.maybe_single.return_value.execute.return_value.data = {
             "consecutive_approved_overrides": consecutive_approved
         }
         # update chain for policy flip or streak reset

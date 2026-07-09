@@ -88,10 +88,17 @@ async def test_take_viewport_chunks_returns_jpeg_bytes():
     assert len(chunks) == 2
     for chunk in chunks:
         assert isinstance(chunk, bytes)
-    # Verify screenshot called with y=0 then y=900
+    # Current impl scrolls the page via window.scrollTo(0, offset) in 900px steps
+    # and clips each viewport screenshot at y=0 (see _take_viewport_chunks).
     calls = page.screenshot.call_args_list
     assert calls[0].kwargs["clip"]["y"] == 0
-    assert calls[1].kwargs["clip"]["y"] == 900
+    assert calls[1].kwargs["clip"]["y"] == 0
+    scroll_offsets = [
+        c.args[0]
+        for c in page.evaluate.call_args_list
+        if c.args and "scrollTo" in c.args[0]
+    ]
+    assert scroll_offsets == ["window.scrollTo(0, 0)", "window.scrollTo(0, 900)"]
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +179,9 @@ async def test_persist_called_with_image_menu_source_type():
 
     persist_calls = []
 
-    def capture_persist(wines, restaurant_name, source_url, source_type="crawled"):
+    def capture_persist(
+        wines, restaurant_name, source_url, source_type="crawled", result=None
+    ):
         persist_calls.append({"wines": wines, "source_type": source_type})
 
     with patch("services.web_crawler.get_claude_vision_extractor") as mock_factory:

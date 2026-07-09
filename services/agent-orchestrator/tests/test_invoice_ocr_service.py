@@ -67,9 +67,11 @@ def test_extract_invoice_number(ocr_service):
 
 def test_extract_wine_items(ocr_service):
     """Test wine item extraction from text lines"""
+    # Format: "<name> <qty> <unit> <unit_price> <total>" — the unit token (btl/cs)
+    # is what drives bottle/case classification in _extract_wine_items.
     lines = [
-        "Caymus Cabernet Sauvignon 2019  12 btl  $85.00  $1,020.00",
-        "Silver Oak Alexander Valley 2020  6 cs  $95.00  $570.00",
+        "Caymus Cabernet Sauvignon  12 btl  $85.00  $1,020.00",
+        "Silver Oak Alexander Valley  6 cs  $95.00  $570.00",
         "Total: $1,590.00",
     ]
 

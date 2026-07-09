@@ -2,8 +2,8 @@
 Unit tests for quality_routes.py — QUAL-02, QUAL-03.
 
 Tests:
-  - _compute_completeness() pure function
-  - GET /review-queue sorting (auto_blocked first, then completeness asc)
+  - compute_completeness() pure function (Phase 7: lives in claude_vision_extractor)
+  - GET /review-queue grouping (pending fields by submission, DB confidence order)
   - GET /review-queue 503 when Supabase unavailable
   - PATCH /review-queue happy path: promotion to master_wine_library
   - PATCH /review-queue blocked path: score < 0.3 → auto_blocked, no promotion
@@ -36,6 +36,10 @@ def _make_chain(data=None, single_data=None):
     chain.update.return_value = chain
 
     list_resp = MagicMock(data=data if data is not None else [])
+    # Model the ``count="exact"`` pending-fields query: no rows remain pending.
+    # (An unconfigured MagicMock here is truthy and never == 0, which would
+    #  silently block promotion in patch_review_queue.)
+    list_resp.count = 0
     single_resp = MagicMock(data=single_data)
     # maybe_single() returns a new chain whose execute() gives single_resp
     single_chain = MagicMock()
@@ -75,13 +79,13 @@ def _pending_submission(
 
 
 # ---------------------------------------------------------------------------
-# _compute_completeness
+# compute_completeness (Phase 7: relocated to services.claude_vision_extractor)
 # ---------------------------------------------------------------------------
 
 
 def test_compute_completeness_full_score():
     """QUAL-03: all 6 COMPLETENESS_FIELDS present → 1.0."""
-    from api.quality_routes import _compute_completeness
+    from services.claude_vision_extractor import compute_completeness
 
     payload = {
         "wine_name": "Château Margaux",
@@ -91,22 +95,22 @@ def test_compute_completeness_full_score():
         "country": "France",
         "section_name": "Red Wines",
     }
-    assert _compute_completeness(payload) == 1.0
+    assert compute_completeness(payload) == 1.0
 
 
 def test_compute_completeness_partial_score():
     """QUAL-03: 3 of 6 fields → 0.5."""
-    from api.quality_routes import _compute_completeness
+    from services.claude_vision_extractor import compute_completeness
 
     payload = {"wine_name": "Opus One", "vintage": 2019, "price_bottle": 300.0}
-    assert _compute_completeness(payload) == 0.5
+    assert compute_completeness(payload) == 0.5
 
 
 def test_compute_completeness_empty():
     """QUAL-03: empty payload → 0.0."""
-    from api.quality_routes import _compute_completeness
+    from services.claude_vision_extractor import compute_completeness
 
-    assert _compute_completeness({}) == 0.0
+    assert compute_completeness({}) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -125,31 +129,47 @@ def test_get_review_queue_503_when_no_db():
     assert exc_info.value.status_code == 503
 
 
-def test_get_review_queue_sorts_blocked_first():
-    """QUAL-03: auto_blocked items appear before non-blocked; non-blocked sorted by score asc."""
+def test_get_review_queue_groups_pending_fields_by_submission():
+    """QUAL-03: pending field rows are grouped by submission_id, preserving the
+    DB's confidence-ascending order (most uncertain submission first).
+
+    Phase 7 field-level refactor: the queue reads pending ``field_review_queue``
+    rows and delegates ordering to the DB query (``.order("confidence")``); it no
+    longer sorts whole wines by auto_blocked/completeness_score in Python.
+    """
     from api.quality_routes import get_review_queue
 
+    # field_review_queue rows, already confidence-ascending (as the DB returns them)
     rows = [
         {
-            "id": "sub-high",
-            "restaurant_id": "r1",
-            "auto_blocked": False,
+            "id": "fr-1",
+            "submission_id": "sub-blocked",
+            "field_name": "appellation",
+            "current_value": None,
+            "confidence": 0.1,
+            "source": "inferred",
+            "status": "pending",
             "created_at": "2026-04-05T00:00:00Z",
-            "payload": {"wine_name": "High Score", "completeness_score": 0.8},
         },
         {
-            "id": "sub-blocked",
-            "restaurant_id": "r1",
-            "auto_blocked": True,
+            "id": "fr-2",
+            "submission_id": "sub-low",
+            "field_name": "sub_region",
+            "current_value": "Unknown",
+            "confidence": 0.4,
+            "source": "inferred",
+            "status": "pending",
             "created_at": "2026-04-05T00:00:01Z",
-            "payload": {"wine_name": "Blocked Wine", "completeness_score": 0.1},
         },
         {
-            "id": "sub-low",
-            "restaurant_id": "r1",
-            "auto_blocked": False,
+            "id": "fr-3",
+            "submission_id": "sub-high",
+            "field_name": "producer",
+            "current_value": "Some Producer",
+            "confidence": 0.8,
+            "source": "visible",
+            "status": "pending",
             "created_at": "2026-04-05T00:00:02Z",
-            "payload": {"wine_name": "Low Score", "completeness_score": 0.4},
         },
     ]
 
@@ -159,10 +179,8 @@ def test_get_review_queue_sorts_blocked_first():
     with patch("api.quality_routes._get_supabase", return_value=mock_supabase):
         result = get_review_queue()
 
-    ids = [item["id"] for item in result["items"]]
-    assert ids[0] == "sub-blocked", "auto_blocked item must be first"
-    assert ids[1] == "sub-low", "lower completeness next"
-    assert ids[2] == "sub-high", "higher completeness last"
+    sids = [item["submission_id"] for item in result["items"]]
+    assert sids == ["sub-blocked", "sub-low", "sub-high"]
 
 
 # ---------------------------------------------------------------------------
@@ -171,10 +189,22 @@ def test_get_review_queue_sorts_blocked_first():
 
 
 def test_patch_promotes_wine_with_sufficient_score():
-    """QUAL-03: score >= 0.3 after correction → promoted=True, status=approved."""
+    """QUAL-03: field_confidence clears auto-block (>50% fields above review
+    threshold) with no pending fields left → promoted=True, status=approved."""
     from api.quality_routes import patch_review_queue, ReviewQueuePatchRequest
 
     sub = _pending_submission(score=0.5)
+    # Promotion is driven by field_confidence via should_auto_block(), not by
+    # payload.completeness_score. High-confidence fields → not auto_blocked.
+    sub["field_confidence"] = {
+        "wine_name": {
+            "value": "Château Margaux",
+            "confidence": 0.95,
+            "source": "visible",
+        },
+        "vintage": {"value": 2018, "confidence": 0.9, "source": "visible"},
+        "region": {"value": "Bordeaux", "confidence": 0.9, "source": "visible"},
+    }
 
     # Mock execute() calls in order: fetch, promotion insert, status update
     MagicMock(data=sub)
@@ -282,7 +312,6 @@ def test_patch_logs_field_corrections_for_changed_fields():
     from api.quality_routes import (
         patch_review_queue,
         ReviewQueuePatchRequest,
-        FieldCorrection,
     )
 
     sub = _pending_submission(score=0.5)
@@ -306,7 +335,7 @@ def test_patch_logs_field_corrections_for_changed_fields():
     supabase.table.side_effect = table_side_effect
 
     body = ReviewQueuePatchRequest(
-        corrections=[FieldCorrection(field_name="region", corrected_value="Burgundy")],
+        corrections={"region": "Burgundy"},
         corrected_by="reviewer@test.com",
     )
 

@@ -171,8 +171,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd services/agent-orchestrator
+          # requirements.txt already pins pytest/pytest-asyncio/pytest-cov/pytest-mock.
+          # Do NOT reinstall them unpinned here — that upgrades pytest-asyncio past
+          # the pinned 0.23.3 and breaks ~20 async tests ("no current event loop").
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio
 
       - name: Run tests
         run: |

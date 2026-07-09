@@ -284,6 +284,19 @@ class InvoiceOCRService:
 
         return None
 
+    def _parse_vintage(self, vintage) -> Optional[int]:
+        """Parse a vintage value to an integer year, or None for non-vintage input.
+
+        Accepts already-int years, numeric strings, and non-vintage markers
+        (None, "NV", "N/V"). Returns None for anything that is not a clean year.
+        """
+        if vintage in [None, "NV", "nv", "N/V", "n/v"]:
+            return None
+        try:
+            return int(vintage)
+        except (ValueError, TypeError):
+            return None
+
     def _extract_invoice_number(self, text: str) -> Optional[str]:
         """Extract invoice number from text"""
         patterns = [
@@ -632,12 +645,12 @@ class EnhancedInvoiceService(InvoiceOCRService):
                     if len(groups) >= 5:
                         item["sku"] = groups[0]
                         item["name"] = groups[1].strip()
-                        item["vintage"] = int(groups[2]) if groups[2] else None
+                        item["vintage"] = self._parse_vintage(groups[2])
                         item["quantity"] = int(groups[3])
                         item["unit_price"] = float(groups[4].replace(",", ""))
                     elif len(groups) == 4:
                         item["name"] = groups[0].strip()
-                        item["vintage"] = int(groups[1]) if groups[1] else None
+                        item["vintage"] = self._parse_vintage(groups[1])
                         item["quantity"] = int(groups[2])
                         item["unit_price"] = float(groups[3].replace(",", ""))
                     elif len(groups) == 2:

@@ -514,6 +514,9 @@ class ToastAPIClient:
         interval_seconds: int = 300,
     ):
         """Start streaming in background"""
+        # Set the flag synchronously so is_streaming reflects the started state
+        # immediately, rather than only once the scheduled coroutine first runs.
+        self.is_streaming = True
         self._stream_task = asyncio.create_task(
             self.stream_sales_continuously(callback, interval_seconds)
         )

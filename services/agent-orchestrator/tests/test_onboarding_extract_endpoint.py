@@ -75,11 +75,13 @@ async def test_extract_pdf_base64_rejected():
         "/api/v1/onboarding/extract",
         {
             "restaurant_id": "rest-123",
+            # Malformed base64 (length not a multiple of 4) — pdf_base64 is a
+            # supported input, but invalid encoding must be rejected with 422.
             "pdf_base64": "pdfbase64data",
         },
     )
     assert resp.status_code == 422
-    assert "pdf_base64 not yet supported" in resp.json().get("detail", "")
+    assert "Invalid base64" in resp.json().get("detail", "")
 
 
 @pytest.mark.asyncio
@@ -95,7 +97,7 @@ async def test_extract_empty_images_rejected():
         },
     )
     assert resp.status_code == 422
-    assert "at least one image" in resp.json().get("detail", "")
+    assert "Provide either" in resp.json().get("detail", "")
 
 
 @pytest.mark.asyncio

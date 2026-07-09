@@ -3,6 +3,8 @@ Unit Tests for Auction Wine Research Service
 Tests AI-powered wine research with Gemini and OpenAI
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from services.auction_wine_service import get_auction_wine_service
 
@@ -15,8 +17,20 @@ def auction_service():
 
 @pytest.mark.asyncio
 async def test_research_wine_success(auction_service):
-    """Test successful wine research"""
-    result = await auction_service.research_wine("Dom Perignon 2012")
+    """Test successful wine research via the (mocked) Gemini client."""
+    gemini_response = MagicMock()
+    gemini_response.text = (
+        '{"name": "Dom Perignon 2012", "producer": "Moet & Chandon", '
+        '"vintage": 2012, "type": "sparkling", "estimated_price": 250.0, '
+        '"confidence": "high"}'
+    )
+    mock_model = MagicMock()
+    mock_model.generate_content.return_value = gemini_response
+
+    with patch.object(auction_service, "gemini_available", True), patch.object(
+        auction_service, "gemini_model", mock_model, create=True
+    ):
+        result = await auction_service.research_wine("Dom Perignon 2012")
 
     assert result["success"] is True
     assert "name" in result
@@ -69,14 +83,25 @@ async def test_batch_research(auction_service):
 
 @pytest.mark.asyncio
 async def test_fallback_to_openai(auction_service):
-    """Test OpenAI fallback when Gemini fails"""
-    # Mock scenario where Gemini is unavailable
-    auction_service.gemini_available = False
+    """Test OpenAI fallback when Gemini is unavailable."""
+    openai_response = MagicMock()
+    openai_response.choices = [MagicMock()]
+    openai_response.choices[0].message.content = (
+        '{"name": "Test Wine 2020", "producer": "Unknown", '
+        '"estimated_price": 50.0, "confidence": "medium"}'
+    )
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = openai_response
 
-    result = await auction_service.research_wine("Test Wine 2020")
+    # Gemini unavailable -> service must fall back to the (mocked) OpenAI client
+    with patch.object(auction_service, "gemini_available", False), patch.object(
+        auction_service, "openai_available", True
+    ), patch.object(auction_service, "openai_client", mock_client, create=True):
+        result = await auction_service.research_wine("Test Wine 2020")
 
     # Should still get a result via OpenAI fallback
     assert "source" in result
+    assert result["source"] == "openai"
 
 
 def test_parse_json_response(auction_service):

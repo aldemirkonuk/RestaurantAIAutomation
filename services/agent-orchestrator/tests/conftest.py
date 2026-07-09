@@ -7,8 +7,6 @@ This file contains shared fixtures and configuration for all tests.
 import os
 import sys
 import pytest
-import asyncio
-from typing import Generator
 from unittest.mock import MagicMock, AsyncMock
 
 # ---------------------------------------------------------------------------
@@ -33,12 +31,13 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# NOTE: We intentionally do NOT override the `event_loop` fixture.
+# A previous session-scoped override (new_event_loop() without set_event_loop())
+# shared one loop across the whole session and left the current loop closed/None
+# mid-run, so async tests ordered later (temporal_analytics, toast_api_client,
+# yolo_preview) failed with "There is no current event loop in thread MainThread"
+# — but only in the full suite, not in isolation. pytest-asyncio's auto mode
+# already provides a properly isolated, function-scoped loop per test.
 
 
 @pytest.fixture

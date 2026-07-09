@@ -186,8 +186,15 @@ async def extract_menu_scan(request: MenuScanRequest):
     try:
         if request.pdf_base64:
             import base64 as _b64
+            import binascii
 
-            pdf_bytes = _b64.b64decode(request.pdf_base64)
+            try:
+                pdf_bytes = _b64.b64decode(request.pdf_base64)
+            except (binascii.Error, ValueError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid base64 in 'pdf_base64': {exc}",
+                )
             result: ClaudeExtractionResult = await extractor.extract_pdf(pdf_bytes)
         else:
             result: ClaudeExtractionResult = await extractor.extract_menu(
