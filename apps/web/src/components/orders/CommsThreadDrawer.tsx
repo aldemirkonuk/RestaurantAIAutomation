@@ -6,8 +6,8 @@ import {
   X, Send, Clock, CheckCircle, Loader2, RefreshCw,
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
   ArrowRight, MessageSquare, Activity, Mail, Pause, Play, Bot, PenLine, XCircle,
-  AlertTriangle, MailSearch, ShieldCheck, ShieldAlert, Paperclip, FileText,
-  Filter, Tag,
+  AlertTriangle, MailSearch, ShieldCheck, ShieldAlert, FileText,
+  Filter, Tag, Download, Image as ImageIcon,
 } from 'lucide-react'
 import {
   useOrderConversations,
@@ -1012,16 +1012,25 @@ function formatBytes(n: number | null): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function fileTypeLabel(filename: string, mimeType: string | null): string {
+  const ext = filename.includes('.') ? filename.split('.').pop()!.toUpperCase() : ''
+  if (ext && ext.length <= 4) return ext
+  const sub = mimeType?.split('/')[1]
+  return sub ? sub.toUpperCase() : 'FILE'
+}
+
+// Rich file-displayer (7a): image attachments preview as a media card with a
+// gradient filename overlay; everything else is a file card with a download affordance.
 function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
   if (!items.length) return null
   return (
-    <div className="px-3 py-2 bg-white border-t border-gray-100">
-      <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-        <Paperclip className="w-3 h-3" /> Attachments the AI read
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((a) => {
-          const isImage = (a.mimeType ?? '').startsWith('image/')
+    <div className="px-3 pt-1.5 pb-3 bg-white space-y-2">
+      {items.map((a) => {
+        const isImage = (a.mimeType ?? '').startsWith('image/')
+        const meta = [fileTypeLabel(a.filename, a.mimeType), formatBytes(a.sizeBytes)].filter(Boolean).join(' · ')
+        const disabled = !a.url
+
+        if (isImage) {
           return (
             <a
               key={a.id}
@@ -1029,25 +1038,49 @@ function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
               target="_blank"
               rel="noopener noreferrer"
               title={a.filename}
-              className={`flex items-center gap-2 border border-gray-200 rounded-lg p-1.5 transition-colors ${
-                a.url ? 'hover:border-wine-300 hover:bg-wine-50/40' : 'opacity-60 pointer-events-none'
+              className={`relative block rounded-xl overflow-hidden border border-gray-200 transition-shadow ${
+                disabled ? 'pointer-events-none' : 'hover:shadow-md cursor-pointer'
               }`}
             >
-              {isImage && a.url ? (
-                <img src={a.url} alt={a.filename} className="w-9 h-9 rounded object-cover border border-gray-100 flex-shrink-0" />
+              {a.url ? (
+                <img src={a.url} alt={a.filename} className="w-full h-[140px] object-cover" />
               ) : (
-                <span className="w-9 h-9 rounded bg-gray-50 border border-gray-100 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-4 h-4 text-wine-600" />
-                </span>
+                <div className="h-[140px] flex items-center justify-center bg-gray-50">
+                  <ImageIcon className="w-6 h-6 text-gray-400" strokeWidth={1.6} />
+                </div>
               )}
-              <span className="min-w-0 max-w-[130px]">
-                <span className="block text-[10.5px] font-medium text-gray-700 truncate">{a.filename}</span>
-                <span className="block text-[9px] text-gray-400">{formatBytes(a.sizeBytes)}</span>
-              </span>
+              <div className="absolute inset-x-0 bottom-0 px-3 py-2 flex items-center justify-between gap-2 bg-gradient-to-t from-gray-900/65 to-transparent">
+                <span className="text-[10px] font-semibold text-white font-mono truncate">{a.filename}</span>
+                <span className="text-[9px] text-white/85 flex-shrink-0">{meta}</span>
+              </div>
             </a>
           )
-        })}
-      </div>
+        }
+
+        return (
+          <a
+            key={a.id}
+            href={a.url ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={a.filename}
+            className={`flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl p-2.5 max-w-[310px] transition-colors ${
+              disabled ? 'opacity-60 pointer-events-none' : 'hover:border-wine-300 hover:bg-wine-50/40 cursor-pointer'
+            }`}
+          >
+            <span className="w-[38px] h-12 rounded-[7px] bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-4 h-4 text-wine-600" strokeWidth={1.8} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11.5px] font-semibold text-gray-700 truncate">{a.filename}</p>
+              <p className="text-[10px] text-gray-400">{meta}</p>
+            </div>
+            <span className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 flex-shrink-0">
+              <Download className="w-3.5 h-3.5" strokeWidth={2} />
+            </span>
+          </a>
+        )
+      })}
     </div>
   )
 }
