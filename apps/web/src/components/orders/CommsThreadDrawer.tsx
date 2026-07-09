@@ -996,7 +996,6 @@ function ThreadTab({ conversations, attachmentsByConv, isCancelled, onOpenDraftP
               isCancelled={isCancelled}
               onOpenDraftPanel={onOpenDraftPanel}
               onClose={onClose}
-              defaultOpen={idx === conversations.length - 1}
             />
           </div>
         )
@@ -1054,7 +1053,40 @@ function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
 }
 
 // ─── Single timeline event ────────────────────────────────────────────────────
-function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenDraftPanel, onClose, defaultOpen }: {
+// ─── Message body with a SOTA clamp/reveal for long messages (7a) ────────────────
+function MessageBody({ text, discarded }: { text: string; discarded: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = text.length > 360 || (text.match(/\n/g)?.length ?? 0) > 8
+  const clamp = isLong && !expanded
+  return (
+    <div className="bg-white">
+      <div className="relative">
+        <div
+          className={`px-3 py-2.5 text-[11.5px] leading-relaxed whitespace-pre-wrap ${
+            discarded ? 'text-gray-400 line-through decoration-red-300 decoration-1' : 'text-gray-700'
+          } ${clamp ? 'max-h-36 overflow-hidden' : ''}`}
+        >
+          {text}
+        </div>
+        {clamp && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />}
+      </div>
+      {isLong && (
+        <div className="flex justify-center pb-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            className="inline-flex items-center gap-1 text-[10px] font-semibold text-wine-700 hover:text-wine-800 bg-white rounded-full px-2.5 py-1 border border-wine-200 shadow-sm transition-colors"
+          >
+            {expanded ? 'Show less' : 'Show more'}
+            <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenDraftPanel, onClose }: {
   conv: OrderConversationDto
   attachments: OrderAttachmentDto[]
   isLast: boolean
@@ -1062,9 +1094,7 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
   isCancelled: boolean
   onOpenDraftPanel: () => void
   onClose: () => void
-  defaultOpen: boolean
 }) {
-  const [open, setOpen] = useState(defaultOpen)
   const [copied, setCopied] = useState(false)
 
   const isInbound = conv.direction === 'INBOUND'
@@ -1086,63 +1116,37 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
     <div className={`relative group border-l-[3px] ${isInbound ? 'border-gray-200' : 'border-wine-400'}`}>
       {/* Content — flat single-column email row (7a "The One") */}
       <div className={`min-w-0 pl-3 pr-4 pb-4 ${!isLast ? 'border-b border-gray-100' : ''}`}>
-        {/* Collapsed row — always visible, click to toggle */}
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="w-full flex items-center justify-between py-3 text-left group/btn"
-        >
+        {/* Identity row — always visible (7a email header) */}
+        <div className="flex items-center justify-between gap-2 py-2.5">
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`}>
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border flex-shrink-0 ${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`}>
               <StatusIcon className="w-2.5 h-2.5" />
               {cfg.label}
             </span>
             {isInbound ? (
-              <span className="text-[11px] text-blue-600 font-medium">from {conv.providerName || 'Provider'}</span>
+              <span className="text-[11px] text-blue-600 font-medium truncate">from {conv.providerName || 'Provider'}</span>
             ) : (
-              <span className="text-[11px] text-gray-400 font-medium">Round {conv.roundCount}</span>
+              <span className="text-[11px] text-gray-400 font-medium flex-shrink-0">Round {conv.roundCount}</span>
+            )}
+            {isInbound && conv.providerEmail && (
+              <span className="text-[10px] text-gray-400 font-mono truncate hidden sm:inline">{conv.providerEmail}</span>
             )}
             {isPending && (
-              <span className="text-[10px] text-wine-500 font-semibold">· Needs review</span>
+              <span className="text-[10px] text-wine-500 font-semibold flex-shrink-0">· Needs review</span>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-            <span className="text-[10px] text-gray-400">{fmtTime(conv.createdAt)}</span>
-            <motion.div
-              animate={{ rotate: open ? 180 : 0 }}
-              transition={{ duration: 0.18 }}
-              className="text-gray-400"
-            >
-              <ChevronDown className="w-3.5 h-3.5" />
-            </motion.div>
-          </div>
-        </button>
+          <span className="text-[10px] text-gray-400 flex-shrink-0">{fmtTime(conv.createdAt)}</span>
+        </div>
 
-        {/* Expanded body */}
-        <AnimatePresence initial={false}>
-          {open && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className="overflow-hidden"
-            >
-              <div className={`rounded-xl border ${isLatest ? cfg.borderColor : 'border-gray-100'} overflow-hidden mb-1`}>
-                {/* Body */}
-                {bodyText ? (
-                  <div className={`px-3 py-2.5 ${isLatest ? cfg.bgColor : 'bg-gray-50'}`}>
-                    <p className={`text-[11px] font-mono leading-relaxed whitespace-pre-wrap ${
-                      isDiscarded ? 'text-gray-400 line-through decoration-red-300 decoration-1' : 'text-gray-700'
-                    }`}>
-                      {bodyText}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="px-3 py-2.5 bg-gray-50">
-                    <p className="text-[11px] text-gray-400 italic">No content recorded</p>
-                  </div>
-                )}
+        {/* Message body + meta — always inline (7a "The One") */}
+        <div className={`rounded-xl border overflow-hidden ${isLatest ? cfg.borderColor : 'border-gray-100'}`}>
+          {bodyText ? (
+            <MessageBody text={bodyText} discarded={isDiscarded} />
+          ) : (
+            <div className="px-3 py-2.5 bg-white">
+              <p className="text-[11px] text-gray-400 italic">No content recorded</p>
+            </div>
+          )}
 
                 {/* Special conditions the AI flagged (delivery delays, substitutions, etc.) */}
                 {conv.specialConditions && conv.specialConditions.length > 0 && (
@@ -1217,10 +1221,7 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
                     </button>
                   </div>
                 )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </div>
       </div>
     </div>
   )
