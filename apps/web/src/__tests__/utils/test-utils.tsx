@@ -1,10 +1,33 @@
 import { ReactElement, ReactNode } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '../../contexts/ThemeContext'
 import { AuthProvider } from '../../contexts/AuthContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { RealtimeProvider } from '../../contexts/RealtimeContext'
 import { vi } from 'vitest'
+
+// Module-level mocks — hoisted by Vitest so they apply to all tests that
+// import this file.  Factories use only inline literals to avoid
+// "variable is not defined" ReferenceErrors at hoist time.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: vi.fn(() => ({
+    user: { userId: 'test-user-id', email: 'test@wineops.com', restaurantId: 'rest-1', role: 'manager' as const },
+    loading: false,
+    logout: vi.fn(),
+    availableRestaurants: [],
+    activeRestaurantId: 'rest-1',
+    setActiveRestaurantId: vi.fn(),
+  })),
+  AuthProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+}))
+
+vi.mock('../../contexts/RealtimeContext', () => ({
+  useRealtime: vi.fn(() => ({})),
+  useRealtimeDispatch: vi.fn(() => vi.fn()),
+  RealtimeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+}))
 
 // Mock Supabase client
 export const mockSupabaseClient = {
@@ -46,20 +69,27 @@ interface AllTheProvidersProps {
 }
 
 /**
- * Provider wrapper for tests
- * Includes all necessary providers: Router, Theme, Auth, Realtime
+ * Provider wrapper for tests.
+ * Includes all necessary providers: QueryClient, Router, Theme, Auth, Realtime.
+ * AuthProvider and RealtimeProvider are module-mocked above so they are
+ * lightweight pass-throughs in test context.
  */
 function AllTheProviders({ children }: AllTheProvidersProps) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <RealtimeProvider>
-            {children}
-          </RealtimeProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <RealtimeProvider>
+              {children}
+            </RealtimeProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }
 
@@ -77,19 +107,22 @@ export function renderWithProviders(
 }
 
 /**
- * Render with authenticated user context
+ * Render with a specific authenticated user injected into the mocked useAuth.
+ * Relies on the module-level vi.mock for AuthContext defined above.
  */
 export function renderWithAuth(
   ui: ReactElement,
   user = mockUser,
   options?: Omit<RenderOptions, 'wrapper'>
 ) {
-  // Mock the auth context to return the user
-  vi.mock('../../contexts/AuthContext', () => ({
-    useAuth: () => ({ user, loading: false }),
-    AuthProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-  }))
-
+  vi.mocked(useAuth).mockReturnValue({
+    user: user as any,
+    loading: false,
+    logout: vi.fn(),
+    availableRestaurants: [],
+    activeRestaurantId: (user as any)?.restaurantId ?? null,
+    setActiveRestaurantId: vi.fn(),
+  } as any)
   return renderWithProviders(ui, options)
 }
 

@@ -1,11 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { CommsThreadDrawer } from '../CommsThreadDrawer'
 import type { OrderConversationDto } from '../../../hooks/queries/useDraftEmailQueries'
 
+vi.mock('../../../contexts/ToastContext', () => ({
+  useToast: vi.fn(() => ({ showToast: vi.fn() })),
+  ToastProvider: ({ children }: any) => <>{children}</>,
+}))
+
 vi.mock('../../../hooks/queries/useDraftEmailQueries', () => ({
   useOrderConversations: vi.fn(),
+  useOrderAttachments: vi.fn(() => ({ data: [] })),
+  useGenerateAiReply: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useManualReply: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useToggleAiPaused: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useCancelScheduledSend: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useRegenerateDraft: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useDealProposal: vi.fn(() => ({ data: null, isLoading: false })),
+  useConfirmDeal: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useDismissDeal: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useForceFetchReplies: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  orderConversationKeys: { all: ['conversations'] },
+  dealProposalKeys: { all: ['deals'] },
 }))
 
 import { useOrderConversations } from '../../../hooks/queries/useDraftEmailQueries'
@@ -33,16 +51,19 @@ function makeConv(overrides: Partial<OrderConversationDto> = {}): OrderConversat
 }
 
 function renderDrawer(props?: Partial<React.ComponentProps<typeof CommsThreadDrawer>>) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <CommsThreadDrawer
-      orderId="order-1"
-      orderWineName="Chateau Margaux 2018"
-      orderStatus="pending_approval"
-      isOpen={true}
-      onClose={vi.fn()}
-      onOpenDraftPanel={vi.fn()}
-      {...props}
-    />
+    <QueryClientProvider client={queryClient}>
+      <CommsThreadDrawer
+        orderId="order-1"
+        orderWineName="Chateau Margaux 2018"
+        orderStatus="pending_approval"
+        isOpen={true}
+        onClose={vi.fn()}
+        onOpenDraftPanel={vi.fn()}
+        {...props}
+      />
+    </QueryClientProvider>
   )
 }
 

@@ -45,11 +45,11 @@ def test_calculate_next_date_daily(recurring_agent):
 
 def test_calculate_next_date_weekly(recurring_agent):
     """Test weekly frequency calculation"""
-    current = date(2026, 1, 15)  # Wednesday
-    # Next Monday (day 0)
+    current = date(2026, 1, 15)  # Thursday (weekday 3)
+    # Next Monday (day 0): 4 days ahead → Jan 19
     next_date = recurring_agent._calculate_next_date(current, "weekly", 0)
 
-    assert next_date == date(2026, 1, 20)
+    assert next_date == date(2026, 1, 19)
 
 
 def test_calculate_next_date_biweekly(recurring_agent):
@@ -165,6 +165,8 @@ async def test_check_scheduled_orders(recurring_agent):
             "auto_approve": True,
             "quantity": 12,
             "unit_type": "bottle",
+            "frequency": "weekly",
+            "frequency_day": 1,
             "preferred_providers": [],
         },
         {
@@ -174,6 +176,8 @@ async def test_check_scheduled_orders(recurring_agent):
             "auto_approve": False,
             "quantity": 6,
             "unit_type": "case",
+            "frequency": "monthly",
+            "frequency_day": 15,
             "preferred_providers": [],
         },
     ]

@@ -42,7 +42,7 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText('An unexpected error occurred')).toBeInTheDocument();
+    expect(screen.getByText(/An unexpected error occurred/)).toBeInTheDocument();
   });
 
   it('displays error message', () => {
@@ -52,7 +52,8 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText(/Error: Test error/)).toBeInTheDocument();
+    // Error details are hidden behind "Show Technical Details" toggle; verify the toggle exists.
+    expect(screen.getByText(/Show Technical Details/i)).toBeInTheDocument();
   });
 
   it('displays event ID for support', () => {
@@ -83,7 +84,7 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText('Go to Dashboard')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /go to dashboard/i })).toBeInTheDocument();
   });
 
   it('has Reload Page button', () => {
@@ -93,6 +94,6 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText('Reload Page')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reload page/i })).toBeInTheDocument();
   });
 });

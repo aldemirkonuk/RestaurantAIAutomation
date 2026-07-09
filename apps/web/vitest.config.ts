@@ -9,7 +9,16 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
     include: ['**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', 'dist', '.storybook', 'storybook-static'],
+    // e2e/** holds Playwright specs (run via `test:e2e`); they use Playwright
+    // globals and must not be picked up by the vitest unit runner.
+    exclude: [
+      'node_modules',
+      'dist',
+      '.storybook',
+      'storybook-static',
+      'e2e/**',
+      '**/e2e/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],

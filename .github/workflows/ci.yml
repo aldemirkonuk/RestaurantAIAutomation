@@ -122,7 +122,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
-        run: pnpm run test --run
+        # Vitest auto-detects CI and runs once; jest runs once by default.
+        # (Passing --run here would be consumed by turbo, not the test runners.)
+        run: pnpm run test
 
   # E2E tests (Playwright)
   test-e2e:

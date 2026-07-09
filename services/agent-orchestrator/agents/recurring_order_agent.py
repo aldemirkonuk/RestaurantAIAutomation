@@ -8,14 +8,16 @@ from datetime import datetime, timedelta, date
 from typing import Dict, Optional
 import asyncio
 
-from ..agents.base_agent import BaseAgent
-
 logger = logging.getLogger(__name__)
 
 
-class RecurringOrderAgent(BaseAgent):
+class RecurringOrderAgent:
     """
-    Agent responsible for managing recurring wine orders
+    Agent responsible for managing recurring wine orders.
+
+    Standalone scheduler — not a message-bus agent.  Lifecycle is managed
+    through the explicit start() / stop() methods rather than the BaseAgent
+    subscribe-and-process loop.
 
     Features:
     - Daily checks for due orders
@@ -32,7 +34,6 @@ class RecurringOrderAgent(BaseAgent):
             db_client: Database client for order queries
             notification_agent: Agent for sending notifications
         """
-        super().__init__(agent_id="recurring_order_agent", agent_type="scheduler")
         self.db = db_client
         self.notification_agent = notification_agent
         self.running = False
