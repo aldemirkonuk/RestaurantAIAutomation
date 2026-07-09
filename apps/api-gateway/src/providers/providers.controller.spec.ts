@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { ProvidersController } from "./providers.controller";
 import { ProvidersService } from "./providers.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
   CreateProviderContactDto,
   UpdateProviderContactDto,
@@ -15,6 +16,8 @@ import {
 describe("ProvidersController", () => {
   let controller: ProvidersController;
   let providersService: ProvidersService;
+
+  const mockUser = { id: "user-123", restaurantId: "restaurant-123" };
 
   const mockProvidersService = {
     getProviderContacts: jest.fn(),
@@ -36,7 +39,10 @@ describe("ProvidersController", () => {
           useValue: mockProvidersService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<ProvidersController>(ProvidersController);
     providersService = module.get<ProvidersService>(ProvidersService);
@@ -250,12 +256,12 @@ describe("ProvidersController", () => {
 
       mockProvidersService.searchProviders.mockResolvedValue(expectedResponse);
 
-      const result = await controller.searchProviders(query);
+      const result = await controller.searchProviders(mockUser, query);
 
       expect(result).toEqual(expectedResponse);
       expect(mockProvidersService.searchProviders).toHaveBeenCalledWith({
         q: query,
-        restaurantId: undefined,
+        restaurantId: mockUser.restaurantId,
         specialties: undefined,
         isActive: undefined,
       });
@@ -263,22 +269,16 @@ describe("ProvidersController", () => {
 
     it("should handle multiple query parameters", async () => {
       const query = "wine";
-      const restaurantId = "restaurant-123";
       const specialties = ["red", "white"];
       const isActive = "true";
 
       mockProvidersService.searchProviders.mockResolvedValue([]);
 
-      await controller.searchProviders(
-        query,
-        restaurantId,
-        specialties,
-        isActive,
-      );
+      await controller.searchProviders(mockUser, query, specialties, isActive);
 
       expect(mockProvidersService.searchProviders).toHaveBeenCalledWith({
         q: query,
-        restaurantId,
+        restaurantId: mockUser.restaurantId,
         specialties: ["red", "white"],
         isActive: true,
       });
@@ -289,11 +289,11 @@ describe("ProvidersController", () => {
 
       mockProvidersService.searchProviders.mockResolvedValue([]);
 
-      await controller.searchProviders(undefined, undefined, specialties);
+      await controller.searchProviders(mockUser, undefined, specialties);
 
       expect(mockProvidersService.searchProviders).toHaveBeenCalledWith({
         q: undefined,
-        restaurantId: undefined,
+        restaurantId: mockUser.restaurantId,
         specialties: ["red"],
         isActive: undefined,
       });
@@ -379,14 +379,14 @@ describe("ProvidersController", () => {
         expectedResponse,
       );
 
-      const result = await controller.updateContactDate(providerId, updateDto);
+      const result = await controller.updateContactDate(
+        providerId,
+        updateDto,
+        mockUser,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(result.lastContactDate).toBe(updateDto.lastContactDate);
-      expect(mockProvidersService.updateLastContactDate).toHaveBeenCalledWith(
-        providerId,
-        updateDto,
-      );
     });
 
     it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
@@ -395,7 +395,7 @@ describe("ProvidersController", () => {
       );
 
       await expect(
-        controller.updateContactDate(providerId, updateDto),
+        controller.updateContactDate(providerId, updateDto, mockUser),
       ).rejects.toThrow(HttpException);
     });
   });

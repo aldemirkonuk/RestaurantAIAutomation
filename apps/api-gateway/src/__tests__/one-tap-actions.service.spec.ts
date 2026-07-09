@@ -100,11 +100,17 @@ describe("OneTapActionsService", () => {
     });
 
     it("should filter by status when provided", async () => {
-      mockSupabaseClient.order.mockResolvedValue({ data: [], error: null });
+      // When a status filter is provided, the service chains `.eq("status", ...)`
+      // AFTER `.order(...)`. The real Supabase builder stays chainable (and
+      // thenable) after order(), so model that terminal step explicitly here.
+      const afterOrder = {
+        eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+      mockSupabaseClient.order.mockReturnValueOnce(afterOrder);
 
       await service.getActions(restaurantId, OneTapActionStatus.COMPLETED);
 
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith("status", "completed");
+      expect(afterOrder.eq).toHaveBeenCalledWith("status", "completed");
     });
   });
 

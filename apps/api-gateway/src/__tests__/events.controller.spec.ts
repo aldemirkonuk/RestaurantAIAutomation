@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { EventsController } from "../events/events.controller";
 import { EventsService } from "../events/events.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 
 describe("EventsController", () => {
@@ -23,7 +24,10 @@ describe("EventsController", () => {
           useValue: mockEventsService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<EventsController>(EventsController);
     eventsService = module.get<EventsService>(EventsService);

@@ -266,11 +266,11 @@ describe("CalendarService", () => {
       });
 
       expect(mockSupabaseClient.gte).toHaveBeenCalledWith(
-        "event_date",
+        "start_date",
         "2024-02-01",
       );
       expect(mockSupabaseClient.lte).toHaveBeenCalledWith(
-        "event_date",
+        "start_date",
         "2024-02-28",
       );
     });
@@ -365,9 +365,9 @@ describe("CalendarService", () => {
         error: null,
       });
 
-      mockSupabaseClient.delete.mockReturnThis();
-      mockSupabaseClient.eq.mockReturnThis();
-      mockSupabaseClient.eq.mockResolvedValue({ error: null });
+      // The delete chain: .from().delete().eq().eq() — mockReturnThis() is already
+      // the default for all chain methods, so awaiting the chain resolves to
+      // mockSupabaseClient which destructures to { error: undefined } — no throw.
 
       const result = await service.deleteEvent(
         restaurantId,

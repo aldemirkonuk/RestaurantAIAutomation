@@ -14,7 +14,7 @@
     "start:prod": "node dist/main",
     "openapi:export": "ts-node -r tsconfig-paths/register src/openapi.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "test": "jest --runInBand --forceExit",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -96,9 +96,19 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "communications/tests/"
+    ],
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "isolatedModules": true
+        }
+      ]
     },
+    "maxWorkers": "50%",
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

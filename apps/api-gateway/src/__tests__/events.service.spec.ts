@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { EventsService } from "../events/events.service";
 import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 
 describe("EventsService", () => {
@@ -25,6 +26,14 @@ describe("EventsService", () => {
     supabase: mockSupabaseClient,
   };
 
+  const mockWebsocketGateway = {
+    server: {
+      to: jest.fn().mockReturnThis(),
+      in: jest.fn().mockReturnThis(),
+      emit: jest.fn(),
+    },
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -32,6 +41,10 @@ describe("EventsService", () => {
         {
           provide: DatabaseService,
           useValue: mockDatabaseService,
+        },
+        {
+          provide: WebsocketGateway,
+          useValue: mockWebsocketGateway,
         },
       ],
     }).compile();

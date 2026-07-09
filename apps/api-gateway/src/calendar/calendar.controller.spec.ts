@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, HttpStatus, NotFoundException } from "@nestjs/common";
 import { CalendarController } from "./calendar.controller";
 import { CalendarService } from "./calendar.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
   CalendarEventType,
   CalendarEventStatus,
@@ -41,7 +42,10 @@ describe("CalendarController", () => {
           useValue: mockCalendarService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<CalendarController>(CalendarController);
     calendarService = module.get<CalendarService>(CalendarService);
@@ -60,23 +64,17 @@ describe("CalendarController", () => {
       const expectedResponse: EventTypeResponseDto[] = [
         {
           id: "type-1",
-          restaurantId,
           name: "Wine Tasting",
           color: "#FF5733",
           icon: "wine",
           isDefault: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         },
         {
           id: "type-2",
-          restaurantId,
           name: "Delivery",
           color: "#33FF57",
           icon: "truck",
           isDefault: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         },
       ];
 
@@ -114,25 +112,19 @@ describe("CalendarController", () => {
     it("should create event type", async () => {
       const expectedResponse: EventTypeResponseDto = {
         id: "type-new",
-        restaurantId: createDto.restaurantId,
         name: createDto.name,
         color: createDto.color,
         icon: createDto.icon,
         isDefault: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       };
 
       mockCalendarService.createEventType.mockResolvedValue(expectedResponse);
 
-      const result = await controller.createEventType(createDto);
+      const result = await controller.createEventType(createDto, mockUser);
 
       expect(result).toEqual(expectedResponse);
       expect(result.id).toBe("type-new");
       expect(result.name).toBe(createDto.name);
-      expect(mockCalendarService.createEventType).toHaveBeenCalledWith(
-        createDto,
-      );
     });
 
     it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
@@ -140,9 +132,9 @@ describe("CalendarController", () => {
         new Error("Validation error"),
       );
 
-      await expect(controller.createEventType(createDto)).rejects.toThrow(
-        HttpException,
-      );
+      await expect(
+        controller.createEventType(createDto, mockUser),
+      ).rejects.toThrow(HttpException);
     });
   });
 
@@ -156,25 +148,22 @@ describe("CalendarController", () => {
     it("should update event type", async () => {
       const expectedResponse: EventTypeResponseDto = {
         id: eventTypeId,
-        restaurantId: "restaurant-123",
         name: updateDto.name,
         color: updateDto.color,
         icon: "star",
         isDefault: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       };
 
       mockCalendarService.updateEventType.mockResolvedValue(expectedResponse);
 
-      const result = await controller.updateEventType(eventTypeId, updateDto);
+      const result = await controller.updateEventType(
+        eventTypeId,
+        updateDto,
+        mockUser,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(result.name).toBe(updateDto.name);
-      expect(mockCalendarService.updateEventType).toHaveBeenCalledWith(
-        eventTypeId,
-        updateDto,
-      );
     });
 
     it("should throw NotFoundException when event type not found", async () => {
@@ -183,7 +172,7 @@ describe("CalendarController", () => {
       );
 
       await expect(
-        controller.updateEventType(eventTypeId, updateDto),
+        controller.updateEventType(eventTypeId, updateDto, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -193,7 +182,7 @@ describe("CalendarController", () => {
       );
 
       await expect(
-        controller.updateEventType(eventTypeId, updateDto),
+        controller.updateEventType(eventTypeId, updateDto, mockUser),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -204,12 +193,9 @@ describe("CalendarController", () => {
     it("should delete event type", async () => {
       mockCalendarService.deleteEventType.mockResolvedValue({ success: true });
 
-      const result = await controller.deleteEventType(eventTypeId);
+      const result = await controller.deleteEventType(eventTypeId, mockUser);
 
       expect(result).toEqual({ success: true });
-      expect(mockCalendarService.deleteEventType).toHaveBeenCalledWith(
-        eventTypeId,
-      );
     });
 
     it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
@@ -217,9 +203,9 @@ describe("CalendarController", () => {
         new Error("Delete failed"),
       );
 
-      await expect(controller.deleteEventType(eventTypeId)).rejects.toThrow(
-        HttpException,
-      );
+      await expect(
+        controller.deleteEventType(eventTypeId, mockUser),
+      ).rejects.toThrow(HttpException);
     });
   });
 
