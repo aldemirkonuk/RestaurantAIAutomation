@@ -1083,23 +1083,9 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
   }
 
   return (
-    <div className="relative flex px-4 group">
-      {/* Spine */}
-      <div className="flex-shrink-0 flex flex-col items-center w-8 mr-3">
-        {/* Dot */}
-        <div className={`w-5 h-5 rounded-full border-2 ${cfg.dotBorder} bg-white flex items-center justify-center z-10 mt-3 flex-shrink-0 shadow-sm`}>
-          {isPending ? (
-            <span className={`w-2 h-2 rounded-full ${cfg.dotBg} animate-pulse`} />
-          ) : (
-            <StatusIcon className={`w-2.5 h-2.5 ${cfg.textColor}`} />
-          )}
-        </div>
-        {/* Connector line */}
-        {!isLast && <div className="w-px flex-1 bg-gray-200 mt-1" />}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0 pb-4">
+    <div className={`relative group border-l-[3px] ${isInbound ? 'border-gray-200' : 'border-wine-400'}`}>
+      {/* Content — flat single-column email row (7a "The One") */}
+      <div className={`min-w-0 pl-3 pr-4 pb-4 ${!isLast ? 'border-b border-gray-100' : ''}`}>
         {/* Collapsed row — always visible, click to toggle */}
         <button
           type="button"
