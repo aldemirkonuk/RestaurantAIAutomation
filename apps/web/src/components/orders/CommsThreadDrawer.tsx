@@ -7,7 +7,7 @@ import {
   MailOpen, ChevronDown, Copy, Check, Sparkles, Ban,
   ArrowRight, MessageSquare, Activity, Mail, Pause, Play, Bot, PenLine, XCircle,
   AlertTriangle, MailSearch, ShieldCheck, ShieldAlert, FileText,
-  Filter, Tag, Download, Image as ImageIcon,
+  Filter, Tag, Download, Image as ImageIcon, FileSpreadsheet, FileType2, File as FileIcon,
 } from 'lucide-react'
 import {
   useOrderConversations,
@@ -1019,6 +1019,25 @@ function fileTypeLabel(filename: string, mimeType: string | null): string {
   return sub ? sub.toUpperCase() : 'FILE'
 }
 
+// File-type family, driven off extension + MIME — each gets a distinct icon/tint.
+type FileKind = 'pdf' | 'word' | 'sheet' | 'generic'
+
+function fileKind(filename: string, mimeType: string | null): FileKind {
+  const ext = (filename.includes('.') ? filename.split('.').pop() : '')?.toLowerCase() ?? ''
+  const mime = mimeType ?? ''
+  if (ext === 'pdf' || mime === 'application/pdf') return 'pdf'
+  if (['doc', 'docx'].includes(ext) || mime.includes('wordprocessingml') || mime === 'application/msword') return 'word'
+  if (['xls', 'xlsx', 'csv'].includes(ext) || mime.includes('spreadsheetml') || mime === 'application/vnd.ms-excel' || mime === 'text/csv') return 'sheet'
+  return 'generic'
+}
+
+const FILE_KIND_STYLE: Record<FileKind, { Icon: typeof FileText; color: string }> = {
+  pdf: { Icon: FileText, color: 'text-wine-600' },
+  word: { Icon: FileType2, color: 'text-blue-600' },
+  sheet: { Icon: FileSpreadsheet, color: 'text-emerald-600' },
+  generic: { Icon: FileIcon, color: 'text-gray-500' },
+}
+
 // Rich file-displayer (7a): image attachments preview as a media card with a
 // gradient filename overlay; everything else is a file card with a download affordance.
 function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
@@ -1057,6 +1076,7 @@ function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
           )
         }
 
+        const { Icon: KindIcon, color: kindColor } = FILE_KIND_STYLE[fileKind(a.filename, a.mimeType)]
         return (
           <a
             key={a.id}
@@ -1069,7 +1089,7 @@ function AttachmentCards({ items }: { items: OrderAttachmentDto[] }) {
             }`}
           >
             <span className="w-[38px] h-12 rounded-[7px] bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
-              <FileText className="w-4 h-4 text-wine-600" strokeWidth={1.8} />
+              <KindIcon className={`w-4 h-4 ${kindColor}`} strokeWidth={1.8} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[11.5px] font-semibold text-gray-700 truncate">{a.filename}</p>
