@@ -263,6 +263,27 @@ export function Orders() {
     [activeConversations],
   )
 
+  // Bucket AI-ready drafts by the *current* delivery-ops stage of their order,
+  // so the "N draft(s) ready" chip surfaces in whichever status box the order
+  // actually sits in today (Pending/Approved/Ordered/Delivered) rather than
+  // always assuming the order is still Pending.
+  const draftsByStatus = useMemo(() => {
+    const statusById = new Map(orders.map((o) => [o.order_id, o.status]))
+    const buckets: Record<'pending_approval' | 'approved' | 'ordered' | 'delivered', typeof activeConversations> = {
+      pending_approval: [],
+      approved: [],
+      ordered: [],
+      delivered: [],
+    }
+    activeConversations.forEach((c) => {
+      const status = statusById.get(c.orderId)
+      if (status && status in buckets) {
+        buckets[status as keyof typeof buckets].push(c)
+      }
+    })
+    return buckets
+  }, [activeConversations, orders])
+
   // Single entry-point guard. Pre-empts the wine picker when no vendors exist
   // so the user gets the actionable OrderGuardModal instead of a dead-end
   // "Add to Order" disabled button inside the picker.
@@ -1408,14 +1429,14 @@ Shadow stock has been moved to Live Stock.`)
           orderAnalytics={orderAnalytics}
           filterStatus={filterStatus}
           onToggleStatusFilter={toggleStatusFilter}
-          activeDraftsCount={activeConversations.length}
-          onActiveDraftsClick={() => {
-            const first = activeConversations[0]
+          draftsByStatus={draftsByStatus}
+          onDraftClick={(status) => {
+            const first = draftsByStatus[status][0]
             if (first) {
               setCommsDrawerOrder({
                 orderId: first.orderId,
                 wineName: first.wineName ?? 'Order',
-                orderStatus: 'pending_approval',
+                orderStatus: status,
               })
             }
           }}

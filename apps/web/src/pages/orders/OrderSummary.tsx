@@ -16,6 +16,8 @@ interface OrderAnalytics {
   valueChange: number
 }
 
+type DraftOrderStatus = 'pending_approval' | 'approved' | 'ordered' | 'delivered'
+
 interface OrderSummaryProps {
   pendingCount: number
   approvedCount: number
@@ -25,8 +27,22 @@ interface OrderSummaryProps {
   orderAnalytics: OrderAnalytics
   filterStatus: string
   onToggleStatusFilter: (status: string) => void
-  activeDraftsCount: number
-  onActiveDraftsClick: (orderId?: string) => void
+  /** AI-ready drafts, bucketed by the delivery-ops stage their order currently sits in. */
+  draftsByStatus: Record<DraftOrderStatus, unknown[]>
+  onDraftClick: (status: DraftOrderStatus) => void
+}
+
+function DraftReadyChip({ count, onClick }: { count: number; onClick: () => void }) {
+  if (count <= 0) return null
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      className="mt-2 flex items-center gap-1 text-xs bg-wine-50 text-wine-700 border border-wine-200 hover:bg-wine-100 transition-colors px-2 py-0.5 rounded-full"
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-wine-500 animate-pulse flex-shrink-0" />
+      {count} draft{count !== 1 ? 's' : ''} ready
+    </button>
+  )
 }
 
 export function OrderSummary({
@@ -38,8 +54,8 @@ export function OrderSummary({
   orderAnalytics,
   filterStatus,
   onToggleStatusFilter,
-  activeDraftsCount,
-  onActiveDraftsClick,
+  draftsByStatus,
+  onDraftClick,
 }: OrderSummaryProps) {
   return (
     <motion.div
@@ -60,15 +76,10 @@ export function OrderSummary({
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Pending</p>
             <p className="text-3xl font-bold text-yellow-600 mt-1">{pendingCount}</p>
             <p className="text-xs text-gray-500 mt-1">awaiting approval</p>
-            {activeDraftsCount > 0 && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onActiveDraftsClick() }}
-                className="mt-2 flex items-center gap-1 text-xs bg-wine-50 text-wine-700 border border-wine-200 hover:bg-wine-100 transition-colors px-2 py-0.5 rounded-full"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-wine-500 animate-pulse flex-shrink-0" />
-                {activeDraftsCount} draft{activeDraftsCount !== 1 ? 's' : ''} ready
-              </button>
-            )}
+            <DraftReadyChip
+              count={draftsByStatus.pending_approval.length}
+              onClick={() => onDraftClick('pending_approval')}
+            />
           </div>
           <div className="p-2 bg-yellow-100 rounded-lg">
             <Clock className="w-5 h-5 text-yellow-600" />
@@ -89,6 +100,10 @@ export function OrderSummary({
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Approved</p>
             <p className="text-3xl font-bold text-emerald-600 mt-1">{approvedCount}</p>
             <p className="text-xs text-gray-500 mt-1">ready to order</p>
+            <DraftReadyChip
+              count={draftsByStatus.approved.length}
+              onClick={() => onDraftClick('approved')}
+            />
           </div>
           <div className="p-2 bg-emerald-100 rounded-lg">
             <CheckCircle className="w-5 h-5 text-emerald-600" />
@@ -109,6 +124,10 @@ export function OrderSummary({
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Ordered</p>
             <p className="text-3xl font-bold text-blue-600 mt-1">{orderedCount}</p>
             <p className="text-xs text-gray-500 mt-1">in transit</p>
+            <DraftReadyChip
+              count={draftsByStatus.ordered.length}
+              onClick={() => onDraftClick('ordered')}
+            />
           </div>
           <div className="p-2 bg-blue-100 rounded-lg">
             <ShoppingCart className="w-5 h-5 text-blue-600" />
@@ -129,6 +148,10 @@ export function OrderSummary({
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Delivered</p>
             <p className="text-3xl font-bold text-purple-600 mt-1">{deliveredCount}</p>
             <p className="text-xs text-gray-500 mt-1">completed</p>
+            <DraftReadyChip
+              count={draftsByStatus.delivered.length}
+              onClick={() => onDraftClick('delivered')}
+            />
           </div>
           <div className="p-2 bg-purple-100 rounded-lg">
             <Truck className="w-5 h-5 text-purple-600" />
