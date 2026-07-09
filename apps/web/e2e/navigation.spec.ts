@@ -44,10 +44,21 @@ test.describe('Navigation Guards', () => {
     await expect(page.getByRole('link', { name: 'Certify' })).toBeVisible()
   })
 
-  test('register page has form fields', async ({ page }) => {
+  test('register page exposes account form fields', async ({ page }) => {
     await page.goto('/register')
-    // Register page should show email and password inputs — validates the route is functional
-    await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('#password')).toBeVisible()
+    // Register opens on a path selector ("Join Your Team" / "Open a Restaurant");
+    // the email/password inputs render only after choosing a flow. The
+    // "Open a Restaurant" (create) flow shows the account form (email + password)
+    // directly in step 1.
+    await expect(page.getByText('Open a Restaurant').first()).toBeVisible({
+      timeout: 10000,
+    })
+    await page.getByText('Open a Restaurant').first().click()
+    // Create flow step 1 ("Your Account") exposes email + password inputs
+    // (type-based; the inputs carry no ids or associated labels).
+    await expect(page.locator('input[type="email"]').first()).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(page.locator('input[type="password"]').first()).toBeVisible()
   })
 })
