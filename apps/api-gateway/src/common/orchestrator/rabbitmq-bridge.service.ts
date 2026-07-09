@@ -674,6 +674,39 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
+      // 2b. Fallback — vendors often reply in a fresh thread/subject rather than
+      // hitting "reply", so the exact gmail_thread_id match above can miss even
+      // though this is clearly a continuation of an active negotiation. Without
+      // this, the reply's price update has no order to attach to, and the only
+      // way forward looks like creating a brand-new order — producing a
+      // duplicate for what is really the same negotiation. Fall back to the
+      // most recent still-open order for this vendor+restaurant.
+      if (!orderId) {
+        const TERMINAL_ORDER_STATUSES = [
+          "CONFIRMED",
+          "IN_TRANSIT",
+          "DELIVERED",
+          "COMPLETED",
+          "CANCELLED",
+          "REJECTED",
+          "FAILED",
+        ];
+        const { data: openOrders } = await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("id, restaurant_id")
+          .eq("provider_id", provider.id)
+          .not("status", "in", `(${TERMINAL_ORDER_STATUSES.join(",")})`)
+          .order("requested_at", { ascending: false })
+          .limit(1);
+        if (openOrders?.[0]) {
+          orderId = openOrders[0].id;
+          restaurantId = openOrders[0].restaurant_id || restaurantId;
+          this.logger.log(
+            `handleInboundEmail: fallback-matched order ${orderId} for provider ${provider.id} (no gmail_thread_id hit)`,
+          );
+        }
+      }
+
       if (!restaurantId) {
         this.logger.warn(
           "handleInboundEmail: could not determine restaurant_id",

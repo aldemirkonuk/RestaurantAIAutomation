@@ -171,7 +171,7 @@ export class ProcurementService {
     restaurantId: string,
     userId: string,
     order: OrderResponseDto,
-    changeType: "created" | "approved" | "delivered" | "cancelled",
+    changeType: "created" | "updated" | "approved" | "delivered" | "cancelled",
   ): Promise<void> {
     try {
       await this.eventsService.createEvent(restaurantId, userId, {
@@ -230,10 +230,102 @@ export class ProcurementService {
       });
     }
 
-    const orderNumber = this.generateOrderNumber();
     const finalPrice = dto.finalPrice ?? dto.quotedPrice ?? 0;
     const totalCost = dto.totalCost ?? finalPrice * dto.quantity;
     const bottlesTotal = dto.quantity;
+
+    // Dedup guard: a price/quantity change for the same wine+vendor should
+    // update the existing open order, not spawn a second one. Match on
+    // restaurant + inventory + provider, excluding orders already past
+    // negotiation (confirmed/delivered/cancelled/rejected/failed).
+    const TERMINAL_STATUSES = [
+      ProcurementOrderStatus.CONFIRMED,
+      ProcurementOrderStatus.IN_TRANSIT,
+      ProcurementOrderStatus.DELIVERED,
+      ProcurementOrderStatus.COMPLETED,
+      ProcurementOrderStatus.CANCELLED,
+      ProcurementOrderStatus.REJECTED,
+      ProcurementOrderStatus.FAILED,
+    ];
+
+    const { data: existingRows, error: existingError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("*, inventory:inventory_id(wine_name)")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", dto.inventoryId)
+        .eq("provider_id", dto.providerId ?? "")
+        .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
+        .order("requested_at", { ascending: false })
+        .limit(1);
+
+    if (existingError) {
+      this.logger.warn("Dedup lookup for procurement order failed", {
+        restaurantId,
+        error: existingError.message,
+      });
+    }
+
+    const existing = existingRows?.[0] as any | undefined;
+
+    if (existing && dto.providerId) {
+      const { data: updated, error: updateError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .update({
+            quantity: dto.quantity,
+            unit_type: dto.unitType ?? "bottles",
+            bottles_total: bottlesTotal,
+            quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
+            negotiated_price:
+              dto.negotiatedPrice ?? existing.negotiated_price ?? null,
+            final_price: finalPrice,
+            total_cost: totalCost,
+            is_emergency: dto.isEmergency ?? existing.is_emergency,
+            priority_level: dto.priorityLevel ?? existing.priority_level,
+            manager_notes: dto.managerNotes ?? existing.manager_notes,
+            expected_delivery_date:
+              dto.expectedDeliveryDate ?? existing.expected_delivery_date,
+          })
+          .eq("id", existing.id)
+          .select("*, inventory:inventory_id(wine_name)")
+          .single();
+
+      if (updateError) {
+        this.logger.error("Failed to update existing procurement order", {
+          restaurantId,
+          orderId: existing.id,
+          error: updateError.message,
+        });
+        throw updateError;
+      }
+
+      this.logger.log("Merged order request into existing open order", {
+        restaurantId,
+        orderId: existing.id,
+        inventoryId: dto.inventoryId,
+        providerId: dto.providerId,
+      });
+
+      const updatedRow = updated as any;
+      const mergedRow: ProcurementOrderRow = {
+        ...updatedRow,
+        wine_name:
+          updatedRow.inventory?.wine_name ||
+          (updatedRow.inventory as any)?.wine?.name ||
+          null,
+      };
+      const mergedOrder = this.mapOrderRow(mergedRow);
+      await this.emitOrderChangeEvent(
+        restaurantId,
+        userId,
+        mergedOrder,
+        "updated",
+      );
+      return mergedOrder;
+    }
+
+    const orderNumber = this.generateOrderNumber();
 
     const payload = {
       order_number: orderNumber,

@@ -26,8 +26,10 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
     update: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     neq: jest.fn().mockReturnThis(),
+    not: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     single: mockSingle,
   };
 
