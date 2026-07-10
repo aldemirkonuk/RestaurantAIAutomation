@@ -85,6 +85,8 @@ export class InventoryService {
         : undefined,
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
+      // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
+      openMl: rollup?.open_ml ?? 0,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
       locations: locations ?? [],
     };
@@ -98,7 +100,7 @@ export class InventoryService {
       const { data } = await client
         .from("inventory_lot_rollup")
         .select(
-          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count",
+          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
         )
         .eq("restaurant_id", restaurantId);
       for (const r of data || []) map.set(r.inventory_id, r);
@@ -185,6 +187,55 @@ export class InventoryService {
           locations.get(inventoryId),
         )
       : null;
+  }
+
+  /** Phase 2 (2c) by-the-glass: record N glass pours (POS or manual). Depletes open bottle ml. */
+  async recordPour(
+    restaurantId: string,
+    inventoryId: string,
+    dto: {
+      pours?: number;
+      pourMl?: number | null;
+      locationId?: string | null;
+      source?: string;
+      reason?: string;
+    },
+  ) {
+    const client = this.dbService.getClient();
+    const { data: pourResult, error } = await client.rpc("record_glass_pour", {
+      p_inventory_id: inventoryId,
+      p_pours: dto.pours ?? 1,
+      p_pour_ml: dto.pourMl ?? null,
+      p_location_id: dto.locationId ?? null,
+      p_source: dto.source ?? "manual",
+      p_reason: dto.reason ?? null,
+    });
+    if (error) {
+      this.logger.error(`record_glass_pour failed: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+    const [row, rollup, locations] = await Promise.all([
+      client
+        .from("restaurant_inventory")
+        .select(
+          `*, master_wine_library (*), restaurants (default_pour_ml, measurement_unit)`,
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .single(),
+      this.fetchLotRollup(restaurantId),
+      this.fetchLocationBreakdown(restaurantId),
+    ]);
+    return {
+      pour: pourResult,
+      item: row.data
+        ? this.mapInventoryItem(
+            row.data,
+            rollup.get(inventoryId),
+            locations.get(inventoryId),
+          )
+        : null,
+    };
   }
 
   async getLowStockItems(restaurantId: string) {

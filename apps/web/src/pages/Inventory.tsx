@@ -613,6 +613,22 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
     [activeRestaurantId, queryClient],
   )
 
+  const handlePour = useCallback(
+    async (item: InventoryItem, pours = 1) => {
+      try {
+        await inventoryApi.recordPour(
+          item.inventoryId || item.id,
+          { pours, source: 'manual', reason: 'manual pour' },
+          activeRestaurantId || undefined,
+        )
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
+      } catch (err: any) {
+        alert(`Pour failed: ${err?.message || 'Unknown error'}`)
+      }
+    },
+    [activeRestaurantId, queryClient],
+  )
+
   const handleAutoLocate = useCallback(() => {
     const result = computeAutoLocatePlan(
       mergedInventory,
@@ -1232,13 +1248,30 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                         />
                       </td>
                       <td className="px-4 py-3 text-center w-24">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="text-lg font-semibold text-blue-600">{item.liveStock || 0}</span>
-                          {item.lastManualAdjustment && (
-                            <span className="text-amber-600" title={`Last adjusted by ${item.lastManualAdjustment.managerName} on ${new Date(item.lastManualAdjustment.timestamp).toLocaleString()}`}>
-                              🔧
+                        <div className="flex flex-col items-center leading-tight">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-lg font-semibold text-blue-600" title="Sealed bottles">{item.liveStock || 0}</span>
+                            {item.lastManualAdjustment && (
+                              <span className="text-amber-600" title={`Last adjusted by ${item.lastManualAdjustment.managerName} on ${new Date(item.lastManualAdjustment.timestamp).toLocaleString()}`}>
+                                🔧
+                              </span>
+                            )}
+                          </div>
+                          {(item.openMl ?? 0) > 0 && (
+                            <span className="text-[10px] text-purple-500" title="Open bottle remaining (by-the-glass)">
+                              +{item.openMl}ml open
                             </span>
                           )}
+                          {(item.saleType === 'glass' || item.saleType === 'both') &&
+                            ((item.liveStock || 0) > 0 || (item.openMl ?? 0) > 0) && (
+                              <button
+                                onClick={() => handlePour(item, 1)}
+                                className="mt-0.5 text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 hover:bg-purple-100 font-medium"
+                                title="Record one by-the-glass pour (manual override)"
+                              >
+                                🍷 Pour
+                              </button>
+                            )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center w-24">

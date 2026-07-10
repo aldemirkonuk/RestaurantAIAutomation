@@ -123,6 +123,30 @@ export async function transferStock(
   return response.data;
 }
 
+/**
+ * Record by-the-glass pours (POS-primary, manual override). Depletes open-bottle ml.
+ */
+export async function recordPour(
+  itemId: string,
+  body: {
+    pours?: number;
+    pourMl?: number | null;
+    locationId?: string | null;
+    source?: string;
+    reason?: string;
+  },
+  restaurantId?: string
+): Promise<{ pour: any; item: InventoryItem | null }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const response = await apiClient.post<{ pour: any; item: InventoryItem | null }>(
+    `${INVENTORY_PATH}/${id}/item/${itemId}/pour`,
+    body
+  );
+  return response.data;
+}
+
 // ==================== Toast Mapping Endpoints ====================
 
 /**
@@ -237,6 +261,7 @@ export const inventoryApi = {
   getInventoryItem,
   updateInventoryItem,
   transferStock,
+  recordPour,
   deleteInventoryItem,
   getUnmappedToastItems,
   findByToastGuid,

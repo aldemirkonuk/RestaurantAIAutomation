@@ -287,6 +287,31 @@ export class InventoryController {
     }
   }
 
+  @Post(":restaurantId/item/:itemId/pour")
+  @ApiOperation({ summary: "Record by-the-glass pours (POS or manual override)" })
+  async recordPour(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body()
+    dto: {
+      pours?: number;
+      pourMl?: number | null;
+      locationId?: string | null;
+      source?: string;
+      reason?: string;
+    },
+  ) {
+    try {
+      return await this.inventoryService.recordPour(restaurantId, itemId, dto);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to record pour",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Delete(":restaurantId/item/:itemId")
   @ApiOperation({
     summary: "Soft delete an inventory item (set is_active = false)",

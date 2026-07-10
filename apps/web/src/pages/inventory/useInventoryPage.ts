@@ -18,6 +18,7 @@ export interface InventoryItem extends Wine {
   wac?: number
   costProvenance?: 'invoice' | 'estimated'
   lotLocationCount?: number
+  openMl?: number
   locations?: { locationId: string | null; qty: number; wac: number | null }[]
   lastManualAdjustment?: {
     timestamp: Date
@@ -159,6 +160,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         wac: (item as any).wac ?? undefined,
         costProvenance: (item as any).costProvenance ?? undefined,
         lotLocationCount: (item as any).lotLocationCount ?? undefined,
+        openMl: (item as any).openMl ?? 0,
         locations: (item as any).locations ?? [],
       } as InventoryItem
     })

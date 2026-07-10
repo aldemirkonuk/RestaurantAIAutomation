@@ -60,6 +60,7 @@ export interface InventoryItem {
   costProvenance?: 'invoice' | 'estimated';
   lotLiveQty?: number;
   lotLocationCount?: number;
+  openMl?: number;
   locations?: WineLocationBreakdown[];
 }
 
