@@ -871,66 +871,59 @@ class InventoryRepository(BaseRepository[InventoryItem]):
         reason: str = "automated",
         max_retries: int = 3,
     ) -> Optional[InventoryItem]:
-        """Update stock using optimistic locking (BUG-01 fix).
+        """Set live stock via the apply_stock_movement RPC (Phase 2 write cutover).
 
-        Pattern: SELECT current version → UPDATE WHERE version = N SET version = N+1
-        → if 0 rows returned, another writer incremented version first → retry.
-        Max 3 attempts. Returns None if all retries exhausted.
+        stock_live is now a PROJECTION of inventory_lots — a direct write would desync from the
+        lots and get clobbered by the projection trigger. Read the current projection, compute the
+        signed delta, and apply it through the RPC (delta-based, row-locked via FOR UPDATE,
+        idempotent, negative-guarded, ledger-writing). This replaces the old optimistic-lock CAS +
+        retry-then-drop, which the SOTA audit flagged as a lost-update / dropped-write risk.
+        `max_retries` is retained only for call-site signature compatibility.
         """
-        for attempt in range(max_retries):
-            # 1. Read current version (always fresh — no cache)
-            current = (
-                self.supabase.table(self.table_name)
-                .select("id, stock_live, version")
-                .eq("id", inventory_id)
-                .single()
-                .execute()
-            ).data
+        current = (
+            self.supabase.table(self.table_name)
+            .select("id, stock_live")
+            .eq("id", inventory_id)
+            .single()
+            .execute()
+        ).data
 
-            if not current:
-                logger.warning(f"update_stock: inventory_id {inventory_id} not found")
+        if not current:
+            logger.warning(f"update_stock: inventory_id {inventory_id} not found")
+            return None
+
+        delta = int(new_stock) - int(current.get("stock_live") or 0)
+        if delta != 0:
+            try:
+                self.supabase.rpc(
+                    "apply_stock_movement",
+                    {
+                        "p_inventory_id": inventory_id,
+                        "p_stock_state": "live",
+                        "p_delta": delta,
+                        "p_transaction_type": "purchase" if delta > 0 else "adjustment",
+                        "p_source": "system",
+                        "p_reason": reason,
+                    },
+                ).execute()
+            except Exception as e:
+                logger.error(
+                    f"update_stock: apply_stock_movement failed for {inventory_id}: {e}"
+                )
                 return None
 
-            expected_version = current["version"]
-
-            # 2. Attempt conditional UPDATE: only succeeds if version hasn't changed
-            result = (
-                self.supabase.table(self.table_name)
-                .update(
-                    {
-                        "stock_live": new_stock,
-                        "version": expected_version + 1,
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }
-                )
-                .eq("id", inventory_id)
-                .eq("version", expected_version)  # ← optimistic lock predicate
-                .execute()
-            ).data
-
-            if result:
-                # Update succeeded — fire-and-forget audit log
-                asyncio.create_task(
-                    self._log_stock_change(inventory_id, new_stock, reason)
-                )
-                # Parse and return the updated item
-                try:
-                    return InventoryItem.model_validate(result[0])
-                except Exception:
-                    return result[0]  # return raw dict if model parse fails
-
-            # 3. Empty result means version conflict — another writer won this race.
-            # Log warning and retry with freshly-read version.
-            logger.warning(
-                f"update_stock conflict on attempt {attempt + 1}/{max_retries} "
-                f"for inventory_id={inventory_id} (expected version={expected_version}). "
-                f"Retrying..."
-            )
-
-        logger.error(
-            f"update_stock: all {max_retries} retries exhausted for {inventory_id}. "
-            f"Stock update dropped — investigate high write contention."
-        )
+        updated = (
+            self.supabase.table(self.table_name)
+            .select("*")
+            .eq("id", inventory_id)
+            .single()
+            .execute()
+        ).data
+        if updated:
+            try:
+                return InventoryItem.model_validate(updated)
+            except Exception:
+                return updated
         return None
 
     async def _log_stock_change(

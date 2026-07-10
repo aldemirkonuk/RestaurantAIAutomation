@@ -720,6 +720,8 @@ export class ProcurementService {
     quantity: number,
   ): Promise<void> {
     try {
+      // Shadow stock is a projection of inventory_lots — release via the ledger RPC, clamped
+      // to what is actually on-order (floor at 0). in_transit_quantity is a separate display counter.
       const { data: inv } = await this.databaseService.supabase
         .from("restaurant_inventory")
         .select("shadow_stock, in_transit_quantity")
@@ -730,10 +732,24 @@ export class ProcurementService {
       if (inv) {
         const currentShadow = (inv as any).shadow_stock ?? 0;
         const currentInTransit = (inv as any).in_transit_quantity ?? 0;
+        const release = Math.min(quantity, currentShadow);
+        if (release > 0) {
+          const { error } = await this.databaseService.supabase.rpc(
+            "apply_stock_movement",
+            {
+              p_inventory_id: inventoryId,
+              p_stock_state: "shadow",
+              p_delta: -release,
+              p_transaction_type: "adjustment",
+              p_source: "order",
+              p_reason: "released on order close",
+            },
+          );
+          if (error) throw new Error(error.message);
+        }
         await this.databaseService.supabase
           .from("restaurant_inventory")
           .update({
-            shadow_stock: Math.max(0, currentShadow - quantity),
             in_transit_quantity: Math.max(0, currentInTransit - quantity),
           })
           .eq("restaurant_id", restaurantId)
@@ -754,28 +770,37 @@ export class ProcurementService {
     quantity: number,
   ): Promise<void> {
     try {
+      // Shadow stock is a projection of inventory_lots — reserve via the ledger RPC (creates a
+      // shadow lot). in_transit_quantity is a separate denormalized display counter.
+      const { error } = await this.databaseService.supabase.rpc(
+        "apply_stock_movement",
+        {
+          p_inventory_id: inventoryId,
+          p_stock_state: "shadow",
+          p_delta: quantity,
+          p_transaction_type: "purchase",
+          p_source: "order",
+          p_reason: "reserved on order placement",
+        },
+      );
+      if (error) throw new Error(error.message);
+
       const { data: inv } = await this.databaseService.supabase
         .from("restaurant_inventory")
-        .select("shadow_stock, in_transit_quantity")
+        .select("in_transit_quantity")
         .eq("restaurant_id", restaurantId)
         .eq("id", inventoryId)
         .single();
-
-      if (inv) {
-        const currentShadow = (inv as any).shadow_stock ?? 0;
-        const currentInTransit = (inv as any).in_transit_quantity ?? 0;
-        await this.databaseService.supabase
-          .from("restaurant_inventory")
-          .update({
-            shadow_stock: currentShadow + quantity,
-            in_transit_quantity: currentInTransit + quantity,
-          })
-          .eq("restaurant_id", restaurantId)
-          .eq("id", inventoryId);
-        this.logger.log(
-          `Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
-        );
-      }
+      await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .update({
+          in_transit_quantity: ((inv as any)?.in_transit_quantity ?? 0) + quantity,
+        })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId);
+      this.logger.log(
+        `Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
+      );
     } catch (e: any) {
       this.logger.warn(`reserveOrderShadowStock failed: ${e?.message}`);
     }
@@ -936,22 +961,48 @@ export class ProcurementService {
             : inventoryRow?.master_wine_id;
 
           if (masterWineId) {
+            // Move shadow -> live through the ledger RPC (lots = source of truth). Two idempotent
+            // movements: release the reserved shadow, then receive the physical lot at cost.
             const { data: currentStock } = await this.databaseService.supabase
               .from("restaurant_inventory")
-              .select("shadow_stock, stock_live, in_transit_quantity")
+              .select("shadow_stock, in_transit_quantity")
               .eq("restaurant_id", restaurantId)
               .eq("id", order.inventoryId)
               .single();
 
             const currentShadow = currentStock?.shadow_stock ?? 0;
-            const currentLive = currentStock?.stock_live ?? 0;
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
+            const shadowRelease = Math.min(resolvedQuantity, currentShadow);
+            const unitCost = (row.final_price ?? row.suggested_price) ?? null;
 
+            if (shadowRelease > 0) {
+              await this.databaseService.supabase.rpc("apply_stock_movement", {
+                p_inventory_id: order.inventoryId,
+                p_stock_state: "shadow",
+                p_delta: -shadowRelease,
+                p_transaction_type: "adjustment",
+                p_source: "order",
+                p_reason: "shadow released on delivery",
+                p_order_id: orderId,
+                p_idempotency_key: `order-delivered-shadow:${orderId}`,
+              });
+            }
+            await this.databaseService.supabase.rpc("apply_stock_movement", {
+              p_inventory_id: order.inventoryId,
+              p_stock_state: "live",
+              p_delta: resolvedQuantity,
+              p_transaction_type: "purchase",
+              p_source: "order",
+              p_reason: "order delivered — physical receipt",
+              p_unit_cost: unitCost,
+              p_order_id: orderId,
+              p_idempotency_key: `order-delivered-live:${orderId}`,
+            });
+
+            // in_transit_quantity is a separate denormalized display counter.
             await this.databaseService.supabase
               .from("restaurant_inventory")
               .update({
-                shadow_stock: Math.max(0, currentShadow - resolvedQuantity),
-                stock_live: currentLive + resolvedQuantity,
                 in_transit_quantity: Math.max(
                   0,
                   currentInTransit - resolvedQuantity,
@@ -959,23 +1010,6 @@ export class ProcurementService {
               })
               .eq("restaurant_id", restaurantId)
               .eq("id", order.inventoryId);
-
-            await this.inventoryLedgerService.createTransaction(
-              restaurantId,
-              userId,
-              {
-                inventoryId: order.inventoryId,
-                wineId: masterWineId,
-                transactionType: TransactionType.PURCHASE,
-                source: TransactionSource.ORDER,
-                quantityChange: resolvedQuantity,
-                stockType: StockType.LIVE,
-                orderId,
-                referenceType: "order",
-                referenceId: orderId,
-                reason: "Order delivered — shadow to physical conversion",
-              },
-            );
           }
 
           await this.databaseService.supabase.from("inventory_events").insert({
