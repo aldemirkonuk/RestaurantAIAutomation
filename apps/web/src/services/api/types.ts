@@ -60,6 +60,13 @@ export interface InventoryItem {
   costProvenance?: 'invoice' | 'estimated';
   lotLiveQty?: number;
   lotLocationCount?: number;
+  locations?: WineLocationBreakdown[];
+}
+
+export interface WineLocationBreakdown {
+  locationId: string | null;
+  qty: number;
+  wac: number | null;
 }
 
 export interface InventorySummary {

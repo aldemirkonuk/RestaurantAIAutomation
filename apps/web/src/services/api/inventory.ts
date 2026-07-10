@@ -100,6 +100,29 @@ export async function updateInventoryItem(
   return response.data;
 }
 
+/**
+ * Move bottles of a wine between storage locations (null = unassigned). Multi-location.
+ */
+export async function transferStock(
+  itemId: string,
+  body: {
+    fromLocationId?: string | null;
+    toLocationId?: string | null;
+    qty: number;
+    reason?: string;
+  },
+  restaurantId?: string
+): Promise<InventoryItem> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const response = await apiClient.post<InventoryItem>(
+    `${INVENTORY_PATH}/${id}/item/${itemId}/transfer`,
+    body
+  );
+  return response.data;
+}
+
 // ==================== Toast Mapping Endpoints ====================
 
 /**
@@ -213,6 +236,7 @@ export const inventoryApi = {
   getInventorySummary,
   getInventoryItem,
   updateInventoryItem,
+  transferStock,
   deleteInventoryItem,
   getUnmappedToastItems,
   findByToastGuid,

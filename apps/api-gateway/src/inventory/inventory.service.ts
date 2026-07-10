@@ -35,6 +35,7 @@ export class InventoryService {
   private mapInventoryItem(
     row: Record<string, any>,
     rollup?: Record<string, any>,
+    locations?: any[],
   ): Record<string, any> {
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
@@ -84,6 +85,8 @@ export class InventoryService {
         : undefined,
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
+      // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
+      locations: locations ?? [],
     };
   }
 
@@ -105,15 +108,83 @@ export class InventoryService {
     return map;
   }
 
+  /** Phase 2 multi-location: per-inventory live lot quantities by location. */
+  private async fetchLocationBreakdown(
+    restaurantId: string,
+  ): Promise<Map<string, any[]>> {
+    const map = new Map<string, any[]>();
+    try {
+      const client = this.dbService.getClient();
+      const { data } = await client
+        .from("inventory_location_breakdown")
+        .select("inventory_id, location_id, qty, wac")
+        .eq("restaurant_id", restaurantId)
+        .eq("stock_state", "live");
+      for (const r of data || []) {
+        const arr = map.get(r.inventory_id) ?? [];
+        arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
+        map.set(r.inventory_id, arr);
+      }
+    } catch (err: any) {
+      this.logger.warn(`fetchLocationBreakdown failed: ${err?.message}`);
+    }
+    return map;
+  }
+
   async getRestaurantInventory(restaurantId: string) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup] = await Promise.all([
+    const [data, rollup, locations] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
       this.fetchLotRollup(restaurantId),
+      this.fetchLocationBreakdown(restaurantId),
     ]);
     return (data || []).map((row) =>
-      this.mapInventoryItem(row, rollup.get(row.id)),
+      this.mapInventoryItem(row, rollup.get(row.id), locations.get(row.id)),
     );
+  }
+
+  /** Phase 2 multi-location: move bottles of a wine between locations (null = unassigned). */
+  async transferStock(
+    restaurantId: string,
+    inventoryId: string,
+    dto: {
+      fromLocationId?: string | null;
+      toLocationId?: string | null;
+      qty: number;
+      reason?: string;
+    },
+  ) {
+    const client = this.dbService.getClient();
+    const { error } = await client.rpc("transfer_stock", {
+      p_inventory_id: inventoryId,
+      p_from_location_id: dto.fromLocationId ?? null,
+      p_to_location_id: dto.toLocationId ?? null,
+      p_qty: dto.qty,
+      p_reason: dto.reason ?? "location transfer",
+    });
+    if (error) {
+      this.logger.error(`transfer_stock failed: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+    const [row, rollup, locations] = await Promise.all([
+      client
+        .from("restaurant_inventory")
+        .select(
+          `*, master_wine_library (*), restaurants (default_pour_ml, measurement_unit)`,
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .single(),
+      this.fetchLotRollup(restaurantId),
+      this.fetchLocationBreakdown(restaurantId),
+    ]);
+    return row.data
+      ? this.mapInventoryItem(
+          row.data,
+          rollup.get(inventoryId),
+          locations.get(inventoryId),
+        )
+      : null;
   }
 
   async getLowStockItems(restaurantId: string) {

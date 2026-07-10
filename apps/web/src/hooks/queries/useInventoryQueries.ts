@@ -34,6 +34,7 @@ function normalizeInventoryItem(item: any): InventoryItem {
     wac: item.wac ?? undefined,
     costProvenance: item.costProvenance ?? undefined,
     lotLocationCount: item.lotLocationCount ?? undefined,
+    locations: item.locations ?? [],
   }
 }
 

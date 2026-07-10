@@ -258,6 +258,35 @@ export class InventoryController {
     }
   }
 
+  @Post(":restaurantId/item/:itemId/transfer")
+  @ApiOperation({ summary: "Move bottles of a wine between storage locations" })
+  @ApiResponse({ status: 200, type: InventoryItemResponseDto })
+  async transferStock(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body()
+    dto: {
+      fromLocationId?: string | null;
+      toLocationId?: string | null;
+      qty: number;
+      reason?: string;
+    },
+  ) {
+    try {
+      return await this.inventoryService.transferStock(
+        restaurantId,
+        itemId,
+        dto,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to transfer stock",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Delete(":restaurantId/item/:itemId")
   @ApiOperation({
     summary: "Soft delete an inventory item (set is_active = false)",

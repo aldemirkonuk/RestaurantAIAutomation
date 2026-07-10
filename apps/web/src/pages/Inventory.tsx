@@ -31,7 +31,7 @@ import { classifyStock } from '../lib/inventoryStatus'
 import { AddWineToInventoryModal } from '../components/inventory/AddWineToInventoryModal'
 import { ManualOverrideModal, ManualOverrideData } from '../components/inventory/ManualOverrideModal'
 import { StorageLocationManager } from '../components/inventory/StorageLocationManager'
-import { LocationPickerCell } from '../components/inventory/LocationPickerCell'
+import { MultiLocationCell } from '../components/inventory/MultiLocationCell'
 import { useStorageLocations } from '../hooks/useStorageLocations'
 import { exportInventory, ExportFormat } from '../lib/exportHelpers'
 import { formatVolume } from '../utils/volumeUtils'
@@ -61,7 +61,7 @@ export function Inventory() {
   const { dispatchInventoryUpdate, dispatchWineUpdate } = useRealtimeDispatch()
   const { activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
-  const { locations: storageLocations, setLocations: setStorageLocations, getWineLocation, getLocationsWithActualCounts, assignWineToLocation, removeWineFromLocation, mappings } = useStorageLocations()
+  const { locations: storageLocations, setLocations: setStorageLocations, getWineLocation, getLocationsWithActualCounts, assignWineToLocation, mappings } = useStorageLocations()
   const createInventoryItem = useCreateInventoryItem()
 
   /** Row IDs soft-deleted in this session; keeps row hidden when refetch fails and TanStack restores stale cache */
@@ -590,6 +590,28 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
     await exportInventory(exportFormat, exportData, metrics)
     setShowExportModal(false)
   }
+
+  const handleTransfer = useCallback(
+    async (
+      inventoryId: string,
+      fromLocationId: string | null,
+      toLocationId: string,
+      qty: number,
+    ) => {
+      try {
+        await inventoryApi.transferStock(
+          inventoryId,
+          { fromLocationId, toLocationId, qty },
+          activeRestaurantId || undefined,
+        )
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
+      } catch (err: any) {
+        alert(`Transfer failed: ${err?.message || 'Unknown error'}`)
+        throw err
+      }
+    },
+    [activeRestaurantId, queryClient],
+  )
 
   const handleAutoLocate = useCallback(() => {
     const result = computeAutoLocatePlan(
@@ -1194,27 +1216,19 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 w-32 relative">
-                        <LocationPickerCell
-                          wineId={item.id}
-                          quantity={(item.liveStock || 0) + (item.shadowStock || 0)}
-                          assignedQty={mappings.find(m => m.wineId === item.id)?.quantity}
+                      <td className="px-4 py-3 w-40 relative">
+                        <MultiLocationCell
+                          totalLive={item.liveStock || 0}
+                          breakdown={item.locations ?? []}
                           locations={storageLocations}
-                          currentLocation={getWineLocation(item.id)}
-                          onAssign={(locationId, qty) => {
-                            assignWineToLocation(item.id, locationId, qty)
-                            setInventory(prev => prev.map(inv =>
-                              inv.id === item.id
-                                ? { ...inv, storageLocation: storageLocations.find(l => l.id === locationId)?.name }
-                                : inv
-                            ))
-                          }}
-                          onRemove={() => {
-                            removeWineFromLocation(item.id)
-                            setInventory(prev => prev.map(inv =>
-                              inv.id === item.id ? { ...inv, storageLocation: undefined } : inv
-                            ))
-                          }}
+                          onTransfer={(fromLocationId, toLocationId, qty) =>
+                            handleTransfer(
+                              item.inventoryId || item.id,
+                              fromLocationId,
+                              toLocationId,
+                              qty,
+                            )
+                          }
                         />
                       </td>
                       <td className="px-4 py-3 text-center w-24">
