@@ -326,7 +326,12 @@ describe("InventoryLedgerService", () => {
     });
   });
 
-  describe("reconcileInventory", () => {
+  // QUARANTINED (Phase 1 · 1.4 / D4): these tests mock `{ live_stock: 10 }` — a column that
+  // does NOT exist on restaurant_inventory (the real column is `stock_live`). The service reads
+  // that same ghost column, so against the real schema reconcileInventory 500s while these tests
+  // stay green. Skipped (not deleted) until the corrected ledger is ported in Phase 2
+  // (.planning/INVENTORY_SOTA_PLAN.md §6b / §9A). A green test on a ghost column is worse than a red one.
+  describe.skip("reconcileInventory", () => {
     const restaurantId = "restaurant-123";
     const userId = "user-456";
 

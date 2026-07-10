@@ -3,6 +3,7 @@ import { Wine } from '../../data/wineData'
 import { useInventoryData } from '../../hooks/useInventoryData'
 import { useWinesByIds } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
+import { classifyStock } from '../../lib/inventoryStatus'
 
 export interface InventoryItem extends Wine {
   inventoryId?: string
@@ -13,6 +14,7 @@ export interface InventoryItem extends Wine {
   threshold: number
   lastCounted: string | null
   isActive: boolean
+  marketPrice?: number
   lastManualAdjustment?: {
     timestamp: Date
     managerName: string
@@ -20,7 +22,7 @@ export interface InventoryItem extends Wine {
 }
 
 export type ViewMode = 'all' | 'live' | 'shadow'
-export type SortField = 'name' | 'liveStock' | 'shadowStock' | 'price' | 'menuPrice' | 'margin' | 'threshold' | 'bottleSizeMl'
+export type SortField = 'name' | 'liveStock' | 'shadowStock' | 'price' | 'menuPrice' | 'margin' | 'threshold' | 'bottleSizeMl' | 'type' | 'location'
 export type SortOrder = 'asc' | 'desc'
 
 function calculateMargin(costPrice: number, menuPrice?: number): number {
@@ -149,6 +151,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         saleType: item.saleType ?? fallback.saleType,
         pourSizeMl: item.pourSizeMl ?? fallback.pourSizeMl,
         menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
+        marketPrice: (item as any).retailPriceAvg ?? undefined,
       } as InventoryItem
     })
   }, [visibleApiInventory, inventoryLoading, winesById])
@@ -172,18 +175,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       items = items.filter(item => item.type === filterType)
     }
 
-    // Status filter
+    // Status filter (shared classifier — cards, badges, and filters agree)
     if (filterStatus !== 'all') {
-      if (filterStatus === 'critical') {
-        items = items.filter(item => (item.liveStock || 0) <= item.threshold * 0.5)
-      } else if (filterStatus === 'low') {
-        items = items.filter(item =>
-          (item.liveStock || 0) > item.threshold * 0.5 &&
-          (item.liveStock || 0) <= item.threshold
-        )
-      } else if (filterStatus === 'healthy') {
-        items = items.filter(item => (item.liveStock || 0) > item.threshold)
-      }
+      items = items.filter(item => classifyStock(item.liveStock, item.threshold).key === filterStatus)
     }
 
     // Active status filter
@@ -241,6 +235,15 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
           aVal = a.bottleSizeMl || 750
           bVal = b.bottleSizeMl || 750
           break
+        case 'type':
+          aVal = (a.type || '').toLowerCase()
+          bVal = (b.type || '').toLowerCase()
+          break
+        case 'location':
+          // Location name is resolved on the page (getWineLocation); the page re-sorts.
+          aVal = 0
+          bVal = 0
+          break
         default:
           aVal = a.name
           bVal = b.name
@@ -269,15 +272,13 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     const total = inventory.length
     const liveTotal = inventory.reduce((sum, item) => sum + (item.liveStock || 0), 0)
     const shadowTotal = inventory.reduce((sum, item) => sum + (item.shadowStock || 0), 0)
-    const critical = inventory.filter(item => (item.liveStock || 0) <= item.threshold * 0.5).length
-    const low = inventory.filter(item =>
-      (item.liveStock || 0) > item.threshold * 0.5 &&
-      (item.liveStock || 0) <= item.threshold
-    ).length
-    const healthy = inventory.filter(item => (item.liveStock || 0) > item.threshold).length
+    const critical = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'critical').length
+    const low = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'low').length
+    const healthy = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'healthy').length
+    const unknown = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'unknown').length
     const needsReconciliation = inventory.filter(item => (item.shadowStock || 0) > 0).length
 
-    return { total, liveTotal, shadowTotal, critical, low, healthy, needsReconciliation }
+    return { total, liveTotal, shadowTotal, critical, low, healthy, unknown, needsReconciliation }
   }, [inventory])
 
   const uniqueBottleSizes = useMemo(() => {

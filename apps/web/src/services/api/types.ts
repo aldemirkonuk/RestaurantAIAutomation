@@ -52,6 +52,9 @@ export interface InventoryItem {
   wineProducer?: string;
   wineVintage?: number;
   providerName?: string;
+  // Pricing intelligence (Phase-10: retail_price_avg from master_wine_library; markup on the inventory row)
+  retailPriceAvg?: number;
+  markupRatio?: number;
 }
 
 export interface InventorySummary {

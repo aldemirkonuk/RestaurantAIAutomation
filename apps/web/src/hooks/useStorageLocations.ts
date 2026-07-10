@@ -198,42 +198,42 @@ export function useStorageLocations() {
 
   const assignWineToLocation = useCallback(
     (wineId: string, locationId: string, quantity: number = 1) => {
+      // Read the current mapping from cache BEFORE mutating, so the location-count
+      // adjustment is a separate top-level update instead of a side effect nested
+      // inside the setMappings updater — that nesting made counts lag by one
+      // interaction (the "click twice to see it update" bug).
+      const existing = mappings.find((m) => m.wineId === wineId)
+      const oldLocationId = existing?.locationId
+
       setMappings((prev) => {
-        const existing = prev.find((m) => m.wineId === wineId)
-        const oldLocationId = existing?.locationId
-
-        let updated: WineLocationMapping[]
-
-        if (existing) {
-          updated = prev.map((m) =>
+        const found = prev.find((m) => m.wineId === wineId)
+        if (found) {
+          return prev.map((m) =>
             m.wineId === wineId
               ? { ...m, locationId, quantity, assignedAt: new Date().toISOString() }
               : m,
           )
-        } else {
-          updated = [
-            ...prev,
-            { wineId, locationId, quantity, assignedAt: new Date().toISOString() },
-          ]
         }
-
-        setLocations((locs) =>
-          locs.map((loc) => {
-            if (loc.id === locationId) {
-              return { ...loc, currentCount: loc.currentCount + quantity }
-            }
-            if (oldLocationId && loc.id === oldLocationId && existing) {
-              return {
-                ...loc,
-                currentCount: Math.max(0, loc.currentCount - existing.quantity),
-              }
-            }
-            return loc
-          }),
-        )
-
-        return updated
+        return [
+          ...prev,
+          { wineId, locationId, quantity, assignedAt: new Date().toISOString() },
+        ]
       })
+
+      setLocations((locs) =>
+        locs.map((loc) => {
+          if (loc.id === locationId) {
+            return { ...loc, currentCount: loc.currentCount + quantity }
+          }
+          if (oldLocationId && loc.id === oldLocationId && existing) {
+            return {
+              ...loc,
+              currentCount: Math.max(0, loc.currentCount - existing.quantity),
+            }
+          }
+          return loc
+        }),
+      )
 
       // Only hit the server when locationId is a real UUID (not a temp/default ID)
       if (UUID_RE.test(locationId)) {
@@ -245,7 +245,7 @@ export function useStorageLocations() {
       }
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
     },
-    [setMappings, setLocations, persistToServer, restaurantId],
+    [mappings, setMappings, setLocations, persistToServer, restaurantId, queryClient],
   )
 
   const removeWineFromLocation = useCallback(
@@ -270,26 +270,24 @@ export function useStorageLocations() {
 
   const updateWineQuantityAtLocation = useCallback(
     (wineId: string, newQuantity: number) => {
-      setMappings((prev) => {
-        const existing = prev.find((m) => m.wineId === wineId)
-        if (!existing) return prev
+      // Same fix as assignWineToLocation: hoist the location-count update out of
+      // the setMappings updater so it commits in the same pass, not one behind.
+      const existing = mappings.find((m) => m.wineId === wineId)
+      if (!existing) return
+      const diff = newQuantity - existing.quantity
 
-        const diff = newQuantity - existing.quantity
-
-        setLocations((locs) =>
-          locs.map((loc) =>
-            loc.id === existing.locationId
-              ? { ...loc, currentCount: Math.max(0, loc.currentCount + diff) }
-              : loc,
-          ),
-        )
-
-        return prev.map((m) =>
-          m.wineId === wineId ? { ...m, quantity: newQuantity } : m,
-        )
-      })
+      setMappings((prev) =>
+        prev.map((m) => (m.wineId === wineId ? { ...m, quantity: newQuantity } : m)),
+      )
+      setLocations((locs) =>
+        locs.map((loc) =>
+          loc.id === existing.locationId
+            ? { ...loc, currentCount: Math.max(0, loc.currentCount + diff) }
+            : loc,
+        ),
+      )
     },
-    [setMappings, setLocations],
+    [mappings, setMappings, setLocations],
   )
 
   const addLocation = useCallback(

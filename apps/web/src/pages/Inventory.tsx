@@ -27,6 +27,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { getWineTypeColor, Wine } from '../data/wineData'
+import { classifyStock } from '../lib/inventoryStatus'
 import { AddWineToInventoryModal } from '../components/inventory/AddWineToInventoryModal'
 import { ManualOverrideModal, ManualOverrideData } from '../components/inventory/ManualOverrideModal'
 import { StorageLocationManager } from '../components/inventory/StorageLocationManager'
@@ -80,7 +81,7 @@ export function Inventory() {
     viewMode, setViewMode,
     selectedLocationFilter, setSelectedLocationFilter,
     clearFilters,
-    sortField: _sortField, sortOrder: _sortOrder, toggleSort,
+    sortField, sortOrder, toggleSort,
     selectedItems, toggleSelection, setSelectedItems,
     inventory,
     isLoading: _inventoryLoading,
@@ -111,13 +112,23 @@ export function Inventory() {
     })
   }, [inventory, localOverrides])
 
-  // Apply location chip filter on top of text/type/status filters
-  const displayedInventory = useMemo(
-    () => selectedLocationFilter
+  // Apply location chip filter on top of text/type/status filters, then (optionally)
+  // sort by location name — resolved here since the mapping lives on the page, not the hook.
+  const displayedInventory = useMemo(() => {
+    let items = selectedLocationFilter
       ? filteredInventory.filter(item => getWineLocation(item.id)?.id === selectedLocationFilter)
-      : filteredInventory,
-    [filteredInventory, selectedLocationFilter, getWineLocation]
-  )
+      : filteredInventory
+    if (sortField === 'location') {
+      items = [...items].sort((a, b) => {
+        const an = getWineLocation(a.id)?.name?.toLowerCase() ?? '￿' // unassigned sorts last
+        const bn = getWineLocation(b.id)?.name?.toLowerCase() ?? '￿'
+        if (an < bn) return sortOrder === 'asc' ? -1 : 1
+        if (an > bn) return sortOrder === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    return items
+  }, [filteredInventory, selectedLocationFilter, getWineLocation, sortField, sortOrder])
 
   // Compatibility wrapper — translates old setInventory calls to localOverrides
   const setInventory = useCallback(
@@ -282,13 +293,7 @@ export function Inventory() {
   // Subscribe to realtime inventory updates
   useTypedInventorySubscription(handleInventoryUpdate)
 
-  const getStockStatus = (item: InventoryItem) => {
-    const stock = item.liveStock || 0
-    const ratio = stock / item.threshold
-    if (ratio <= 0.5) return { label: 'Critical', color: 'rose', bg: 'bg-rose-100', text: 'text-rose-700' }
-    if (ratio <= 1) return { label: 'Low', color: 'amber', bg: 'bg-amber-100', text: 'text-amber-700' }
-    return { label: 'Healthy', color: 'emerald', bg: 'bg-emerald-100', text: 'text-emerald-700' }
-  }
+  const getStockStatus = (item: InventoryItem) => classifyStock(item.liveStock, item.threshold)
 
   const handleReconcile = async () => {
     if (!reconcileModal || !actualCount) return
@@ -613,8 +618,9 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500">Total Wines</p>
+            <p className="text-sm text-gray-500">Unique Wines</p>
             <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{(stats.liveTotal + stats.shadowTotal).toLocaleString()} bottles total</p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
             <div className="flex items-center gap-2">
@@ -747,6 +753,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                     <div className="flex items-center gap-2 mb-3">
                       <QrCode className="w-5 h-5 text-emerald-600" />
                       <h4 className="font-semibold text-gray-900">QR Quick Access</h4>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase tracking-wide">Soon</span>
                     </div>
                     <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl text-center">
                       <div className="w-32 h-32 mx-auto bg-white rounded-lg shadow-sm flex items-center justify-center mb-3">
@@ -754,8 +761,12 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                       </div>
                       <p className="text-sm font-medium text-gray-900 mb-1">Inventory QR Code</p>
                       <p className="text-xs text-gray-600 mb-3">Scan to view/update inventory on mobile</p>
-                      <button className="w-full px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 shadow-lg shadow-emerald-600/30">
-                        Generate QR Code
+                      <button
+                        disabled
+                        title="QR count mode ships in a later phase (see INVENTORY_SOTA_PLAN.md). Disabled so it doesn't promise a feature that isn't wired yet."
+                        className="w-full px-4 py-2 bg-gray-200 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed"
+                      >
+                        Generate QR Code · Coming soon
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 text-center">
@@ -778,14 +789,14 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                       </div>
                       <div className="flex items-baseline gap-2">
                         <span className="text-3xl font-bold text-purple-600">
-                          {Math.round((stats.healthy / stats.total) * 100)}
+                          {stats.total > 0 ? Math.round((stats.healthy / stats.total) * 100) : 0}
                         </span>
                         <span className="text-sm text-gray-600">/100</span>
                       </div>
                       <div className="mt-2 h-2 bg-white rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
-                          style={{ width: `${(stats.healthy / stats.total) * 100}%` }}
+                          style={{ width: `${stats.total > 0 ? (stats.healthy / stats.total) * 100 : 0}%` }}
                         />
                       </div>
                     </div>
@@ -1042,7 +1053,15 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                       <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 w-28">Type</th>
+                  <th className="px-4 py-3 text-left w-28">
+                    <button
+                      onClick={() => toggleSort('type')}
+                      className="flex items-center gap-1 text-sm font-semibold text-gray-900"
+                    >
+                      Type
+                      <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left w-28">
                     <button
                       onClick={() => toggleSort('bottleSizeMl')}
@@ -1053,10 +1072,14 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left w-32">
-                    <div className="flex items-center gap-1 text-sm font-semibold text-gray-900">
+                    <button
+                      onClick={() => toggleSort('location')}
+                      className="flex items-center gap-1 text-sm font-semibold text-gray-900"
+                    >
                       <MapPin className="w-4 h-4 text-emerald-500" />
                       Location
-                    </div>
+                      <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
                   </th>
                   <th className="px-4 py-3 text-center w-24">
                     <button
@@ -1088,6 +1111,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                       <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
                     </button>
                   </th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 w-24" title="Average retail / market price (Wine-Searcher via Serper). — = not yet priced.">Market</th>
                   <th className="px-4 py-3 text-right w-24">
                     <button
                       onClick={() => toggleSort('price')}
@@ -1115,7 +1139,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                       <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 w-28">Total Value</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 w-28" title="Cost basis (what you paid) vs menu potential (retail if all sold)">Value <span className="font-normal text-gray-400 text-xs">cost·menu</span></th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 w-28">Status</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 w-20">Active</th>
                   <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 w-32">Actions</th>
@@ -1173,7 +1197,7 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                       <td className="px-4 py-3 w-32 relative">
                         <LocationPickerCell
                           wineId={item.id}
-                          quantity={(item.liveStock || 0) + (item.shadowStock || 0) || 1}
+                          quantity={(item.liveStock || 0) + (item.shadowStock || 0)}
                           assignedQty={mappings.find(m => m.wineId === item.id)?.quantity}
                           locations={storageLocations}
                           currentLocation={getWineLocation(item.id)}
@@ -1224,6 +1248,13 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                         <span className="text-sm text-gray-600">{item.threshold}</span>
                       </td>
                       <td className="px-4 py-3 text-right w-24">
+                        {item.marketPrice != null ? (
+                          <span className="text-sm font-medium text-gray-700">${item.marketPrice.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-xs text-gray-300" title="Not yet priced — populated by the pricing pipeline">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right w-24">
                         <span className="text-sm font-medium text-gray-900">${item.price.toFixed(2)}</span>
                       </td>
                       <td className="px-4 py-3 text-right w-24">
@@ -1253,9 +1284,16 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                         })()}
                       </td>
                       <td className="px-4 py-3 text-right w-28">
-                        <span className="text-sm font-semibold text-emerald-600">
-                          ${((item.menuPrice || getDefaultMenuPrice(item.price)) * totalStock).toLocaleString()}
-                        </span>
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-sm font-semibold text-gray-900" title="Cost basis = purchased price × stock">
+                            ${(item.price * totalStock).toLocaleString()}
+                            <span className="text-[10px] font-normal text-gray-400"> cost</span>
+                          </span>
+                          <span className="text-[11px] text-emerald-600" title="Menu potential = menu price × stock (retail if every bottle sells)">
+                            ${((item.menuPrice || getDefaultMenuPrice(item.price)) * totalStock).toLocaleString()}
+                            <span className="text-[10px] text-emerald-400"> menu</span>
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 w-28">
                         <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>

@@ -48,6 +48,12 @@ export class InventoryService {
     const wineName: string | null =
       row.wine_name || row.master_wine_library?.name || null;
 
+    // Market price + markup live on the joined wine library / inventory row —
+    // capture them BEFORE the nested library object is stripped below, or they are lost.
+    const retailPriceAvg: number | null =
+      row.master_wine_library?.retail_price_avg ?? null;
+    const markupRatio: number | null = row.markup_ratio ?? null;
+
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
     if (row.restaurants) delete result.restaurants;
@@ -64,6 +70,8 @@ export class InventoryService {
       saleType: row.sale_type ?? undefined,
       menuPriceGlass: row.menu_price_glass ?? undefined,
       glassesPerBottleOverride: row.glasses_per_bottle_override ?? undefined,
+      retailPriceAvg: retailPriceAvg ?? undefined,
+      markupRatio: markupRatio ?? undefined,
     };
   }
 
@@ -270,7 +278,7 @@ export class InventoryService {
     // Fetch old values for event payload (before update)
     const { data: oldItem } = await client
       .from("restaurant_inventory")
-      .select("stock_live, shadow_stock, threshold_min, master_wine_id")
+      .select("stock_live, shadow_stock, threshold_min, master_wine_id, version")
       .eq("restaurant_id", restaurantId)
       .eq("id", itemId)
       .single();
@@ -297,11 +305,28 @@ export class InventoryService {
     if (dto.glassesPerBottleOverride !== undefined)
       updateData.glasses_per_bottle_override = dto.glassesPerBottleOverride;
 
-    const { data, error } = await client
+    // Optimistic lock (Phase 1 · 1.5): stock-affecting writes bump `version` and
+    // guard on the expected version, so a concurrent POS decrement and a manual
+    // override cannot silently clobber each other (lost update).
+    const isStockWrite =
+      dto.stockLive !== undefined || dto.shadowStock !== undefined;
+    const expectedVersion: number | null = isStockWrite
+      ? (oldItem?.version ?? 0)
+      : null;
+    if (isStockWrite) {
+      updateData.version = (oldItem?.version ?? 0) + 1;
+    }
+
+    let updateQuery = client
       .from("restaurant_inventory")
       .update(updateData)
       .eq("restaurant_id", restaurantId)
-      .eq("id", itemId)
+      .eq("id", itemId);
+    if (expectedVersion !== null) {
+      updateQuery = updateQuery.eq("version", expectedVersion);
+    }
+
+    const { data, error } = await updateQuery
       .select(
         `
         *,
@@ -312,6 +337,18 @@ export class InventoryService {
       .single();
 
     if (error) {
+      // A version-guarded write that matched no row (PGRST116) while the item
+      // still exists means another writer moved first — surface a clean 409.
+      const noRowMatched = (error as any)?.code === "PGRST116";
+      if (expectedVersion !== null && oldItem && noRowMatched) {
+        this.logger.warn(
+          `Optimistic lock conflict on inventory ${itemId} (expected version ${expectedVersion})`,
+        );
+        throw new HttpException(
+          "Inventory was updated by another process. Please retry.",
+          HttpStatus.CONFLICT,
+        );
+      }
       this.logger.error(`Failed to update inventory item: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }

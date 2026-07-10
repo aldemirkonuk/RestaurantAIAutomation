@@ -29,6 +29,8 @@ function normalizeInventoryItem(item: any): InventoryItem {
     thresholdMax: item.thresholdMax ?? item.threshold_max ?? 0,
     toastItemGuid: item.toastItemGuid ?? item.toast_item_guid,
     isActive: item.isActive ?? item.is_active ?? true,
+    retailPriceAvg: item.retailPriceAvg ?? item.retail_price_avg ?? undefined,
+    markupRatio: item.markupRatio ?? item.markup_ratio ?? undefined,
   }
 }
 
