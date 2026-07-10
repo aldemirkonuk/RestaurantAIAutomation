@@ -1255,7 +1255,13 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                         )}
                       </td>
                       <td className="px-4 py-3 text-right w-24">
-                        <span className="text-sm font-medium text-gray-900">${item.price.toFixed(2)}</span>
+                        {item.costProvenance === 'invoice' && item.wac != null ? (
+                          <span className="text-sm font-medium text-gray-900" title="Weighted-average cost from received lots">${item.wac.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-sm font-medium text-gray-500" title="Estimated — no received-cost data yet; true WAC appears once receipts capture cost">
+                            ${(item.wac ?? item.price).toFixed(2)}<span className="text-[10px] text-gray-400"> est</span>
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right w-24">
                         {item.menuPriceGlass && (item.saleType === 'glass' || item.saleType === 'both') ? (

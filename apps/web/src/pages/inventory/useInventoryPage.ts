@@ -15,6 +15,9 @@ export interface InventoryItem extends Wine {
   lastCounted: string | null
   isActive: boolean
   marketPrice?: number
+  wac?: number
+  costProvenance?: 'invoice' | 'estimated'
+  lotLocationCount?: number
   lastManualAdjustment?: {
     timestamp: Date
     managerName: string
@@ -152,6 +155,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         pourSizeMl: item.pourSizeMl ?? fallback.pourSizeMl,
         menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
         marketPrice: (item as any).retailPriceAvg ?? undefined,
+        wac: (item as any).wac ?? undefined,
+        costProvenance: (item as any).costProvenance ?? undefined,
+        lotLocationCount: (item as any).lotLocationCount ?? undefined,
       } as InventoryItem
     })
   }, [visibleApiInventory, inventoryLoading, winesById])

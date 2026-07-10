@@ -32,7 +32,10 @@ export class InventoryService {
     private readonly orchestratorService?: OrchestratorService,
   ) {}
 
-  private mapInventoryItem(row: Record<string, any>): Record<string, any> {
+  private mapInventoryItem(
+    row: Record<string, any>,
+    rollup?: Record<string, any>,
+  ): Record<string, any> {
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
     const effectiveBottleSizeMl = row.bottle_size_ml ?? wineBottleMl;
@@ -72,13 +75,45 @@ export class InventoryService {
       glassesPerBottleOverride: row.glasses_per_bottle_override ?? undefined,
       retailPriceAvg: retailPriceAvg ?? undefined,
       markupRatio: markupRatio ?? undefined,
+      // Phase 2 read-cutover: true WAC + provenance + lot spread derived from inventory_lots.
+      wac: rollup?.wac ?? undefined,
+      costProvenance: rollup
+        ? rollup.has_invoice_cost
+          ? "invoice"
+          : "estimated"
+        : undefined,
+      lotLiveQty: rollup?.live_qty ?? undefined,
+      lotLocationCount: rollup?.live_location_count ?? undefined,
     };
+  }
+
+  /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
+  private async fetchLotRollup(restaurantId: string): Promise<Map<string, any>> {
+    const map = new Map<string, any>();
+    try {
+      const client = this.dbService.getClient();
+      const { data } = await client
+        .from("inventory_lot_rollup")
+        .select(
+          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count",
+        )
+        .eq("restaurant_id", restaurantId);
+      for (const r of data || []) map.set(r.inventory_id, r);
+    } catch (err: any) {
+      this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
+    }
+    return map;
   }
 
   async getRestaurantInventory(restaurantId: string) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const data = await this.dbService.getRestaurantInventory(restaurantId);
-    return (data || []).map((row) => this.mapInventoryItem(row));
+    const [data, rollup] = await Promise.all([
+      this.dbService.getRestaurantInventory(restaurantId),
+      this.fetchLotRollup(restaurantId),
+    ]);
+    return (data || []).map((row) =>
+      this.mapInventoryItem(row, rollup.get(row.id)),
+    );
   }
 
   async getLowStockItems(restaurantId: string) {

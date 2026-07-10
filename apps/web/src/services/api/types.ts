@@ -55,6 +55,11 @@ export interface InventoryItem {
   // Pricing intelligence (Phase-10: retail_price_avg from master_wine_library; markup on the inventory row)
   retailPriceAvg?: number;
   markupRatio?: number;
+  // Phase 2: weighted-average cost + provenance + lot spread derived from inventory_lots
+  wac?: number;
+  costProvenance?: 'invoice' | 'estimated';
+  lotLiveQty?: number;
+  lotLocationCount?: number;
 }
 
 export interface InventorySummary {
