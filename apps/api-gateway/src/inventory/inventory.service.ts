@@ -175,7 +175,7 @@ export class InventoryService {
           .from("restaurant_inventory")
           .update({
             is_active: true,
-            stock_live: dto.stockLive ?? 0,
+            stock_live: 0, // applied as a lot via apply_stock_movement below
             provider_id: dto.providerId || null,
             ...(masterWineName ? { wine_name: masterWineName } : {}),
           })
@@ -195,13 +195,37 @@ export class InventoryService {
           );
         }
 
+        if (dto.stockLive && dto.stockLive > 0) {
+          await client.rpc("apply_stock_movement", {
+            p_inventory_id: existing.id,
+            p_stock_state: "live",
+            p_delta: dto.stockLive,
+            p_transaction_type: "initial",
+            p_source: "manual",
+            p_reason: "stock on re-activation",
+            p_unit_cost: (dto as any).costPerBottle ?? null,
+            p_location_id: dto.storageLocationId ?? null,
+          });
+        }
+
         this.logger.log({
           message: "Inventory item reactivated",
           restaurantId,
           wineId: dto.wineId,
           inventoryId: existing.id,
         });
-        return this.mapInventoryItem(reactivated);
+        const { data: freshReact } = await client
+          .from("restaurant_inventory")
+          .select(
+            `*, master_wine_library (*), restaurants (default_pour_ml, measurement_unit)`,
+          )
+          .eq("id", existing.id)
+          .single();
+        const reactRollup = await this.fetchLotRollup(restaurantId);
+        return this.mapInventoryItem(
+          freshReact ?? reactivated,
+          reactRollup.get(existing.id),
+        );
       }
 
       // Active item: return its ID so the caller can skip re-creation
@@ -219,7 +243,7 @@ export class InventoryService {
       restaurant_id: restaurantId,
       master_wine_id: dto.wineId,
       provider_id: dto.providerId || null,
-      stock_live: dto.stockLive,
+      stock_live: 0, // initial stock applied as a lot via apply_stock_movement below (lots = source of truth)
       threshold_min: dto.thresholdMin || 6,
       threshold_max: dto.thresholdMax || 24,
       toast_item_guid: dto.toastItemGuid || null,
@@ -254,6 +278,25 @@ export class InventoryService {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
+    // Initial stock enters as a lot via the RPC so lots are authoritative from creation.
+    if (dto.stockLive && dto.stockLive > 0) {
+      const { error: rpcErr } = await client.rpc("apply_stock_movement", {
+        p_inventory_id: data.id,
+        p_stock_state: "live",
+        p_delta: dto.stockLive,
+        p_transaction_type: "initial",
+        p_source: "manual",
+        p_reason: "initial stock on add-to-inventory",
+        p_unit_cost: (dto as any).costPerBottle ?? null,
+        p_location_id: dto.storageLocationId ?? null,
+      });
+      if (rpcErr) {
+        this.logger.warn(
+          `initial apply_stock_movement failed for ${data.id}: ${rpcErr.message}`,
+        );
+      }
+    }
+
     this.logger.log({
       message: "Inventory item created",
       restaurantId,
@@ -261,7 +304,15 @@ export class InventoryService {
       inventoryId: data.id,
     });
 
-    return this.mapInventoryItem(data);
+    const { data: fresh } = await client
+      .from("restaurant_inventory")
+      .select(
+        `*, master_wine_library (*), restaurants (default_pour_ml, measurement_unit)`,
+      )
+      .eq("id", data.id)
+      .single();
+    const rollup = await this.fetchLotRollup(restaurantId);
+    return this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
   }
 
   async getInventorySummary(restaurantId: string) {
@@ -318,12 +369,12 @@ export class InventoryService {
       .eq("id", itemId)
       .single();
 
-    // Build update object with snake_case column names
+    // NON-stock fields go through a plain UPDATE. Stock (live/shadow) is NO LONGER
+    // written directly — it is a projection of inventory_lots, mutated only via the
+    // apply_stock_movement RPC (Phase 2 write cutover). A direct stock_live write would
+    // desync from lots and get clobbered by the projection trigger on the next lot change.
     const updateData: Record<string, any> = {};
     if (dto.providerId !== undefined) updateData.provider_id = dto.providerId;
-    if (dto.stockLive !== undefined) updateData.stock_live = dto.stockLive;
-    if (dto.shadowStock !== undefined)
-      updateData.shadow_stock = dto.shadowStock;
     if (dto.thresholdMin !== undefined)
       updateData.threshold_min = dto.thresholdMin;
     if (dto.thresholdMax !== undefined)
@@ -340,51 +391,65 @@ export class InventoryService {
     if (dto.glassesPerBottleOverride !== undefined)
       updateData.glasses_per_bottle_override = dto.glassesPerBottleOverride;
 
-    // Optimistic lock (Phase 1 · 1.5): stock-affecting writes bump `version` and
-    // guard on the expected version, so a concurrent POS decrement and a manual
-    // override cannot silently clobber each other (lost update).
-    const isStockWrite =
-      dto.stockLive !== undefined || dto.shadowStock !== undefined;
-    const expectedVersion: number | null = isStockWrite
-      ? (oldItem?.version ?? 0)
-      : null;
-    if (isStockWrite) {
-      updateData.version = (oldItem?.version ?? 0) + 1;
+    if (Object.keys(updateData).length > 0) {
+      const { error: updErr } = await client
+        .from("restaurant_inventory")
+        .update(updateData)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", itemId);
+      if (updErr) {
+        this.logger.error(`Failed to update inventory item: ${updErr.message}`);
+        throw new HttpException(updErr.message, HttpStatus.BAD_REQUEST);
+      }
     }
 
-    let updateQuery = client
+    // Route stock changes through the ledger RPC as signed deltas (lots = source of truth,
+    // atomic, version-locked, idempotent, negative-guarded). Absolute set -> delta vs. old.
+    const applyStockDelta = async (
+      stockState: "live" | "shadow",
+      newQty: number,
+      oldQty: number,
+    ) => {
+      const delta = newQty - (oldQty ?? 0);
+      if (delta === 0) return;
+      const { error: rpcErr } = await client.rpc("apply_stock_movement", {
+        p_inventory_id: itemId,
+        p_stock_state: stockState,
+        p_delta: delta,
+        p_transaction_type: delta > 0 ? "purchase" : "adjustment",
+        p_source: "manual",
+        p_reason: "manual_override",
+      });
+      if (rpcErr) {
+        this.logger.error(
+          `apply_stock_movement(${stockState}, ${delta}) failed: ${rpcErr.message}`,
+        );
+        throw new HttpException(rpcErr.message, HttpStatus.BAD_REQUEST);
+      }
+    };
+    if (dto.stockLive !== undefined) {
+      await applyStockDelta("live", dto.stockLive, oldItem?.stock_live ?? 0);
+    }
+    if (dto.shadowStock !== undefined) {
+      await applyStockDelta("shadow", dto.shadowStock, oldItem?.shadow_stock ?? 0);
+    }
+
+    // Re-fetch the row (projection now reflects lot changes) for the response.
+    const { data, error } = await client
       .from("restaurant_inventory")
-      .update(updateData)
-      .eq("restaurant_id", restaurantId)
-      .eq("id", itemId);
-    if (expectedVersion !== null) {
-      updateQuery = updateQuery.eq("version", expectedVersion);
-    }
-
-    const { data, error } = await updateQuery
       .select(
         `
         *,
-        master_wine_library (bottle_size_ml),
+        master_wine_library (*),
         restaurants (default_pour_ml, measurement_unit)
       `,
       )
+      .eq("restaurant_id", restaurantId)
+      .eq("id", itemId)
       .single();
 
     if (error) {
-      // A version-guarded write that matched no row (PGRST116) while the item
-      // still exists means another writer moved first — surface a clean 409.
-      const noRowMatched = (error as any)?.code === "PGRST116";
-      if (expectedVersion !== null && oldItem && noRowMatched) {
-        this.logger.warn(
-          `Optimistic lock conflict on inventory ${itemId} (expected version ${expectedVersion})`,
-        );
-        throw new HttpException(
-          "Inventory was updated by another process. Please retry.",
-          HttpStatus.CONFLICT,
-        );
-      }
-      this.logger.error(`Failed to update inventory item: ${error.message}`);
+      this.logger.error(`Failed to reload inventory item: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
@@ -392,10 +457,14 @@ export class InventoryService {
       message: "Inventory item updated",
       restaurantId,
       itemId,
-      updatedFields: Object.keys(updateData),
+      updatedFields: [
+        ...Object.keys(updateData),
+        ...(dto.stockLive !== undefined ? ["stock_live"] : []),
+        ...(dto.shadowStock !== undefined ? ["shadow_stock"] : []),
+      ],
     });
 
-    // Publish stock.manual_override event if stock_live was changed
+    // Publish stock.manual_override event if stock changed (Buffer Manager threshold eval).
     if (dto.stockLive !== undefined && this.orchestratorService) {
       try {
         await this.orchestratorService.publishEvent(
@@ -414,9 +483,6 @@ export class InventoryService {
             timestamp: new Date().toISOString(),
           },
         );
-        this.logger.log(
-          `Published stock.manual_override event for item ${itemId}`,
-        );
       } catch (pubErr) {
         this.logger.warn(
           `Failed to publish stock.manual_override: ${pubErr?.message}`,
@@ -424,7 +490,8 @@ export class InventoryService {
       }
     }
 
-    return this.mapInventoryItem(data);
+    const rollup = await this.fetchLotRollup(restaurantId);
+    return this.mapInventoryItem(data, rollup.get(itemId));
   }
 
   /**
