@@ -381,10 +381,113 @@ export class ToastService {
       throw error;
     }
 
+    // Phase 2 POS→pour: a completed sale decrements inventory (glass → pour, bottle → movement).
+    await this.applyOrderSaleEffects(restaurantId, webhookDto);
+
     // Forward to agent orchestrator for processing
     await this.forwardToOrchestrator("order", webhookDto);
 
     return data?.id;
+  }
+
+  /**
+   * Phase 2 POS→pour: turn a completed Toast order into inventory movements.
+   * order.paid / order.closed → decrement (glass sale = record_glass_pour, bottle sale =
+   * apply_stock_movement). order.voided → reverse. Idempotent per (order, menu item), so
+   * retries and closed-then-paid both apply exactly once.
+   */
+  private async applyOrderSaleEffects(
+    restaurantId: string,
+    webhookDto: ToastWebhookDto,
+  ): Promise<void> {
+    const et = webhookDto.eventType;
+    const isSale =
+      et === ToastWebhookEventType.ORDER_PAID ||
+      et === ToastWebhookEventType.ORDER_CLOSED;
+    const isVoid = et === ToastWebhookEventType.ORDER_VOIDED;
+    if (!isSale && !isVoid) return; // created/updated aren't final — skip
+    const order = webhookDto.order;
+    const items = order?.items ?? [];
+    if (!order || items.length === 0) return;
+
+    const db = this.databaseService.supabase;
+
+    for (const line of items) {
+      const menuGuid = line.guid;
+      const qty = Math.max(0, Math.round(line.quantity ?? 0));
+      if (!menuGuid || qty <= 0) continue;
+
+      // Resolve mapping: Toast menu item → inventory item + sale unit.
+      const { data: mapping } = await db
+        .from("toast_item_mappings")
+        .select("inventory_id, sale_unit, toast_item_name")
+        .eq("restaurant_id", restaurantId)
+        .eq("toast_guid", menuGuid)
+        .maybeSingle();
+
+      let inventoryId = mapping?.inventory_id as string | undefined;
+      const saleUnit = mapping?.sale_unit as "glass" | "bottle" | null | undefined;
+      const itemName = (mapping?.toast_item_name || line.name || "").toLowerCase();
+
+      // Fallback: single-guid mapping on restaurant_inventory.toast_item_guid.
+      let invSaleType: string | undefined;
+      if (!inventoryId) {
+        const { data: inv } = await db
+          .from("restaurant_inventory")
+          .select("id, sale_type")
+          .eq("restaurant_id", restaurantId)
+          .eq("toast_item_guid", menuGuid)
+          .maybeSingle();
+        inventoryId = inv?.id as string | undefined;
+        invSaleType = inv?.sale_type as string | undefined;
+      }
+      if (!inventoryId) {
+        this.logger.debug(
+          `POS sale: no inventory mapping for Toast item ${menuGuid} (${line.name}); skipping`,
+        );
+        continue;
+      }
+
+      // Unit: explicit mapping → name heuristic → inventory sale_type → default bottle.
+      const looksGlass = /glass|btg|by[\s-]?the[\s-]?glass|pour/.test(itemName);
+      const unit: "glass" | "bottle" =
+        saleUnit ?? (looksGlass || invSaleType === "glass" ? "glass" : "bottle");
+
+      const idem = `toast_${isVoid ? "void" : "sale"}_${order.guid}_${menuGuid}`;
+      try {
+        if (unit === "glass") {
+          if (isVoid) {
+            this.logger.warn(
+              `POS void of a glass sale (${line.name}) is not auto-reversed; adjust manually if needed`,
+            );
+            continue;
+          }
+          await db.rpc("record_glass_pour", {
+            p_inventory_id: inventoryId,
+            p_pours: qty,
+            p_pour_ml: null,
+            p_location_id: null,
+            p_source: "pos",
+            p_reason: `POS sale: ${line.name}`,
+            p_idempotency_key: idem,
+          });
+        } else {
+          await db.rpc("apply_stock_movement", {
+            p_inventory_id: inventoryId,
+            p_stock_state: "live",
+            p_delta: isVoid ? qty : -qty,
+            p_transaction_type: isVoid ? "return" : "sale",
+            p_source: "pos",
+            p_reason: `POS ${isVoid ? "void" : "sale"}: ${line.name}`,
+            p_idempotency_key: idem,
+          });
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `POS sale effect failed for ${line.name} (${unit}): ${err?.message}`,
+        );
+      }
+    }
   }
 
   /**
