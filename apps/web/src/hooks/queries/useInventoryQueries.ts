@@ -35,6 +35,13 @@ function normalizeInventoryItem(item: any): InventoryItem {
     costProvenance: item.costProvenance ?? undefined,
     lotLocationCount: item.lotLocationCount ?? undefined,
     openMl: item.openMl ?? 0,
+    velocityPerDay: item.velocityPerDay ?? undefined,
+    daysOfCover: item.daysOfCover ?? undefined,
+    reorderPoint: item.reorderPoint ?? undefined,
+    reorderSuggested: item.reorderSuggested ?? false,
+    abcClass: item.abcClass ?? undefined,
+    deadStock: item.deadStock ?? false,
+    daysSinceSale: item.daysSinceSale ?? undefined,
     locations: item.locations ?? [],
   }
 }

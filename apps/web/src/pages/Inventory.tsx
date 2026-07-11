@@ -1349,9 +1349,40 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                         </div>
                       </td>
                       <td className="px-4 py-3 w-28">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
-                          {status.label}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+                            {status.label}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {item.abcClass && (
+                              <span
+                                className={`text-[9px] font-bold px-1 py-0.5 rounded ${
+                                  item.abcClass === 'A' ? 'bg-emerald-100 text-emerald-700' :
+                                  item.abcClass === 'B' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-gray-100 text-gray-500'
+                                }`}
+                                title="ABC class by trailing sales value"
+                              >
+                                {item.abcClass}
+                              </span>
+                            )}
+                            {item.reorderSuggested && (
+                              <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700" title={`Reorder suggested${item.daysOfCover != null ? ` — ~${item.daysOfCover}d cover left` : ''}`}>
+                                ↻ reorder
+                              </span>
+                            )}
+                            {item.deadStock && (
+                              <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-gray-100 text-gray-500" title={`No sale in ${item.daysSinceSale ?? '90+'} days`}>
+                                💤 dead
+                              </span>
+                            )}
+                            {!item.reorderSuggested && !item.deadStock && item.daysOfCover != null && (
+                              <span className="text-[9px] text-gray-400" title="Estimated days of cover at current sales velocity">
+                                ~{item.daysOfCover}d cover
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-center w-20">
                         <button

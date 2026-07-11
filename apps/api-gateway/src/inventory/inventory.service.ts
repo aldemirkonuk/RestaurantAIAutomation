@@ -36,6 +36,7 @@ export class InventoryService {
     row: Record<string, any>,
     rollup?: Record<string, any>,
     locations?: any[],
+    analytics?: Record<string, any>,
   ): Record<string, any> {
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
@@ -87,6 +88,14 @@ export class InventoryService {
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
       openMl: rollup?.open_ml ?? 0,
+      // Phase 2 (2d/2e): velocity / days-of-cover / reorder / ABC / dead-stock.
+      velocityPerDay: analytics?.velocity_per_day ?? undefined,
+      daysOfCover: analytics?.days_of_cover ?? undefined,
+      reorderPoint: analytics?.reorder_point ?? undefined,
+      reorderSuggested: analytics?.reorder_suggested ?? false,
+      abcClass: analytics?.abc_class ?? undefined,
+      deadStock: analytics?.dead_stock ?? false,
+      daysSinceSale: analytics?.days_since_sale ?? undefined,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
       locations: locations ?? [],
     };
@@ -133,15 +142,41 @@ export class InventoryService {
     return map;
   }
 
+  /** Phase 2 (2d/2e): per-inventory velocity, days-of-cover, reorder, ABC, dead-stock. */
+  private async fetchAnalytics(
+    restaurantId: string,
+  ): Promise<Map<string, any>> {
+    const map = new Map<string, any>();
+    try {
+      const client = this.dbService.getClient();
+      const { data } = await client
+        .from("inventory_analytics")
+        .select(
+          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+        )
+        .eq("restaurant_id", restaurantId);
+      for (const r of data || []) map.set(r.inventory_id, r);
+    } catch (err: any) {
+      this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
+    }
+    return map;
+  }
+
   async getRestaurantInventory(restaurantId: string) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup, locations] = await Promise.all([
+    const [data, rollup, locations, analytics] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
+      this.fetchAnalytics(restaurantId),
     ]);
     return (data || []).map((row) =>
-      this.mapInventoryItem(row, rollup.get(row.id), locations.get(row.id)),
+      this.mapInventoryItem(
+        row,
+        rollup.get(row.id),
+        locations.get(row.id),
+        analytics.get(row.id),
+      ),
     );
   }
 

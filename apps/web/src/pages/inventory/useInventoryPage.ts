@@ -19,6 +19,12 @@ export interface InventoryItem extends Wine {
   costProvenance?: 'invoice' | 'estimated'
   lotLocationCount?: number
   openMl?: number
+  velocityPerDay?: number
+  daysOfCover?: number
+  reorderSuggested?: boolean
+  abcClass?: 'A' | 'B' | 'C'
+  deadStock?: boolean
+  daysSinceSale?: number
   locations?: { locationId: string | null; qty: number; wac: number | null }[]
   lastManualAdjustment?: {
     timestamp: Date
@@ -161,6 +167,12 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         costProvenance: (item as any).costProvenance ?? undefined,
         lotLocationCount: (item as any).lotLocationCount ?? undefined,
         openMl: (item as any).openMl ?? 0,
+        velocityPerDay: (item as any).velocityPerDay ?? undefined,
+        daysOfCover: (item as any).daysOfCover ?? undefined,
+        reorderSuggested: (item as any).reorderSuggested ?? false,
+        abcClass: (item as any).abcClass ?? undefined,
+        deadStock: (item as any).deadStock ?? false,
+        daysSinceSale: (item as any).daysSinceSale ?? undefined,
         locations: (item as any).locations ?? [],
       } as InventoryItem
     })

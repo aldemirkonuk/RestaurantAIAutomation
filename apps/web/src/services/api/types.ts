@@ -61,6 +61,14 @@ export interface InventoryItem {
   lotLiveQty?: number;
   lotLocationCount?: number;
   openMl?: number;
+  // Phase 2 (2d/2e) analytics
+  velocityPerDay?: number;
+  daysOfCover?: number;
+  reorderPoint?: number;
+  reorderSuggested?: boolean;
+  abcClass?: 'A' | 'B' | 'C';
+  deadStock?: boolean;
+  daysSinceSale?: number;
   locations?: WineLocationBreakdown[];
 }
 
