@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>032 — Cellar Map Command</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: #f7f8f9; color: var(--color-text); padding-top: 46px; }
+
+    #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 9998; background: #17131a; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 7px 16px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    #variant-nav .brand { color: #fff; font-weight: 800; font-family: var(--font-display); font-size: 13px; }
+    #variant-nav .tag { color: rgba(255,255,255,0.35); font-size: 11px; margin-right: 12px; font-family: var(--font-mono); }
+    .variant-tab { padding: 5px 14px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.72); cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+    .variant-tab:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .variant-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    .app-header { background: #fff; border-bottom: 1px solid var(--color-border); padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+    .app-header h1 { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .app-header p { font-size: 13px; color: var(--color-text-muted); margin-top: 2px; }
+    .page { padding: 22px 28px 80px; max-width: 1500px; margin: 0 auto; }
+    .section { margin-bottom: 20px; }
+
+    /* status legend row */
+    .maplegend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--color-text-secondary); }
+    .maplegend .li { display: flex; align-items: center; gap: 6px; }
+    .dotc { width: 10px; height: 10px; border-radius: 3px; }
+    .st-crit-c { background: #DC2626; } .st-low-c { background: #D97706; } .st-ok-c { background: #059669; } .st-over-c { background: #2563eb; }
+
+    /* ─── Cellar command shell ─── */
+    .cellar-card { background: #14111a; border: 1px solid #241d2c; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow: hidden; }
+    .cellar-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap; gap: 10px; }
+    .loc-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .loc-chip { display: flex; align-items: center; gap: 7px; padding: 7px 13px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-full); color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .loc-chip:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .loc-chip.active { background: rgba(205,45,91,0.25); border-color: rgba(205,45,91,0.5); color: #fff; }
+    .loc-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .loc-pct { font-family: var(--font-mono); font-size: 10px; opacity: 0.7; }
+    .overlays { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .ov-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.35); }
+    .ov-btn { padding: 6px 12px; border-radius: var(--radius-full); border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .ov-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .ov-btn.active { background: #fff; color: #14111a; border-color: #fff; }
+    .ov-btn.active.threshold { background: #059669; color: #fff; } .ov-btn.active.velocity { background: #f59e0b; color: #14111a; } .ov-btn.active.dead { background: #94a3b8; color: #14111a; }
+
+    .cellar-stage {
+      position: relative; padding: 24px; min-height: 520px;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 0%, rgba(205,45,91,0.08) 0%, transparent 55%),
+        linear-gradient(180deg, #15121a, #0f0d12);
+    }
+
+    /* ─── Zone floor plan (named stations, not A/B/C rows) ─── */
+    .zone-floor { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+    .zone { border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)); overflow: hidden; position: relative; }
+    .zone::before { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 4px; background: var(--zc, #CD2D5B); }
+    .zone-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px 12px 18px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .zone-ico { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; background: color-mix(in srgb, var(--zc) 22%, transparent); border: 1px solid color-mix(in srgb, var(--zc) 40%, transparent); }
+    .zone-meta { flex: 1; min-width: 0; }
+    .zone-name { font-family: var(--font-display); font-size: 15px; font-weight: 800; color: #fff; }
+    .zone-sub { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 1px; }
+    .zone-cap { text-align: right; }
+    .zone-cap-pct { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: #fff; }
+    .zone-cap-bar { width: 68px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.1); margin-top: 4px; overflow: hidden; }
+    .zone-cap-fill { height: 100%; border-radius: 3px; background: var(--zc); }
+    .zone-temp { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-full); margin-left: 8px; }
+    .temp-cool { background: rgba(59,130,246,0.2); color: #93c5fd; } .temp-warm { background: rgba(239,68,68,0.18); color: #fca5a5; } .temp-ok { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+    .zone-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px; padding: 14px 16px 16px; }
+
+    /* ─── Bin tile ─── */
+    .slot { position: relative; cursor: pointer; transition: transform 0.16s ease; }
+    .slot:hover { transform: translateY(-3px); z-index: 4; }
+    .slot.selected .slot-face { outline: 2px solid #fff; outline-offset: 2px; }
+    .slot-face { min-height: 104px; background: linear-gradient(165deg, #2c2635, #1c1824); border: 1px solid rgba(255,255,255,0.1); border-radius: 9px; display: flex; flex-direction: column; justify-content: flex-end; padding: 7px 8px 8px; overflow: hidden; position: relative; box-shadow: 0 6px 14px rgba(0,0,0,0.35); }
+    .slot-fill { position: absolute; bottom: 0; left: 0; right: 0; opacity: 0.85; }
+    .fill-red { background: linear-gradient(0deg,#7c1d3c,#CD2D5B); } .fill-white { background: linear-gradient(0deg,#a8a060,#e8e0a8); } .fill-spark { background: linear-gradient(0deg,#c9a227,#f5e6a3); } .fill-rose { background: linear-gradient(0deg,#c4707a,#f4b8c0); }
+    .slot-code { font-family: var(--font-mono); font-size: 8px; font-weight: 600; color: rgba(255,255,255,0.5); position: relative; z-index: 2; }
+    .slot-wine { font-size: 10px; font-weight: 700; color: #fff; position: relative; z-index: 2; line-height: 1.15; margin-top: 1px; }
+    .slot-qty { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.92); position: relative; z-index: 2; }
+    /* threshold status strip on the tile */
+    .slot-status { position: absolute; top: 0; left: 0; right: 0; height: 5px; z-index: 3; }
+    .ss-crit { background: #DC2626; } .ss-low { background: #D97706; } .ss-ok { background: #059669; } .ss-over { background: #2563eb; }
+    .slot.empty .slot-face { background: rgba(255,255,255,0.02); border-style: dashed; box-shadow: none; }
+    .slot.empty .slot-status { display: none; }
+    .slot.empty .slot-wine { color: rgba(255,255,255,0.22); font-style: italic; }
+
+    .overlay-velocity .slot.vel-hot .slot-face::after { content:''; position:absolute; inset:0; background:rgba(245,158,11,0.3); }
+    .overlay-velocity .slot.vel-cold .slot-face::after { content:''; position:absolute; inset:0; background:rgba(59,130,246,0.12); }
+    .overlay-dead .slot.dead .slot-face { filter: saturate(0.35) brightness(0.85); }
+    .overlay-dead .slot.dead .slot-face::before { content:'❄'; position:absolute; top:42%; left:50%; transform:translate(-50%,-50%); font-size:22px; opacity:0.55; z-index:4; }
+    /* threshold overlay dims healthy, spotlights problems */
+    .overlay-threshold .slot:not(.thr-crit):not(.thr-low) .slot-face { opacity: 0.42; }
+
+    /* Density map (variant B) */
+    .density .zone-slots { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+    .density .slot-face { min-height: 62px; padding: 5px; }
+    .density .slot-wine { font-size: 8px; }
+    .density .slot-code { font-size: 7px; }
+
+    /* Split command (variant C) */
+    .split { display: grid; grid-template-columns: 1fr 400px; gap: 18px; align-items: start; }
+    .split .side-panel { position: sticky; top: 62px; }
+    @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } .split .side-panel { position: static; } }
+
+    /* ─── Sidebar (overlay drawer + inline panel share styles) ─── */
+    .scrim { position: fixed; inset: 0; background: rgba(20,15,22,0.5); backdrop-filter: blur(2px); z-index: 9990; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+    .scrim.open { opacity: 1; pointer-events: auto; }
+    .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 460px; max-width: 94vw; background: #fff; z-index: 9991; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); box-shadow: -20px 0 60px rgba(0,0,0,0.18); display: flex; flex-direction: column; }
+    .drawer.open { transform: translateX(0); }
+
+    .panel-head { padding: 18px 20px 15px; border-bottom: 1px solid var(--color-border); position: relative; }
+    .panel-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-primary); }
+    .panel-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; margin-top: 3px; }
+    .panel-sub { font-size: 12px; color: var(--color-text-muted); margin-top: 3px; }
+    .panel-close { position: absolute; top: 16px; right: 16px; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--color-border); background: #fff; cursor: pointer; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .side-panel .panel-body { max-height: 70vh; }
+
+    .blk { margin-bottom: 20px; }
+    .blk-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 9px; display: flex; align-items: center; justify-content: space-between; }
+
+    .amb-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .amb { background: #f9fafb; border-radius: var(--radius-md); padding: 11px; text-align: center; }
+    .amb-v { font-family: var(--font-display); font-size: 17px; font-weight: 800; } .amb-l { font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+
+    /* Threshold gauge */
+    .thr-status { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .thr-badge { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: var(--radius-full); }
+    .thr-badge.crit { background: var(--color-danger-bg); color: var(--color-danger); }
+    .thr-badge.low { background: var(--color-warning-bg); color: var(--color-warning); }
+    .thr-badge.ok { background: var(--color-success-bg); color: var(--color-success); }
+    .thr-badge.over { background: #eff6ff; color: #2563eb; }
+    .thr-note { font-size: 12px; color: var(--color-text-secondary); }
+    .thr-bar { position: relative; height: 12px; border-radius: 7px; overflow: hidden; display: flex; margin: 14px 0 6px; }
+    .thr-seg { height: 100%; }
+    .thr-seg.crit { background: #fecaca; } .thr-seg.low { background: #fde68a; } .thr-seg.ok { background: #bbf7d0; }
+    .thr-mark { position: absolute; top: -5px; width: 3px; height: 22px; background: #111827; border-radius: 2px; z-index: 2; }
+    .thr-mark::after { content: ''; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 9px; height: 9px; border-radius: 50%; background: #111827; }
+    .thr-ticks { display: flex; justify-content: space-between; font-size: 10px; color: var(--color-text-muted); font-family: var(--font-mono); }
+    .thr-tick b { display:block; color: var(--color-text-secondary); font-size: 11px; }
+
+    /* Hours-sold heatmap */
+    .heat { display: grid; grid-template-columns: 26px repeat(5, 1fr); gap: 4px; align-items: center; }
+    .heat-col { font-size: 9px; color: var(--color-text-muted); text-align: center; font-weight: 700; text-transform: uppercase; }
+    .heat-row-lbl { font-size: 10px; color: var(--color-text-muted); font-weight: 700; }
+    .heat-cell { height: 20px; border-radius: 4px; background: #f3f4f6; position: relative; }
+    .heat-0 { background: #f3f4f6; } .heat-1 { background: #f8d0dc; } .heat-2 { background: #ee9cb4; } .heat-3 { background: #dc5d81; } .heat-4 { background: #CD2D5B; }
+    .heat-peak { outline: 2px solid #111827; outline-offset: -2px; }
+    .heat-legend { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--color-text-muted); margin-top: 8px; }
+    .heat-swatch { width: 14px; height: 10px; border-radius: 2px; }
+
+    /* Previous orders */
+    .order-row { display: grid; grid-template-columns: 54px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid #f0f1f3; }
+    .order-row:last-child { border-bottom: none; }
+    .order-date { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); font-weight: 600; }
+    .order-vendor { font-size: 12.5px; font-weight: 600; }
+    .order-meta { font-size: 11px; color: var(--color-text-muted); }
+    .order-qty { text-align: right; font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+    .order-status { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: var(--radius-full); background: var(--color-success-bg); color: var(--color-success); margin-left: 6px; }
+
+    /* lots + fefo */
+    .fefo-tip { background: linear-gradient(135deg,#fdf2f4,#fff); border: 1px solid var(--color-primary-light); border-radius: var(--radius-md); padding: 10px 12px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; }
+    .fefo-tip strong { color: var(--color-primary); }
+    .lot-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 11px; margin-bottom: 9px; }
+    .lot-card.fefo { border-color: var(--color-primary); background: var(--color-primary-light); }
+    .lot-head { display: flex; justify-content: space-between; align-items: center; }
+    .lot-v { font-family: var(--font-display); font-size: 15px; font-weight: 800; }
+    .lot-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-full); background: var(--color-primary); color: #fff; }
+    .lot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 7px; font-size: 11px; color: var(--color-text-muted); }
+    .lot-grid b { display: block; font-size: 13px; color: var(--color-text); font-family: var(--font-mono); }
+    .ml-chip { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-full); background: #f3f4f6; margin-right: 6px; }
+    .ml-chip.here { background: var(--color-primary-light); color: var(--color-primary); }
+
+    /* Reorder footer (sticky) */
+    .reorder-foot { border-top: 1px solid var(--color-border); background: #fff; padding: 13px 20px 16px; }
+    .reorder-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .reorder-sugg { font-size: 12px; color: var(--color-text-secondary); }
+    .reorder-sugg b { color: var(--color-primary); font-weight: 700; }
+    .reorder-controls { display: flex; align-items: center; gap: 10px; }
+    .stepper { display: flex; align-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+    .stepper button { width: 34px; height: 38px; border: none; background: #f9fafb; font-size: 18px; cursor: pointer; color: var(--color-text-secondary); }
+    .stepper button:hover { background: #f3f4f6; }
+    .stepper input { width: 46px; height: 38px; border: none; text-align: center; font-family: var(--font-mono); font-size: 15px; font-weight: 700; outline: none; }
+    .stepper .u { font-size: 11px; color: var(--color-text-muted); padding: 0 8px; }
+    .reorder-btn { flex: 1; height: 40px; border: none; border-radius: var(--radius-md); background: var(--color-primary); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: var(--shadow-wine); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .reorder-btn:hover { background: var(--color-primary-hover); }
+    .reorder-cost { font-size: 11px; color: var(--color-text-muted); text-align: center; margin-top: 7px; }
+
+    .empty-note { padding: 60px 20px; text-align: center; color: var(--color-text-muted); font-size: 13px; }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--color-text); color: #fff; padding: 11px 20px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: all 0.3s; z-index: 9995; box-shadow: var(--shadow-xl); }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-size: 12px; background: rgba(0,0,0,0.72); color: #fff; padding: 8px 12px; border-radius: 8px; opacity: 0.35; transition: opacity 0.2s; }
+    #sketch-tools:hover { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="variant-nav">
+    <span class="brand">WineOps</span><span class="tag">032 · cellar-map-command</span>
+    <button class="variant-tab active" onclick="showVariant('a')">A · Zone Floor Plan ★</button>
+    <button class="variant-tab" onclick="showVariant('b')">B · Density Map</button>
+    <button class="variant-tab" onclick="showVariant('c')">C · Split Command</button>
+  </div>
+
+  <div id="variant-a" class="variant active"></div>
+  <div id="variant-b" class="variant"></div>
+  <div id="variant-c" class="variant"></div>
+
+  <!-- overlay drawer (variants A & B) -->
+  <div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <div class="panel-head">
+      <div class="panel-eyebrow" id="drEyebrow">Bin</div>
+      <div class="panel-title" id="drTitle">—</div>
+      <div class="panel-sub" id="drSub">—</div>
+      <button class="panel-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="panel-body" id="drBody"></div>
+    <div id="drFoot"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div id="sketch-tools">032 · all-in-one cellar command</div>
+
+  <script>
+    const LOCATIONS = [
+      { id:'main', name:'Main Cellar', color:'#CD2D5B', pct:78 },
+      { id:'bar', name:'Bar Back', color:'#3b82f6', pct:45 },
+      { id:'reserve', name:'Reserve Room', color:'#059669', pct:92 },
+    ];
+    // Named zones replace "A / B / C top to bottom"
+    const ZONES = {
+      A: { name:'Aging Wall', sub:'Long-hold reds · rack A', ico:'🍇', zc:'#CD2D5B', temp:'ok' },
+      B: { name:'Service Bay', sub:'Fast movers · rack B', ico:'⚡', zc:'#f59e0b', temp:'cool' },
+      C: { name:'Reserve Nook', sub:'Rare & cellar · rack C', ico:'★', zc:'#8b5cf6', temp:'cool' },
+    };
+    const RACKS = ['A','B','C'];
+    // min / par / max thresholds per bin; qty is current on-hand
+    const SLOTS = [
+      { rack:'A', slot:1, wine:'Chianti', type:'red', qty:12, min:4, par:8, max:14, vel:'warm', dead:false, vintage:'2021', locs:['main'], cost:22 },
+      { rack:'A', slot:2, wine:'Sancerre', type:'white', qty:3, min:6, par:12, max:16, vel:'hot', dead:false, vintage:'2023', locs:['main','bar'], cost:19 },
+      { rack:'A', slot:3, wine:'—', type:'empty', qty:0 },
+      { rack:'A', slot:4, wine:'Prosecco', type:'spark', qty:6, min:8, par:16, max:20, vel:'warm', dead:false, vintage:'NV', locs:['main'], cost:15 },
+      { rack:'A', slot:5, wine:'Rosé', type:'rose', qty:4, min:3, par:8, max:12, vel:'cold', dead:true, vintage:'2022', locs:['main'], daysSincePour:94, cost:14 },
+      { rack:'B', slot:1, wine:'Burgundy', type:'red', qty:10, min:4, par:8, max:12, vel:'hot', dead:false, vintage:'2020', locs:['main'], cost:44 },
+      { rack:'B', slot:2, wine:'Riesling', type:'white', qty:3, min:4, par:8, max:12, vel:'cold', dead:false, vintage:'2022', locs:['main'], cost:21 },
+      { rack:'B', slot:3, wine:'Amarone', type:'red', qty:5, min:3, par:6, max:10, vel:'warm', dead:false, vintage:'2018', locs:['main','reserve'], cost:58 },
+      { rack:'B', slot:4, wine:'Barolo', type:'red', qty:6, min:6, par:10, max:14, vel:'hot', dead:false, vintage:'2019', locs:['main'], lots:[{v:'2019',qty:4,cost:68,fefo:true},{v:'2018',qty:2,cost:72}], cost:68 },
+      { rack:'B', slot:5, wine:'Chablis', type:'white', qty:2, min:4, par:8, max:12, vel:'cold', dead:true, vintage:'2021', locs:['main'], daysSincePour:112, cost:33 },
+      { rack:'C', slot:1, wine:'Napa Cab', type:'red', qty:9, min:3, par:6, max:12, vel:'hot', dead:false, vintage:'2019', locs:['reserve'], cost:74 },
+      { rack:'C', slot:2, wine:'Sauternes', type:'white', qty:4, min:2, par:5, max:8, vel:'cold', dead:false, vintage:'2017', locs:['reserve'], cost:52 },
+      { rack:'C', slot:3, wine:'Champagne', type:'spark', qty:16, min:6, par:10, max:14, vel:'hot', dead:false, vintage:'NV', locs:['main','bar'], cost:48 },
+      { rack:'C', slot:4, wine:'Pinot N.', type:'red', qty:7, min:4, par:8, max:12, vel:'warm', dead:false, vintage:'2021', locs:['main'], cost:39 },
+      { rack:'C', slot:5, wine:'Moscato', type:'white', qty:1, min:3, par:6, max:10, vel:'cold', dead:true, vintage:'2023', locs:['bar'], daysSincePour:67, cost:16 },
+    ];
+    const VENDORS = ['Vintners Direct','Coastal Wine Co','Terroir Imports','Barrel & Vine'];
+    const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const BUCKETS = ['Lun','Aft','HH','Din','Late'];
+
+    const state = { a:{overlay:'none',loc:'main'}, b:{overlay:'threshold',loc:'main'}, c:{overlay:'none',loc:'main',sel:null} };
+    let reorderQty = 0;
+
+    function toast(m){ const e=document.getElementById('toast'); e.textContent=m; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2000); }
+    function typeName(t){ return t==='spark'?'sparkling':t; }
+
+    // stable seeded RNG from a string
+    function rng(str){ let h=2166136261; for(let i=0;i<str.length;i++){ h=Math.imul(h^str.charCodeAt(i),16777619); } return ()=>{ h+=0x6D2B79F5; let t=h; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; }; }
+
+    function thrStatus(s){
+      if (s.type==='empty') return 'empty';
+      if (s.qty < s.min) return 'crit';
+      if (s.qty < s.par) return 'low';
+      if (s.qty > s.max) return 'over';
+      return 'ok';
+    }
+    function thrLabel(st){ return st==='crit'?'Critical':st==='low'?'Low':st==='over'?'Overstock':'Healthy'; }
+
+    function slotHtml(s, prefix){
+      if (s.type==='empty'){
+        return `<div class="slot empty" onclick="pick('${prefix}','${s.rack}',${s.slot})"><div class="slot-face"><div class="slot-code">${s.rack}${s.slot}</div><div class="slot-wine">Empty</div></div></div>`;
+      }
+      const st = thrStatus(s);
+      const pct = Math.min(100, Math.round((s.qty/s.max)*100));
+      const cls = `slot vel-${s.vel||'cold'} ${s.dead?'dead':''} thr-${st}`;
+      return `<div class="${cls}" onclick="pick('${prefix}','${s.rack}',${s.slot})">
+        <div class="slot-face">
+          <div class="slot-status ss-${st}"></div>
+          <div class="slot-fill fill-${s.type}" style="height:${pct}%"></div>
+          <div class="slot-code">${s.rack}${s.slot}</div>
+          <div class="slot-wine">${s.wine}</div>
+          <div class="slot-qty">${s.qty}/${s.max}</div>
+        </div></div>`;
+    }
+
+    function zoneHtml(rack, prefix){
+      const z = ZONES[rack];
+      const slots = SLOTS.filter(s=>s.rack===rack);
+      const filled = slots.filter(s=>s.type!=='empty');
+      const cap = Math.round(filled.reduce((a,s)=>a+s.qty,0) / Math.max(1, filled.reduce((a,s)=>a+s.max,0)) * 100);
+      const tempLbl = z.temp==='cool'?'❄ 12°C':z.temp==='warm'?'🌡 17°C':'✓ 14°C';
+      return `<div class="zone" style="--zc:${z.zc}">
+        <div class="zone-head">
+          <div class="zone-ico">${z.ico}</div>
+          <div class="zone-meta"><div class="zone-name">${z.name}</div><div class="zone-sub">${z.sub}</div></div>
+          <div class="zone-cap">
+            <div class="zone-cap-pct">${cap}%</div>
+            <div class="zone-cap-bar"><div class="zone-cap-fill" style="width:${cap}%"></div></div>
+          </div>
+          <span class="zone-temp temp-${z.temp}">${tempLbl}</span>
+        </div>
+        <div class="zone-slots">${slots.map(s=>slotHtml(s,prefix)).join('')}</div>
+      </div>`;
+    }
+
+    function mapStage(variant, densityClass){
+      const st = state[variant];
+      return `<div class="cellar-card ${densityClass||''}">
+        <div class="cellar-toolbar">
+          <div class="loc-chips">
+            ${LOCATIONS.map(l=>`<div class="loc-chip ${st.loc===l.id?'active':''}" onclick="setLoc('${variant}','${l.id}')"><span class="loc-dot" style="background:${l.color}"></span>${l.name}<span class="loc-pct">${l.pct}%</span></div>`).join('')}
+          </div>
+          <div class="overlays">
+            <span class="ov-lbl">Overlay</span>
+            <button class="ov-btn ${st.overlay==='none'?'active':''}" onclick="setOv('${variant}','none')">Default</button>
+            <button class="ov-btn threshold ${st.overlay==='threshold'?'active':''}" onclick="setOv('${variant}','threshold')">Threshold</button>
+            <button class="ov-btn velocity ${st.overlay==='velocity'?'active':''}" onclick="setOv('${variant}','velocity')">Velocity</button>
+            <button class="ov-btn dead ${st.overlay==='dead'?'active':''}" onclick="setOv('${variant}','dead')">Dead</button>
+          </div>
+        </div>
+        <div class="cellar-stage overlay-${st.overlay}">
+          <div class="zone-floor">${RACKS.map(r=>zoneHtml(r,variant)).join('')}</div>
+        </div>
+      </div>`;
+    }
+
+    function head(sub){
+      return `<div class="app-header"><div><h1>Cellar Map</h1><p>${sub}</p></div>
+        <button class="reorder-btn" style="width:auto;padding:0 16px;height:38px;">＋ Add Wine</button></div>`;
+    }
+    function legendRow(){
+      return `<div class="maplegend section">
+        <span style="font-weight:700;color:var(--color-text);">Bin health:</span>
+        <span class="li"><span class="dotc st-crit-c"></span>Critical (&lt; min)</span>
+        <span class="li"><span class="dotc st-low-c"></span>Low (&lt; par)</span>
+        <span class="li"><span class="dotc st-ok-c"></span>Healthy</span>
+        <span class="li"><span class="dotc st-over-c"></span>Overstock (&gt; max)</span>
+      </div>`;
+    }
+
+    function buildA(){
+      return head('Named zones · threshold-aware bins · click any bin for the full picture') +
+        `<div class="page">${legendRow()}<div class="section">${mapStage('a')}</div></div>`;
+    }
+    function buildB(){
+      return head('Density map for large cellars — threshold overlay on by default') +
+        `<div class="page">${legendRow()}<div class="section">${mapStage('b','density')}</div></div>`;
+    }
+    function buildC(){
+      const inner = state.c.sel ? panelInner(state.c.sel) : `<div class="empty-note">Select a bin on the map to see thresholds, sales heatmap, orders, and reorder.</div>`;
+      const foot = state.c.sel ? footInner(state.c.sel) : '';
+      return head('Split command — map + always-on sidebar for the back office') +
+        `<div class="page">${legendRow()}
+          <div class="split">
+            <div>${mapStage('c')}</div>
+            <div class="side-panel">
+              <div style="background:#fff;border:1px solid #f0f0f2;border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column;">
+                <div class="panel-head">
+                  <div class="panel-eyebrow">${state.c.sel?('Rack '+state.c.sel.rack+' · Slot '+state.c.sel.slot):'Bin inspector'}</div>
+                  <div class="panel-title">${state.c.sel?state.c.sel.wine:'No bin selected'}</div>
+                  <div class="panel-sub">${state.c.sel?(state.c.sel.vintage+' · '+typeName(state.c.sel.type)):'Click a bin on the map'}</div>
+                </div>
+                <div class="panel-body">${inner}</div>
+                ${foot}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ─── Shared sidebar content ───
+    function thresholdBlock(s){
+      const st = thrStatus(s);
+      const scale = Math.max(s.max, s.qty);
+      const wCrit = (s.min/scale)*100, wLow = ((s.par-s.min)/scale)*100, wOk = ((s.max-s.par)/scale)*100;
+      const mark = Math.min(100,(s.qty/scale)*100);
+      const note = st==='crit'?`Below minimum by <b>${s.min-s.qty}</b> — reorder now`
+        : st==='low'?`Below par by <b>${s.par-s.qty}</b> bottles`
+        : st==='over'?`Over max by <b>${s.qty-s.max}</b> — hold ordering`
+        : `At healthy level`;
+      return `<div class="blk">
+        <div class="blk-h">Stock threshold</div>
+        <div class="thr-status">
+          <span class="thr-badge ${st}">${thrLabel(st)}</span>
+          <span class="thr-note">${note}</span>
+        </div>
+        <div class="thr-bar">
+          <div class="thr-seg crit" style="width:${wCrit}%"></div>
+          <div class="thr-seg low" style="width:${wLow}%"></div>
+          <div class="thr-seg ok" style="width:${wOk}%"></div>
+          <div class="thr-mark" style="left:calc(${mark}% - 1.5px)"></div>
+        </div>
+        <div class="thr-ticks">
+          <span class="thr-tick">Min<b>${s.min}</b></span>
+          <span class="thr-tick" style="text-align:center">Par<b>${s.par}</b></span>
+          <span class="thr-tick" style="text-align:right">Max<b>${s.max}</b></span>
+        </div>
+      </div>`;
+    }
+
+    function heatBlock(s){
+      const r = rng(s.wine+s.rack);
+      const base = s.vel==='hot'?0.62:s.vel==='warm'?0.4:0.16;
+      let peak = {v:-1};
+      const cells = [];
+      DAYS.forEach((d,di)=>{
+        BUCKETS.forEach((b,bi)=>{
+          let v = base + (r()-0.5)*0.5;
+          if (bi>=2) v += 0.15;            // HH + dinner busier
+          if (di>=4) v += 0.12;            // Fri-Sun busier
+          v = Math.max(0, Math.min(1, v));
+          const lvl = v<0.12?0:v<0.32?1:v<0.55?2:v<0.78?3:4;
+          const idx = di*BUCKETS.length+bi;
+          cells.push({di,bi,lvl});
+          if (lvl>peak.v){ peak = {v:lvl, idx}; }
+        });
+      });
+      let grid = `<div class="heat-row-lbl"></div>` + BUCKETS.map(b=>`<div class="heat-col">${b}</div>`).join('');
+      DAYS.forEach((d,di)=>{
+        grid += `<div class="heat-row-lbl">${d[0]}</div>`;
+        BUCKETS.forEach((b,bi)=>{
+          const c = cells.find(x=>x.di===di&&x.bi===bi);
+          const isPeak = (di*BUCKETS.length+bi)===peak.idx && c.lvl===4;
+          grid += `<div class="heat-cell heat-${c.lvl} ${isPeak?'heat-peak':''}" title="${d} ${b}"></div>`;
+        });
+      });
+      const peakCell = cells[peak.idx];
+      const peakTxt = peakCell ? `${DAYS[peakCell.di]} · ${BUCKETS[peakCell.bi]}` : '—';
+      return `<div class="blk">
+        <div class="blk-h">Hours sold · past week <span style="color:var(--color-primary);font-weight:700;">peak ${peakTxt}</span></div>
+        <div class="heat">${grid}</div>
+        <div class="heat-legend">Less
+          <span class="heat-swatch heat-0"></span><span class="heat-swatch heat-1"></span><span class="heat-swatch heat-2"></span><span class="heat-swatch heat-3"></span><span class="heat-swatch heat-4"></span>
+          More</div>
+      </div>`;
+    }
+
+    function ordersBlock(s){
+      const r = rng(s.wine+'orders');
+      const n = 2 + Math.floor(r()*2);
+      let rows = '';
+      let daysAgo = 8 + Math.floor(r()*10);
+      for (let i=0;i<n;i++){
+        const d = new Date(); d.setDate(d.getDate()-daysAgo);
+        const q = r()<0.5?6:12;
+        const vend = VENDORS[Math.floor(r()*VENDORS.length)];
+        const unit = Math.round(s.cost*(0.9+r()*0.2));
+        rows += `<div class="order-row">
+          <div class="order-date">${(d.getMonth()+1)}/${d.getDate()}</div>
+          <div><div class="order-vendor">${vend}</div><div class="order-meta">${q} btl · $${unit}/btl</div></div>
+          <div><span class="order-qty">$${q*unit}</span><span class="order-status">Delivered</span></div>
+        </div>`;
+        daysAgo += 14 + Math.floor(r()*20);
+      }
+      return `<div class="blk"><div class="blk-h">Previous orders</div>${rows}</div>`;
+    }
+
+    function panelInner(s){
+      let html = `<div class="blk"><div class="amb-stats">
+        <div class="amb"><div class="amb-v">${s.qty}</div><div class="amb-l">On hand</div></div>
+        <div class="amb"><div class="amb-v">${s.vel==='hot'?'4.2/wk':s.vel==='warm'?'1.8/wk':'0.3/wk'}</div><div class="amb-l">Velocity</div></div>
+        <div class="amb"><div class="amb-v">${s.dead?s.daysSincePour+'d':'—'}</div><div class="amb-l">${s.dead?'Since pour':'Active'}</div></div>
+      </div></div>`;
+      html += thresholdBlock(s);
+      html += heatBlock(s);
+      html += ordersBlock(s);
+      if (s.dead) html += `<div class="fefo-tip" style="border-color:#94a3b8;background:#f8fafc;"><strong>❄ Dead stock.</strong> No pour in ${s.daysSincePour} days — feature, transfer, or write off.</div>`;
+      const lots = s.lots || [{v:s.vintage,qty:s.qty,cost:s.cost,fefo:true}];
+      if (lots.length>1) html += `<div class="fefo-tip"><strong>FEFO:</strong> pour the <b>${lots.find(l=>l.fefo)?.v||lots[0].v}</b> lot first.</div>`;
+      html += `<div class="blk"><div class="blk-h">Lots at this bin</div>`;
+      html += lots.map(l=>`<div class="lot-card ${l.fefo?'fefo':''}"><div class="lot-head"><span class="lot-v">${l.v}</span>${l.fefo?'<span class="lot-badge">Pour first</span>':''}</div><div class="lot-grid"><div>Qty<b>${l.qty} btl</b></div><div>Unit cost<b>$${l.cost}</b></div></div></div>`).join('');
+      html += `</div>`;
+      html += `<div class="blk"><div class="blk-h">Also stocked at</div>${(s.locs||['main']).map(l=>`<span class="ml-chip ${l==='main'?'here':''}">${LOCATIONS.find(x=>x.id===l)?.name||l}</span>`).join('')}</div>`;
+      return html;
+    }
+
+    function footInner(s){
+      const suggested = Math.max(0, s.par - s.qty);
+      reorderQty = suggested>0?suggested:6;
+      const total = reorderQty * s.cost;
+      return `<div class="reorder-foot">
+        <div class="reorder-top">
+          <div class="reorder-sugg">${suggested>0?`Suggested: bring to par → <b>+${suggested} btl</b>`:'At/above par — reorder optional'}</div>
+        </div>
+        <div class="reorder-controls">
+          <div class="stepper">
+            <button onclick="bumpQty(-1)">−</button>
+            <input id="reQty" value="${reorderQty}" readonly>
+            <button onclick="bumpQty(1)">＋</button>
+            <span class="u">btl</span>
+          </div>
+          <button class="reorder-btn" onclick="doReorder('${s.wine}')">🛒 Create Reorder</button>
+        </div>
+        <div class="reorder-cost" id="reCost">${reorderQty} btl × $${s.cost} = <b>$${total}</b> · est. delivery 3–5 days</div>
+      </div>`;
+    }
+
+    let currentSlot = null;
+    function bumpQty(d){
+      reorderQty = Math.max(0, reorderQty + d);
+      const inp = document.getElementById('reQty'); if (inp) inp.value = reorderQty;
+      const cost = document.getElementById('reCost'); if (cost && currentSlot) cost.innerHTML = `${reorderQty} btl × $${currentSlot.cost} = <b>$${reorderQty*currentSlot.cost}</b> · est. delivery 3–5 days`;
+    }
+    function doReorder(wine){ toast(`Reorder drafted · ${reorderQty} btl of ${wine} → manager approval`); }
+
+    const builders = { a:buildA, b:buildB, c:buildC };
+    function render(v){ document.getElementById('variant-'+v).innerHTML = builders[v](); }
+
+    function setOv(v,o){ state[v].overlay=o; render(v); }
+    function setLoc(v,l){ state[v].loc=l; render(v); toast('Filtered to '+LOCATIONS.find(x=>x.id===l).name); }
+
+    function pick(prefix, rack, slot){
+      const s = SLOTS.find(x=>x.rack===rack && x.slot===slot);
+      if (!s || s.type==='empty'){ toast('Empty slot · drag wine or Auto-Locate'); return; }
+      currentSlot = s;
+      if (prefix==='c'){ state.c.sel = s; render('c'); return; }
+      document.getElementById('drEyebrow').textContent = `Rack ${s.rack} · Slot ${s.slot} · ${ZONES[s.rack].name}`;
+      document.getElementById('drTitle').textContent = s.wine;
+      document.getElementById('drSub').textContent = `${s.vintage} · ${typeName(s.type)} · ${(s.locs||['main']).length} location(s)`;
+      document.getElementById('drBody').innerHTML = panelInner(s);
+      document.getElementById('drFoot').innerHTML = footInner(s);
+      document.getElementById('scrim').classList.add('open');
+      document.getElementById('drawer').classList.add('open');
+    }
+    function closeDrawer(){ document.getElementById('scrim').classList.remove('open'); document.getElementById('drawer').classList.remove('open'); }
+
+    function showVariant(id){
+      document.querySelectorAll('.variant').forEach(v=>v.classList.remove('active'));
+      document.querySelectorAll('.variant-tab').forEach((t,i)=>t.classList.toggle('active',['a','b','c'][i]===id));
+      document.getElementById('variant-'+id).classList.add('active');
+    }
+    ['a','b','c'].forEach(render);
+  </script>
+</body>
+</html>

@@ -62,6 +62,33 @@ export class DatabaseService implements OnModuleInit {
     return data;
   }
 
+  /**
+   * Active member user_ids for a restaurant (URA membership; falls back to
+   * users.restaurant_id). Shared by the notification funnels so cron-generated
+   * signals (deliveries, payments, reports) can land in every member's inbox.
+   */
+  async getRestaurantMemberIds(restaurantId: string): Promise<string[]> {
+    try {
+      const { data: ura } = await this.supabase
+        .from("user_restaurant_access")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true);
+      const uraIds = (ura || []).map((r: any) => r.user_id).filter(Boolean);
+      if (uraIds.length) return Array.from(new Set(uraIds));
+
+      const { data: users } = await this.supabase
+        .from("users")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId);
+      return Array.from(
+        new Set((users || []).map((u: any) => u.user_id).filter(Boolean)),
+      );
+    } catch {
+      return [];
+    }
+  }
+
   async getProcurementOrders(restaurantId: string, status?: string) {
     let query = this.supabase
       .from("procurement_orders")

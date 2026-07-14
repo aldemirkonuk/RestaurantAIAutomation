@@ -217,6 +217,33 @@ export class CategoriesDto {
   ai?: boolean;
 }
 
+export class LowStockPrefsDto {
+  @ApiPropertyOptional({ description: "Master switch for low-stock alerts" })
+  @IsBoolean()
+  @IsOptional()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ description: "Alert the moment a wine first crosses par" })
+  @IsBoolean()
+  @IsOptional()
+  instantFirstAlert?: boolean;
+
+  @ApiPropertyOptional({ description: "Critical (≤50% par) sends immediately" })
+  @IsBoolean()
+  @IsOptional()
+  criticalImmediate?: boolean;
+
+  @ApiPropertyOptional({ description: "'daily' | 'off' — reminder for still-low wines" })
+  @IsString()
+  @IsOptional()
+  digestFrequency?: string;
+
+  @ApiPropertyOptional({ description: "Daily digest send time HH:mm" })
+  @IsString()
+  @IsOptional()
+  digestTime?: string;
+}
+
 export class UpdatePreferencesDto {
   @ApiProperty({ description: "User ID" })
   @IsUUID()
@@ -248,6 +275,22 @@ export class UpdatePreferencesDto {
   @Type(() => QuietHoursDto)
   @IsOptional()
   quietHours?: QuietHoursDto;
+
+  @ApiPropertyOptional()
+  @ValidateNested()
+  @Type(() => LowStockPrefsDto)
+  @IsOptional()
+  lowStock?: LowStockPrefsDto;
+
+  @ApiPropertyOptional({ description: "'both' | 'in_app' | 'off'" })
+  @IsString()
+  @IsOptional()
+  ordersMode?: string;
+
+  @ApiPropertyOptional({ description: "'both' | 'in_app' | 'off'" })
+  @IsString()
+  @IsOptional()
+  reportsMode?: string;
 }
 
 export class PushSubscribeDto {

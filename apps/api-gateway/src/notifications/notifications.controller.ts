@@ -148,6 +148,9 @@ export class NotificationsController {
         sms: body.sms,
         categories: body.categories as Record<string, boolean>,
         quietHours: body.quietHours,
+        lowStock: body.lowStock,
+        ordersMode: body.ordersMode,
+        reportsMode: body.reportsMode,
       });
     } catch (error) {
       this.logger.error(`Failed to update preferences: ${error.message}`);

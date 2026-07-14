@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 033 — Notifications section (fits current Settings)</title>
+<style>
+  :root{
+    --wine-50:#fdf2f4; --wine-100:#fce7eb; --wine-500:#e14d75; --wine-600:#cd2d5b; --wine-700:#ac204a;
+    --g50:#f9fafb; --g100:#f3f4f6; --g200:#e5e7eb; --g300:#d1d5db; --g400:#9ca3af; --g500:#6b7280; --g600:#4b5563; --g700:#374151; --g900:#111827;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#f7f7f9;color:var(--g900);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;
+    padding:32px 20px 70px}
+  .wrap{max-width:760px;margin:0 auto}
+  .hint{font-size:12.5px;color:var(--g400);margin:0 0 14px}
+  .hint b{color:var(--g600);font-weight:600}
+
+  /* faux Settings scrollspy tab bar (shows this is an added section, not a redesign) */
+  .tabs{display:flex;gap:4px;background:#fff;border:1px solid var(--g100);border-radius:12px;padding:5px;margin-bottom:18px;overflow-x:auto}
+  .tabs button{font-family:inherit;font-size:13px;font-weight:600;color:var(--g500);background:transparent;border:none;border-radius:8px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+  .tabs button.on{background:var(--wine-600);color:#fff}
+
+  /* section card — mirrors Settings.tsx: bg-white rounded-2xl border-gray-100 shadow-sm */
+  .card{background:#fff;border:1px solid var(--g100);border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);overflow:hidden}
+  .chead{display:flex;align-items:center;gap:10px;padding:16px 24px;border-bottom:1px solid var(--g100)}
+  .chead svg{width:16px;height:16px;color:var(--wine-500);flex:none}
+  .chead h2{font-size:14px;font-weight:600;color:var(--g900);margin:0}
+  .chead p{font-size:12px;color:var(--g400);margin:2px 0 0}
+
+  .rows>div{padding:16px 24px;border-top:1px solid var(--g50)}
+  .rows>div:first-child{border-top:none}
+
+  .catrow{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{font-family:inherit;font-size:13px;font-weight:600;padding:7px 15px;border-radius:9px;border:none;cursor:pointer;background:var(--g100);color:var(--g500);transition:.15s}
+  .pill.on{background:var(--wine-600);color:#fff}
+
+  .line{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .lbl{font-size:14px;font-weight:500;color:var(--g700)}
+  .sub{font-size:12px;color:var(--g400);margin-top:3px;max-width:52ch;line-height:1.45}
+  .ctl{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+  select{font-family:inherit;font-size:13px;color:var(--g700);border:1px solid var(--g200);background:#fff;border-radius:8px;
+    padding:7px 30px 7px 11px;cursor:pointer;outline:none;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 9px center}
+  select:focus{border-color:var(--wine-500);box-shadow:0 0 0 3px var(--wine-100)}
+  input.time{font-family:inherit;font-size:13px;color:var(--g700);border:1px solid var(--g200);border-radius:8px;padding:7px 10px;width:74px;outline:none}
+  input.time:focus{border-color:var(--wine-500);box-shadow:0 0 0 3px var(--wine-100)}
+
+  /* toggle — mirrors Settings.tsx h-5 w-9 */
+  .tg{position:relative;display:inline-flex;height:20px;width:36px;align-items:center;border-radius:999px;background:var(--g200);border:none;cursor:pointer;transition:background .2s;flex:none}
+  .tg.on{background:var(--wine-600)}
+  .tg::after{content:"";height:14px;width:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15);transform:translateX(3px);transition:transform .2s}
+  .tg.on::after{transform:translateX(19px)}
+
+  .tag{font-size:11px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:5px;background:var(--wine-50);color:var(--wine-700);vertical-align:middle;margin-left:6px}
+  .pane[hidden]{display:none}
+  .foot{margin-top:18px;font-size:12px;color:var(--g400);text-align:center}
+  .foot code{background:var(--g100);padding:2px 6px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="hint">Sketch 033 · synthesis — a new <b>Notifications</b> section that drops into the existing <b>Settings</b> page (same card style, same controls), not a redesign. Everything inline is editable.</p>
+
+  <!-- faux existing Settings tab bar, Notifications added -->
+  <div class="tabs">
+    <button>Team</button>
+    <button>Email</button>
+    <button class="on">Notifications</button>
+    <button>Locations</button>
+    <button>Measurement</button>
+    <button>Features</button>
+    <button>Calendar</button>
+  </div>
+
+  <div class="card">
+    <div class="chead">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <div>
+        <h2>Notifications</h2>
+        <p>How and when WineOps alerts you</p>
+      </div>
+    </div>
+
+    <div class="rows">
+      <!-- category selector (the split-rail idea, as pills that match the ml/oz selector) -->
+      <div>
+        <div class="catrow">
+          <button class="pill on" data-cat="low">Low stock</button>
+          <button class="pill" data-cat="orders">Orders</button>
+          <button class="pill" data-cat="reports">Reports</button>
+          <button class="pill" data-cat="system">System</button>
+        </div>
+      </div>
+
+      <!-- LOW STOCK -->
+      <div class="pane" data-pane="low">
+        <div class="line">
+          <div><div class="lbl">Alert me the moment a wine runs low<span class="tag">INSTANT</span></div>
+            <div class="sub">The first time it drops below par — even a POS sale or pour that crosses the line alerts within seconds.</div></div>
+          <div class="ctl"><button class="tg on"></button></div>
+        </div>
+      </div>
+      <div class="pane" data-pane="low">
+        <div class="line">
+          <div><div class="lbl">Send low-stock alerts via</div></div>
+          <div class="ctl"><select><option>In-app + email</option><option>In-app only</option><option>Email only</option><option>In-app + email + SMS</option></select></div>
+        </div>
+      </div>
+      <div class="pane" data-pane="low">
+        <div class="line">
+          <div><div class="lbl">Bundle wines that stay low</div>
+            <div class="sub">A reminder for anything still below par, so you're not nagged repeatedly.</div></div>
+          <div class="ctl">
+            <select><option>Daily digest</option><option>Rolling (every window)</option><option>Off</option></select>
+            <select><option>at 12:00</option><option>at 08:00</option><option>at 17:00</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="pane" data-pane="low">
+        <div class="line">
+          <div><div class="lbl">Group a burst of alerts</div>
+            <div class="sub">If several wines drop at once, send one email instead of many.</div></div>
+          <div class="ctl"><select><option>Within 15 min</option><option>Within 5 min</option><option>Within 30 min</option></select></div>
+        </div>
+      </div>
+      <div class="pane" data-pane="low">
+        <div class="line">
+          <div><div class="lbl">Critical alerts interrupt immediately</div>
+            <div class="sub">At or below 50% of par — sends now and overrides quiet hours.</div></div>
+          <div class="ctl"><button class="tg on"></button></div>
+        </div>
+      </div>
+
+      <!-- ORDERS -->
+      <div class="pane" data-pane="orders" hidden>
+        <div class="line"><div><div class="lbl">Notify me about deliveries &amp; payments</div></div>
+          <div class="ctl"><select><option>In-app + email</option><option>In-app only</option><option>Email only</option></select></div></div>
+      </div>
+      <div class="pane" data-pane="orders" hidden>
+        <div class="line"><div><div class="lbl">Delivery heads-up</div><div class="sub">Remind me before a delivery is due to arrive.</div></div>
+          <div class="ctl"><select><option>1 day ahead</option><option>2 days ahead</option><option>Same day</option><option>Off</option></select></div></div>
+      </div>
+      <div class="pane" data-pane="orders" hidden>
+        <div class="line"><div><div class="lbl">Payment reminder</div><div class="sub">Remind me before an invoice is due.</div></div>
+          <div class="ctl"><select><option>3 days ahead</option><option>1 day ahead</option><option>1 week ahead</option><option>Off</option></select></div></div>
+      </div>
+      <div class="pane" data-pane="orders" hidden>
+        <div class="line"><div><div class="lbl">Recurring order reminder</div></div>
+          <div class="ctl"><select><option>2 days ahead</option><option>1 day ahead</option><option>1 week ahead</option></select></div></div>
+      </div>
+
+      <!-- REPORTS -->
+      <div class="pane" data-pane="reports" hidden>
+        <div class="line"><div><div class="lbl">Send me the weekly report</div></div>
+          <div class="ctl">
+            <select><option>Email</option><option>In-app</option><option>Email + in-app</option></select>
+            <select><option>Monday</option><option>Sunday</option><option>Friday</option></select>
+            <select><option>at 08:00</option><option>at 07:00</option><option>at 09:00</option></select>
+          </div></div>
+      </div>
+      <div class="pane" data-pane="reports" hidden>
+        <div class="line"><div><div class="lbl">Drop it in my inbox when it's ready</div><div class="sub">A one-tap card on the Notifications page.</div></div>
+          <div class="ctl"><button class="tg on"></button></div></div>
+      </div>
+
+      <!-- SYSTEM -->
+      <div class="pane" data-pane="system" hidden>
+        <div class="line"><div><div class="lbl">Sync &amp; health alerts</div></div>
+          <div class="ctl"><select><option>In-app</option><option>In-app + email</option></select></div></div>
+      </div>
+      <div class="pane" data-pane="system" hidden>
+        <div class="line"><div><div class="lbl">Mute routine confirmations</div><div class="sub">Keep errors and warnings; hide the noise.</div></div>
+          <div class="ctl"><button class="tg"></button></div></div>
+      </div>
+
+      <!-- GLOBAL QUIET HOURS (always visible) -->
+      <div>
+        <div class="line">
+          <div><div class="lbl">Quiet hours</div><div class="sub">Hold non-urgent alerts overnight. Critical low-stock always overrides.</div></div>
+          <div class="ctl">
+            <input class="time" value="22:00"><span style="color:var(--g400)">to</span><input class="time" value="08:00">
+            <button class="tg on"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot">Editable throwaway · click a category pill to switch · maps to <code>notification_preferences</code> + <code>LowStockAlertsService</code></p>
+</div>
+
+<script>
+  document.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',()=>{
+    document.querySelectorAll('.pill').forEach(x=>x.classList.remove('on'));
+    p.classList.add('on');
+    const c=p.dataset.cat;
+    document.querySelectorAll('.pane').forEach(pane=>{ pane.hidden = pane.dataset.pane!==c; });
+  }));
+  document.querySelectorAll('.tg').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+</script>
+</body>
+</html>

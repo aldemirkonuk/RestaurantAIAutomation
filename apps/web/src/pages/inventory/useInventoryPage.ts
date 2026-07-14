@@ -287,7 +287,6 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     sortOrder,
     filterActiveStatus,
     filterBottleSize,
-    selectedLocationFilter,
   ])
 
   const stats = useMemo(() => {

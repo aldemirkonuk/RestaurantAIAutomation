@@ -8,6 +8,8 @@ export type NotificationType =
   | 'price_change'
   | 'delivery_scheduled'
   | 'calendar_reminder'
+  | 'payment_due'
+  | 'report'
   | 'system'
   | 'ai_suggestion'
   | 'draft_ready'
@@ -49,6 +51,15 @@ export interface NotificationPreferences {
     startTime: string // HH:mm format
     endTime: string
   }
+  lowStock?: {
+    enabled: boolean
+    instantFirstAlert: boolean
+    criticalImmediate: boolean
+    digestFrequency: 'daily' | 'off'
+    digestTime: string // HH:mm format
+  }
+  ordersMode?: 'both' | 'in_app' | 'off'
+  reportsMode?: 'both' | 'in_app' | 'off'
   updatedAt?: string
 }
 
@@ -187,7 +198,9 @@ export async function updateNotificationPreferences(
 ): Promise<NotificationPreferences> {
   const response = await apiClient.patch<NotificationPreferences>(
     `/notifications/preferences?userId=${userId}`,
-    preferences
+    // userId must be in the body too: the API's UpdatePreferencesDto requires it
+    // and the global ValidationPipe (forbidNonWhitelisted) rejects a missing one.
+    { ...preferences, userId }
   )
   return response.data
 }

@@ -1,9 +1,10 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { CacheModule } from "../common/cache/cache.module";
 import { DatabaseModule } from "../database/database.module";
 import { ToastController } from "./toast.controller";
 import { ToastService } from "./toast.service";
 import { ToastAuthService } from "./toast-auth.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 /**
  * Toast API Module
@@ -22,7 +23,7 @@ import { ToastAuthService } from "./toast-auth.service";
  * Toast POS -> POST /toast/webhook -> Verify signature -> Store event -> Forward to orchestrator
  */
 @Module({
-  imports: [CacheModule, DatabaseModule],
+  imports: [CacheModule, DatabaseModule, forwardRef(() => NotificationsModule)],
   controllers: [ToastController],
   providers: [ToastService, ToastAuthService],
   exports: [ToastService, ToastAuthService],

@@ -12,6 +12,7 @@ export * from "./onboarding.template";
 
 // Individual templates
 export * from "./low-stock-alert.template";
+export * from "./low-stock-digest.template";
 export * from "./weekly-report.template";
 export * from "./daily-summary.template";
 export * from "./order-notification.template";

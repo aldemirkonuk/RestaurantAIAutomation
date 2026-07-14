@@ -5,6 +5,8 @@ import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
 import {
   lowStockAlertTemplate,
+  lowStockDigestTemplate,
+  type LowStockDigestData,
   weeklyReportTemplate,
   dailySummaryTemplate,
   orderApprovalTemplate,
@@ -251,6 +253,45 @@ This is an automated alert from WineOps AI.
     return this.sendEmail({
       to: data.to,
       subject: `${severity}: ${data.wineName} - Only ${data.currentStock} bottles remaining`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send a BATCHED low-stock digest — many wines in one email. Replaces the
+   * per-wine loop so N low wines produce a single email instead of N.
+   */
+  async sendLowStockDigest(data: LowStockDigestData & { to: string[] }): Promise<
+    EmailResult
+  > {
+    const html = lowStockDigestTemplate(data);
+    const total = data.wines.length;
+    const criticalCount = data.wines.filter(
+      (w) => w.severity === "critical",
+    ).length;
+
+    const subject =
+      data.mode === "instant"
+        ? `${criticalCount > 0 ? "🚨" : "⚠️"} ${total} wine${total === 1 ? "" : "s"} dropped below par`
+        : `⚠️ Low-stock digest: ${total} wine${total === 1 ? "" : "s"} below par`;
+
+    const text = [
+      subject,
+      "",
+      ...data.wines.map(
+        (w) =>
+          `- ${w.wineName}: ${w.currentStock}/${w.threshold} bottles${
+            w.severity === "critical" ? " (CRITICAL)" : ""
+          }`,
+      ),
+      "",
+      "This is an automated digest from WineOps AI.",
+    ].join("\n");
+
+    return this.sendEmail({
+      to: data.to,
+      subject,
       html,
       text,
     });

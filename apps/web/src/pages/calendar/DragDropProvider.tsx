@@ -168,6 +168,20 @@ export function DragDropProvider({
     }
   }, [dragState.isDragging, dragState.dragType, dragState.initialEventStart, dragState.initialEventEnd])
 
+  // Cancel drag without triggering callback.
+  // Declared before endDrag so it can be a stable dependency there (its own
+  // deps are empty, so its identity never changes — safe to depend on).
+  const cancelDrag = useCallback(() => {
+    setDragState({
+      isDragging: false,
+      dragType: null,
+      startDate: null,
+      endDate: null,
+    })
+    dragStartRef.current = null
+    isPointerDownRef.current = false
+  }, [])
+
   // End drag and trigger callback
   const endDrag = useCallback(() => {
     if (!dragState.isDragging || !dragState.startDate || !dragState.endDate) {
@@ -198,19 +212,7 @@ export function DragDropProvider({
     })
     dragStartRef.current = null
     isPointerDownRef.current = false
-  }, [dragState, onCreateEvent, onMoveEvent, onResizeEvent])
-
-  // Cancel drag without triggering callback
-  const cancelDrag = useCallback(() => {
-    setDragState({
-      isDragging: false,
-      dragType: null,
-      startDate: null,
-      endDate: null,
-    })
-    dragStartRef.current = null
-    isPointerDownRef.current = false
-  }, [])
+  }, [dragState, onCreateEvent, onMoveEvent, onResizeEvent, cancelDrag])
 
   // Handle global pointer events for drag
   useEffect(() => {

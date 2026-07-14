@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../__tests__/utils/test-utils'
 import { OneTapActionCenter } from './OneTapActionCenter'
 
@@ -106,10 +105,9 @@ describe('OneTapActionCenter', () => {
   it('shows timestamps for actions', () => {
     renderWithProviders(<OneTapActionCenter />)
 
-    // Timestamps are shown as relative strings
-    const hasMinsAgo = !!document.querySelector('[class*=text]')
-    // At minimum the action timestamp element should render; verify the
-    // action title is present as a proxy (full timestamp format varies).
+    // Timestamps render as relative strings; full format varies, so verify the
+    // action title is present as a proxy that the action (with its timestamp)
+    // rendered.
     expect(screen.getByText(/Penfolds Grange/i)).toBeInTheDocument()
   })
 })

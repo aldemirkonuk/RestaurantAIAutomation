@@ -40,6 +40,7 @@ import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../service
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
 import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
+import { NotificationsSection } from '../components/settings/NotificationsSection';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
 import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
@@ -69,11 +70,12 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'email', 'locations', 'measurement', 'features', 'calendar'] as const;
+const SECTION_IDS = ['team', 'email', 'notifications', 'locations', 'measurement', 'features', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
   email: 'Email',
+  notifications: 'Notifications',
   locations: 'Locations',
   measurement: 'Measurement',
   features: 'Features',
@@ -1027,6 +1029,11 @@ export default function Settings() {
 
         {/* ── Email sign-off ── */}
         <EmailSenderSettings />
+
+        {/* ── Notifications ── */}
+        <div id="notifications" className="scroll-mt-32">
+          <NotificationsSection />
+        </div>
 
         {/* ── Locations & Chains — owner only ── */}
         {user?.role === 'owner' && (

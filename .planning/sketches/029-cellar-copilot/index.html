@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>029 — Cellar Copilot</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: #eef0f3; color: var(--color-text); padding-top: 46px; }
+
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: #17131a; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 7px 16px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    }
+    #variant-nav .brand { color: #fff; font-weight: 800; font-family: var(--font-display); font-size: 13px; }
+    #variant-nav .tag { color: rgba(255,255,255,0.35); font-size: 11px; margin-right: 12px; font-family: var(--font-mono); }
+    .variant-tab {
+      padding: 5px 14px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.72); cursor: pointer;
+      font-size: 12px; font-weight: 600; transition: all 0.15s;
+    }
+    .variant-tab:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .variant-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    .canvas { max-width: 1280px; margin: 0 auto; padding: 24px 24px 80px; }
+
+    /* ─── Copilot bar ─── */
+    .copilot-bar {
+      background: linear-gradient(135deg, #1a1520 0%, #2d1f28 50%, #1a1520 100%);
+      border-radius: var(--radius-xl); padding: 18px 22px; margin-bottom: 20px;
+      border: 1px solid rgba(205,45,91,0.25); position: relative; overflow: hidden;
+    }
+    .copilot-bar::before {
+      content: ''; position: absolute; top: -50%; right: -10%; width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(205,45,91,0.15) 0%, transparent 70%); pointer-events: none;
+    }
+    .copilot-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; position: relative; z-index: 1; }
+    .copilot-avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--color-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .copilot-title { font-family: var(--font-display); font-size: 15px; font-weight: 800; color: #fff; }
+    .copilot-sub { font-size: 12px; color: rgba(255,255,255,0.5); }
+    .copilot-actions { display: flex; gap: 8px; flex-wrap: wrap; position: relative; z-index: 1; }
+    .copilot-action {
+      padding: 9px 16px; border-radius: var(--radius-full); border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+    }
+    .copilot-action:hover { background: rgba(255,255,255,0.16); transform: translateY(-1px); }
+    .copilot-action.primary { background: var(--color-primary); border-color: var(--color-primary); }
+    .copilot-action .badge { background: rgba(255,255,255,0.2); padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 800; }
+
+    /* ─── Forecast ribbon ─── */
+    .forecast-ribbon {
+      background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+      padding: 16px 18px; margin-bottom: 18px; box-shadow: var(--shadow-card);
+    }
+    .ribbon-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+    .ribbon-title { font-family: var(--font-display); font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+    .ribbon-title span { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
+    .ribbon-scroll { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+    .ribbon-scroll::-webkit-scrollbar { height: 4px; }
+    .ribbon-scroll::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+    .forecast-card {
+      flex: 0 0 200px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      padding: 12px 14px; cursor: pointer; transition: var(--transition-base); position: relative;
+    }
+    .forecast-card:hover { border-color: var(--color-primary-medium); box-shadow: var(--shadow-sm); }
+    .forecast-card.urgent { border-color: var(--color-danger-border); background: var(--color-danger-bg); }
+    .fc-wine { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fc-meta { font-size: 10px; color: var(--color-text-muted); margin-top: 2px; }
+    .fc-cover { display: flex; align-items: baseline; gap: 4px; margin-top: 8px; }
+    .fc-days { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+    .fc-days small { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
+    .fc-spark { height: 28px; margin-top: 8px; position: relative; }
+    .fc-spark svg { width: 100%; height: 100%; }
+    .fc-band { position: absolute; bottom: 0; left: 0; right: 0; height: 60%; background: rgba(205,45,91,0.08); border-radius: 2px; }
+    .fc-reorder { font-size: 10px; font-weight: 700; margin-top: 6px; }
+    .fc-reorder.soon { color: var(--color-danger); }
+    .fc-reorder.mid { color: var(--color-warning); }
+    .fc-reorder.ok { color: var(--color-success); }
+    .fc-conf { font-size: 9px; color: var(--color-text-muted); margin-top: 2px; }
+
+    /* ─── KPI + toolbar ─── */
+    .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+    .kpi { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 14px 16px; box-shadow: var(--shadow-card); }
+    .kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+    .kpi-val { font-family: var(--font-display); font-size: 24px; font-weight: 800; margin-top: 6px; }
+    .kpi-sub { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+
+    .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    .search { flex: 1; min-width: 200px; position: relative; }
+    .search input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 13px; background: #fff; outline: none; }
+    .search .ic { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); }
+    .chip { padding: 7px 13px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: #fff; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+    .chip.active { background: var(--color-primary-light); border-color: var(--color-primary-medium); color: var(--color-primary); }
+
+    /* ─── Table ─── */
+    .table-wrap { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); padding: 11px 14px; border-bottom: 1px solid var(--color-border); background: #fbfbfc; }
+    thead th.num { text-align: right; }
+    tbody td { padding: 12px 14px; border-bottom: 1px solid #f2f3f5; font-size: 13px; vertical-align: middle; }
+    tbody tr:hover { background: #fbf7f8; }
+    .wine-cell { display: flex; align-items: center; gap: 10px; }
+    .wine-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .wine-name { font-weight: 700; font-size: 13px; }
+    .wine-meta { font-size: 11px; color: var(--color-text-muted); }
+    .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .abc { display: inline-flex; width: 22px; height: 22px; border-radius: 6px; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
+    .abc-a { background: #fef2f2; color: #DC2626; }
+    .abc-b { background: #fffbeb; color: #D97706; }
+    .abc-c { background: #f3f4f6; color: #6b7280; }
+
+    .stock-frac { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+    .stock-frac .open { font-size: 10px; color: var(--color-text-muted); display: block; }
+
+    .trust { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-full); }
+    .trust-hi { background: #ecfdf5; color: #059669; }
+    .trust-mid { background: #fffbeb; color: #D97706; }
+    .trust-lo { background: #fef2f2; color: #DC2626; }
+
+    .cover-mini { display: flex; align-items: center; gap: 6px; }
+    .cover-bar { width: 48px; height: 5px; border-radius: 3px; background: #eceef1; overflow: hidden; }
+    .cover-bar i { display: block; height: 100%; border-radius: 3px; }
+    .cover-d { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+
+    .reorder-cell { font-size: 12px; font-weight: 600; }
+    .reorder-cell small { display: block; font-size: 10px; color: var(--color-text-muted); font-weight: 500; }
+
+    .status { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-full); }
+    .st-crit { background: var(--color-danger-bg); color: var(--color-danger); }
+    .st-low { background: var(--color-warning-bg); color: var(--color-warning); }
+    .st-ok { background: var(--color-success-bg); color: var(--color-success); }
+
+    /* ─── Count Mode (Variant B) ─── */
+    .count-layout { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+    .count-main { }
+    .count-sidebar { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 120px); position: sticky; top: 60px; }
+    .count-side-head { padding: 16px 18px; border-bottom: 1px solid var(--color-border); background: linear-gradient(135deg, #fdf2f4, #fff); }
+    .count-side-title { font-family: var(--font-display); font-size: 16px; font-weight: 800; }
+    .count-side-sub { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .count-progress { height: 6px; background: #eceef1; border-radius: 3px; margin-top: 12px; overflow: hidden; }
+    .count-progress i { display: block; height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 0.4s; }
+    .count-route { flex: 1; overflow-y: auto; padding: 12px; }
+    .route-stop {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md);
+      margin-bottom: 6px; cursor: pointer; transition: var(--transition-base); border: 1px solid transparent;
+    }
+    .route-stop:hover { background: #f9fafb; }
+    .route-stop.active { background: var(--color-primary-light); border-color: var(--color-primary-medium); }
+    .route-stop.done { opacity: 0.5; }
+    .route-num { width: 26px; height: 26px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+    .route-stop.active .route-num { background: var(--color-primary); color: #fff; }
+    .route-stop.done .route-num { background: var(--color-success); color: #fff; }
+    .route-info { flex: 1; min-width: 0; }
+    .route-loc { font-size: 12px; font-weight: 700; }
+    .route-wines { font-size: 10px; color: var(--color-text-muted); margin-top: 1px; }
+    .route-abc { font-size: 10px; font-weight: 700; color: var(--color-primary); }
+
+    .count-sheet {
+      background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-card); overflow: hidden;
+    }
+    .count-sheet-head {
+      background: linear-gradient(135deg, #1a1520, #2d1f28); color: #fff; padding: 24px 28px;
+      text-align: center;
+    }
+    .count-sheet-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+    .count-sheet-head p { font-size: 13px; opacity: 0.6; margin-top: 4px; }
+    .qr-zone {
+      width: 120px; height: 120px; margin: 20px auto 0; background: #fff; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 48px;
+    }
+    .count-items { padding: 20px 24px; }
+    .count-item {
+      display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px dashed var(--color-border);
+    }
+    .count-item:last-child { border-bottom: none; }
+    .count-item-name { flex: 1; }
+    .count-item-name strong { display: block; font-size: 14px; }
+    .count-item-name span { font-size: 11px; color: var(--color-text-muted); }
+    .count-input-wrap { display: flex; align-items: center; gap: 8px; }
+    .count-input {
+      width: 64px; padding: 10px; border: 2px solid var(--color-border); border-radius: var(--radius-md);
+      font-family: var(--font-mono); font-size: 18px; font-weight: 700; text-align: center; outline: none;
+    }
+    .count-input:focus { border-color: var(--color-primary); }
+    .count-expected { font-size: 11px; color: var(--color-text-muted); text-align: center; }
+    .count-expected b { display: block; font-family: var(--font-mono); color: var(--color-text); font-size: 13px; }
+    .count-blind .count-expected { filter: blur(4px); user-select: none; }
+    .count-footer { padding: 16px 24px 24px; display: flex; gap: 10px; }
+    .btn { padding: 12px 22px; border-radius: var(--radius-md); font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: var(--transition-base); }
+    .btn-primary { background: var(--color-primary); color: #fff; flex: 1; }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-ghost { background: #f3f4f6; color: var(--color-text-secondary); }
+
+    .shrink-panel {
+      background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+      padding: 16px 18px; margin-bottom: 18px; box-shadow: var(--shadow-card);
+    }
+    .shrink-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .shrink-title { font-family: var(--font-display); font-size: 14px; font-weight: 800; }
+    .shrink-items { display: flex; flex-direction: column; gap: 8px; }
+    .shrink-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #f9fafb; border-radius: var(--radius-md); font-size: 12px; }
+    .shrink-delta { font-family: var(--font-mono); font-weight: 700; color: var(--color-danger); }
+    .shrink-cause { font-size: 11px; color: var(--color-text-muted); flex: 1; }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--color-text); color: #fff; padding: 11px 20px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: all 0.3s; z-index: 9995; }
+    .toast.show { opacity: 1; }
+
+    #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-size: 12px; background: rgba(0,0,0,0.72); color: #fff; padding: 8px 12px; border-radius: 8px; opacity: 0.35; transition: opacity 0.2s; }
+    #sketch-tools:hover { opacity: 1; }
+
+    @media (max-width: 900px) {
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .count-layout { grid-template-columns: 1fr; }
+      .count-sidebar { position: static; max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="variant-nav">
+    <span class="brand">WineOps</span><span class="tag">029 · cellar-copilot</span>
+    <button class="variant-tab active" onclick="showVariant('a')">A · Forecast Ribbon</button>
+    <button class="variant-tab" onclick="showVariant('b')">B · Count Mode</button>
+    <button class="variant-tab" onclick="showVariant('c')">C · Synthesis ★</button>
+  </div>
+
+  <!-- VARIANT A -->
+  <div id="variant-a" class="variant active">
+    <div class="canvas">
+      <div style="margin-bottom:18px;">
+        <div style="font-family:var(--font-display);font-size:28px;font-weight:800;letter-spacing:-0.02em;">Inventory</div>
+        <div style="font-size:13px;color:var(--color-text-muted);margin-top:4px;">Science-driven · Croston/SBA demand model · service level 95%</div>
+      </div>
+
+      <div class="forecast-ribbon">
+        <div class="ribbon-head">
+          <div class="ribbon-title">Reorder horizon <span>· next 14 days</span></div>
+          <button class="chip" onclick="toast('Full forecast view')">View all →</button>
+        </div>
+        <div class="ribbon-scroll" id="ribbonA"></div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-lbl">A-items at risk</div><div class="kpi-val" style="color:var(--color-danger)">3</div><div class="kpi-sub">reorder within 5 days</div></div>
+        <div class="kpi"><div class="kpi-lbl">Avg days of cover</div><div class="kpi-val">18</div><div class="kpi-sub">σ = 4.2 days</div></div>
+        <div class="kpi"><div class="kpi-lbl">Dead stock</div><div class="kpi-val" style="color:var(--color-warning)">7</div><div class="kpi-sub">no pour in 60+ days</div></div>
+        <div class="kpi"><div class="kpi-lbl">Trust score</div><div class="kpi-val" style="color:var(--color-success)">94%</div><div class="kpi-sub">ledger ↔ shelf</div></div>
+        <div class="kpi"><div class="kpi-lbl">Shrinkage (30d)</div><div class="kpi-val">1.2%</div><div class="kpi-sub">within target</div></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search"><span class="ic">⌕</span><input placeholder="Search…"></div>
+        <button class="chip active">All</button>
+        <button class="chip">A-class</button>
+        <button class="chip">Reorder soon</button>
+        <button class="chip">Low trust</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>ABC</th><th>Wine</th><th class="num">On hand</th><th>Status</th><th>Days of cover</th><th>Reorder by</th><th>Trust</th><th class="num">Safety stock</th>
+          </tr></thead>
+          <tbody id="tbodyA"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- VARIANT B -->
+  <div id="variant-b" class="variant">
+    <div class="canvas">
+      <div class="count-layout">
+        <div class="count-main">
+          <div class="count-sheet">
+            <div class="count-sheet-head">
+              <h2>Rack B · Blind Count</h2>
+              <p>Stop 3 of 8 · ABC-prioritized route · Main Cellar</p>
+              <div class="qr-zone">▦</div>
+              <p style="margin-top:10px;font-size:11px;">Scan QR at rack to open this sheet</p>
+            </div>
+            <div class="count-items count-blind" id="countItems"></div>
+            <div class="count-footer">
+              <button class="btn btn-ghost" onclick="toast('Skipped — will revisit')">Skip rack</button>
+              <button class="btn btn-primary" onclick="completeStop()">Submit count →</button>
+            </div>
+          </div>
+        </div>
+        <div class="count-sidebar">
+          <div class="count-side-head">
+            <div class="count-side-title">Tonight's count route</div>
+            <div class="count-side-sub">8 stops · ~22 min · A-items first</div>
+            <div class="count-progress"><i id="countProg" style="width:25%"></i></div>
+          </div>
+          <div class="count-route" id="countRoute"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VARIANT C -->
+  <div id="variant-c" class="variant">
+    <div class="canvas">
+      <div class="copilot-bar">
+        <div class="copilot-head">
+          <div class="copilot-avatar">🤖</div>
+          <div>
+            <div class="copilot-title">Cellar Copilot</div>
+            <div class="copilot-sub">3 actions recommended · based on forecast, trust drift, and tonight's covers (142)</div>
+          </div>
+        </div>
+        <div class="copilot-actions">
+          <button class="copilot-action primary" onclick="toast('Starting ABC count route…')">📋 Start count route <span class="badge">8 stops</span></button>
+          <button class="copilot-action" onclick="toast('Reorder draft created')">📦 Draft reorder for 3 A-items</button>
+          <button class="copilot-action" onclick="toast('Feature list generated')">❄ Flag 7 dead-stock wines</button>
+        </div>
+      </div>
+
+      <div class="forecast-ribbon">
+        <div class="ribbon-head">
+          <div class="ribbon-title">Reorder horizon <span>· Croston/SBA · 95% service level</span></div>
+        </div>
+        <div class="ribbon-scroll" id="ribbonC"></div>
+      </div>
+
+      <div class="shrink-panel">
+        <div class="shrink-head">
+          <div class="shrink-title">Ghost Inventory · trust drift (7d)</div>
+          <span style="font-size:11px;color:var(--color-text-muted);">Shrinkage Detective</span>
+        </div>
+        <div class="shrink-items">
+          <div class="shrink-item"><span class="shrink-delta">−2 btl</span><span>Barolo 2019 · POS depleted 14, ledger shows 12</span><span class="shrink-cause">Fri dinner rush · no recount</span></div>
+          <div class="shrink-item"><span class="shrink-delta">−0.4 btl</span><span>Chablis · BTG pours not reconciled (600ml open)</span><span class="shrink-cause">Fractional depletion gap</span></div>
+          <div class="shrink-item"><span class="shrink-delta">+1 btl</span><span>Prosecco · delivery logged, shelf not updated</span><span class="shrink-cause">Invoice scan pending</span></div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>ABC</th><th>Wine</th><th class="num">On hand</th><th>Cover</th><th>Reorder by</th><th>Trust</th><th>Status</th>
+          </tr></thead>
+          <tbody id="tbodyC"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div id="sketch-tools">029 Cellar Copilot</div>
+
+  <script>
+    const WINES = [
+      { name:'Barolo, G.D. Vajra', producer:'2019 Nebbiolo', type:'red', abc:'A', stock:5.6, openMl:450, bottles:5, threshold:8, safety:6, daysCover:4, reorder:'Jul 14', reorderClass:'soon', trust:'mid', trustVal:78, status:'crit', velocity:[3,4,5,4,6,5,7] },
+      { name:'Sancerre, Domaine V.', producer:'2023 Sauvignon', type:'white', abc:'A', stock:11, openMl:0, bottles:11, threshold:10, safety:8, daysCover:12, reorder:'Jul 22', reorderClass:'mid', trust:'hi', trustVal:97, status:'ok', velocity:[2,3,2,4,3,2,3] },
+      { name:'Chianti Classico', producer:'2021 Sangiovese', type:'red', abc:'B', stock:8, openMl:0, bottles:8, threshold:6, safety:4, daysCover:18, reorder:'Aug 2', reorderClass:'ok', trust:'hi', trustVal:99, status:'ok', velocity:[1,1,2,1,1,2,1] },
+      { name:'Chablis Premier Cru', producer:'2021 Chardonnay', type:'white', abc:'B', stock:3.2, openMl:600, bottles:3, threshold:6, safety:4, daysCover:9, reorder:'Jul 19', reorderClass:'mid', trust:'lo', trustVal:62, status:'low', velocity:[2,2,3,2,2,3,2] },
+      { name:'Prosecco Superiore', producer:'NV Glera', type:'spark', abc:'A', stock:14, openMl:0, bottles:14, threshold:12, safety:10, daysCover:21, reorder:'Aug 8', reorderClass:'ok', trust:'hi', trustVal:95, status:'ok', velocity:[4,5,4,6,5,4,5] },
+      { name:'Rosé de Provence', producer:'2022 Grenache', type:'rose', abc:'C', stock:4, openMl:0, bottles:4, threshold:4, safety:2, daysCover:45, reorder:'—', reorderClass:'ok', trust:'hi', trustVal:100, status:'ok', velocity:[0,0,1,0,0,0,0] },
+      { name:'Amarone della Valp.', producer:'2018 Corvina', type:'red', abc:'B', stock:2, openMl:0, bottles:2, threshold:4, safety:3, daysCover:6, reorder:'Jul 16', reorderClass:'soon', trust:'mid', trustVal:85, status:'low', velocity:[1,2,1,2,1,2,2] },
+    ];
+
+    const ROUTE = [
+      { loc:'Rack A · Slots 1-3', wines:'Chianti, Sancerre, Prosecco', abc:'A', done:true },
+      { loc:'Rack A · Slots 4-6', wines:'Barolo, Rosé', abc:'A', done:true },
+      { loc:'Rack B · Slots 1-3', wines:'Burgundy, Riesling, Amarone', abc:'A/B', done:false, active:true },
+      { loc:'Rack B · Slots 4-6', wines:'Barolo, Chablis', abc:'A', done:false },
+      { loc:'Rack C · Full', wines:'Napa, Sauternes, Champagne', abc:'B', done:false },
+      { loc:'Bar Back · Shelf 1', wines:'Cava, Moscato', abc:'B/C', done:false },
+      { loc:'Reserve Room', wines:'Napa Cab, Sauternes', abc:'A', done:false },
+      { loc:'Open bottles audit', wines:'3 open BTG bottles', abc:'—', done:false },
+    ];
+
+    const COUNT_ITEMS = [
+      { name:'Burgundy, Louis Jadot', meta:'2020 Pinot Noir · expected hidden', expected:10 },
+      { name:'Riesling, Dr. Loosen', meta:'2022 Mosel · expected hidden', expected:3 },
+      { name:'Amarone, Allegrini', meta:'2018 · expected hidden', expected:5 },
+    ];
+
+    function showVariant(id) {
+      document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.variant-tab').forEach((t,i) => {
+        t.classList.toggle('active', ['a','b','c'][i] === id);
+      });
+      document.getElementById('variant-' + id).classList.add('active');
+    }
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2000);
+    }
+
+    function sparkPath(vel, urgent) {
+      const max = Math.max(...vel, 1);
+      const w = 180, h = 28, pad = 2;
+      const pts = vel.map((v,i) => {
+        const x = pad + (i/(vel.length-1))*(w-pad*2);
+        const y = h - pad - (v/max)*(h-pad*2);
+        return `${x},${y}`;
+      }).join(' ');
+      const band = urgent ? 'rgba(220,38,38,0.12)' : 'rgba(205,45,91,0.08)';
+      const stroke = urgent ? '#DC2626' : 'var(--color-primary)';
+      return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><rect x="0" y="${h*0.35}" width="${w}" height="${h*0.55}" fill="${band}" rx="2"/><polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+
+    function renderRibbon(containerId) {
+      const urgent = WINES.filter(w => w.reorderClass === 'soon');
+      const el = document.getElementById(containerId);
+      el.innerHTML = urgent.concat(WINES.filter(w => w.reorderClass !== 'soon').slice(0,2)).map(w => `
+        <div class="forecast-card ${w.reorderClass==='soon'?'urgent':''}" onclick="toast('${w.name}: reorder by ${w.reorder}')">
+          <div class="fc-wine">${w.name.split(',')[0]}</div>
+          <div class="fc-meta">${w.producer}</div>
+          <div class="fc-cover"><span class="fc-days">${w.daysCover}</span><small>days cover</small></div>
+          <div class="fc-spark"><div class="fc-band"></div>${sparkPath(w.velocity, w.reorderClass==='soon')}</div>
+          <div class="fc-reorder ${w.reorderClass}">Reorder by ${w.reorder}</div>
+          <div class="fc-conf">±${Math.round(w.daysCover*0.2)}d · 95% SL</div>
+        </div>
+      `).join('');
+    }
+
+    function typeColor(t) {
+      return {red:'#CD2D5B',white:'#c9a227',spark:'#f59e0b',rose:'#e879a8'}[t]||'#999';
+    }
+
+    function renderTable(tbodyId, cols) {
+      const el = document.getElementById(tbodyId);
+      el.innerHTML = WINES.map(w => {
+        const coverPct = Math.min(100, (w.daysCover/30)*100);
+        const coverColor = w.daysCover <= 5 ? 'var(--color-danger)' : w.daysCover <= 10 ? 'var(--color-warning)' : 'var(--color-success)';
+        const stockDisplay = w.openMl
+          ? `<span class="stock-frac">${w.bottles} btl<span class="open">+ ${w.openMl}ml open</span></span>`
+          : `<span class="stock-frac">${w.stock % 1 ? w.stock.toFixed(1) : w.stock} btl</span>`;
+        const statusCls = w.status==='crit'?'st-crit':w.status==='low'?'st-low':'st-ok';
+        const statusLbl = w.status==='crit'?'Critical':w.status==='low'?'Low':'Healthy';
+        const trustCls = w.trust==='hi'?'trust-hi':w.trust==='mid'?'trust-mid':'trust-lo';
+
+        if (cols === 'full') return `<tr>
+          <td><span class="abc abc-${w.abc.toLowerCase()}">${w.abc}</span></td>
+          <td><div class="wine-cell"><div class="wine-dot" style="background:${typeColor(w.type)}"></div><div><div class="wine-name">${w.name}</div><div class="wine-meta">${w.producer}</div></div></div></td>
+          <td class="num">${stockDisplay}</td>
+          <td><span class="status ${statusCls}">${statusLbl}</span></td>
+          <td><div class="cover-mini"><div class="cover-bar"><i style="width:${coverPct}%;background:${coverColor}"></i></div><span class="cover-d">${w.daysCover}d</span></div></td>
+          <td><span class="reorder-cell ${w.reorderClass}">${w.reorder}<small>safety: ${w.safety} btl</small></span></td>
+          <td><span class="trust ${trustCls}">${w.trustVal}%</span></td>
+          <td class="num" style="color:var(--color-text-muted)">${w.safety}</td>
+        </tr>`;
+
+        return `<tr>
+          <td><span class="abc abc-${w.abc.toLowerCase()}">${w.abc}</span></td>
+          <td><div class="wine-cell"><div class="wine-dot" style="background:${typeColor(w.type)}"></div><div><div class="wine-name">${w.name}</div><div class="wine-meta">${w.producer}</div></div></div></td>
+          <td class="num">${stockDisplay}</td>
+          <td><div class="cover-mini"><div class="cover-bar"><i style="width:${coverPct}%;background:${coverColor}"></i></div><span class="cover-d">${w.daysCover}d</span></div></td>
+          <td><span class="reorder-cell ${w.reorderClass}">${w.reorder}</span></td>
+          <td><span class="trust ${trustCls}">${w.trustVal}%</span></td>
+          <td><span class="status ${statusCls}">${statusLbl}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderCountRoute() {
+      document.getElementById('countRoute').innerHTML = ROUTE.map((r,i) => `
+        <div class="route-stop ${r.done?'done':''} ${r.active?'active':''}" onclick="selectStop(${i})">
+          <div class="route-num">${r.done?'✓':i+1}</div>
+          <div class="route-info">
+            <div class="route-loc">${r.loc}</div>
+            <div class="route-wines">${r.wines}</div>
+          </div>
+          <span class="route-abc">${r.abc}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderCountItems() {
+      document.getElementById('countItems').innerHTML = COUNT_ITEMS.map((item,i) => `
+        <div class="count-item">
+          <div class="count-item-name"><strong>${item.name}</strong><span>${item.meta}</span></div>
+          <div class="count-input-wrap">
+            <div class="count-expected">Expected<b>??</b></div>
+            <input class="count-input" type="number" placeholder="?" id="countIn${i}">
+            <span style="font-size:12px;color:var(--color-text-muted)">btl</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function selectStop(i) {
+      ROUTE.forEach((r,j) => { r.active = j===i; });
+      renderCountRoute();
+      toast('Navigated to ' + ROUTE[i].loc);
+    }
+
+    function completeStop() {
+      const active = ROUTE.findIndex(r => r.active);
+      if (active >= 0) ROUTE[active].done = true;
+      const next = ROUTE.findIndex(r => !r.done);
+      if (next >= 0) { ROUTE[next].active = true; ROUTE.forEach((r,j) => { if (j!==next) r.active = false; }); }
+      const done = ROUTE.filter(r => r.done).length;
+      document.getElementById('countProg').style.width = (done/ROUTE.length*100)+'%';
+      renderCountRoute();
+      toast(done === ROUTE.length ? 'Count session complete! Ledger reconciled.' : 'Stop submitted · ledger RECONCILIATION posted');
+    }
+
+    renderRibbon('ribbonA');
+    renderRibbon('ribbonC');
+    renderTable('tbodyA', 'full');
+    renderTable('tbodyC', 'compact');
+    renderCountRoute();
+    renderCountItems();
+  </script>
+</body>
+</html>

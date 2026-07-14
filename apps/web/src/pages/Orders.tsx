@@ -50,7 +50,6 @@ import { useOrders } from '../hooks/queries/useOrderQueries'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
 
-// @ts-expect-error Vite injects import.meta.env at build time
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
   !!value &&
@@ -420,7 +419,7 @@ export function Orders() {
     }
     window.addEventListener('notification_sent', handleNotification)
     return () => window.removeEventListener('notification_sent', handleNotification)
-  }, [])
+  }, [activeRestaurantName])
 
   // Check for pending reorder from Wine Library (using Zustand store instead of sessionStorage)
   useEffect(() => {
@@ -1179,7 +1178,7 @@ Shadow stock has been moved to Live Stock.`)
     } finally {
       setActionLoading(null)
     }
-  }, [selectedOrders, orders])
+  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1212,7 +1211,7 @@ Shadow stock has been moved to Live Stock.`)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [orders, showCreateOrderModal, handleBulkApprove])
+  }, [orders, showCreateOrderModal, handleBulkApprove, openCreateOrderFlow, setSelectedOrders])
 
   const handleBulkMarkAsOrdered = useCallback(async () => {
     if (selectedOrders.size === 0) return
@@ -1246,7 +1245,7 @@ Shadow stock has been moved to Live Stock.`)
     } finally {
       setActionLoading(null)
     }
-  }, [selectedOrders, orders])
+  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
 
   const handleBulkMarkAsDelivered = useCallback(async () => {
     if (selectedOrders.size === 0) return
@@ -1280,7 +1279,7 @@ Shadow stock has been moved to Live Stock.`)
     } finally {
       setActionLoading(null)
     }
-  }, [selectedOrders, orders])
+  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
 
   const handleBulkReject = useCallback(async () => {
     if (selectedOrders.size === 0) return
@@ -1317,7 +1316,7 @@ Shadow stock has been moved to Live Stock.`)
     } finally {
       setActionLoading(null)
     }
-  }, [selectedOrders, orders])
+  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
 
   const toggleOrderSelection = (orderId: string) => {
     const newSelected = new Set(selectedOrders)

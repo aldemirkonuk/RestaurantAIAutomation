@@ -9,6 +9,10 @@ describe("InventoryService", () => {
   // Each test configures specific return values via these jest.fn references.
   const mockSingle = jest.fn();
   const mockExecute = jest.fn();
+  // createInventoryItem applies initial stock as a lot via the
+  // `apply_stock_movement` RPC and then re-fetches the fresh row, so the mock
+  // client must expose `.rpc()` as well as the fluent chain.
+  const mockRpc = jest.fn();
 
   const mockSupabaseChain = {
     from: jest.fn().mockReturnThis(),
@@ -21,6 +25,7 @@ describe("InventoryService", () => {
     order: jest.fn().mockReturnThis(),
     single: mockSingle,
     execute: mockExecute,
+    rpc: mockRpc,
   };
 
   const mockDatabaseService = {
@@ -41,6 +46,12 @@ describe("InventoryService", () => {
     mockSupabaseChain.neq.mockReturnThis();
     mockSupabaseChain.is.mockReturnThis();
     mockSupabaseChain.order.mockReturnThis();
+    // apply_stock_movement RPC resolves with no error by default
+    mockRpc.mockResolvedValue({ data: null, error: null });
+    // Safe fallback for any single() call not explicitly queued with
+    // mockResolvedValueOnce — notably the post-insert fresh re-fetch. Returning
+    // { data: null } makes createInventoryItem fall back to the inserted row.
+    mockSingle.mockResolvedValue({ data: null, error: null });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>028 — Living Cellar</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: #0f0d12; color: var(--color-text); padding-top: 46px; min-height: 100vh; }
+
+    #variant-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: #17131a; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 7px 16px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    }
+    #variant-nav .brand { color: #fff; font-weight: 800; font-family: var(--font-display); font-size: 13px; margin-right: 4px; }
+    #variant-nav .tag { color: rgba(255,255,255,0.35); font-size: 11px; margin-right: 12px; font-family: var(--font-mono); }
+    .variant-tab {
+      padding: 5px 14px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.72); cursor: pointer;
+      font-size: 12px; font-weight: 600; transition: all 0.15s;
+    }
+    .variant-tab:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .variant-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    /* ─── Shared cellar chrome ─── */
+    .cellar-shell { min-height: calc(100vh - 46px); display: flex; flex-direction: column; }
+    .cellar-top {
+      background: linear-gradient(180deg, #1a1520 0%, #121018 100%);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 18px 24px 14px;
+    }
+    .cellar-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .cellar-title { font-family: var(--font-display); font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
+    .cellar-sub { color: rgba(255,255,255,0.45); font-size: 13px; margin-top: 4px; }
+    .cellar-sub b { color: rgba(255,255,255,0.75); }
+
+    .loc-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .loc-chip {
+      display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-full); color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .loc-chip:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .loc-chip.active { background: rgba(205,45,91,0.25); border-color: rgba(205,45,91,0.5); color: #fff; }
+    .loc-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .loc-pct { font-family: var(--font-mono); font-size: 10px; opacity: 0.7; }
+
+    .overlay-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .overlay-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.35); }
+    .overlay-btn {
+      padding: 7px 14px; border-radius: var(--radius-full); border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .overlay-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .overlay-btn.active { background: #fff; color: #1a1520; border-color: #fff; }
+    .overlay-btn.active.temp { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .overlay-btn.active.velocity { background: #f59e0b; color: #1a1520; border-color: #f59e0b; }
+    .overlay-btn.active.dead { background: #94a3b8; color: #1a1520; border-color: #94a3b8; }
+
+    .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255,255,255,0.45); }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+    /* ─── Isometric stage ─── */
+    .cellar-stage {
+      flex: 1; position: relative; overflow: hidden;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 100%, rgba(205,45,91,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 20% 20%, rgba(59,130,246,0.06) 0%, transparent 50%),
+        linear-gradient(180deg, #0d0b10 0%, #15121a 40%, #0f0d12 100%);
+      padding: 24px;
+    }
+    .iso-wrap {
+      perspective: 1200px; perspective-origin: 50% 40%;
+      max-width: 1100px; margin: 0 auto; height: 100%; min-height: 520px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .iso-floor {
+      transform: rotateX(58deg) rotateZ(-42deg) scale(0.92);
+      transform-style: preserve-3d;
+      width: 720px; height: 480px;
+      position: relative;
+    }
+    .iso-grid-bg {
+      position: absolute; inset: -40px;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      border-radius: 8px;
+    }
+
+    .rack-row { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-end; }
+    .rack-label {
+      width: 28px; font-family: var(--font-display); font-size: 13px; font-weight: 800;
+      color: rgba(255,255,255,0.25); text-align: center; padding-bottom: 8px;
+    }
+    .rack-slots { display: flex; gap: 8px; flex: 1; }
+
+    .slot {
+      flex: 1; min-width: 64px; height: 72px; position: relative; cursor: pointer;
+      transform-style: preserve-3d; transition: transform 0.2s, filter 0.2s;
+    }
+    .slot:hover { transform: translateZ(12px) scale(1.04); z-index: 10; }
+    .slot.selected .slot-face { outline: 2px solid #fff; outline-offset: 2px; }
+
+    .slot-face {
+      position: absolute; inset: 0;
+      background: linear-gradient(145deg, #2a2430 0%, #1e1a24 100%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px 6px 4px 4px;
+      box-shadow: 0 8px 0 #121018, 0 12px 24px rgba(0,0,0,0.4);
+      display: flex; flex-direction: column; justify-content: flex-end; padding: 6px 7px; overflow: hidden;
+    }
+    .slot-top {
+      position: absolute; top: 0; left: 0; right: 0; height: 8px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border-radius: 6px 6px 0 0;
+    }
+    .slot-fill {
+      position: absolute; bottom: 0; left: 0; right: 0; border-radius: 0 0 4px 4px; opacity: 0.85; transition: height 0.3s;
+    }
+    .slot-code { font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.5); position: relative; z-index: 2; }
+    .slot-wine { font-size: 10px; font-weight: 700; color: #fff; position: relative; z-index: 2; line-height: 1.2; margin-top: 2px; }
+    .slot-qty { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.9); position: relative; z-index: 2; }
+
+    /* Wine type fills */
+    .fill-red { background: linear-gradient(0deg, #7c1d3c, #CD2D5B); }
+    .fill-white { background: linear-gradient(0deg, #a8a060, #e8e0a8); }
+    .fill-spark { background: linear-gradient(0deg, #c9a227, #f5e6a3); }
+    .fill-rose { background: linear-gradient(0deg, #c4707a, #f4b8c0); }
+    .fill-empty { background: rgba(255,255,255,0.04); }
+
+    /* Overlay: temperature */
+    .overlay-temp .slot-face { border-color: rgba(59,130,246,0.3); }
+    .slot.temp-cold .slot-face { box-shadow: 0 8px 0 #121018, 0 0 20px rgba(59,130,246,0.35); }
+    .slot.temp-warm .slot-face { box-shadow: 0 8px 0 #121018, 0 0 20px rgba(239,68,68,0.4); }
+    .slot.temp-ok .slot-face { box-shadow: 0 8px 0 #121018, 0 0 12px rgba(34,197,94,0.2); }
+    .temp-badge { position: absolute; top: 4px; right: 4px; font-family: var(--font-mono); font-size: 8px; font-weight: 700; padding: 2px 4px; border-radius: 3px; z-index: 3; }
+    .temp-badge.cold { background: rgba(59,130,246,0.3); color: #93c5fd; }
+    .temp-badge.warm { background: rgba(239,68,68,0.3); color: #fca5a5; }
+    .temp-badge.ok { background: rgba(34,197,94,0.2); color: #86efac; }
+
+    /* Overlay: velocity heat */
+    .overlay-velocity .slot-face::after {
+      content: ''; position: absolute; inset: 0; border-radius: 6px; pointer-events: none; z-index: 1;
+    }
+    .slot.vel-hot .slot-face::after { background: rgba(245,158,11,0.35); }
+    .slot.vel-warm .slot-face::after { background: rgba(245,158,11,0.15); }
+    .slot.vel-cold .slot-face::after { background: rgba(59,130,246,0.1); }
+
+    /* Overlay: dead-stock frost */
+    .slot.dead .slot-face { filter: saturate(0.3) brightness(0.85); }
+    .slot.dead .slot-face::before {
+      content: '❄'; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      font-size: 28px; opacity: 0.5; z-index: 4; pointer-events: none;
+    }
+    .slot.dead .slot-wine, .slot.dead .slot-qty { opacity: 0.5; }
+
+    .slot.empty .slot-face { background: rgba(255,255,255,0.02); border-style: dashed; border-color: rgba(255,255,255,0.08); box-shadow: 0 4px 0 #121018; }
+    .slot.empty .slot-wine { color: rgba(255,255,255,0.2); font-style: italic; }
+
+    /* ─── Detail panel (B & C) ─── */
+    .split-layout { display: grid; grid-template-columns: 1fr 380px; min-height: calc(100vh - 46px); }
+    .detail-panel {
+      background: #fff; border-left: 1px solid var(--color-border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .detail-head { padding: 20px 22px 16px; border-bottom: 1px solid var(--color-border); }
+    .detail-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-primary); }
+    .detail-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; margin-top: 4px; }
+    .detail-meta { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
+    .detail-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+
+    .lot-card {
+      border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 14px; margin-bottom: 12px;
+      cursor: pointer; transition: var(--transition-base);
+    }
+    .lot-card:hover { border-color: var(--color-primary-medium); box-shadow: var(--shadow-sm); }
+    .lot-card.fefo { border-color: var(--color-primary); background: var(--color-primary-light); }
+    .lot-head { display: flex; justify-content: space-between; align-items: center; }
+    .lot-vintage { font-family: var(--font-display); font-size: 18px; font-weight: 800; }
+    .lot-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-full); background: var(--color-primary); color: #fff; }
+    .lot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .lot-stat { font-size: 11px; color: var(--color-text-muted); }
+    .lot-stat b { display: block; font-size: 14px; color: var(--color-text); font-family: var(--font-mono); margin-top: 2px; }
+
+    .fefo-tip {
+      background: linear-gradient(135deg, #fdf2f4, #fff);
+      border: 1px solid var(--color-primary-light); border-radius: var(--radius-md);
+      padding: 12px 14px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 16px;
+    }
+    .fefo-tip strong { color: var(--color-primary); }
+
+    .multi-loc { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+    .ml-chip { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-full); background: #f3f4f6; color: var(--color-text-secondary); }
+    .ml-chip.here { background: var(--color-primary-light); color: var(--color-primary); }
+
+    .ambient-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .amb-stat { background: #f9fafb; border-radius: var(--radius-md); padding: 12px; text-align: center; }
+    .amb-val { font-family: var(--font-display); font-size: 20px; font-weight: 800; }
+    .amb-lbl { font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: #fff; color: var(--color-text); padding: 12px 22px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: all 0.3s; z-index: 9995; box-shadow: var(--shadow-xl); border: 1px solid var(--color-border); }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-size: 12px; background: rgba(0,0,0,0.72); color: #fff; padding: 8px 12px; border-radius: 8px; opacity: 0.35; transition: opacity 0.2s; display: flex; gap: 8px; align-items: center; }
+    #sketch-tools:hover { opacity: 1; }
+    #sketch-tools select { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; padding: 3px 7px; font-size: 11px; cursor: pointer; }
+
+    @media (max-width: 900px) {
+      .split-layout { grid-template-columns: 1fr; }
+      .detail-panel { border-left: none; border-top: 1px solid var(--color-border); max-height: 50vh; }
+      .iso-floor { transform: rotateX(58deg) rotateZ(-42deg) scale(0.65); }
+    }
+  </style>
+</head>
+<body>
+  <div id="variant-nav">
+    <span class="brand">WineOps</span><span class="tag">028 · living-cellar</span>
+    <button class="variant-tab active" onclick="showVariant('a')">A · Isometric Map</button>
+    <button class="variant-tab" onclick="showVariant('b')">B · Map + Detail Split</button>
+    <button class="variant-tab" onclick="showVariant('c')">C · Synthesis ★</button>
+  </div>
+
+  <!-- VARIANT A -->
+  <div id="variant-a" class="variant active">
+    <div class="cellar-shell">
+      <div class="cellar-top">
+        <div class="cellar-head">
+          <div>
+            <div class="cellar-title">Living Cellar</div>
+            <div class="cellar-sub"><b>Main Cellar</b> · 4 racks · 48 slots · 142 bottles across 38 SKUs</div>
+          </div>
+          <div class="overlay-bar">
+            <span class="overlay-label">Overlay</span>
+            <button class="overlay-btn active" data-overlay="none" onclick="setOverlay('a','none',event)">Default</button>
+            <button class="overlay-btn temp" data-overlay="temp" onclick="setOverlay('a','temp',event)">🌡 Temperature</button>
+            <button class="overlay-btn velocity" data-overlay="velocity" onclick="setOverlay('a','velocity',event)">⚡ Velocity</button>
+            <button class="overlay-btn dead" data-overlay="dead" onclick="setOverlay('a','dead',event)">❄ Dead stock</button>
+          </div>
+        </div>
+        <div class="loc-chips" id="locChipsA"></div>
+        <div class="legend" id="legendA"></div>
+      </div>
+      <div class="cellar-stage overlay-none" id="stageA">
+        <div class="iso-wrap"><div class="iso-floor" id="isoA"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VARIANT B -->
+  <div id="variant-b" class="variant">
+    <div class="split-layout">
+      <div class="cellar-shell">
+        <div class="cellar-top" style="padding:14px 20px 10px;">
+          <div class="cellar-head">
+            <div>
+              <div class="cellar-title" style="font-size:22px;">Main Cellar</div>
+              <div class="cellar-sub">Click a slot · lots split across cellar + bar</div>
+            </div>
+            <div class="overlay-bar">
+              <button class="overlay-btn active" onclick="setOverlay('b','none',event)">Default</button>
+              <button class="overlay-btn dead" onclick="setOverlay('b','dead',event)">❄ Dead</button>
+            </div>
+          </div>
+        </div>
+        <div class="cellar-stage overlay-none" id="stageB" style="padding:16px;">
+          <div class="iso-wrap" style="min-height:400px;"><div class="iso-floor" id="isoB"></div></div>
+        </div>
+      </div>
+      <div class="detail-panel" id="detailB">
+        <div class="detail-head">
+          <div class="detail-eyebrow">Rack B · Slot 4</div>
+          <div class="detail-title">Barolo, G.D. Vajra</div>
+          <div class="detail-meta">2019 · Nebbiolo · Piedmont · ABC: A</div>
+        </div>
+        <div class="detail-body" id="detailBodyB"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VARIANT C -->
+  <div id="variant-c" class="variant">
+    <div class="split-layout">
+      <div class="cellar-shell">
+        <div class="cellar-top">
+          <div class="cellar-head">
+            <div>
+              <div class="cellar-title">Living Cellar</div>
+              <div class="cellar-sub"><b>3 locations</b> · lot-aware · FEFO pour suggestions · 2 dead-stock bins frosted</div>
+            </div>
+            <div class="overlay-bar">
+              <button class="overlay-btn active" onclick="setOverlay('c','none',event)">Default</button>
+              <button class="overlay-btn temp" onclick="setOverlay('c','temp',event)">🌡</button>
+              <button class="overlay-btn velocity" onclick="setOverlay('c','velocity',event)">⚡</button>
+              <button class="overlay-btn dead" onclick="setOverlay('c','dead',event)">❄</button>
+            </div>
+          </div>
+          <div class="loc-chips" id="locChipsC"></div>
+        </div>
+        <div class="cellar-stage overlay-none" id="stageC">
+          <div class="iso-wrap"><div class="iso-floor" id="isoC"></div></div>
+        </div>
+      </div>
+      <div class="detail-panel" id="detailC">
+        <div class="detail-head">
+          <div class="detail-eyebrow" id="detailEyebrowC">Select a bin</div>
+          <div class="detail-title" id="detailTitleC">—</div>
+          <div class="detail-meta" id="detailMetaC">Click any slot on the map</div>
+        </div>
+        <div class="detail-body" id="detailBodyC">
+          <div style="text-align:center;padding:40px 20px;color:var(--color-text-muted);font-size:13px;">
+            <div style="font-size:40px;margin-bottom:12px;opacity:0.4;">🍷</div>
+            The cellar is a place, not a spreadsheet.<br>Every bin has a biography.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div id="sketch-tools">
+    <span>028 Living Cellar</span>
+    <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+      <option value="default.css">Theme: Default</option>
+    </select>
+  </div>
+
+  <script>
+    const LOCATIONS = [
+      { id: 'main', name: 'Main Cellar', pct: 78, color: '#CD2D5B', active: true },
+      { id: 'bar', name: 'Bar Back', pct: 45, color: '#3b82f6', active: false },
+      { id: 'reserve', name: 'Reserve Room', pct: 92, color: '#059669', active: false },
+    ];
+
+    const SLOTS = [
+      { rack:'A', slot:1, wine:'Chianti R.', type:'red', qty:12, max:12, temp:'ok', vel:'warm', dead:false, vintage:'2021', locs:['main'] },
+      { rack:'A', slot:2, wine:'Sancerre', type:'white', qty:8, max:12, temp:'cold', vel:'hot', dead:false, vintage:'2023', locs:['main','bar'] },
+      { rack:'A', slot:3, wine:'—', type:'empty', qty:0, max:12, temp:'ok', vel:'cold', dead:false },
+      { rack:'A', slot:4, wine:'Prosecco', type:'spark', qty:6, max:12, temp:'cold', vel:'warm', dead:false, vintage:'NV', locs:['main'] },
+      { rack:'A', slot:5, wine:'Rosé', type:'rose', qty:4, max:12, temp:'ok', vel:'cold', dead:true, vintage:'2022', locs:['main'], daysSincePour:94 },
+      { rack:'A', slot:6, wine:'Barolo', type:'red', qty:6, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2019', locs:['main'], lots:[{v:'2019',qty:4,cost:68},{v:'2018',qty:2,cost:72}] },
+      { rack:'B', slot:1, wine:'Burgundy', type:'red', qty:10, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2020', locs:['main'] },
+      { rack:'B', slot:2, wine:'Riesling', type:'white', qty:3, max:12, temp:'cold', vel:'cold', dead:false, vintage:'2022', locs:['main'] },
+      { rack:'B', slot:3, wine:'Amarone', type:'red', qty:5, max:12, temp:'warm', vel:'warm', dead:false, vintage:'2018', locs:['main','reserve'] },
+      { rack:'B', slot:4, wine:'Barolo V.', type:'red', qty:6, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2019', locs:['main'], lots:[{v:'2019',qty:4,cost:68,fefo:true},{v:'2018',qty:2,cost:72}] },
+      { rack:'B', slot:5, wine:'Chablis', type:'white', qty:2, max:12, temp:'cold', vel:'cold', dead:true, vintage:'2021', locs:['main'], daysSincePour:112 },
+      { rack:'B', slot:6, wine:'—', type:'empty', qty:0, max:12, temp:'ok', vel:'cold', dead:false },
+      { rack:'C', slot:1, wine:'Napa Cab', type:'red', qty:9, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2019', locs:['reserve'] },
+      { rack:'C', slot:2, wine:'Sauternes', type:'white', qty:4, max:12, temp:'cold', vel:'cold', dead:false, vintage:'2017', locs:['reserve'] },
+      { rack:'C', slot:3, wine:'Champagne', type:'spark', qty:11, max:12, temp:'cold', vel:'hot', dead:false, vintage:'NV', locs:['main','bar'] },
+      { rack:'C', slot:4, wine:'Pinot N.', type:'red', qty:7, max:12, temp:'ok', vel:'warm', dead:false, vintage:'2021', locs:['main'] },
+      { rack:'C', slot:5, wine:'Moscato', type:'white', qty:1, max:12, temp:'ok', vel:'cold', dead:true, vintage:'2023', locs:['bar'], daysSincePour:67 },
+      { rack:'C', slot:6, wine:'Tempranillo', type:'red', qty:8, max:12, temp:'ok', vel:'warm', dead:false, vintage:'2020', locs:['main'] },
+      { rack:'D', slot:1, wine:'Malbec', type:'red', qty:6, max:12, temp:'ok', vel:'warm', dead:false, vintage:'2022', locs:['main'] },
+      { rack:'D', slot:2, wine:'Grüner', type:'white', qty:5, max:12, temp:'cold', vel:'cold', dead:false, vintage:'2023', locs:['main'] },
+      { rack:'D', slot:3, wine:'Cava', type:'spark', qty:10, max:12, temp:'cold', vel:'hot', dead:false, vintage:'NV', locs:['bar'] },
+      { rack:'D', slot:4, wine:'—', type:'empty', qty:0, max:12, temp:'ok', vel:'cold', dead:false },
+      { rack:'D', slot:5, wine:'Zinfandel', type:'red', qty:3, max:12, temp:'warm', vel:'cold', dead:false, vintage:'2020', locs:['main'] },
+      { rack:'D', slot:6, wine:'Soave', type:'white', qty:7, max:12, temp:'cold', vel:'warm', dead:false, vintage:'2022', locs:['main'] },
+    ];
+
+    const RACKS = ['A','B','C','D'];
+
+    function showVariant(id) {
+      document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('variant-' + id).classList.add('active');
+      document.querySelectorAll('.variant-tab').forEach((t,i) => {
+        if (['a','b','c'][i] === id) t.classList.add('active');
+      });
+    }
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2200);
+    }
+
+    function setOverlay(variant, mode, e) {
+      if (e) {
+        e.target.closest('.overlay-bar').querySelectorAll('.overlay-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+      }
+      const stage = document.getElementById('stage' + variant.toUpperCase());
+      stage.className = 'cellar-stage overlay-' + mode;
+      updateLegend(variant, mode);
+    }
+
+    function updateLegend(variant, mode) {
+      const el = document.getElementById('legend' + variant.toUpperCase());
+      if (!el) return;
+      const legends = {
+        none: [{c:'#CD2D5B',l:'Red'},{c:'#e8e0a8',l:'White'},{c:'#f5e6a3',l:'Sparkling'},{c:'rgba(255,255,255,0.1)',l:'Empty'}],
+        temp: [{c:'#3b82f6',l:'Cold (OK)'},{c:'#22c55e',l:'Cellar temp'},{c:'#ef4444',l:'Warm drift'}],
+        velocity: [{c:'#f59e0b',l:'High velocity'},{c:'rgba(245,158,11,0.3)',l:'Medium'},{c:'rgba(59,130,246,0.2)',l:'Slow mover'}],
+        dead: [{c:'#94a3b8',l:'No pour in 60+ days — frosted'}],
+      };
+      el.innerHTML = (legends[mode]||legends.none).map(x =>
+        `<div class="legend-item"><div class="legend-swatch" style="background:${x.c}"></div>${x.l}</div>`
+      ).join('');
+    }
+
+    function renderLocChips(containerId, variant) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = LOCATIONS.map(l => `
+        <div class="loc-chip ${l.active?'active':''}" onclick="selectLoc('${variant}','${l.id}',event)">
+          <div class="loc-dot" style="background:${l.color}"></div>
+          ${l.name}
+          <span class="loc-pct">${l.pct}%</span>
+        </div>
+      `).join('');
+    }
+
+    function selectLoc(variant, id, e) {
+      e.target.closest('.loc-chips').querySelectorAll('.loc-chip').forEach(c => c.classList.remove('active'));
+      e.target.closest('.loc-chip').classList.add('active');
+      toast('Switched to ' + LOCATIONS.find(l=>l.id===id).name);
+    }
+
+    function buildIso(containerId, variant, onClick) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '<div class="iso-grid-bg"></div>';
+      RACKS.forEach(rack => {
+        const row = document.createElement('div');
+        row.className = 'rack-row';
+        row.innerHTML = `<div class="rack-label">${rack}</div><div class="rack-slots" id="rack-${containerId}-${rack}"></div>`;
+        container.appendChild(row);
+        const slotsEl = row.querySelector('.rack-slots');
+        SLOTS.filter(s => s.rack === rack).forEach(s => {
+          const pct = s.max ? Math.round((s.qty/s.max)*100) : 0;
+          const fillClass = s.type === 'empty' ? 'fill-empty' : 'fill-' + s.type;
+          const slot = document.createElement('div');
+          slot.className = `slot ${s.type==='empty'?'empty':''} temp-${s.temp} vel-${s.vel} ${s.dead?'dead':''}`;
+          slot.dataset.rack = s.rack;
+          slot.dataset.slot = s.slot;
+          slot.innerHTML = `
+            <div class="slot-face">
+              <div class="slot-top"></div>
+              <div class="slot-fill ${fillClass}" style="height:${pct}%"></div>
+              ${s.temp !== 'ok' && s.type !== 'empty' ? `<span class="temp-badge ${s.temp}">${s.temp==='cold'?'12°C':s.temp==='warm'?'18°C':'14°C'}</span>` : ''}
+              <div class="slot-code">${s.rack}${s.slot}</div>
+              <div class="slot-wine">${s.wine}</div>
+              <div class="slot-qty">${s.type==='empty'?'—':s.qty+' btl'}</div>
+            </div>
+          `;
+          slot.onclick = () => onClick(s, slot, variant);
+          slotsEl.appendChild(slot);
+        });
+      });
+    }
+
+    function renderDetail(slot, bodyId, variant) {
+      const body = document.getElementById(bodyId);
+      if (slot.type === 'empty') {
+        body.innerHTML = `<div style="text-align:center;padding:30px;color:var(--color-text-muted);font-size:13px;">Empty slot · drag wine here or use Auto-Locate</div>`;
+        return;
+      }
+      const lots = slot.lots || [{ v: slot.vintage, qty: slot.qty, cost: 45, fefo: true }];
+      body.innerHTML = `
+        <div class="ambient-stats">
+          <div class="amb-stat"><div class="amb-val">${slot.qty}</div><div class="amb-lbl">On hand</div></div>
+          <div class="amb-stat"><div class="amb-val" style="color:${slot.vel==='hot'?'var(--color-primary)':'var(--color-text-secondary)'}">${slot.vel==='hot'?'4.2/wk':slot.vel==='warm'?'1.8/wk':'0.3/wk'}</div><div class="amb-lbl">Velocity</div></div>
+          <div class="amb-stat"><div class="amb-val">${slot.dead?slot.daysSincePour+'d':'—'}</div><div class="amb-lbl">${slot.dead?'Since pour':'Active'}</div></div>
+        </div>
+        ${slot.dead ? `<div class="fefo-tip" style="border-color:#94a3b8;background:#f8fafc;"><strong>❄ Dead stock.</strong> No glass pour in ${slot.daysSincePour} days. Consider a feature, transfer, or write-off.</div>` : ''}
+        ${lots.length > 1 ? `<div class="fefo-tip"><strong>FEFO suggestion:</strong> Pour the <b>${lots.find(l=>l.fefo)?.v || lots[0].v}</b> lot first — oldest vintage, highest turnover risk.</div>` : ''}
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:10px;">Lots at this bin</div>
+        ${lots.map(l => `
+          <div class="lot-card ${l.fefo?'fefo':''}">
+            <div class="lot-head">
+              <span class="lot-vintage">${l.v}</span>
+              ${l.fefo ? '<span class="lot-badge">Pour first</span>' : ''}
+            </div>
+            <div class="lot-grid">
+              <div class="lot-stat">Qty<b>${l.qty} btl</b></div>
+              <div class="lot-stat">Unit cost<b>$${l.cost}</b></div>
+              <div class="lot-stat">WAC layer<b>$${(l.qty*l.cost).toFixed(0)}</b></div>
+              <div class="lot-stat">Received<b>Mar 2024</b></div>
+            </div>
+          </div>
+        `).join('')}
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin:16px 0 8px;">Also stocked at</div>
+        <div class="multi-loc">
+          ${(slot.locs||['main']).map(l => `<span class="ml-chip ${l==='main'?'here':''}">${LOCATIONS.find(x=>x.id===l)?.name||l}</span>`).join('')}
+        </div>
+      `;
+    }
+
+    function onSlotClick(slot, el, variant) {
+      document.querySelectorAll('#iso' + variant.toUpperCase() + ' .slot').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+      if (variant === 'b') {
+        document.querySelector('#detailB .detail-eyebrow').textContent = `Rack ${slot.rack} · Slot ${slot.slot}`;
+        document.querySelector('#detailB .detail-title').textContent = slot.wine;
+        document.querySelector('#detailB .detail-meta').textContent = `${slot.vintage||'—'} · ${slot.type} · ABC: ${slot.vel==='hot'?'A':slot.vel==='warm'?'B':'C'}`;
+        renderDetail(slot, 'detailBodyB', variant);
+      }
+      if (variant === 'c') {
+        document.getElementById('detailEyebrowC').textContent = `Rack ${slot.rack} · Slot ${slot.slot}`;
+        document.getElementById('detailTitleC').textContent = slot.wine;
+        document.getElementById('detailMetaC').textContent = `${slot.vintage||'—'} · ${slot.type} · ${slot.locs?.length||1} location(s)`;
+        renderDetail(slot, 'detailBodyC', variant);
+      }
+      if (variant === 'a') toast(`${slot.wine} — ${slot.qty} bottles at ${slot.rack}${slot.slot}`);
+    }
+
+    // Init
+    buildIso('isoA', 'a', onSlotClick);
+    buildIso('isoB', 'b', onSlotClick);
+    buildIso('isoC', 'c', onSlotClick);
+    renderLocChips('locChipsA', 'a');
+    renderLocChips('locChipsC', 'c');
+    updateLegend('a', 'none');
+    updateLegend('A', 'none');
+    // Pre-select Barolo in B
+    const barolo = SLOTS.find(s => s.rack==='B' && s.slot===4);
+    renderDetail(barolo, 'detailBodyB', 'b');
+  </script>
+</body>
+</html>

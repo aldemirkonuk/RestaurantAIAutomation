@@ -531,10 +531,16 @@ export function Reports() {
 
   useEffect(() => {
     updatePreferences({ reportsLayout: serializeLayout(layout) as any })
+    // Persist only when the layout changes. updatePreferences is a per-render
+    // action wrapper; adding it would re-persist on every render (mutation →
+    // re-render loop) and is not the intended trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout])
 
   useEffect(() => {
     updatePreferences({ dashboardBlocks: serializeDashboardBlocks(dashboardBlocks) as any })
+    // Persist only when the dashboard blocks change (see note above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboardBlocks])
 
   useEffect(() => {

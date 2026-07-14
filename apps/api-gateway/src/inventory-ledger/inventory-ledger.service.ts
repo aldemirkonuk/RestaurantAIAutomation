@@ -446,11 +446,14 @@ export class InventoryLedgerService {
     actualCount: number,
     notes?: string,
   ): Promise<InventoryTransactionResponseDto> {
-    // Get current balance
+    // Read current live quantity from the projection. Phase 2 made
+    // inventory_lots the source of truth; restaurant_inventory.stock_live is a
+    // trigger-maintained projection — reading it is correct and cheap, but we
+    // must NOT write it directly (that is what apply_stock_movement is for).
     const { data: currentData, error: currentError } =
       await this.databaseService.supabase
         .from("restaurant_inventory")
-        .select("live_stock")
+        .select("stock_live")
         .eq("id", inventoryId)
         .single();
 
@@ -458,23 +461,46 @@ export class InventoryLedgerService {
       throw new BadRequestException(`Inventory item not found: ${inventoryId}`);
     }
 
-    const currentStock = currentData.live_stock || 0;
+    const currentStock = currentData.stock_live || 0;
     const difference = actualCount - currentStock;
 
     if (difference === 0) {
       throw new BadRequestException("No adjustment needed - counts match");
     }
 
-    return this.createTransaction(restaurantId, userId, {
-      inventoryId,
-      wineId,
-      transactionType: TransactionType.RECONCILIATION,
-      source: TransactionSource.RECONCILIATION,
-      quantityChange: difference,
-      stockType: StockType.LIVE,
-      reason: `Physical count reconciliation: Expected ${currentStock}, Actual ${actualCount}`,
-      notes,
-    });
+    // Apply the adjustment through the single Phase 2 write primitive, which
+    // writes the inventory_lots layer and the inventory_transactions ledger row
+    // atomically (delta-based, version-locked, negative-guarded). This replaces
+    // the removed record_inventory_transaction RPC that direct-updated the
+    // ghost `live_stock` column.
+    const reason = notes
+      ? `Physical count reconciliation: Expected ${currentStock}, Actual ${actualCount} — ${notes}`
+      : `Physical count reconciliation: Expected ${currentStock}, Actual ${actualCount}`;
+
+    const { data: transactionId, error: rpcError } =
+      await this.databaseService.supabase.rpc("apply_stock_movement", {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: difference,
+        p_transaction_type: "reconciliation",
+        p_source: "reconciliation",
+        p_performed_by: userId,
+        p_reason: reason,
+      });
+
+    if (rpcError || !transactionId) {
+      this.logger.error({
+        message: "Reconciliation apply_stock_movement failed",
+        inventoryId,
+        wineId,
+        error: rpcError?.message,
+      });
+      throw new BadRequestException(
+        rpcError?.message || "Failed to apply reconciliation movement",
+      );
+    }
+
+    return this.getTransaction(restaurantId, transactionId as string);
   }
 
   // ==========================================================================

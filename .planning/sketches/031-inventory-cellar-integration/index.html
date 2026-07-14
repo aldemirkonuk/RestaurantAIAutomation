@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>031 — Living Cellar (integrated)</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: #f7f8f9; color: var(--color-text); padding-top: 46px; }
+
+    #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 9998; background: #17131a; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 7px 16px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    #variant-nav .brand { color: #fff; font-weight: 800; font-family: var(--font-display); font-size: 13px; }
+    #variant-nav .tag { color: rgba(255,255,255,0.35); font-size: 11px; margin-right: 12px; font-family: var(--font-mono); }
+    .variant-tab { padding: 5px 14px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.72); cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+    .variant-tab:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .variant-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    .app-header { background: #fff; border-bottom: 1px solid var(--color-border); padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+    .app-header h1 { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .app-header p { font-size: 13px; color: var(--color-text-muted); margin-top: 2px; }
+    .page { padding: 24px 28px 80px; max-width: 1400px; margin: 0 auto; }
+    .section { margin-bottom: 22px; }
+
+    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+    .stat { background: #fff; border: 1px solid #f0f0f2; border-radius: var(--radius-lg); padding: 15px 16px; box-shadow: var(--shadow-sm); }
+    .stat .lbl { font-size: 12px; color: var(--color-text-muted); display: flex; align-items: center; gap: 6px; }
+    .stat .val { font-size: 24px; font-weight: 800; font-family: var(--font-display); margin-top: 6px; }
+    .c-blue { color: #2563eb; } .c-purple { color: #7c3aed; } .c-emerald { color: var(--color-success); } .c-amber { color: var(--color-warning); } .c-rose { color: var(--color-danger); }
+
+    .tabs-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .tabs { display: inline-flex; background: #eef0f3; border-radius: var(--radius-md); padding: 4px; }
+    .tab { padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; border: none; background: none; display: flex; align-items: center; gap: 6px; transition: var(--transition-base); }
+    .tab.active { background: #fff; color: var(--color-text); box-shadow: var(--shadow-xs); }
+    .tab.cellar.active { background: #17131a; color: #fff; }
+
+    .toolbar { background: #fff; border: 1px solid #f0f0f2; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .search { flex: 1; min-width: 220px; position: relative; }
+    .search input { width: 100%; padding: 10px 12px 10px 36px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 13px; outline: none; }
+    .search .ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); }
+    .tbtn { display: flex; align-items: center; gap: 7px; padding: 10px 15px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: #fff; font-size: 13px; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+    .tbtn.primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; box-shadow: var(--shadow-wine); }
+
+    .table-card { background: #fff; border: 1px solid #f0f0f2; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .table-scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 900px; }
+    thead th { text-align: left; font-size: 11px; font-weight: 700; color: #6b7280; padding: 12px 14px; border-bottom: 1px solid var(--color-border); background: #fafbfc; white-space: nowrap; }
+    thead th.c { text-align: center; } thead th.r { text-align: right; }
+    tbody td { padding: 13px 14px; border-bottom: 1px solid #f4f5f7; font-size: 13px; }
+    tbody tr:hover { background: #fbf7f8; }
+    .wine-name { font-weight: 700; font-size: 13.5px; } .wine-meta { font-size: 11px; color: var(--color-text-muted); margin-top: 1px; }
+    .type-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--radius-full); text-transform: capitalize; }
+    .type-red { background: #fdf2f4; color: #b91c4b; } .type-white { background: #fefce8; color: #a16207; } .type-spark { background: #fff7ed; color: #c2410c; } .type-rose { background: #fdf2f8; color: #be185d; }
+    .num { text-align: center; font-family: var(--font-mono); font-weight: 600; }
+    .loc-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-full); background: #f3f4f6; cursor: pointer; }
+    .loc-tag:hover { background: var(--color-primary-light); color: var(--color-primary); }
+    .live { color: #2563eb; font-weight: 700; }
+
+    /* ─── Cellar map: front-facing rack wall (no sideways iso) ─── */
+    .cellar-card { background: #14111a; border: 1px solid #241d2c; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow: hidden; }
+    .cellar-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap; gap: 10px; }
+    .loc-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .loc-chip { display: flex; align-items: center; gap: 7px; padding: 7px 13px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-full); color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .loc-chip:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .loc-chip.active { background: rgba(205,45,91,0.25); border-color: rgba(205,45,91,0.5); color: #fff; }
+    .loc-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .loc-pct { font-family: var(--font-mono); font-size: 10px; opacity: 0.7; }
+    .overlays { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .ov-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.35); }
+    .ov-btn { padding: 6px 12px; border-radius: var(--radius-full); border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .ov-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .ov-btn.active { background: #fff; color: #14111a; border-color: #fff; }
+    .ov-btn.active.temp { background: #3b82f6; color: #fff; } .ov-btn.active.velocity { background: #f59e0b; color: #14111a; } .ov-btn.active.dead { background: #94a3b8; color: #14111a; }
+
+    .cellar-stage {
+      position: relative; padding: 28px 24px 32px; min-height: 520px;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 100%, rgba(205,45,91,0.1) 0%, transparent 55%),
+        linear-gradient(180deg, #0d0b10, #15121a 50%, #0f0d12);
+    }
+    .rack-wall {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+    .rack-row {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 14px; align-items: stretch;
+    }
+    .rack-label {
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display); font-size: 22px; font-weight: 800;
+      color: rgba(255,255,255,0.22); letter-spacing: -0.02em;
+      border-right: 1px solid rgba(255,255,255,0.06); padding-right: 8px;
+    }
+    .rack-shelf {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px 16px 18px;
+      position: relative;
+      box-shadow: inset 0 -6px 0 rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.25);
+    }
+    .rack-shelf::after {
+      content: ''; position: absolute; left: 12px; right: 12px; bottom: 10px; height: 4px;
+      background: linear-gradient(90deg, #2a2430, #3d3548, #2a2430);
+      border-radius: 2px; opacity: 0.9;
+    }
+    .rack-slots {
+      display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px;
+      position: relative; z-index: 1;
+    }
+    .slot {
+      min-height: 118px; position: relative; cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .slot:hover { transform: translateY(-4px); z-index: 5; }
+    .slot.selected .slot-face { outline: 2px solid #fff; outline-offset: 2px; }
+    .slot-face {
+      height: 100%; min-height: 118px;
+      background: linear-gradient(165deg, #2f2938 0%, #1e1a24 55%, #17131c 100%);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px 10px 8px 8px;
+      box-shadow: 0 10px 0 #0e0c12, 0 14px 28px rgba(0,0,0,0.45);
+      display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 8px 9px 10px; overflow: hidden; position: relative;
+    }
+    .slot-neck {
+      position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+      width: 14px; height: 22px; border-radius: 4px 4px 2px 2px;
+      background: linear-gradient(180deg, #4a4454, #2a2430);
+      border: 1px solid rgba(255,255,255,0.08); opacity: 0.85;
+    }
+    .slot-fill {
+      position: absolute; bottom: 0; left: 0; right: 0; opacity: 0.88;
+      border-radius: 0 0 7px 7px;
+    }
+    .fill-red { background: linear-gradient(0deg, #7c1d3c, #CD2D5B); }
+    .fill-white { background: linear-gradient(0deg, #a8a060, #e8e0a8); }
+    .fill-spark { background: linear-gradient(0deg, #c9a227, #f5e6a3); }
+    .fill-rose { background: linear-gradient(0deg, #c4707a, #f4b8c0); }
+    .slot-code { font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.45); position: relative; z-index: 2; }
+    .slot-wine { font-size: 11px; font-weight: 700; color: #fff; position: relative; z-index: 2; line-height: 1.2; margin-top: 2px; }
+    .slot-qty { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.92); position: relative; z-index: 2; margin-top: 2px; }
+    .slot.empty .slot-face { background: rgba(255,255,255,0.03); border-style: dashed; box-shadow: 0 6px 0 #0e0c12; }
+    .slot.empty .slot-neck { opacity: 0.2; }
+    .slot.empty .slot-wine { color: rgba(255,255,255,0.25); font-style: italic; font-size: 10px; }
+
+    .overlay-temp .slot.temp-cold .slot-face { box-shadow: 0 10px 0 #0e0c12, 0 0 20px rgba(59,130,246,0.45); }
+    .overlay-temp .slot.temp-warm .slot-face { box-shadow: 0 10px 0 #0e0c12, 0 0 20px rgba(239,68,68,0.5); }
+    .overlay-velocity .slot.vel-hot .slot-face::after { content:''; position:absolute; inset:0; background:rgba(245,158,11,0.32); border-radius:10px; }
+    .overlay-velocity .slot.vel-cold .slot-face::after { content:''; position:absolute; inset:0; background:rgba(59,130,246,0.14); border-radius:10px; }
+    .overlay-dead .slot.dead .slot-face { filter: saturate(0.35) brightness(0.88); }
+    .overlay-dead .slot.dead .slot-face::before { content:'❄'; position:absolute; top:42%; left:50%; transform:translate(-50%,-50%); font-size:26px; opacity:0.55; z-index:4; }
+
+    .cellar-legend {
+      display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+      margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255,255,255,0.42); }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+    .mini-cellar { background: #14111a; border-radius: var(--radius-md); padding: 16px; }
+    .mini-cellar .rack-slots { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .mini-cellar .slot { min-height: 88px; }
+    .mini-cellar .slot-face { min-height: 88px; padding: 6px; }
+    .mini-cellar .slot-wine { font-size: 9px; }
+    .mini-cellar .rack-label { font-size: 16px; }
+    .mini-cellar .rack-row { gap: 10px; }
+
+    .insights { background: #fff; border: 1px solid #f0f0f2; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .insights-head { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; cursor: pointer; font-weight: 700; font-size: 14px; }
+
+    .scrim { position: fixed; inset: 0; background: rgba(20,15,22,0.5); backdrop-filter: blur(2px); z-index: 9990; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+    .scrim.open { opacity: 1; pointer-events: auto; }
+    .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92vw; background: #fff; z-index: 9991; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); box-shadow: -20px 0 60px rgba(0,0,0,0.18); display: flex; flex-direction: column; }
+    .drawer.open { transform: translateX(0); }
+    .drawer-head { padding: 20px 22px 16px; border-bottom: 1px solid var(--color-border); position: relative; }
+    .drawer-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-primary); }
+    .drawer-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; margin-top: 3px; }
+    .drawer-sub { font-size: 12px; color: var(--color-text-muted); margin-top: 3px; }
+    .drawer-close { position: absolute; top: 18px; right: 18px; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--color-border); background: #fff; cursor: pointer; }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+    .amb-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+    .amb { background: #f9fafb; border-radius: var(--radius-md); padding: 12px; text-align: center; }
+    .amb-v { font-family: var(--font-display); font-size: 18px; font-weight: 800; } .amb-l { font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+    .lot-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 10px; }
+    .lot-card.fefo { border-color: var(--color-primary); background: var(--color-primary-light); }
+    .lot-head { display: flex; justify-content: space-between; align-items: center; }
+    .lot-v { font-family: var(--font-display); font-size: 16px; font-weight: 800; }
+    .lot-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-full); background: var(--color-primary); color: #fff; }
+    .lot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--color-text-muted); }
+    .lot-grid b { display: block; font-size: 13px; color: var(--color-text); font-family: var(--font-mono); }
+    .fefo-tip { background: linear-gradient(135deg,#fdf2f4,#fff); border: 1px solid var(--color-primary-light); border-radius: var(--radius-md); padding: 11px 13px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 14px; }
+    .fefo-tip strong { color: var(--color-primary); }
+    .ml-chip { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-full); background: #f3f4f6; margin-right: 6px; }
+    .ml-chip.here { background: var(--color-primary-light); color: var(--color-primary); }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--color-text); color: #fff; padding: 11px 20px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: all 0.3s; z-index: 9995; box-shadow: var(--shadow-xl); }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-size: 12px; background: rgba(0,0,0,0.72); color: #fff; padding: 8px 12px; border-radius: 8px; opacity: 0.35; transition: opacity 0.2s; }
+    #sketch-tools:hover { opacity: 1; }
+    @media (max-width: 1000px) {
+      .stats { grid-template-columns: repeat(3, 1fr); }
+      .rack-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .rack-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div id="variant-nav">
+    <span class="brand">WineOps</span><span class="tag">031 · cellar-integration · v2 rack-wall</span>
+    <button class="variant-tab active" onclick="showVariant('a')">A · Cellar Tab</button>
+    <button class="variant-tab" onclick="showVariant('b')">B · Insights Mini-Cellar</button>
+    <button class="variant-tab" onclick="showVariant('c')">C · Synthesis ★</button>
+  </div>
+
+  <div id="variant-a" class="variant active"></div>
+  <div id="variant-b" class="variant"></div>
+  <div id="variant-c" class="variant"></div>
+
+  <div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-head">
+      <div class="drawer-eyebrow" id="drEyebrow">Bin</div>
+      <div class="drawer-title" id="drTitle">—</div>
+      <div class="drawer-sub" id="drSub">—</div>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" id="drBody"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div id="sketch-tools">031 · front-facing rack wall (no sideways iso)</div>
+
+  <script>
+    const LOCATIONS = [
+      { id:'main', name:'Main Cellar', color:'#CD2D5B', pct:78 },
+      { id:'bar', name:'Bar Back', color:'#3b82f6', pct:45 },
+      { id:'reserve', name:'Reserve Room', color:'#059669', pct:92 },
+    ];
+    const SLOTS = [
+      { rack:'A', slot:1, wine:'Chianti', type:'red', qty:12, max:12, temp:'ok', vel:'warm', dead:false, vintage:'2021', locs:['main'] },
+      { rack:'A', slot:2, wine:'Sancerre', type:'white', qty:8, max:12, temp:'cold', vel:'hot', dead:false, vintage:'2023', locs:['main','bar'] },
+      { rack:'A', slot:3, wine:'—', type:'empty', qty:0, max:12 },
+      { rack:'A', slot:4, wine:'Prosecco', type:'spark', qty:6, max:12, temp:'cold', vel:'warm', dead:false, vintage:'NV', locs:['main'] },
+      { rack:'A', slot:5, wine:'Rosé', type:'rose', qty:4, max:12, temp:'ok', vel:'cold', dead:true, vintage:'2022', locs:['main'], daysSincePour:94 },
+      { rack:'B', slot:1, wine:'Burgundy', type:'red', qty:10, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2020', locs:['main'] },
+      { rack:'B', slot:2, wine:'Riesling', type:'white', qty:3, max:12, temp:'cold', vel:'cold', dead:false, vintage:'2022', locs:['main'] },
+      { rack:'B', slot:3, wine:'Amarone', type:'red', qty:5, max:12, temp:'warm', vel:'warm', dead:false, vintage:'2018', locs:['main','reserve'] },
+      { rack:'B', slot:4, wine:'Barolo', type:'red', qty:6, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2019', locs:['main'], lots:[{v:'2019',qty:4,cost:68,fefo:true},{v:'2018',qty:2,cost:72}] },
+      { rack:'B', slot:5, wine:'Chablis', type:'white', qty:2, max:12, temp:'cold', vel:'cold', dead:true, vintage:'2021', locs:['main'], daysSincePour:112 },
+      { rack:'C', slot:1, wine:'Napa Cab', type:'red', qty:9, max:12, temp:'ok', vel:'hot', dead:false, vintage:'2019', locs:['reserve'] },
+      { rack:'C', slot:2, wine:'Sauternes', type:'white', qty:4, max:12, temp:'cold', vel:'cold', dead:false, vintage:'2017', locs:['reserve'] },
+      { rack:'C', slot:3, wine:'Champagne', type:'spark', qty:11, max:12, temp:'cold', vel:'hot', dead:false, vintage:'NV', locs:['main','bar'] },
+      { rack:'C', slot:4, wine:'Pinot N.', type:'red', qty:7, max:12, temp:'ok', vel:'warm', dead:false, vintage:'2021', locs:['main'] },
+      { rack:'C', slot:5, wine:'Moscato', type:'white', qty:1, max:12, temp:'ok', vel:'cold', dead:true, vintage:'2023', locs:['bar'], daysSincePour:67 },
+    ];
+    const RACKS = ['A','B','C'];
+    const TABLE = [
+      { name:'Barolo, G.D. Vajra', producer:'2019 · Nebbiolo', type:'red', loc:'Rack B4', live:6, total:6, min:8 },
+      { name:'Sancerre, Domaine V.', producer:'2023 · Sauvignon', type:'white', loc:'Rack A2', live:8, total:10, min:10 },
+      { name:'Chianti Classico', producer:'2021 · Sangiovese', type:'red', loc:'Rack A1', live:12, total:12, min:6 },
+      { name:'Prosecco Superiore', producer:'NV · Glera', type:'spark', loc:'Rack A4', live:6, total:6, min:12 },
+      { name:'Burgundy, Louis Jadot', producer:'2020 · Pinot Noir', type:'red', loc:'Rack B1', live:10, total:10, min:6 },
+      { name:'Champagne Brut', producer:'NV · Blend', type:'spark', loc:'Rack C3', live:11, total:11, min:8 },
+    ];
+
+    const state = { a:{overlay:'none',loc:'main'}, b:{overlay:'none',loc:'main'}, c:{view:'cellar',overlay:'none',loc:'main'} };
+
+    function toast(m){ const e=document.getElementById('toast'); e.textContent=m; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2000); }
+    function typeClass(t){ return t==='red'?'type-red':t==='white'?'type-white':t==='spark'?'type-spark':'type-rose'; }
+    function typeName(t){ return t==='spark'?'sparkling':t; }
+
+    function slotHtml(s, prefix){
+      const pct = s.max ? Math.round((s.qty/s.max)*100) : 0;
+      const cls = `slot ${s.type==='empty'?'empty':''} temp-${s.temp||'ok'} vel-${s.vel||'cold'} ${s.dead?'dead':''}`;
+      return `<div class="${cls}" onclick="pick('${prefix}','${s.rack}',${s.slot})">
+        <div class="slot-face">
+          ${s.type!=='empty'?'<div class="slot-neck"></div>':''}
+          ${s.type!=='empty'?`<div class="slot-fill fill-${s.type}" style="height:${pct}%"></div>`:''}
+          <div class="slot-code">${s.rack}${s.slot}</div>
+          <div class="slot-wine">${s.wine}</div>
+          <div class="slot-qty">${s.type==='empty'?'Empty':s.qty+' btl'}</div>
+        </div></div>`;
+    }
+
+    function rackWallHtml(prefix, compact){
+      let h = '<div class="rack-wall">';
+      RACKS.forEach(rack => {
+        h += `<div class="rack-row">
+          <div class="rack-label">${rack}</div>
+          <div class="rack-shelf"><div class="rack-slots">`;
+        SLOTS.filter(s=>s.rack===rack).forEach(s => { h += slotHtml(s, prefix); });
+        h += `</div></div></div>`;
+      });
+      if (!compact) {
+        h += `<div class="cellar-legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:#CD2D5B"></span>Red</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#e8e0a8"></span>White</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f5e6a3"></span>Sparkling</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f4b8c0"></span>Rosé</div>
+          <div class="legend-item">Racks read left → right · A/B/C top → bottom</div>
+        </div>`;
+      }
+      h += '</div>';
+      return h;
+    }
+
+    function cellarCard(variant, compact){
+      const st = state[variant];
+      return `
+      <div class="cellar-card">
+        <div class="cellar-toolbar">
+          <div class="loc-chips">
+            ${LOCATIONS.map(l=>`<div class="loc-chip ${st.loc===l.id?'active':''}" onclick="setLoc('${variant}','${l.id}')"><span class="loc-dot" style="background:${l.color}"></span>${l.name}<span class="loc-pct">${l.pct}%</span></div>`).join('')}
+          </div>
+          <div class="overlays">
+            <span class="ov-lbl">Overlay</span>
+            <button class="ov-btn ${st.overlay==='none'?'active':''}" onclick="setOv('${variant}','none')">Default</button>
+            <button class="ov-btn temp ${st.overlay==='temp'?'active':''}" onclick="setOv('${variant}','temp')">Temp</button>
+            <button class="ov-btn velocity ${st.overlay==='velocity'?'active':''}" onclick="setOv('${variant}','velocity')">Velocity</button>
+            <button class="ov-btn dead ${st.overlay==='dead'?'active':''}" onclick="setOv('${variant}','dead')">Dead</button>
+          </div>
+        </div>
+        <div class="cellar-stage overlay-${st.overlay}">
+          ${rackWallHtml(variant, compact)}
+        </div>
+      </div>`;
+    }
+
+    function tableCard(){
+      return `
+      <div class="table-card">
+        <div class="table-scroll"><table>
+          <thead><tr><th>Wine</th><th>Type</th><th>Location</th><th class="c">Live</th><th class="c">Total</th><th class="c">Min</th></tr></thead>
+          <tbody>${TABLE.map(w=>`<tr>
+            <td><div class="wine-name">${w.name}</div><div class="wine-meta">${w.producer}</div></td>
+            <td><span class="type-pill ${typeClass(w.type)}">${typeName(w.type)}</span></td>
+            <td><span class="loc-tag" onclick="jumpToCellar('${w.loc}')">📍 ${w.loc}</span></td>
+            <td class="num"><span class="live">${w.live}</span></td>
+            <td class="num">${w.total}</td>
+            <td class="num" style="color:#9ca3af">${w.min}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+    }
+
+    function head(sub){
+      return `<div class="app-header"><div><h1>Inventory</h1><p>${sub}</p></div>
+        <button class="tbtn primary">＋ Add Wine</button></div>`;
+    }
+    function statsRow(){
+      return `<div class="stats section">
+        <div class="stat"><div class="lbl">Total Wines</div><div class="val">38</div></div>
+        <div class="stat"><div class="lbl">👁 Live Stock</div><div class="val c-blue">142</div></div>
+        <div class="stat"><div class="lbl">◐ Shadow Stock</div><div class="val c-purple">4</div></div>
+        <div class="stat"><div class="lbl">Healthy</div><div class="val c-emerald">29</div></div>
+        <div class="stat"><div class="lbl">Low / Critical</div><div class="val c-amber">9</div></div>
+        <div class="stat"><div class="lbl">❄ Dead stock</div><div class="val c-rose">3</div></div>
+      </div>`;
+    }
+    function toolbar(){
+      return `<div class="toolbar section">
+        <div class="search"><span class="ic">⌕</span><input placeholder="Search wines, producers..."></div>
+        <button class="tbtn">⚙ Filters</button><button class="tbtn">⭳ Export</button>
+        <button class="tbtn">✨ Auto-Locate</button>
+      </div>`;
+    }
+
+    function buildA(){
+      return head('Front-facing rack wall — racks A→C, slots left→right') + `<div class="page">
+        ${statsRow()}
+        <div class="tabs-row section">
+          <div class="tabs">
+            <button class="tab">All Stock</button>
+            <button class="tab">👁 Live</button>
+            <button class="tab">◐ Shadow</button>
+            <button class="tab cellar active">🍷 Cellar Map</button>
+          </div>
+          <span style="font-size:12px;color:var(--color-text-muted);">Rack wall view · 3 locations · lot-aware</span>
+        </div>
+        ${toolbar()}
+        <div class="section">${cellarCard('a')}</div>
+      </div>`;
+    }
+
+    function buildB(){
+      return head('Table view · mini rack wall in Insights') + `<div class="page">
+        ${statsRow()}
+        <div class="insights section">
+          <div class="insights-head"><span>⚡ Inventory Insights & Organization</span><span style="color:#9ca3af;">▾</span></div>
+          <div style="border-top:1px solid #f0f0f2;padding:18px;display:grid;grid-template-columns:1.4fr 1fr;gap:18px;">
+            <div>
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;">🍷 Cellar at a glance <span style="font-size:11px;color:#9ca3af;font-weight:500;">click a bin</span></div>
+              <div class="mini-cellar overlay-dead">${rackWallHtml('b', true)}</div>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px;">🗂️ Locations</div>
+              ${LOCATIONS.map(l=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f7f8f9;border-radius:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;"><span class="loc-dot" style="background:${l.color}"></span>${l.name}</div><span style="font-size:12px;font-weight:700;">${l.pct}%</span></div>`).join('')}
+              <div style="margin-top:12px;padding:12px;background:linear-gradient(135deg,#f8fafc,#fff);border:1px solid #eef;border-radius:10px;font-size:12px;color:var(--color-text-secondary);">❄ <strong>3 bins frosted</strong> — no pour in 60+ days. Open Cellar Map to review.</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabs-row section">
+          <div class="tabs"><button class="tab active">All Stock</button><button class="tab">👁 Live</button><button class="tab">◐ Shadow</button></div>
+        </div>
+        ${toolbar()}
+        <div class="section">${tableCard()}</div>
+      </div>`;
+    }
+
+    function buildC(){
+      const st = state.c;
+      const showCellar = st.view==='cellar';
+      return head('Table + Cellar Map, one page') + `<div class="page">
+        ${statsRow()}
+        <div class="tabs-row section">
+          <div class="tabs">
+            <button class="tab ${!showCellar?'active':''}" onclick="setView('c','table')">▦ Table</button>
+            <button class="tab cellar ${showCellar?'active':''}" onclick="setView('c','cellar')">🍷 Cellar Map</button>
+          </div>
+          <span style="font-size:12px;color:var(--color-text-muted);">${showCellar?'Click a bin → lot detail · FEFO · multi-location':'Click a 📍 location → jump to cellar'}</span>
+        </div>
+        ${toolbar()}
+        <div class="section">${showCellar?cellarCard('c'):tableCard()}</div>
+      </div>`;
+    }
+
+    const builders = { a:buildA, b:buildB, c:buildC };
+    function render(v){ document.getElementById('variant-'+v).innerHTML = builders[v](); }
+
+    function setOv(v,o){ state[v].overlay=o; render(v); }
+    function setLoc(v,l){ state[v].loc=l; render(v); toast('Filtered to '+LOCATIONS.find(x=>x.id===l).name); }
+    function setView(v,view){ state[v].view=view; render(v); }
+    function jumpToCellar(loc){ toast('Jump to '+loc+' on Cellar Map'); }
+
+    function pick(prefix, rack, slot){
+      const s = SLOTS.find(x=>x.rack===rack && x.slot===slot);
+      if (!s || s.type==='empty'){ toast('Empty slot · drag wine or Auto-Locate'); return; }
+      document.getElementById('drEyebrow').textContent = `Rack ${s.rack} · Slot ${s.slot}`;
+      document.getElementById('drTitle').textContent = s.wine;
+      document.getElementById('drSub').textContent = `${s.vintage} · ${typeName(s.type)} · ${(s.locs||['main']).length} location(s)`;
+      const lots = s.lots || [{v:s.vintage,qty:s.qty,cost:42,fefo:true}];
+      let html = `<div class="amb-stats">
+        <div class="amb"><div class="amb-v">${s.qty}</div><div class="amb-l">On hand</div></div>
+        <div class="amb"><div class="amb-v">${s.vel==='hot'?'4.2/wk':s.vel==='warm'?'1.8/wk':'0.3/wk'}</div><div class="amb-l">Velocity</div></div>
+        <div class="amb"><div class="amb-v">${s.dead?s.daysSincePour+'d':'—'}</div><div class="amb-l">${s.dead?'Since pour':'Active'}</div></div>
+      </div>`;
+      if (s.dead) html += `<div class="fefo-tip" style="border-color:#94a3b8;background:#f8fafc;"><strong>❄ Dead stock.</strong> No pour in ${s.daysSincePour} days — feature, transfer, or write off.</div>`;
+      if (lots.length>1) html += `<div class="fefo-tip"><strong>FEFO:</strong> pour the <b>${lots.find(l=>l.fefo)?.v||lots[0].v}</b> lot first.</div>`;
+      html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:8px;">Lots at this bin</div>`;
+      html += lots.map(l=>`<div class="lot-card ${l.fefo?'fefo':''}"><div class="lot-head"><span class="lot-v">${l.v}</span>${l.fefo?'<span class="lot-badge">Pour first</span>':''}</div><div class="lot-grid"><div>Qty<b>${l.qty} btl</b></div><div>Unit cost<b>$${l.cost}</b></div></div></div>`).join('');
+      html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin:14px 0 8px;">Also stocked at</div>`;
+      html += (s.locs||['main']).map(l=>`<span class="ml-chip ${l==='main'?'here':''}">${LOCATIONS.find(x=>x.id===l)?.name||l}</span>`).join('');
+      document.getElementById('drBody').innerHTML = html;
+      document.getElementById('scrim').classList.add('open');
+      document.getElementById('drawer').classList.add('open');
+    }
+    function closeDrawer(){ document.getElementById('scrim').classList.remove('open'); document.getElementById('drawer').classList.remove('open'); }
+
+    function showVariant(id){
+      document.querySelectorAll('.variant').forEach(v=>v.classList.remove('active'));
+      document.querySelectorAll('.variant-tab').forEach((t,i)=>t.classList.toggle('active',['a','b','c'][i]===id));
+      document.getElementById('variant-'+id).classList.add('active');
+    }
+    ['a','b','c'].forEach(render);
+  </script>
+</body>
+</html>

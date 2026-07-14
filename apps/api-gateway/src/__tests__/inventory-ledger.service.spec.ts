@@ -11,8 +11,6 @@ import {
 
 describe("InventoryLedgerService", () => {
   let service: InventoryLedgerService;
-  let databaseService: DatabaseService;
-  let eventsService: EventsService;
 
   const mockSupabaseClient = {
     from: jest.fn().mockReturnThis(),
@@ -46,8 +44,6 @@ describe("InventoryLedgerService", () => {
     }).compile();
 
     service = module.get<InventoryLedgerService>(InventoryLedgerService);
-    databaseService = module.get<DatabaseService>(DatabaseService);
-    eventsService = module.get<EventsService>(EventsService);
 
     jest.clearAllMocks();
   });
@@ -326,19 +322,18 @@ describe("InventoryLedgerService", () => {
     });
   });
 
-  // QUARANTINED (Phase 1 · 1.4 / D4): these tests mock `{ live_stock: 10 }` — a column that
-  // does NOT exist on restaurant_inventory (the real column is `stock_live`). The service reads
-  // that same ghost column, so against the real schema reconcileInventory 500s while these tests
-  // stay green. Skipped (not deleted) until the corrected ledger is ported in Phase 2
-  // (.planning/INVENTORY_SOTA_PLAN.md §6b / §9A). A green test on a ghost column is worse than a red one.
-  describe.skip("reconcileInventory", () => {
+  // Ported to the Phase 2 write model (2026-07-14): reconcileInventory now reads the real
+  // `stock_live` projection and applies the adjustment via the `apply_stock_movement` RPC
+  // (lots + ledger, atomic) instead of the removed record_inventory_transaction path that
+  // direct-updated the ghost `live_stock` column. See .planning/FIX_ERROR_LOG.md.
+  describe("reconcileInventory", () => {
     const restaurantId = "restaurant-123";
     const userId = "user-456";
 
     it("should create reconciliation transaction for positive adjustment", async () => {
       // Current stock is 10, actual count is 12
       mockSupabaseClient.single.mockResolvedValueOnce({
-        data: { live_stock: 10 },
+        data: { stock_live: 10 },
         error: null,
       });
 
@@ -386,7 +381,7 @@ describe("InventoryLedgerService", () => {
 
     it("should reject reconciliation when counts match", async () => {
       mockSupabaseClient.single.mockResolvedValue({
-        data: { live_stock: 10 },
+        data: { stock_live: 10 },
         error: null,
       });
 

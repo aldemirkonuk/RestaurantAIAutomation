@@ -219,6 +219,7 @@ export function Notifications() {
       order_delivered: { icon: CheckCircle2, bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-400' },
       price_change: { icon: TrendingUp, bg: 'bg-amber-100', text: 'text-amber-600', border: 'border-amber-400' },
       delivery_scheduled: { icon: Calendar, bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'border-cyan-400' },
+      payment_due: { icon: TrendingUp, bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-400' },
       calendar_reminder: { icon: Bell, bg: 'bg-orange-100', text: 'text-orange-600', border: 'border-orange-400' },
       system: { icon: Info, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
       ai_suggestion: { icon: Info, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-400' },

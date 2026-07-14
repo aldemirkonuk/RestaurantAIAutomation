@@ -283,6 +283,28 @@ export class NotificationsService {
     // Send WebSocket notification to restaurant
     await this.sendToRestaurant(data.restaurantId, payload);
 
+    // Sync to the in-app inbox. Deduped by wine so the automatic low-stock
+    // engine and a manual trigger can't produce two rows for the same wine.
+    await this.persistForRestaurant(
+      data.restaurantId,
+      {
+        type: "inventory_low_stock",
+        title: `${emoji} ${severity}: ${data.wineName}`,
+        message: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
+        priority: data.currentStock <= data.threshold * 0.5 ? "critical" : "high",
+        actionUrl: "/inventory?filter=low-stock",
+        actionLabel: "View Inventory",
+        groupKey: `low_stock:${data.wineId}`,
+        metadata: {
+          wineId: data.wineId,
+          wineName: data.wineName,
+          currentStock: data.currentStock,
+          threshold: data.threshold,
+        },
+      },
+      { dedupeWithinMinutes: 60 },
+    );
+
     // Also send email/SMS if CommunicationsService is available and email is provided
     if (this.communicationsService && data.managerEmail) {
       try {
@@ -334,6 +356,22 @@ export class NotificationsService {
     };
 
     await this.sendToRestaurant(data.restaurantId, payload);
+
+    // Sync to the in-app inbox so the signal survives past the live toast.
+    await this.persistForRestaurant(data.restaurantId, {
+      type: "order_delivered",
+      title: `📦 Delivery arrived: ${data.wineName}`,
+      message: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}`,
+      priority: "medium",
+      actionUrl: "/orders",
+      actionLabel: "View Order",
+      metadata: {
+        orderId: data.orderId,
+        wineName: data.wineName,
+        quantity: data.quantity,
+        provider: data.providerName,
+      },
+    });
   }
 
   /**
@@ -401,6 +439,14 @@ export class NotificationsService {
     };
 
     await this.sendToRestaurant(data.restaurantId, payload);
+
+    await this.persistForRestaurant(data.restaurantId, {
+      type: "system",
+      title: `${emoji} ${data.title}`,
+      message: data.message,
+      priority: data.severity === "error" ? "high" : "medium",
+      metadata: { severity: data.severity },
+    });
   }
 
   /**
@@ -497,6 +543,115 @@ export class NotificationsService {
       });
 
     return this.mapNotificationRow(row);
+  }
+
+  // =========================================================================
+  // UNIFIED PERSISTENCE — every cross-page signal lands in the inbox
+  // =========================================================================
+
+  /**
+   * Persist a restaurant-scoped notification to EVERY active member of the
+   * restaurant and broadcast it once over WebSocket. This is the single funnel
+   * that keeps the Notifications page in sync with signals other pages emit
+   * (orders, deliveries, payments, low-stock, reports, …). Generalises the
+   * inbound-responder's `persistManagerNotification`.
+   *
+   * Best-effort: never throws, so a persistence hiccup can't break the caller's
+   * primary action (placing an order, sending an email, recording a pour).
+   *
+   * @returns number of inbox rows inserted.
+   */
+  async persistForRestaurant(
+    restaurantId: string,
+    payload: {
+      type: string;
+      title: string;
+      message: string;
+      priority?: "low" | "medium" | "high" | "critical";
+      actionUrl?: string;
+      actionLabel?: string;
+      metadata?: Record<string, any>;
+      groupKey?: string;
+    },
+    opts: { broadcast?: boolean; dedupeWithinMinutes?: number } = {},
+  ): Promise<{ inserted: number }> {
+    const { broadcast = true, dedupeWithinMinutes } = opts;
+    try {
+      const userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      if (!userIds.length) return { inserted: 0 };
+
+      // Optional dedupe: skip if an identical group_key was already written for
+      // this restaurant inside the window (prevents a re-alert on every sweep).
+      if (payload.groupKey && dedupeWithinMinutes && dedupeWithinMinutes > 0) {
+        const since = new Date(
+          Date.now() - dedupeWithinMinutes * 60_000,
+        ).toISOString();
+        const { data: existing } = await this.databaseService.supabase
+          .from("notifications")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("group_key", payload.groupKey)
+          .gte("created_at", since)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          return { inserted: 0 };
+        }
+      }
+
+      const now = new Date().toISOString();
+      const rows = userIds.map((userId) => ({
+        user_id: userId,
+        restaurant_id: restaurantId,
+        type: payload.type,
+        title: payload.title.slice(0, 500),
+        message: payload.message,
+        priority: payload.priority ?? "medium",
+        status: "unread",
+        action_url: payload.actionUrl ?? null,
+        action_label: payload.actionLabel ?? null,
+        group_key: payload.groupKey ?? null,
+        metadata: payload.metadata ?? {},
+        created_at: now,
+      }));
+
+      const { error } = await this.databaseService.supabase
+        .from("notifications")
+        .insert(rows);
+      if (error) {
+        this.logger.warn(`persistForRestaurant insert failed: ${error.message}`);
+        return { inserted: 0 };
+      }
+
+      if (broadcast) {
+        this.websocketGateway.server
+          .to(`restaurant:${restaurantId}`)
+          .emit("notification:new", {
+            type: payload.type,
+            title: payload.title,
+            message: payload.message,
+            body: payload.message,
+            action_url: payload.actionUrl,
+            data: payload.metadata,
+          });
+      }
+
+      return { inserted: rows.length };
+    } catch (e: any) {
+      this.logger.warn(
+        `persistForRestaurant failed for restaurant ${restaurantId}: ${e?.message}`,
+      );
+      return { inserted: 0 };
+    }
+  }
+
+  /**
+   * Active member user_ids for a restaurant. Delegates to the shared data-layer
+   * resolver so every notification funnel fans out to the same audience.
+   */
+  private async resolveRestaurantMemberIds(
+    restaurantId: string,
+  ): Promise<string[]> {
+    return this.databaseService.getRestaurantMemberIds(restaurantId);
   }
 
   // =========================================================================
@@ -790,6 +945,15 @@ export class NotificationsService {
         startTime: row.quiet_hours_start || "22:00",
         endTime: row.quiet_hours_end || "08:00",
       },
+      lowStock: {
+        enabled: row.low_stock_enabled ?? true,
+        instantFirstAlert: row.instant_first_alert ?? true,
+        criticalImmediate: row.critical_immediate ?? true,
+        digestFrequency: row.digest_frequency || "daily",
+        digestTime: row.digest_time || "12:00",
+      },
+      ordersMode: row.orders_mode || "both",
+      reportsMode: row.reports_mode || "both",
       updatedAt: row.updated_at,
     };
   }
@@ -824,6 +988,15 @@ export class NotificationsService {
           startTime: "22:00",
           endTime: "08:00",
         },
+        lowStock: {
+          enabled: true,
+          instantFirstAlert: true,
+          criticalImmediate: true,
+          digestFrequency: "daily",
+          digestTime: "12:00",
+        },
+        ordersMode: "both",
+        reportsMode: "both",
         updatedAt: null,
       };
     }
@@ -838,6 +1011,15 @@ export class NotificationsService {
     sms?: boolean;
     categories?: Record<string, boolean>;
     quietHours?: { enabled?: boolean; startTime?: string; endTime?: string };
+    lowStock?: {
+      enabled?: boolean;
+      instantFirstAlert?: boolean;
+      criticalImmediate?: boolean;
+      digestFrequency?: string;
+      digestTime?: string;
+    };
+    ordersMode?: string;
+    reportsMode?: string;
   }) {
     const updateData: Record<string, any> = {
       user_id: params.userId,
@@ -855,6 +1037,20 @@ export class NotificationsService {
       updateData.quiet_hours_start = params.quietHours.startTime;
     if (params.quietHours?.endTime !== undefined)
       updateData.quiet_hours_end = params.quietHours.endTime;
+    if (params.lowStock?.enabled !== undefined)
+      updateData.low_stock_enabled = params.lowStock.enabled;
+    if (params.lowStock?.instantFirstAlert !== undefined)
+      updateData.instant_first_alert = params.lowStock.instantFirstAlert;
+    if (params.lowStock?.criticalImmediate !== undefined)
+      updateData.critical_immediate = params.lowStock.criticalImmediate;
+    if (params.lowStock?.digestFrequency !== undefined)
+      updateData.digest_frequency = params.lowStock.digestFrequency;
+    if (params.lowStock?.digestTime !== undefined)
+      updateData.digest_time = params.lowStock.digestTime;
+    if (params.ordersMode !== undefined)
+      updateData.orders_mode = params.ordersMode;
+    if (params.reportsMode !== undefined)
+      updateData.reports_mode = params.reportsMode;
 
     const { data, error } = await this.databaseService.supabase
       .from("notification_preferences")

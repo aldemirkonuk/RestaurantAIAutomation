@@ -173,14 +173,38 @@ export class ScheduledTasksService implements OnModuleInit {
 
     this.logger.log("Starting weekly email report task...");
 
+    const reportsMode = await this.getEffectiveCategoryMode(
+      this.defaultRestaurantId!,
+      "reports",
+    );
+    if (!reportsMode.enabled) {
+      this.logger.log("Weekly report skipped: reports notifications off");
+      return;
+    }
+
     try {
       // Get weekly report data from database
       const reportData = await this.getWeeklyReportData();
 
-      await this.communicationsService.sendWeeklyReport({
-        recipientEmails: this.managerEmails,
-        restaurantId: this.defaultRestaurantId,
-        reportData,
+      if (reportsMode.email) {
+        await this.communicationsService.sendWeeklyReport({
+          recipientEmails: this.managerEmails,
+          restaurantId: this.defaultRestaurantId,
+          reportData,
+        });
+      }
+
+      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
+        type: "report",
+        title: "📊 Weekly report ready",
+        message: `${reportData.lowStockCount} low-stock · ${reportData.totalBottles} bottles on hand. Tap to view the full weekly report.`,
+        actionUrl: "/reports?type=weekly",
+        actionLabel: "View Report",
+        groupKey: `weekly_report:${new Date().toISOString().slice(0, 10)}`,
+        metadata: {
+          lowStockCount: reportData.lowStockCount,
+          totalBottles: reportData.totalBottles,
+        },
       });
 
       this.logger.log(
@@ -192,12 +216,12 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Midday Low Stock Report - Runs every day at 12:00 PM
+   * @deprecated Superseded by `LowStockAlertsService` (notifications module),
+   * which batches all low-stock wines into ONE digest email + one grouped inbox
+   * notification instead of looping one email per wine. The `@Cron` schedule was
+   * removed so the two paths don't double-send; the method is kept for manual
+   * back-compat only.
    */
-  @Cron("0 12 * * *", {
-    name: "midday-low-stock-report",
-    timeZone: "America/New_York",
-  })
   async sendMiddayLowStockReport() {
     if (this.managerEmails.length === 0) {
       this.logger.log(
@@ -323,6 +347,15 @@ export class ScheduledTasksService implements OnModuleInit {
 
     this.logger.log("Checking for upcoming recurring orders...");
 
+    const ordersMode = await this.getEffectiveCategoryMode(
+      this.defaultRestaurantId!,
+      "orders",
+    );
+    if (!ordersMode.enabled) {
+      this.logger.log("Recurring order reminders skipped: orders notifications off");
+      return;
+    }
+
     try {
       const client = this.databaseService.getClient();
       const twoDaysFromNow = new Date();
@@ -350,6 +383,7 @@ export class ScheduledTasksService implements OnModuleInit {
       });
 
       for (const order of orders) {
+        if (!ordersMode.email) continue;
         await this.gmailService.sendRecurringOrderReminder({
           to: recipients.emails,
           restaurantName: "WineOps Restaurant",
@@ -369,6 +403,19 @@ export class ScheduledTasksService implements OnModuleInit {
         });
       }
 
+      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
+        type: "order_pending",
+        title: `🔁 ${orders.length} recurring order${orders.length === 1 ? "" : "s"} due soon`,
+        message: orders
+          .map((o) => o.wine_name || "Order")
+          .slice(0, 5)
+          .join(", "),
+        actionUrl: "/orders?tab=recurring",
+        actionLabel: "Review Orders",
+        groupKey: `recurring_order:${twoDaysStr}`,
+        metadata: { count: orders.length },
+      });
+
       this.logger.log(`Sent ${orders.length} recurring order reminders`);
     } catch (error) {
       this.logger.error("Failed to send recurring order reminders:", error);
@@ -387,6 +434,15 @@ export class ScheduledTasksService implements OnModuleInit {
     if (!this.defaultRestaurantId) return;
 
     this.logger.log("Checking for upcoming deliveries...");
+
+    const ordersMode = await this.getEffectiveCategoryMode(
+      this.defaultRestaurantId!,
+      "orders",
+    );
+    if (!ordersMode.enabled) {
+      this.logger.log("Delivery ETA skipped: orders notifications off");
+      return;
+    }
 
     try {
       const client = this.databaseService.getClient();
@@ -415,6 +471,7 @@ export class ScheduledTasksService implements OnModuleInit {
       });
 
       for (const delivery of deliveries) {
+        if (!ordersMode.email) continue;
         await this.gmailService.sendDeliveryETANotification({
           to: recipients.emails,
           restaurantName: "WineOps Restaurant",
@@ -431,6 +488,19 @@ export class ScheduledTasksService implements OnModuleInit {
           totalItems: delivery.quantity || 0,
         });
       }
+
+      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
+        type: "delivery_scheduled",
+        title: `📦 ${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`,
+        message: deliveries
+          .map((d) => d.wine_name || "Wine")
+          .slice(0, 5)
+          .join(", "),
+        actionUrl: "/orders",
+        actionLabel: "View Orders",
+        groupKey: `delivery_eta:${tomorrowStr}`,
+        metadata: { count: deliveries.length },
+      });
 
       this.logger.log(`Sent ${deliveries.length} delivery ETA notifications`);
     } catch (error) {
@@ -450,6 +520,15 @@ export class ScheduledTasksService implements OnModuleInit {
     if (!this.defaultRestaurantId) return;
 
     this.logger.log("Checking for upcoming payment deadlines...");
+
+    const ordersMode = await this.getEffectiveCategoryMode(
+      this.defaultRestaurantId!,
+      "orders",
+    );
+    if (!ordersMode.enabled) {
+      this.logger.log("Payment reminders skipped: orders notifications off");
+      return;
+    }
 
     try {
       const client = this.databaseService.getClient();
@@ -479,6 +558,7 @@ export class ScheduledTasksService implements OnModuleInit {
       });
 
       for (const invoice of invoices) {
+        if (!ordersMode.email) continue;
         const dueDate = new Date(invoice.payment_due_date);
         const daysUntilDue = Math.ceil(
           (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
@@ -500,6 +580,17 @@ export class ScheduledTasksService implements OnModuleInit {
           paymentTerms: invoice.payment_terms,
         });
       }
+
+      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
+        type: "payment_due",
+        title: `💳 ${invoices.length} payment${invoices.length === 1 ? "" : "s"} due soon`,
+        message: `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} due within 3 days. Tap to review.`,
+        priority: "high",
+        actionUrl: "/orders?status=invoiced",
+        actionLabel: "View Invoices",
+        groupKey: `payment_due:${now.toISOString().slice(0, 10)}`,
+        metadata: { count: invoices.length },
+      });
 
       this.logger.log(`Sent ${invoices.length} payment due reminders`);
     } catch (error) {
@@ -1102,5 +1193,81 @@ export class ScheduledTasksService implements OnModuleInit {
    */
   async triggerWeeklyReport(): Promise<void> {
     await this.sendWeeklyEmailReport();
+  }
+
+  /**
+   * Persist a restaurant-scoped notification row for every member so a
+   * cron-generated signal (delivery, payment, recurring order, report) also
+   * shows up in the in-app Notifications page — not just the email. No
+   * WebSocket push here (the scheduler has no gateway); the inbox poll picks it
+   * up. Best-effort: never throws.
+   */
+  private async persistRestaurantNotification(
+    restaurantId: string,
+    payload: {
+      type: string;
+      title: string;
+      message: string;
+      priority?: string;
+      actionUrl?: string;
+      actionLabel?: string;
+      metadata?: Record<string, any>;
+      groupKey?: string;
+    },
+  ): Promise<void> {
+    try {
+      const userIds =
+        await this.databaseService.getRestaurantMemberIds(restaurantId);
+      if (!userIds.length) return;
+      const now = new Date().toISOString();
+      const rows = userIds.map((userId) => ({
+        user_id: userId,
+        restaurant_id: restaurantId,
+        type: payload.type,
+        title: payload.title.slice(0, 500),
+        message: payload.message,
+        priority: payload.priority ?? "medium",
+        status: "unread",
+        action_url: payload.actionUrl ?? null,
+        action_label: payload.actionLabel ?? null,
+        group_key: payload.groupKey ?? null,
+        metadata: payload.metadata ?? {},
+        created_at: now,
+      }));
+      await this.databaseService.getClient().from("notifications").insert(rows);
+    } catch (e: any) {
+      this.logger.warn(`persistRestaurantNotification failed: ${e?.message}`);
+    }
+  }
+
+  /**
+   * Effective orders/reports delivery mode for a restaurant, from members'
+   * `notification_preferences` (OR semantics; defaults to on when unset so
+   * behaviour never silently regresses). `enabled` gates the whole signal;
+   * `email` gates whether the email goes out (in-app still fires when enabled).
+   */
+  private async getEffectiveCategoryMode(
+    restaurantId: string,
+    category: "orders" | "reports",
+  ): Promise<{ enabled: boolean; email: boolean }> {
+    try {
+      const col = category === "orders" ? "orders_mode" : "reports_mode";
+      const userIds =
+        await this.databaseService.getRestaurantMemberIds(restaurantId);
+      if (userIds.length === 0) return { enabled: true, email: true };
+      const { data } = await this.databaseService
+        .getClient()
+        .from("notification_preferences")
+        .select(col)
+        .in("user_id", userIds);
+      if (!data || data.length === 0) return { enabled: true, email: true };
+      const modes = data.map((r: any) => r[col] || "both");
+      return {
+        enabled: modes.some((m: string) => m !== "off"),
+        email: modes.some((m: string) => m === "both"),
+      };
+    } catch {
+      return { enabled: true, email: true };
+    }
   }
 }

@@ -5,9 +5,11 @@ import {
   HttpStatus,
   Optional,
   Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
+import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -30,6 +32,9 @@ export class InventoryService {
     @Optional()
     @Inject(OrchestratorService)
     private readonly orchestratorService?: OrchestratorService,
+    @Optional()
+    @Inject(forwardRef(() => LowStockAlertsService))
+    private readonly lowStockAlerts?: LowStockAlertsService,
   ) {}
 
   private mapInventoryItem(
@@ -261,6 +266,15 @@ export class InventoryService {
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
     ]);
+
+    // Real-time low-stock edge check. Fire-and-forget: a pour that crosses par
+    // must alert instantly, but must never slow (or fail) the pour response.
+    if (this.lowStockAlerts) {
+      void this.lowStockAlerts
+        .evaluateInventoryItem(restaurantId, inventoryId)
+        .catch(() => undefined);
+    }
+
     return {
       pour: pourResult,
       item: row.data

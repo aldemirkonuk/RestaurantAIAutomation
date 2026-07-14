@@ -1,9 +1,18 @@
-import { Injectable, Logger, HttpException, HttpStatus } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  HttpStatus,
+  Optional,
+  Inject,
+  forwardRef,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import axios, { AxiosInstance } from "axios";
 import { CacheService } from "../common/cache/cache.service";
 import { DatabaseService } from "../database/database.service";
+import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { ToastMenuDto, ToastMenuListResponseDto } from "./dto/toast-menu.dto";
 import {
   CreateToastOrderDto,
@@ -50,6 +59,9 @@ export class ToastService {
     private readonly configService: ConfigService,
     private readonly cacheService: CacheService,
     private readonly databaseService: DatabaseService,
+    @Optional()
+    @Inject(forwardRef(() => LowStockAlertsService))
+    private readonly lowStockAlerts?: LowStockAlertsService,
   ) {
     this.agentOrchestratorUrl = this.configService.get<string>(
       "AGENT_ORCHESTRATOR_URL",
@@ -411,6 +423,7 @@ export class ToastService {
     if (!order || items.length === 0) return;
 
     const db = this.databaseService.supabase;
+    const affectedInventoryIds = new Set<string>();
 
     for (const line of items) {
       const menuGuid = line.guid;
@@ -482,11 +495,21 @@ export class ToastService {
             p_idempotency_key: idem,
           });
         }
+        affectedInventoryIds.add(inventoryId);
       } catch (err: any) {
         this.logger.warn(
           `POS sale effect failed for ${line.name} (${unit}): ${err?.message}`,
         );
       }
+    }
+
+    // Real-time low-stock edge check for every wine this order touched — one
+    // grouped alert if any just crossed par. Fire-and-forget so POS ingestion
+    // is never slowed or blocked by alerting.
+    if (this.lowStockAlerts && affectedInventoryIds.size > 0) {
+      void this.lowStockAlerts
+        .evaluateInventoryItems(restaurantId, [...affectedInventoryIds])
+        .catch(() => undefined);
     }
   }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Edit2, Trash2, Calendar, RefreshCw, Check, X, AlertCircle, DollarSign, Mail, Clock, TrendingUp, Shield } from 'lucide-react'
 import { Header } from '../components/layout/Header'
@@ -66,11 +66,7 @@ export function RecurringOrders() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (restaurantId) fetchRecurringOrders()
-  }, [restaurantId])
-
-  const fetchRecurringOrders = async () => {
+  const fetchRecurringOrders = useCallback(async () => {
     try {
       setLoading(true)
       const response = await axios.get(`${API_URL}/recurring-orders/${restaurantId}`)
@@ -81,7 +77,11 @@ export function RecurringOrders() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [restaurantId])
+
+  useEffect(() => {
+    if (restaurantId) fetchRecurringOrders()
+  }, [restaurantId, fetchRecurringOrders])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this recurring order?')) return
@@ -494,6 +494,11 @@ function RecurringOrderModal({ isOpen, onClose, editingOrder, restaurantId, onSu
     } else {
       setFormData(prev => ({ ...prev, frequency_day: undefined }))
     }
+    // Intentional single trigger: derive the default frequency_day only when the
+    // frequency itself changes, reading whatever next_order_date/frequency_day are
+    // at that moment. Adding those as deps would recompute on every date edit,
+    // which is a behavior change we do not want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.frequency])
 
   const handleSubmit = async (e: React.FormEvent) => {
