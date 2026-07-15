@@ -80,6 +80,9 @@ export class TeamService {
     // Manager-gated: the roster exposes wages + linked accounts.
     await this.assertAccess(userId, restaurantId, "manager");
 
+    // Ensure every active URA membership has a team_members ops profile.
+    await this.ensureRosterFromAccess(restaurantId);
+
     const { data: members, error } = await this.sb
       .from("team_members")
       .select("*")
@@ -88,10 +91,13 @@ export class TeamService {
 
     if (error) {
       this.logger.error(`listMembers failed: ${error.message}`);
-      return [];
+      throw new InternalServerErrorException("Failed to load team members");
     }
 
     await this.autoLinkByEmail(restaurantId, members ?? []);
+
+    const settings = await this.getSettings(userId, restaurantId);
+    const showWage = settings?.wage_visible !== false;
 
     // Enrich with membership role + linked user profile.
     const userIds = [
@@ -112,12 +118,65 @@ export class TeamService {
     const roleMap = new Map((access ?? []).map((a: any) => [a.user_id, a.role]));
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
 
-    return (members ?? []).map((m: any) => ({
-      ...m,
-      role: m.user_id ? roleMap.get(m.user_id) ?? null : null,
-      linkedUser: m.user_id ? userMap.get(m.user_id) ?? null : null,
-      accountLinked: !!m.user_id,
-    }));
+    return (members ?? []).map((m: any) => {
+      const row = {
+        ...m,
+        role: m.user_id ? roleMap.get(m.user_id) ?? null : null,
+        linkedUser: m.user_id ? userMap.get(m.user_id) ?? null : null,
+        accountLinked: !!m.user_id,
+      };
+      if (!showWage) row.hourly_wage = null;
+      return row;
+    });
+  }
+
+  /**
+   * Backfill team_members from user_restaurant_access so Settings-era members
+   * appear on the Manager Shift Desk without a manual re-add.
+   */
+  private async ensureRosterFromAccess(restaurantId: string): Promise<void> {
+    const { data: access } = await this.sb
+      .from("user_restaurant_access")
+      .select("user_id, role")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+    if (!access?.length) return;
+
+    const { data: existing } = await this.sb
+      .from("team_members")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId)
+      .not("user_id", "is", null);
+    const linked = new Set((existing ?? []).map((m: any) => m.user_id));
+    const missing = access.filter((a: any) => a.user_id && !linked.has(a.user_id));
+    if (!missing.length) return;
+
+    const { data: users } = await this.sb
+      .from("users")
+      .select("user_id, name, email, avatar_url")
+      .in(
+        "user_id",
+        missing.map((m: any) => m.user_id),
+      );
+    const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
+    const rows = missing.map((a: any) => {
+      const u = userMap.get(a.user_id);
+      return {
+        restaurant_id: restaurantId,
+        user_id: a.user_id,
+        display_name: u?.name || u?.email || "Team member",
+        email: u?.email ?? null,
+        avatar_url: u?.avatar_url ?? null,
+        position: a.role === "owner" ? "Owner" : a.role === "manager" ? "Manager" : "Staff",
+        employment_type: "full_time",
+        status: "active",
+        // Seed mock wage so labor lens has something when tracking is on;
+        // managers can edit/clear. Settings toggle can hide wages.
+        hourly_wage: a.role === "staff" ? 22 : a.role === "manager" ? 28 : 32,
+      };
+    });
+    const { error } = await this.sb.from("team_members").insert(rows);
+    if (error) this.logger.warn(`ensureRosterFromAccess: ${error.message}`);
   }
 
   /**
@@ -201,16 +260,21 @@ export class TeamService {
     await this.assertAccess(userId, restaurantId, "manager");
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.displayName !== undefined) patch.display_name = dto.displayName;
-    if (dto.email !== undefined) patch.email = dto.email;
-    if (dto.phone !== undefined) patch.phone = dto.phone;
-    if (dto.position !== undefined) patch.position = dto.position;
-    if (dto.employmentType !== undefined) patch.employment_type = dto.employmentType;
-    if (dto.homeLocation !== undefined) patch.home_location = dto.homeLocation;
+    if (dto.email !== undefined) patch.email = dto.email || null;
+    if (dto.phone !== undefined) patch.phone = dto.phone || null;
+    if (dto.position !== undefined) patch.position = dto.position || null;
+    if (dto.employmentType !== undefined) {
+      patch.employment_type = dto.employmentType;
+      if (dto.status === undefined && dto.employmentType === "trial") {
+        patch.status = "trial";
+      }
+    }
+    if (dto.homeLocation !== undefined) patch.home_location = dto.homeLocation || null;
     if (dto.hourlyWage !== undefined) patch.hourly_wage = dto.hourlyWage;
     if (dto.skills !== undefined) patch.skills = dto.skills;
-    if (dto.hireDate !== undefined) patch.hire_date = dto.hireDate;
+    if (dto.hireDate !== undefined) patch.hire_date = dto.hireDate || null;
     if (dto.status !== undefined) patch.status = dto.status;
-    if (dto.notes !== undefined) patch.notes = dto.notes;
+    if (dto.notes !== undefined) patch.notes = dto.notes || null;
 
     const { data, error } = await this.sb
       .from("team_members")
@@ -343,8 +407,21 @@ export class TeamService {
     restaurantId: string,
     dto: CreateTimeOffDto,
   ): Promise<any> {
-    await this.assertAccess(userId, restaurantId);
+    const { role } = await this.assertAccess(userId, restaurantId);
     await this.assertMemberInRestaurant(restaurantId, dto.memberId);
+
+    if (role === "staff") {
+      const { data: me } = await this.sb
+        .from("team_members")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!me || me.id !== dto.memberId) {
+        throw new ForbiddenException("You can only request time off for yourself");
+      }
+    }
+
     const { data, error } = await this.sb
       .from("time_off_requests")
       .insert({

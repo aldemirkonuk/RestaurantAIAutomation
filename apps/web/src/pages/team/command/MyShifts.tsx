@@ -78,7 +78,7 @@ export function MyShifts() {
       </div>
 
       {/* Acknowledge banner */}
-      {payload?.schedule?.status === 'published' && (
+      {payload?.schedule?.status === 'published' && !payload.acknowledged && (
         <div className="flex items-center justify-between gap-3 mb-4 p-3.5 rounded-xl border border-wine-100 bg-wine-50/60">
           <div className="flex items-center gap-2 text-sm text-wine-800">
             <CalendarDays className="w-4 h-4" />
@@ -91,6 +91,11 @@ export function MyShifts() {
           >
             <Check className="w-3.5 h-3.5" /> Got it
           </button>
+        </div>
+      )}
+      {payload?.schedule?.status === 'published' && payload.acknowledged && (
+        <div className="flex items-center gap-2 mb-4 p-3 rounded-xl border border-emerald-100 bg-emerald-50/60 text-sm text-emerald-800">
+          <Check className="w-4 h-4" /> You&apos;ve acknowledged this week&apos;s schedule.
         </div>
       )}
 

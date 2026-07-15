@@ -61,6 +61,27 @@ export function TeamLaborSettings() {
         label="Show hourly wages"
         hint="Display wages in member profiles (owner/manager only)."
       />
+      {data.labor_tracking_enabled && (
+        <div className="flex items-center justify-between gap-4 py-2.5 border-t border-gray-100 mt-1">
+          <div>
+            <div className="text-sm font-medium text-gray-800">Labor target %</div>
+            <div className="text-xs text-gray-400">Used on the Service Pulse labor cell.</div>
+          </div>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            step={0.5}
+            defaultValue={data.labor_target_pct}
+            onBlur={(e) => {
+              const n = Number(e.target.value)
+              if (!Number.isFinite(n) || n === data.labor_target_pct) return
+              save.mutate({ laborTargetPct: n })
+            }}
+            className="w-20 h-8 px-2 border border-gray-200 rounded-lg text-sm tabular-nums text-right"
+          />
+        </div>
+      )}
     </div>
   )
 }

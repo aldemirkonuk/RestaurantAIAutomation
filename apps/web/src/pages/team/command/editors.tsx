@@ -144,7 +144,27 @@ export function MemberEditor({ member, wageVisible = true, onClose }: { member?:
     status: member?.status ?? 'active',
     notes: member?.notes ?? '',
   })
-  useEffect(() => {}, [member])
+  useEffect(() => {
+    if (!member) {
+      setForm({
+        displayName: '', email: '', phone: '', position: '', employmentType: 'full_time',
+        homeLocation: '', hourlyWage: '', skills: '', status: 'active', notes: '',
+      })
+      return
+    }
+    setForm({
+      displayName: member.display_name ?? '',
+      email: member.email ?? '',
+      phone: member.phone ?? '',
+      position: member.position ?? '',
+      employmentType: member.employment_type ?? 'full_time',
+      homeLocation: member.home_location ?? '',
+      hourlyWage: member.hourly_wage != null ? String(member.hourly_wage) : '',
+      skills: (member.skills ?? []).join(', '),
+      status: member.status ?? 'active',
+      notes: member.notes ?? '',
+    })
+  }, [member])
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['team'] })
 
