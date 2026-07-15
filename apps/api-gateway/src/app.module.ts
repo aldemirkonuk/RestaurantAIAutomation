@@ -26,8 +26,11 @@ import { UserPreferencesModule } from "./user-preferences/user-preferences.modul
 import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-templates.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
+import { TeamModule } from "./team/team.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
 import { MenusModule } from "./menus/menus.module";
+import { MobileModule } from "./mobile/mobile.module";
+import { PushModule } from "./push/push.module";
 import {
   ErrorTrackingModule,
   SentryInterceptor,
@@ -81,10 +84,13 @@ import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
     SettingsModule, // Restaurant settings and feature flags
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
+    TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
     MenusModule, // Menu import (scan/CSV/manual) + onboarding progress
     UserPreferencesModule, // User preference storage (JSONB)
     RestaurantTemplatesModule, // Communication templates CRUD
+    PushModule, // Expo push sender for the mobile app
+    MobileModule, // Mobile decision feed, today-pulse, device registry, idempotency
 
     // Real-time communication
     WebsocketModule,

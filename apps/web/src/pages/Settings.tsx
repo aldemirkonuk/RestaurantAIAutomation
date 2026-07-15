@@ -39,6 +39,7 @@ import { Header } from '../components/layout/Header';
 import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../services/api/settings';
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
+import { TeamLaborSettings } from '../components/team/TeamLaborSettings';
 import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
@@ -886,6 +887,9 @@ export default function Settings() {
             )}
           </div>
           <div className="px-6 py-5">
+            {activeRestaurantId && (effectiveRole === 'owner' || effectiveRole === 'manager') && (
+              <TeamLaborSettings />
+            )}
             {!activeRestaurantId ? (
               <p className="text-sm text-gray-500 text-center py-6">
                 Select a branch from the header to view and manage team members.
