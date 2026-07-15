@@ -51,7 +51,9 @@ import { VerifyEmail } from './pages/VerifyEmail'
 import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { Inventory } from './pages/Inventory'
+import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
+import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
@@ -154,13 +156,14 @@ function App() {
                   }
                 >
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/inventory" element={<Inventory />} />
+                  <Route path="/inventory" element={<InventoryCommandPage />} />
+                  <Route path="/inventory-legacy" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/providers" element={<Providers />} />
                   <Route path="/promotions" element={<Promotions />} />
-                  <Route path="/team" element={<PlaceholderPage title="Team" />} />
+                  <Route path="/team" element={<TeamCommandPage />} />
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/communications" element={<Communications />} />
                   <Route path="/documents-reports" element={<DocumentsPage />} />
