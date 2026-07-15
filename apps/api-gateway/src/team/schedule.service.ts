@@ -238,7 +238,7 @@ export class ScheduleService {
       title: "📅 Schedule published",
       message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
       priority: "high",
-      actionUrl: `/team?schedule=${scheduleId}`,
+      actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
       actionLabel: "View schedule",
       groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
       metadata: { scheduleId, weekStart: schedule.week_start },
@@ -285,6 +285,7 @@ export class ScheduleService {
       .from("team_members")
       .select("hourly_wage")
       .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
     const wage = m?.hourly_wage;
     if (wage == null) return null;
@@ -293,6 +294,7 @@ export class ScheduleService {
 
   async createShift(userId: string, restaurantId: string, dto: CreateShiftDto) {
     await this.team.assertAccess(userId, restaurantId, "manager");
+    if (dto.memberId) await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
     const schedule = await this.getOrCreateWeek(
       userId,
       restaurantId,
@@ -327,6 +329,7 @@ export class ScheduleService {
     dto: UpdateShiftDto,
   ) {
     await this.team.assertAccess(userId, restaurantId, "manager");
+    if (dto.memberId) await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.memberId !== undefined) patch.member_id = dto.memberId;
     if (dto.shiftDate !== undefined) patch.shift_date = dto.shiftDate;
@@ -337,18 +340,28 @@ export class ScheduleService {
     if (dto.state !== undefined) patch.state = dto.state;
     if (dto.note !== undefined) patch.note = dto.note;
 
+    const { data: cur } = await this.sb
+      .from("shifts")
+      .select("member_id, start_time, end_time, shift_date")
+      .eq("id", shiftId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (!cur) throw new NotFoundException("Shift not found");
+
+    // Rebind schedule when the date moves into another week.
+    const nextDate = dto.shiftDate ?? cur.shift_date;
+    if (dto.shiftDate !== undefined && mondayOf(dto.shiftDate) !== mondayOf(cur.shift_date)) {
+      const schedule = await this.getOrCreateWeek(userId, restaurantId, mondayOf(nextDate));
+      patch.schedule_id = schedule.id;
+    }
+
     // Recompute labor cost if member/time changed.
     if (dto.memberId !== undefined || dto.startTime !== undefined || dto.endTime !== undefined) {
-      const { data: cur } = await this.sb
-        .from("shifts")
-        .select("member_id, start_time, end_time")
-        .eq("id", shiftId)
-        .maybeSingle();
       patch.labor_cost = await this.laborCost(
         restaurantId,
-        dto.memberId ?? cur?.member_id,
-        dto.startTime ?? cur?.start_time,
-        dto.endTime ?? cur?.end_time,
+        dto.memberId ?? cur.member_id,
+        dto.startTime ?? cur.start_time,
+        dto.endTime ?? cur.end_time,
       );
     }
 
@@ -358,7 +371,7 @@ export class ScheduleService {
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .select("*, shift_breaks(*)")
-      .single();
+      .maybeSingle();
     if (error) throw new InternalServerErrorException("Failed to update shift");
     if (!data) throw new NotFoundException("Shift not found");
     return data;
@@ -522,6 +535,11 @@ export class ScheduleService {
       .select("*, shift_breaks(*)")
       .maybeSingle();
     if (error || !data) throw new InternalServerErrorException("Failed to assign cover");
+    // Staff must never see labor_cost (wage proxy) in the claim response.
+    if (role === "staff") {
+      const { labor_cost: _omit, ...rest } = data;
+      return rest;
+    }
     return data;
   }
 

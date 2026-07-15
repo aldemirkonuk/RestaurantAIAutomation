@@ -2,7 +2,8 @@
  * Staff view of /team — read-only "My Shifts": my week, open shifts I can
  * claim, and my acknowledgement of the published schedule.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CalendarDays, ChevronLeft, ChevronRight, Check, Hand } from 'lucide-react'
@@ -17,7 +18,13 @@ import { mondayOf, addDays, weekDays, DOW, dayNum, fmtWeekRange, fmtTime, shiftC
 export function MyShifts() {
   const { activeRestaurantId } = useAuth()
   const qc = useQueryClient()
+  const [params] = useSearchParams()
   const [weekStart, setWeekStart] = useState(() => mondayOf())
+
+  useEffect(() => {
+    const w = params.get('week')
+    if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) setWeekStart(mondayOf(new Date(w + 'T12:00:00')))
+  }, [params])
 
   const { data, isLoading } = useQuery({
     queryKey: ['team', 'my-week', activeRestaurantId, weekStart],
