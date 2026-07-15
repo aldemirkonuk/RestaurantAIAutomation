@@ -45,6 +45,12 @@ export function ManagerShiftDesk() {
   const [memberEditor, setMemberEditor] = useState<{ member?: TeamMember | null } | null>(null)
   const [peopleOpen, setPeopleOpen] = useState(false)
 
+  // Honor publish deep-link: /team?week=YYYY-MM-DD
+  useEffect(() => {
+    const w = params.get('week')
+    if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) setWeekStart(mondayOf(new Date(w + 'T12:00:00')))
+  }, [params])
+
   const days = useMemo(() => weekDays(weekStart), [weekStart])
 
   const { data: week } = useQuery<WeekPayload>({

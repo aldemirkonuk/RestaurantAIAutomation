@@ -280,19 +280,7 @@ export class TeamController {
   async broadcast(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: BroadcastDto) {
     const userId = this.uid(req);
     await this.team.assertAccess(userId, rid, "manager");
-    if (dto.memberIds?.length) {
-      const perf = await this.team.listMembers(userId, rid);
-      const userIds = perf
-        .filter((m: any) => dto.memberIds!.includes(m.id) && m.user_id)
-        .map((m: any) => m.user_id);
-      await this.push.sendToUsers(userIds, {
-        title: dto.title ?? "Message from your manager",
-        body: dto.message,
-        priority: "high",
-        data: { type: "team_broadcast", actionUrl: "/team" },
-      });
-      return { notified: userIds.length };
-    }
+    // Always land in the in-app inbox; push is additive for targeted recipients.
     await this.notifications.persistForRestaurant(rid, {
       type: "system",
       title: dto.title ?? "📣 Team broadcast",
@@ -301,7 +289,20 @@ export class TeamController {
       actionUrl: "/team",
       actionLabel: "Open Team",
     });
-    return { broadcast: true };
+    if (dto.memberIds?.length) {
+      const roster = await this.team.listMembers(userId, rid);
+      const userIds = roster
+        .filter((m: any) => dto.memberIds!.includes(m.id) && m.user_id)
+        .map((m: any) => m.user_id);
+      await this.push.sendToUsers(userIds, {
+        title: dto.title ?? "Message from your manager",
+        body: dto.message,
+        priority: "high",
+        data: { type: "team_broadcast", actionUrl: "/team" },
+      });
+      return { notified: userIds.length, inbox: true };
+    }
+    return { broadcast: true, inbox: true };
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────
