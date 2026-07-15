@@ -149,17 +149,32 @@ export class ScheduleService {
       .order("shift_date", { ascending: true });
 
     // Staff must never see labor cost. Strip it from every row.
-    const strip = (s: any) => ({ ...s, labor_cost: undefined });
+    const strip = (s: any) => {
+      const { labor_cost: _omit, ...rest } = s;
+      return rest;
+    };
     const all = (shifts ?? []).map(strip);
     const mine = member ? all.filter((s: any) => s.member_id === member.id) : [];
     const open = all.filter((s: any) => s.state === "open" || !s.member_id);
-    return { member, schedule, mine, open };
+
+    let acknowledged = false;
+    if (member && schedule) {
+      const { data: receipt } = await this.sb
+        .from("schedule_receipts")
+        .select("id")
+        .eq("schedule_id", schedule.id)
+        .eq("member_id", member.id)
+        .maybeSingle();
+      acknowledged = !!receipt;
+    }
+    return { member, schedule, mine, open, acknowledged };
   }
 
   async copyWeek(userId: string, restaurantId: string, dto: CopyWeekDto) {
     await this.team.assertAccess(userId, restaurantId, "manager");
     const target = await this.getOrCreateWeek(userId, restaurantId, dto.toWeekStart);
     const fromEnd = addDays(dto.fromWeekStart, 6);
+    const toEnd = addDays(dto.toWeekStart, 6);
     const { data: src } = await this.sb
       .from("shifts")
       .select("*")
@@ -168,20 +183,31 @@ export class ScheduleService {
       .lte("shift_date", fromEnd);
     if (!src?.length) return { copied: 0, schedule: target };
 
+    // Replace target week so re-running copy doesn't duplicate rows.
+    await this.sb
+      .from("shifts")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .gte("shift_date", dto.toWeekStart)
+      .lte("shift_date", toEnd);
+
     const dayShift = daysBetween(dto.fromWeekStart, dto.toWeekStart);
-    const rows = src.map((s: any) => ({
-      restaurant_id: restaurantId,
-      schedule_id: target.id,
-      member_id: s.member_id,
-      shift_date: addDays(s.shift_date, dayShift),
-      start_time: s.start_time,
-      end_time: s.end_time,
-      role: s.role,
-      shift_type: s.shift_type,
-      state: "scheduled",
-      note: s.note,
-      labor_cost: s.labor_cost,
-    }));
+    const rows = src
+      .filter((s: any) => s.state !== "callout" && s.state !== "open")
+      .map((s: any) => ({
+        restaurant_id: restaurantId,
+        schedule_id: target.id,
+        member_id: s.member_id,
+        shift_date: addDays(s.shift_date, dayShift),
+        start_time: s.start_time,
+        end_time: s.end_time,
+        role: s.role,
+        shift_type: s.shift_type === "open" ? "pm" : s.shift_type,
+        state: "scheduled",
+        note: s.note,
+        labor_cost: s.labor_cost,
+      }));
+    if (!rows.length) return { copied: 0, schedule: target };
     const { error } = await this.sb.from("shifts").insert(rows);
     if (error) throw new InternalServerErrorException("Failed to copy week");
     return { copied: rows.length, schedule: target };
@@ -203,6 +229,9 @@ export class ScheduleService {
     if (error || !schedule)
       throw new InternalServerErrorException("Failed to publish schedule");
 
+    // Re-publish resets receipts so "seen" reflects the new version.
+    await this.sb.from("schedule_receipts").delete().eq("schedule_id", scheduleId);
+
     // Notify the whole restaurant + deep-link back into /team.
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
@@ -211,7 +240,7 @@ export class ScheduleService {
       priority: "high",
       actionUrl: `/team?schedule=${scheduleId}`,
       actionLabel: "View schedule",
-      groupKey: `schedule_published:${scheduleId}`,
+      groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
       metadata: { scheduleId, weekStart: schedule.week_start },
     });
     return schedule;
@@ -220,6 +249,14 @@ export class ScheduleService {
   /** Staff opening a published schedule records a read receipt. */
   async acknowledge(userId: string, restaurantId: string, scheduleId: string) {
     await this.team.assertAccess(userId, restaurantId);
+    const { data: schedule } = await this.sb
+      .from("schedules")
+      .select("id")
+      .eq("id", scheduleId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (!schedule) throw new NotFoundException("Schedule not found");
+
     const { data: member } = await this.sb
       .from("team_members")
       .select("id")
@@ -344,29 +381,62 @@ export class ScheduleService {
     dto: CalloutDto,
   ) {
     await this.team.assertAccess(userId, restaurantId, "manager");
-    const { data: shift } = await this.sb
+    const { data: original } = await this.sb
+      .from("shifts")
+      .select("*")
+      .eq("id", shiftId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (!original) throw new NotFoundException("Shift not found");
+
+    // Keep the original on the caller's row as "callout" (strike-through),
+    // and open a fresh unassigned cover slot for the same window.
+    const { data: calloutShift, error: calloutErr } = await this.sb
       .from("shifts")
       .update({
-        state: "open",
-        note: dto.reason ? `Call-out: ${dto.reason}` : "Call-out — cover needed",
+        state: "callout",
+        note: dto.reason
+          ? `Call-out: ${dto.reason}`
+          : original.note ?? "Called out — cover needed",
         updated_at: new Date().toISOString(),
       })
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .select()
       .single();
-    if (!shift) throw new NotFoundException("Shift not found");
+    if (calloutErr || !calloutShift)
+      throw new InternalServerErrorException("Failed to mark call-out");
+
+    const { data: openShift, error: openErr } = await this.sb
+      .from("shifts")
+      .insert({
+        restaurant_id: restaurantId,
+        schedule_id: original.schedule_id,
+        member_id: null,
+        shift_date: original.shift_date,
+        start_time: original.start_time,
+        end_time: original.end_time,
+        role: original.role,
+        shift_type: "open",
+        state: "open",
+        note: `Cover for call-out (${original.member_id ?? "unassigned"})`,
+        labor_cost: null,
+      })
+      .select()
+      .single();
+    if (openErr || !openShift)
+      throw new InternalServerErrorException("Failed to open cover shift");
 
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
       title: "🚨 Shift call-out — cover needed",
-      message: `${shift.role ?? "A shift"} on ${shift.shift_date} ${shift.start_time}-${shift.end_time} is open.`,
+      message: `${original.role ?? "A shift"} on ${original.shift_date} ${original.start_time}-${original.end_time} is open.`,
       priority: "critical",
-      actionUrl: `/team?shift=${shiftId}`,
+      actionUrl: `/team?shift=${openShift.id}`,
       actionLabel: "Find cover",
-      metadata: { shiftId },
+      metadata: { shiftId: openShift.id, calloutShiftId: shiftId },
     });
-    return shift;
+    return { callout: calloutShift, open: openShift };
   }
 
   /** Push the open shift to the selected (qualified/available) members. */
@@ -503,8 +573,8 @@ export class ScheduleService {
         if (!trole) continue; // an empty rule role would match everything
         const staffed = dayShifts.filter((s) => {
           const srole = (s.role ?? "").trim().toLowerCase();
-          const roleMatch = srole === trole || srole.includes(trole) || trole.includes(srole);
-          return roleMatch && periodOf(s.start_time) === r.shift_period;
+          // Exact role match only (case-insensitive). Fuzzy includes() false-matched roles.
+          return srole === trole && periodOf(s.start_time) === r.shift_period;
         }).length;
         if (staffed < r.min_staff) {
           gaps.push({ role: r.role, period: r.shift_period, staffed, required: r.min_staff });

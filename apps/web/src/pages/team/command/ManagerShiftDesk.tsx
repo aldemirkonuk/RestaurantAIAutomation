@@ -73,12 +73,22 @@ export function ManagerShiftDesk() {
   const selectedShift = shifts.find((s) => s.id === selectedShiftId) ?? null
   const selectedMember = selectedShift?.member_id ? membersById.get(selectedShift.member_id) ?? null : null
 
-  // Deep-link: ?shift= / ?member=
+  // Deep-link: ?shift= / ?member= / ?schedule= / ?people=1
   useEffect(() => {
     const sid = params.get('shift')
     if (sid && shifts.some((s) => s.id === sid)) setSelectedShiftId(sid)
     if (params.get('people') === '1') setPeopleOpen(true)
-  }, [params, shifts])
+    const mid = params.get('member')
+    if (mid) {
+      const m = members.find((x) => x.id === mid)
+      if (m) setMemberEditor({ member: m })
+    }
+    const scheduleId = params.get('schedule')
+    if (scheduleId && week?.schedule?.id === scheduleId) {
+      // Ensure we're on the published week; week query already keyed by weekStart
+      // so just acknowledge context by selecting nothing extra.
+    }
+  }, [params, shifts, members, week?.schedule?.id])
 
   const weeklyHours = useMemo(() => {
     const map = new Map<string, number>()
@@ -96,7 +106,8 @@ export function ManagerShiftDesk() {
   const tasks = useMemo(() => {
     const list: Array<{ id: string; group: DeskTab; priority: 'urgent' | 'soon' | 'normal'; title: string; meta: string; shiftId?: string }> = []
     for (const s of shifts) {
-      if (s.state === 'open' || s.state === 'callout' || !s.member_id) {
+      if (s.state === 'callout') continue // cover slot is a separate open shift
+      if (s.state === 'open' || !s.member_id) {
         list.push({
           id: `open-${s.id}`, group: 'now', priority: 'urgent',
           title: `Cover ${s.role ?? 'shift'} on ${new Date(s.shift_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}`,
@@ -156,11 +167,23 @@ export function ManagerShiftDesk() {
   const doOffer = useMutation({
     mutationFn: (shiftId: string) => {
       const s = shifts.find((x) => x.id === shiftId)
-      const qualified = members
-        .filter((m) => m.status === 'active' && m.id !== s?.member_id)
+      // Prefer same position / overlapping skills, then anyone active & free that day.
+      const dayBusy = new Set(
+        shifts.filter((x) => x.shift_date === s?.shift_date && x.member_id && x.state !== 'callout').map((x) => x.member_id!),
+      )
+      const scored = members
+        .filter((m) => m.status === 'active' && m.id !== s?.member_id && !dayBusy.has(m.id))
+        .map((m) => {
+          let score = 0
+          if (s?.role && m.position && m.position.toLowerCase().includes(s.role.toLowerCase().split(' ')[0])) score += 3
+          if (s?.role && m.skills?.some((sk) => s.role!.toLowerCase().includes(sk.toLowerCase()))) score += 2
+          if (m.accountLinked) score += 1
+          return { m, score }
+        })
+        .sort((a, b) => b.score - a.score)
         .slice(0, 3)
-        .map((m) => m.id)
-      return offerCover(shiftId, qualified)
+        .map((x) => x.m.id)
+      return offerCover(shiftId, scored)
     },
     onSuccess: (r: any) => toast.success(`Offered to ${r?.offered ?? 0}, notified ${r?.notified ?? 0}`),
     onError: () => toast.error('Could not offer cover'),
@@ -321,7 +344,13 @@ export function ManagerShiftDesk() {
                                   >
                                     <span className="block text-[9.5px] font-extrabold tabular-nums leading-tight">{fmtTime(s.start_time)}-{fmtTime(s.end_time)}</span>
                                     <span className="block text-[7.5px] font-semibold opacity-75 truncate">
-                                      {lens === 'labor' && laborEnabled && s.labor_cost != null ? `$${Math.round(s.labor_cost)}` : s.role ?? s.shift_type}
+                                      {lens === 'labor' && laborEnabled && s.labor_cost != null
+                                        ? `$${Math.round(s.labor_cost)}`
+                                        : lens === 'fairness' && (weeklyHours.get(m.id) ?? 0) > 40
+                                          ? 'OT risk'
+                                          : lens === 'compliance' && (certs.some((c) => c.member_id === m.id && (c.status === 'expiring' || c.status === 'expired')) || s.state === 'callout')
+                                            ? (s.state === 'callout' ? 'call-out' : 'cert')
+                                            : s.role ?? s.shift_type}
                                     </span>
                                   </button>
                                 ))}

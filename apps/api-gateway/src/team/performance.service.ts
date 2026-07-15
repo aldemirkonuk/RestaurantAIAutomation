@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
+import { ForbiddenException, Injectable, InternalServerErrorException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { TeamService } from "./team.service";
 import { IngestSalesDto } from "./dto/team.dto";
@@ -83,7 +83,21 @@ export class PerformanceService {
     memberId: string,
     limit = 6,
   ): Promise<any> {
-    await this.team.assertAccess(userId, restaurantId);
+    const { role } = await this.team.assertAccess(userId, restaurantId);
+    await this.team.assertMemberInRestaurant(restaurantId, memberId);
+
+    if (role === "staff") {
+      const { data: me } = await this.sb
+        .from("team_members")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!me || me.id !== memberId) {
+        throw new ForbiddenException("You can only view your own performance");
+      }
+    }
+
     const { data: rows } = await this.sb
       .from("server_sales")
       .select("*")

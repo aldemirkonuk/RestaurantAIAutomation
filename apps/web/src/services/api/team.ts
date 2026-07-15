@@ -92,6 +92,7 @@ export interface MyWeekPayload {
   schedule: Schedule | null
   mine: Shift[]
   open: Shift[]
+  acknowledged?: boolean
 }
 
 export interface Certification {

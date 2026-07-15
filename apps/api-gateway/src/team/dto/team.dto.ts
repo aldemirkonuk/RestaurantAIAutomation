@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -129,7 +130,7 @@ export class ReviewRequestDto {
 export class CreateCoverageTemplateDto {
   @IsOptional() @IsInt() @Min(0) @Max(6) dayOfWeek?: number;
   @IsIn(["am", "pm"]) shiftPeriod: "am" | "pm";
-  @IsString() role: string;
+  @IsString() @IsNotEmpty() role: string;
   @IsInt() @Min(0) minStaff: number;
 }
 
