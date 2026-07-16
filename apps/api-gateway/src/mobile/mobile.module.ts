@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { APP_INTERCEPTOR } from "@nestjs/core";
+import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { ProcurementModule } from "../procurement/procurement.module";
 import { ConversationsModule } from "../conversations/conversations.module";
@@ -12,6 +13,10 @@ import { MobileService } from "./mobile.service";
 
 @Module({
   imports: [
+    // MobileController guards routes with JwtAuthGuard, which depends on
+    // TokenBlacklistService. AuthModule isn't @Global(), so every module using
+    // the guard must import it directly (see ProcurementModule for the same pattern).
+    AuthModule,
     DatabaseModule,
     ProcurementModule,
     ConversationsModule,

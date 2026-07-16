@@ -3429,6 +3429,7 @@
                 "CONFIRMED",
                 "IN_TRANSIT",
                 "DELIVERED",
+                "PARTIALLY_RECEIVED",
                 "COMPLETED",
                 "CANCELLED",
                 "REJECTED",
@@ -3599,6 +3600,7 @@
                 "CONFIRMED",
                 "IN_TRANSIT",
                 "DELIVERED",
+                "PARTIALLY_RECEIVED",
                 "COMPLETED",
                 "CANCELLED",
                 "REJECTED",
@@ -3875,7 +3877,7 @@
     "/api/v1/procurement/orders/{id}/verify-receipt": {
       "post": {
         "operationId": "ProcurementController_verifyReceipt",
-        "summary": "Verify a delivered order against the vendor invoice; apply count adjustments and complete",
+        "summary": "Three-way match a delivered order (PO vs invoice vs physical count); apply corrections, then complete or hold open as a backorder",
         "parameters": [
           {
             "name": "id",
@@ -3886,6 +3888,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyReceiptDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "",
@@ -3896,6 +3908,9 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Invoice price differs from the agreed price and no override reason was given"
           }
         },
         "tags": [
@@ -7887,6 +7902,958 @@
         }
       }
     },
+    "/api/v1/restaurants/{restaurantId}/team/members": {
+      "get": {
+        "operationId": "TeamController_members",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "TeamController_createMember",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTeamMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/members/{memberId}": {
+      "patch": {
+        "operationId": "TeamController_updateMember",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTeamMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "TeamController_deleteMember",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/week": {
+      "get": {
+        "operationId": "TeamController_week",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "weekStart",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/my-week": {
+      "get": {
+        "operationId": "TeamController_myWeek",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "weekStart",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/schedules": {
+      "post": {
+        "operationId": "TeamController_createSchedule",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/schedules/copy-week": {
+      "post": {
+        "operationId": "TeamController_copyWeek",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyWeekDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/schedules/{scheduleId}/publish": {
+      "post": {
+        "operationId": "TeamController_publish",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scheduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/schedules/{scheduleId}/acknowledge": {
+      "post": {
+        "operationId": "TeamController_acknowledge",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scheduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/shifts": {
+      "post": {
+        "operationId": "TeamController_createShift",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShiftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/shifts/{shiftId}": {
+      "patch": {
+        "operationId": "TeamController_updateShift",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shiftId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShiftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "TeamController_deleteShift",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shiftId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/shifts/{shiftId}/callout": {
+      "post": {
+        "operationId": "TeamController_callout",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shiftId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalloutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/shifts/{shiftId}/offer-cover": {
+      "post": {
+        "operationId": "TeamController_offerCover",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shiftId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferCoverDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/shifts/{shiftId}/assign": {
+      "post": {
+        "operationId": "TeamController_assignCover",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shiftId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignCoverDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/certifications": {
+      "get": {
+        "operationId": "TeamController_certs",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "TeamController_createCert",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCertDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/certifications/{certId}": {
+      "patch": {
+        "operationId": "TeamController_updateCert",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "certId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCertDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "TeamController_deleteCert",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "certId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/time-off": {
+      "get": {
+        "operationId": "TeamController_timeOff",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "TeamController_createTimeOff",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTimeOffDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/time-off/{requestId}": {
+      "patch": {
+        "operationId": "TeamController_reviewTimeOff",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/swaps": {
+      "get": {
+        "operationId": "TeamController_swaps",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/coverage-templates": {
+      "get": {
+        "operationId": "TeamController_coverageTemplates",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "TeamController_createCoverageTemplate",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCoverageTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/coverage-templates/{id}": {
+      "delete": {
+        "operationId": "TeamController_deleteCoverageTemplate",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/members/{memberId}/performance": {
+      "get": {
+        "operationId": "TeamController_performanceFor",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/sales": {
+      "post": {
+        "operationId": "TeamController_ingestSales",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestSalesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/sales/batch": {
+      "post": {
+        "operationId": "TeamController_ingestSalesBatch",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestSalesBatchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/broadcast": {
+      "post": {
+        "operationId": "TeamController_broadcast",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BroadcastDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/team/settings": {
+      "get": {
+        "operationId": "TeamController_getSettings",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "patch": {
+        "operationId": "TeamController_updateSettings",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTeamSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/vendor-catalogue/search": {
       "get": {
         "operationId": "VendorCatalogueController_search",
@@ -8266,6 +9233,102 @@
         },
         "tags": [
           "restaurant-templates"
+        ]
+      }
+    },
+    "/api/v1/mobile/feed": {
+      "get": {
+        "operationId": "MobileController_getFeed",
+        "summary": "Unified ranked decision feed for the mobile app",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/mobile/today-pulse": {
+      "get": {
+        "operationId": "MobileController_getTodayPulse",
+        "summary": "Today's sales snapshot + decision counts",
+        "parameters": [
+          {
+            "name": "start",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/mobile/devices": {
+      "post": {
+        "operationId": "MobileController_registerDevice",
+        "summary": "Register this device's Expo push token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/mobile/devices/{token}": {
+      "delete": {
+        "operationId": "MobileController_unregisterDevice",
+        "summary": "Unregister a device push token (logout)",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "mobile"
         ]
       }
     }
@@ -11090,6 +12153,7 @@
               "CONFIRMED",
               "IN_TRANSIT",
               "DELIVERED",
+              "PARTIALLY_RECEIVED",
               "COMPLETED",
               "CANCELLED",
               "REJECTED",
@@ -11171,6 +12235,7 @@
               "CONFIRMED",
               "IN_TRANSIT",
               "DELIVERED",
+              "PARTIALLY_RECEIVED",
               "COMPLETED",
               "CANCELLED",
               "REJECTED",
@@ -11214,6 +12279,62 @@
             "type": "string"
           },
           "locationId": {
+            "type": "string"
+          }
+        }
+      },
+      "ReceiptAdjustmentDto": {
+        "type": "object",
+        "properties": {
+          "inventoryId": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "number",
+            "description": "Signed correction; positive adds, negative removes."
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inventoryId",
+          "delta"
+        ]
+      },
+      "VerifyReceiptDto": {
+        "type": "object",
+        "properties": {
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAdjustmentDto"
+            }
+          },
+          "invoiceQuantity": {
+            "type": "number",
+            "description": "Quantity the vendor invoice bills for."
+          },
+          "invoiceUnitPrice": {
+            "type": "number",
+            "description": "Unit price the vendor invoice bills."
+          },
+          "acceptedQuantity": {
+            "type": "number",
+            "description": "Units accepted into stock."
+          },
+          "rejectedQuantity": {
+            "type": "number",
+            "description": "Units that arrived but were refused (damaged)."
+          },
+          "rejectedReason": {
+            "type": "string"
+          },
+          "priceOverrideReason": {
+            "type": "string",
+            "description": "Required when the invoice price differs from the agreed price."
+          },
+          "note": {
             "type": "string"
           }
         }
@@ -12856,6 +13977,78 @@
         "type": "object",
         "properties": {}
       },
+      "CreateTeamMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateTeamMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateScheduleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CopyWeekDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateShiftDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateShiftDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CalloutDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "OfferCoverDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AssignCoverDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateCertDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateCertDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateTimeOffDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ReviewRequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateCoverageTemplateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "IngestSalesDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "IngestSalesBatchDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BroadcastDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateTeamSettingsDto": {
+        "type": "object",
+        "properties": {}
+      },
       "ImportMenuDto": {
         "type": "object",
         "properties": {}
@@ -12959,6 +14152,29 @@
             "type": "string"
           }
         }
+      },
+      "RegisterDeviceDto": {
+        "type": "object",
+        "properties": {
+          "expoPushToken": {
+            "type": "string",
+            "description": "Expo push token (ExponentPushToken[...])"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android",
+              "unknown"
+            ]
+          },
+          "appVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expoPushToken"
+        ]
       }
     }
   }
