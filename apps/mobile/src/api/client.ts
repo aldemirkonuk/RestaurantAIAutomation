@@ -50,7 +50,7 @@ export async function api<T = unknown>(
     }
   };
 
-  let token = useSession.getState().accessToken;
+  const token = useSession.getState().accessToken;
   let res = await doFetch(token);
 
   if (res.status === 401) {

@@ -12,7 +12,6 @@ Production-grade Supabase client with:
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC
 from typing import Dict, List, Any, Optional, TypeVar, Generic, Type
 from datetime import datetime, timedelta

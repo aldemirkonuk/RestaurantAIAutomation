@@ -146,7 +146,7 @@ async function runDispatch() {
   const now = Date.now();
 
   // Promote entries whose grace window has expired.
-  let entries = state.entries.map((e) =>
+  const entries = state.entries.map((e) =>
     e.status === "holding" && e.holdUntil <= now
       ? { ...e, status: "pending" as const }
       : e,
