@@ -51,7 +51,6 @@ import { VerifyEmail } from './pages/VerifyEmail'
 import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { Inventory } from './pages/Inventory'
-import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
 import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
@@ -156,8 +155,7 @@ function App() {
                   }
                 >
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/inventory" element={<InventoryCommandPage />} />
-                  <Route path="/inventory-legacy" element={<Inventory />} />
+                  <Route path="/inventory" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
