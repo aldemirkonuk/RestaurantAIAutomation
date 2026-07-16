@@ -85,3 +85,7 @@ md/**/*.png
 md_files/**/*.png
 cursor_chat_backup/
 .planning/.Rhistory
+
+# Railway IaC — CLI-installed agent skill and transient config-pull temp dirs
+.agents/
+.railway-config-pull-*/
