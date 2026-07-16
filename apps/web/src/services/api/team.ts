@@ -196,6 +196,10 @@ export async function createCertification(body: Record<string, any>, rid?: strin
   const { data } = await apiClient.post(`${base(rid)}/certifications`, body)
   return data
 }
+export async function updateCertification(certId: string, body: Record<string, any>, rid?: string) {
+  const { data } = await apiClient.patch(`${base(rid)}/certifications/${certId}`, body)
+  return data
+}
 export async function deleteCertification(certId: string, rid?: string) {
   await apiClient.delete(`${base(rid)}/certifications/${certId}`)
 }
@@ -234,6 +238,10 @@ export async function getMemberPerformance(memberId: string, rid?: string): Prom
 }
 export async function ingestSales(body: Record<string, any>, rid?: string) {
   const { data } = await apiClient.post(`${base(rid)}/sales`, body)
+  return data
+}
+export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string) {
+  const { data } = await apiClient.post(`${base(rid)}/sales/batch`, { rows })
   return data
 }
 

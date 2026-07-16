@@ -17,6 +17,8 @@ import { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ExpoPushService } from "../push/expo-push.service";
+import { GmailService } from "../communications/gmail.service";
+import { SmsService } from "../communications/sms.service";
 import { TeamService } from "./team.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
@@ -32,6 +34,7 @@ import {
   CreateTeamMemberDto,
   CreateTimeOffDto,
   IngestSalesDto,
+  IngestSalesBatchDto,
   OfferCoverDto,
   ReviewRequestDto,
   UpdateCertDto,
@@ -55,6 +58,8 @@ export class TeamController {
     private readonly performance: PerformanceService,
     private readonly notifications: NotificationsService,
     private readonly push: ExpoPushService,
+    private readonly gmail: GmailService,
+    private readonly sms: SmsService,
   ) {}
 
   private uid(req: Request & { user: AuthedUser }): string {
@@ -270,7 +275,7 @@ export class TeamController {
   ingestSalesBatch(
     @Req() req: any,
     @Param("restaurantId") rid: string,
-    @Body() body: { rows: IngestSalesDto[] },
+    @Body() body: IngestSalesBatchDto,
   ) {
     return this.performance.ingestBatch(this.uid(req), rid, body?.rows ?? []);
   }
@@ -280,7 +285,12 @@ export class TeamController {
   async broadcast(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: BroadcastDto) {
     const userId = this.uid(req);
     await this.team.assertAccess(userId, rid, "manager");
-    // Always land in the in-app inbox; push is additive for targeted recipients.
+    const roster = await this.team.listMembers(userId, rid);
+    const targets = dto.memberIds?.length
+      ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
+      : roster.filter((m: any) => m.status === "active" && m.accountLinked);
+
+    // Always land in the in-app inbox.
     await this.notifications.persistForRestaurant(rid, {
       type: "system",
       title: dto.title ?? "📣 Team broadcast",
@@ -289,20 +299,51 @@ export class TeamController {
       actionUrl: "/team",
       actionLabel: "Open Team",
     });
-    if (dto.memberIds?.length) {
-      const roster = await this.team.listMembers(userId, rid);
-      const userIds = roster
-        .filter((m: any) => dto.memberIds!.includes(m.id) && m.user_id)
-        .map((m: any) => m.user_id);
+
+    const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
+    if (userIds.length) {
       await this.push.sendToUsers(userIds, {
         title: dto.title ?? "Message from your manager",
         body: dto.message,
         priority: "high",
         data: { type: "team_broadcast", actionUrl: "/team" },
       });
-      return { notified: userIds.length, inbox: true };
     }
-    return { broadcast: true, inbox: true };
+
+    // Communications channels (email + SMS) — best-effort, never fail the request.
+    const emails = targets
+      .map((m: any) => m.email || m.linkedUser?.email)
+      .filter((e: string | null | undefined): e is string => !!e);
+    const phones = targets
+      .map((m: any) => m.phone)
+      .filter((p: string | null | undefined): p is string => !!p);
+    let emailed = 0;
+    let texted = 0;
+    if (emails.length) {
+      try {
+        const res = await this.gmail.sendEmail({
+          to: emails,
+          subject: dto.title ?? "Message from your manager",
+          html: `<p>${dto.message.replace(/</g, "&lt;")}</p>`,
+          text: dto.message,
+        });
+        if (res?.success) emailed = emails.length;
+      } catch {
+        /* soft-fail */
+      }
+    }
+    if (phones.length) {
+      for (const phone of phones) {
+        try {
+          const res = await this.sms.sendSms({ to: phone, message: dto.message });
+          if (res?.success) texted += 1;
+        } catch {
+          /* soft-fail */
+        }
+      }
+    }
+
+    return { notified: userIds.length, emailed, texted, inbox: true };
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────

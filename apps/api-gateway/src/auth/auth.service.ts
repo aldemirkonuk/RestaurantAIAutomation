@@ -779,6 +779,15 @@ export class AuthService {
     if (error || !invite)
       throw new BadRequestException("Failed to generate invite");
 
+    // Create/update an ops profile so the invite shows on /team and claim can
+    // back-fill user_id via invite_id (or email match).
+    await this.ensureTeamMemberForInvite({
+      restaurantId,
+      inviteId: invite.id,
+      email: dto.targetEmail ?? null,
+      role: dto.role || "manager",
+    });
+
     // Mark team_member_invited=true in onboarding progress (fire-and-forget)
     this.databaseService.supabase
       .from("user_onboarding_progress")
@@ -796,6 +805,138 @@ export class AuthService {
       expiresAt: invite.expires_at,
       inviteUrl: `${this.configService.get("FRONTEND_URL") || "https://restaurant-ai-automation-web.vercel.app"}/invite/${invite.code}`,
     };
+  }
+
+  /**
+   * Ensure a team_members row exists for an invite so /team can show pending
+   * staff and claim can set user_id via invite_id.
+   */
+  private async ensureTeamMemberForInvite(params: {
+    restaurantId: string;
+    inviteId: string;
+    email: string | null;
+    role: string;
+  }): Promise<void> {
+    try {
+      const position =
+        params.role === "owner"
+          ? "Owner"
+          : params.role === "manager"
+            ? "Manager"
+            : "Staff";
+      if (params.email) {
+        const { data: existing } = await this.databaseService.supabase
+          .from("team_members")
+          .select("id, invite_id, user_id")
+          .eq("restaurant_id", params.restaurantId)
+          .ilike("email", params.email)
+          .maybeSingle();
+        if (existing) {
+          if (!existing.user_id) {
+            await this.databaseService.supabase
+              .from("team_members")
+              .update({
+                invite_id: params.inviteId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", existing.id);
+          }
+          return;
+        }
+        await this.databaseService.supabase.from("team_members").insert({
+          restaurant_id: params.restaurantId,
+          invite_id: params.inviteId,
+          email: params.email,
+          display_name: params.email.split("@")[0] || "Invited member",
+          position,
+          employment_type: "full_time",
+          status: "active",
+        });
+        return;
+      }
+      // No email — still create a placeholder pending invite row.
+      await this.databaseService.supabase.from("team_members").insert({
+        restaurant_id: params.restaurantId,
+        invite_id: params.inviteId,
+        display_name: `Pending ${position.toLowerCase()}`,
+        position,
+        employment_type: "full_time",
+        status: "active",
+      });
+    } catch (e: any) {
+      this.logger.warn(
+        `ensureTeamMemberForInvite failed (non-fatal): ${e?.message}`,
+      );
+    }
+  }
+
+  /**
+   * After invite accept: link or create team_members with user_id, clear invite_id.
+   */
+  private async claimTeamMemberFromInvite(params: {
+    restaurantId: string;
+    inviteId: string;
+    userId: string;
+    email?: string | null;
+    name?: string | null;
+    role: string;
+  }): Promise<void> {
+    try {
+      // Prefer invite_id match, then email match within tenant.
+      let memberId: string | null = null;
+      const { data: byInvite } = await this.databaseService.supabase
+        .from("team_members")
+        .select("id")
+        .eq("restaurant_id", params.restaurantId)
+        .eq("invite_id", params.inviteId)
+        .maybeSingle();
+      if (byInvite) memberId = byInvite.id;
+
+      if (!memberId && params.email) {
+        const { data: byEmail } = await this.databaseService.supabase
+          .from("team_members")
+          .select("id")
+          .eq("restaurant_id", params.restaurantId)
+          .ilike("email", params.email)
+          .maybeSingle();
+        if (byEmail) memberId = byEmail.id;
+      }
+
+      if (memberId) {
+        await this.databaseService.supabase
+          .from("team_members")
+          .update({
+            user_id: params.userId,
+            invite_id: null,
+            email: params.email ?? undefined,
+            display_name: params.name || undefined,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", memberId)
+          .eq("restaurant_id", params.restaurantId);
+        return;
+      }
+
+      await this.databaseService.supabase.from("team_members").insert({
+        restaurant_id: params.restaurantId,
+        user_id: params.userId,
+        invite_id: null,
+        email: params.email ?? null,
+        display_name: params.name || params.email || "Team member",
+        position:
+          params.role === "owner"
+            ? "Owner"
+            : params.role === "manager"
+              ? "Manager"
+              : "Staff",
+        employment_type: "full_time",
+        status: "active",
+      });
+    } catch (e: any) {
+      this.logger.warn(
+        `claimTeamMemberFromInvite failed (non-fatal): ${e?.message}`,
+      );
+    }
   }
 
   /**
@@ -874,6 +1015,15 @@ export class AuthService {
       },
       { onConflict: "organization_id,user_id" },
     );
+
+    await this.claimTeamMemberFromInvite({
+      restaurantId: invite.restaurant_id,
+      inviteId: invite.id,
+      userId,
+      email: actor?.email ?? null,
+      name: null,
+      role: invite.role,
+    });
 
     const restaurantName = (invite.restaurants as any)?.name ?? "restaurant";
     return { restaurant: restaurantName, role: invite.role };
@@ -996,6 +1146,15 @@ export class AuthService {
       },
       { onConflict: "organization_id,user_id" },
     );
+
+    await this.claimTeamMemberFromInvite({
+      restaurantId: invite.restaurant_id,
+      inviteId: invite.id,
+      userId: user.user_id,
+      email: dto.email,
+      name: dto.name ?? user.name ?? null,
+      role: invite.role,
+    });
 
     return this.generateTokens({
       ...user,
