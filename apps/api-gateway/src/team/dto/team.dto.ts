@@ -12,7 +12,9 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
 
 // ── Members ────────────────────────────────────────────────────────────────
 export class CreateTeamMemberDto {
@@ -139,10 +141,17 @@ export class IngestSalesDto {
   @IsUUID() memberId: string;
   @IsDateString() serviceDate: string;
   @IsOptional() @IsInt() @Min(0) covers?: number;
-  @IsOptional() @IsNumber() netSales?: number;
-  @IsOptional() @IsNumber() wineSales?: number;
+  @IsOptional() @IsNumber() @Min(0) netSales?: number;
+  @IsOptional() @IsNumber() @Min(0) wineSales?: number;
   @IsOptional() @IsInt() @Min(0) checks?: number;
   @IsOptional() @IsIn(["manual", "csv", "pos"]) source?: string;
+}
+
+export class IngestSalesBatchDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => IngestSalesDto)
+  rows: IngestSalesDto[];
 }
 
 // ── Broadcast ──────────────────────────────────────────────────────────────

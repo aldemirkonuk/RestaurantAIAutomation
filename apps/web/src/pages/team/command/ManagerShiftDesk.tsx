@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Plus, Copy, Send, Megaphone, ChevronLeft, ChevronRight, UserPlus,
-  Users, ClipboardCheck, AlertTriangle, CheckCircle2, Sparkles,
+  Users, ClipboardCheck, AlertTriangle, CheckCircle2, Sparkles, SlidersHorizontal,
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog'
@@ -22,10 +22,11 @@ import {
 import { cn } from '../../../lib/utils'
 import {
   mondayOf, addDays, weekDays, DOW, dayNum, fmtWeekRange, fmtTime, shiftClass, shiftHours,
-  Avatar, Pill, PulseCell,
+  Avatar, Pill, PulseCell, todayIso,
 } from './bits'
 import { ShiftEditor, MemberEditor } from './editors'
 import { PerformancePanel } from './PerformancePanel'
+import { OpsRulesPanel } from './OpsRulesPanel'
 
 type Lens = 'coverage' | 'labor' | 'fairness' | 'compliance'
 type DeskTab = 'all' | 'now' | 'publish' | 'people'
@@ -44,6 +45,7 @@ export function ManagerShiftDesk() {
   const [shiftEditor, setShiftEditor] = useState<{ shift?: Shift; date?: string; memberId?: string } | null>(null)
   const [memberEditor, setMemberEditor] = useState<{ member?: TeamMember | null } | null>(null)
   const [peopleOpen, setPeopleOpen] = useState(false)
+  const [opsOpen, setOpsOpen] = useState(false)
 
   // Honor publish deep-link: /team?week=YYYY-MM-DD
   useEffect(() => {
@@ -107,6 +109,38 @@ export function ManagerShiftDesk() {
 
   const receiptsSeen = week?.receipts.length ?? 0
   const staffCount = members.filter((m) => m.status === 'active').length
+  const today = todayIso()
+  const tonightShifts = useMemo(() => shifts.filter((s) => s.shift_date === today), [shifts, today])
+  const tonightOpen = tonightShifts.filter((s) => s.state === 'open' || !s.member_id).length
+  const tonightCov = week?.coverage.days.find((d) => d.date === today)
+  const tonightGaps = tonightCov?.gaps.length ?? 0
+  const weekendCloses = useMemo(() => {
+    // Fairness: count Sat/Sun closes (end >= 22:00) per member this week.
+    const map = new Map<string, number>()
+    for (const s of shifts) {
+      if (!s.member_id || s.state === 'callout') continue
+      const dow = new Date(s.shift_date + 'T12:00:00').getDay()
+      if (dow !== 0 && dow !== 6) continue
+      const endH = Number(s.end_time.split(':')[0] || 0)
+      if (endH < 22 && endH !== 0) continue
+      map.set(s.member_id, (map.get(s.member_id) ?? 0) + 1)
+    }
+    return map
+  }, [shifts])
+
+  function shiftRiskFlags(s: Shift, memberId: string | null | undefined) {
+    const hrs = memberId ? (weeklyHours.get(memberId) ?? 0) : 0
+    const fair =
+      hrs > 40 ||
+      (memberId ? (weekendCloses.get(memberId) ?? 0) >= 2 : false)
+    const longShift = shiftHours(s) >= 6
+    const missingBreak = longShift && !(s.shift_breaks?.length)
+    const certFlag = memberId
+      ? certs.some((c) => c.member_id === memberId && (c.status === 'expiring' || c.status === 'expired'))
+      : false
+    const compliance = missingBreak || certFlag || s.state === 'callout'
+    return { fair, compliance }
+  }
 
   // ── Manager Desk tasks (generated from real data) ─────────────────────────
   const tasks = useMemo(() => {
@@ -200,7 +234,13 @@ export function ManagerShiftDesk() {
   })
   const doBroadcast = useMutation({
     mutationFn: (message: string) => broadcast({ message, title: '📣 Message from your manager' }),
-    onSuccess: () => toast.success('Broadcast sent to the crew'),
+    onSuccess: (r: any) => {
+      const parts = [`inbox`]
+      if (r?.notified) parts.push(`${r.notified} push`)
+      if (r?.emailed) parts.push(`${r.emailed} email`)
+      if (r?.texted) parts.push(`${r.texted} SMS`)
+      toast.success(`Broadcast sent (${parts.join(' · ')})`)
+    },
     onError: () => toast.error('Could not send broadcast'),
   })
 
@@ -221,6 +261,9 @@ export function ManagerShiftDesk() {
     return map
   }, [calEvents])
 
+  const tonightEvents = eventsByDay.get(today) ?? []
+  const tonightTasks = tasks.filter((t) => t.group === 'now' || (t.shiftId && tonightShifts.some((s) => s.id === t.shiftId))).length
+  const tonightStaffed = tonightShifts.filter((s) => s.member_id && s.state !== 'callout').length
   const published = week?.schedule?.status === 'published'
 
   return (
@@ -244,31 +287,66 @@ export function ManagerShiftDesk() {
         </div>
       </div>
 
-      {/* Service Pulse */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 rounded-2xl border border-gray-100 bg-white overflow-hidden mb-3 shadow-sm">
+      {/* Service Pulse — tonight board */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 rounded-2xl border border-gray-100 bg-white overflow-hidden mb-3 shadow-sm">
         <div className="flex items-center gap-2.5 px-3.5 py-3 bg-gray-50 border-r border-gray-100 col-span-2 md:col-span-1">
           <div className="text-center min-w-[36px]">
-            <div className="text-xl font-extrabold tabular-nums text-wine-700 leading-none">{dayNum(days[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1] ?? days[0])}</div>
-            <div className="text-[9px] font-bold uppercase text-gray-400">now</div>
+            <div className="text-xl font-extrabold tabular-nums text-wine-700 leading-none">{dayNum(today)}</div>
+            <div className="text-[9px] font-bold uppercase text-gray-400">
+              {new Date(today + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+            </div>
           </div>
           <div className="min-w-0">
             <div className="text-xs font-extrabold text-gray-900">Service pulse</div>
-            <div className="text-[10px] text-gray-400">This week at a glance</div>
+            <div className="text-[10px] text-gray-400">Tonight&apos;s board</div>
           </div>
         </div>
-        <PulseCell label="Coverage gaps" value={week?.coverage.totalGaps ?? 0} sub={week?.coverage.totalGaps ? 'Needs attention' : 'All roles met'} tone={week?.coverage.totalGaps ? 'danger' : 'default'} />
-        <PulseCell label="Open shifts" value={shifts.filter((s) => s.state === 'open' || !s.member_id).length} sub="Awaiting cover" tone={shifts.some((s) => s.state === 'open') ? 'warn' : 'default'} />
-        <PulseCell label={laborEnabled ? 'Week labor' : 'Week hours'} value={laborEnabled && week?.labor.totalCost != null ? `$${Math.round(week.labor.totalCost).toLocaleString()}` : `${week?.labor.totalHours ?? 0}h`} sub={laborEnabled ? `Target ${week?.labor.targetPct ?? 28}%` : 'Labor tracking off'} tone={(week?.labor.overtime?.length ?? 0) > 0 ? 'warn' : 'default'} />
-        <PulseCell label="Schedule receipts" value={published ? `${receiptsSeen}/${staffCount}` : '—'} sub={published ? 'Seen' : 'Not published'} />
+        <PulseCell
+          label="Coverage gaps"
+          value={tonightGaps}
+          sub={tonightGaps ? 'Tonight' : 'Roles met'}
+          tone={tonightGaps ? 'danger' : 'default'}
+          onClick={() => setDeskTab('publish')}
+        />
+        <PulseCell
+          label="Open covers"
+          value={tonightOpen}
+          sub={`${tonightStaffed} staffed`}
+          tone={tonightOpen ? 'warn' : 'default'}
+          onClick={() => setDeskTab('now')}
+        />
+        <PulseCell
+          label="Events"
+          value={tonightEvents.length}
+          sub={tonightEvents[0]?.title ?? 'None on calendar'}
+          tone={tonightEvents.length ? 'warn' : 'default'}
+        />
+        <PulseCell
+          label={laborEnabled ? 'Tonight labor' : 'Tonight hours'}
+          value={
+            laborEnabled
+              ? `$${Math.round(tonightShifts.reduce((sum, s) => sum + (s.labor_cost ?? 0), 0)).toLocaleString()}`
+              : `${tonightShifts.reduce((sum, s) => sum + shiftHours(s), 0).toFixed(0)}h`
+          }
+          sub={`${tonightShifts.length} shifts`}
+        />
+        <PulseCell
+          label="Desk actions"
+          value={`${tonightTasks || tasks.filter((t) => t.priority === 'urgent').length} open`}
+          sub="Needs you"
+          tone={(tonightTasks || tasks.some((t) => t.priority === 'urgent')) ? 'danger' : 'default'}
+          onClick={() => setDeskTab('all')}
+        />
       </div>
 
       {/* Quick actions */}
       <div className="flex items-center gap-2 flex-wrap mb-3 overflow-x-auto">
         <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mr-1">Quick actions</span>
-        <ActionBtn onClick={() => setShiftEditor({ date: days[0] })}><Plus className="w-3.5 h-3.5" /> Add shift</ActionBtn>
+        <ActionBtn onClick={() => setShiftEditor({ date: today })}><Plus className="w-3.5 h-3.5" /> Add shift</ActionBtn>
         <ActionBtn onClick={() => doCopy.mutate()}><Copy className="w-3.5 h-3.5" /> Copy last week</ActionBtn>
-        <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew:'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
+        <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew (inbox + push + email/SMS):'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
         <ActionBtn onClick={() => setMemberEditor({ member: null })}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
+        <ActionBtn onClick={() => setOpsOpen(true)}><SlidersHorizontal className="w-3.5 h-3.5" /> Ops rules</ActionBtn>
         <ActionBtn onClick={() => doPublish.mutate()} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
 
@@ -291,7 +369,16 @@ export function ManagerShiftDesk() {
           </div>
 
           {/* Grid */}
-          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          <div
+            data-lens={lens}
+            className={cn(
+              'bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm',
+              '[&_[data-fair-risk=true]]:outline [&_[data-fair-risk=true]]:outline-2 [&_[data-fair-risk=true]]:outline-transparent',
+              '[&_[data-compliance-risk=true]]:outline [&_[data-compliance-risk=true]]:outline-2 [&_[data-compliance-risk=true]]:outline-transparent',
+              'data-[lens=fairness]:[&_[data-fair-risk=true]]:outline-amber-500',
+              'data-[lens=compliance]:[&_[data-compliance-risk=true]]:outline-rose-500',
+            )}
+          >
             <div className="overflow-x-auto">
               <div className="min-w-[860px]">
                 {/* header row */}
@@ -338,12 +425,16 @@ export function ManagerShiftDesk() {
                               </button>
                             ) : (
                               <div className="w-full flex flex-col gap-1">
-                                {cell.map((s) => (
+                                {cell.map((s) => {
+                                  const risk = shiftRiskFlags(s, m.id)
+                                  return (
                                   <button
                                     key={s.id}
+                                    data-fair-risk={risk.fair || undefined}
+                                    data-compliance-risk={risk.compliance || undefined}
                                     onClick={() => openInspector(s.id)}
                                     className={cn(
-                                      'w-full px-1.5 py-1 rounded-md text-center transition-transform hover:-translate-y-px',
+                                      'w-full px-1.5 py-1 rounded-md text-center transition-transform hover:-translate-y-px outline-offset-1',
                                       shiftClass(s),
                                       selectedShiftId === s.id && 'ring-2 ring-wine-500',
                                     )}
@@ -352,14 +443,15 @@ export function ManagerShiftDesk() {
                                     <span className="block text-[7.5px] font-semibold opacity-75 truncate">
                                       {lens === 'labor' && laborEnabled && s.labor_cost != null
                                         ? `$${Math.round(s.labor_cost)}`
-                                        : lens === 'fairness' && (weeklyHours.get(m.id) ?? 0) > 40
-                                          ? 'OT risk'
-                                          : lens === 'compliance' && (certs.some((c) => c.member_id === m.id && (c.status === 'expiring' || c.status === 'expired')) || s.state === 'callout')
-                                            ? (s.state === 'callout' ? 'call-out' : 'cert')
+                                        : lens === 'fairness' && risk.fair
+                                          ? ((weeklyHours.get(m.id) ?? 0) > 40 ? 'OT risk' : 'Fairness risk')
+                                          : lens === 'compliance' && risk.compliance
+                                            ? (s.state === 'callout' ? 'call-out' : (s.shift_breaks?.length ? 'cert' : 'break plan'))
                                             : s.role ?? s.shift_type}
                                     </span>
                                   </button>
-                                ))}
+                                  )
+                                })}
                               </div>
                             )}
                           </div>
@@ -465,8 +557,9 @@ export function ManagerShiftDesk() {
 
       {/* People sheet */}
       {peopleOpen && (
-        <PeopleSheet members={members} certs={certs} onClose={() => setPeopleOpen(false)} onEdit={(m) => { setPeopleOpen(false); setMemberEditor({ member: m }) }} onAdd={() => { setPeopleOpen(false); setMemberEditor({ member: null }) }} />
+        <PeopleSheet members={members} certs={certs} onClose={() => setPeopleOpen(false)} onEdit={(m) => { setPeopleOpen(false); setMemberEditor({ member: m }) }} onAdd={() => { setPeopleOpen(false); setMemberEditor({ member: null }) }} onOps={() => { setPeopleOpen(false); setOpsOpen(true) }} />
       )}
+      {opsOpen && <OpsRulesPanel members={members} onClose={() => setOpsOpen(false)} />}
 
       {/* Modals */}
       {shiftEditor && (
@@ -508,8 +601,8 @@ function Readiness({ label, ok, bad }: { label: string; ok: boolean; bad: string
   )
 }
 
-function PeopleSheet({ members, certs, onClose, onEdit, onAdd }: {
-  members: TeamMember[]; certs: Certification[]; onClose: () => void; onEdit: (m: TeamMember) => void; onAdd: () => void
+function PeopleSheet({ members, certs, onClose, onEdit, onAdd, onOps }: {
+  members: TeamMember[]; certs: Certification[]; onClose: () => void; onEdit: (m: TeamMember) => void; onAdd: () => void; onOps: () => void
 }) {
   const certsByMember = useMemo(() => {
     const map = new Map<string, Certification[]>()
@@ -519,9 +612,12 @@ function PeopleSheet({ members, certs, onClose, onEdit, onAdd }: {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
       <div className="bg-white w-full max-w-md h-full overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-2">
           <h3 className="text-base font-bold text-gray-900">People</h3>
-          <button onClick={onAdd} className="inline-flex items-center gap-1.5 h-8 px-3 bg-wine-600 text-white rounded-lg text-xs font-bold"><Plus className="w-3.5 h-3.5" /> Add</button>
+          <div className="flex items-center gap-2">
+            <button onClick={onOps} className="inline-flex items-center gap-1.5 h-8 px-3 border border-gray-200 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-50"><SlidersHorizontal className="w-3.5 h-3.5" /> Rules</button>
+            <button onClick={onAdd} className="inline-flex items-center gap-1.5 h-8 px-3 bg-wine-600 text-white rounded-lg text-xs font-bold"><Plus className="w-3.5 h-3.5" /> Add</button>
+          </div>
         </div>
         <div className="p-4 space-y-2">
           {members.map((m) => {

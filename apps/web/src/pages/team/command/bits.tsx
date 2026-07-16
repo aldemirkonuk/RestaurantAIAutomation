@@ -32,6 +32,9 @@ export const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export function dayNum(iso: string): string {
   return String(new Date(iso + 'T12:00:00').getDate())
 }
+export function todayIso(): string {
+  return ymd(new Date())
+}
 export function fmtWeekRange(weekStart: string): string {
   const end = addDays(weekStart, 6)
   const f = (iso: string) =>
