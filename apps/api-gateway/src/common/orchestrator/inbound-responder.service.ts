@@ -1275,6 +1275,9 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       const now = new Date().toISOString();
       const rows = userIds.map((userId) => ({
         user_id: userId,
+        recipient_id: userId,
+        notification_type: n.type,
+        channels: ["in_app"],
         restaurant_id: restaurantId,
         type: n.type,
         title: n.title.slice(0, 500),

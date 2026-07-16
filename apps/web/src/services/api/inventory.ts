@@ -16,6 +16,44 @@ import type {
 
 const INVENTORY_PATH = '/inventory';
 
+export interface ItemActivity {
+  daily: Array<{ date: string; out: number }>;
+  /** 7 rows (Mon..Sun) x 8 slots (4pm..11pm) of depletion counts, last 28d */
+  heat: number[][];
+  totalOut28d: number;
+}
+
+/**
+ * Depletion activity for one item — velocity series + busy-hours heatmap.
+ */
+export async function getItemActivity(
+  itemId: string,
+  restaurantId?: string
+): Promise<ItemActivity> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemActivity>(
+    `${INVENTORY_PATH}/${id}/item/${itemId}/activity`
+  );
+  return response.data;
+}
+
+/**
+ * Ledger reconcile — sets the physical count as truth (clears shadow, writes
+ * an auditable transaction). Also powers manual +/- adjustments: pass the
+ * resulting actual count.
+ */
+export async function reconcileItem(
+  inventoryId: string,
+  body: { wineId: string; actualCount: number; notes?: string }
+): Promise<unknown> {
+  const response = await apiClient.post(
+    `/inventory-ledger/inventory/${inventoryId}/reconcile`,
+    body
+  );
+  return response.data;
+}
+
 /**
  * Get all inventory items for the active restaurant
  */

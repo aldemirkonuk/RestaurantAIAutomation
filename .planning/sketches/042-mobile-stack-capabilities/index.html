@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>042 — Mobile Stack · Design & Motion</title>
+  <link rel="stylesheet" href="../themes/default.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: #0f0f14;
+      color: #e8e6ed;
+      min-height: 100vh;
+      padding-top: 56px;
+    }
+
+    /* ─── Top nav ─── */
+    #stack-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: rgba(15,15,20,0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 8px 16px;
+      display: flex; gap: 6px; align-items: center; overflow-x: auto;
+      scrollbar-width: none;
+    }
+    #stack-nav::-webkit-scrollbar { display: none; }
+    .nav-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.35); white-space: nowrap; margin-right: 4px; font-family: var(--font-mono); }
+    .stack-tab {
+      padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65);
+      cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;
+      transition: all 0.18s var(--ease-spring, cubic-bezier(0.22,1,0.36,1));
+    }
+    .stack-tab:hover { background: rgba(255,255,255,0.1); color: white; }
+    .stack-tab.active { background: var(--color-primary,#CD2D5B); border-color: var(--color-primary); color: white; }
+    .stack-tab.rec { border-color: rgba(205,45,91,0.5); }
+    .stack-tab.rec::after { content: ' ★'; font-size: 9px; }
+
+    /* ─── Layout ─── */
+    .page { max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }
+    .masthead { margin-bottom: 28px; }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-primary,#CD2D5B); }
+    .masthead h1 { font-family: var(--font-display); font-size: 28px; font-weight: 800; letter-spacing: -0.03em; margin: 6px 0 8px; }
+    .masthead p { font-size: 14px; color: rgba(255,255,255,0.5); max-width: 720px; line-height: 1.55; }
+
+    .variant-panel { display: none; }
+    .variant-panel.active { display: grid; grid-template-columns: 400px 1fr; gap: 32px; align-items: start; }
+    @media (max-width: 960px) { .variant-panel.active { grid-template-columns: 1fr; } }
+
+    /* ─── Phone shell ─── */
+    .phone-wrap { display: flex; flex-direction: column; align-items: center; }
+    .phone {
+      width: 375px; border-radius: 44px;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.5), 0 0 0 10px #1c1c24, 0 0 0 11px #2a2a34;
+      overflow: hidden; position: relative;
+    }
+    .phone-notch {
+      height: 36px; background: #000; width: 126px; margin: 0 auto;
+      border-radius: 0 0 18px 18px; position: relative; z-index: 10;
+    }
+    .phone-screen { min-height: 740px; position: relative; overflow: hidden; }
+
+    /* ─── Capability sidebar ─── */
+    .cap-panel {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px; padding: 24px;
+    }
+    .cap-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 10px; border-radius: 99px; margin-bottom: 10px; }
+    .cap-tag.core { background: rgba(205,45,91,0.15); color: #f4a9ba; }
+    .cap-tag.mix { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+    .cap-tag.alt { background: rgba(16,185,129,0.12); color: #6ee7b7; }
+    .cap-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .cap-sub { font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.5; margin-bottom: 20px; }
+
+    .score-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+    .score-row { display: grid; grid-template-columns: 110px 1fr 28px; gap: 10px; align-items: center; }
+    .score-label { font-size: 11px; color: rgba(255,255,255,0.45); }
+    .score-bar { height: 6px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }
+    .score-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
+    .score-val { font-size: 11px; font-weight: 700; font-family: var(--font-mono); color: rgba(255,255,255,0.7); text-align: right; }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    .chip { font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.75); }
+    .chip.good { background: rgba(5,150,105,0.12); border-color: rgba(5,150,105,0.25); color: #6ee7b7; }
+    .chip.warn { background: rgba(217,119,6,0.12); border-color: rgba(217,119,6,0.25); color: #fcd34d; }
+    .chip.bad { background: rgba(220,38,38,0.1); border-color: rgba(220,38,38,0.2); color: #fca5a5; }
+
+    .tradeoffs { margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); }
+    .tradeoffs h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.35); margin-bottom: 8px; }
+    .tradeoffs ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .tradeoffs li { font-size: 12px; color: rgba(255,255,255,0.55); line-height: 1.45; padding-left: 14px; position: relative; }
+    .tradeoffs li::before { content: '→'; position: absolute; left: 0; color: rgba(255,255,255,0.25); }
+
+    /* ─── Shared app chrome ─── */
+    .app-header { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; }
+    .app-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; }
+    .app-sub { font-size: 11px; opacity: 0.55; margin-top: 2px; }
+    .tab-bar { position: absolute; bottom: 0; left: 0; right: 0; display: flex; padding: 8px 0 20px; border-top: 1px solid rgba(0,0,0,0.06); }
+    .tab-item { flex: 1; text-align: center; font-size: 10px; font-weight: 600; opacity: 0.45; cursor: pointer; transition: opacity 0.15s; }
+    .tab-item.active { opacity: 1; }
+    .tab-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+
+    /* ═══ A: EXPO + EXPO-ROUTER ═══ */
+    .a-screen { background: #f7f8f9; color: #111; }
+    .a-header { background: white; border-bottom: 1px solid #eee; }
+    .a-ota {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 99px;
+      background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;
+    }
+    .a-ota-dot { width: 6px; height: 6px; border-radius: 50%; background: #059669; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .a-spring-demo {
+      margin: 12px 16px; padding: 12px; background: linear-gradient(135deg, #1a0a0f, #2d1520);
+      border-radius: 14px; color: white; position: relative; overflow: hidden;
+    }
+    .a-spring-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.45); margin-bottom: 8px; }
+    .a-spring-ball {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--color-primary);
+      box-shadow: 0 4px 20px rgba(205,45,91,0.5); cursor: grab;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .a-spring-ball.bounce { transform: translateX(140px) scale(1.1); }
+    .a-spring-track { height: 4px; background: rgba(255,255,255,0.1); border-radius: 99px; margin-top: 14px; position: relative; }
+    .a-spring-track::after { content: ''; position: absolute; right: 0; top: -4px; width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.2); }
+    .a-card {
+      margin: 8px 16px; background: white; border-radius: 16px; padding: 14px;
+      border: 1px solid #e5e7eb; cursor: grab; touch-action: none;
+      transition: transform 0.3s cubic-bezier(0.22,1,0.36,1), box-shadow 0.3s;
+      user-select: none;
+    }
+    .a-card.swiping { transition: none; }
+    .a-card.done { transform: translateX(120%) rotate(8deg); opacity: 0; }
+    .a-card-row { display: flex; align-items: center; gap: 10px; }
+    .a-card-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--color-primary-light); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .a-card-name { font-size: 14px; font-weight: 700; font-family: var(--font-display); }
+    .a-card-meta { font-size: 11px; color: #9ca3af; }
+    .a-swipe-hint { text-align: center; font-size: 10px; color: #9ca3af; margin: 4px 16px 8px; }
+    .a-route-pills { display: flex; gap: 6px; padding: 0 16px 12px; overflow-x: auto; }
+    .a-route-pill { padding: 5px 10px; border-radius: 99px; font-size: 10px; font-weight: 600; background: white; border: 1px solid #e5e7eb; white-space: nowrap; color: #6b7280; }
+    .a-route-pill.on { background: var(--color-primary-light); border-color: var(--color-primary-medium); color: var(--color-primary); }
+    .a-tab-bar { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
+
+    /* ═══ B: BARE REACT NATIVE ═══ */
+    .b-screen { background: #1c1c1e; color: white; }
+    .b-platform { display: flex; gap: 6px; }
+    .b-plat { font-size: 9px; font-weight: 700; padding: 3px 7px; border-radius: 6px; letter-spacing: 0.04em; }
+    .b-plat.ios { background: rgba(10,132,255,0.2); color: #64b5ff; }
+    .b-plat.and { background: rgba(61,220,132,0.15); color: #6ee7b7; }
+    .b-bridge {
+      margin: 12px 16px; padding: 14px; background: #2c2c2e; border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .b-bridge-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.4); margin-bottom: 10px; }
+    .b-bridge-flow { display: flex; align-items: center; gap: 6px; font-size: 10px; font-family: var(--font-mono); }
+    .b-bridge-node { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); }
+    .b-bridge-node.native { background: rgba(10,132,255,0.15); border-color: rgba(10,132,255,0.3); color: #64b5ff; }
+    .b-bridge-arrow { color: rgba(255,255,255,0.25); }
+    .b-native-card { margin: 8px 16px; background: #2c2c2e; border-radius: 14px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); }
+    .b-native-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .b-native-label { font-size: 13px; font-weight: 600; }
+    .b-native-toggle { width: 44px; height: 26px; border-radius: 99px; background: #34c759; position: relative; cursor: pointer; }
+    .b-native-toggle::after { content: ''; position: absolute; right: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+    .b-native-desc { font-size: 11px; color: rgba(255,255,255,0.45); line-height: 1.4; }
+    .b-tab-bar { background: #1c1c1e; border-top-color: rgba(255,255,255,0.08); }
+
+    /* ═══ C: FLUTTER ═══ */
+    .c-screen { background: #fef7ff; color: #1d1b20; }
+    .c-header { background: #fef7ff; }
+    .c-m3-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; background: #e8def8; color: #6750a4; font-size: 10px; font-weight: 600; }
+    .c-fab {
+      position: absolute; bottom: 80px; right: 20px; width: 56px; height: 56px;
+      border-radius: 16px; background: #6750a4; color: white; font-size: 24px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(103,80,164,0.4); cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .c-fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(103,80,164,0.3); }
+    .c-list { padding: 0 16px; }
+    .c-item {
+      background: white; border-radius: 16px; padding: 14px; margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(103,80,164,0.08), 0 4px 12px rgba(103,80,164,0.06);
+      cursor: pointer; position: relative; overflow: hidden;
+      transition: transform 0.15s;
+    }
+    .c-item:active { transform: scale(0.98); }
+    .c-ripple {
+      position: absolute; border-radius: 50%; background: rgba(103,80,164,0.15);
+      transform: scale(0); animation: ripple 0.6s ease-out forwards; pointer-events: none;
+    }
+    @keyframes ripple { to { transform: scale(4); opacity: 0; } }
+    .c-item-name { font-size: 15px; font-weight: 600; font-family: 'DM Sans', sans-serif; }
+    .c-item-sub { font-size: 12px; color: #79747e; margin-top: 2px; }
+    .c-item-trail { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: #79747e; }
+    .c-scroll-demo { height: 4px; background: #e8def8; border-radius: 99px; margin: 8px 16px 12px; overflow: hidden; }
+    .c-scroll-bar { height: 100%; width: 30%; background: #6750a4; border-radius: 99px; animation: scrollDemo 2s ease-in-out infinite; }
+    @keyframes scrollDemo { 0%,100% { transform: translateX(0); } 50% { transform: translateX(200%); } }
+    .c-tab-bar { background: #fef7ff; border-top-color: #e8def8; }
+    .c-tab-item.active { color: #6750a4; }
+
+    /* ═══ D: SWIFTUI ═══ */
+    .d-screen { background: #f2f2f7; color: #000; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif; }
+    .d-island {
+      position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 126px; height: 34px; background: #000; border-radius: 20px; z-index: 20;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      font-size: 10px; font-weight: 600; color: white;
+    }
+    .d-island-pulse { width: 8px; height: 8px; border-radius: 50%; background: #ff453a; animation: pulse 1.5s infinite; }
+    .d-large-title { padding: 52px 16px 8px; }
+    .d-large-title h2 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+    .d-large-title p { font-size: 15px; color: rgba(0,0,0,0.45); margin-top: 4px; }
+    .d-glass-group { margin: 12px 16px; }
+    .d-glass-card {
+      background: rgba(255,255,255,0.72); backdrop-filter: blur(20px) saturate(180%);
+      border-radius: 14px; padding: 14px; margin-bottom: 8px;
+      border: 0.5px solid rgba(255,255,255,0.6);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      transition: transform 0.35s cubic-bezier(0.16,1,0.3,1);
+      cursor: pointer;
+    }
+    .d-glass-card:active { transform: scale(0.97); }
+    .d-sf-row { display: flex; align-items: center; gap: 12px; }
+    .d-sf-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #ff453a, #ff6961); display: flex; align-items: center; justify-content: center; font-size: 16px; color: white; }
+    .d-sf-label { font-size: 17px; font-weight: 400; flex: 1; }
+    .d-sf-chevron { color: rgba(0,0,0,0.25); font-size: 14px; font-weight: 600; }
+    .d-spring-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(0,122,255,0.12); color: #007aff; margin-left: 8px; }
+    .d-tab-bar { background: rgba(242,242,247,0.85); backdrop-filter: blur(20px); border-top-color: rgba(0,0,0,0.08); }
+    .d-tab-item.active { color: #007aff; }
+
+    /* ═══ E: EXPO + NATIVE MODULES ═══ */
+    .e-screen { background: #0d1117; color: #e6edf3; }
+    .e-layers { margin: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+    .e-layer {
+      padding: 10px 12px; border-radius: 10px; font-size: 11px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s;
+    }
+    .e-layer.ts { background: rgba(49,120,198,0.15); border: 1px solid rgba(49,120,198,0.3); color: #79c0ff; }
+    .e-layer.bridge { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); padding: 6px 12px; font-size: 10px; justify-content: center; }
+    .e-layer.native { background: rgba(163,113,247,0.12); border: 1px solid rgba(163,113,247,0.25); color: #d2a8ff; }
+    .e-layer.active { box-shadow: 0 0 0 2px rgba(205,45,91,0.5); }
+    .e-layer-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .e-layer.ts .e-layer-dot { background: #79c0ff; }
+    .e-layer.native .e-layer-dot { background: #d2a8ff; }
+    .e-camera {
+      margin: 8px 16px; height: 180px; border-radius: 16px; overflow: hidden;
+      background: linear-gradient(135deg, #1a0a0f, #2d1520); position: relative;
+      border: 2px solid rgba(205,45,91,0.4);
+    }
+    .e-camera-grid {
+      position: absolute; inset: 0;
+      background-image: linear-gradient(rgba(205,45,91,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(205,45,91,0.15) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+    .e-camera-scan {
+      position: absolute; left: 10%; right: 10%; top: 30%; bottom: 30%;
+      border: 2px solid var(--color-primary); border-radius: 8px;
+      animation: scanPulse 2s ease-in-out infinite;
+    }
+    @keyframes scanPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .e-camera-label { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.7); }
+    .e-detected { margin: 8px 16px; padding: 12px; background: rgba(205,45,91,0.1); border-radius: 12px; border: 1px solid rgba(205,45,91,0.25); }
+    .e-detected-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-primary-medium); margin-bottom: 6px; }
+    .e-detected-wine { font-size: 14px; font-weight: 700; font-family: var(--font-display); }
+    .e-detected-meta { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 2px; }
+
+    /* ═══ F: KMP + PLATFORM UI ═══ */
+    .f-screen { background: #fafafa; color: #1a1a1a; }
+    .f-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 16px; }
+    .f-platform-box { border-radius: 14px; padding: 12px; text-align: center; cursor: pointer; transition: all 0.2s; }
+    .f-platform-box.ios { background: linear-gradient(135deg, #f0f4ff, #e8f0fe); border: 1px solid rgba(0,122,255,0.2); }
+    .f-platform-box.and { background: linear-gradient(135deg, #e8f5e9, #f1f8e9); border: 1px solid rgba(61,220,132,0.2); }
+    .f-platform-box.active { box-shadow: 0 0 0 2px var(--color-primary); }
+    .f-platform-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+    .f-platform-box.ios .f-platform-label { color: #007aff; }
+    .f-platform-box.and .f-platform-label { color: #34a853; }
+    .f-platform-ui { font-size: 22px; margin-bottom: 4px; }
+    .f-platform-name { font-size: 11px; font-weight: 600; color: #666; }
+    .f-shared-core {
+      margin: 8px 16px; padding: 14px; background: #1a1a2e; border-radius: 14px;
+      text-align: center; position: relative;
+    }
+    .f-shared-core::before, .f-shared-core::after {
+      content: ''; position: absolute; top: 50%; width: 20px; height: 2px; background: rgba(255,255,255,0.15);
+    }
+    .f-shared-core::before { left: -20px; }
+    .f-shared-core::after { right: -20px; }
+    .f-kotlin { font-family: var(--font-mono); font-size: 11px; color: #a78bfa; font-weight: 600; }
+    .f-kotlin-sub { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+    .f-content { margin: 8px 16px; padding: 14px; background: white; border-radius: 14px; border: 1px solid #e5e7eb; min-height: 200px; }
+    .f-content.ios-style .f-row { padding: 10px 0; border-bottom: 0.5px solid #e5e7eb; display: flex; justify-content: space-between; font-size: 15px; }
+    .f-content.and-style .f-row { padding: 12px; background: #f5f5f5; border-radius: 12px; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+
+    /* ═══ G: CAPACITOR + REACT WEB ═══ */
+    .g-screen { background: white; color: #111; }
+    .g-webview-bar {
+      background: #f0f0f0; padding: 6px 12px; display: flex; align-items: center; gap: 6px;
+      border-bottom: 1px solid #ddd; font-size: 10px; color: #666;
+    }
+    .g-webview-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .g-webview-dot.r { background: #ff5f57; }
+    .g-webview-dot.y { background: #febc2e; }
+    .g-webview-dot.g { background: #28c840; }
+    .g-reuse {
+      margin: 10px 16px; padding: 10px; background: #ecfdf5; border-radius: 10px;
+      border: 1px solid #a7f3d0; font-size: 11px; color: #059669; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .g-reuse-bar { flex: 1; height: 6px; background: #d1fae5; border-radius: 99px; overflow: hidden; }
+    .g-reuse-fill { height: 100%; width: 92%; background: #059669; border-radius: 99px; }
+    .g-web-table { margin: 8px 16px; font-size: 12px; }
+    .g-web-row { display: grid; grid-template-columns: 1fr 60px 50px; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    .g-web-row.header { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.04em; }
+    .g-status { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-align: center; }
+    .g-status.low { background: #fef2f2; color: #dc2626; }
+    .g-status.ok { background: #ecfdf5; color: #059669; }
+    .g-plugin { margin: 8px 16px; padding: 10px; background: #f9fafb; border-radius: 10px; border: 1px dashed #d1d5db; font-size: 11px; color: #6b7280; }
+
+    /* ═══ H: RN SKIA + REANIMATED ═══ */
+    .h-screen { background: #0a0a0f; color: white; overflow: hidden; }
+    .h-canvas { margin: 12px 16px; height: 200px; border-radius: 16px; background: #12121a; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); }
+    .h-particle { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: var(--color-primary); opacity: 0.6; animation: float 4s ease-in-out infinite; }
+    @keyframes float { 0%,100% { transform: translateY(0) scale(1); opacity: 0.6; } 50% { transform: translateY(-20px) scale(1.3); opacity: 1; } }
+    .h-liquid {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 60%;
+      background: linear-gradient(180deg, transparent, rgba(205,45,91,0.3));
+      animation: liquidWave 3s ease-in-out infinite;
+    }
+    @keyframes liquidWave { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.08); } }
+    .h-gesture-card {
+      margin: 8px 16px; padding: 16px; background: rgba(255,255,255,0.04); border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08); cursor: grab; touch-action: none;
+      transition: transform 0.1s;
+    }
+    .h-gesture-card:active { cursor: grabbing; }
+    .h-gauge { width: 80px; height: 80px; margin: 8px auto; position: relative; }
+    .h-gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .h-gauge-track { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 8; }
+    .h-gauge-fill { fill: none; stroke: var(--color-primary); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 226; stroke-dashoffset: 60; animation: gaugeAnim 2s ease-in-out infinite alternate; }
+    @keyframes gaugeAnim { from { stroke-dashoffset: 80; } to { stroke-dashoffset: 40; } }
+    .h-gauge-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; font-family: var(--font-display); }
+    .h-fps { position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 700; font-family: var(--font-mono); color: #6ee7b7; background: rgba(5,150,105,0.15); padding: 3px 6px; border-radius: 4px; }
+
+    /* ═══ I: PWA INSTALLABLE ═══ */
+    .i-screen { background: #f7f8f9; color: #111; }
+    .i-install-banner {
+      margin: 10px 16px; padding: 12px; background: white; border-radius: 14px;
+      border: 1px solid #e5e7eb; box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .i-install-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--color-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .i-install-text { flex: 1; }
+    .i-install-text strong { display: block; font-size: 13px; font-weight: 700; }
+    .i-install-text span { font-size: 11px; color: #9ca3af; }
+    .i-install-btn { padding: 8px 14px; background: var(--color-primary); color: white; border: none; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .i-offline {
+      margin: 8px 16px; padding: 10px 12px; background: #fffbeb; border-radius: 10px;
+      border: 1px solid #fde68a; font-size: 11px; color: #d97706; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .i-offline-dot { width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
+    .i-sync-list { margin: 8px 16px; }
+    .i-sync-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    .i-sync-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+    .i-sync-status.queued { background: #fef3c7; color: #d97706; }
+    .i-sync-status.done { background: #ecfdf5; color: #059669; }
+    .i-no-store { margin: 8px 16px; text-align: center; font-size: 10px; color: #9ca3af; padding: 8px; border: 1px dashed #e5e7eb; border-radius: 10px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+
+<nav id="stack-nav">
+  <span class="nav-label">Stack</span>
+  <button class="stack-tab" data-v="a">Expo + Router</button>
+  <button class="stack-tab" data-v="b">Bare RN</button>
+  <button class="stack-tab" data-v="c">Flutter</button>
+  <button class="stack-tab" data-v="d">SwiftUI</button>
+  <button class="stack-tab" data-v="e">Expo + Native</button>
+  <button class="stack-tab" data-v="f">KMP + Platform</button>
+  <button class="stack-tab" data-v="g">Capacitor</button>
+  <button class="stack-tab rec active" data-v="h">RN Skia ★</button>
+  <button class="stack-tab" data-v="i">PWA</button>
+</nav>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow">Sketch 042 · Design & Motion Only</div>
+    <h1>Which stack hits SOTA design?</h1>
+    <p>Reusability ignored. Only animation ceiling, platform polish, gesture quality, and visual depth matter. Same WineOps screen — each variant shows how far that stack can push motion and craft.</p>
+  </header>
+
+  <!-- ═══ A: EXPO ═══ -->
+  <section class="variant-panel" id="v-a">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen a-screen">
+          <div class="app-header a-header">
+            <div>
+              <div class="app-title">Tonight</div>
+              <div class="app-sub">Friday service · 6 covers short</div>
+            </div>
+            <div class="a-ota"><span class="a-ota-dot"></span>Reanimated 4</div>
+          </div>
+          <div class="a-spring-demo" onclick="document.getElementById('a-ball').classList.toggle('bounce')">
+            <div class="a-spring-label">Spring physics · tap to bounce</div>
+            <div class="a-spring-ball" id="a-ball"></div>
+            <div class="a-spring-track"></div>
+          </div>
+          <div class="a-swipe-hint">← drag to acknowledge →</div>
+          <div class="a-card" id="a-card1">
+            <div class="a-card-row">
+              <div class="a-card-icon">🍷</div>
+              <div>
+                <div class="a-card-name">Barolo 2018 — 3 left</div>
+                <div class="a-card-meta">Below par · reorder suggested</div>
+              </div>
+            </div>
+          </div>
+          <div class="a-card" id="a-card2">
+            <div class="a-card-row">
+              <div class="a-card-icon">👤</div>
+              <div>
+                <div class="a-card-name">Marcus called out — 5pm</div>
+                <div class="a-card-meta">Floor coverage gap · tap to reassign</div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar a-tab-bar">
+            <div class="tab-item active"><span class="tab-icon">🌙</span>Tonight</div>
+            <div class="tab-item"><span class="tab-icon">🍷</span>Cellar</div>
+            <div class="tab-item"><span class="tab-icon">👥</span>Team</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag core">Core</span>
+      <h2 class="cap-title">Expo + expo-router</h2>
+      <p class="cap-sub">Reanimated 4 spring gestures, expo-blur glass, expo-haptics on swipe. Solid motion — but hits a ceiling before custom shaders, liquid fills, or platform-specific spring curves.</p>
+      <div class="chip-row">
+        <span class="chip good">Reanimated 4 springs</span>
+        <span class="chip good">expo-blur glass</span>
+        <span class="chip good">Haptic feedback</span>
+        <span class="chip warn">No Skia canvas</span>
+        <span class="chip warn">Generic cross-platform feel</span>
+      </div>
+      <div class="score-grid" data-scores="78,72,80,70,75,65"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Swipe-to-acknowledge feels good with spring physics</li>
+          <li>Can't do liquid-fill cellar bins or particle effects natively</li>
+          <li>Blur and haptics are nice — not award-tier motion</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ B: BARE RN ═══ -->
+  <section class="variant-panel" id="v-b">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen b-screen">
+          <div class="app-header">
+            <div>
+              <div class="app-title">Tonight</div>
+              <div class="app-sub">Custom native animations</div>
+            </div>
+            <div class="b-platform">
+              <span class="b-plat ios">iOS</span>
+              <span class="b-plat and">Android</span>
+            </div>
+          </div>
+          <div class="b-bridge">
+            <div class="b-bridge-title">Motion running on native thread</div>
+            <div class="b-bridge-flow">
+              <span class="b-bridge-node">Reanimated</span>
+              <span class="b-bridge-arrow">→</span>
+              <span class="b-bridge-node native">Metal shader</span>
+              <span class="b-bridge-arrow">→</span>
+              <span class="b-bridge-node native">ARKit scene</span>
+            </div>
+          </div>
+          <div class="b-native-card">
+            <div class="b-native-row">
+              <span class="b-native-label">Metal wine-fill shader</span>
+              <div class="b-native-toggle"></div>
+            </div>
+            <div class="b-native-desc">Custom GPU renderer for cellar bin liquid levels — 120fps on A17</div>
+          </div>
+          <div class="b-native-card">
+            <div class="b-native-row">
+              <span class="b-native-label">AR spatial bin locator</span>
+              <div class="b-native-toggle"></div>
+            </div>
+            <div class="b-native-desc">Point cloud overlay with spring-anchored labels in physical cellar</div>
+          </div>
+          <div class="b-native-card">
+            <div class="b-native-row">
+              <span class="b-native-label">UIImpactFeedbackGenerator</span>
+              <div class="b-native-toggle"></div>
+            </div>
+            <div class="b-native-desc">Per-gesture haptic curves wired directly — not abstracted through bridge</div>
+          </div>
+          <div class="tab-bar b-tab-bar">
+            <div class="tab-item active"><span class="tab-icon">🌙</span>Tonight</div>
+            <div class="tab-item"><span class="tab-icon">📡</span>Bridge</div>
+            <div class="tab-item"><span class="tab-icon">⚙️</span>Native</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag core">Core</span>
+      <h2 class="cap-title">Bare React Native</h2>
+      <p class="cap-sub">Unlocks Metal shaders, ARKit scene graphs, and per-platform haptic curves. Same RN motion layer as Expo — the design win is custom GPU rendering and spatial AR, not better springs out of the box.</p>
+      <div class="chip-row">
+        <span class="chip good">Metal / Vulkan shaders</span>
+        <span class="chip good">ARKit spatial UI</span>
+        <span class="chip good">Native haptic curves</span>
+        <span class="chip warn">UI still RN unless rewritten</span>
+      </div>
+      <div class="score-grid" data-scores="80,75,82,72,76,88"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Only path to AR cellar overlay with spring-anchored labels</li>
+          <li>Standard screens look identical to Expo — effort is in native modules</li>
+          <li>Spatial FX score is high; everyday UI motion is not better than Skia</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ C: FLUTTER ═══ -->
+  <section class="variant-panel" id="v-c">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen c-screen">
+          <div class="app-header c-header">
+            <div>
+              <div class="app-title" style="font-family:'DM Sans',sans-serif">Tonight</div>
+              <div class="app-sub">Impeller · 120fps</div>
+            </div>
+            <span class="c-m3-chip">Material 3</span>
+          </div>
+          <div class="c-scroll-demo"><div class="c-scroll-bar"></div></div>
+          <div class="c-list">
+            <div class="c-item" onclick="ripple(event,this)">
+              <div class="c-item-name">Barolo 2018 — 3 left</div>
+              <div class="c-item-sub">Below par · reorder suggested</div>
+              <span class="c-item-trail">›</span>
+            </div>
+            <div class="c-item" onclick="ripple(event,this)">
+              <div class="c-item-name">Marcus called out — 5pm</div>
+              <div class="c-item-sub">Floor coverage gap</div>
+              <span class="c-item-trail">›</span>
+            </div>
+            <div class="c-item" onclick="ripple(event,this)">
+              <div class="c-item-name">VIP table 12 — Opus One</div>
+              <div class="c-item-sub">Pre-stage from cellar B</div>
+              <span class="c-item-trail">›</span>
+            </div>
+          </div>
+          <div class="c-fab" onclick="this.style.transform='scale(0.9)';setTimeout(()=>this.style.transform='',150)">+</div>
+          <div class="tab-bar c-tab-bar">
+            <div class="tab-item active c-tab-item"><span class="tab-icon">🌙</span>Tonight</div>
+            <div class="tab-item c-tab-item"><span class="tab-icon">🍷</span>Cellar</div>
+            <div class="tab-item c-tab-item"><span class="tab-icon">👥</span>Team</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag core">Core</span>
+      <h2 class="cap-title">Flutter</h2>
+      <p class="cap-sub">Impeller renders everything on GPU. Implicit animations, hero transitions, staggered list reveals, and Material 3 ripples all hit 120fps consistently. The cross-platform design reference.</p>
+      <div class="chip-row">
+        <span class="chip good">120fps Impeller</span>
+        <span class="chip good">Hero transitions</span>
+        <span class="chip good">Implicit animations</span>
+        <span class="chip good">Staggered reveals</span>
+        <span class="chip warn">Material not Apple HIG</span>
+      </div>
+      <div class="score-grid" data-scores="95,82,92,88,90,75"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Every list item, FAB, and page transition is butter-smooth</li>
+          <li>Feels designed, not ported — but Material, not iOS-native</li>
+          <li>Rive/Lottie integration for complex motion is first-class</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ D: SWIFTUI ═══ -->
+  <section class="variant-panel" id="v-d">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-screen d-screen">
+          <div class="d-island"><span class="d-island-pulse"></span> 2 alerts</div>
+          <div class="d-large-title">
+            <h2>Tonight</h2>
+            <p>Friday service <span class="d-spring-badge">Spring</span></p>
+          </div>
+          <div class="d-glass-group">
+            <div class="d-glass-card" onclick="this.style.transform='scale(0.95)';setTimeout(()=>this.style.transform='',300)">
+              <div class="d-sf-row">
+                <div class="d-sf-icon">🍷</div>
+                <span class="d-sf-label">Barolo 2018 — 3 left</span>
+                <span class="d-sf-chevron">›</span>
+              </div>
+            </div>
+            <div class="d-glass-card">
+              <div class="d-sf-row">
+                <div class="d-sf-icon" style="background:linear-gradient(135deg,#007aff,#5ac8fa)">👤</div>
+                <span class="d-sf-label">Marcus called out</span>
+                <span class="d-sf-chevron">›</span>
+              </div>
+            </div>
+            <div class="d-glass-card">
+              <div class="d-sf-row">
+                <div class="d-sf-icon" style="background:linear-gradient(135deg,#34c759,#30d158)">✓</div>
+                <span class="d-sf-label">VIP table 12 staged</span>
+                <span class="d-sf-chevron">›</span>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar d-tab-bar">
+            <div class="tab-item active d-tab-item"><span class="tab-icon">🌙</span>Tonight</div>
+            <div class="tab-item d-tab-item"><span class="tab-icon">🍷</span>Cellar</div>
+            <div class="tab-item d-tab-item"><span class="tab-icon">👥</span>Team</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag core">Core · iOS ceiling</span>
+      <h2 class="cap-title">Native SwiftUI</h2>
+      <p class="cap-sub">The gold standard for platform polish. matchedGeometryEffect hero transitions, .spring() interruptible animations, ultraThinMaterial glass, Dynamic Island Live Activities, SF Symbols at every size.</p>
+      <div class="chip-row">
+        <span class="chip good">Apple HIG native</span>
+        <span class="chip good">Interruptible springs</span>
+        <span class="chip good">Live Activities</span>
+        <span class="chip good">matchedGeometry</span>
+        <span class="chip warn">iOS only</span>
+      </div>
+      <div class="score-grid" data-scores="92,100,95,94,96,80"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Highest platform-feel score — indistinguishable from Apple apps</li>
+          <li>Glass cards, spring press states, Dynamic Island = award-tier</li>
+          <li>Android staff get a completely different experience unless Compose rewrite</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ E: EXPO + NATIVE ═══ -->
+  <section class="variant-panel" id="v-e">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen e-screen">
+          <div class="app-header">
+            <div>
+              <div class="app-title">Cellar Scan</div>
+              <div class="app-sub">ARKit + Reanimated hybrid</div>
+            </div>
+          </div>
+          <div class="e-layers">
+            <div class="e-layer ts active"><span class="e-layer-dot"></span> Reanimated gesture layer</div>
+            <div class="e-layer bridge">↕ 60fps compositor</div>
+            <div class="e-layer native"><span class="e-layer-dot"></span> ARKit spatial renderer</div>
+          </div>
+          <div class="e-camera">
+            <div class="e-camera-grid"></div>
+            <div class="e-camera-scan"></div>
+            <div class="e-camera-label">Native camera · 60fps label OCR</div>
+          </div>
+          <div class="e-detected">
+            <div class="e-detected-title">Detected · native module</div>
+            <div class="e-detected-wine">Barolo 2018, G.D. Vajra</div>
+            <div class="e-detected-meta">Bin B-14 · confidence 97% · 0.3s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag mix">Hybrid Mix</span>
+      <h2 class="cap-title">Expo + Native Modules</h2>
+      <p class="cap-sub">Reanimated handles 90% of UI motion. Drop to ARKit/Metal native modules for the signature moments — AR cellar scan, wine label OCR with live bounding boxes, spatial bin overlays.</p>
+      <div class="chip-row">
+        <span class="chip good">ARKit live scan</span>
+        <span class="chip good">Native camera 60fps</span>
+        <span class="chip good">Reanimated + native</span>
+        <span class="chip warn">Two animation systems</span>
+      </div>
+      <div class="score-grid" data-scores="85,88,84,82,80,95"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Highest spatial FX — AR grid with spring-anchored detection card</li>
+          <li>Everyday UI still Reanimated-tier, not SwiftUI-tier</li>
+          <li>Best hybrid when one screen needs to feel magical (cellar scan)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ F: KMP ═══ -->
+  <section class="variant-panel" id="v-f">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen f-screen">
+          <div class="app-header">
+            <div>
+              <div class="app-title">Tonight</div>
+              <div class="app-sub">Native UI per platform</div>
+            </div>
+          </div>
+          <div class="f-split">
+            <div class="f-platform-box ios active" onclick="switchPlatform('ios')">
+              <div class="f-platform-label">iOS</div>
+              <div class="f-platform-ui">🍎</div>
+              <div class="f-platform-name">SwiftUI shell</div>
+            </div>
+            <div class="f-platform-box and" onclick="switchPlatform('and')">
+              <div class="f-platform-label">Android</div>
+              <div class="f-platform-ui">🤖</div>
+              <div class="f-platform-name">Compose shell</div>
+            </div>
+          </div>
+          <div class="f-shared-core">
+            <div class="f-kotlin">Platform-native motion</div>
+            <div class="f-kotlin-sub">SwiftUI springs · Compose motion spec</div>
+          </div>
+          <div class="f-content ios-style" id="f-content">
+            <div class="f-row"><span>Barolo 2018 — 3 left</span><span style="color:#ff453a">›</span></div>
+            <div class="f-row"><span>Marcus called out</span><span style="color:#ff453a">›</span></div>
+            <div class="f-row"><span>VIP table 12</span><span style="color:#34c759">✓</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag mix">Hybrid Mix</span>
+      <h2 class="cap-title">KMP + Platform UI</h2>
+      <p class="cap-sub">SwiftUI on iOS, Jetpack Compose on Android — each platform gets its own spring curves, glass materials, and gesture language. 98% platform-feel without writing two completely separate apps.</p>
+      <div class="chip-row">
+        <span class="chip good">SwiftUI + Compose</span>
+        <span class="chip good">Per-platform springs</span>
+        <span class="chip good">Native glass/blur</span>
+        <span class="chip warn">Two UI codebases</span>
+      </div>
+      <div class="score-grid" data-scores="90,98,93,92,94,78"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>iOS staff get real Apple feel; Android staff get real Material You</li>
+          <li>Toggle demo shows list vs card paradigms per platform</li>
+          <li>Second-highest platform polish — behind pure SwiftUI on iOS only</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ G: CAPACITOR ═══ -->
+  <section class="variant-panel" id="v-g">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen g-screen">
+          <div class="g-webview-bar">
+            <span class="g-webview-dot r"></span>
+            <span class="g-webview-dot y"></span>
+            <span class="g-webview-dot g"></span>
+            <span style="flex:1;text-align:center">wineops.app/inventory</span>
+          </div>
+          <div class="g-jank" style="margin:10px 16px;padding:10px;background:#fef2f2;border-radius:10px;border:1px solid #fecaca;font-size:11px;color:#dc2626;font-weight:600;display:flex;align-items:center;gap:8px">
+            <span>⚠️</span> CSS transition · 16ms frame drops on scroll
+          </div>
+          <div class="app-header" style="padding-top:8px">
+            <div class="app-title" style="font-size:18px">Inventory</div>
+          </div>
+          <div class="g-web-table">
+            <div class="g-web-row header"><span>Wine</span><span>Qty</span><span>Status</span></div>
+            <div class="g-web-row"><span>Barolo 2018</span><span>3</span><span class="g-status low">Low</span></div>
+            <div class="g-web-row"><span>Opus One 2019</span><span>12</span><span class="g-status ok">OK</span></div>
+            <div class="g-web-row"><span>Chianti Riserva</span><span>8</span><span class="g-status ok">OK</span></div>
+          </div>
+          <div class="g-plugin">No spring physics · No interruptible animations · No platform blur</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag alt">Addition · Design floor</span>
+      <h2 class="cap-title">Capacitor + React Web</h2>
+      <p class="cap-sub">WebView wrapper. CSS transitions instead of spring physics. Scroll jank, no interruptible gestures, no platform blur. Looks like a website in a phone frame — because it is.</p>
+      <div class="chip-row">
+        <span class="chip bad">CSS transitions only</span>
+        <span class="chip bad">Scroll jank</span>
+        <span class="chip bad">No haptic curves</span>
+        <span class="chip warn">Feels like web</span>
+      </div>
+      <div class="score-grid" data-scores="35,40,30,45,35,20"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Lowest motion score — not in the SOTA conversation</li>
+          <li>Inventory table works; gestures and transitions feel cheap</li>
+          <li>Only acceptable if design quality is explicitly not a goal</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ H: RN SKIA ═══ -->
+  <section class="variant-panel active" id="v-h">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen h-screen">
+          <div class="app-header">
+            <div>
+              <div class="app-title">Cellar Live</div>
+              <div class="app-sub" style="opacity:0.5">Skia canvas · UI thread</div>
+            </div>
+          </div>
+          <div class="h-canvas" id="h-canvas">
+            <span class="h-fps">120 fps</span>
+            <div class="h-liquid"></div>
+          </div>
+          <div class="h-gauge">
+            <svg viewBox="0 0 80 80"><circle class="h-gauge-track" cx="40" cy="40" r="36"/><circle class="h-gauge-fill" cx="40" cy="40" r="36"/></svg>
+            <div class="h-gauge-label">73%</div>
+          </div>
+          <div class="h-gesture-card" id="h-card">
+            <div style="font-size:14px;font-weight:700;margin-bottom:4px">Barolo 2018</div>
+            <div style="font-size:11px;opacity:0.5">Drag to adjust par level</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag alt">★ Cross-platform SOTA</span>
+      <h2 class="cap-title">RN Skia + Reanimated</h2>
+      <p class="cap-sub">The motion ceiling inside React Native. Skia canvas for liquid-fill bins, particle fields, and custom gauges — all on the UI thread at 120fps. Reanimated 4 for interruptible gesture-driven springs. Award-tier custom motion.</p>
+      <div class="chip-row">
+        <span class="chip good">120fps Skia canvas</span>
+        <span class="chip good">Liquid-fill shaders</span>
+        <span class="chip good">Particle fields</span>
+        <span class="chip good">Interruptible gestures</span>
+        <span class="chip warn">Not platform-native chrome</span>
+      </div>
+      <div class="score-grid" data-scores="99,78,98,95,92,90"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Highest animation score — living cellar map, gauge, particle demo</li>
+          <li>Custom motion language: WineOps-branded, not Apple/Material</li>
+          <li>Works inside Expo. Best pick when motion IS the product</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ I: PWA ═══ -->
+  <section class="variant-panel" id="v-i">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen i-screen">
+          <div class="i-install-banner">
+            <div class="i-install-icon">🍷</div>
+            <div class="i-install-text">
+              <strong>Install WineOps</strong>
+              <span>Add to home screen · works offline</span>
+            </div>
+            <button class="i-install-btn" onclick="this.textContent='Added ✓';this.style.background='#059669'">Install</button>
+          </div>
+          <div class="i-offline"><span class="i-offline-dot"></span> Offline mode · 3 changes queued for sync</div>
+          <div class="app-header">
+            <div class="app-title" style="font-size:18px">Tonight</div>
+          </div>
+          <div class="i-sync-list">
+            <div class="i-sync-item">
+              <span>Barolo count → 3</span>
+              <span class="i-sync-status queued">Queued</span>
+            </div>
+            <div class="i-sync-item">
+              <span>Marcus call-out logged</span>
+              <span class="i-sync-status done">Synced</span>
+            </div>
+            <div class="i-sync-item">
+              <span>VIP staging note</span>
+              <span class="i-sync-status queued">Queued</span>
+            </div>
+          </div>
+          <div class="i-no-store">No App Store · No review wait · Instant deploy via Vercel</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-panel">
+      <span class="cap-tag alt">Addition · Design floor</span>
+      <h2 class="cap-title">PWA Installable</h2>
+      <p class="cap-sub">Browser tab with an icon. requestAnimationFrame and CSS only. No spring physics, no haptics, no blur compositor, no 120fps guarantee. iOS Safari throttles everything.</p>
+      <div class="chip-row">
+        <span class="chip bad">No haptics</span>
+        <span class="chip bad">Safari throttles</span>
+        <span class="chip bad">No blur compositor</span>
+        <span class="chip bad">Flat transitions</span>
+      </div>
+      <div class="score-grid" data-scores="40,35,38,50,40,15"></div>
+      <div class="tradeoffs">
+        <h4>Design ceiling</h4>
+        <ul>
+          <li>Install banner is the most native thing about it</li>
+          <li>Offline sync queue is functional, not beautiful</li>
+          <li>Disqualified for SOTA design goals</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const LABELS = ['Animation','Platform feel','Gestures','Visual depth','Micro-motion','Spatial FX'];
+  const COLORS = ['#CD2D5B','#6366f1','#10b981','#f59e0b','#8b5cf6','#06b6d4'];
+
+  document.querySelectorAll('.score-grid').forEach(grid => {
+    const scores = grid.dataset.scores.split(',').map(Number);
+    scores.forEach((val, i) => {
+      const row = document.createElement('div');
+      row.className = 'score-row';
+      row.innerHTML = `
+        <span class="score-label">${LABELS[i]}</span>
+        <div class="score-bar"><div class="score-fill" style="width:0%;background:${COLORS[i]}"></div></div>
+        <span class="score-val">${val}</span>
+      `;
+      grid.appendChild(row);
+    });
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.querySelectorAll('.score-fill').forEach((fill, i) => {
+            setTimeout(() => fill.style.width = scores[i] + '%', i * 80);
+          });
+        }
+      });
+    }, { threshold: 0.3 });
+    observer.observe(grid);
+  });
+
+  document.querySelectorAll('.stack-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.stack-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.variant-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('v-' + tab.dataset.v).classList.add('active');
+    });
+  });
+
+  function ripple(e, el) {
+    const r = document.createElement('span');
+    r.className = 'c-ripple';
+    const rect = el.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    r.style.width = r.style.height = size + 'px';
+    r.style.left = (e.clientX - rect.left - size/2) + 'px';
+    r.style.top = (e.clientY - rect.top - size/2) + 'px';
+    el.appendChild(r);
+    setTimeout(() => r.remove(), 600);
+  }
+
+  function switchPlatform(p) {
+    document.querySelectorAll('.f-platform-box').forEach(b => b.classList.remove('active'));
+    document.querySelector('.f-platform-box.' + (p === 'ios' ? 'ios' : 'and')).classList.add('active');
+    const c = document.getElementById('f-content');
+    if (p === 'ios') {
+      c.className = 'f-content ios-style';
+      c.innerHTML = '<div class="f-row"><span>Barolo 2018 — 3 left</span><span style="color:#ff453a">›</span></div><div class="f-row"><span>Marcus called out</span><span style="color:#ff453a">›</span></div><div class="f-row"><span>VIP table 12</span><span style="color:#34c759">✓</span></div>';
+    } else {
+      c.className = 'f-content and-style';
+      c.innerHTML = '<div class="f-row">Barolo 2018 — 3 left</div><div class="f-row">Marcus called out</div><div class="f-row">VIP table 12 ✓</div>';
+    }
+  }
+
+  (function initSwipe() {
+    const card = document.getElementById('a-card1');
+    if (!card) return;
+    let startX = 0, currentX = 0, dragging = false;
+    card.addEventListener('pointerdown', e => { startX = e.clientX; dragging = true; card.classList.add('swiping'); card.setPointerCapture(e.pointerId); });
+    card.addEventListener('pointermove', e => { if (!dragging) return; currentX = e.clientX - startX; card.style.transform = `translateX(${currentX}px) rotate(${currentX * 0.05}deg)`; });
+    card.addEventListener('pointerup', () => { dragging = false; card.classList.remove('swiping'); if (Math.abs(currentX) > 80) { card.classList.add('done'); setTimeout(() => { card.style.transform = ''; card.classList.remove('done'); }, 400); } else { card.style.transform = ''; } currentX = 0; });
+  })();
+
+  (function initParticles() {
+    const canvas = document.getElementById('h-canvas');
+    if (!canvas) return;
+    for (let i = 0; i < 20; i++) {
+      const p = document.createElement('div');
+      p.className = 'h-particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.top = Math.random() * 100 + '%';
+      p.style.animationDelay = Math.random() * 4 + 's';
+      p.style.animationDuration = (3 + Math.random() * 3) + 's';
+      canvas.appendChild(p);
+    }
+  })();
+
+  (function initHGesture() {
+    const card = document.getElementById('h-card');
+    if (!card) return;
+    let startY = 0;
+    card.addEventListener('pointerdown', e => { startY = e.clientY; card.setPointerCapture(e.pointerId); });
+    card.addEventListener('pointermove', e => { const dy = e.clientY - startY; card.style.transform = `translateY(${dy * 0.5}px)`; });
+    card.addEventListener('pointerup', () => { card.style.transform = ''; });
+  })();
+</script>
+</body>
+</html>

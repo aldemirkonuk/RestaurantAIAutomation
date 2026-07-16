@@ -147,6 +147,8 @@ export type OrderStatus =
   | 'ordered'
   | 'in_transit'
   | 'delivered'
+  /** Accepted less than was ordered; the remainder is still owed as a backorder. */
+  | 'partially_received'
   | 'verified'
   | 'completed'
   | 'cancelled'
@@ -169,6 +171,7 @@ export function normalizeOrderStatus(raw: string | undefined | null): OrderStatu
     in_transit: 'in_transit',
     intransit: 'in_transit',
     delivered: 'delivered',
+    partially_received: 'partially_received',
     verified: 'verified',
     completed: 'completed',
     cancelled: 'cancelled',

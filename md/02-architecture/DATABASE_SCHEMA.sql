@@ -420,9 +420,9 @@ CREATE TABLE procurement_orders (
     total_cost DECIMAL(10,2) NOT NULL,
     
     -- Status Tracking
-    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',  
-    -- 'PENDING', 'APPROVAL_NEEDED', 'APPROVED', 'CONFIRMED', 'IN_TRANSIT', 
-    -- 'DELIVERED', 'COMPLETED', 'CANCELLED', 'FAILED'
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    -- 'PENDING', 'APPROVAL_NEEDED', 'APPROVED', 'CONFIRMED', 'IN_TRANSIT',
+    -- 'DELIVERED', 'PARTIALLY_RECEIVED', 'COMPLETED', 'CANCELLED', 'FAILED'
     
     -- Timeline
     requested_at TIMESTAMPTZ DEFAULT NOW(),
@@ -439,11 +439,22 @@ CREATE TABLE procurement_orders (
     delivery_notes TEXT,
     received_by UUID,  -- References auth.users
     
-    -- Verification
-    quantity_received INTEGER,
+    -- Verification / three-way match (PO <-> Invoice <-> Receipt)
+    quantity_received INTEGER,       -- units physically handed over = accepted + rejected
     price_verified BOOLEAN DEFAULT false,
-    invoice_image_url TEXT,
+    invoice_image_url TEXT,          -- vendor's own document, kept as evidence only
     discrepancy_notes TEXT,
+
+    invoice_quantity INTEGER,        -- what the vendor invoice bills for
+    invoice_unit_price DECIMAL(10,2),-- expected to exactly match the agreed PO price
+    accepted_quantity INTEGER,       -- quantity of record (D17) — what enters stock
+    rejected_quantity INTEGER DEFAULT 0,  -- arrived but refused (damaged); not a short ship
+    rejected_reason TEXT,
+    backorder_quantity INTEGER DEFAULT 0, -- ordered but not yet accepted; keeps order open
+    match_status VARCHAR(30),        -- matched|price_variance|qty_short|qty_over|rejected|partial|unmatched
+    price_override_reason TEXT,      -- required when invoice price != PO price
+    match_verified_at TIMESTAMPTZ,
+    match_verified_by UUID,          -- References auth.users
     
     -- Manager Actions
     manager_notes TEXT,

@@ -810,6 +810,18 @@ ADD COLUMN storage_location_id UUID REFERENCES storage_locations(id);
 
 ---
 
+### BevOps — Cocktail Recipes in Inventory Detail
+**Timeline:** Post–WineOps / BevOps milestone (not scheduled)  
+**Complexity:** Medium–High
+
+**Vision:** When the app expands to full beverage ops, each cocktail SKU in inventory gets a **Recipes** section in the row expansion dropdown — build sheet with linked ingredient SKUs, pour specs, method, garnish, and optional cost roll-up.
+
+**UX anchor:** Inventory command table row detail (`RowExpansion` on `/inventory`); wine bottle rows unchanged.
+
+**Dependencies:** BevOps item types, Phase 2 lots/ledger for pour-through depletion and recipe costing.
+
+---
+
 ## 📊 COMPLETE TIMELINE OVERVIEW
 
 ```

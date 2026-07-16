@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 038 - Inventory Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --wine-50:#fdf2f4; --wine-100:#fce7eb; --wine-200:#f9d0d9; --wine-500:#e14d75; --wine-600:#cd2d5b; --wine-700:#ac204a;
+    --live:#2563eb; --live-bg:#eaf1fd; --shadow:#7c3aed; --shadow-bg:#f1edfd;
+    --ok:#059669; --ok-bg:#e8f6ef; --warn:#b45309; --warn-bg:#fcf3e3; --crit:#dc2626; --crit-bg:#fdecea;
+    --g50:#f9fafb; --g100:#f3f4f6; --g200:#e5e7eb; --g300:#d1d5db; --g400:#9ca3af; --g500:#6b7280; --g600:#4b5563; --g700:#374151; --g900:#111827;
+    --disp:'Plus Jakarta Sans',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#f6f7f9;color:var(--g900);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;padding:30px 22px 80px}
+  .wrap{max-width:1460px;margin:0 auto}
+  .brief{font-size:12.5px;color:var(--g400);margin:0 0 16px;max-width:100ch;line-height:1.5}
+  .brief b{color:var(--g600);font-weight:600}
+
+  /* page header */
+  .phead{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .ptitle h1{font-family:var(--disp);font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0}
+  .ptitle p{font-size:12.5px;color:var(--g500);margin:3px 0 0}
+  .pactions{display:flex;align-items:center;gap:8px}
+  .viewtog{display:flex;background:var(--g100);border-radius:10px;padding:3px}
+  .viewtog button{font-family:inherit;font-size:12.5px;font-weight:600;color:var(--g500);border:none;background:transparent;border-radius:8px;padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .viewtog button.on{background:#fff;color:var(--g900);box-shadow:0 1px 2px rgba(16,24,40,.08)}
+  .btn{font-family:inherit;font-size:12.5px;font-weight:600;border-radius:10px;padding:9px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--g200);background:#fff;color:var(--g600)}
+  .btn.primary{background:var(--wine-600);border-color:var(--wine-600);color:#fff;font-weight:700;box-shadow:0 6px 14px -6px rgba(205,45,91,.5)}
+  .btn:active{transform:translateY(1px)}
+  svg{flex:none}
+
+  /* KPI strip */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}}
+  .kpi{background:#fff;border:1px solid var(--g100);border-radius:14px;padding:12px 14px}
+  .kpi .kl{font-size:11px;font-weight:600;color:var(--g400);display:flex;align-items:center;gap:6px;margin-bottom:7px}
+  .kpi .kv{font-family:var(--disp);font-size:21px;font-weight:800;line-height:1;color:var(--g900)}
+  .kpi .kv.blue{color:var(--live)} .kpi .kv.violet{color:var(--shadow)} .kpi .kv.amber{color:var(--warn)} .kpi .kv.red{color:var(--crit)} .kpi .kv.green{color:var(--ok)}
+  .kpi .ks{font-size:10.5px;color:var(--g400);margin-top:4px}
+
+  /* attention rail */
+  .rail{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .rail .rlbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--g400);margin-right:2px}
+  .flag{font-family:inherit;font-size:12px;font-weight:600;border-radius:999px;padding:6px 13px;cursor:pointer;border:1px solid var(--g200);background:#fff;color:var(--g600);display:inline-flex;align-items:center;gap:7px}
+  .flag b{font-family:var(--mono);font-size:11.5px}
+  .flag.on{border-color:var(--wine-600);background:var(--wine-50);color:var(--wine-700)}
+  .flag .fd{width:7px;height:7px;border-radius:50%}
+
+  /* toolbar */
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .search{position:relative;flex:1 1 240px;min-width:200px}
+  .search input{width:100%;height:40px;padding:0 13px 0 34px;background:#fff;border:1px solid var(--g200);border-radius:10px;font-size:13px;font-family:inherit;outline:none;color:var(--g900)}
+  .search input:focus{border-color:var(--wine-500);box-shadow:0 0 0 3px var(--wine-100)}
+  .search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%)}
+  .locpill{font-family:inherit;font-size:12px;font-weight:600;border-radius:10px;padding:9px 13px;cursor:pointer;border:1px solid var(--g200);background:#fff;color:var(--g500);display:inline-flex;align-items:center;gap:7px}
+  .locpill .ld{width:8px;height:8px;border-radius:50%}
+  .locpill.on{background:var(--g900);border-color:var(--g900);color:#fff}
+  .tspacer{flex:1}
+
+  /* table */
+  .tablecard{background:#fff;border:1px solid var(--g100);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .tscroll{overflow-x:auto}
+  .tmin{min-width:1280px}
+  .thead,.trow{display:grid;grid-template-columns:minmax(225px,1.4fr) 78px 128px 200px 110px 76px 86px 96px 108px 34px;column-gap:14px;align-items:center;padding:0 20px}
+  .thead{height:42px;background:var(--g50);border-bottom:1px solid var(--g100)}
+  .thead div{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--g500);display:flex;align-items:center;gap:4px}
+  .thead .r{justify-content:flex-end}
+  .trow{padding-top:12px;padding-bottom:12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background .12s}
+  .trow:hover{background:#fafbfc}
+  .trow.open{background:var(--wine-50)}
+  .wname{font-size:13px;font-weight:600;color:var(--g900);line-height:1.3;display:flex;align-items:center;gap:7px}
+  .wsub{font-size:11px;color:var(--g400);margin-top:2px}
+  .abc{font-family:var(--mono);font-size:9.5px;font-weight:700;border-radius:5px;padding:1px 5px}
+  .abc.a{background:var(--wine-100);color:var(--wine-700)} .abc.b{background:var(--g100);color:var(--g500)} .abc.c{background:var(--g50);color:var(--g400);border:1px solid var(--g100)}
+  .tchip{font-size:11px;font-weight:600;border-radius:6px;padding:3px 8px}
+  .tchip.red{background:#fdf0f3;color:#9d2449} .tchip.white{background:#fbf7e9;color:#8a6d1a} .tchip.spk{background:#eef4fb;color:#31639c}
+  .locmini{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;background:#fff;border:1px solid var(--g200);font-size:11px;color:var(--g600);white-space:nowrap}
+  .locmini .ld{width:7px;height:7px;border-radius:50%}
+
+  /* stock gauge (3a signature, refined) */
+  .gauge .gtop{display:flex;align-items:baseline;gap:6px;font-family:var(--mono)}
+  .gauge .gnum{font-size:14px;font-weight:700}
+  .gauge .gpar{font-size:10px;color:var(--g400)}
+  .gauge .recon{font-size:9px;font-weight:700;color:var(--shadow);background:var(--shadow-bg);border-radius:999px;padding:1px 7px;margin-left:auto;letter-spacing:.04em}
+  .gbar{position:relative;height:6px;background:var(--g100);border-radius:999px;margin:5px 0 4px;display:flex;overflow:visible}
+  .gbar .gl{height:100%;background:var(--live);border-radius:999px 0 0 999px}
+  .gbar .gs{height:100%;background:var(--shadow)}
+  .gbar .gtick{position:absolute;top:-2.5px;width:2px;height:11px;background:var(--g900);border-radius:2px;opacity:.55}
+  .glegend{display:flex;gap:10px;font-family:var(--mono);font-size:9.5px}
+  .glegend .ll{color:var(--live)} .glegend .ls{color:var(--shadow)}
+
+  .spark{display:flex;align-items:flex-end;gap:2px;height:22px;margin-bottom:3px}
+  .spark i{display:block;width:5px;background:var(--wine-200);border-radius:2px 2px 0 0}
+  .spark i.hi{background:var(--wine-600)}
+  .vel{font-family:var(--mono);font-size:11.5px;color:var(--g700)}
+  .vel small{color:var(--g400);font-size:9.5px}
+  .run{font-family:var(--mono);font-size:13px;font-weight:700}
+  .run small{font-size:9.5px;font-weight:500;color:var(--g400);display:block;margin-top:1px}
+  .run.ok{color:var(--ok)} .run.warn{color:var(--warn)} .run.crit{color:var(--crit)}
+  .mkt{font-family:var(--mono);font-size:12px;font-weight:700;text-align:right}
+  .mkt.up{color:var(--ok)} .mkt.dn{color:var(--crit)}
+  .mkt small{display:block;font-size:9.5px;font-weight:500;color:var(--g400);margin-top:1px}
+  .val{font-family:var(--mono);font-size:12.5px;font-weight:600;text-align:right;color:var(--g700)}
+  .status{font-size:11px;font-weight:600;border-radius:999px;padding:4px 10px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .status.ok{background:var(--ok-bg);color:var(--ok)} .status.warn{background:var(--warn-bg);color:var(--warn)}
+  .status.crit{background:var(--crit-bg);color:var(--crit)} .status.recon{background:var(--shadow-bg);color:var(--shadow)}
+  .status.count{background:var(--g100);color:var(--g600)} .status.dead{background:#f5f3ff00;border:1px dashed var(--g300);color:var(--g500)}
+  .chev{color:var(--g300);transition:transform .15s}
+  .trow.open .chev{transform:rotate(180deg);color:var(--wine-600)}
+
+  /* expanded panel */
+  .panel{background:#fbfcfd;border-bottom:1px solid var(--g100);padding:18px 22px 20px;display:none}
+  .panel.open{display:block}
+  .pinfo{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--g100)}
+  .pinfo .pi{font-size:11px;color:var(--g400)}
+  .pinfo .pi b{display:block;font-size:12.5px;color:var(--g700);font-weight:600;margin-top:1px}
+  .pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:1100px){.pgrid{grid-template-columns:1fr}}
+  .pcard{background:#fff;border:1px solid var(--g100);border-radius:12px;padding:14px 15px}
+  .pcard h5{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--g400);margin:0 0 11px;display:flex;align-items:center;justify-content:space-between}
+  .lvs{display:flex;align-items:stretch;gap:10px}
+  .lvs .box{flex:1;text-align:center;padding:11px;border-radius:10px}
+  .lvs .box .n{font-family:var(--mono);font-size:22px;font-weight:700}
+  .lvs .box .t{font-size:10.5px;font-weight:600;margin-top:2px}
+  .lvs .vs{display:flex;align-items:center;color:var(--g300);font-weight:700;font-size:11px}
+  .pbtn{width:100%;font-family:inherit;height:36px;font-size:12.5px;font-weight:700;border:none;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px}
+  .pbtn.violet{background:var(--shadow);color:#fff}
+  .pbtn.wine{background:var(--wine-600);color:#fff}
+  .pnote{font-size:11px;color:var(--g400);margin-top:9px;line-height:1.5}
+
+  /* reorder runway bar */
+  .rbar{position:relative;height:10px;background:var(--g100);border-radius:999px;margin:16px 0 6px}
+  .rbar .rfill{position:absolute;left:0;top:0;height:100%;background:var(--crit);border-radius:999px 0 0 999px}
+  .rbar .rproj{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,var(--wine-200),var(--wine-200) 4px,var(--wine-100) 4px,var(--wine-100) 8px);border-radius:0 999px 999px 0}
+  .rbar .rtick{position:absolute;top:-4px;width:2px;height:18px;background:var(--g900);border-radius:2px}
+  .rbar .rlab{position:absolute;top:-20px;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--g500);white-space:nowrap}
+  .rmeta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--g400);margin-bottom:4px}
+  .kvrow{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12px}
+  .kvrow .k{color:var(--g500)} .kvrow .v{font-family:var(--mono);font-weight:600;color:var(--g700)}
+  .kvrow .v.g{color:var(--ok)} .kvrow .v.w{color:var(--warn)} .kvrow .v.b{color:var(--live)}
+
+  /* heatmap */
+  .hmap{display:grid;grid-template-columns:30px repeat(7,1fr);gap:3px;align-items:center}
+  .hmap .hl{font-family:var(--mono);font-size:9px;color:var(--g400);text-align:right;padding-right:4px}
+  .hmap .hc{height:16px;border-radius:4px}
+  .hmap .hh{font-family:var(--mono);font-size:9px;color:var(--g400);text-align:center;padding-top:2px}
+  .hnote{font-size:10.5px;color:var(--g400);margin-top:9px;line-height:1.5}
+
+  /* velocity chart */
+  .vchart{display:flex;align-items:flex-end;gap:4px;height:64px}
+  .vchart i{flex:1;background:var(--live-bg);border-radius:3px 3px 0 0;position:relative}
+  .vchart i.hi{background:var(--live)}
+  .vaxis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--g400);margin-top:5px}
+
+  /* order history */
+  .ohist{display:flex;flex-direction:column}
+  .oh{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--g50);font-size:12px}
+  .oh:first-child{border-top:none}
+  .oh .oid{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--g700);width:64px}
+  .oh .od{flex:1;color:var(--g500)}
+  .oh .oq{font-family:var(--mono);font-weight:600;color:var(--g700)}
+  .oh .ost{font-size:10px;font-weight:700;border-radius:5px;padding:2px 7px}
+  .oh .ost.rec{background:var(--ok-bg);color:var(--ok)} .oh .ost.tr{background:var(--live-bg);color:var(--live)}
+
+  /* bottom action bar in panel */
+  .pactionbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;padding:12px 15px;background:#fff;border:1px solid var(--g100);border-radius:12px}
+  .stepper{display:flex;align-items:center;gap:0;border:1px solid var(--g200);border-radius:9px;overflow:hidden}
+  .stepper button{width:32px;height:34px;border:none;background:#fff;color:var(--g500);font-size:16px;cursor:pointer}
+  .stepper button:hover{background:var(--g50)}
+  .stepper span{width:44px;text-align:center;font-family:var(--mono);font-size:13px;font-weight:700;border-left:1px solid var(--g100);border-right:1px solid var(--g100);line-height:34px}
+  select.sel{font-family:inherit;font-size:12px;font-weight:600;color:var(--g600);height:36px;border:1px solid var(--g200);background:#fff;border-radius:9px;padding:0 28px 0 11px;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 9px center}
+  .ghost{font-family:inherit;font-size:12px;font-weight:600;color:var(--g600);background:none;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px}
+  .ghost:hover{background:var(--g100)}
+  .btg{display:inline-flex;align-items:center;gap:8px;margin-left:auto;font-size:11px;color:var(--g500);background:var(--g50);border:1px solid var(--g100);border-radius:999px;padding:5px 12px}
+  .btg b{font-family:var(--mono);color:var(--g700)}
+
+  /* cellar map view */
+  #mapview{display:none}
+  .maplayout{display:grid;grid-template-columns:1fr 300px;gap:14px}
+  @media(max-width:1000px){.maplayout{grid-template-columns:1fr}}
+  .zones{display:flex;flex-direction:column;gap:14px}
+  .zone{background:#fff;border:1px solid var(--g100);border-radius:16px;padding:16px 18px}
+  .zone .zh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .zone .zh .zt{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-size:14px;font-weight:700}
+  .zone .zh .zt .ld{width:9px;height:9px;border-radius:50%}
+  .zone .zh .zm{font-family:var(--mono);font-size:11px;color:var(--g400)}
+  .zcap{height:5px;background:var(--g100);border-radius:999px;overflow:hidden;margin-bottom:14px}
+  .zcap i{display:block;height:100%;border-radius:999px}
+  .bins{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:7px}
+  .bin{height:46px;border-radius:9px;border:1px solid var(--g200);background:var(--g50);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;transition:.12s}
+  .bin:hover{border-color:var(--g400)}
+  .bin .bid{font-family:var(--mono);font-size:9px;color:var(--g400)}
+  .bin .bn{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--g700)}
+  .bin.ok{background:var(--ok-bg);border-color:#c9e9d9} .bin.warn{background:var(--warn-bg);border-color:#f0dcb5}
+  .bin.crit{background:var(--crit-bg);border-color:#f5c7c4} .bin.recon{background:var(--shadow-bg);border-color:#ded3f7}
+  .bin.sel{outline:2px solid var(--wine-600);outline-offset:1px}
+  .binrail{background:#fff;border:1px solid var(--g100);border-radius:16px;padding:16px;align-self:start;position:sticky;top:16px}
+  .binrail h4{font-family:var(--disp);font-size:14px;font-weight:700;margin:0 0 2px}
+  .binrail .bsub{font-size:11px;color:var(--g400);margin-bottom:13px}
+  .bwine{padding:10px 0;border-top:1px solid var(--g50)}
+  .bwine .bwn{font-size:12.5px;font-weight:600;color:var(--g900)}
+  .bwine .bws{font-size:10.5px;color:var(--g400);margin:2px 0 6px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:10.5px;color:var(--g500)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  .foot{margin-top:26px;font-size:12px;color:var(--g400);text-align:center}
+  .foot code{background:var(--g100);padding:2px 6px;border-radius:5px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="brief">Sketch 038, built on your <b>3a</b> direction: live/shadow gauge as the row spine, click-to-expand detail. Rearranged to 9 working columns (was 16), zero emojis. Everything the manager needs daily lives in the row; everything about one wine lives in the expansion. Toggle <b>Cellar Map</b> for the spatial view. Interactive: click rows, chips, location pills, bins.</p>
+
+  <!-- PAGE HEADER -->
+  <div class="phead">
+    <div class="ptitle">
+      <h1>Inventory</h1>
+      <p>214 wines, 1,286 bottles on hand. Last POS sync 38s ago.</p>
+    </div>
+    <div class="pactions">
+      <div class="viewtog">
+        <button class="on" id="tbtn" onclick="setView('table')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>Table</button>
+        <button id="mbtn" onclick="setView('map')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Cellar Map</button>
+      </div>
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Export valuation</button>
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg>Start count</button>
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Scan to receive</button>
+      <button class="btn primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add wine</button>
+    </div>
+  </div>
+
+  <!-- KPI STRIP -->
+  <div class="kpis">
+    <div class="kpi"><div class="kl">On hand</div><div class="kv">1,286</div><div class="ks">214 wines</div></div>
+    <div class="kpi"><div class="kl">Live</div><div class="kv blue">1,274</div><div class="ks">POS-verified</div></div>
+    <div class="kpi"><div class="kl">Shadow</div><div class="kv violet">12</div><div class="ks">awaiting reconcile</div></div>
+    <div class="kpi"><div class="kl">Value on hand</div><div class="kv green">$48,930</div><div class="ks">cost basis, $112k menu</div></div>
+    <div class="kpi"><div class="kl">Below par</div><div class="kv amber">17</div><div class="ks">4 critical</div></div>
+    <div class="kpi"><div class="kl">Runway alerts</div><div class="kv red">3</div><div class="ks">stockout inside 5 days</div></div>
+  </div>
+
+  <!-- ATTENTION RAIL -->
+  <div class="rail">
+    <span class="rlbl">Needs attention</span>
+    <button class="flag" data-f="low" onclick="flag(this)"><span class="fd" style="background:var(--warn)"></span>Below par <b>3</b></button>
+    <button class="flag" data-f="recon" onclick="flag(this)"><span class="fd" style="background:var(--shadow)"></span>Reconcile <b>2</b></button>
+    <button class="flag" data-f="count" onclick="flag(this)"><span class="fd" style="background:var(--g400)"></span>Count due <b>2</b></button>
+    <button class="flag" data-f="dead" onclick="flag(this)"><span class="fd" style="background:var(--g300)"></span>Dead stock <b>1</b></button>
+    <button class="flag" data-f="price" onclick="flag(this)"><span class="fd" style="background:var(--ok)"></span>Price signals <b>2</b></button>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" placeholder="Search wines, producers, regions" />
+    </div>
+    <button class="locpill on" data-l="all" onclick="loc(this)">All locations</button>
+    <button class="locpill" data-l="cellar" onclick="loc(this)"><span class="ld" style="background:#be123c"></span>Main Cellar</button>
+    <button class="locpill" data-l="vip" onclick="loc(this)"><span class="ld" style="background:#8b5cf6"></span>VIP Reserve</button>
+    <button class="locpill" data-l="bar" onclick="loc(this)"><span class="ld" style="background:#f59e0b"></span>Bar Stock</button>
+    <div class="tspacer"></div>
+    <select class="sel"><option>Sort: Runway, shortest first</option><option>Sort: Velocity</option><option>Sort: Value</option><option>Sort: Name</option></select>
+    <select class="sel"><option>View: 86 risk</option><option>View: Somm picks</option><option>View: Watchlist</option><option>Save current view</option></select>
+  </div>
+
+  <!-- ===================== TABLE VIEW ===================== -->
+  <div id="tableview">
+  <div class="tablecard"><div class="tscroll"><div class="tmin">
+    <div class="thead">
+      <div>Wine</div><div>Type</div><div>Location</div><div>Stock, live / shadow</div><div>Velocity</div><div>Runway</div><div class="r">Market</div><div class="r">Value</div><div>Status</div><div></div>
+    </div>
+
+    <!-- ROW 1: Sancerre, critical -->
+    <div class="trow" data-loc="bar" data-flags="low" onclick="toggleRow(this)">
+      <div><div class="wname">Sancerre 2022 <span class="abc a">A</span></div><div class="wsub">Domaine Vacheron, Loire</div></div>
+      <div><span class="tchip white">White</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#f59e0b"></span>Bar Stock</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--crit)">2</span><span class="gpar">/ 6 par</span></div>
+        <div class="gbar"><div class="gl" style="width:22%"></div><div class="gtick" style="left:66%"></div></div>
+        <div class="glegend"><span class="ll">2 live</span><span class="ls" style="color:var(--g300)">0 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:40%"></i><i style="height:55%"></i><i style="height:35%"></i><i style="height:70%"></i><i class="hi" style="height:95%"></i><i class="hi" style="height:85%"></i><i style="height:60%"></i></div><div class="vel">1.9 <small>btl/day</small></div></div>
+      <div><div class="run crit">1d<small>stockout Wed</small></div></div>
+      <div class="mkt up">+11%<small>vs paid</small></div>
+      <div class="val">$52</div>
+      <div><span class="status crit">Critical</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+    <!-- ROW 2: Barolo, expanded by default -->
+    <div class="trow open" data-loc="cellar" data-flags="low recon price" onclick="toggleRow(this)">
+      <div><div class="wname">Barolo Bussia 2018 <span class="abc a">A</span></div><div class="wsub">Prunotto, Piedmont</div></div>
+      <div><span class="tchip red">Red</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#be123c"></span>Main Cellar</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--warn)">4</span><span class="gpar">/ 6 par</span><span class="recon">RECONCILE</span></div>
+        <div class="gbar"><div class="gl" style="width:33%"></div><div class="gs" style="width:11%"></div><div class="gtick" style="left:66%"></div></div>
+        <div class="glegend"><span class="ll">3 live</span><span class="ls">1 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:50%"></i><i style="height:30%"></i><i class="hi" style="height:80%"></i><i style="height:60%"></i><i style="height:45%"></i><i class="hi" style="height:90%"></i><i style="height:55%"></i></div><div class="vel">0.8 <small>btl/day</small></div></div>
+      <div><div class="run warn">4d<small>order today</small></div></div>
+      <div class="mkt up">+22%<small>vs paid</small></div>
+      <div class="val">$236</div>
+      <div><span class="status warn">Below par</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+
+    <!-- EXPANDED PANEL (3a spine) -->
+    <div class="panel open">
+      <div class="pinfo">
+        <div class="pi">Grape<b>Nebbiolo</b></div>
+        <div class="pi">Region<b>Bussia, Monforte d'Alba</b></div>
+        <div class="pi">Format<b>750 ml</b></div>
+        <div class="pi">Drink window<b>2026 to 2038</b></div>
+        <div class="pi">Supplier<b>Vinifera Imports, 6d avg lead</b></div>
+        <div class="pi">Last counted<b style="color:var(--warn)">12 days ago</b></div>
+        <div class="btg">Open bottle at bar: <b>410 ml left</b>, opened 2h ago, mark spoiled in <b>3 days</b></div>
+      </div>
+
+      <div class="pgrid">
+        <!-- live vs shadow -->
+        <div class="pcard">
+          <h5>Live vs shadow</h5>
+          <div class="lvs">
+            <div class="box" style="background:var(--live-bg)"><div class="n" style="color:var(--live)">3</div><div class="t" style="color:var(--live)">Live count</div></div>
+            <div class="vs">vs</div>
+            <div class="box" style="background:var(--shadow-bg)"><div class="n" style="color:var(--shadow)">1</div><div class="t" style="color:var(--shadow)">Shadow count</div></div>
+          </div>
+          <button class="pbtn violet">Reconcile 1 bottle into live</button>
+          <div class="pnote">Shadow entered from invoice INV-2214 on Jul 9. A live count confirms it onto the floor.</div>
+        </div>
+
+        <!-- par & reorder -->
+        <div class="pcard">
+          <h5>Par and reorder <span style="font-family:var(--mono);font-size:10px;color:var(--g400);text-transform:none;letter-spacing:0">reserved: 2 btl, Vintner Dinner Jul 22</span></h5>
+          <div class="rmeta"><span>0</span><span>par 6</span><span>9</span></div>
+          <div class="rbar">
+            <div class="rfill" style="width:33%"></div>
+            <div class="rproj" style="left:33%;width:56%"></div>
+            <div class="rtick" style="left:66%"></div>
+          </div>
+          <div class="kvrow"><span class="k">Suggested order</span><span class="v">6 btl</span></div>
+          <div class="kvrow"><span class="k">Covers</span><span class="v">21 days at current velocity</span></div>
+          <div class="kvrow"><span class="k">Reorder point</span><span class="v">5 btl (6d lead + safety)</span></div>
+          <button class="pbtn wine">Draft PO, 6 btl to Vinifera</button>
+        </div>
+
+        <!-- market feed -->
+        <div class="pcard">
+          <h5>Market price <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--ok);text-transform:none;letter-spacing:0"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>feed connected</span></h5>
+          <div class="kvrow"><span class="k">Market avg (750ml)</span><span class="v">$96.00</span></div>
+          <div class="kvrow"><span class="k">You paid (WAC)</span><span class="v">$78.60</span></div>
+          <div class="kvrow"><span class="k">Delta</span><span class="v g">+22%, appreciating, hold list price</span></div>
+          <div class="kvrow"><span class="k">Menu price</span><span class="v b">$168 (2.1x, margin healthy)</span></div>
+          <div class="kvrow"><span class="k">Last webhook sync</span><span class="v">2h ago, Wine-Searcher</span></div>
+          <div class="pnote">Alerts fire when a vendor quote exceeds market or your margin falls under 1.8x. <a href="#" style="color:var(--wine-600);font-weight:600;text-decoration:none">Manage feed</a></div>
+        </div>
+
+        <!-- velocity 14d -->
+        <div class="pcard">
+          <h5>Velocity, last 14 days</h5>
+          <div class="vchart">
+            <i style="height:30%"></i><i style="height:45%"></i><i style="height:20%"></i><i style="height:55%"></i><i class="hi" style="height:80%"></i><i class="hi" style="height:95%"></i><i style="height:40%"></i><i style="height:35%"></i><i style="height:50%"></i><i style="height:25%"></i><i style="height:60%"></i><i class="hi" style="height:85%"></i><i class="hi" style="height:70%"></i><i style="height:45%"></i>
+          </div>
+          <div class="vaxis"><span>Jun 30</span><span>Jul 7</span><span>Jul 13</span></div>
+          <div class="kvrow" style="margin-top:8px"><span class="k">7-day avg</span><span class="v">0.8 btl/day, up 14% wk over wk</span></div>
+        </div>
+
+        <!-- busy hours heatmap -->
+        <div class="pcard">
+          <h5>When it sells</h5>
+          <div class="hmap">
+            <div></div><div class="hh">5p</div><div class="hh">6p</div><div class="hh">7p</div><div class="hh">8p</div><div class="hh">9p</div><div class="hh">10p</div><div class="hh">11p</div>
+            <div class="hl">Tue</div><div class="hc" style="background:#fdf2f4"></div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#fdf2f4"></div><div class="hc" style="background:#fdf2f4"></div>
+            <div class="hl">Wed</div><div class="hc" style="background:#fdf2f4"></div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#fdf2f4"></div>
+            <div class="hl">Thu</div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#fdf2f4"></div>
+            <div class="hl">Fri</div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#ed7896"></div><div class="hc" style="background:#cd2d5b"></div><div class="hc" style="background:#ed7896"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#f9d0d9"></div>
+            <div class="hl">Sat</div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#ed7896"></div><div class="hc" style="background:#cd2d5b"></div><div class="hc" style="background:#cd2d5b"></div><div class="hc" style="background:#ed7896"></div><div class="hc" style="background:#f4a9ba"></div>
+            <div class="hl">Sun</div><div class="hc" style="background:#fce7eb"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#f4a9ba"></div><div class="hc" style="background:#f9d0d9"></div><div class="hc" style="background:#fdf2f4"></div><div class="hc" style="background:#fdf2f4"></div>
+          </div>
+          <div class="hnote">Peaks Fri and Sat 8 to 9pm. Make sure 2 bottles are at the bar before Friday service.</div>
+        </div>
+
+        <!-- order history -->
+        <div class="pcard">
+          <h5>Order history</h5>
+          <div class="ohist">
+            <div class="oh"><span class="oid">PO-1244</span><span class="od">Draft, awaiting approval</span><span class="oq">6 btl</span><span class="ost tr">DRAFT</span></div>
+            <div class="oh"><span class="oid">PO-1187</span><span class="od">Mar 14, Vinifera Imports</span><span class="oq">12 btl, $943</span><span class="ost rec">RECEIVED</span></div>
+            <div class="oh"><span class="oid">PO-1032</span><span class="od">Jan 8, Vinifera Imports</span><span class="oq">6 btl, $468</span><span class="ost rec">RECEIVED</span></div>
+            <div class="oh"><span class="oid">PO-0918</span><span class="od">Nov 2, Vinifera Imports</span><span class="oq">12 btl, $921</span><span class="ost rec">RECEIVED</span></div>
+          </div>
+          <div class="pnote">Avg received in 6 days. Price crept +2.4% across last three orders.</div>
+        </div>
+      </div>
+
+      <!-- manual entry + quick actions -->
+      <div class="pactionbar">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--g400)">Manual adjust</span>
+        <div class="stepper"><button>-</button><span>1</span><button>+</button></div>
+        <select class="sel"><option>Count correction</option><option>Breakage</option><option>Comp / gift</option><option>Staff pour</option><option>Return to vendor</option></select>
+        <button class="btn primary" style="height:36px">Apply</button>
+        <span style="width:1px;height:22px;background:var(--g200)"></span>
+        <button class="ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>Transfer to Bar</button>
+        <button class="ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>View ledger</button>
+        <button class="ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17.8 5.8 21 7 14.1 2 9.3l7-1L12 2l3 6.3 7 1-5 4.8L18.2 21z"/></svg>Pin to watchlist</button>
+      </div>
+    </div>
+
+    <!-- ROW 3: Chablis healthy -->
+    <div class="trow" data-loc="cellar" data-flags="" onclick="toggleRow(this)">
+      <div><div class="wname">Chablis 1er Cru Montmains 2021 <span class="abc a">A</span></div><div class="wsub">William Fevre, Burgundy</div></div>
+      <div><span class="tchip white">White</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#be123c"></span>Main Cellar</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--g900)">14</span><span class="gpar">/ 8 par</span></div>
+        <div class="gbar"><div class="gl" style="width:100%"></div><div class="gtick" style="left:57%"></div></div>
+        <div class="glegend"><span class="ll">14 live</span><span class="ls" style="color:var(--g300)">0 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:60%"></i><i class="hi" style="height:85%"></i><i style="height:70%"></i><i style="height:55%"></i><i class="hi" style="height:90%"></i><i style="height:75%"></i><i style="height:65%"></i></div><div class="vel">1.6 <small>btl/day</small></div></div>
+      <div><div class="run ok">9d<small>reorder Fri</small></div></div>
+      <div class="mkt up">+8%<small>vs paid</small></div>
+      <div class="val">$406</div>
+      <div><span class="status ok">Healthy</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+    <!-- ROW 4: Pol Roger reconcile -->
+    <div class="trow" data-loc="vip" data-flags="low recon" onclick="toggleRow(this)">
+      <div><div class="wname">Champagne Brut Reserve NV <span class="abc a">A</span></div><div class="wsub">Pol Roger, Epernay</div></div>
+      <div><span class="tchip spk">Sparkling</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#8b5cf6"></span>VIP Reserve</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--warn)">9</span><span class="gpar">/ 10 par</span><span class="recon">RECONCILE</span></div>
+        <div class="gbar"><div class="gl" style="width:60%"></div><div class="gs" style="width:30%"></div><div class="gtick" style="left:100%"></div></div>
+        <div class="glegend"><span class="ll">6 live</span><span class="ls">3 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:45%"></i><i style="height:60%"></i><i style="height:50%"></i><i class="hi" style="height:80%"></i><i class="hi" style="height:95%"></i><i style="height:70%"></i><i style="height:40%"></i></div><div class="vel">1.1 <small>btl/day</small></div></div>
+      <div><div class="run warn">5d<small>order Mon</small></div></div>
+      <div class="mkt up">+4%<small>vs paid</small></div>
+      <div class="val">$414</div>
+      <div><span class="status recon">Reconcile 3</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+    <!-- ROW 5: Etna re-quote -->
+    <div class="trow" data-loc="cellar" data-flags="price" onclick="toggleRow(this)">
+      <div><div class="wname">Etna Rosso 'a Rina 2021 <span class="abc b">B</span></div><div class="wsub">Girolamo Russo, Sicily</div></div>
+      <div><span class="tchip red">Red</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#be123c"></span>Main Cellar</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--g900)">11</span><span class="gpar">/ 5 par</span></div>
+        <div class="gbar"><div class="gl" style="width:100%"></div><div class="gtick" style="left:45%"></div></div>
+        <div class="glegend"><span class="ll">11 live</span><span class="ls" style="color:var(--g300)">0 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:30%"></i><i style="height:20%"></i><i style="height:40%"></i><i style="height:25%"></i><i class="hi" style="height:60%"></i><i style="height:35%"></i><i style="height:30%"></i></div><div class="vel">0.4 <small>btl/day</small></div></div>
+      <div><div class="run ok">27d</div></div>
+      <div class="mkt dn">-6%<small>re-quote vendor</small></div>
+      <div class="val">$319</div>
+      <div><span class="status ok">Healthy</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+    <!-- ROW 6: Rioja count due -->
+    <div class="trow" data-loc="vip" data-flags="count" onclick="toggleRow(this)">
+      <div><div class="wname">Rioja Gran Reserva 904 2015 <span class="abc b">B</span></div><div class="wsub">La Rioja Alta, Rioja</div></div>
+      <div><span class="tchip red">Red</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#8b5cf6"></span>VIP Reserve</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--g900)">6</span><span class="gpar">/ 4 par</span></div>
+        <div class="gbar"><div class="gl" style="width:100%"></div><div class="gtick" style="left:66%"></div></div>
+        <div class="glegend"><span class="ll">6 live</span><span class="ls" style="color:var(--g300)">0 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:20%"></i><i style="height:15%"></i><i style="height:30%"></i><i style="height:10%"></i><i style="height:25%"></i><i class="hi" style="height:45%"></i><i style="height:20%"></i></div><div class="vel">0.2 <small>btl/day</small></div></div>
+      <div><div class="run ok">30d+</div></div>
+      <div class="mkt up">+31%<small>appreciating</small></div>
+      <div class="val">$372</div>
+      <div><span class="status count">Count due, 34d</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+    <!-- ROW 7: Bandol count due -->
+    <div class="trow" data-loc="cellar" data-flags="count recon" onclick="toggleRow(this)">
+      <div><div class="wname">Bandol Rouge 2019 <span class="abc b">B</span></div><div class="wsub">Domaine Tempier, Provence</div></div>
+      <div><span class="tchip red">Red</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#be123c"></span>Main Cellar</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--g900)">9</span><span class="gpar">/ 6 par</span><span class="recon">RECONCILE</span></div>
+        <div class="gbar"><div class="gl" style="width:78%"></div><div class="gs" style="width:22%"></div><div class="gtick" style="left:66%"></div></div>
+        <div class="glegend"><span class="ll">7 live</span><span class="ls">2 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:35%"></i><i style="height:45%"></i><i style="height:25%"></i><i style="height:50%"></i><i style="height:40%"></i><i class="hi" style="height:65%"></i><i style="height:30%"></i></div><div class="vel">0.5 <small>btl/day</small></div></div>
+      <div><div class="run ok">18d</div></div>
+      <div class="mkt up">+9%<small>vs paid</small></div>
+      <div class="val">$284</div>
+      <div><span class="status count">Count due, 29d</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+    <!-- ROW 8: Cristom dead stock -->
+    <div class="trow" data-loc="bar" data-flags="dead" onclick="toggleRow(this)">
+      <div><div class="wname">Pinot Noir Mt. Jefferson 2021 <span class="abc c">C</span></div><div class="wsub">Cristom, Willamette Valley</div></div>
+      <div><span class="tchip red">Red</span></div>
+      <div><span class="locmini"><span class="ld" style="background:#f59e0b"></span>Bar Stock</span></div>
+      <div class="gauge">
+        <div class="gtop"><span class="gnum" style="color:var(--g900)">5</span><span class="gpar">/ 5 par</span></div>
+        <div class="gbar"><div class="gl" style="width:100%"></div><div class="gtick" style="left:100%"></div></div>
+        <div class="glegend"><span class="ll">5 live</span><span class="ls" style="color:var(--g300)">0 shadow</span></div>
+      </div>
+      <div><div class="spark"><i style="height:8%"></i><i style="height:8%"></i><i style="height:8%"></i><i style="height:8%"></i><i style="height:8%"></i><i style="height:8%"></i><i style="height:8%"></i></div><div class="vel">0.0 <small>btl/day</small></div></div>
+      <div><div class="run ok">n/a</div></div>
+      <div class="mkt up">+2%<small>vs paid</small></div>
+      <div class="val">$210</div>
+      <div><span class="status dead">No sale in 41d</span></div>
+      <div><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="panel"></div>
+
+  </div></div></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--g400)">
+    <span>Showing 8 of 214 wines</span>
+    <span>Dead stock tip: suggest the Cristom by the glass this weekend, margin holds at 2.4x</span>
+  </div>
+  </div>
+
+  <!-- ===================== CELLAR MAP VIEW ===================== -->
+  <div id="mapview">
+    <div class="maplayout">
+      <div class="zones">
+        <div class="zone">
+          <div class="zh">
+            <div class="zt"><span class="ld" style="background:#be123c"></span>Main Cellar</div>
+            <div class="zm">412 / 500 slots, 13&deg;C, counted 12d ago</div>
+          </div>
+          <div class="zcap"><i style="width:82%;background:#be123c"></i></div>
+          <div class="bins">
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">A1</span><span class="bn">24</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">A2</span><span class="bn">18</span></div>
+            <div class="bin warn sel" onclick="pick(this,'b3')"><span class="bid">B3</span><span class="bn">7</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">B4</span><span class="bn">31</span></div>
+            <div class="bin recon" onclick="pick(this,'b3')"><span class="bid">C1</span><span class="bn">9</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">C2</span><span class="bn">22</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">D1</span><span class="bn">27</span></div>
+            <div class="bin warn" onclick="pick(this,'b3')"><span class="bid">D2</span><span class="bn">5</span></div>
+          </div>
+        </div>
+        <div class="zone">
+          <div class="zh">
+            <div class="zt"><span class="ld" style="background:#8b5cf6"></span>VIP Reserve</div>
+            <div class="zm">38 / 50 slots, 12&deg;C, counted 5d ago</div>
+          </div>
+          <div class="zcap"><i style="width:76%;background:#8b5cf6"></i></div>
+          <div class="bins">
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">V1</span><span class="bn">12</span></div>
+            <div class="bin recon" onclick="pick(this,'b3')"><span class="bid">V2</span><span class="bn">9</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">V3</span><span class="bn">11</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">V4</span><span class="bn">6</span></div>
+          </div>
+        </div>
+        <div class="zone">
+          <div class="zh">
+            <div class="zt"><span class="ld" style="background:#f59e0b"></span>Bar Stock</div>
+            <div class="zm">21 / 100 slots, 18&deg;C, counted yesterday</div>
+          </div>
+          <div class="zcap"><i style="width:21%;background:#f59e0b"></i></div>
+          <div class="bins">
+            <div class="bin crit" onclick="pick(this,'b3')"><span class="bid">R1</span><span class="bn">2</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">R2</span><span class="bn">8</span></div>
+            <div class="bin warn" onclick="pick(this,'b3')"><span class="bid">R3</span><span class="bn">6</span></div>
+            <div class="bin ok" onclick="pick(this,'a1')"><span class="bid">R4</span><span class="bn">5</span></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--ok-bg);border:1px solid #c9e9d9"></i>Healthy</span>
+          <span><i style="background:var(--warn-bg);border:1px solid #f0dcb5"></i>Below par</span>
+          <span><i style="background:var(--crit-bg);border:1px solid #f5c7c4"></i>Critical</span>
+          <span><i style="background:var(--shadow-bg);border:1px solid #ded3f7"></i>Needs reconcile</span>
+        </div>
+      </div>
+
+      <!-- bin rail -->
+      <div class="binrail" id="binrail">
+        <h4 id="brtitle">Bin B3, Main Cellar</h4>
+        <div class="bsub" id="brsub">7 bottles, 1 wine below par</div>
+        <div id="brbody">
+          <div class="bwine">
+            <div class="bwn">Barolo Bussia 2018</div>
+            <div class="bws">Prunotto, 4 of 6 par</div>
+            <div class="gbar" style="margin:0"><div class="gl" style="width:33%"></div><div class="gs" style="width:11%"></div><div class="gtick" style="left:66%"></div></div>
+          </div>
+          <div class="bwine">
+            <div class="bwn">Bandol Rouge 2019</div>
+            <div class="bws">Domaine Tempier, 3 here of 9 total</div>
+            <div class="gbar" style="margin:0"><div class="gl" style="width:100%"></div></div>
+          </div>
+        </div>
+        <button class="pbtn wine" style="margin-top:14px">Open in table</button>
+        <button class="btn" style="width:100%;justify-content:center;margin-top:8px">Count this bin</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot">Sketch 038 built on 3a. Maps to <code>restaurant_inventory</code> + <code>inventory_ledger</code> + <code>v_low_stock_items</code> + Toast pour data. Pick what stays, then I wire it into <code>/inventory</code>.</p>
+</div>
+
+<script>
+  function setView(v){
+    document.getElementById('tableview').style.display = v==='table'?'block':'none';
+    document.getElementById('mapview').style.display = v==='map'?'block':'none';
+    document.getElementById('tbtn').classList.toggle('on', v==='table');
+    document.getElementById('mbtn').classList.toggle('on', v==='map');
+  }
+  function toggleRow(row){
+    var panel = row.nextElementSibling;
+    var wasOpen = row.classList.contains('open');
+    document.querySelectorAll('.trow').forEach(function(r){r.classList.remove('open')});
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('open')});
+    if(!wasOpen){ row.classList.add('open'); if(panel) panel.classList.add('open'); }
+  }
+  var activeLoc='all', activeFlag=null;
+  function applyFilters(){
+    document.querySelectorAll('.trow').forEach(function(r){
+      var okLoc = activeLoc==='all' || r.dataset.loc===activeLoc;
+      var okFlag = !activeFlag || (r.dataset.flags||'').split(' ').indexOf(activeFlag)>=0;
+      var show = okLoc && okFlag;
+      r.style.display = show?'grid':'none';
+      var p=r.nextElementSibling; if(p&&p.classList.contains('panel')) p.style.display = (show&&p.classList.contains('open'))?'block':'none';
+    });
+  }
+  function loc(btn){
+    document.querySelectorAll('.locpill').forEach(function(b){b.classList.remove('on')});
+    btn.classList.add('on'); activeLoc=btn.dataset.l; applyFilters();
+  }
+  function flag(btn){
+    var was=btn.classList.contains('on');
+    document.querySelectorAll('.flag').forEach(function(b){b.classList.remove('on')});
+    if(!was){btn.classList.add('on'); activeFlag=btn.dataset.f;} else {activeFlag=null;}
+    applyFilters();
+  }
+  var binData={
+    a1:{t:'Healthy bin',s:'All wines at or above par',b:'<div class="bwine"><div class="bwn">Chablis 1er Cru Montmains 2021</div><div class="bws">William Fevre, 14 of 8 par</div><div class="gbar" style="margin:0"><div class="gl" style="width:100%"></div></div></div><div class="bwine"><div class="bwn">Etna Rosso \'a Rina 2021</div><div class="bws">Girolamo Russo, 11 of 5 par</div><div class="gbar" style="margin:0"><div class="gl" style="width:100%"></div></div></div>'},
+    b3:{t:'Bin B3, Main Cellar',s:'7 bottles, 1 wine below par',b:'<div class="bwine"><div class="bwn">Barolo Bussia 2018</div><div class="bws">Prunotto, 4 of 6 par</div><div class="gbar" style="margin:0"><div class="gl" style="width:33%"></div><div class="gs" style="width:11%"></div><div class="gtick" style="left:66%"></div></div></div><div class="bwine"><div class="bwn">Bandol Rouge 2019</div><div class="bws">Domaine Tempier, 3 here of 9 total</div><div class="gbar" style="margin:0"><div class="gl" style="width:100%"></div></div></div>'}
+  };
+  function pick(bin,key){
+    document.querySelectorAll('.bin').forEach(function(b){b.classList.remove('sel')});
+    bin.classList.add('sel');
+    var d=binData[key];
+    document.getElementById('brtitle').textContent=d.t;
+    document.getElementById('brsub').textContent=d.s;
+    document.getElementById('brbody').innerHTML=d.b;
+  }
+</script>
+</body>
+</html>

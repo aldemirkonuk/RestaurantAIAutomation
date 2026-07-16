@@ -6,6 +6,7 @@ import { NotificationsController } from "./notifications.controller";
 import { WebsocketModule } from "../websocket/websocket.module";
 import { CommunicationsModule } from "../communications/communications.module";
 import { DatabaseModule } from "../database/database.module";
+import { PushModule } from "../push/push.module";
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DatabaseModule } from "../database/database.module";
     WebsocketModule,
     forwardRef(() => CommunicationsModule),
     DatabaseModule,
+    PushModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, LowStockAlertsService],

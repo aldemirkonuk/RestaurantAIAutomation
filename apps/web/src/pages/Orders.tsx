@@ -68,6 +68,8 @@ const mapApiStatusToUi = (status?: string): Order['status'] => {
     case 'IN_TRANSIT':
       return 'ordered'
     case 'DELIVERED':
+    // Physically arrived but short; this page's buckets have no finer grain than "delivered".
+    case 'PARTIALLY_RECEIVED':
     case 'COMPLETED':
       return 'delivered'
     case 'CANCELLED':

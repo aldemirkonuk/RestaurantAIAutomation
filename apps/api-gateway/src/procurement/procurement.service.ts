@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
   Optional,
   UnprocessableEntityException,
+  forwardRef,
 } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
@@ -17,6 +19,7 @@ import { InboundResponderService } from "../common/orchestrator/inbound-responde
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { NotificationsService } from "../notifications/notifications.service";
 import {
   StockType,
   TransactionSource,
@@ -30,7 +33,9 @@ import {
   OrderResponseDto,
   ProcurementOrderStatus,
   UpdateOrderDto,
+  VerifyReceiptDto,
 } from "./dto/procurement.dto";
+import { computeMatch, isDiscrepancy } from "./invoice-match";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 
 interface ProcurementOrderRow {
@@ -69,6 +74,9 @@ export class ProcurementService {
     @Optional() private readonly inboundResponder?: InboundResponderService,
     @Optional() private readonly websocketGateway?: WebsocketGateway,
     @Optional() private readonly inboundAddress?: InboundAddressService,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService?: NotificationsService,
   ) {}
 
   /**
@@ -171,7 +179,13 @@ export class ProcurementService {
     restaurantId: string,
     userId: string,
     order: OrderResponseDto,
-    changeType: "created" | "updated" | "approved" | "delivered" | "cancelled",
+    changeType:
+      | "created"
+      | "updated"
+      | "approved"
+      | "delivered"
+      | "completed"
+      | "cancelled",
   ): Promise<void> {
     try {
       await this.eventsService.createEvent(restaurantId, userId, {
@@ -1043,6 +1057,264 @@ export class ProcurementService {
     // Emit order_change event for cross-page sync (triggers inventory update)
     await this.emitOrderChangeEvent(restaurantId, userId, order, "delivered");
 
+    // Pinned receipt-verification task: stock is already in (above), but a human
+    // must confirm the physical count against the vendor's digital invoice.
+    // Critical priority keeps it at the top of the inbox until verified; the
+    // group key lets verifyReceipt() resolve it for every member at once.
+    if (this.notificationsService) {
+      await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "invoice_received",
+          title: `Verify delivery: ${order.wineName || order.orderNumber || "order"}`,
+          message: `${resolvedQuantity} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          priority: "critical",
+          actionUrl: `/inventory?verify=${orderId}`,
+          actionLabel: "Verify receipt",
+          groupKey: `receipt_verify:${orderId}`,
+          metadata: {
+            orderId,
+            inventoryId: order.inventoryId,
+            wineName: order.wineName,
+            quantity: resolvedQuantity,
+            providerId: order.providerId,
+          },
+        },
+        { dedupeWithinMinutes: 24 * 60 },
+      );
+    }
+
+    return order;
+  }
+
+  /**
+   * Apply one signed correction to live stock through the ledger.
+   * The idempotency key is per (order, inventory) so a replayed request — the mobile
+   * outbox retries — can never double-count.
+   */
+  private async applyReceiptAdjustment(
+    orderId: string,
+    inventoryId: string,
+    delta: number,
+    reason: string,
+  ): Promise<void> {
+    const { error } = await this.databaseService.supabase.rpc(
+      "apply_stock_movement",
+      {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: delta,
+        p_transaction_type: "adjustment",
+        p_source: "receiving",
+        p_reason: reason,
+        p_order_id: orderId,
+        p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
+      },
+    );
+    if (error) {
+      this.logger.error(
+        `verifyReceipt adjustment failed for ${inventoryId}: ${error.message}`,
+      );
+      throw new UnprocessableEntityException(
+        `Adjustment failed for item ${inventoryId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * RECEIPT VERIFICATION — three-way match (PO <-> Invoice <-> Receipt).
+   *
+   * Delivery already stocked bottles in at invoice quantity; this is the audit layer that
+   * reconciles what we ordered, what the vendor billed, and what physically arrived.
+   * computeMatch() decides the verdict server-side — the client never dictates the outcome.
+   *
+   * Two payload shapes are supported on purpose:
+   *  - Legacy `{ adjustments }` only: the mobile receive screen queues requests in an
+   *    offline outbox, so payloads composed before this shipped can still arrive. They keep
+   *    exactly the old behavior (apply deltas, complete the order).
+   *  - Match payload: quantities/prices are reconciled, the order completes or stays open
+   *    as PARTIALLY_RECEIVED with a backorder, and any discrepancy alerts the manager.
+   */
+  async verifyReceipt(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    body: VerifyReceiptDto,
+  ): Promise<OrderResponseDto> {
+    const adjustments = (body.adjustments || []).filter(
+      (a) => a.inventoryId && Number.isFinite(a.delta) && a.delta !== 0,
+    );
+
+    const hasMatchFields =
+      body.acceptedQuantity != null ||
+      body.invoiceQuantity != null ||
+      body.invoiceUnitPrice != null ||
+      body.rejectedQuantity != null;
+
+    const { data: orderRow, error: fetchError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .single();
+
+    if (fetchError || !orderRow) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // What markDelivered already pushed into the ledger; corrections are relative to it.
+    const stockedQty =
+      (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
+    const orderedQty = (orderRow as any).quantity ?? 0;
+    const poUnitPrice =
+      (orderRow as any).final_price ??
+      (orderRow as any).negotiated_price ??
+      (orderRow as any).quoted_price ??
+      null;
+
+    const match = hasMatchFields
+      ? computeMatch({
+          orderedQty,
+          poUnitPrice,
+          // An unstated invoice is taken to agree with the PO — the WineOps invoice is
+          // rendered from our own data, so silence means "no deviation", not "unknown".
+          invoiceQty: body.invoiceQuantity ?? stockedQty,
+          invoiceUnitPrice: body.invoiceUnitPrice ?? poUnitPrice,
+          acceptedQty: body.acceptedQuantity ?? stockedQty,
+          rejectedQty: body.rejectedQuantity ?? 0,
+          priceOverrideReason: body.priceOverrideReason ?? null,
+          stockedQty,
+        })
+      : null;
+
+    // A price that differs from the agreed one is never accepted silently (D-B).
+    if (match?.requiresOverride) {
+      throw new UnprocessableEntityException(
+        `${match.summary} Accept the price difference with a reason, or correct the invoice price.`,
+      );
+    }
+
+    // Correct the ordered line to the accepted count, then apply any unlisted extras.
+    if (match && match.ledgerDelta !== 0 && (orderRow as any).inventory_id) {
+      await this.applyReceiptAdjustment(
+        orderId,
+        (orderRow as any).inventory_id,
+        match.ledgerDelta,
+        `receipt verification for order ${orderId}: ${match.summary}`,
+      );
+    }
+
+    for (const adj of adjustments) {
+      // Skip the ordered line when the match already corrected it.
+      if (match && adj.inventoryId === (orderRow as any).inventory_id) continue;
+      await this.applyReceiptAdjustment(
+        orderId,
+        adj.inventoryId,
+        adj.delta,
+        adj.reason ||
+          `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
+      );
+    }
+
+    // Accepting less than was ordered keeps the order open, so the outstanding bottles stay
+    // visible as a backorder instead of stranding phantom shadow stock (D17).
+    const status =
+      match && match.backorderQty > 0
+        ? ProcurementOrderStatus.PARTIALLY_RECEIVED
+        : ProcurementOrderStatus.COMPLETED;
+
+    const update: Record<string, any> = {
+      status,
+      notes: body.note ?? undefined,
+    };
+
+    if (match) {
+      const acceptedQty = body.acceptedQuantity ?? stockedQty;
+      const rejectedQty = body.rejectedQuantity ?? 0;
+      Object.assign(update, {
+        quantity_received: acceptedQty + rejectedQty,
+        accepted_quantity: acceptedQty,
+        rejected_quantity: rejectedQty,
+        rejected_reason: body.rejectedReason ?? null,
+        invoice_quantity: body.invoiceQuantity ?? stockedQty,
+        invoice_unit_price: body.invoiceUnitPrice ?? poUnitPrice,
+        backorder_quantity: match.backorderQty,
+        match_status: match.verdict,
+        price_verified: match.priceVerified,
+        price_override_reason: body.priceOverrideReason ?? null,
+        discrepancy_notes: isDiscrepancy(match.verdict) ? match.summary : null,
+        match_verified_at: new Date().toISOString(),
+        match_verified_by: userId,
+      });
+    }
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .update(update)
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .select("*, inventory:inventory_id(wine_name)")
+      .single();
+
+    if (error) {
+      this.logger.error(`verifyReceipt status update failed: ${error.message}`);
+      throw error;
+    }
+
+    // Resolve the pinned notification for every member.
+    await this.databaseService.supabase
+      .from("notifications")
+      .update({ status: "read", read_at: new Date().toISOString() })
+      .eq("restaurant_id", restaurantId)
+      .eq("group_key", `receipt_verify:${orderId}`)
+      .eq("status", "unread");
+
+    const row = data as any;
+    const order = this.mapOrderRow({
+      ...row,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+    });
+
+    // The manager hears about a bad delivery immediately, as its own task — the verify
+    // task above has just been resolved, so the discrepancy needs its own thread (D-E).
+    if (match && isDiscrepancy(match.verdict) && this.notificationsService) {
+      await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "invoice_received",
+          title: `Delivery discrepancy: ${order.wineName || order.orderNumber || "order"}`,
+          message: match.summary,
+          priority: "critical",
+          actionUrl: `/inventory?verify=${orderId}`,
+          actionLabel: "Review match",
+          groupKey: `receipt_discrepancy:${orderId}`,
+          metadata: {
+            orderId,
+            inventoryId: (orderRow as any).inventory_id,
+            matchStatus: match.verdict,
+            backorderQty: match.backorderQty,
+            creditDue: match.creditDue,
+            effectiveUnitCost: match.effectiveUnitCost,
+            providerId: (orderRow as any).provider_id,
+          },
+        },
+        { dedupeWithinMinutes: 24 * 60 },
+      );
+    }
+
+    await this.emitOrderChangeEvent(
+      restaurantId,
+      userId,
+      order,
+      status === ProcurementOrderStatus.COMPLETED ? "completed" : "updated",
+    );
+
+    this.logger.log(
+      `Receipt verified for order ${orderId}: verdict=${match?.verdict ?? "legacy"}, ` +
+        `status=${status}, adjustments=${adjustments.length}`,
+    );
     return order;
   }
 

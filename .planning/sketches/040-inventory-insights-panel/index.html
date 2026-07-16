@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 040 - Inventory Insights Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-700: #a51f47;
+    --wine-50: #fdeef2;
+    --ink: #18151b;
+    --ink-2: #39333d;
+    --muted: #6f6875;
+    --quiet: #9d96a3;
+    --canvas: #f3f1f5;
+    --surface: #ffffff;
+    --surface-inset: #f6f4f7;
+    --line: rgba(40, 30, 44, .10);
+    --line-soft: rgba(40, 30, 44, .06);
+    --ok: #18794e;
+    --ok-bg: #eaf7f0;
+    --warn: #a96000;
+    --warn-bg: #fff4df;
+    --danger: #c43228;
+    --danger-bg: #fff0ee;
+    --info: #3559b7;
+    --info-bg: #eef3ff;
+    --blue: #2f6fb0;
+    --emerald: #0f8a5f;
+    --emerald-bg: #e7f7ef;
+    --purple: #7052a3;
+    --purple-bg: #f3effa;
+    --radius-control: 10px;
+    --radius-panel: 16px;
+    --radius-frame: 22px;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+  }
+
+  * { box-sizing: border-box; }
+  button, select { font: inherit; }
+  button { color: inherit; }
+
+  body {
+    margin: 0;
+    padding: 32px 24px 72px;
+    color: var(--ink);
+    background:
+      radial-gradient(900px circle at 88% -6%, rgba(205, 45, 91, .06), transparent 55%),
+      var(--canvas);
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  .sketch-label {
+    color: var(--wine);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 6px 0 6px;
+    font-size: 28px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: -.035em;
+  }
+  .intro {
+    max-width: 760px;
+    margin: 0 0 26px;
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  .page {
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-frame);
+    background: var(--surface-inset);
+    box-shadow: 0 1px 2px rgba(28, 20, 31, .04), 0 22px 60px -30px rgba(28, 20, 31, .28);
+  }
+
+  /* ============ THE INSIGHTS PANEL ============ */
+  .insights {
+    overflow: hidden;
+    border: 1px solid var(--wine-50);
+    border-radius: var(--radius-panel);
+    background:
+      radial-gradient(680px circle at 8% 0%, rgba(205, 45, 91, .05), transparent 46%),
+      var(--surface);
+    box-shadow: 0 1px 2px rgba(28, 20, 31, .05), 0 16px 40px -26px rgba(165, 31, 71, .3);
+    transition: box-shadow .3s var(--ease);
+  }
+  .insights.collapsed { box-shadow: 0 1px 2px rgba(28, 20, 31, .05); }
+
+  /* Header = command bar, not a plain toggle */
+  .insights-head {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 16px 18px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .insights-head::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0;
+    background: radial-gradient(420px circle at var(--mx, 20%) var(--my, 50%), rgba(205, 45, 91, .06), transparent 60%);
+    transition: opacity .3s var(--ease);
+  }
+  .insights-head:hover::after { opacity: 1; }
+  .insights-head:focus-visible { outline: 3px solid rgba(205, 45, 91, .2); outline-offset: -3px; }
+
+  .head-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    flex: none;
+    border-radius: 13px;
+    background: linear-gradient(150deg, var(--wine), var(--wine-700));
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 8px 20px -8px rgba(205, 45, 91, .6);
+  }
+  .head-icon svg { width: 22px; height: 22px; }
+  .head-icon .live {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    background: var(--emerald);
+  }
+  .head-icon .live::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid var(--emerald);
+    animation: ping 1.9s var(--ease) infinite;
+  }
+  @keyframes ping { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(2.1); opacity: 0; } }
+
+  .head-copy { min-width: 0; }
+  .head-copy h3 { margin: 0; font-size: 15.5px; font-weight: 800; letter-spacing: -.02em; }
+  .head-copy p { margin: 3px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+
+  /* Live summary strip, visible even when collapsed */
+  .head-stats { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    background: var(--surface-inset);
+  }
+  .stat-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .stat-chip .dot.blue { background: var(--blue); }
+  .stat-chip .dot.wine { background: var(--wine); }
+  .stat-chip b { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat-chip span { color: var(--muted); font-size: 9.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+
+  .head-ring { position: relative; width: 42px; height: 42px; flex: none; }
+  .head-ring svg { width: 42px; height: 42px; transform: rotate(-90deg); }
+  .head-ring .track { fill: none; stroke: var(--surface-inset); stroke-width: 4; }
+  .head-ring .prog { fill: none; stroke: var(--emerald); stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray .8s var(--ease); }
+  .head-ring b {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+
+  .head-toggle {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--muted);
+    transition: transform .3s var(--ease), color .2s, border-color .2s;
+  }
+  .insights-head:hover .head-toggle { color: var(--wine-700); border-color: rgba(205, 45, 91, .3); }
+  .insights.collapsed .head-toggle { transform: rotate(180deg); }
+  .head-toggle svg { width: 16px; height: 16px; }
+
+  /* Expanding body */
+  .insights-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows .4s var(--ease), opacity .3s var(--ease);
+  }
+  .insights.collapsed .insights-body { grid-template-rows: 0fr; opacity: 0; }
+  .insights-body > .clip { overflow: hidden; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    padding: 6px 18px 18px;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgba(28, 20, 31, .04);
+  }
+  .card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
+  .card-badge {
+    display: grid; place-items: center;
+    width: 30px; height: 30px; flex: none;
+    border-radius: 9px;
+  }
+  .card-badge svg { width: 16px; height: 16px; }
+  .badge-blue { background: var(--info-bg); color: var(--blue); }
+  .badge-emerald { background: var(--emerald-bg); color: var(--emerald); }
+  .badge-purple { background: var(--purple-bg); color: var(--purple); }
+  .card-head h4 { margin: 0; font-size: 12.5px; font-weight: 800; }
+  .card-head .manage {
+    margin-left: auto;
+    border: 0; background: transparent;
+    color: var(--wine-700); font-size: 10.5px; font-weight: 750; cursor: pointer;
+  }
+  .card-sub { margin: 0 0 12px; color: var(--quiet); font-size: 10px; font-weight: 600; }
+  .soon {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--emerald-bg);
+    color: var(--emerald);
+    font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  }
+
+  /* Column 1: spatial storage zones */
+  /* Combined cellar-fill summary bar (all zones stacked) */
+  .cellar-total {
+    display: flex;
+    height: 11px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #ece9ef;
+    box-shadow: inset 0 1px 2px rgba(28, 20, 31, .06);
+  }
+  .cellar-total i { height: 100%; width: 0; transition: width .9s var(--ease); }
+
+  .zone-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .zone-tile {
+    position: relative;
+    display: flex;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background: var(--surface-inset);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .2s, transform .2s var(--ease), background .2s, box-shadow .2s;
+  }
+  .zone-tile:hover { transform: translateY(-2px); border-color: rgba(205, 45, 91, .3); background: var(--surface); box-shadow: 0 8px 18px -12px rgba(28, 20, 31, .4); }
+  .zone-tile.near { border-color: rgba(169, 96, 0, .38); background: var(--warn-bg); box-shadow: inset 0 0 0 1px rgba(246, 181, 69, .25); }
+  .tube {
+    position: relative;
+    width: 9px;
+    flex: none;
+    border-radius: 999px;
+    background: #e6e2ea;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(28, 20, 31, .05);
+  }
+  .tube i {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 0;
+    border-radius: 999px;
+    transition: height 1s var(--ease);
+  }
+  .tube i::before {
+    content: "";
+    position: absolute; left: 0; right: 0; top: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, .45);
+  }
+  .zt-body { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .zt-name { font-size: 10px; font-weight: 750; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zt-count { margin-top: 3px; font-size: 13.5px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .zt-count span { color: var(--quiet); font-size: 9px; font-weight: 600; }
+  .zt-pct { margin-top: 2px; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--quiet); }
+  .zone-tile.near .zt-pct { color: var(--warn); }
+  .zt-flag {
+    position: absolute; top: 8px; right: 8px;
+    display: grid; place-items: center;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: var(--warn); color: #fff;
+  }
+  .zt-flag svg { width: 9px; height: 9px; }
+
+  .full-btn {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    height: 34px; margin-top: auto;
+    border: 1px solid rgba(205, 45, 91, .18);
+    border-radius: var(--radius-control);
+    background: var(--wine-50);
+    color: var(--wine-700);
+    font-size: 11px; font-weight: 750; cursor: pointer;
+    transition: background .2s;
+  }
+  .full-btn:hover { background: #fbe3ea; }
+  .full-btn svg { width: 15px; height: 15px; }
+
+  /* Column 2: QR scan point */
+  .qr-stage {
+    position: relative;
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    padding: 18px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+    background: linear-gradient(150deg, var(--emerald-bg), #f0fbf6 60%, #ffffff);
+    overflow: hidden;
+  }
+  .qr-stage::before {
+    content: "";
+    position: absolute; left: 0; right: 0; top: -60%;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(15, 138, 95, 0), rgba(15, 138, 95, .28), rgba(15, 138, 95, 0));
+    animation: scan 2.6s var(--ease) infinite;
+  }
+  @keyframes scan { 0% { transform: translateY(0); } 100% { transform: translateY(320%); } }
+  .qr-card {
+    position: relative;
+    padding: 10px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 10px 24px -14px rgba(15, 138, 95, .5);
+  }
+  .qr {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 2px;
+    width: 92px; height: 92px;
+  }
+  .qr i { background: transparent; border-radius: 1px; }
+  .qr i.on { background: var(--ink); }
+  .qr-scan-badge {
+    position: absolute; bottom: -8px; right: -8px;
+    display: grid; place-items: center;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--emerald); color: #fff;
+    box-shadow: 0 6px 14px -6px rgba(15, 138, 95, .7);
+  }
+  .qr-scan-badge svg { width: 15px; height: 15px; }
+  .phone { width: 40px; height: 74px; border: 2px solid rgba(15, 138, 95, .35); border-radius: 10px; position: relative; background: #fff; flex: none; }
+  .phone::before { content: ""; position: absolute; top: 5px; left: 50%; transform: translateX(-50%); width: 12px; height: 2px; border-radius: 2px; background: rgba(15, 138, 95, .4); }
+  .phone .scr { position: absolute; inset: 10px 5px 8px; border-radius: 4px; background: linear-gradient(180deg, var(--emerald-bg), #fff); }
+
+  .steps { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .steps li { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 10.5px; font-weight: 600; }
+  .steps .n {
+    display: grid; place-items: center;
+    width: 19px; height: 19px; flex: none;
+    border-radius: 50%;
+    background: var(--emerald-bg); color: var(--emerald);
+    font-size: 9px; font-weight: 800;
+  }
+  .qr-btn {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    height: 34px; margin-top: auto;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-inset);
+    color: var(--quiet);
+    font-size: 10.5px; font-weight: 700; cursor: not-allowed;
+  }
+  .qr-btn svg { width: 15px; height: 15px; opacity: .6; }
+
+  /* Column 3: attention & actions (replaces the vanity health score) */
+  .badge-wine { background: var(--wine-50); color: var(--wine-700); }
+  .health-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--ok-bg); color: var(--ok);
+    font-size: 9px; font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+
+  .status-strip {
+    padding: 11px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    background: var(--surface-inset);
+  }
+  .status-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: #ece9ef; }
+  .status-bar i { height: 100%; width: 0; transition: width .8s var(--ease); }
+  .status-legend { display: flex; flex-wrap: wrap; gap: 7px 12px; margin-top: 10px; }
+  .status-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 700; }
+  .status-legend .k { width: 8px; height: 8px; border-radius: 3px; }
+  .status-legend b { color: var(--ink-2); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  .action-list { display: flex; flex-direction: column; gap: 8px; }
+  .action-item {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: 11px;
+    background: var(--surface);
+    transition: border-color .2s, transform .2s var(--ease), box-shadow .2s;
+  }
+  .action-item:hover { transform: translateY(-1px); border-color: rgba(205, 45, 91, .25); box-shadow: 0 8px 16px -12px rgba(28, 20, 31, .4); }
+  .ai-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; }
+  .ai-icon svg { width: 16px; height: 16px; }
+  .ai-icon.crit { background: var(--danger-bg); color: var(--danger); }
+  .ai-icon.warn { background: var(--warn-bg); color: var(--warn); }
+  .ai-icon.info { background: var(--info-bg); color: var(--info); }
+  .ai-body { min-width: 0; }
+  .ai-title { font-size: 10.5px; font-weight: 750; line-height: 1.3; }
+  .ai-meta { margin-top: 1px; color: var(--muted); font-size: 8.5px; font-weight: 600; }
+  .ai-cta {
+    padding: 6px 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-inset);
+    color: var(--ink-2);
+    font-size: 9.5px; font-weight: 750; cursor: pointer; white-space: nowrap;
+    transition: border-color .2s, color .2s, background .2s;
+  }
+  .ai-cta:hover { border-color: rgba(205, 45, 91, .35); color: var(--wine-700); background: var(--wine-50); }
+
+  /* ============ MANAGE STORAGE — cellar topology workbench ============ */
+  .ms-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    display: grid; place-items: center;
+    padding: 24px;
+    background: rgba(24, 18, 27, 0);
+    backdrop-filter: blur(0);
+    visibility: hidden;
+    transition: background 220ms var(--ease), backdrop-filter 220ms var(--ease), visibility 0s 220ms;
+  }
+  .ms-overlay.open {
+    background: rgba(20, 14, 23, .56);
+    backdrop-filter: blur(6px);
+    visibility: visible;
+    transition: background 220ms var(--ease), backdrop-filter 220ms var(--ease);
+  }
+  .ms-drawer {
+    width: min(980px, 100%);
+    height: min(720px, 100%);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .72);
+    border-radius: 22px;
+    background: #f4f2f5;
+    box-shadow: 0 40px 100px -24px rgba(20, 14, 23, .72);
+    opacity: 0;
+    transform: translateY(12px) scale(.97);
+    transition: transform 240ms cubic-bezier(.23, 1, .32, 1), opacity 180ms ease-out;
+  }
+  .ms-overlay.open .ms-drawer { opacity: 1; transform: translateY(0) scale(1); }
+
+  .ms-head {
+    min-height: 72px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, .92);
+  }
+  .ms-mark {
+    width: 38px; height: 38px;
+    display: grid; place-items: center;
+    border-radius: 11px;
+    background: #251d22; color: #fff;
+  }
+  .ms-mark svg { width: 19px; height: 19px; }
+  .ms-head-copy { min-width: 0; }
+  .ms-eyebrow { color: var(--quiet); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .ms-head h2 { margin: 2px 0 0; font-size: 16px; font-weight: 800; letter-spacing: -.025em; }
+  .ms-global {
+    display: flex; align-items: center; gap: 18px;
+    margin-left: auto; margin-right: 8px;
+  }
+  .ms-global-stat { display: flex; flex-direction: column; align-items: flex-end; }
+  .ms-global-stat b { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ms-global-stat span { color: var(--quiet); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .ms-close {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: #fff; color: var(--muted); cursor: pointer;
+    transition: color 150ms ease, border-color 150ms ease, transform 120ms ease-out;
+  }
+  .ms-close:hover { color: var(--ink); border-color: rgba(40, 30, 44, .22); }
+  .ms-close:active { transform: scale(.94); }
+  .ms-close svg { width: 16px; height: 16px; }
+
+  .ms-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 238px 1fr; }
+
+  /* left: physical location rail */
+  .ms-rail {
+    min-height: 0;
+    display: flex; flex-direction: column;
+    padding: 14px 12px;
+    border-right: 1px solid var(--line);
+    background: #eeebef;
+  }
+  .ms-rail-title {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 6px 10px;
+    color: var(--quiet); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+  }
+  .ms-rail-title span:last-child { font-variant-numeric: tabular-nums; }
+  .ms-list { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+  .ms-row {
+    position: relative;
+    width: 100%; min-height: 64px;
+    display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 10px;
+    padding: 10px;
+    border: 1px solid transparent; border-radius: 12px;
+    background: transparent; text-align: left; cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, transform 120ms ease-out, opacity 150ms ease;
+  }
+  .ms-row:hover { background: rgba(255, 255, 255, .58); }
+  .ms-row.active { background: #fff; border-color: var(--line); box-shadow: 0 5px 18px -15px rgba(28, 20, 31, .45); }
+  .ms-row:active { transform: scale(.985); }
+  .ms-row.flash { box-shadow: 0 0 0 3px rgba(205, 45, 91, .15); }
+  .ms-row.dragging { opacity: .38; }
+  .ms-row.drag-over::before { content: ""; position: absolute; left: 8px; right: 8px; top: -4px; height: 2px; border-radius: 2px; background: var(--wine); }
+  .ms-rail-meter {
+    position: relative;
+    width: 7px; height: 38px;
+    overflow: hidden;
+    border-radius: 5px;
+    background: rgba(40, 30, 44, .08);
+  }
+  .ms-rail-meter i {
+    position: absolute; inset-inline: 0; bottom: 0;
+    border-radius: inherit;
+    transition: height 260ms var(--ease), background 180ms ease;
+  }
+  .ms-rail-copy { min-width: 0; }
+  .ms-rail-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 800; }
+  .ms-rail-meta { display: block; margin-top: 4px; color: var(--quiet); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ms-rail-state {
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: rgba(40, 30, 44, .06);
+    color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  }
+  .ms-rail-state.near { background: var(--warn-bg); color: var(--warn); }
+  .ms-rail-state.over { background: var(--danger-bg); color: var(--danger); }
+  .ms-add {
+    width: 100%; height: 38px;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin-top: 10px;
+    border: 1px dashed rgba(40, 30, 44, .18); border-radius: 10px;
+    background: rgba(255, 255, 255, .38); color: var(--wine-700);
+    font-size: 10.5px; font-weight: 800; cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, transform 120ms ease-out;
+  }
+  .ms-add:hover { background: #fff; border-color: rgba(205, 45, 91, .34); }
+  .ms-add:active { transform: scale(.98); }
+  .ms-add svg { width: 14px; height: 14px; }
+
+  /* right: selected location command surface */
+  .ms-editor { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #f8f7f9; }
+  .ms-editor-head {
+    min-height: 82px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line-soft);
+    background: #fff;
+  }
+  .ms-color {
+    width: 34px; height: 34px; flex: none;
+    border: 3px solid #fff; border-radius: 10px; cursor: pointer;
+    box-shadow: 0 0 0 1px var(--line), 0 5px 12px -7px rgba(28, 20, 31, .5);
+    transition: transform 120ms ease-out;
+  }
+  .ms-color:active { transform: scale(.92); }
+  .ms-zone-identity { min-width: 0; }
+  .ms-zone-name {
+    width: min(300px, 100%);
+    padding: 2px 5px; margin: -2px -5px;
+    border: 1px solid transparent; border-radius: 7px;
+    background: transparent; color: var(--ink);
+    font-size: 17px; font-weight: 800; letter-spacing: -.025em;
+  }
+  .ms-zone-name:hover { border-color: var(--line-soft); }
+  .ms-zone-name:focus { outline: none; border-color: rgba(205, 45, 91, .28); background: var(--wine-50); }
+  .ms-zone-sub { margin-top: 5px; color: var(--quiet); font-size: 9.5px; font-weight: 700; }
+  .ms-zone-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+  .ms-icon-btn {
+    width: 32px; height: 32px; display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 9px;
+    background: #fff; color: var(--quiet); cursor: pointer;
+    transition: color 150ms ease, background 150ms ease, transform 120ms ease-out;
+  }
+  .ms-icon-btn:hover { color: var(--danger); background: var(--danger-bg); }
+  .ms-icon-btn:active { transform: scale(.93); }
+  .ms-icon-btn svg { width: 14px; height: 14px; }
+
+  .ms-editor-body {
+    min-height: 0; flex: 1; overflow-y: auto;
+    display: grid; grid-template-columns: minmax(320px, 1.15fr) minmax(250px, .85fr); gap: 12px;
+    padding: 14px;
+  }
+  .ms-panel {
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(28, 20, 31, .03);
+  }
+  .ms-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px 0; }
+  .ms-panel-head h3 { margin: 0; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+  .ms-panel-head span { color: var(--quiet); font-size: 9px; font-weight: 700; }
+
+  /* signature: rack aperture */
+  .ms-rack-card { min-height: 0; display: flex; flex-direction: column; }
+  .ms-rack {
+    position: relative;
+    min-height: 260px; flex: 1;
+    display: grid; grid-template-columns: repeat(10, 1fr); grid-auto-rows: 1fr; gap: 5px;
+    margin: 14px;
+    padding: 13px;
+    border-radius: 12px;
+    background:
+      linear-gradient(rgba(255,255,255,.7), rgba(255,255,255,.7)),
+      repeating-linear-gradient(90deg, transparent 0 34px, rgba(40,30,44,.05) 34px 35px);
+    box-shadow: inset 0 0 0 1px rgba(40, 30, 44, .08), inset 0 10px 24px rgba(40, 30, 44, .025);
+  }
+  .ms-slot {
+    position: relative;
+    min-height: 18px;
+    border: 1px solid rgba(40, 30, 44, .09);
+    border-radius: 4px;
+    background: rgba(40, 30, 44, .025);
+    opacity: 1;
+    transform: scale(1);
+    transition: background 180ms ease, border-color 180ms ease, opacity 180ms ease, transform 180ms var(--ease);
+  }
+  .ms-slot.used { border-color: transparent; }
+  .ms-slot.threshold { box-shadow: inset -2px 0 0 var(--warn); }
+  .ms-slot.changed { animation: slotSettle 260ms var(--ease); }
+  @keyframes slotSettle { 0% { opacity: .25; transform: scale(.7); } 100% { opacity: 1; transform: scale(1); } }
+  .ms-rack-note {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 14px 14px; color: var(--quiet); font-size: 9px; font-weight: 700;
+  }
+  .ms-key { display: inline-flex; align-items: center; gap: 5px; }
+  .ms-key i { width: 8px; height: 8px; border-radius: 3px; background: rgba(40, 30, 44, .07); border: 1px solid rgba(40, 30, 44, .09); }
+  .ms-key.used i { border: 0; background: var(--wine); }
+  .ms-key.threshold i { border: 0; background: var(--warn); }
+  .ms-rack-scale { margin-left: auto; }
+
+  .ms-side-stack { display: flex; flex-direction: column; gap: 12px; }
+  .ms-capacity { padding: 14px; }
+  .ms-capacity-label { color: var(--quiet); font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+  .ms-capacity-readout { display: flex; align-items: baseline; gap: 5px; margin-top: 8px; }
+  .ms-capacity-readout b { font-size: 30px; line-height: 1; font-weight: 800; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+  .ms-capacity-readout span { color: var(--quiet); font-size: 10px; font-weight: 700; }
+  .ms-range {
+    width: 100%; height: 4px; margin: 18px 0 12px;
+    appearance: none; border-radius: 999px;
+    background: linear-gradient(90deg, var(--zone-color) var(--range-pct), #e7e3e9 var(--range-pct));
+    cursor: ew-resize;
+  }
+  .ms-range::-webkit-slider-thumb {
+    appearance: none; width: 18px; height: 18px;
+    border: 4px solid #fff; border-radius: 50%;
+    background: var(--zone-color);
+    box-shadow: 0 0 0 1px rgba(40, 30, 44, .15), 0 5px 12px -6px rgba(40, 30, 44, .5);
+  }
+  .ms-range::-moz-range-thumb {
+    width: 11px; height: 11px;
+    border: 4px solid #fff; border-radius: 50%;
+    background: var(--zone-color);
+  }
+  .ms-cap-controls { display: grid; grid-template-columns: 34px 1fr 34px; gap: 6px; }
+  .ms-cap-btn, .ms-cap-input {
+    height: 34px;
+    border: 1px solid var(--line); border-radius: 9px;
+    background: var(--surface-inset); color: var(--ink);
+  }
+  .ms-cap-btn { display: grid; place-items: center; cursor: pointer; transition: background 150ms ease, transform 110ms ease-out; }
+  .ms-cap-btn:hover { background: var(--wine-50); }
+  .ms-cap-btn:active { transform: scale(.92); }
+  .ms-cap-btn svg { width: 13px; height: 13px; }
+  .ms-cap-input {
+    padding: 0 8px;
+    font-size: 12px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+  }
+  .ms-cap-input::-webkit-outer-spin-button, .ms-cap-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .ms-cap-input:focus { outline: 3px solid rgba(205,45,91,.12); border-color: rgba(205,45,91,.35); background: #fff; }
+
+  .ms-insight-card { position: relative; overflow: hidden; padding: 14px; }
+  .ms-insight-card::before { content: ""; position: absolute; inset-block: 0; left: 0; width: 3px; background: var(--insight-color, var(--emerald)); }
+  .ms-insight-kicker { display: flex; align-items: center; gap: 6px; color: var(--quiet); font-size: 8.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  .ms-insight-kicker svg { width: 13px; height: 13px; color: var(--insight-color, var(--emerald)); }
+  .ms-insight-card h4 { margin: 9px 0 5px; font-size: 13px; line-height: 1.35; font-weight: 800; letter-spacing: -.015em; }
+  .ms-insight-card p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+  .ms-insight-action {
+    width: 100%; height: 32px; margin-top: 12px;
+    border: 1px solid var(--line); border-radius: 9px;
+    background: var(--surface-inset); color: var(--ink-2);
+    font-size: 9.5px; font-weight: 800; cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, transform 110ms ease-out;
+  }
+  .ms-insight-action:hover { background: var(--wine-50); color: var(--wine-700); }
+  .ms-insight-action:active { transform: scale(.98); }
+
+  .ms-details { padding: 14px; }
+  .ms-detail-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+  .ms-detail-row:last-child { border-bottom: 0; }
+  .ms-detail-row span { color: var(--muted); font-size: 9.5px; font-weight: 700; }
+  .ms-detail-row b { font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  .ms-palette { position: absolute; z-index: 4; display: none; grid-template-columns: repeat(4, 26px); gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 11px; background: #fff; box-shadow: 0 14px 30px -16px rgba(28,20,31,.5); }
+  .ms-palette.open { display: grid; }
+  .ms-palette button { width: 26px; height: 26px; border: 2px solid #fff; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); cursor: pointer; transition: transform 110ms ease-out; }
+  .ms-palette button:hover { transform: scale(1.08); }
+
+  .ms-foot {
+    min-height: 62px;
+    display: flex; align-items: center; gap: 9px;
+    padding: 0 18px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+  }
+  .ms-foot .hint { margin-right: auto; color: var(--muted); font-size: 10px; font-weight: 700; }
+  .ms-btn {
+    height: 36px; padding: 0 15px;
+    border-radius: 9px;
+    font-size: 11px; font-weight: 800; cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, transform 110ms ease-out;
+  }
+  .ms-btn:active { transform: scale(.97); }
+  .ms-btn.ghost { border: 1px solid var(--line); background: #fff; color: var(--ink-2); }
+  .ms-btn.ghost:hover { background: var(--surface-inset); }
+  .ms-btn.primary { border: 1px solid var(--wine-700); background: var(--wine-700); color: #fff; box-shadow: 0 8px 18px -11px rgba(165,31,71,.7); }
+  .ms-btn.primary:hover { background: #8f173b; }
+
+  @media (max-width: 760px) {
+    .ms-overlay { padding: 10px; }
+    .ms-drawer { height: calc(100dvh - 20px); }
+    .ms-global { display: none; }
+    .ms-workspace { grid-template-columns: 1fr; }
+    .ms-rail { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .ms-list { flex-direction: row; overflow-x: auto; }
+    .ms-row { min-width: 170px; }
+    .ms-editor-body { grid-template-columns: 1fr; }
+  }
+
+  .ms-toast {
+    position: fixed; left: 50%; bottom: 26px; z-index: 80;
+    display: flex; align-items: center; gap: 9px;
+    padding: 11px 16px; border-radius: 12px;
+    background: var(--ink); color: #fff;
+    font-size: 12px; font-weight: 700;
+    box-shadow: 0 20px 40px -18px rgba(24, 18, 27, .8);
+    transform: translate(-50%, 24px); opacity: 0; pointer-events: none;
+    transition: transform .35s var(--ease), opacity .35s var(--ease);
+  }
+  .ms-toast.show { transform: translate(-50%, 0); opacity: 1; }
+  .ms-toast svg { width: 16px; height: 16px; color: #6ee7a0; }
+
+  /* per-zone insight on the live card tiles */
+  .zt-insight { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 8px; font-weight: 800; letter-spacing: .02em; color: var(--blue); }
+  .zt-insight svg { width: 9px; height: 9px; flex: none; }
+  .zone-tile.near .zt-insight { color: var(--warn); }
+
+  .foot { margin-top: 24px; color: var(--muted); font-size: 11.5px; text-align: center; }
+  .foot code { padding: 2px 6px; border-radius: 6px; background: #e9e5ec; font-size: 10.5px; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .head-stats { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="sketch-label">Sketch 040 · Inventory Insights Panel</div>
+  <h1>Can the insights toggle become a live command bar, not just a header?</h1>
+  <p class="intro">Improves the "Inventory Insights &amp; Organization" section on <code style="background:#e9e5ec;padding:1px 5px;border-radius:5px;">/inventory</code>. The header surfaces a live summary even when collapsed. Expanded, three cards each get a signature visual: <b>spatial storage zones</b> with test-tube fills, an animated QR scan-point, and an action-first <b>Needs attention</b> queue that replaces the old vanity health score. Click the header to collapse.</p>
+
+  <div class="page">
+    <section class="insights" id="insights">
+      <button class="insights-head ray" id="toggle" type="button" aria-expanded="true" aria-controls="insightsBody">
+        <span class="head-icon">
+          <span class="live"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </span>
+        <span class="head-copy">
+          <h3>Inventory Insights &amp; Organization</h3>
+          <p>Cellar layout, floor access &amp; stock health — live</p>
+        </span>
+
+        <span class="head-stats">
+          <span class="stat-chip"><span class="dot blue"></span><b>4</b><span>zones</span></span>
+          <span class="stat-chip"><span class="dot wine"></span><b>56%</b><span>fill</span></span>
+          <span class="head-ring">
+            <svg viewBox="0 0 42 42"><circle class="track" cx="21" cy="21" r="17"/><circle class="prog" id="headRing" cx="21" cy="21" r="17" stroke-dasharray="0 107"/></svg>
+            <b>84</b>
+          </span>
+        </span>
+
+        <span class="head-toggle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+        </span>
+      </button>
+
+      <div class="insights-body" id="insightsBody">
+        <div class="clip">
+          <div class="grid">
+
+            <!-- Column 1: Storage Locations -->
+            <div class="card">
+              <div class="card-head">
+                <span class="card-badge badge-blue">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+                </span>
+                <h4>Storage Locations</h4>
+                <button class="manage" type="button" data-manage>Manage</button>
+              </div>
+              <p class="card-sub" id="storageSub">475 / 850 bottles stored · 56% full</p>
+
+              <div class="cellar-total" id="cellarTotal" title="Share of total cellar capacity by zone">
+                <i style="background:#2f6fb0;" data-w="35.9"></i>
+                <i style="background:#f5a524;" data-w="10.8"></i>
+                <i style="background:#7c4dff;" data-w="4.5"></i>
+                <i style="background:#0f8a5f;" data-w="4.7"></i>
+              </div>
+
+              <div class="zone-grid" id="zoneGrid">
+                <button class="zone-tile" type="button">
+                  <span class="tube"><i style="background:#2f6fb0;" data-fill="61"></i></span>
+                  <span class="zt-body">
+                    <span class="zt-name">Main Cellar</span>
+                    <span class="zt-count">305<span> / 500</span></span>
+                    <span class="zt-pct">61% full</span>
+                  </span>
+                </button>
+
+                <button class="zone-tile near" type="button">
+                  <span class="zt-flag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg></span>
+                  <span class="tube"><i style="background:linear-gradient(180deg,#f5a524,#f5720a);" data-fill="92"></i></span>
+                  <span class="zt-body">
+                    <span class="zt-name">Bar Stock</span>
+                    <span class="zt-count">92<span> / 100</span></span>
+                    <span class="zt-pct">92% · near limit</span>
+                  </span>
+                </button>
+
+                <button class="zone-tile" type="button">
+                  <span class="tube"><i style="background:#7c4dff;" data-fill="76"></i></span>
+                  <span class="zt-body">
+                    <span class="zt-name">VIP Reserve</span>
+                    <span class="zt-count">38<span> / 50</span></span>
+                    <span class="zt-pct">76% full</span>
+                  </span>
+                </button>
+
+                <button class="zone-tile" type="button">
+                  <span class="tube"><i style="background:#0f8a5f;" data-fill="20"></i></span>
+                  <span class="zt-body">
+                    <span class="zt-name">Overflow</span>
+                    <span class="zt-count">40<span> / 200</span></span>
+                    <span class="zt-pct">20% · headroom</span>
+                  </span>
+                </button>
+              </div>
+
+              <button class="full-btn" type="button" data-manage>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                Manage Locations
+              </button>
+            </div>
+
+            <!-- Column 2: QR Quick Access -->
+            <div class="card">
+              <div class="card-head">
+                <span class="card-badge badge-emerald">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h.01M21 21v-3M17 21h.01"/></svg>
+                </span>
+                <h4>QR Quick Access</h4>
+                <span class="soon">Soon</span>
+              </div>
+              <p class="card-sub">Scan cellar labels from the floor — no login hunt</p>
+
+              <div class="qr-stage">
+                <div class="qr-card">
+                  <div class="qr" id="qr"></div>
+                  <span class="qr-scan-badge">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18"/></svg>
+                  </span>
+                </div>
+                <div class="phone"><span class="scr"></span></div>
+              </div>
+
+              <ol class="steps">
+                <li><span class="n">1</span> Print zone codes for each rack</li>
+                <li><span class="n">2</span> Staff scan → instant stock view</li>
+                <li><span class="n">3</span> Update counts without leaving the floor</li>
+              </ol>
+
+              <button class="qr-btn" type="button" disabled title="Ships in a later phase">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                Generate QR codes — coming soon
+              </button>
+            </div>
+
+            <!-- Column 3: Needs Attention (action-first, replaces the health score) -->
+            <div class="card">
+              <div class="card-head">
+                <span class="card-badge badge-wine">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                </span>
+                <h4>Needs attention</h4>
+                <span class="health-pill" title="Overall inventory health">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  84
+                </span>
+              </div>
+              <p class="card-sub">3 things to act on before service</p>
+
+              <div class="status-strip">
+                <div class="status-bar">
+                  <i style="background:#18794e;" data-w="80"></i>
+                  <i style="background:#a96000;" data-w="10"></i>
+                  <i style="background:#c43228;" data-w="7"></i>
+                  <i style="background:#9d96a3;" data-w="3"></i>
+                </div>
+                <div class="status-legend">
+                  <span><i class="k" style="background:#18794e;"></i>Healthy <b>142</b></span>
+                  <span><i class="k" style="background:#a96000;"></i>Low <b>12</b></span>
+                  <span><i class="k" style="background:#c43228;"></i>Critical <b>6</b></span>
+                  <span><i class="k" style="background:#9d96a3;"></i>Out <b>2</b></span>
+                </div>
+              </div>
+
+              <div class="action-list">
+                <div class="action-item">
+                  <span class="ai-icon crit">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>
+                  </span>
+                  <div class="ai-body">
+                    <div class="ai-title">6 wines below reorder point</div>
+                    <div class="ai-meta">2 critical · est. 3-day stockout risk</div>
+                  </div>
+                  <button class="ai-cta" type="button">Draft PO</button>
+                </div>
+
+                <div class="action-item">
+                  <span class="ai-icon warn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  </span>
+                  <div class="ai-body">
+                    <div class="ai-title">Bar Stock at 92% capacity</div>
+                    <div class="ai-meta">Rotate to Overflow before Friday's event</div>
+                  </div>
+                  <button class="ai-cta" type="button">Move</button>
+                </div>
+
+                <div class="action-item">
+                  <span class="ai-icon info">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </span>
+                  <div class="ai-body">
+                    <div class="ai-title">24 bottles pending reconciliation</div>
+                    <div class="ai-meta">Shadow stock from last 3 deliveries</div>
+                  </div>
+                  <button class="ai-cta" type="button">Review</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="foot"><code>.planning/sketches/040-inventory-insights-panel/index.html</code> · <b>Manage</b> opens the cellar topology workbench · select a location and reshape its physical capacity</p>
+</div>
+
+<!-- ============ MANAGE STORAGE — cellar topology workbench ============ -->
+<div class="ms-overlay" id="msOverlay" role="dialog" aria-modal="true" aria-labelledby="msTitle" hidden>
+  <div class="ms-drawer" id="msDrawer">
+    <div class="ms-head">
+      <span class="ms-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4zM4 10h16M10 4v16M15 10v10"/></svg>
+      </span>
+      <div class="ms-head-copy">
+        <div class="ms-eyebrow">Cellar topology · live model</div>
+        <h2 id="msTitle">Storage command</h2>
+      </div>
+      <div class="ms-global">
+        <div class="ms-global-stat"><b id="msGlobalStock">475</b><span>Bottles placed</span></div>
+        <div class="ms-global-stat"><b id="msGlobalHeadroom">375</b><span>Open capacity</span></div>
+        <div class="ms-global-stat"><b id="msGlobalRisk">1</b><span>Pressure zone</span></div>
+      </div>
+      <button class="ms-close" id="msClose" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="ms-workspace">
+      <aside class="ms-rail">
+        <div class="ms-rail-title"><span>Locations</span><span id="msZoneCount">4 zones</span></div>
+        <div class="ms-list" id="msList"></div>
+        <button class="ms-add" id="msAdd" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add location
+        </button>
+      </aside>
+
+      <section class="ms-editor">
+        <div class="ms-editor-head">
+          <button class="ms-color" id="msColor" type="button" aria-label="Change location color"></button>
+          <div class="ms-zone-identity">
+            <input class="ms-zone-name" id="msZoneName" type="text" maxlength="28" aria-label="Location name" />
+            <div class="ms-zone-sub" id="msZoneSub">305 bottles placed · 61% utilized</div>
+          </div>
+          <div class="ms-zone-actions">
+            <button class="ms-icon-btn" id="msDelete" type="button" aria-label="Remove location" title="Remove location">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+          </div>
+          <div class="ms-palette" id="msPalette"></div>
+        </div>
+
+        <div class="ms-editor-body">
+          <div class="ms-panel ms-rack-card">
+            <div class="ms-panel-head">
+              <h3>Rack aperture</h3>
+              <span id="msRackLabel">1 cell ≈ 5 bottles</span>
+            </div>
+            <div class="ms-rack" id="msRack" aria-label="Spatial capacity map"></div>
+            <div class="ms-rack-note">
+              <span class="ms-key used"><i id="msUsedKey"></i>Occupied</span>
+              <span class="ms-key"><i></i>Open</span>
+              <span class="ms-key threshold"><i></i>90% pressure line</span>
+              <span class="ms-rack-scale" id="msRackScale">305 / 500</span>
+            </div>
+          </div>
+
+          <div class="ms-side-stack">
+            <div class="ms-panel ms-capacity">
+              <div class="ms-capacity-label">Physical capacity</div>
+              <div class="ms-capacity-readout"><b id="msCapReadout">500</b><span>bottle slots</span></div>
+              <input class="ms-range" id="msCapacityRange" type="range" min="10" max="1000" step="10" value="500" aria-label="Capacity" />
+              <div class="ms-cap-controls">
+                <button class="ms-cap-btn" type="button" data-cap-step="-10" aria-label="Decrease capacity">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+                </button>
+                <input class="ms-cap-input" id="msCapacityInput" type="number" min="10" max="1000" step="10" value="500" aria-label="Exact capacity" />
+                <button class="ms-cap-btn" type="button" data-cap-step="10" aria-label="Increase capacity">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="ms-panel ms-insight-card" id="msInsightCard">
+              <div class="ms-insight-kicker" id="msInsightKicker"></div>
+              <h4 id="msInsightTitle">Capacity is balanced</h4>
+              <p id="msInsightCopy">This location has enough room for normal receiving activity.</p>
+              <button class="ms-insight-action" id="msInsightAction" type="button">View bottles in this location</button>
+            </div>
+
+            <div class="ms-panel ms-details">
+              <div class="ms-detail-row"><span>Placed</span><b id="msDetailPlaced">305 bottles</b></div>
+              <div class="ms-detail-row"><span>Headroom</span><b id="msDetailHeadroom">195 slots</b></div>
+              <div class="ms-detail-row"><span>Pressure starts</span><b id="msDetailPressure">450 bottles</b></div>
+              <div class="ms-detail-row"><span>Utilization</span><b id="msDetailUtil">61%</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ms-foot">
+          <span class="hint" id="msHint">No changes yet</span>
+          <button class="ms-btn ghost" id="msCancel" type="button">Cancel</button>
+          <button class="ms-btn primary" id="msSave" type="button">Apply cellar changes</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="ms-toast" id="msToast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  <span id="msToastMsg">Storage locations saved</span>
+</div>
+
+<script>
+  (() => {
+    const insights = document.getElementById('insights');
+    const toggle = document.getElementById('toggle');
+    const headRing = document.getElementById('headRing');
+
+    // Build a plausible QR pattern (deterministic) with three finder squares
+    const qr = document.getElementById('qr');
+    const N = 9;
+    const seed = [1,0,1,1,0,1,0,1,1, 0,1,0,1,1,0,1,0,1, 1,1,0,0,1,1,0,1,0];
+    // A finder square is a 3x3 block: filled border with a filled center.
+    const finderOn = (lr, lc) => lr === 0 || lr === 2 || lc === 0 || lc === 2 || (lr === 1 && lc === 1);
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const i = document.createElement('i');
+        let on;
+        if (r < 3 && c < 3) on = finderOn(r, c);                 // top-left
+        else if (r < 3 && c >= N - 3) on = finderOn(r, c - (N - 3)); // top-right
+        else if (r >= N - 3 && c < 3) on = finderOn(r - (N - 3), c); // bottom-left
+        else on = seed[(r * N + c) % seed.length] === 1;
+        if (on) i.classList.add('on');
+        qr.appendChild(i);
+      }
+    }
+
+    const animateBars = () => {
+      // Vertical zone tubes fill to stock level
+      document.querySelectorAll('.tube i').forEach((tube) => {
+        tube.style.height = `${tube.dataset.fill}%`;
+      });
+      // Stacked summary + status bars grow to their share
+      document.querySelectorAll('.cellar-total i, .status-bar i').forEach((seg) => {
+        seg.style.width = `${seg.dataset.w}%`;
+      });
+      const circ = 2 * Math.PI * 17;
+      headRing.setAttribute('stroke-dasharray', `${(84 / 100) * circ} ${circ}`);
+    };
+
+    const resetBars = () => {
+      document.querySelectorAll('.tube i').forEach((tube) => { tube.style.height = '0%'; });
+      document.querySelectorAll('.cellar-total i, .status-bar i').forEach((seg) => { seg.style.width = '0%'; });
+    };
+
+    toggle.addEventListener('click', () => {
+      const collapsed = insights.classList.toggle('collapsed');
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      if (collapsed) { resetBars(); }
+      else { requestAnimationFrame(() => setTimeout(animateBars, 60)); }
+    });
+
+    // pointer-follow glow on the header
+    toggle.addEventListener('pointermove', (e) => {
+      const rect = toggle.getBoundingClientRect();
+      toggle.style.setProperty('--mx', `${((e.clientX - rect.left) / rect.width) * 100}%`);
+      toggle.style.setProperty('--my', `${((e.clientY - rect.top) / rect.height) * 100}%`);
+    });
+
+    /* ============ STORAGE MODEL + MANAGE SCREEN ============ */
+    const PALETTE = [
+      '#2f6fb0',
+      'linear-gradient(180deg,#f5a524,#f5720a)',
+      '#7c4dff',
+      '#0f8a5f',
+      '#cd2d5b',
+      '#0ea5e9',
+      '#14b8a6',
+      '#e0457b',
+    ];
+    const clone = (x) => JSON.parse(JSON.stringify(x));
+    let uid = 100;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // count-up tween — numbers roll instead of snapping
+    const tween = (el, to, { suffix = '', dur = 550 } = {}) => {
+      if (!el) return;
+      to = Math.round(to);
+      const from = parseInt(String(el.textContent).replace(/[^\d-]/g, ''), 10) || 0;
+      if (el._raf) cancelAnimationFrame(el._raf);
+      if (from === to) { el.textContent = `${to}${suffix}`; return; }
+      const t0 = performance.now();
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        el.textContent = `${Math.round(from + (to - from) * ease(p))}${suffix}`;
+        if (p < 1) el._raf = requestAnimationFrame(step);
+      };
+      el._raf = requestAnimationFrame(step);
+    };
+    const flash = (el) => { if (!el) return; el.classList.remove('flash-num'); void el.offsetWidth; el.classList.add('flash-num'); };
+
+    // small inline icons for insights
+    const IC = {
+      over: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+      near: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>',
+      ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+      full: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+    };
+    const insightOf = (z) => {
+      const open = z.cap - z.count;
+      const pct = pctOf(z);
+      if (z.cap === 0) return { cls: 'over', icon: IC.over, text: 'No capacity set', short: 'set cap' };
+      if (pct > 100) return { cls: 'over', icon: IC.over, text: `${z.count - z.cap} over — relocate now`, short: `${z.count - z.cap} over` };
+      if (pct >= 90) return { cls: 'near', icon: IC.near, text: `Only ${open} slot${open === 1 ? '' : 's'} left — rotate soon`, short: `${open} left · rotate` };
+      if (pct <= 25) return { cls: 'ok', icon: IC.ok, text: `Room for ${open} more`, short: `+${open} room` };
+      return { cls: 'full', icon: IC.full, text: `${open} slots open`, short: `${open} open` };
+    };
+
+    let committed = [
+      { id: 'z1', name: 'Main Cellar', count: 305, cap: 500, color: '#2f6fb0' },
+      { id: 'z2', name: 'Bar Stock', count: 92, cap: 100, color: 'linear-gradient(180deg,#f5a524,#f5720a)' },
+      { id: 'z3', name: 'VIP Reserve', count: 38, cap: 50, color: '#7c4dff' },
+      { id: 'z4', name: 'Overflow', count: 40, cap: 200, color: '#0f8a5f' },
+    ];
+
+    const pctOf = (z) => (z.cap > 0 ? Math.round((z.count / z.cap) * 100) : 0);
+    const statusOf = (z) => {
+      const pct = pctOf(z);
+      if (pct > 100) return { pct, cls: 'over', label: `${pct}% · over limit` };
+      if (pct >= 90) return { pct, cls: 'near', label: `${pct}% · near limit` };
+      if (pct <= 25) return { pct, cls: 'ok', label: `${pct}% · headroom` };
+      return { pct, cls: 'full', label: `${pct}% full` };
+    };
+
+    const FLAG = '<span class="zt-flag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg></span>';
+
+    /* ---- render the live card from the model ---- */
+    const zoneGrid = document.getElementById('zoneGrid');
+    const cellarTotal = document.getElementById('cellarTotal');
+    const storageSub = document.getElementById('storageSub');
+
+    const renderCard = () => {
+      const totalCount = committed.reduce((s, z) => s + z.count, 0);
+      const totalCap = committed.reduce((s, z) => s + z.cap, 0);
+      const overall = totalCap > 0 ? Math.round((totalCount / totalCap) * 100) : 0;
+
+      storageSub.textContent = `${totalCount} / ${totalCap} bottles stored · ${overall}% full`;
+
+      cellarTotal.innerHTML = committed.map((z) => {
+        const w = totalCap > 0 ? ((z.count / totalCap) * 100).toFixed(1) : 0;
+        return `<i style="background:${z.color};" data-w="${w}"></i>`;
+      }).join('');
+
+      zoneGrid.innerHTML = committed.map((z) => {
+        const st = statusOf(z);
+        const ins = insightOf(z);
+        const nearCls = (st.cls === 'near' || st.cls === 'over') ? ' near' : '';
+        return `
+          <button class="zone-tile${nearCls}" type="button" data-zone="${z.id}">
+            ${nearCls ? FLAG : ''}
+            <span class="tube"><i style="background:${z.color};" data-fill="${Math.min(st.pct, 100)}"></i></span>
+            <span class="zt-body">
+              <span class="zt-name">${esc(z.name)}</span>
+              <span class="zt-count">${z.count}<span> / ${z.cap}</span></span>
+              <span class="zt-pct">${st.label}</span>
+              <span class="zt-insight">${ins.icon}${ins.short}</span>
+            </span>
+          </button>`;
+      }).join('');
+
+      const chips = document.querySelectorAll('.head-stats .stat-chip b');
+      if (chips[0]) chips[0].textContent = committed.length;
+      if (chips[1]) chips[1].textContent = `${overall}%`;
+    };
+
+    /* ---- Manage Storage: cellar topology workbench ---- */
+    const overlay = document.getElementById('msOverlay');
+    const list = document.getElementById('msList');
+    const hint = document.getElementById('msHint');
+    const rack = document.getElementById('msRack');
+    const palette = document.getElementById('msPalette');
+    const capacityRange = document.getElementById('msCapacityRange');
+    const capacityInput = document.getElementById('msCapacityInput');
+    const editor = document.querySelector('.ms-editor');
+    let working = [];
+    let selectedId = null;
+    let dragId = null;
+    let lastRackUsed = -1;
+
+    const selected = () => working.find((z) => z.id === selectedId) || working[0];
+    const dirty = () => JSON.stringify(working) !== JSON.stringify(committed);
+    const solidColor = (color) => (color.match(/#[0-9a-fA-F]{6}/) || ['#cd2d5b'])[0];
+    const updateHint = () => {
+      hint.textContent = dirty() ? 'Cellar map has unapplied changes' : 'Cellar map is synchronized';
+      hint.style.color = dirty() ? 'var(--wine-700)' : 'var(--muted)';
+    };
+
+    const operationalInsight = (z) => {
+      const pct = pctOf(z);
+      const open = z.cap - z.count;
+      const target = working
+        .filter((x) => x.id !== z.id && x.cap - x.count > 0)
+        .sort((a, b) => (b.cap - b.count) - (a.cap - a.count))[0];
+      if (pct > 100) return {
+        tone: 'var(--danger)', kicker: 'Relocation required',
+        title: `${z.count - z.cap} bottles have no physical slot`,
+        copy: target ? `${target.name} has ${target.cap - target.count} open slots. Move excess before saving this capacity.` : 'Add capacity or create another location before this layout can be trusted.',
+        action: target ? `Open ${target.name}` : 'Add another location', targetId: target?.id,
+      };
+      if (pct >= 90) return {
+        tone: 'var(--warn)', kicker: 'Pressure forecast',
+        title: `Only ${open} slots remain before this zone locks`,
+        copy: target ? `${target.name} is the safest receiving buffer with ${target.cap - target.count} open slots.` : 'Increase capacity before the next receiving window.',
+        action: target ? `Compare with ${target.name}` : 'Add receiving buffer', targetId: target?.id,
+      };
+      if (pct <= 25) return {
+        tone: 'var(--emerald)', kicker: 'Available receiving buffer',
+        title: `${open} open slots can absorb the next delivery`,
+        copy: 'This is the best current target for overflow and temporary receiving.',
+        action: 'Mark as preferred overflow',
+      };
+      return {
+        tone: 'var(--blue)', kicker: 'Capacity balanced',
+        title: `${open} open slots keep this zone service-ready`,
+        copy: `Pressure begins at ${Math.round(z.cap * .9)} bottles. No intervention is needed now.`,
+        action: 'View bottles in this location',
+      };
+    };
+
+    const renderGlobal = () => {
+      const stock = working.reduce((sum, z) => sum + z.count, 0);
+      const cap = working.reduce((sum, z) => sum + z.cap, 0);
+      const risk = working.filter((z) => pctOf(z) >= 90).length;
+      tween(document.getElementById('msGlobalStock'), stock);
+      tween(document.getElementById('msGlobalHeadroom'), Math.max(0, cap - stock));
+      tween(document.getElementById('msGlobalRisk'), risk, { dur: 300 });
+      document.getElementById('msZoneCount').textContent = `${working.length} zone${working.length === 1 ? '' : 's'}`;
+    };
+
+    const stateLabel = (z) => {
+      const st = statusOf(z);
+      if (st.cls === 'over') return 'Over';
+      if (st.cls === 'near') return 'Pressure';
+      if (st.cls === 'ok') return 'Open';
+      return 'Stable';
+    };
+
+    const renderRail = (flashId) => {
+      list.innerHTML = working.map((z) => {
+        const st = statusOf(z);
+        return `
+          <button class="ms-row${z.id === selectedId ? ' active' : ''}${z.id === flashId ? ' flash' : ''}" type="button" data-id="${z.id}" draggable="true">
+            <span class="ms-rail-meter"><i style="height:${Math.min(st.pct, 100)}%;background:${z.color};"></i></span>
+            <span class="ms-rail-copy">
+              <span class="ms-rail-name">${esc(z.name)}</span>
+              <span class="ms-rail-meta">${z.count} / ${z.cap} · ${st.pct}%</span>
+            </span>
+            <span class="ms-rail-state ${st.cls}">${stateLabel(z)}</span>
+          </button>`;
+      }).join('');
+      renderGlobal();
+    };
+
+    const renderRack = (animate = false) => {
+      const z = selected();
+      if (!z) return;
+      const cells = 80;
+      const used = Math.min(cells, Math.round((z.count / Math.max(z.cap, 1)) * cells));
+      const threshold = Math.round(cells * .9);
+      rack.innerHTML = Array.from({ length: cells }, (_, i) => {
+        const isChanged = animate && ((i < used) !== (i < lastRackUsed));
+        return `<i class="ms-slot${i < used ? ' used' : ''}${i === threshold - 1 ? ' threshold' : ''}${isChanged ? ' changed' : ''}" style="${i < used ? `background:${z.color};` : ''}"></i>`;
+      }).join('');
+      lastRackUsed = used;
+      document.getElementById('msRackLabel').textContent = `1 cell ≈ ${Math.max(1, Math.round(z.cap / cells))} bottles`;
+      document.getElementById('msRackScale').textContent = `${z.count} / ${z.cap}`;
+      document.getElementById('msUsedKey').style.background = solidColor(z.color);
+    };
+
+    const renderEditor = ({ animateRack = false, keepNameFocus = false } = {}) => {
+      const z = selected();
+      if (!z) return;
+      const st = statusOf(z);
+      const insight = operationalInsight(z);
+      const name = document.getElementById('msZoneName');
+      if (!keepNameFocus) name.value = z.name;
+      document.getElementById('msColor').style.background = z.color;
+      document.getElementById('msZoneSub').textContent = `${z.count} bottles placed · ${st.pct}% utilized`;
+      editor.style.setProperty('--zone-color', solidColor(z.color));
+      editor.style.setProperty('--range-pct', `${Math.min(100, (z.cap / 1000) * 100)}%`);
+
+      capacityRange.value = z.cap;
+      capacityInput.value = z.cap;
+      tween(document.getElementById('msCapReadout'), z.cap);
+      document.getElementById('msDetailPlaced').textContent = `${z.count} bottles`;
+      document.getElementById('msDetailHeadroom').textContent = z.cap >= z.count ? `${z.cap - z.count} slots` : `${z.count - z.cap} over`;
+      document.getElementById('msDetailPressure').textContent = `${Math.round(z.cap * .9)} bottles`;
+      document.getElementById('msDetailUtil').textContent = `${st.pct}%`;
+
+      const card = document.getElementById('msInsightCard');
+      card.style.setProperty('--insight-color', insight.tone);
+      document.getElementById('msInsightKicker').innerHTML = `${IC[st.cls] || IC.full}<span>${insight.kicker}</span>`;
+      document.getElementById('msInsightTitle').textContent = insight.title;
+      document.getElementById('msInsightCopy').textContent = insight.copy;
+      const action = document.getElementById('msInsightAction');
+      action.textContent = insight.action;
+      action.dataset.target = insight.targetId || '';
+      renderRack(animateRack);
+    };
+
+    const selectZone = (id, flashId) => {
+      selectedId = id;
+      lastRackUsed = -1;
+      renderRail(flashId);
+      renderEditor();
+    };
+
+    const setCapacity = (value) => {
+      const z = selected();
+      if (!z) return;
+      z.cap = Math.max(10, Math.min(1000, Math.round(Number(value) / 10) * 10 || 10));
+      renderRail();
+      renderEditor({ animateRack: true, keepNameFocus: true });
+      updateHint();
+    };
+
+    const openDrawer = (highlightId) => {
+      working = clone(committed);
+      selectedId = highlightId && working.some((z) => z.id === highlightId) ? highlightId : working[0]?.id;
+      lastRackUsed = -1;
+      renderRail(highlightId);
+      renderEditor();
+      overlay.hidden = false;
+      requestAnimationFrame(() => overlay.classList.add('open'));
+      if (highlightId) setTimeout(() => list.querySelector(`[data-id="${highlightId}"]`)?.classList.remove('flash'), 900);
+    };
+    const closeDrawer = () => {
+      overlay.classList.remove('open');
+      palette.classList.remove('open');
+      setTimeout(() => { overlay.hidden = true; }, 240);
+    };
+
+    document.querySelectorAll('[data-manage]').forEach((btn) => btn.addEventListener('click', () => openDrawer()));
+    zoneGrid.addEventListener('click', (e) => {
+      const tile = e.target.closest('.zone-tile');
+      if (tile) openDrawer(tile.dataset.zone);
+    });
+    document.getElementById('msClose').addEventListener('click', closeDrawer);
+    document.getElementById('msCancel').addEventListener('click', closeDrawer);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDrawer(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('open')) closeDrawer(); });
+
+    list.addEventListener('click', (e) => {
+      const row = e.target.closest('.ms-row');
+      if (row) selectZone(row.dataset.id);
+    });
+
+    document.getElementById('msAdd').addEventListener('click', () => {
+      const used = working.map((z) => z.color);
+      const color = PALETTE.find((c) => !used.includes(c)) || PALETTE[working.length % PALETTE.length];
+      const zone = { id: `z${++uid}`, name: 'New location', count: 0, cap: 100, color };
+      working.push(zone);
+      selectedId = zone.id;
+      renderRail(zone.id);
+      renderEditor();
+      updateHint();
+      requestAnimationFrame(() => {
+        const name = document.getElementById('msZoneName');
+        name.focus();
+        name.select();
+      });
+    });
+
+    document.getElementById('msZoneName').addEventListener('input', (e) => {
+      const z = selected();
+      if (!z) return;
+      z.name = e.target.value;
+      renderRail();
+      updateHint();
+    });
+
+    capacityRange.addEventListener('input', (e) => setCapacity(e.target.value));
+    capacityInput.addEventListener('change', (e) => setCapacity(e.target.value));
+    document.querySelectorAll('[data-cap-step]').forEach((btn) => btn.addEventListener('click', () => {
+      setCapacity(selected().cap + Number(btn.dataset.capStep));
+    }));
+
+    palette.innerHTML = PALETTE.map((color) => `<button type="button" data-color="${color}" style="background:${color};" aria-label="Use color"></button>`).join('');
+    document.getElementById('msColor').addEventListener('click', (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const editorRect = editor.getBoundingClientRect();
+      palette.style.left = `${rect.left - editorRect.left}px`;
+      palette.style.top = `${rect.bottom - editorRect.top + 7}px`;
+      palette.classList.toggle('open');
+    });
+    palette.addEventListener('click', (e) => {
+      const pick = e.target.closest('[data-color]');
+      if (!pick) return;
+      selected().color = pick.dataset.color;
+      palette.classList.remove('open');
+      renderRail();
+      renderEditor({ animateRack: true });
+      updateHint();
+    });
+
+    document.getElementById('msDelete').addEventListener('click', () => {
+      const z = selected();
+      if (!z) return;
+      if (z.count > 0) {
+        showToast(`Relocate ${z.count} bottles before removing ${z.name}`);
+        return;
+      }
+      if (working.length === 1) {
+        showToast('Keep at least one storage location');
+        return;
+      }
+      const index = working.findIndex((x) => x.id === z.id);
+      working.splice(index, 1);
+      selectedId = working[Math.min(index, working.length - 1)].id;
+      renderRail();
+      renderEditor();
+      updateHint();
+    });
+
+    document.getElementById('msInsightAction').addEventListener('click', (e) => {
+      const target = e.currentTarget.dataset.target;
+      if (target) {
+        selectZone(target, target);
+        return;
+      }
+      const z = selected();
+      showToast(pctOf(z) <= 25 ? `${z.name} marked as preferred overflow` : `Opening ${z.count} bottles in ${z.name}`);
+    });
+
+    // Reorder locations spatially with drag and drop.
+    list.addEventListener('dragstart', (e) => {
+      const row = e.target.closest('.ms-row');
+      if (!row) return;
+      dragId = row.dataset.id;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    list.addEventListener('dragend', () => {
+      list.querySelectorAll('.dragging, .drag-over').forEach((row) => row.classList.remove('dragging', 'drag-over'));
+      dragId = null;
+    });
+    list.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const over = e.target.closest('.ms-row');
+      list.querySelectorAll('.drag-over').forEach((row) => row.classList.remove('drag-over'));
+      if (over && over.dataset.id !== dragId) over.classList.add('drag-over');
+    });
+    list.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const over = e.target.closest('.ms-row');
+      if (!over || !dragId || over.dataset.id === dragId) return;
+      const from = working.findIndex((z) => z.id === dragId);
+      const to = working.findIndex((z) => z.id === over.dataset.id);
+      const [moved] = working.splice(from, 1);
+      working.splice(to, 0, moved);
+      renderRail();
+      updateHint();
+    });
+
+    // toast
+    const toast = document.getElementById('msToast');
+    const showToast = (msg) => {
+      document.getElementById('msToastMsg').textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove('show'), 2600);
+    };
+
+    document.getElementById('msSave').addEventListener('click', () => {
+      const invalid = working.find((z) => z.count > z.cap);
+      if (invalid) {
+        selectZone(invalid.id, invalid.id);
+        showToast(`${invalid.name} needs ${invalid.count - invalid.cap} more slots before saving`);
+        return;
+      }
+      const n = working.length;
+      committed = clone(working);
+      renderCard();
+      requestAnimationFrame(() => setTimeout(animateBars, 40));
+      closeDrawer();
+      showToast(`${n} storage location${n === 1 ? '' : 's'} saved`);
+    });
+
+    // initial render + animation
+    renderCard();
+    setTimeout(animateBars, 200);
+  })();
+</script>
+</body>
+</html>

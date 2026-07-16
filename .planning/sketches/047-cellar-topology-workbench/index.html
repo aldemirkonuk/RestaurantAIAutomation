@@ -1,0 +1,2154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 047 · Cellar Topology Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --chalk: #f3efe8;
+    --limestone: #e8e2d8;
+    --stone: #d4cdc2;
+    --ink: #1c1714;
+    --ink-2: #3a342f;
+    --muted: #6e655c;
+    --quiet: #9a9085;
+    --wine: #9e2a4a;
+    --wine-deep: #6f1a32;
+    --capsule: #c45c3a;
+    --brass: #b08a4f;
+    --cool: #4a6b78;
+    --ok: #2f6b4f;
+    --warn: #a66b1f;
+    --danger: #a8342a;
+    --surface: #faf7f2;
+    --panel: #fffcf8;
+    --line: rgba(28, 23, 20, .1);
+    --line-soft: rgba(28, 23, 20, .06);
+    --ease: cubic-bezier(.23, 1, .32, 1);
+    --spring: cubic-bezier(.34, 1.4, .5, 1);
+    /* wine style classification */
+    --style-red: #6f1a32;
+    --style-white: #d4c08a;
+    --style-sparkling: #7a9bb0;
+    --style-rose: #d4899a;
+    --style-fortified: #8b5a2b;
+  }
+  * { box-sizing: border-box; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; background: none; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 500px at 12% -10%, rgba(158, 42, 74, .07), transparent 55%),
+      radial-gradient(700px 400px at 95% 10%, rgba(176, 138, 79, .08), transparent 50%),
+      linear-gradient(180deg, #ebe4d9, var(--chalk));
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 28px 22px 48px;
+  }
+
+  /* —— sketch chrome —— */
+  .sketch-meta {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-bottom: 18px;
+  }
+  .sketch-meta .kicker {
+    color: var(--wine);
+    font-size: 10px; font-weight: 800;
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  .sketch-meta p {
+    margin: 0; color: var(--muted);
+    font-size: 12px; line-height: 1.45;
+  }
+
+  /* —— workbench shell —— */
+  .bench {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: min(860px, calc(100dvh - 96px));
+    border: 1px solid rgba(255,255,255,.7);
+    border-radius: 22px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.8) inset,
+      0 40px 90px -40px rgba(28, 23, 20, .45);
+  }
+
+  /* —— top bar —— */
+  .top {
+    display: flex; align-items: center; gap: 16px;
+    min-height: 68px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 252, 248, .92);
+    backdrop-filter: blur(10px);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+    min-width: 0;
+  }
+  .brand-mark {
+    width: 36px; height: 36px;
+    display: grid; place-items: center;
+    border-radius: 11px;
+    background: linear-gradient(145deg, var(--ink), #2c2420);
+    color: #f3efe8;
+  }
+  .brand-mark svg { width: 18px; height: 18px; }
+  .brand h1 {
+    margin: 0;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 22px; font-weight: 400;
+    letter-spacing: -.02em; line-height: 1;
+  }
+  .brand small {
+    display: block; margin-top: 3px;
+    color: var(--quiet);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  .vitals {
+    display: flex; align-items: stretch; gap: 0;
+    margin-left: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--limestone);
+  }
+  .vital {
+    min-width: 92px;
+    padding: 8px 14px;
+    border-right: 1px solid var(--line);
+  }
+  .vital:last-child { border-right: 0; }
+  .vital b {
+    display: block;
+    font-size: 15px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .vital span {
+    color: var(--quiet);
+    font-size: 8px; font-weight: 800;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .vital.warn b { color: var(--warn); }
+  .vital.danger b { color: var(--danger); }
+
+  .top-actions { display: flex; gap: 8px; margin-left: 12px; }
+  .btn {
+    height: 34px; padding: 0 14px;
+    border-radius: 9px;
+    font-size: 11px; font-weight: 750;
+    transition: transform 110ms ease-out, background 150ms ease, border-color 150ms ease;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn.ghost {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink-2);
+  }
+  .btn.ghost:hover { background: var(--limestone); }
+  .btn.primary {
+    border: 1px solid var(--wine-deep);
+    background: var(--wine);
+    color: #fff;
+    box-shadow: 0 8px 18px -12px rgba(158, 42, 74, .7);
+  }
+  .btn.primary:hover { background: var(--wine-deep); }
+  .btn.primary:disabled {
+    opacity: .45; cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* —— main grid —— */
+  .main {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 248px 1fr 300px;
+  }
+
+  /* —— left rail: locations —— */
+  .rail {
+    min-height: 0;
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--line);
+    background: var(--limestone);
+  }
+  .rail-hd {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px 10px;
+  }
+  .rail-hd span {
+    color: var(--quiet);
+    font-size: 9px; font-weight: 800;
+    letter-spacing: .1em; text-transform: uppercase;
+  }
+  .rail-list {
+    min-height: 0; flex: 1;
+    overflow-y: auto;
+    padding: 0 10px 10px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .loc {
+    position: relative;
+    display: grid;
+    grid-template-columns: 8px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 10px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    text-align: left;
+    transition: background 150ms ease, border-color 150ms ease, transform 110ms ease-out, opacity 150ms ease;
+  }
+  .loc:hover { background: rgba(255,252,248,.55); }
+  .loc.active {
+    background: var(--panel);
+    border-color: var(--line);
+    box-shadow: 0 6px 18px -14px rgba(28,23,20,.4);
+  }
+  .loc:active { transform: scale(.985); }
+  .loc.dragging { opacity: .35; }
+  .loc.drag-over::before {
+    content: "";
+    position: absolute; left: 8px; right: 8px; top: -4px;
+    height: 2px; border-radius: 2px;
+    background: var(--wine);
+  }
+  .loc-bar {
+    position: relative;
+    width: 7px; height: 40px;
+    overflow: hidden;
+    border-radius: 5px;
+    background: rgba(28,23,20,.08);
+  }
+  .loc-bar i {
+    position: absolute; inset-inline: 0; bottom: 0;
+    border-radius: inherit;
+    transition: height 280ms var(--ease), background 180ms ease;
+  }
+  .loc-copy { min-width: 0; }
+  .loc-name {
+    display: block;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px; font-weight: 800;
+  }
+  .loc-meta {
+    display: block; margin-top: 3px;
+    color: var(--quiet);
+    font-size: 9px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .loc-pill {
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: rgba(28,23,20,.06);
+    color: var(--muted);
+    font-size: 8px; font-weight: 800;
+    letter-spacing: .03em; text-transform: uppercase;
+  }
+  .loc-pill.near { background: rgba(166,107,31,.14); color: var(--warn); }
+  .loc-pill.over { background: rgba(168,52,42,.12); color: var(--danger); }
+  .loc-pill.ok { background: rgba(47,107,79,.12); color: var(--ok); }
+
+  .rail-add {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    height: 40px; margin: 0 10px 12px;
+    border: 1px dashed rgba(28,23,20,.18);
+    border-radius: 11px;
+    background: rgba(255,252,248,.35);
+    color: var(--wine);
+    font-size: 11px; font-weight: 750;
+    transition: background 150ms ease, border-color 150ms ease, transform 110ms ease-out;
+  }
+  .rail-add:hover { background: var(--panel); border-color: rgba(158,42,74,.35); }
+  .rail-add:active { transform: scale(.98); }
+  .rail-add svg { width: 14px; height: 14px; }
+
+  /* —— center: topology + rack —— */
+  .stage {
+    min-width: 0; min-height: 0;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    background: var(--surface);
+  }
+
+  .floor {
+    padding: 14px 16px 0;
+  }
+  .floor-label {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .floor-label h2 {
+    margin: 0;
+    font-size: 10px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--quiet);
+  }
+  .floor-label span {
+    color: var(--muted);
+    font-size: 10px; font-weight: 600;
+  }
+  .topology {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr .9fr;
+    gap: 8px;
+    height: 92px;
+  }
+  .bay {
+    position: relative;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 120ms ease-out;
+  }
+  .bay::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--bay) 18%, transparent));
+    pointer-events: none;
+  }
+  .bay:hover { transform: translateY(-1px); border-color: rgba(28,23,20,.18); }
+  .bay.active {
+    border-color: color-mix(in srgb, var(--bay) 55%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--bay) 18%, transparent);
+  }
+  .bay.near { border-color: rgba(166,107,31,.4); }
+  .bay.over { border-color: rgba(168,52,42,.45); }
+  .bay-fill {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: var(--fill, 0%);
+    background: color-mix(in srgb, var(--bay) 35%, transparent);
+    transition: height 320ms var(--ease);
+  }
+  .bay-name {
+    position: relative;
+    font-size: 11px; font-weight: 800;
+  }
+  .bay-stat {
+    position: relative; margin-top: 2px;
+    color: var(--muted);
+    font-size: 9px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rack-wrap {
+    min-height: 0;
+    display: flex; flex-direction: column;
+    padding: 14px 16px 16px;
+  }
+  .rack-hd {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 12px; margin-bottom: 10px;
+  }
+  .rack-hd h3 {
+    margin: 0;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 26px; font-weight: 400;
+    letter-spacing: -.02em;
+  }
+  .rack-hd .sub {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 11px; font-weight: 600;
+  }
+  .rack-scale {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+  }
+
+  .rack {
+    position: relative;
+    min-height: 0; flex: 1;
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 4px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(255,252,248,.9), rgba(232,226,216,.55)),
+      repeating-linear-gradient(90deg, transparent 0 28px, rgba(28,23,20,.04) 28px 29px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 12px 28px rgba(28,23,20,.03);
+  }
+  .slot {
+    position: relative;
+    min-height: 10px;
+    border: 1px solid rgba(28,23,20,.08);
+    border-radius: 3px;
+    background: rgba(28,23,20,.03);
+    transition: background 180ms ease, border-color 180ms ease, transform 180ms var(--ease), opacity 180ms ease, filter 180ms ease;
+  }
+  .slot.pressure { box-shadow: inset -2px 0 0 var(--warn); }
+  .slot.changed { animation: slotIn 280ms var(--ease); }
+  @keyframes slotIn {
+    from { opacity: .2; transform: scale(.65); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Distinct bottle silhouettes by wine style */
+  .slot.red {
+    border: 0;
+    border-radius: 2px 2px 3px 3px;
+    background: linear-gradient(180deg, #8b2548, var(--style-red));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+  }
+  .slot.white {
+    border: 0;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #efe6c4, var(--style-white));
+    box-shadow: inset 0 0 0 1px rgba(140, 110, 50, .22);
+  }
+  .slot.sparkling {
+    border: 0;
+    border-radius: 1px;
+    clip-path: polygon(50% 0, 100% 22%, 100% 100%, 0 100%, 0 22%);
+    background: linear-gradient(160deg, #c5d8e4, var(--style-sparkling) 55%, #5a7a8c);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45);
+  }
+  .slot.rose {
+    border: 0;
+    border-radius: 50% 50% 3px 3px / 40% 40% 3px 3px;
+    background: linear-gradient(180deg, #ecc0cb, var(--style-rose));
+  }
+  .slot.fortified {
+    border: 0;
+    border-radius: 2px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 2px, rgba(0,0,0,.08) 2px 3px),
+      linear-gradient(180deg, #c4894a, var(--style-fortified));
+  }
+  .rack.filter-on .slot:not(.open):not(.is-focus) { opacity: .18; filter: grayscale(.4); }
+  .rack.filter-on .slot.is-focus { transform: scale(1.08); z-index: 1; }
+
+  .style-filters {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    margin-top: 10px;
+  }
+  .style-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 26px; padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 9px; font-weight: 750;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 110ms ease-out;
+  }
+  .style-chip:hover { border-color: rgba(28,23,20,.2); color: var(--ink); }
+  .style-chip:active { transform: scale(.97); }
+  .style-chip.active {
+    border-color: color-mix(in srgb, var(--chip) 45%, transparent);
+    background: color-mix(in srgb, var(--chip) 14%, #fffcf8);
+    color: var(--ink);
+  }
+  .style-chip .sw {
+    width: 9px; height: 9px; flex: none;
+    border-radius: 2px;
+    background: var(--chip);
+  }
+  .style-chip[data-style="sparkling"] .sw { clip-path: polygon(50% 0, 100% 28%, 100% 100%, 0 100%, 0 28%); }
+  .style-chip[data-style="rose"] .sw { border-radius: 50%; }
+  .style-chip b { font-variant-numeric: tabular-nums; font-weight: 800; }
+  .style-filters .hint { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 650; }
+
+  .mix-bar {
+    display: flex; height: 6px;
+    margin-top: 6px;
+    border-radius: 999px; overflow: hidden;
+    background: rgba(28,23,20,.06);
+  }
+  .mix-bar i { height: 100%; transition: width 280ms var(--ease); }
+  .bay .mix-bar { position: relative; margin-top: 6px; height: 5px; }
+  .loc-mix {
+    display: flex; height: 3px; margin-top: 5px;
+    border-radius: 999px; overflow: hidden;
+    background: rgba(28,23,20,.08);
+  }
+  .loc-mix i { height: 100%; }
+
+  .style-list { display: flex; flex-direction: column; gap: 7px; }
+  .style-row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    align-items: center; gap: 8px;
+    padding: 4px 6px;
+    margin: 0 -6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 150ms ease;
+  }
+  .style-row:hover { background: rgba(28,23,20,.04); }
+  .style-row.active {
+    background: color-mix(in srgb, var(--chip) 12%, transparent);
+  }
+  .style-row .dot {
+    width: 10px; height: 10px; border-radius: 2px;
+    background: var(--chip);
+  }
+  .style-row[data-style="sparkling"] .dot { clip-path: polygon(50% 0, 100% 28%, 100% 100%, 0 100%, 0 28%); }
+  .style-row[data-style="rose"] .dot { border-radius: 50%; }
+  .style-row .lbl { font-size: 10px; font-weight: 700; color: var(--ink-2); }
+  .style-row .pct {
+    color: var(--quiet);
+    font-size: 9px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .style-track {
+    grid-column: 2 / -1;
+    height: 4px; border-radius: 999px;
+    background: rgba(28,23,20,.07); overflow: hidden;
+  }
+  .style-track i {
+    display: block; height: 100%;
+    background: var(--chip);
+    transition: width 280ms var(--ease);
+  }
+
+  /* —— style wine roster —— */
+  .style-detail {
+    display: none;
+    margin-top: 2px;
+  }
+  .style-detail.open { display: block; }
+  .style-detail .sd-hd {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .style-detail .sd-hd h5 {
+    margin: 0;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 18px; font-weight: 400;
+    letter-spacing: -.02em;
+  }
+  .style-detail .sd-hd .meta {
+    color: var(--quiet);
+    font-size: 9px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .style-detail .sd-lead {
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 11px; line-height: 1.45;
+  }
+  .wine-roster {
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+  .wine-card {
+    position: relative;
+    padding: 10px 10px 10px 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--chip) 8%, #fffcf8), #fffcf8);
+    transition: border-color 150ms ease, transform 110ms ease-out;
+  }
+  .wine-card::before {
+    content: "";
+    position: absolute; left: 0; top: 10px; bottom: 10px;
+    width: 3px; border-radius: 0 2px 2px 0;
+    background: var(--chip);
+  }
+  .wine-card:hover { border-color: rgba(28,23,20,.14); }
+  .wine-card .wc-top {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  }
+  .wine-card .wc-name {
+    margin: 0;
+    font-size: 12px; font-weight: 800;
+    letter-spacing: -.015em;
+    line-height: 1.25;
+  }
+  .wine-card .wc-producer {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 10px; font-weight: 600;
+  }
+  .wine-card .wc-qty {
+    flex: none;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: rgba(28,23,20,.06);
+    color: var(--ink-2);
+    font-size: 10px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .wine-card .wc-meta {
+    display: flex; flex-wrap: wrap; gap: 5px 10px;
+    margin-top: 8px;
+  }
+  .wine-card .wc-meta span {
+    color: var(--quiet);
+    font-size: 9px; font-weight: 650;
+  }
+  .wine-card .wc-meta b {
+    color: var(--ink-2);
+    font-weight: 750;
+  }
+  .wine-card .wc-note {
+    margin: 8px 0 0;
+    padding-top: 7px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--muted);
+    font-size: 10px; line-height: 1.4;
+    font-style: italic;
+  }
+  .wine-empty {
+    padding: 14px 10px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    color: var(--quiet);
+    font-size: 11px; text-align: center;
+  }
+  .sd-clear {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 10px; font-weight: 700;
+  }
+  .sd-clear:hover { color: var(--ink); }
+
+  /* —— stored wines / assign —— */
+  .stored-hd {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    margin-bottom: 8px;
+  }
+  .stored-hd h4 { margin: 0; }
+  .stored-hd .sub {
+    margin: 4px 0 0;
+    color: var(--quiet);
+    font-size: 10px; font-weight: 600;
+  }
+  .stored-cap {
+    text-align: right;
+    flex: none;
+  }
+  .stored-cap b {
+    display: block;
+    font-size: 13px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .stored-cap span {
+    color: var(--quiet);
+    font-size: 9px; font-weight: 650;
+  }
+  .stored-meter {
+    height: 3px; margin-bottom: 12px;
+    border-radius: 999px; overflow: hidden;
+    background: rgba(28,23,20,.08);
+  }
+  .stored-meter i {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--cool), var(--wine));
+    transition: width 280ms var(--ease);
+  }
+  .stored-meter.near i { background: var(--warn); }
+  .stored-meter.over i { background: var(--danger); }
+
+  .assign-search {
+    position: relative;
+    margin-bottom: 10px;
+  }
+  .assign-search svg {
+    position: absolute; left: 10px; top: 50%;
+    width: 14px; height: 14px;
+    transform: translateY(-50%);
+    color: var(--quiet);
+    pointer-events: none;
+  }
+  .assign-search input {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px 0 32px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    font-size: 12px; font-weight: 550;
+  }
+  .assign-search input::placeholder { color: var(--quiet); }
+  .assign-search input:focus {
+    outline: none;
+    border-color: rgba(158,42,74,.35);
+    box-shadow: 0 0 0 3px rgba(158,42,74,.08);
+  }
+
+  .assign-list {
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .assign-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 10px 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .assign-row:hover {
+    border-color: rgba(28,23,20,.16);
+    box-shadow: 0 4px 12px -8px rgba(28,23,20,.25);
+  }
+  .assign-row .ar-body { min-width: 0; flex: 1; }
+  .assign-row .ar-name {
+    margin: 0;
+    font-size: 11px; font-weight: 800;
+    letter-spacing: -.01em;
+    line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .assign-row .ar-prod {
+    margin: 3px 0 0;
+    color: var(--quiet);
+    font-size: 10px; font-weight: 600;
+  }
+  .assign-row .ar-meta {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 9px; font-weight: 650;
+  }
+  .assign-actions {
+    display: flex; flex-direction: column; gap: 5px;
+    flex: none;
+  }
+  .btn-assign {
+    height: 28px; padding: 0 12px;
+    border-radius: 999px;
+    background: var(--ok);
+    color: #fff;
+    font-size: 10px; font-weight: 800;
+    letter-spacing: .01em;
+    transition: transform 110ms ease-out, filter 150ms ease;
+  }
+  .btn-assign:hover { filter: brightness(1.06); }
+  .btn-assign:active { transform: scale(.96); }
+  .btn-assign:disabled {
+    opacity: .45; cursor: not-allowed; filter: none;
+  }
+  .btn-locate {
+    height: 24px; padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--ink-2);
+    font-size: 9px; font-weight: 750;
+    transition: background 150ms ease, border-color 150ms ease;
+  }
+  .btn-locate:hover {
+    border-color: rgba(74,107,120,.35);
+    background: rgba(74,107,120,.08);
+    color: var(--cool);
+  }
+  .assigned-list {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-bottom: 12px;
+  }
+  .assigned-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 8px 8px 10px;
+    border-radius: 10px;
+    background: rgba(28,23,20,.03);
+    border: 1px solid var(--line-soft);
+  }
+  .assigned-row .dot {
+    width: 8px; height: 8px; flex: none;
+    border-radius: 2px;
+    background: var(--chip);
+  }
+  .assigned-row .ar-body { min-width: 0; flex: 1; }
+  .assigned-row .ar-name {
+    margin: 0;
+    font-size: 10px; font-weight: 750;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .assigned-row .ar-meta {
+    color: var(--quiet);
+    font-size: 9px; font-weight: 600;
+  }
+  .btn-unassign {
+    flex: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 9px; font-weight: 700;
+  }
+  .btn-unassign:hover { color: var(--danger); background: rgba(168,52,42,.06); }
+  .assign-empty {
+    padding: 12px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    color: var(--quiet);
+    font-size: 11px; text-align: center;
+  }
+  .auto-all {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .auto-all span {
+    color: var(--muted);
+    font-size: 10px; font-weight: 600;
+    line-height: 1.35;
+  }
+  .btn-auto-all {
+    flex: none;
+    height: 30px; padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(74,107,120,.3);
+    background: rgba(74,107,120,.08);
+    color: var(--cool);
+    font-size: 10px; font-weight: 800;
+  }
+  .btn-auto-all:hover { background: rgba(74,107,120,.14); }
+  .btn-auto-all:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* —— right inspector —— */
+  .inspector {
+    min-height: 0;
+    display: flex; flex-direction: column;
+    border-left: 1px solid var(--line);
+    background: var(--panel);
+    overflow-y: auto;
+  }
+  .insp-hd {
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .insp-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .swatch {
+    position: relative;
+    width: 32px; height: 32px; flex: none;
+    border: 3px solid #fff;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px var(--line), 0 4px 10px -6px rgba(28,23,20,.45);
+    transition: transform 110ms ease-out;
+  }
+  .swatch:active { transform: scale(.92); }
+  .name-input {
+    width: 100%;
+    padding: 2px 4px; margin: -2px -4px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    font-size: 15px; font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .name-input:hover { border-color: var(--line-soft); }
+  .name-input:focus {
+    outline: none;
+    border-color: rgba(158,42,74,.3);
+    background: rgba(158,42,74,.05);
+  }
+  .insp-sub {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 10px; font-weight: 600;
+  }
+
+  .palette {
+    position: absolute; z-index: 5;
+    display: none;
+    grid-template-columns: repeat(4, 24px);
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--panel);
+    box-shadow: 0 16px 32px -16px rgba(28,23,20,.45);
+  }
+  .palette.open { display: grid; }
+  .palette button {
+    width: 24px; height: 24px;
+    border: 2px solid #fff;
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px var(--line);
+    transition: transform 110ms ease-out;
+  }
+  .palette button:hover { transform: scale(1.1); }
+
+  .block { padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+  .block h4 {
+    margin: 0 0 10px;
+    color: var(--quiet);
+    font-size: 9px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  .cap-readout {
+    display: flex; align-items: baseline; gap: 6px;
+    margin-bottom: 12px;
+  }
+  .cap-readout b {
+    font-size: 34px; line-height: 1;
+    font-weight: 800;
+    letter-spacing: -.045em;
+    font-variant-numeric: tabular-nums;
+  }
+  .cap-readout span {
+    color: var(--quiet);
+    font-size: 10px; font-weight: 700;
+  }
+
+  .range {
+    width: 100%; height: 4px;
+    margin: 0 0 12px;
+    appearance: none;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--zone) var(--pct), var(--stone) var(--pct));
+    cursor: ew-resize;
+  }
+  .range::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px; height: 18px;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    background: var(--zone);
+    box-shadow: 0 0 0 1px rgba(28,23,20,.15), 0 5px 12px -6px rgba(28,23,20,.5);
+  }
+  .range::-moz-range-thumb {
+    width: 10px; height: 10px;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    background: var(--zone);
+  }
+
+  .cap-row {
+    display: grid;
+    grid-template-columns: 34px 1fr 34px;
+    gap: 6px;
+  }
+  .cap-btn, .cap-num {
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--limestone);
+  }
+  .cap-btn {
+    display: grid; place-items: center;
+    transition: background 150ms ease, transform 110ms ease-out;
+  }
+  .cap-btn:hover { background: rgba(158,42,74,.08); }
+  .cap-btn:active { transform: scale(.92); }
+  .cap-btn svg { width: 13px; height: 13px; }
+  .cap-num {
+    padding: 0 8px;
+    text-align: center;
+    font-size: 12px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+  }
+  .cap-num::-webkit-outer-spin-button,
+  .cap-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .cap-num:focus {
+    outline: 3px solid rgba(158,42,74,.12);
+    border-color: rgba(158,42,74,.35);
+    background: #fff;
+  }
+
+  .insight {
+    position: relative;
+    overflow: hidden;
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--limestone);
+  }
+  .insight::before {
+    content: "";
+    position: absolute; inset-block: 0; left: 0;
+    width: 3px;
+    background: var(--tone, var(--ok));
+  }
+  .insight .kick {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--quiet);
+    font-size: 8px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .insight .kick svg { width: 12px; height: 12px; color: var(--tone, var(--ok)); }
+  .insight h5 {
+    margin: 8px 0 4px;
+    font-size: 13px; line-height: 1.35;
+    font-weight: 800;
+    letter-spacing: -.015em;
+  }
+  .insight p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 10px; line-height: 1.5;
+  }
+  .insight .act {
+    width: 100%; height: 32px;
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel);
+    color: var(--ink-2);
+    font-size: 10px; font-weight: 750;
+    transition: background 150ms ease, color 150ms ease, transform 110ms ease-out;
+  }
+  .insight .act:hover { background: rgba(158,42,74,.07); color: var(--wine); }
+  .insight .act:active { transform: scale(.98); }
+
+  .stats { display: flex; flex-direction: column; gap: 0; }
+  .stat {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .stat:last-child { border-bottom: 0; }
+  .stat span { color: var(--muted); font-size: 10px; font-weight: 650; }
+  .stat b {
+    font-size: 11px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .danger-zone {
+    margin-top: auto;
+    padding: 14px 16px 16px;
+  }
+  .danger-btn {
+    width: 100%; height: 36px;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    border: 1px solid rgba(168,52,42,.22);
+    border-radius: 10px;
+    background: rgba(168,52,42,.05);
+    color: var(--danger);
+    font-size: 11px; font-weight: 750;
+    transition: background 150ms ease, transform 110ms ease-out;
+  }
+  .danger-btn:hover { background: rgba(168,52,42,.1); }
+  .danger-btn:active { transform: scale(.98); }
+  .danger-btn svg { width: 14px; height: 14px; }
+
+  /* —— footer —— */
+  .footbar {
+    display: flex; align-items: center; gap: 10px;
+    min-height: 52px;
+    padding: 0 18px;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .footbar .status {
+    margin-right: auto;
+    color: var(--muted);
+    font-size: 10px; font-weight: 650;
+  }
+  .footbar .status.dirty { color: var(--wine); font-weight: 750; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; z-index: 40;
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 16px;
+    border-radius: 12px;
+    background: var(--ink); color: #f3efe8;
+    font-size: 12px; font-weight: 700;
+    box-shadow: 0 20px 40px -18px rgba(28,23,20,.7);
+    transform: translate(-50%, 20px);
+    opacity: 0; pointer-events: none;
+    transition: transform 280ms var(--ease), opacity 280ms ease;
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; }
+  .toast svg { width: 15px; height: 15px; color: #8fd4a8; }
+
+  .path { margin-top: 14px; text-align: center; color: var(--quiet); font-size: 11px; }
+  .path code {
+    padding: 2px 6px; border-radius: 5px;
+    background: rgba(28,23,20,.06);
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+  }
+
+  @media (max-width: 980px) {
+    .main { grid-template-columns: 210px 1fr; }
+    .inspector { display: none; }
+    .topology { grid-template-columns: 1fr 1fr; height: auto; }
+    .bay { min-height: 64px; }
+  }
+  @media (max-width: 700px) {
+    .bench { height: auto; }
+    .main { grid-template-columns: 1fr; }
+    .rail { max-height: 180px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .rail-list { flex-direction: row; overflow-x: auto; }
+    .loc { min-width: 168px; }
+    .vitals { display: none; }
+    .rack { grid-template-columns: repeat(10, 1fr); min-height: 280px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sketch-meta">
+    <span class="kicker">Sketch 047</span>
+    <p>Standalone cellar topology — rack cells classified by wine style (red · white · sparkling · rosé · fortified).</p>
+  </div>
+
+  <div class="bench" id="bench">
+    <header class="top">
+      <div class="brand">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4zM4 10h16M10 4v16M15 10v10"/></svg>
+        </span>
+        <div>
+          <h1>Cellar topology</h1>
+          <small>Physical storage command</small>
+        </div>
+      </div>
+
+      <div class="vitals">
+        <div class="vital"><b id="vStock">0</b><span>Placed</span></div>
+        <div class="vital"><b id="vOpen">0</b><span>Open slots</span></div>
+        <div class="vital" id="vRiskWrap"><b id="vRisk">0</b><span>Under pressure</span></div>
+      </div>
+
+      <div class="top-actions">
+        <button class="btn ghost" type="button" id="btnReset">Reset</button>
+        <button class="btn primary" type="button" id="btnApply" disabled>Apply layout</button>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="rail">
+        <div class="rail-hd">
+          <span>Locations</span>
+          <span id="zoneCount">0</span>
+        </div>
+        <div class="rail-list" id="railList"></div>
+        <button class="rail-add" type="button" id="btnAdd">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add location
+        </button>
+      </aside>
+
+      <section class="stage">
+        <div class="floor">
+          <div class="floor-label">
+            <h2>Floor plan</h2>
+            <span>Select a bay · drag rail to reorder</span>
+          </div>
+          <div class="topology" id="topology"></div>
+        </div>
+
+        <div class="rack-wrap">
+          <div class="rack-hd">
+            <div>
+              <h3 id="rackTitle">Main Cellar</h3>
+              <div class="sub" id="rackSub">305 bottles placed · 61% utilized</div>
+            </div>
+            <div class="rack-scale" id="rackScale">305 / 500</div>
+          </div>
+          <div class="rack" id="rack" aria-label="Rack aperture by wine style"></div>
+          <div class="style-filters" id="styleFilters">
+            <button class="style-chip" type="button" data-style="red" style="--chip:var(--style-red)"><i class="sw"></i>Red <b data-n="red">0</b></button>
+            <button class="style-chip" type="button" data-style="white" style="--chip:var(--style-white)"><i class="sw"></i>White <b data-n="white">0</b></button>
+            <button class="style-chip" type="button" data-style="sparkling" style="--chip:var(--style-sparkling)"><i class="sw"></i>Sparkling <b data-n="sparkling">0</b></button>
+            <button class="style-chip" type="button" data-style="rose" style="--chip:var(--style-rose)"><i class="sw"></i>Rosé <b data-n="rose">0</b></button>
+            <button class="style-chip" type="button" data-style="fortified" style="--chip:var(--style-fortified)"><i class="sw"></i>Fortified <b data-n="fortified">0</b></button>
+            <span class="hint" id="rackHint">Tap a style to isolate · 1 cell ≈ bottles</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="inspector" id="inspector">
+        <div class="insp-hd">
+          <div class="insp-row">
+            <button class="swatch" type="button" id="swatch" aria-label="Change color"></button>
+            <div style="min-width:0;flex:1;">
+              <input class="name-input" id="nameInput" type="text" maxlength="28" aria-label="Location name" />
+              <div class="insp-sub" id="inspSub">Stable · receiving ready</div>
+            </div>
+          </div>
+          <div class="palette" id="palette"></div>
+        </div>
+
+        <div class="block">
+          <h4>Physical capacity</h4>
+          <div class="cap-readout"><b id="capReadout">500</b><span>bottle slots</span></div>
+          <input class="range" id="capRange" type="range" min="10" max="1000" step="10" value="500" aria-label="Capacity" />
+          <div class="cap-row">
+            <button class="cap-btn" type="button" data-step="-10" aria-label="Decrease">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+            </button>
+            <input class="cap-num" id="capNum" type="number" min="10" max="1000" step="10" value="500" aria-label="Exact capacity" />
+            <button class="cap-btn" type="button" data-step="10" aria-label="Increase">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="block" id="storedBlock">
+          <div class="stored-hd">
+            <div>
+              <h4>Stored Wines</h4>
+              <p class="sub" id="storedSub">0 wines assigned here</p>
+            </div>
+            <div class="stored-cap">
+              <b id="storedCap">0 / 100</b>
+              <span>bottles</span>
+            </div>
+          </div>
+          <div class="stored-meter" id="storedMeter"><i id="storedFill" style="width:0%"></i></div>
+
+          <div class="assigned-list" id="assignedList"></div>
+
+          <div class="assign-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22V12a4 4 0 0 1 8 0v10M6 22h12M12 2v2"/></svg>
+            <input id="assignSearch" type="search" placeholder="Search wines to assign..." aria-label="Search wines to assign" autocomplete="off" />
+          </div>
+          <div class="assign-list" id="assignList"></div>
+
+          <div class="auto-all">
+            <span>Place the whole pool into best-fit bays by style + headroom.</span>
+            <button class="btn-auto-all" type="button" id="btnAutoAll">Auto locate all</button>
+          </div>
+        </div>
+
+        <div class="block">
+          <h4>Wine styles in this bay</h4>
+          <div class="style-list" id="styleList"></div>
+          <div class="style-detail" id="styleDetail">
+            <div class="sd-hd">
+              <h5 id="sdTitle">Reds</h5>
+              <span class="meta" id="sdMeta">0 bottles · 0 SKUs</span>
+            </div>
+            <p class="sd-lead" id="sdLead">Wines of this style currently placed in this bay.</p>
+            <div class="wine-roster" id="wineRoster"></div>
+            <button class="sd-clear" type="button" id="sdClear">Clear style filter</button>
+          </div>
+        </div>
+
+        <div class="block">
+          <h4>Operational read</h4>
+          <div class="insight" id="insight">
+            <div class="kick" id="insightKick"></div>
+            <h5 id="insightTitle">Capacity balanced</h5>
+            <p id="insightCopy">This location has enough room for normal receiving.</p>
+            <button class="act" type="button" id="insightAct">View bottles</button>
+          </div>
+        </div>
+
+        <div class="block">
+          <h4>Breakdown</h4>
+          <div class="stats">
+            <div class="stat"><span>Placed</span><b id="sPlaced">—</b></div>
+            <div class="stat"><span>Headroom</span><b id="sHead">—</b></div>
+            <div class="stat"><span>Pressure starts</span><b id="sPressure">—</b></div>
+            <div class="stat"><span>Utilization</span><b id="sUtil">—</b></div>
+          </div>
+        </div>
+
+        <div class="danger-zone">
+          <button class="danger-btn" type="button" id="btnDelete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            Remove location
+          </button>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="footbar">
+      <span class="status" id="status">Layout synchronized with inventory</span>
+      <button class="btn ghost" type="button" id="btnCancel">Discard</button>
+      <button class="btn primary" type="button" id="btnApplyFoot" disabled>Apply cellar changes</button>
+    </footer>
+  </div>
+
+  <p class="path"><code>.planning/sketches/047-cellar-topology-workbench/index.html</code></p>
+</div>
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  <span id="toastMsg">Saved</span>
+</div>
+
+<script>
+(() => {
+  const STYLES = [
+    { id: 'red', label: 'Red', color: '#6f1a32' },
+    { id: 'white', label: 'White', color: '#d4c08a' },
+    { id: 'sparkling', label: 'Sparkling', color: '#7a9bb0' },
+    { id: 'rose', label: 'Rosé', color: '#d4899a' },
+    { id: 'fortified', label: 'Fortified', color: '#8b5a2b' },
+  ];
+  const STYLE_IDS = STYLES.map((s) => s.id);
+  const PALETTE = ['#4a6b78', '#b08a4f', '#6f4a8a', '#2f6b4f', '#9e2a4a', '#3d7ea6', '#c45c3a', '#5a6b4a'];
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const solid = (c) => (String(c).match(/#[0-9a-fA-F]{6}/) || ['#9e2a4a'])[0];
+
+  const sumMix = (mix) => STYLE_IDS.reduce((s, id) => s + (mix?.[id] || 0), 0);
+  const mixFromWines = (wines = []) => {
+    const mix = { red: 0, white: 0, sparkling: 0, rose: 0, fortified: 0 };
+    wines.forEach((w) => { if (mix[w.style] != null) mix[w.style] += w.bottles || 0; });
+    return mix;
+  };
+  const syncCount = (z) => {
+    z.mix = mixFromWines(z.wines);
+    z.count = sumMix(z.mix);
+    return z;
+  };
+  const dominantStyle = (z) => {
+    let best = 'red'; let n = -1;
+    STYLE_IDS.forEach((id) => {
+      const v = z.mix?.[id] || 0;
+      if (v > n) { n = v; best = id; }
+    });
+    return STYLES.find((s) => s.id === best) || STYLES[0];
+  };
+  const mixBarHtml = (z) => {
+    const total = Math.max(1, sumMix(z.mix));
+    return STYLE_IDS.map((id) => {
+      const w = ((z.mix?.[id] || 0) / total) * 100;
+      if (w < 0.5) return '';
+      const color = STYLES.find((s) => s.id === id).color;
+      return `<i style="width:${w}%;background:${color};"></i>`;
+    }).join('');
+  };
+
+  const IC = {
+    over: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    near: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 17 17 7M8 7h9v9"/></svg>',
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    full: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+  };
+
+  let uid = 100;
+  const seed = [
+    {
+      id: 'z1', name: 'Main Cellar', cap: 500, color: '#4a6b78',
+      wines: [
+        { id: 'w1', style: 'red', name: 'Barolo Cannubi', producer: 'Paolo Scavino', vintage: 2019, region: 'Piedmont, IT', bottles: 48, bin: 'A-12', format: '750ml', abv: '14.5%', note: 'Decant 2h · pairing for dry-aged ribeye' },
+        { id: 'w2', style: 'red', name: 'Côte-Rôtie La Landonne', producer: 'E. Guigal', vintage: 2018, region: 'Rhône, FR', bottles: 36, bin: 'A-08', format: '750ml', abv: '13.5%', note: 'Syrah depth · cellar until 2030' },
+        { id: 'w3', style: 'red', name: 'Brunello di Montalcino', producer: 'Biondi-Santi', vintage: 2016, region: 'Tuscany, IT', bottles: 42, bin: 'A-14', format: '750ml', abv: '14%', note: 'Reserve pour · manager approval' },
+        { id: 'w4', style: 'red', name: 'Napa Cabernet', producer: 'Opus One', vintage: 2020, region: 'Napa Valley, US', bottles: 54, bin: 'B-02', format: '750ml', abv: '14.5%', note: 'High-ticket by-the-bottle' },
+        { id: 'w5', style: 'white', name: 'Chablis Grand Cru Les Clos', producer: 'Raveneau', vintage: 2021, region: 'Burgundy, FR', bottles: 28, bin: 'C-04', format: '750ml', abv: '13%', note: 'Chalk & citrus · oysters' },
+        { id: 'w6', style: 'white', name: 'Sancerre Les Romains', producer: 'Henri Bourgeois', vintage: 2023, region: 'Loire, FR', bottles: 24, bin: 'C-06', format: '750ml', abv: '12.5%', note: 'By-the-glass rotation' },
+        { id: 'w7', style: 'white', name: 'Riesling Kabinett', producer: 'JJ Prüm', vintage: 2022, region: 'Mosel, DE', bottles: 18, bin: 'C-09', format: '750ml', abv: '8.5%', note: 'Off-dry · spicy cuisine' },
+        { id: 'w8', style: 'sparkling', name: 'Champagne Brut Réserve', producer: 'Krug', vintage: 'NV', region: 'Champagne, FR', bottles: 16, bin: 'D-01', format: '750ml', abv: '12%', note: 'VIP toast · keep chilled' },
+        { id: 'w9', style: 'sparkling', name: 'Prosecco Superiore', producer: 'Bisol', vintage: 2024, region: 'Veneto, IT', bottles: 9, bin: 'D-03', format: '750ml', abv: '11.5%', note: 'Aperitivo volume' },
+        { id: 'w10', style: 'rose', name: 'Bandol Rosé', producer: 'Domaine Tempier', vintage: 2024, region: 'Provence, FR', bottles: 10, bin: 'E-02', format: '750ml', abv: '13%', note: 'Summer patio pour' },
+        { id: 'w11', style: 'fortified', name: 'Tawny Port 20 Year', producer: 'Taylor Fladgate', vintage: 'NV', region: 'Douro, PT', bottles: 12, bin: 'F-01', format: '750ml', abv: '20%', note: 'Dessert close · cheese cart' },
+        { id: 'w12', style: 'fortified', name: 'Amontillado', producer: 'Lustau', vintage: 'NV', region: 'Jerez, ES', bottles: 8, bin: 'F-03', format: '750ml', abv: '18.5%', note: 'Aperitif · nuts & olives' },
+      ],
+    },
+    {
+      id: 'z2', name: 'Bar Stock', cap: 100, color: '#b08a4f',
+      wines: [
+        { id: 'w20', style: 'red', name: 'Chianti Classico', producer: 'Fontodi', vintage: 2021, region: 'Tuscany, IT', bottles: 14, bin: 'Bar-R1', format: '750ml', abv: '13.5%', note: 'House red · BTG' },
+        { id: 'w21', style: 'red', name: 'Malbec Reserva', producer: 'Catena', vintage: 2022, region: 'Mendoza, AR', bottles: 14, bin: 'Bar-R2', format: '750ml', abv: '14%', note: 'BTG alternate' },
+        { id: 'w22', style: 'white', name: 'Pinot Grigio', producer: 'Livio Felluga', vintage: 2024, region: 'Friuli, IT', bottles: 12, bin: 'Bar-W1', format: '750ml', abv: '12.5%', note: 'BTG volume' },
+        { id: 'w23', style: 'white', name: 'Albariño', producer: 'Pazo Señorans', vintage: 2023, region: 'Rías Baixas, ES', bottles: 10, bin: 'Bar-W2', format: '750ml', abv: '12.5%', note: 'Seafood BTG' },
+        { id: 'w24', style: 'sparkling', name: 'Cava Brut', producer: 'Raventós i Blanc', vintage: 2022, region: 'Penedès, ES', bottles: 18, bin: 'Bar-S1', format: '750ml', abv: '12%', note: 'Bar sparkling · high turn' },
+        { id: 'w25', style: 'sparkling', name: 'Crémant de Bourgogne', producer: 'Louis Bouillot', vintage: 'NV', region: 'Burgundy, FR', bottles: 12, bin: 'Bar-S2', format: '750ml', abv: '12%', note: 'Value toast' },
+        { id: 'w26', style: 'rose', name: 'Côtes de Provence', producer: 'Whispering Angel', vintage: 2024, region: 'Provence, FR', bottles: 8, bin: 'Bar-P1', format: '750ml', abv: '13%', note: 'Patio BTG' },
+        { id: 'w27', style: 'fortified', name: 'Vermouth Rosso', producer: 'Carpano Antica', vintage: 'NV', region: 'Torino, IT', bottles: 4, bin: 'Bar-F1', format: '1L', abv: '16.5%', note: 'Negroni program' },
+      ],
+    },
+    {
+      id: 'z3', name: 'VIP Reserve', cap: 50, color: '#6f4a8a',
+      wines: [
+        { id: 'w30', style: 'red', name: 'Screaming Eagle Cabernet', producer: 'Screaming Eagle', vintage: 2019, region: 'Napa Valley, US', bottles: 6, bin: 'VIP-01', format: '750ml', abv: '14.8%', note: 'Allocation · GM unlock' },
+        { id: 'w31', style: 'red', name: 'Romanée-Conti', producer: 'DRC', vintage: 2015, region: 'Burgundy, FR', bottles: 4, bin: 'VIP-02', format: '750ml', abv: '13%', note: 'Museum piece · never BTG' },
+        { id: 'w32', style: 'red', name: 'Penfolds Grange', producer: 'Penfolds', vintage: 2017, region: 'South Australia', bottles: 8, bin: 'VIP-03', format: '750ml', abv: '14.5%', note: 'High-ticket close' },
+        { id: 'w33', style: 'red', name: 'Vega Sicilia Único', producer: 'Vega Sicilia', vintage: 2012, region: 'Ribera del Duero, ES', bottles: 4, bin: 'VIP-04', format: '750ml', abv: '14%', note: 'Private dining only' },
+        { id: 'w34', style: 'white', name: 'Montrachet Grand Cru', producer: 'Domaine Leflaive', vintage: 2020, region: 'Burgundy, FR', bottles: 6, bin: 'VIP-05', format: '750ml', abv: '13.5%', note: 'White whale · chilled service' },
+        { id: 'w35', style: 'sparkling', name: 'Dom Pérignon', producer: 'Moët & Chandon', vintage: 2015, region: 'Champagne, FR', bottles: 6, bin: 'VIP-06', format: '750ml', abv: '12.5%', note: 'Celebration pour' },
+        { id: 'w36', style: 'sparkling', name: 'Salon Blanc de Blancs', producer: 'Salon', vintage: 2013, region: 'Champagne, FR', bottles: 2, bin: 'VIP-07', format: '750ml', abv: '12%', note: 'Ultra-rare · 2 left' },
+        { id: 'w37', style: 'fortified', name: 'Madeira Vintage', producer: 'Blandy’s', vintage: 1978, region: 'Madeira, PT', bottles: 2, bin: 'VIP-08', format: '750ml', abv: '19%', note: 'After-dinner ceremony' },
+      ],
+    },
+    {
+      id: 'z4', name: 'Overflow', cap: 200, color: '#2f6b4f',
+      wines: [
+        { id: 'w40', style: 'red', name: 'Rioja Reserva', producer: 'La Rioja Alta 904', vintage: 2015, region: 'Rioja, ES', bottles: 8, bin: 'OV-R1', format: '750ml', abv: '13.5%', note: 'Waiting Main Cellar space' },
+        { id: 'w41', style: 'red', name: 'Bordeaux Superieur', producer: 'Château Recougne', vintage: 2020, region: 'Bordeaux, FR', bottles: 4, bin: 'OV-R2', format: '750ml', abv: '13%', note: 'Staging for Bar Stock' },
+        { id: 'w42', style: 'white', name: 'Soave Classico', producer: 'Pieropan', vintage: 2023, region: 'Veneto, IT', bottles: 12, bin: 'OV-W1', format: '750ml', abv: '12.5%', note: 'Receiving buffer' },
+        { id: 'w43', style: 'white', name: 'Grüner Veltliner', producer: 'Schloss Gobelsburg', vintage: 2023, region: 'Kamptal, AT', bottles: 6, bin: 'OV-W2', format: '750ml', abv: '12.5%', note: 'Next week menu add' },
+        { id: 'w44', style: 'sparkling', name: 'Franciacorta Brut', producer: 'Ca’ del Bosco', vintage: 'NV', region: 'Lombardy, IT', bottles: 4, bin: 'OV-S1', format: '750ml', abv: '12.5%', note: 'Overflow from Bar' },
+        { id: 'w45', style: 'rose', name: 'Tavel', producer: 'Château d’Aqueria', vintage: 2023, region: 'Rhône, FR', bottles: 4, bin: 'OV-P1', format: '750ml', abv: '13.5%', note: 'Deep rosé · autumn shift' },
+        { id: 'w46', style: 'fortified', name: 'Pedro Ximénez', producer: 'Valdespino', vintage: 'NV', region: 'Jerez, ES', bottles: 2, bin: 'OV-F1', format: '375ml', abv: '15%', note: 'Half-bottles for dessert' },
+      ],
+    },
+  ].map(syncCount);
+
+  const poolSeed = [
+    { id: 'p1', style: 'white', name: "2018 Fekete Béla Furmint Somló · Hungary", producer: 'Fekete Pince Somló', vintage: 2018, region: 'Somló, HU', bottles: 12, format: '750ml', abv: '13%', note: 'Volcanic white · seafood' },
+    { id: 'p2', style: 'red', name: "2019 Alpha Estate 'Barba Yannis' O.V. Xinomavro", producer: 'Alpha Estate', vintage: 2019, region: 'Amyndeon, GR', bottles: 18, format: '750ml', abv: '13.5%', note: 'Old-vine Xinomavro' },
+    { id: 'p3', style: 'red', name: '2012 Vega-Sicilia Único Ribera del Duero', producer: 'Vega Sicilia', vintage: 2012, region: 'Ribera del Duero, ES', bottles: 6, format: '750ml', abv: '14%', note: 'VIP candidate' },
+    { id: 'p4', style: 'sparkling', name: 'NV Grower Champagne Extra Brut', producer: 'Pierre Péters', vintage: 'NV', region: 'Champagne, FR', bottles: 8, format: '750ml', abv: '12%', note: 'Bar toast upgrade' },
+    { id: 'p5', style: 'rose', name: '2024 Tavel Rosé', producer: 'Château d’Aqueria', vintage: 2024, region: 'Rhône, FR', bottles: 10, format: '750ml', abv: '13.5%', note: 'Deep rosé · autumn' },
+    { id: 'p6', style: 'fortified', name: 'NV Fino Sherry', producer: 'Valdespino', vintage: 'NV', region: 'Jerez, ES', bottles: 4, format: '750ml', abv: '15%', note: 'Aperitif program' },
+    { id: 'p7', style: 'white', name: '2022 Assyrtiko Santorini', producer: 'Hatzidakis', vintage: 2022, region: 'Santorini, GR', bottles: 14, format: '750ml', abv: '13.5%', note: 'Mineral BTG' },
+    { id: 'p8', style: 'red', name: '2020 Etna Rosso', producer: 'Passopisciaro', vintage: 2020, region: 'Sicily, IT', bottles: 10, format: '750ml', abv: '13.5%', note: 'Volcanic red · Main Cellar' },
+  ];
+
+  let committed = clone(seed);
+  let working = clone(seed);
+  let poolCommitted = clone(poolSeed);
+  let pool = clone(poolSeed);
+  let selectedId = 'z1';
+  let dragId = null;
+  let lastUsed = -1;
+  let styleFilter = null; // null = show all
+  let assignQuery = '';
+  let wineUid = 200;
+
+  const pctOf = (z) => (z.cap > 0 ? Math.round((z.count / z.cap) * 100) : 0);
+  const statusOf = (z) => {
+    const pct = pctOf(z);
+    if (pct > 100) return { pct, cls: 'over' };
+    if (pct >= 90) return { pct, cls: 'near' };
+    if (pct <= 25) return { pct, cls: 'ok' };
+    return { pct, cls: 'full' };
+  };
+  const selected = () => working.find((z) => z.id === selectedId) || working[0];
+  const dirty = () =>
+    JSON.stringify(working) !== JSON.stringify(committed) ||
+    JSON.stringify(pool) !== JSON.stringify(poolCommitted);
+
+  const nextBin = (z) => {
+    const prefix = (z.name || 'Bay').split(/\s+/)[0].slice(0, 3).toUpperCase();
+    const n = (z.wines || []).length + 1;
+    return `${prefix}-${String(n).padStart(2, '0')}`;
+  };
+
+  const scoreBayForWine = (z, wine) => {
+    const head = z.cap - z.count;
+    if (head < (wine.bottles || 0)) return -Infinity;
+    const styleShare = (z.mix?.[wine.style] || 0) / Math.max(1, z.count);
+    const util = z.count / Math.max(1, z.cap);
+    // Prefer style affinity, spare headroom, avoid near-full unless VIP match for rare reds
+    let score = head * 2 + styleShare * 80 - util * 30;
+    if (/vip|reserve/i.test(z.name) && (wine.bottles <= 8 || /único|unico|grange|eagle|conti/i.test(wine.name))) score += 40;
+    if (/bar/i.test(z.name) && wine.bottles >= 10) score += 15;
+    if (/overflow/i.test(z.name)) score += 5;
+    return score;
+  };
+
+  const bestBayFor = (wine, excludeId = null) => {
+    return working
+      .filter((z) => z.id !== excludeId)
+      .map((z) => ({ z, score: scoreBayForWine(z, wine) }))
+      .filter((x) => x.score > -Infinity)
+      .sort((a, b) => b.score - a.score)[0]?.z || null;
+  };
+
+  const assignWineTo = (poolId, zoneId) => {
+    const idx = pool.findIndex((w) => w.id === poolId);
+    if (idx < 0) return null;
+    const z = working.find((x) => x.id === zoneId);
+    if (!z) return null;
+    const wine = pool[idx];
+    if (z.count + wine.bottles > z.cap) {
+      toast(`${z.name} needs ${z.count + wine.bottles - z.cap} more slots`);
+      return null;
+    }
+    pool.splice(idx, 1);
+    z.wines = z.wines || [];
+    z.wines.push({
+      ...wine,
+      id: `w${++wineUid}`,
+      bin: nextBin(z),
+    });
+    syncCount(z);
+    return z;
+  };
+
+  const unassignWine = (wineId) => {
+    const z = selected();
+    if (!z) return;
+    const idx = (z.wines || []).findIndex((w) => w.id === wineId);
+    if (idx < 0) return;
+    const [wine] = z.wines.splice(idx, 1);
+    pool.unshift({
+      id: `p${++wineUid}`,
+      style: wine.style,
+      name: wine.name,
+      producer: wine.producer,
+      vintage: wine.vintage,
+      region: wine.region,
+      bottles: wine.bottles,
+      format: wine.format,
+      abv: wine.abv,
+      note: wine.note,
+    });
+    syncCount(z);
+  };
+
+  const autoLocateOne = (poolId) => {
+    const wine = pool.find((w) => w.id === poolId);
+    if (!wine) return;
+    const bay = bestBayFor(wine);
+    if (!bay) {
+      toast('No bay has enough headroom for this wine');
+      return;
+    }
+    const placed = assignWineTo(poolId, bay.id);
+    if (!placed) return;
+    selectedId = bay.id;
+    lastUsed = -1;
+    styleFilter = wine.style;
+    renderAll({ animateRack: true });
+    toast(`Auto located → ${bay.name}`);
+    requestAnimationFrame(() => {
+      document.getElementById('storedBlock')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
+  const autoLocateAll = () => {
+    if (!pool.length) {
+      toast('Pool is empty');
+      return;
+    }
+    let placed = 0;
+    let failed = 0;
+    // Snapshot ids — pool mutates while assigning
+    const ids = pool.map((w) => w.id);
+    ids.forEach((id) => {
+      const wine = pool.find((w) => w.id === id);
+      if (!wine) return;
+      const bay = bestBayFor(wine);
+      if (!bay || !assignWineTo(id, bay.id)) failed += 1;
+      else placed += 1;
+    });
+    lastUsed = -1;
+    renderAll({ animateRack: true });
+    if (placed && !failed) toast(`Auto located ${placed} wines`);
+    else if (placed) toast(`Located ${placed} · ${failed} need more capacity`);
+    else toast('No bays had enough headroom');
+  };
+
+  const tween = (el, to, { suffix = '', dur = 480 } = {}) => {
+    if (!el) return;
+    to = Math.round(to);
+    const from = parseInt(String(el.textContent).replace(/[^\d-]/g, ''), 10) || 0;
+    if (el._raf) cancelAnimationFrame(el._raf);
+    if (from === to) { el.textContent = `${to}${suffix}`; return; }
+    const t0 = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / dur);
+      el.textContent = `${Math.round(from + (to - from) * ease(p))}${suffix}`;
+      if (p < 1) el._raf = requestAnimationFrame(step);
+    };
+    el._raf = requestAnimationFrame(step);
+  };
+
+  const toast = (msg) => {
+    const el = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove('show'), 2400);
+  };
+
+  const setDirtyUI = () => {
+    const d = dirty();
+    const status = document.getElementById('status');
+    status.textContent = d ? 'Unapplied layout changes' : 'Layout synchronized with inventory';
+    status.classList.toggle('dirty', d);
+    document.getElementById('btnApply').disabled = !d;
+    document.getElementById('btnApplyFoot').disabled = !d;
+  };
+
+  const insightOf = (z) => {
+    const pct = pctOf(z);
+    const open = z.cap - z.count;
+    const target = working
+      .filter((x) => x.id !== z.id && x.cap - x.count > 0)
+      .sort((a, b) => (b.cap - b.count) - (a.cap - a.count))[0];
+    if (pct > 100) return {
+      tone: 'var(--danger)', cls: 'over', kick: 'Relocation required',
+      title: `${z.count - z.cap} bottles have no physical slot`,
+      copy: target
+        ? `${target.name} has ${target.cap - target.count} open slots. Move excess before applying this layout.`
+        : 'Add capacity or create another location before this map can be trusted.',
+      action: target ? `Open ${target.name}` : 'Add location',
+      targetId: target?.id || '',
+    };
+    if (pct >= 90) return {
+      tone: 'var(--warn)', cls: 'near', kick: 'Pressure forecast',
+      title: `Only ${open} slots remain before this bay locks`,
+      copy: target
+        ? `${target.name} is the safest receiving buffer with ${target.cap - target.count} open slots.`
+        : 'Increase capacity before the next receiving window.',
+      action: target ? `Compare ${target.name}` : 'Add buffer',
+      targetId: target?.id || '',
+    };
+    if (pct <= 25) return {
+      tone: 'var(--ok)', cls: 'ok', kick: 'Receiving buffer',
+      title: `${open} open slots can absorb the next delivery`,
+      copy: 'Best current target for overflow and temporary receiving.',
+      action: 'Mark as preferred overflow', targetId: '',
+    };
+    return {
+      tone: 'var(--cool)', cls: 'full', kick: 'Capacity balanced',
+      title: `${open} open slots keep this bay service-ready`,
+      copy: `Pressure begins at ${Math.round(z.cap * .9)} bottles. No intervention needed.`,
+      action: 'View bottles in location', targetId: '',
+    };
+  };
+
+  const stateLabel = (z) => {
+    const s = statusOf(z).cls;
+    if (s === 'over') return 'Over';
+    if (s === 'near') return 'Pressure';
+    if (s === 'ok') return 'Open';
+    return 'Stable';
+  };
+
+  const renderVitals = () => {
+    const stock = working.reduce((s, z) => s + z.count, 0);
+    const cap = working.reduce((s, z) => s + z.cap, 0);
+    const risk = working.filter((z) => pctOf(z) >= 90).length;
+    tween(document.getElementById('vStock'), stock);
+    tween(document.getElementById('vOpen'), Math.max(0, cap - stock));
+    tween(document.getElementById('vRisk'), risk, { dur: 300 });
+    const wrap = document.getElementById('vRiskWrap');
+    wrap.classList.toggle('warn', risk === 1);
+    wrap.classList.toggle('danger', risk > 1);
+    document.getElementById('zoneCount').textContent = `${working.length} zone${working.length === 1 ? '' : 's'}`;
+  };
+
+  const renderRail = () => {
+    const list = document.getElementById('railList');
+    list.innerHTML = working.map((z) => {
+      const st = statusOf(z);
+      const dom = dominantStyle(z);
+      return `
+        <button class="loc${z.id === selectedId ? ' active' : ''}" type="button" data-id="${z.id}" draggable="true">
+          <span class="loc-bar"><i style="height:${Math.min(st.pct, 100)}%;background:${dom.color};"></i></span>
+          <span class="loc-copy">
+            <span class="loc-name">${esc(z.name)}</span>
+            <span class="loc-meta">${z.count} / ${z.cap} · mostly ${dom.label.toLowerCase()}</span>
+            <span class="loc-mix">${mixBarHtml(z)}</span>
+          </span>
+          <span class="loc-pill ${st.cls}">${stateLabel(z)}</span>
+        </button>`;
+    }).join('');
+    renderVitals();
+  };
+
+  const renderTopology = () => {
+    const el = document.getElementById('topology');
+    el.innerHTML = working.map((z) => {
+      const st = statusOf(z);
+      const dom = dominantStyle(z);
+      return `
+        <button class="bay${z.id === selectedId ? ' active' : ''} ${st.cls}" type="button" data-id="${z.id}" style="--bay:${dom.color};--fill:${Math.min(st.pct, 100)}%;">
+          <span class="bay-fill"></span>
+          <span class="bay-name">${esc(z.name)}</span>
+          <span class="bay-stat">${z.count}/${z.cap} · ${dom.label}</span>
+          <span class="mix-bar">${mixBarHtml(z)}</span>
+        </button>`;
+    }).join('');
+  };
+
+  const styleSequence = (z, usedCells) => {
+    // Distribute cells proportionally by mix, stable order: red → white → sparkling → rose → fortified
+    const total = Math.max(1, sumMix(z.mix));
+    const seq = [];
+    STYLE_IDS.forEach((id) => {
+      const n = Math.round(((z.mix?.[id] || 0) / total) * usedCells);
+      for (let i = 0; i < n; i++) seq.push(id);
+    });
+    while (seq.length < usedCells) seq.push(dominantStyle(z).id);
+    return seq.slice(0, usedCells);
+  };
+
+  const renderRack = (animate = false) => {
+    const z = selected();
+    if (!z) return;
+    const cells = 96;
+    const used = Math.min(cells, Math.round((z.count / Math.max(z.cap, 1)) * cells));
+    const pressure = Math.round(cells * .9);
+    const seq = styleSequence(z, used);
+    const rack = document.getElementById('rack');
+    rack.classList.toggle('filter-on', !!styleFilter);
+    rack.innerHTML = Array.from({ length: cells }, (_, i) => {
+      const style = i < used ? seq[i] : null;
+      const changed = animate && ((i < used) !== (i < lastUsed));
+      const focus = style && styleFilter === style ? ' is-focus' : '';
+      if (!style) {
+        return `<i class="slot open${i === pressure - 1 ? ' pressure' : ''}${changed ? ' changed' : ''}" title="Open slot"></i>`;
+      }
+      const label = STYLES.find((s) => s.id === style)?.label || style;
+      return `<i class="slot ${style}${focus}${i === pressure - 1 ? ' pressure' : ''}${changed ? ' changed' : ''}" title="${label}"></i>`;
+    }).join('');
+    lastUsed = used;
+
+    // filter chip counts for this bay
+    STYLE_IDS.forEach((id) => {
+      const el = document.querySelector(`[data-n="${id}"]`);
+      if (el) el.textContent = z.mix?.[id] || 0;
+    });
+    document.querySelectorAll('.style-chip').forEach((chip) => {
+      chip.classList.toggle('active', chip.dataset.style === styleFilter);
+    });
+    document.querySelectorAll('.style-row').forEach((row) => {
+      row.classList.toggle('active', row.dataset.style === styleFilter);
+    });
+
+    const scale = Math.max(1, Math.round(z.cap / cells));
+    document.getElementById('rackHint').textContent = styleFilter
+      ? `Showing ${STYLES.find((s) => s.id === styleFilter)?.label || ''} only · details in inspector`
+      : `Tap a style to see wines · 1 cell ≈ ${scale} bottles`;
+    document.getElementById('rackScale').textContent = `${z.count} / ${z.cap}`;
+    renderStyleDetail(z);
+  };
+
+  const renderStyleList = (z) => {
+    const total = Math.max(1, sumMix(z.mix));
+    document.getElementById('styleList').innerHTML = STYLES.map((s) => {
+      const n = z.mix?.[s.id] || 0;
+      const pct = Math.round((n / total) * 100);
+      const skus = (z.wines || []).filter((w) => w.style === s.id).length;
+      return `
+        <div class="style-row" data-style="${s.id}" style="--chip:${s.color}">
+          <span class="dot"></span>
+          <span class="lbl">${s.label}</span>
+          <span class="pct">${n} · ${skus} SKU · ${pct}%</span>
+          <div class="style-track"><i style="width:${pct}%;"></i></div>
+        </div>`;
+    }).join('');
+  };
+
+  const STYLE_LEAD = {
+    red: 'Still reds placed in this bay — producer, vintage, bin, and service notes.',
+    white: 'Still whites in this bay — chilled service cues and pairings.',
+    sparkling: 'Sparklings staged here — toast readiness and chill state.',
+    rose: 'Rosés in this bay — patio and BTG rotation.',
+    fortified: 'Fortifieds & aromatized — dessert close and bar program.',
+  };
+
+  const renderStyleDetail = (z) => {
+    const panel = document.getElementById('styleDetail');
+    if (!styleFilter) {
+      panel.classList.remove('open');
+      return;
+    }
+    const s = STYLES.find((x) => x.id === styleFilter);
+    const wines = (z.wines || [])
+      .filter((w) => w.style === styleFilter)
+      .sort((a, b) => b.bottles - a.bottles || String(a.name).localeCompare(b.name));
+    const bottles = wines.reduce((n, w) => n + (w.bottles || 0), 0);
+    panel.style.setProperty('--chip', s?.color || '#6f1a32');
+    panel.classList.add('open');
+    document.getElementById('sdTitle').textContent = s?.label || styleFilter;
+    document.getElementById('sdMeta').textContent = `${bottles} bottles · ${wines.length} SKU${wines.length === 1 ? '' : 's'}`;
+    document.getElementById('sdLead').textContent = STYLE_LEAD[styleFilter] || 'Wines of this style in this bay.';
+    const roster = document.getElementById('wineRoster');
+    if (!wines.length) {
+      roster.innerHTML = `<div class="wine-empty">No ${s?.label?.toLowerCase() || 'wines'} placed in ${esc(z.name)}.</div>`;
+      return;
+    }
+    roster.innerHTML = wines.map((w) => `
+      <article class="wine-card" style="--chip:${s.color}">
+        <div class="wc-top">
+          <div>
+            <h6 class="wc-name">${esc(w.name)}</h6>
+            <p class="wc-producer">${esc(w.producer)}</p>
+          </div>
+          <span class="wc-qty">${w.bottles} btls</span>
+        </div>
+        <div class="wc-meta">
+          <span>Vintage <b>${esc(w.vintage)}</b></span>
+          <span>Region <b>${esc(w.region)}</b></span>
+          <span>Bin <b>${esc(w.bin)}</b></span>
+          <span>Format <b>${esc(w.format)}</b></span>
+          <span>ABV <b>${esc(w.abv)}</b></span>
+        </div>
+        ${w.note ? `<p class="wc-note">${esc(w.note)}</p>` : ''}
+      </article>
+    `).join('');
+  };
+
+  const renderStored = (z) => {
+    const skus = (z.wines || []).length;
+    const st = statusOf(z);
+    document.getElementById('storedSub').textContent =
+      skus === 0 ? '0 wines assigned here' : `${skus} wine${skus === 1 ? '' : 's'} assigned here`;
+    document.getElementById('storedCap').textContent = `${z.count} / ${z.cap}`;
+    const meter = document.getElementById('storedMeter');
+    meter.classList.toggle('near', st.cls === 'near');
+    meter.classList.toggle('over', st.cls === 'over');
+    document.getElementById('storedFill').style.width = `${Math.min(100, st.pct)}%`;
+
+    const assigned = document.getElementById('assignedList');
+    if (!skus) {
+      assigned.innerHTML = '';
+    } else {
+      const show = (z.wines || []).slice().sort((a, b) => b.bottles - a.bottles).slice(0, 6);
+      assigned.innerHTML = show.map((w) => {
+        const color = STYLES.find((s) => s.id === w.style)?.color || '#6f1a32';
+        return `
+          <div class="assigned-row" style="--chip:${color}">
+            <span class="dot"></span>
+            <div class="ar-body">
+              <p class="ar-name">${esc(w.name)}</p>
+              <div class="ar-meta">${esc(w.producer)} · ${w.bottles} btls · bin ${esc(w.bin)}</div>
+            </div>
+            <button class="btn-unassign" type="button" data-unassign="${w.id}">Remove</button>
+          </div>`;
+      }).join('') + ((z.wines || []).length > 6
+        ? `<div class="assign-empty" style="border:0;padding:4px;">+${(z.wines || []).length - 6} more — filter by style above</div>`
+        : '');
+    }
+
+    const q = assignQuery.trim().toLowerCase();
+    const candidates = pool.filter((w) => {
+      if (!q) return true;
+      return [w.name, w.producer, w.region, w.style, String(w.vintage)].join(' ').toLowerCase().includes(q);
+    });
+    const list = document.getElementById('assignList');
+    if (!candidates.length) {
+      list.innerHTML = `<div class="assign-empty">${pool.length ? 'No wines match that search.' : 'All pool wines are assigned. Remove one to reassign.'}</div>`;
+    } else {
+      list.innerHTML = candidates.map((w) => {
+        const fits = z.cap - z.count >= w.bottles;
+        const best = bestBayFor(w);
+        const tip = best ? `Best fit: ${best.name}` : 'No bay has headroom';
+        return `
+          <div class="assign-row" data-pool="${w.id}">
+            <div class="ar-body">
+              <p class="ar-name">${esc(w.name)}</p>
+              <p class="ar-prod">${esc(w.producer)}</p>
+              <div class="ar-meta">${w.bottles} btls · ${esc(w.region)} · ${STYLES.find((s) => s.id === w.style)?.label || w.style}</div>
+            </div>
+            <div class="assign-actions">
+              <button class="btn-assign" type="button" data-assign="${w.id}" ${fits ? '' : 'disabled'} title="${fits ? 'Assign to this bay' : 'Not enough capacity here'}">Assign</button>
+              <button class="btn-locate" type="button" data-locate="${w.id}" title="${esc(tip)}">Auto locate</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+    document.getElementById('btnAutoAll').disabled = !pool.length;
+  };
+
+  const renderInspector = ({ animateRack = false, keepName = false } = {}) => {
+    const z = selected();
+    if (!z) return;
+    const st = statusOf(z);
+    const ins = insightOf(z);
+    const dom = dominantStyle(z);
+    const name = document.getElementById('nameInput');
+    if (!keepName) name.value = z.name;
+
+    document.getElementById('swatch').style.background = z.color;
+    document.getElementById('inspSub').textContent = `${stateLabel(z)} · dominant ${dom.label.toLowerCase()}`;
+    document.getElementById('rackTitle').textContent = z.name || 'Untitled';
+    document.getElementById('rackSub').textContent = `${z.count} bottles · ${dom.label} leads this bay`;
+
+    const insp = document.getElementById('inspector');
+    insp.style.setProperty('--zone', solid(z.color));
+    insp.style.setProperty('--pct', `${Math.min(100, (z.cap / 1000) * 100)}%`);
+
+    document.getElementById('capRange').value = z.cap;
+    document.getElementById('capNum').value = z.cap;
+    tween(document.getElementById('capReadout'), z.cap);
+
+    document.getElementById('sPlaced').textContent = `${z.count} bottles`;
+    document.getElementById('sHead').textContent = z.cap >= z.count ? `${z.cap - z.count} slots` : `${z.count - z.cap} over`;
+    document.getElementById('sPressure').textContent = `${Math.round(z.cap * .9)} bottles`;
+    document.getElementById('sUtil').textContent = `${st.pct}%`;
+
+    const card = document.getElementById('insight');
+    card.style.setProperty('--tone', ins.tone);
+    document.getElementById('insightKick').innerHTML = `${IC[ins.cls]}${ins.kick}`;
+    document.getElementById('insightTitle').textContent = ins.title;
+    document.getElementById('insightCopy').textContent = ins.copy;
+    const act = document.getElementById('insightAct');
+    act.textContent = ins.action;
+    act.dataset.target = ins.targetId;
+
+    renderStored(z);
+    renderStyleList(z);
+    renderRack(animateRack);
+  };
+
+  const renderAll = (opts = {}) => {
+    renderRail();
+    renderTopology();
+    renderInspector(opts);
+    setDirtyUI();
+  };
+
+  const select = (id) => {
+    selectedId = id;
+    lastUsed = -1;
+    document.getElementById('palette').classList.remove('open');
+    renderAll();
+  };
+
+  const setStyleFilter = (style) => {
+    styleFilter = styleFilter === style ? null : style;
+    renderRack();
+    if (styleFilter) {
+      const panel = document.getElementById('styleDetail');
+      requestAnimationFrame(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+    }
+  };
+
+  document.getElementById('styleFilters').addEventListener('click', (e) => {
+    const chip = e.target.closest('.style-chip');
+    if (!chip) return;
+    setStyleFilter(chip.dataset.style);
+  });
+
+  document.getElementById('styleList').addEventListener('click', (e) => {
+    const row = e.target.closest('.style-row');
+    if (!row) return;
+    setStyleFilter(row.dataset.style);
+  });
+
+  document.getElementById('sdClear').addEventListener('click', () => {
+    styleFilter = null;
+    renderRack();
+  });
+
+  document.getElementById('rack').addEventListener('click', (e) => {
+    const slot = e.target.closest('.slot');
+    if (!slot || slot.classList.contains('open')) return;
+    const style = STYLE_IDS.find((id) => slot.classList.contains(id));
+    if (style) setStyleFilter(style);
+  });
+
+  document.getElementById('assignSearch').addEventListener('input', (e) => {
+    assignQuery = e.target.value;
+    const z = selected();
+    if (z) renderStored(z);
+  });
+
+  document.getElementById('assignedList').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-unassign]');
+    if (!btn) return;
+    unassignWine(btn.dataset.unassign);
+    renderAll({ animateRack: true, keepName: true });
+    toast('Returned to assign pool');
+  });
+
+  document.getElementById('assignList').addEventListener('click', (e) => {
+    const locate = e.target.closest('[data-locate]');
+    if (locate) {
+      autoLocateOne(locate.dataset.locate);
+      return;
+    }
+    const assign = e.target.closest('[data-assign]');
+    if (!assign || assign.disabled) return;
+    const z = selected();
+    if (!z) return;
+    const wine = pool.find((w) => w.id === assign.dataset.assign);
+    const placed = assignWineTo(assign.dataset.assign, z.id);
+    if (!placed) return;
+    if (wine) styleFilter = wine.style;
+    renderAll({ animateRack: true, keepName: true });
+    toast(`Assigned to ${z.name}`);
+  });
+
+  document.getElementById('btnAutoAll').addEventListener('click', autoLocateAll);
+
+  const setCap = (value) => {
+    const z = selected();
+    if (!z) return;
+    z.cap = Math.max(10, Math.min(1000, Math.round(Number(value) / 10) * 10 || 10));
+    renderAll({ animateRack: true, keepName: true });
+  };
+
+  // —— events ——
+  document.getElementById('railList').addEventListener('click', (e) => {
+    const row = e.target.closest('.loc');
+    if (row) select(row.dataset.id);
+  });
+  document.getElementById('topology').addEventListener('click', (e) => {
+    const bay = e.target.closest('.bay');
+    if (bay) select(bay.dataset.id);
+  });
+
+  document.getElementById('btnAdd').addEventListener('click', () => {
+    const used = working.map((z) => z.color);
+    const color = PALETTE.find((c) => !used.includes(c)) || PALETTE[working.length % PALETTE.length];
+    const zone = syncCount({
+      id: `z${++uid}`,
+      name: 'New location',
+      cap: 100,
+      color,
+      wines: [],
+    });
+    working.push(zone);
+    selectedId = zone.id;
+    lastUsed = -1;
+    styleFilter = null;
+    renderAll();
+    requestAnimationFrame(() => {
+      const input = document.getElementById('nameInput');
+      input.focus();
+      input.select();
+    });
+  });
+
+  document.getElementById('nameInput').addEventListener('input', (e) => {
+    const z = selected();
+    if (!z) return;
+    z.name = e.target.value;
+    document.getElementById('rackTitle').textContent = z.name || 'Untitled';
+    renderRail();
+    renderTopology();
+    setDirtyUI();
+  });
+
+  document.getElementById('capRange').addEventListener('input', (e) => setCap(e.target.value));
+  document.getElementById('capNum').addEventListener('change', (e) => setCap(e.target.value));
+  document.querySelectorAll('[data-step]').forEach((btn) => {
+    btn.addEventListener('click', () => setCap(selected().cap + Number(btn.dataset.step)));
+  });
+
+  const palette = document.getElementById('palette');
+  palette.innerHTML = PALETTE.map((c) => `<button type="button" data-color="${c}" style="background:${c};" aria-label="Color"></button>`).join('');
+  document.getElementById('swatch').addEventListener('click', (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const insp = document.getElementById('inspector').getBoundingClientRect();
+    palette.style.left = `${rect.left - insp.left}px`;
+    palette.style.top = `${rect.bottom - insp.top + 8}px`;
+    palette.classList.toggle('open');
+  });
+  palette.addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-color]');
+    if (!pick) return;
+    selected().color = pick.dataset.color;
+    palette.classList.remove('open');
+    renderAll({ animateRack: true, keepName: true });
+  });
+
+  document.getElementById('btnDelete').addEventListener('click', () => {
+    const z = selected();
+    if (!z) return;
+    if (z.count > 0) {
+      toast(`Relocate ${z.count} bottles before removing ${z.name}`);
+      return;
+    }
+    if (working.length === 1) {
+      toast('Keep at least one storage location');
+      return;
+    }
+    const i = working.findIndex((x) => x.id === z.id);
+    working.splice(i, 1);
+    selectedId = working[Math.min(i, working.length - 1)].id;
+    lastUsed = -1;
+    renderAll();
+  });
+
+  document.getElementById('insightAct').addEventListener('click', (e) => {
+    const target = e.currentTarget.dataset.target;
+    if (target) { select(target); return; }
+    const z = selected();
+    toast(pctOf(z) <= 25 ? `${z.name} marked as preferred overflow` : `Opening ${z.count} bottles in ${z.name}`);
+  });
+
+  // drag reorder
+  const list = document.getElementById('railList');
+  list.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('.loc');
+    if (!row) return;
+    dragId = row.dataset.id;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  list.addEventListener('dragend', () => {
+    list.querySelectorAll('.dragging, .drag-over').forEach((r) => r.classList.remove('dragging', 'drag-over'));
+    dragId = null;
+  });
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const over = e.target.closest('.loc');
+    list.querySelectorAll('.drag-over').forEach((r) => r.classList.remove('drag-over'));
+    if (over && over.dataset.id !== dragId) over.classList.add('drag-over');
+  });
+  list.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const over = e.target.closest('.loc');
+    if (!over || !dragId || over.dataset.id === dragId) return;
+    const from = working.findIndex((z) => z.id === dragId);
+    const to = working.findIndex((z) => z.id === over.dataset.id);
+    const [moved] = working.splice(from, 1);
+    working.splice(to, 0, moved);
+    renderAll({ keepName: true });
+  });
+
+  const apply = () => {
+    const invalid = working.find((z) => z.count > z.cap);
+    if (invalid) {
+      select(invalid.id);
+      toast(`${invalid.name} needs ${invalid.count - invalid.cap} more slots`);
+      return;
+    }
+    committed = clone(working);
+    poolCommitted = clone(pool);
+    setDirtyUI();
+    toast(`${working.length} locations applied to cellar map`);
+  };
+  document.getElementById('btnApply').addEventListener('click', apply);
+  document.getElementById('btnApplyFoot').addEventListener('click', apply);
+
+  document.getElementById('btnCancel').addEventListener('click', () => {
+    working = clone(committed);
+    pool = clone(poolCommitted);
+    if (!working.some((z) => z.id === selectedId)) selectedId = working[0]?.id;
+    lastUsed = -1;
+    assignQuery = '';
+    document.getElementById('assignSearch').value = '';
+    renderAll();
+    toast('Changes discarded');
+  });
+  document.getElementById('btnReset').addEventListener('click', () => {
+    committed = clone(seed);
+    working = clone(seed);
+    poolCommitted = clone(poolSeed);
+    pool = clone(poolSeed);
+    selectedId = 'z1';
+    lastUsed = -1;
+    styleFilter = null;
+    assignQuery = '';
+    document.getElementById('assignSearch').value = '';
+    renderAll();
+    toast('Reset to seed layout');
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.getElementById('palette').classList.remove('open');
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

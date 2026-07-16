@@ -53,6 +53,15 @@ export class LowStockAlertsService {
   /** Re-running the daily digest inside this window won't double-post. */
   private readonly DIGEST_DEDUPE_MINUTES = 12 * 60;
 
+  /**
+   * Backstop against alert storms if the state ledger READ is flaky (returns
+   * empty so everything looks "new"): never send more than one instant alert
+   * per restaurant within this window. In-memory is enough — the daily digest
+   * is the durable safety net, and a restart only relaxes the cap once.
+   */
+  private readonly INSTANT_COOLDOWN_MS = 15 * 60_000;
+  private readonly lastInstantAt = new Map<string, number>();
+
   constructor(
     private readonly db: DatabaseService,
     private readonly notifications: NotificationsService,
@@ -162,6 +171,7 @@ export class LowStockAlertsService {
 
     const state = await this.getAlertState(restaurantId);
     const newCrossings: LowStockRow[] = [];
+    const persistedNew: LowStockRow[] = [];
     const nowIso = new Date().toISOString();
 
     for (const row of rows) {
@@ -170,25 +180,37 @@ export class LowStockAlertsService {
       const isNew = prev === "ok" || (prev === "low" && cur === "critical");
       if (isNew) newCrossings.push(row);
 
-      await this.upsertState(restaurantId, {
+      const persisted = await this.upsertState(restaurantId, {
         inventoryId: row.inventoryId,
         wineName: row.wineName,
         level: cur,
         bumpAlert: isNew,
         alertedAt: isNew ? nowIso : undefined,
       });
+      // Fail-closed: only a crossing whose new level we DURABLY recorded is
+      // eligible to alert. If the write failed, we leave it untouched and retry
+      // next sweep — so a DB blip can't make us re-send the same alert forever.
+      if (isNew && persisted) persistedNew.push(row);
     }
 
     // Honor the manager's settings: a crossing alerts immediately only if
     // instant-first is on, OR it's critical and criticals are set to interrupt.
     // Anything held back is still marked low and will surface in the digest.
-    const immediate = newCrossings.filter(
+    const immediate = persistedNew.filter(
       (w) =>
         prefs.instantFirstAlert ||
         (w.severity === "critical" && prefs.criticalImmediate),
     );
-    if (immediate.length > 0) {
+    const now = Date.now();
+    const cooledDown =
+      now - (this.lastInstantAt.get(restaurantId) ?? 0) >= this.INSTANT_COOLDOWN_MS;
+    if (immediate.length > 0 && cooledDown) {
+      this.lastInstantAt.set(restaurantId, now);
       await this.fireInstantAlert(restaurantId, immediate, restaurantName);
+    } else if (immediate.length > 0) {
+      this.logger.log(
+        `Low-stock instant alert for ${restaurantId} suppressed by cooldown (${immediate.length} wines roll into the digest).`,
+      );
     }
 
     return { newCrossings };
@@ -541,6 +563,13 @@ export class LowStockAlertsService {
     return map;
   }
 
+  /**
+   * Persist the alert level for one item. Returns true ONLY when the write
+   * durably succeeded. The caller uses this to stay fail-closed: an alert is
+   * emitted only after we've recorded that we alerted, so a transient DB error
+   * (the "fetch failed" Supabase blips) can never cause the same wine to be
+   * re-alerted on the next 2-minute sweep.
+   */
   private async upsertState(
     restaurantId: string,
     p: {
@@ -551,7 +580,7 @@ export class LowStockAlertsService {
       alertedAt?: string;
       digestAt?: string;
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const nowIso = new Date().toISOString();
     const row: Record<string, any> = {
       restaurant_id: restaurantId,
@@ -562,23 +591,31 @@ export class LowStockAlertsService {
     };
     if (p.alertedAt) row.last_alerted_at = p.alertedAt;
     if (p.digestAt) row.last_digest_at = p.digestAt;
-    // Count how many times we've alerted on this item (best-effort, +1 per new
-    // crossing). Read-modify is fine here: the sweep is single-writer.
-    if (p.bumpAlert) {
-      const { data: cur } = await this.db.supabase
-        .from("inventory_alert_state")
-        .select("alert_count")
-        .eq("restaurant_id", restaurantId)
-        .eq("inventory_id", p.inventoryId)
-        .maybeSingle();
-      row.alert_count = (cur?.alert_count ?? 0) + 1;
-    }
+    try {
+      // Count how many times we've alerted on this item (best-effort, +1 per
+      // new crossing). Read-modify is fine: the sweep is single-writer.
+      if (p.bumpAlert) {
+        const { data: cur } = await this.db.supabase
+          .from("inventory_alert_state")
+          .select("alert_count")
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", p.inventoryId)
+          .maybeSingle();
+        row.alert_count = (cur?.alert_count ?? 0) + 1;
+      }
 
-    const { error } = await this.db.supabase
-      .from("inventory_alert_state")
-      .upsert(row, { onConflict: "restaurant_id,inventory_id" });
-    if (error) {
-      this.logger.warn(`inventory_alert_state upsert failed: ${error.message}`);
+      const { error } = await this.db.supabase
+        .from("inventory_alert_state")
+        .upsert(row, { onConflict: "restaurant_id,inventory_id" });
+      if (error) {
+        this.logger.warn(`inventory_alert_state upsert failed: ${error.message}`);
+        return false;
+      }
+      return true;
+    } catch (e: any) {
+      // supabase-js throws (not returns) on network failures ("fetch failed").
+      this.logger.warn(`inventory_alert_state upsert threw: ${e?.message}`);
+      return false;
     }
   }
 

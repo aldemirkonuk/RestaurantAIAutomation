@@ -10,6 +10,7 @@ import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
 import { GmailService } from "../communications/gmail.service";
 import { DatabaseService } from "../database/database.service";
+import { ExpoPushService } from "../push/expo-push.service";
 
 export interface NotificationPayload {
   type: string;
@@ -43,6 +44,8 @@ export class NotificationsService {
     @Optional()
     @Inject(forwardRef(() => GmailService))
     private readonly gmailService?: GmailService,
+    @Optional()
+    private readonly expoPushService?: ExpoPushService,
   ) {
     this.initWebPush();
   }
@@ -95,6 +98,15 @@ export class NotificationsService {
 
     // Also send via Web Push API if user has subscription
     await this.sendWebPush(userId, payload);
+
+    // And to the user's mobile devices (Expo push)
+    if (this.expoPushService) {
+      await this.expoPushService.sendToUsers([userId], {
+        title: payload.title,
+        body: payload.body,
+        data: { type: payload.type, ...(payload.data ?? {}) },
+      });
+    }
   }
 
   /**
@@ -511,6 +523,12 @@ export class NotificationsService {
       .from("notifications")
       .insert({
         user_id: data.userId,
+        // Legacy NOT-NULL columns still present on the live notifications table
+        // (recipient_id / notification_type / channels). Populate them so the
+        // insert doesn't violate the constraints; the app reads user_id / type.
+        recipient_id: data.userId,
+        notification_type: data.type,
+        channels: ["in_app"],
         restaurant_id: data.restaurantId,
         type: data.type,
         title: data.title,
@@ -601,6 +619,10 @@ export class NotificationsService {
       const now = new Date().toISOString();
       const rows = userIds.map((userId) => ({
         user_id: userId,
+        // Legacy NOT-NULL columns still on the live table — see createNotification.
+        recipient_id: userId,
+        notification_type: payload.type,
+        channels: ["in_app"],
         restaurant_id: restaurantId,
         type: payload.type,
         title: payload.title.slice(0, 500),
@@ -633,6 +655,22 @@ export class NotificationsService {
             action_url: payload.actionUrl,
             data: payload.metadata,
           });
+      }
+
+      // Mobile fan-out: whatever lands in the notification center lands on
+      // members' phones too, except low priority which stays in-app only.
+      // Batching happens upstream of this funnel, so a digest is one push.
+      if (this.expoPushService && (payload.priority ?? "medium") !== "low") {
+        await this.expoPushService.sendToUsers(userIds, {
+          title: payload.title,
+          body: payload.message,
+          priority: payload.priority === "critical" ? "high" : "default",
+          data: {
+            type: payload.type,
+            actionUrl: payload.actionUrl ?? null,
+            ...(payload.metadata ?? {}),
+          },
+        });
       }
 
       return { inserted: rows.length };

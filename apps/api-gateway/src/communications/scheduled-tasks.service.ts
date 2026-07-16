@@ -816,6 +816,9 @@ export class ScheduledTasksService implements OnModuleInit {
           try {
             await client.from("notifications").insert({
               user_id: notifUserId,
+              recipient_id: notifUserId,
+              notification_type: "custom_reminder",
+              channels: ["in_app"],
               restaurant_id: reminder.restaurant_id || this.defaultRestaurantId,
               type: "custom_reminder",
               title: reminder.title,
@@ -1222,6 +1225,9 @@ export class ScheduledTasksService implements OnModuleInit {
       const now = new Date().toISOString();
       const rows = userIds.map((userId) => ({
         user_id: userId,
+        recipient_id: userId,
+        notification_type: payload.type,
+        channels: ["in_app"],
         restaurant_id: restaurantId,
         type: payload.type,
         title: payload.title.slice(0, 500),

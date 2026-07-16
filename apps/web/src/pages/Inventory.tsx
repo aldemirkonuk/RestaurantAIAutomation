@@ -25,6 +25,9 @@ import {
   BarChart3,
   FolderTree,
   RotateCcw,
+  Lightbulb,
+  ScanLine,
+  Smartphone,
 } from 'lucide-react'
 import { getWineTypeColor, Wine } from '../data/wineData'
 import { classifyStock } from '../lib/inventoryStatus'
@@ -648,6 +651,26 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
     setAutoLocateResult(null)
   }, [assignWineToLocation])
 
+  const insightLocations = useMemo(
+    () => getLocationsWithActualCounts(),
+    [getLocationsWithActualCounts, storageLocations, mappings],
+  )
+
+  const insightHealthScore = useMemo(
+    () => (stats.total > 0 ? Math.round((stats.healthy / stats.total) * 100) : 0),
+    [stats.healthy, stats.total],
+  )
+
+  const insightUtilization = useMemo(() => {
+    if (insightLocations.length === 0) return 0
+    const avg =
+      insightLocations.reduce((sum, loc) => {
+        if (loc.capacity <= 0) return sum
+        return sum + loc.currentCount / loc.capacity
+      }, 0) / insightLocations.length
+    return Math.round(avg * 100)
+  }, [insightLocations])
+
   return (
     <div className="min-h-screen">
       <Header title="Inventory" subtitle="Manage live and shadow stock levels" />
@@ -689,96 +712,208 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
         </div>
 
         {/* Inventory Insights Panel */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div
+          className={`rounded-2xl overflow-hidden border transition-all duration-300 ${
+            showInventoryInsights
+              ? 'bg-gradient-to-br from-white via-white to-wine-50/40 border-wine-100 shadow-md shadow-wine-100/30'
+              : 'bg-white border-gray-100 shadow-sm hover:border-wine-100 hover:shadow-md'
+          }`}
+        >
           <button
+            type="button"
             onClick={() => setShowInventoryInsights(!showInventoryInsights)}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            aria-expanded={showInventoryInsights}
+            aria-controls="inventory-insights-panel"
+            className="group w-full flex items-center justify-between gap-4 p-4 sm:p-5 text-left transition-colors hover:bg-wine-50/30"
           >
-            <div className="flex items-center gap-3">
-              <Activity className="w-5 h-5 text-wine-600" />
-              <h3 className="font-semibold text-gray-900">Inventory Insights & Organization</h3>
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                  showInventoryInsights
+                    ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/25'
+                    : 'bg-wine-50 text-wine-600 group-hover:bg-wine-100'
+                }`}
+              >
+                <Activity className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-gray-900 truncate">
+                  Inventory Insights & Organization
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+                  {showInventoryInsights
+                    ? 'Cellar layout, floor access, and stock health at a glance'
+                    : 'Tap to expand cellar map, QR access, and health score'}
+                </p>
+              </div>
             </div>
-            {showInventoryInsights ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
-            )}
+
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {!showInventoryInsights && (
+                <div className="hidden md:flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                    <FolderTree className="w-3 h-3 text-blue-600" />
+                    {insightLocations.length} locations
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-wine-50 px-2.5 py-1 text-xs font-medium text-wine-700">
+                    <MapPin className="w-3 h-3" />
+                    {insightUtilization}% fill
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                      insightHealthScore >= 80
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : insightHealthScore >= 60
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-rose-50 text-rose-700'
+                    }`}
+                  >
+                    <BarChart3 className="w-3 h-3" />
+                    {insightHealthScore} health
+                  </span>
+                </div>
+              )}
+              <div
+                className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all ${
+                  showInventoryInsights
+                    ? 'border-wine-200 bg-wine-50 text-wine-600'
+                    : 'border-gray-200 bg-white text-gray-500 group-hover:border-wine-200 group-hover:text-wine-600'
+                }`}
+              >
+                {showInventoryInsights ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </div>
+            </div>
           </button>
 
           <AnimatePresence>
             {showInventoryInsights && (
               <motion.div
+                id="inventory-insights-panel"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="border-t border-gray-100 overflow-hidden"
+                transition={{ duration: 0.25, ease: 'easeInOut' }}
+                className="border-t border-wine-100/80 overflow-hidden"
               >
-                <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Storage Locations */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <FolderTree className="w-5 h-5 text-blue-600" />
-                        <h4 className="font-semibold text-gray-900">Storage Locations</h4>
+                <div className="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 bg-gradient-to-b from-transparent to-wine-50/20">
+                  {/* Storage Locations — cellar rack view */}
+                  <div className="rounded-2xl border border-gray-100 bg-white/80 backdrop-blur-sm p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                            <FolderTree className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <h4 className="font-semibold text-gray-900">Storage Locations</h4>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1 ml-10">
+                          {insightUtilization}% average fill across {insightLocations.length} zones
+                        </p>
                       </div>
                       <button
+                        type="button"
                         onClick={() => setShowStorageManager(true)}
-                        className="text-xs text-wine-600 hover:text-wine-700 font-medium"
+                        className="text-xs text-wine-600 hover:text-wine-700 font-semibold whitespace-nowrap"
                       >
                         Manage
                       </button>
                     </div>
-                    <div className="space-y-2">
-                      {(() => {
-                        // Use actual counts calculated from wine-location mappings
-                        const locationsWithActualCounts = getLocationsWithActualCounts()
-                        return locationsWithActualCounts.slice(0, 4).map((location) => (
+
+                    <div className="space-y-2.5">
+                      {insightLocations.slice(0, 4).map((location) => {
+                        const fillPct =
+                          location.capacity > 0
+                            ? Math.min(100, Math.round((location.currentCount / location.capacity) * 100))
+                            : 0
+                        const isSelected = selectedLocationFilter === location.id
+                        const isNearFull = fillPct >= 85
+                        const isEmpty = fillPct === 0
+
+                        return (
                           <button
                             key={location.id}
+                            type="button"
                             onClick={() => {
                               setStorageManagerLocationId(location.id)
                               setShowStorageManager(true)
                             }}
-                            className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
-                              selectedLocationFilter === location.id
-                                ? 'bg-wine-50 border-2 border-wine-500 shadow-md'
-                                : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent hover:border-wine-300'
+                            className={`group/loc relative w-full overflow-hidden rounded-xl border p-3 text-left transition-all ${
+                              isSelected
+                                ? 'border-wine-400 bg-wine-50/80 shadow-sm ring-1 ring-wine-200'
+                                : 'border-gray-100 bg-gray-50/70 hover:border-wine-200 hover:bg-white'
                             }`}
                             title="Click to manage this location"
                           >
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: location.color }}
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white shadow-sm"
+                                  style={{ backgroundColor: location.color }}
+                                />
+                                <span className="text-sm font-medium text-gray-800 truncate">
+                                  {location.name}
+                                </span>
+                              </div>
+                              <span className="text-xs font-semibold tabular-nums text-gray-600 shrink-0">
+                                {location.currentCount}
+                                <span className="font-normal text-gray-400"> / {location.capacity}</span>
+                              </span>
+                            </div>
+                            <div className="h-2 rounded-full bg-white/80 overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${fillPct}%` }}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                                className={`h-full rounded-full ${
+                                  isEmpty
+                                    ? 'bg-gray-200'
+                                    : isNearFull
+                                      ? 'bg-gradient-to-r from-amber-400 to-orange-500'
+                                      : ''
+                                }`}
+                                style={
+                                  !isEmpty && !isNearFull
+                                    ? {
+                                        background: `linear-gradient(90deg, ${location.color}cc, ${location.color})`,
+                                      }
+                                    : undefined
+                                }
                               />
-                              <span className="text-sm font-medium text-gray-700">{location.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-gray-900">{location.currentCount}</span>
-                              <span className="text-xs text-gray-500">/ {location.capacity}</span>
-                            </div>
+                            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                              {fillPct}% capacity
+                              {isNearFull && ' · near limit'}
+                            </p>
                           </button>
-                        ))
-                      })()}
+                        )
+                      })}
                     </div>
+
                     {storageLocations.length > 4 && (
-                      <p className="text-xs text-gray-500 text-center">
+                      <p className="text-xs text-gray-500 text-center mt-3">
                         +{storageLocations.length - 4} more locations
                       </p>
                     )}
-                    <div className="flex gap-2 mt-2">
+
+                    <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
                       {selectedLocationFilter && (
                         <button
+                          type="button"
                           onClick={() => setSelectedLocationFilter(null)}
-                          className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center gap-2"
+                          className="flex-1 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center gap-2"
                         >
                           <X className="w-4 h-4" />
                           Clear Filter
                         </button>
                       )}
                       <button
+                        type="button"
                         onClick={() => setShowStorageManager(true)}
-                        className={`${selectedLocationFilter ? 'flex-1' : 'w-full'} px-4 py-2 text-sm font-medium text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center justify-center gap-2`}
+                        className={`${selectedLocationFilter ? 'flex-1' : 'w-full'} px-3 py-2 text-sm font-medium text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center justify-center gap-2 border border-wine-100`}
                       >
                         <MapPin className="w-4 h-4" />
                         Manage Locations
@@ -786,94 +921,179 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
                     </div>
                   </div>
 
-                  {/* QR Code Quick Access */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <QrCode className="w-5 h-5 text-emerald-600" />
-                      <h4 className="font-semibold text-gray-900">QR Quick Access</h4>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase tracking-wide">Soon</span>
-                    </div>
-                    <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl text-center">
-                      <div className="w-32 h-32 mx-auto bg-white rounded-lg shadow-sm flex items-center justify-center mb-3">
-                        <QrCode className="w-20 h-20 text-gray-400" />
+                  {/* QR Quick Access — floor scan preview */}
+                  <div className="rounded-2xl border border-gray-100 bg-white/80 backdrop-blur-sm p-5 shadow-sm relative overflow-hidden">
+                    <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-100/40 blur-2xl pointer-events-none" />
+                    <div className="relative">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
+                          <QrCode className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <h4 className="font-semibold text-gray-900">QR Quick Access</h4>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase tracking-wider">
+                          Soon
+                        </span>
                       </div>
-                      <p className="text-sm font-medium text-gray-900 mb-1">Inventory QR Code</p>
-                      <p className="text-xs text-gray-600 mb-3">Scan to view/update inventory on mobile</p>
+                      <p className="text-xs text-gray-500 mb-4 ml-10">
+                        Scan cellar labels from the floor — no login hunt on a busy shift
+                      </p>
+
+                      <div className="relative mx-auto max-w-[220px]">
+                        <div className="absolute inset-0 rounded-2xl border-2 border-dashed border-emerald-200/80 rotate-1" />
+                        <div className="relative rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/80 p-5 shadow-inner">
+                          <div className="flex items-center justify-center gap-3 mb-4">
+                            <div className="relative">
+                              <div className="w-24 h-24 bg-white rounded-xl shadow-md flex items-center justify-center border border-gray-100">
+                                <QrCode className="w-14 h-14 text-gray-300" strokeWidth={1.25} />
+                              </div>
+                              <div className="absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg">
+                                <ScanLine className="w-4 h-4" />
+                              </div>
+                            </div>
+                            <Smartphone className="w-8 h-8 text-emerald-600/40 shrink-0" />
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900 text-center mb-1">
+                            Cellar scan point
+                          </p>
+                          <p className="text-[11px] text-gray-500 text-center leading-relaxed">
+                            Print zone codes for VIP, bar, and overflow racks
+                          </p>
+                        </div>
+                      </div>
+
+                      <ol className="mt-4 space-y-2">
+                        {[
+                          'Stick QR at rack eye level',
+                          'Staff scans → instant stock view',
+                          'Update counts without leaving the floor',
+                        ].map((step, i) => (
+                          <li key={step} className="flex items-start gap-2 text-xs text-gray-600">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">
+                              {i + 1}
+                            </span>
+                            {step}
+                          </li>
+                        ))}
+                      </ol>
+
                       <button
+                        type="button"
                         disabled
                         title="QR count mode ships in a later phase (see INVENTORY_SOTA_PLAN.md). Disabled so it doesn't promise a feature that isn't wired yet."
-                        className="w-full px-4 py-2 bg-gray-200 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed"
+                        className="mt-4 w-full px-4 py-2.5 rounded-xl border border-dashed border-gray-200 bg-gray-50/80 text-sm font-medium text-gray-400 cursor-not-allowed flex items-center justify-center gap-2"
                       >
-                        Generate QR Code · Coming soon
+                        <QrCode className="w-4 h-4 opacity-50" />
+                        Generate QR codes — coming soon
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500 text-center">
-                      Print and place QR codes in cellar sections for instant mobile access
-                    </p>
                   </div>
 
-                  {/* Inventory Health Dashboard */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <BarChart3 className="w-5 h-5 text-purple-600" />
-                      <h4 className="font-semibold text-gray-900">Inventory Health</h4>
-                    </div>
-                    
-                    {/* Health Score */}
-                    <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Overall Health Score</span>
-                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  {/* Inventory Health */}
+                  <div className="rounded-2xl border border-gray-100 bg-white/80 backdrop-blur-sm p-5 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-50">
+                        <BarChart3 className="w-4 h-4 text-purple-600" />
                       </div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold text-purple-600">
-                          {stats.total > 0 ? Math.round((stats.healthy / stats.total) * 100) : 0}
-                        </span>
-                        <span className="text-sm text-gray-600">/100</span>
-                      </div>
-                      <div className="mt-2 h-2 bg-white rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
-                          style={{ width: `${stats.total > 0 ? (stats.healthy / stats.total) * 100 : 0}%` }}
-                        />
+                      <div>
+                        <h4 className="font-semibold text-gray-900">Inventory Health</h4>
+                        <p className="text-xs text-gray-500">Stock posture across your list</p>
                       </div>
                     </div>
 
-                    {/* Quick Metrics */}
+                    <div className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-purple-50/80 to-indigo-50/50 border border-purple-100/60 mb-4">
+                      <div className="relative h-16 w-16 shrink-0">
+                        <svg className="h-16 w-16 -rotate-90" viewBox="0 0 36 36">
+                          <circle
+                            cx="18"
+                            cy="18"
+                            r="15.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            className="text-white"
+                          />
+                          <circle
+                            cx="18"
+                            cy="18"
+                            r="15.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeDasharray={`${insightHealthScore} 100`}
+                            className={
+                              insightHealthScore >= 80
+                                ? 'text-emerald-500'
+                                : insightHealthScore >= 60
+                                  ? 'text-amber-500'
+                                  : 'text-rose-500'
+                            }
+                          />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-gray-900">
+                          {insightHealthScore}
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-700">Overall score</span>
+                          <TrendingUp className="w-4 h-4 text-emerald-600 shrink-0" />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {insightHealthScore >= 80 && 'Cellar is in strong shape'}
+                          {insightHealthScore >= 60 && insightHealthScore < 80 && 'A few SKUs need attention'}
+                          {insightHealthScore < 60 && 'Several items below target levels'}
+                        </p>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
+                      <div className="flex items-center justify-between p-3 bg-emerald-50/80 rounded-xl border border-emerald-100/60">
                         <div className="flex items-center gap-2">
                           <CheckCircle className="w-4 h-4 text-emerald-600" />
                           <span className="text-sm font-medium text-gray-700">Healthy Stock</span>
                         </div>
-                        <span className="text-sm font-semibold text-emerald-700">{stats.healthy} wines</span>
+                        <span className="text-sm font-semibold text-emerald-700 tabular-nums">
+                          {stats.healthy} wines
+                        </span>
                       </div>
-                      <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                      <div className="flex items-center justify-between p-3 bg-amber-50/80 rounded-xl border border-amber-100/60">
                         <div className="flex items-center gap-2">
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
                           <span className="text-sm font-medium text-gray-700">Needs Attention</span>
                         </div>
-                        <span className="text-sm font-semibold text-amber-700">{stats.low + stats.critical} wines</span>
+                        <span className="text-sm font-semibold text-amber-700 tabular-nums">
+                          {stats.low + stats.critical} wines
+                        </span>
                       </div>
                     </div>
 
                     {stats.shadowTotal > 0 && (
-                      <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                      <div className="flex items-center justify-between p-3 mt-2 bg-purple-50/80 rounded-xl border border-purple-100/60">
                         <div className="flex items-center gap-2">
                           <RefreshCw className="w-4 h-4 text-purple-600" />
                           <span className="text-sm font-medium text-gray-700">Pending Reconciliation</span>
                         </div>
-                        <span className="text-sm font-semibold text-purple-700">{stats.shadowTotal} bottles</span>
+                        <span className="text-sm font-semibold text-purple-700 tabular-nums">
+                          {stats.shadowTotal} bottles
+                        </span>
                       </div>
                     )}
 
-                    {/* Recommendations */}
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                      <p className="text-xs font-medium text-blue-900 mb-1">💡 Recommendation</p>
-                      <p className="text-xs text-blue-700">
-                        {stats.critical > 0 && `${stats.critical} wines are critically low. Consider placing orders soon.`}
-                        {stats.critical === 0 && stats.low > 0 && `${stats.low} wines approaching minimum threshold. Monitor closely.`}
-                        {stats.critical === 0 && stats.low === 0 && `All wines are well-stocked. Great job!`}
+                    <div className="mt-4 p-3.5 bg-wine-50/60 border border-wine-100 rounded-xl">
+                      <p className="text-xs font-semibold text-wine-900 mb-1 flex items-center gap-1.5">
+                        <Lightbulb className="w-3.5 h-3.5 text-wine-600" />
+                        Recommendation
+                      </p>
+                      <p className="text-xs text-wine-800/90 leading-relaxed">
+                        {stats.critical > 0 &&
+                          `${stats.critical} wines are critically low. Consider placing orders soon.`}
+                        {stats.critical === 0 &&
+                          stats.low > 0 &&
+                          `${stats.low} wines approaching minimum threshold. Monitor closely.`}
+                        {stats.critical === 0 &&
+                          stats.low === 0 &&
+                          'All wines are well-stocked. Great job!'}
                       </p>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
 import { RecurringOrdersService } from "./recurring-orders.service";
@@ -10,6 +10,7 @@ import { InventoryLedgerModule } from "../inventory-ledger/inventory-ledger.modu
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { CommunicationsModule } from "../communications/communications.module";
 import { WebsocketModule } from "../websocket/websocket.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { WebsocketModule } from "../websocket/websocket.module";
     OrchestratorModule,
     CommunicationsModule,
     WebsocketModule,
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [ProcurementController, RecurringOrdersController],
   providers: [ProcurementService, RecurringOrdersService],

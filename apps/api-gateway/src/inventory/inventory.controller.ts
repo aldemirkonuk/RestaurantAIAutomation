@@ -102,6 +102,25 @@ export class InventoryController {
     }
   }
 
+  @Get(":restaurantId/item/:itemId/activity")
+  @ApiOperation({
+    summary:
+      "Depletion activity for one item: 14-day daily series + busy-hours heatmap",
+  })
+  async getItemActivity(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+  ) {
+    try {
+      return await this.inventoryService.getItemActivity(restaurantId, itemId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to fetch item activity",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get(":restaurantId/summary")
   @ApiOperation({ summary: "Get inventory summary statistics" })
   @ApiResponse({ status: 200, type: InventorySummaryResponseDto })

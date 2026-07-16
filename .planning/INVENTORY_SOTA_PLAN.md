@@ -324,6 +324,23 @@ Ship in this order; everything else is opt-in, triggered by a felt need:
 
 ---
 
+## 13. Future plans — BevOps expansion *(post–WineOps, not scheduled)*
+
+When the platform expands from **WineOps → BevOps** (full beverage program: spirits, beer, cocktails, NA):
+
+| Item | Scope | UX anchor |
+|---|---|---|
+| **Cocktail recipes in inventory row detail** | Each cocktail (or composed bev) SKU gets a **Recipes** section inside the inventory row expansion / detail dropdown — build sheet with linked ingredient SKUs, pour specs, method, garnish, and optional cost roll-up from lot WAC. | Same panel as today's `RowExpansion` on `/inventory` command table (`apps/web/src/pages/inventory/command/RowExpansion.tsx`). |
+
+**Notes:**
+- Wine bottle rows stay as-is (vintage, par, cellar location); recipes apply to **composed** items only.
+- Ingredient lines should deplete linked inventory SKUs (future pour-through / recipe costing), gated on Phase 2 lots + ledger trust.
+- Schema should treat `item_type ∈ {wine, spirit, beer, cocktail, na}` early so the UI can conditionally show Recipes without a later rewrite.
+
+**Trigger:** BevOps milestone — cocktail/spirits inventory in scope, not before.
+
+---
+
 ## Appendix A — File reference index
 
 - Page: `apps/web/src/pages/Inventory.tsx` (Total Value `:1257`, health `:781`, Type th `:1045`, Location th `:1055`, qty `||1` `:1176`, dead invoice state `:149`)

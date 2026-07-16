@@ -1,6 +1,209 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/health/agents": {
+      "get": {
+        "operationId": "HealthProxyController_getAllAgentsHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/health/agents/{name}": {
+      "get": {
+        "operationId": "HealthProxyController_getAgentHealth",
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "MetricsProxyController_getMetrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/senders/trust": {
+      "post": {
+        "operationId": "SenderTrustController_setTrust",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/senders/reputation": {
+      "get": {
+        "operationId": "SenderTrustController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prospects": {
+      "get": {
+        "operationId": "ProspectsController_list",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prospects/triage": {
+      "get": {
+        "operationId": "ProspectsController_triage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prospects/{id}/attachments": {
+      "get": {
+        "operationId": "ProspectsController_attachments",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prospects/{id}/promote": {
+      "post": {
+        "operationId": "ProspectsController_promote",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prospects/{id}/dismiss": {
+      "post": {
+        "operationId": "ProspectsController_dismiss",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prospects/{id}/restore": {
+      "post": {
+        "operationId": "ProspectsController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/inbound-email": {
+      "post": {
+        "operationId": "InboundEmailController_inbound",
+        "parameters": [
+          {
+            "name": "x-inbound-secret",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "secret",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "AuthController_login",
@@ -87,6 +290,46 @@
         }
       }
     },
+    "/api/v1/auth/me/role": {
+      "get": {
+        "operationId": "AuthController_getMyRole",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invite/{code}/accept": {
+      "post": {
+        "operationId": "AuthController_acceptInviteAsAuthed",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/verify": {
       "get": {
         "operationId": "AuthController_verifyToken",
@@ -96,6 +339,546 @@
             "description": ""
           }
         }
+      }
+    },
+    "/api/v1/auth/register/restaurant": {
+      "post": {
+        "operationId": "AuthController_registerRestaurant",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRestaurantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invite/{code}": {
+      "get": {
+        "operationId": "AuthController_getInvitePreview",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invite": {
+      "post": {
+        "operationId": "AuthController_generateInvite",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/join": {
+      "post": {
+        "operationId": "AuthController_joinViaInvite",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinViaInviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify-email": {
+      "post": {
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/resend-verification": {
+      "post": {
+        "operationId": "AuthController_resendVerification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/switch-restaurant": {
+      "post": {
+        "operationId": "AuthController_switchRestaurant",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/check-email": {
+      "get": {
+        "operationId": "AuthController_checkEmail",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/communications/status": {
+      "get": {
+        "operationId": "CommunicationsController_getStatus",
+        "summary": "Get communication services status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/email": {
+      "post": {
+        "operationId": "CommunicationsController_sendEmail",
+        "summary": "Send an email via Gmail API",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/sms": {
+      "post": {
+        "operationId": "CommunicationsController_sendSms",
+        "summary": "Send an SMS via Plivo",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendSmsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/alerts/low-stock": {
+      "post": {
+        "operationId": "CommunicationsController_sendLowStockAlert",
+        "summary": "Send low stock alert via email, SMS, and websocket",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LowStockAlertDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultiChannelResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/alerts/daily-summary": {
+      "post": {
+        "operationId": "CommunicationsController_sendDailySummary",
+        "summary": "Send daily summary SMS to manager",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailySummaryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/low-stock-alert": {
+      "post": {
+        "operationId": "CommunicationsController_testLowStockAlert",
+        "summary": "TEST: Simulate low stock alert to configured manager emails",
+        "description": "This endpoint simulates a wine reaching its threshold level and triggers an email alert to all MANAGER_EMAIL recipients.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultiChannelResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/email": {
+      "post": {
+        "operationId": "CommunicationsController_testEmail",
+        "summary": "TEST: Send a simple test email to all configured recipients",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/send-template": {
+      "post": {
+        "operationId": "CommunicationsController_sendTemplateEmail",
+        "summary": "TEST: Send template email to specified recipients",
+        "description": "Send an email using a ready template (\"test\" or \"low-stock\") to the given addresses.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendTemplateTestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/scenario": {
+      "post": {
+        "operationId": "CommunicationsController_testMessagingScenario",
+        "summary": "TEST: Execute full messaging scenario (Manager <-> Vendor)",
+        "description": "Simulates order inquiry → vendor response → AI summarization. Pass managerEmail or set MANAGER_EMAIL.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/e2e/step1-trigger-threshold": {
+      "post": {
+        "operationId": "CommunicationsController_e2eStep1TriggerThreshold",
+        "summary": "E2E Step 1: Manual override that triggers low-stock threshold",
+        "description": "Overrides a wine stock below threshold, publishes stock.manual_override to RabbitMQ. Expects push + email notification at configured manager email.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/e2e/step2-approve-reorder": {
+      "post": {
+        "operationId": "CommunicationsController_e2eStep2ApproveReorder",
+        "summary": "E2E Step 2: Approve order → triggers AI vendor email draft",
+        "description": "Approves a pending procurement order, publishes conversation intent so AI drafts an email to the vendor.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/e2e/step3-send-vendor-email": {
+      "post": {
+        "operationId": "CommunicationsController_e2eStep3SendVendorEmail",
+        "summary": "E2E Step 3: Approve AI draft → send email to vendor",
+        "description": "Approves the AI-drafted conversation and sends the email to the vendor (konukald@msu.edu by default).",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/e2e/step4-check-inbound": {
+      "get": {
+        "operationId": "CommunicationsController_e2eStep4CheckInbound",
+        "summary": "E2E Step 4: Check inbound vendor replies",
+        "description": "Lists recent inbound emails from the vendor, shows thread summary and detected intent.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/e2e/step5-approve-confirmation": {
+      "post": {
+        "operationId": "CommunicationsController_e2eStep5ApproveConfirmation",
+        "summary": "E2E Step 5: Approve order confirmation to vendor",
+        "description": "Manager confirms the order. AI sends a confirmation + invoice request email to the vendor.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/test/e2e/step6-check-status": {
+      "get": {
+        "operationId": "CommunicationsController_e2eStep6CheckStatus",
+        "summary": "E2E Step 6: Check order status (should be CONFIRMED/ORDERED)",
+        "description": "Returns the current status of the order and its conversation history.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/webhooks/gmail": {
+      "post": {
+        "operationId": "CommunicationsController_handleGmailWebhook",
+        "summary": "Gmail Pub/Sub push notification webhook",
+        "description": "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/webhooks/gmail/status": {
+      "get": {
+        "operationId": "CommunicationsController_getGmailWatchStatus",
+        "summary": "Get Gmail Watch subscription status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/api/v1/communications/webhooks/gmail/force-fetch": {
+      "post": {
+        "operationId": "CommunicationsController_forceGmailFetch",
+        "summary": "Force-fetch recent inbound Gmail messages",
+        "description": "Directly queries Gmail INBOX for messages in the last N minutes and routes them through the email parsing pipeline. Use after missed pushes.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Communications"
+        ]
       }
     },
     "/api/v1/dashboard/summary/{restaurantId}": {
@@ -1019,6 +1802,535 @@
         ]
       }
     },
+    "/api/v1/notifications": {
+      "post": {
+        "operationId": "NotificationsController_createNotification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      },
+      "get": {
+        "operationId": "NotificationsController_getNotifications",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "inventory_low_stock",
+                "order_pending",
+                "order_delivered",
+                "price_change",
+                "delivery_scheduled",
+                "calendar_reminder",
+                "system",
+                "ai_suggestion",
+                "draft_ready",
+                "constraint_triggered",
+                "unknown_sender",
+                "invoice_received"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "unread",
+                "read",
+                "archived"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Filter from date (ISO)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "description": "Filter to date (ISO)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread": {
+      "get": {
+        "operationId": "NotificationsController_getUnreadNotifications",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread/count": {
+      "get": {
+        "operationId": "NotificationsController_getUnreadCount",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/history": {
+      "get": {
+        "operationId": "NotificationsController_getNotificationHistory",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 30,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "operationId": "NotificationsController_getPreferences",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "patch": {
+        "operationId": "NotificationsController_updatePreferences",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read/bulk": {
+      "patch": {
+        "operationId": "NotificationsController_markBulkAsRead",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIdsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read/all": {
+      "patch": {
+        "operationId": "NotificationsController_markAllAsRead",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "NotificationsController_deleteAllRead",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markAsRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/archive": {
+      "patch": {
+        "operationId": "NotificationsController_archiveNotification",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/bulk": {
+      "delete": {
+        "operationId": "NotificationsController_deleteBulk",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIdsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}": {
+      "delete": {
+        "operationId": "NotificationsController_deleteNotification",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/push/subscribe": {
+      "post": {
+        "operationId": "NotificationsController_subscribeToPush",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscribeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/push/unsubscribe": {
+      "post": {
+        "operationId": "NotificationsController_unsubscribeFromPush",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushUnsubscribeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/test": {
+      "post": {
+        "operationId": "NotificationsController_sendTestNotification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/order-approval": {
+      "post": {
+        "operationId": "NotificationsController_notifyOrderApproval",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/low-stock": {
+      "post": {
+        "operationId": "NotificationsController_notifyLowStock",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/delivery": {
+      "post": {
+        "operationId": "NotificationsController_notifyDelivery",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/price-negotiation": {
+      "post": {
+        "operationId": "NotificationsController_notifyPriceNegotiation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/system-alert": {
+      "post": {
+        "operationId": "NotificationsController_sendSystemAlert",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/send-email": {
+      "post": {
+        "operationId": "NotificationsController_sendEmail",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/inventory/{restaurantId}": {
       "get": {
         "operationId": "InventoryController_getRestaurantInventory",
@@ -1213,6 +2525,38 @@
         "responses": {
           "200": {
             "description": "Item soft-deleted"
+          }
+        },
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/{restaurantId}/item/{itemId}/activity": {
+      "get": {
+        "operationId": "InventoryController_getItemActivity",
+        "summary": "Depletion activity for one item: 14-day daily series + busy-hours heatmap",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
           }
         },
         "tags": [
@@ -1427,6 +2771,77 @@
         "responses": {
           "200": {
             "description": "Mapping removed successfully"
+          }
+        },
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/{restaurantId}/item/{itemId}/transfer": {
+      "post": {
+        "operationId": "InventoryController_transferStock",
+        "summary": "Move bottles of a wine between storage locations",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItemResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/{restaurantId}/item/{itemId}/pour": {
+      "post": {
+        "operationId": "InventoryController_recordPour",
+        "summary": "Record by-the-glass pours (POS or manual override)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
           }
         },
         "tags": [
@@ -1988,6 +3403,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "No active vendors — cannot place orders (reason: no_vendors)"
           }
         },
         "tags": [
@@ -2040,6 +3458,50 @@
             "required": false,
             "in": "query",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           },
@@ -2166,6 +3628,50 @@
             "required": false,
             "in": "query",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           },
@@ -2366,6 +3872,398 @@
         ]
       }
     },
+    "/api/v1/procurement/orders/{id}/verify-receipt": {
+      "post": {
+        "operationId": "ProcurementController_verifyReceipt",
+        "summary": "Verify a delivered order against the vendor invoice; apply count adjustments and complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/approve-draft": {
+      "post": {
+        "operationId": "ProcurementController_approveDraft",
+        "summary": "Approve AI email draft and trigger send to provider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveDraftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Draft approved and sent"
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/generate-ai-reply": {
+      "post": {
+        "operationId": "ProcurementController_generateAiReply",
+        "summary": "Run the autonomous responder on the latest inbound vendor reply",
+        "description": "Understands the most recent vendor reply for this order and stages a one-tap-approve AI draft. Used to process replies that predate the feature or to recover missed ones.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Responder triggered (draft staged asynchronously)"
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/manual-reply": {
+      "post": {
+        "operationId": "ProcurementController_manualReply",
+        "summary": "Send a manager-written threaded reply to the provider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manual reply sent and recorded on the thread"
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/ai-pause": {
+      "post": {
+        "operationId": "ProcurementController_setAiPaused",
+        "summary": "Pause or resume AI autonomy for this order",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/cancel-scheduled-send": {
+      "post": {
+        "operationId": "ProcurementController_cancelScheduledSend",
+        "summary": "Undo a scheduled auto-send (revert it to a one-tap-approval draft)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/deal-proposal": {
+      "get": {
+        "operationId": "ProcurementController_getDealProposal",
+        "summary": "Get the latest AI-detected deal proposal for this order (or null)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/confirm-deal": {
+      "post": {
+        "operationId": "ProcurementController_confirmDeal",
+        "summary": "Confirm an AI-detected deal: commit the order and optionally email the vendor",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/dismiss-deal": {
+      "post": {
+        "operationId": "ProcurementController_dismissDeal",
+        "summary": "Decline an AI-detected deal without committing (order stays in negotiation)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/discard-draft": {
+      "post": {
+        "operationId": "ProcurementController_discardDraft",
+        "summary": "Discard AI email draft without sending",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/draft": {
+      "patch": {
+        "operationId": "ProcurementController_editDraft",
+        "summary": "Edit AI email draft content before approval",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveDraftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "ProcurementController_getPendingDraft",
+        "summary": "Get pending AI email draft for an order",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/conversations": {
+      "get": {
+        "operationId": "ProcurementController_getOrderConversations",
+        "summary": "Get all email conversations for a specific order (all statuses)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/orders/{id}/attachments": {
+      "get": {
+        "operationId": "ProcurementController_getOrderAttachments",
+        "summary": "List an order's persisted email attachments (with signed URLs)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/conversations/active": {
+      "get": {
+        "operationId": "ProcurementController_getActiveConversations",
+        "summary": "Get all PENDING_APPROVAL conversations with order + provider data",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/conversations/history": {
+      "get": {
+        "operationId": "ProcurementController_getConversationHistory",
+        "summary": "Get completed/sent procurement conversation history",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
     "/api/v1/recurring-orders/{restaurantId}": {
       "get": {
         "operationId": "RecurringOrdersController_list",
@@ -2517,919 +4415,6 @@
         },
         "tags": [
           "recurring-orders"
-        ]
-      }
-    },
-    "/api/v1/notifications": {
-      "get": {
-        "operationId": "NotificationsController_getNotifications",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "inventory_low_stock",
-                "order_pending",
-                "order_delivered",
-                "price_change",
-                "delivery_scheduled",
-                "calendar_reminder",
-                "system",
-                "ai_suggestion"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "unread",
-                "read",
-                "archived"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "dateFrom",
-            "required": false,
-            "in": "query",
-            "description": "Filter from date (ISO)",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "dateTo",
-            "required": false,
-            "in": "query",
-            "description": "Filter to date (ISO)",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/unread": {
-      "get": {
-        "operationId": "NotificationsController_getUnreadNotifications",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 50,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/unread/count": {
-      "get": {
-        "operationId": "NotificationsController_getUnreadCount",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/history": {
-      "get": {
-        "operationId": "NotificationsController_getNotificationHistory",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "days",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 30,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/preferences": {
-      "get": {
-        "operationId": "NotificationsController_getPreferences",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      },
-      "patch": {
-        "operationId": "NotificationsController_updatePreferences",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePreferencesDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/read/bulk": {
-      "patch": {
-        "operationId": "NotificationsController_markBulkAsRead",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkIdsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/read/all": {
-      "patch": {
-        "operationId": "NotificationsController_markAllAsRead",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      },
-      "delete": {
-        "operationId": "NotificationsController_deleteAllRead",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/read": {
-      "patch": {
-        "operationId": "NotificationsController_markAsRead",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/archive": {
-      "patch": {
-        "operationId": "NotificationsController_archiveNotification",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/bulk": {
-      "delete": {
-        "operationId": "NotificationsController_deleteBulk",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkIdsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}": {
-      "delete": {
-        "operationId": "NotificationsController_deleteNotification",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/push/subscribe": {
-      "post": {
-        "operationId": "NotificationsController_subscribeToPush",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushSubscribeDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/push/unsubscribe": {
-      "post": {
-        "operationId": "NotificationsController_unsubscribeFromPush",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushUnsubscribeDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/test": {
-      "post": {
-        "operationId": "NotificationsController_sendTestNotification",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/order-approval": {
-      "post": {
-        "operationId": "NotificationsController_notifyOrderApproval",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/low-stock": {
-      "post": {
-        "operationId": "NotificationsController_notifyLowStock",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/delivery": {
-      "post": {
-        "operationId": "NotificationsController_notifyDelivery",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/price-negotiation": {
-      "post": {
-        "operationId": "NotificationsController_notifyPriceNegotiation",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/system-alert": {
-      "post": {
-        "operationId": "NotificationsController_sendSystemAlert",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/send-email": {
-      "post": {
-        "operationId": "NotificationsController_sendEmail",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/communications/status": {
-      "get": {
-        "operationId": "CommunicationsController_getStatus",
-        "summary": "Get communication services status",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunicationStatusDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/email": {
-      "post": {
-        "operationId": "CommunicationsController_sendEmail",
-        "summary": "Send an email via Gmail API",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendEmailDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunicationResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/sms": {
-      "post": {
-        "operationId": "CommunicationsController_sendSms",
-        "summary": "Send an SMS via Plivo",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendSmsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunicationResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/alerts/low-stock": {
-      "post": {
-        "operationId": "CommunicationsController_sendLowStockAlert",
-        "summary": "Send low stock alert via email, SMS, and websocket",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LowStockAlertDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MultiChannelResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/alerts/daily-summary": {
-      "post": {
-        "operationId": "CommunicationsController_sendDailySummary",
-        "summary": "Send daily summary SMS to manager",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DailySummaryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunicationResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/low-stock-alert": {
-      "post": {
-        "operationId": "CommunicationsController_testLowStockAlert",
-        "summary": "TEST: Simulate low stock alert to configured manager emails",
-        "description": "This endpoint simulates a wine reaching its threshold level and triggers an email alert to all MANAGER_EMAIL recipients.",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MultiChannelResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/email": {
-      "post": {
-        "operationId": "CommunicationsController_testEmail",
-        "summary": "TEST: Send a simple test email to all configured recipients",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunicationResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/send-template": {
-      "post": {
-        "operationId": "CommunicationsController_sendTemplateEmail",
-        "summary": "TEST: Send template email to specified recipients",
-        "description": "Send an email using a ready template (\"test\" or \"low-stock\") to the given addresses.",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendTemplateTestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunicationResultDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/scenario": {
-      "post": {
-        "operationId": "CommunicationsController_testMessagingScenario",
-        "summary": "TEST: Execute full messaging scenario (Manager <-> Vendor)",
-        "description": "Simulates the complete order inquiry → vendor response → AI summarization flow. Manager: aldemirkonuk2004@gmail.com, Vendor: konukald@msu.edu",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/e2e/step1-trigger-threshold": {
-      "post": {
-        "operationId": "CommunicationsController_e2eStep1TriggerThreshold",
-        "summary": "E2E Step 1: Manual override that triggers low-stock threshold",
-        "description": "Overrides a wine stock below threshold, publishes stock.manual_override to RabbitMQ. Expects push + email notification at configured manager email.",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/e2e/step2-approve-reorder": {
-      "post": {
-        "operationId": "CommunicationsController_e2eStep2ApproveReorder",
-        "summary": "E2E Step 2: Approve order → triggers AI vendor email draft",
-        "description": "Approves a pending procurement order, publishes conversation intent so AI drafts an email to the vendor.",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/e2e/step3-send-vendor-email": {
-      "post": {
-        "operationId": "CommunicationsController_e2eStep3SendVendorEmail",
-        "summary": "E2E Step 3: Approve AI draft → send email to vendor",
-        "description": "Approves the AI-drafted conversation and sends the email to the vendor (konukald@msu.edu by default).",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/e2e/step4-check-inbound": {
-      "get": {
-        "operationId": "CommunicationsController_e2eStep4CheckInbound",
-        "summary": "E2E Step 4: Check inbound vendor replies",
-        "description": "Lists recent inbound emails from the vendor, shows thread summary and detected intent.",
-        "parameters": [
-          {
-            "name": "orderId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "providerId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/e2e/step5-approve-confirmation": {
-      "post": {
-        "operationId": "CommunicationsController_e2eStep5ApproveConfirmation",
-        "summary": "E2E Step 5: Approve order confirmation to vendor",
-        "description": "Manager confirms the order. AI sends a confirmation + invoice request email to the vendor.",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/test/e2e/step6-check-status": {
-      "get": {
-        "operationId": "CommunicationsController_e2eStep6CheckStatus",
-        "summary": "E2E Step 6: Check order status (should be CONFIRMED/ORDERED)",
-        "description": "Returns the current status of the order and its conversation history.",
-        "parameters": [
-          {
-            "name": "orderId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/webhooks/gmail": {
-      "post": {
-        "operationId": "CommunicationsController_handleGmailWebhook",
-        "summary": "Gmail Pub/Sub push notification webhook",
-        "description": "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent.",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
-        ]
-      }
-    },
-    "/api/v1/communications/webhooks/gmail/status": {
-      "get": {
-        "operationId": "CommunicationsController_getGmailWatchStatus",
-        "summary": "Get Gmail Watch subscription status",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Communications"
         ]
       }
     },
@@ -3645,14 +4630,6 @@
             }
           },
           {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "isActive",
             "required": false,
             "in": "query",
@@ -3697,14 +4674,6 @@
         "operationId": "ProvidersController_searchByWineType",
         "summary": "Search providers by wine type",
         "parameters": [
-          {
-            "name": "restaurantId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "wineType",
             "required": true,
@@ -4285,6 +5254,248 @@
         "responses": {
           "200": {
             "description": "Provider recommendations"
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/{id}/intelligence": {
+      "get": {
+        "operationId": "ProvidersController_getIntelligence",
+        "summary": "Get provider intelligence profile (foundational + dynamic)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns profile_foundational + profile_dynamic"
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      },
+      "patch": {
+        "operationId": "ProvidersController_updateIntelligence",
+        "summary": "Update provider foundational intelligence profile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIntelligenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/{id}/intelligence/summary": {
+      "get": {
+        "operationId": "ProvidersController_getIntelligenceSummary",
+        "summary": "Get top 3 intelligence badge pill dimensions for provider card",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/{id}/locations": {
+      "get": {
+        "operationId": "ProvidersController_getProviderLocations",
+        "summary": "Get provider locations",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      },
+      "post": {
+        "operationId": "ProvidersController_createProviderLocation",
+        "summary": "Add a location to a provider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProviderLocationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/{id}/locations/{locationId}": {
+      "patch": {
+        "operationId": "ProvidersController_updateProviderLocation",
+        "summary": "Update a provider location",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProviderLocationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      },
+      "delete": {
+        "operationId": "ProvidersController_deleteProviderLocation",
+        "summary": "Remove a provider location",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/{id}/retroactive-order": {
+      "post": {
+        "operationId": "ProvidersController_createRetroactiveOrder",
+        "summary": "Create retroactive order from off-app invoice (D-32-15 Scenario C)",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetroactiveOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Retroactive order created"
           }
         },
         "tags": [
@@ -4967,6 +6178,38 @@
         "responses": {
           "200": {
             "description": "Mapping removed"
+          }
+        },
+        "tags": [
+          "storage-locations"
+        ]
+      }
+    },
+    "/api/v1/storage-locations/{restaurantId}/locations/{locationId}/wines": {
+      "get": {
+        "operationId": "StorageLocationsController_getWinesAtLocation",
+        "summary": "List enriched wines at a specific location",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns wines at location"
           }
         },
         "tags": [
@@ -5738,6 +6981,75 @@
         ]
       }
     },
+    "/api/v1/calendar/feed/{token}.ics": {
+      "get": {
+        "operationId": "CalendarController_getICalFeed",
+        "summary": "Public iCal feed — subscribe with Outlook/Apple/Google Calendar",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant iCal token (64-char hex)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/ical-token": {
+      "get": {
+        "operationId": "CalendarController_getICalToken",
+        "summary": "Get or generate iCal subscription token for current restaurant",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ICalTokenResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/ical-token/regenerate": {
+      "post": {
+        "operationId": "CalendarController_regenerateICalToken",
+        "summary": "Regenerate iCal token — invalidates all existing subscriptions",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ICalTokenResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
     "/api/v1/conversations": {
       "get": {
         "operationId": "ConversationsController_listConversations",
@@ -6275,6 +7587,466 @@
         ]
       }
     },
+    "/api/v1/organizations/branches": {
+      "get": {
+        "operationId": "OrganizationsController_getBranches",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/chains": {
+      "get": {
+        "operationId": "OrganizationsController_getChains",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "OrganizationsController_createChain",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChainDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/chains/{id}": {
+      "patch": {
+        "operationId": "OrganizationsController_renameChain",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameChainDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "OrganizationsController_deleteChain",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/locations/{id}": {
+      "patch": {
+        "operationId": "OrganizationsController_updateLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLocationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/locations": {
+      "post": {
+        "operationId": "OrganizationsController_createLocation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLocationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/members": {
+      "get": {
+        "operationId": "MembersController_getMembers",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "MembersController_addMember",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/invites": {
+      "get": {
+        "operationId": "MembersController_getInvites",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/members/{memberId}": {
+      "patch": {
+        "operationId": "MembersController_updateMemberRole",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "MembersController_removeMember",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/restaurants/{restaurantId}/invites/{code}": {
+      "delete": {
+        "operationId": "MembersController_revokeInvite",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/vendor-catalogue/search": {
+      "get": {
+        "operationId": "VendorCatalogueController_search",
+        "summary": "Search vendor catalogue",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search term for vendor name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "country",
+            "required": false,
+            "in": "query",
+            "description": "Filter by country (default: US)",
+            "schema": {
+              "default": "US",
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "Filter by vendor type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Max results (default: 20, max: 50)",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Pagination offset (default: 0)",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated vendor catalogue search results"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "vendor-catalogue"
+        ]
+      }
+    },
+    "/api/v1/vendor-catalogue/{id}": {
+      "get": {
+        "operationId": "VendorCatalogueController_findById",
+        "summary": "Get vendor catalogue entry by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vendor catalogue entry details"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Vendor not found"
+          }
+        },
+        "tags": [
+          "vendor-catalogue"
+        ]
+      }
+    },
+    "/api/v1/menus/import": {
+      "post": {
+        "operationId": "MenusController_importMenu",
+        "summary": "Import menu via scan, CSV, or manual entry",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportMenuDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "menus"
+        ]
+      }
+    },
+    "/api/v1/onboarding/progress": {
+      "get": {
+        "operationId": "OnboardingController_getProgress",
+        "summary": "Get the authenticated user's onboarding progress",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "onboarding"
+        ]
+      },
+      "patch": {
+        "operationId": "OnboardingController_updateProgress",
+        "summary": "Update onboarding progress fields",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingProgressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
     "/api/v1/users/{userId}/preferences": {
       "get": {
         "operationId": "UserPreferencesController_getPreferences",
@@ -6570,6 +8342,296 @@
       }
     },
     "schemas": {
+      "RegisterRestaurantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "InviteDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "JoinViaInviteDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CommunicationStatusDto": {
+        "type": "object",
+        "properties": {
+          "gmailReady": {
+            "type": "boolean",
+            "description": "Whether Gmail is configured and ready"
+          },
+          "smsReady": {
+            "type": "boolean",
+            "description": "Whether SMS (Plivo) is configured and ready"
+          },
+          "websocketReady": {
+            "type": "boolean",
+            "description": "Whether WebSocket is available"
+          }
+        },
+        "required": [
+          "gmailReady",
+          "smsReady",
+          "websocketReady"
+        ]
+      },
+      "SendEmailDto": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "description": "Email recipients",
+            "example": [
+              "ops@your-restaurant.com"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject",
+            "example": "Low Stock Alert: Chateau Margaux 2015"
+          },
+          "bodyHtml": {
+            "type": "string",
+            "description": "HTML body content"
+          },
+          "bodyText": {
+            "type": "string",
+            "description": "Plain text body content"
+          },
+          "cc": {
+            "description": "CC recipients",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bcc": {
+            "description": "BCC recipients",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "bodyHtml"
+        ]
+      },
+      "CommunicationResultDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation was successful"
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Message ID if available"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if failed"
+          },
+          "channel": {
+            "type": "string",
+            "description": "Channel used (email, sms, websocket)"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "SendSmsDto": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Phone number in E.164 format",
+            "example": "+14155551234"
+          },
+          "message": {
+            "type": "string",
+            "description": "SMS message content (max 160 chars recommended)"
+          }
+        },
+        "required": [
+          "to",
+          "message"
+        ]
+      },
+      "LowStockAlertDto": {
+        "type": "object",
+        "properties": {
+          "recipientEmail": {
+            "type": "string",
+            "description": "Recipient email address",
+            "example": "ops@your-restaurant.com"
+          },
+          "recipientPhone": {
+            "type": "string",
+            "description": "Recipient phone number for SMS"
+          },
+          "wineName": {
+            "type": "string",
+            "description": "Wine name",
+            "example": "Chateau Margaux 2015"
+          },
+          "currentStock": {
+            "type": "number",
+            "description": "Current stock level",
+            "example": 2
+          },
+          "threshold": {
+            "type": "number",
+            "description": "Threshold level",
+            "example": 12
+          },
+          "avgDailySales": {
+            "type": "number",
+            "description": "Average daily sales",
+            "example": 1.5
+          },
+          "recommendedQty": {
+            "type": "number",
+            "description": "Recommended order quantity",
+            "example": 24
+          },
+          "preferredSupplier": {
+            "type": "string",
+            "description": "Preferred supplier name",
+            "example": "Premium Wine Distributors"
+          },
+          "estimatedDelivery": {
+            "type": "string",
+            "description": "Estimated delivery time",
+            "example": "2-3 business days"
+          },
+          "wineId": {
+            "type": "string",
+            "description": "Wine ID for linking"
+          },
+          "restaurantId": {
+            "type": "string",
+            "description": "Restaurant ID"
+          }
+        },
+        "required": [
+          "recipientEmail",
+          "wineName",
+          "currentStock",
+          "threshold"
+        ]
+      },
+      "MultiChannelResultDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "description": "Email result",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CommunicationResultDto"
+              }
+            ]
+          },
+          "sms": {
+            "description": "SMS result",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CommunicationResultDto"
+              }
+            ]
+          },
+          "websocket": {
+            "description": "WebSocket result",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CommunicationResultDto"
+              }
+            ]
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Overall success status"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Timestamp of the operation"
+          }
+        },
+        "required": [
+          "email",
+          "sms",
+          "websocket",
+          "success",
+          "timestamp"
+        ]
+      },
+      "DailySummaryDto": {
+        "type": "object",
+        "properties": {
+          "recipientPhone": {
+            "type": "string",
+            "description": "Recipient phone number"
+          },
+          "restaurantName": {
+            "type": "string",
+            "description": "Restaurant name"
+          },
+          "lowStockCount": {
+            "type": "number",
+            "description": "Number of low stock items"
+          },
+          "pendingOrders": {
+            "type": "number",
+            "description": "Number of pending orders"
+          },
+          "deliveriesToday": {
+            "type": "number",
+            "description": "Number of deliveries expected today"
+          }
+        },
+        "required": [
+          "recipientPhone",
+          "restaurantName",
+          "lowStockCount",
+          "pendingOrders",
+          "deliveriesToday"
+        ]
+      },
+      "SendTemplateTestDto": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "description": "Recipient email addresses",
+            "example": [
+              "suley1742@gmail.com"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "template": {
+            "type": "string",
+            "description": "Template to use",
+            "enum": [
+              "test",
+              "low-stock"
+            ],
+            "example": "test"
+          }
+        },
+        "required": [
+          "to",
+          "template"
+        ]
+      },
       "InventorySummaryDto": {
         "type": "object",
         "properties": {
@@ -7851,6 +9913,123 @@
           "endTime"
         ]
       },
+      "CategoriesDto": {
+        "type": "object",
+        "properties": {
+          "inventory": {
+            "type": "boolean"
+          },
+          "orders": {
+            "type": "boolean"
+          },
+          "calendar": {
+            "type": "boolean"
+          },
+          "system": {
+            "type": "boolean"
+          },
+          "ai": {
+            "type": "boolean"
+          }
+        }
+      },
+      "QuietHoursDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "Start time HH:mm"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "End time HH:mm"
+          }
+        }
+      },
+      "LowStockPrefsDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Master switch for low-stock alerts"
+          },
+          "instantFirstAlert": {
+            "type": "boolean",
+            "description": "Alert the moment a wine first crosses par"
+          },
+          "criticalImmediate": {
+            "type": "boolean",
+            "description": "Critical (≤50% par) sends immediately"
+          },
+          "digestFrequency": {
+            "type": "string",
+            "description": "'daily' | 'off' — reminder for still-low wines"
+          },
+          "digestTime": {
+            "type": "string",
+            "description": "Daily digest send time HH:mm"
+          }
+        }
+      },
+      "UpdatePreferencesDto": {
+        "type": "object",
+        "properties": {
+          "preferences": {
+            "type": "object",
+            "description": "Partial preferences object to deep-merge"
+          }
+        },
+        "required": [
+          "preferences"
+        ]
+      },
+      "BulkIdsDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Array of notification IDs",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "PushSubscribeDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User ID"
+          },
+          "subscription": {
+            "type": "object",
+            "description": "Web Push subscription object"
+          }
+        },
+        "required": [
+          "userId",
+          "subscription"
+        ]
+      },
+      "PushUnsubscribeDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User ID"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
       "CreateInventoryItemDto": {
         "type": "object",
         "properties": {
@@ -9033,378 +11212,31 @@
           },
           "discrepancyNotes": {
             "type": "string"
+          },
+          "locationId": {
+            "type": "string"
           }
         }
       },
-      "CategoriesDto": {
+      "ApproveDraftDto": {
         "type": "object",
         "properties": {
-          "inventory": {
-            "type": "boolean"
+          "modifiedContent": {
+            "type": "string",
+            "description": "Modified draft content (omit to approve as-is)"
           },
-          "orders": {
-            "type": "boolean"
+          "managerNotes": {
+            "type": "string",
+            "description": "Manager notes for audit log"
           },
-          "calendar": {
-            "type": "boolean"
-          },
-          "system": {
-            "type": "boolean"
-          },
-          "ai": {
-            "type": "boolean"
+          "ccEmails": {
+            "description": "Additional CC email addresses",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
-      },
-      "QuietHoursDto": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "startTime": {
-            "type": "string",
-            "description": "Start time HH:mm"
-          },
-          "endTime": {
-            "type": "string",
-            "description": "End time HH:mm"
-          }
-        }
-      },
-      "UpdatePreferencesDto": {
-        "type": "object",
-        "properties": {
-          "preferences": {
-            "type": "object",
-            "description": "Partial preferences object to deep-merge"
-          }
-        },
-        "required": [
-          "preferences"
-        ]
-      },
-      "BulkIdsDto": {
-        "type": "object",
-        "properties": {
-          "ids": {
-            "description": "Array of notification IDs",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "ids"
-        ]
-      },
-      "PushSubscribeDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string",
-            "description": "User ID"
-          },
-          "subscription": {
-            "type": "object",
-            "description": "Web Push subscription object"
-          }
-        },
-        "required": [
-          "userId",
-          "subscription"
-        ]
-      },
-      "PushUnsubscribeDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string",
-            "description": "User ID"
-          }
-        },
-        "required": [
-          "userId"
-        ]
-      },
-      "CommunicationStatusDto": {
-        "type": "object",
-        "properties": {
-          "gmailReady": {
-            "type": "boolean",
-            "description": "Whether Gmail is configured and ready"
-          },
-          "smsReady": {
-            "type": "boolean",
-            "description": "Whether SMS (Plivo) is configured and ready"
-          },
-          "websocketReady": {
-            "type": "boolean",
-            "description": "Whether WebSocket is available"
-          }
-        },
-        "required": [
-          "gmailReady",
-          "smsReady",
-          "websocketReady"
-        ]
-      },
-      "SendEmailDto": {
-        "type": "object",
-        "properties": {
-          "to": {
-            "description": "Email recipients",
-            "example": [
-              "aldemirkonuk2004@gmail.com"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "subject": {
-            "type": "string",
-            "description": "Email subject",
-            "example": "Low Stock Alert: Chateau Margaux 2015"
-          },
-          "bodyHtml": {
-            "type": "string",
-            "description": "HTML body content"
-          },
-          "bodyText": {
-            "type": "string",
-            "description": "Plain text body content"
-          },
-          "cc": {
-            "description": "CC recipients",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "bcc": {
-            "description": "BCC recipients",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "to",
-          "subject",
-          "bodyHtml"
-        ]
-      },
-      "CommunicationResultDto": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "description": "Whether the operation was successful"
-          },
-          "messageId": {
-            "type": "string",
-            "description": "Message ID if available"
-          },
-          "error": {
-            "type": "string",
-            "description": "Error message if failed"
-          },
-          "channel": {
-            "type": "string",
-            "description": "Channel used (email, sms, websocket)"
-          }
-        },
-        "required": [
-          "success"
-        ]
-      },
-      "SendSmsDto": {
-        "type": "object",
-        "properties": {
-          "to": {
-            "type": "string",
-            "description": "Phone number in E.164 format",
-            "example": "+14155551234"
-          },
-          "message": {
-            "type": "string",
-            "description": "SMS message content (max 160 chars recommended)"
-          }
-        },
-        "required": [
-          "to",
-          "message"
-        ]
-      },
-      "LowStockAlertDto": {
-        "type": "object",
-        "properties": {
-          "recipientEmail": {
-            "type": "string",
-            "description": "Recipient email address",
-            "example": "aldemirkonuk2004@gmail.com"
-          },
-          "recipientPhone": {
-            "type": "string",
-            "description": "Recipient phone number for SMS"
-          },
-          "wineName": {
-            "type": "string",
-            "description": "Wine name",
-            "example": "Chateau Margaux 2015"
-          },
-          "currentStock": {
-            "type": "number",
-            "description": "Current stock level",
-            "example": 2
-          },
-          "threshold": {
-            "type": "number",
-            "description": "Threshold level",
-            "example": 12
-          },
-          "avgDailySales": {
-            "type": "number",
-            "description": "Average daily sales",
-            "example": 1.5
-          },
-          "recommendedQty": {
-            "type": "number",
-            "description": "Recommended order quantity",
-            "example": 24
-          },
-          "preferredSupplier": {
-            "type": "string",
-            "description": "Preferred supplier name",
-            "example": "Premium Wine Distributors"
-          },
-          "estimatedDelivery": {
-            "type": "string",
-            "description": "Estimated delivery time",
-            "example": "2-3 business days"
-          },
-          "wineId": {
-            "type": "string",
-            "description": "Wine ID for linking"
-          },
-          "restaurantId": {
-            "type": "string",
-            "description": "Restaurant ID"
-          }
-        },
-        "required": [
-          "recipientEmail",
-          "wineName",
-          "currentStock",
-          "threshold"
-        ]
-      },
-      "MultiChannelResultDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "description": "Email result",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CommunicationResultDto"
-              }
-            ]
-          },
-          "sms": {
-            "description": "SMS result",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CommunicationResultDto"
-              }
-            ]
-          },
-          "websocket": {
-            "description": "WebSocket result",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CommunicationResultDto"
-              }
-            ]
-          },
-          "success": {
-            "type": "boolean",
-            "description": "Overall success status"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "Timestamp of the operation"
-          }
-        },
-        "required": [
-          "email",
-          "sms",
-          "websocket",
-          "success",
-          "timestamp"
-        ]
-      },
-      "DailySummaryDto": {
-        "type": "object",
-        "properties": {
-          "recipientPhone": {
-            "type": "string",
-            "description": "Recipient phone number"
-          },
-          "restaurantName": {
-            "type": "string",
-            "description": "Restaurant name"
-          },
-          "lowStockCount": {
-            "type": "number",
-            "description": "Number of low stock items"
-          },
-          "pendingOrders": {
-            "type": "number",
-            "description": "Number of pending orders"
-          },
-          "deliveriesToday": {
-            "type": "number",
-            "description": "Number of deliveries expected today"
-          }
-        },
-        "required": [
-          "recipientPhone",
-          "restaurantName",
-          "lowStockCount",
-          "pendingOrders",
-          "deliveriesToday"
-        ]
-      },
-      "SendTemplateTestDto": {
-        "type": "object",
-        "properties": {
-          "to": {
-            "description": "Recipient email addresses",
-            "example": [
-              "suley1742@gmail.com"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "template": {
-            "type": "string",
-            "description": "Template to use",
-            "enum": [
-              "test",
-              "low-stock"
-            ],
-            "example": "test"
-          }
-        },
-        "required": [
-          "to",
-          "template"
-        ]
       },
       "GenerateReportDto": {
         "type": "object",
@@ -9608,6 +11440,30 @@
           "companyName": {
             "type": "string"
           },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "contactFirstName": {
+            "type": "string"
+          },
+          "contactLastName": {
+            "type": "string"
+          },
+          "physicalAddress": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          },
+          "rating": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string"
+          },
           "primaryContact": {
             "type": "object"
           },
@@ -9643,6 +11499,29 @@
           },
           "lastContactNotes": {
             "type": "string"
+          },
+          "catalogueVendorId": {
+            "type": "object",
+            "description": "UUID of the linked vendor_catalogue entry, null for custom vendors"
+          },
+          "isCustom": {
+            "type": "boolean",
+            "description": "True if this provider was manually created; false if sourced from catalogue"
+          },
+          "paymentTerms": {
+            "type": "string",
+            "description": "Payment terms (e.g. Net 30, COD)"
+          },
+          "primaryBusinessType": {
+            "type": "string",
+            "description": "Business type: Distributor, Importer, Wholesaler, etc."
+          },
+          "knownPersonnel": {
+            "description": "Known personnel / contacts (legacy array)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -9653,8 +11532,13 @@
       "CreateProviderDto": {
         "type": "object",
         "properties": {
+          "catalogue_vendor_id": {
+            "type": "string",
+            "description": "UUID of a vendor_catalogue entry. When provided, provider details are auto-filled from the catalogue."
+          },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Required when catalogue_vendor_id is not provided."
           },
           "companyName": {
             "type": "string"
@@ -9694,11 +11578,28 @@
           },
           "notes": {
             "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Vendor phone number"
+          },
+          "email": {
+            "type": "string",
+            "description": "Vendor email address"
+          },
+          "website": {
+            "type": "string",
+            "description": "Vendor website URL"
+          },
+          "contactName": {
+            "type": "string",
+            "description": "Primary contact name at the vendor"
           }
-        },
-        "required": [
-          "name"
-        ]
+        }
       },
       "BulkImportProvidersDto": {
         "type": "object",
@@ -9749,6 +11650,27 @@
           "companyName": {
             "type": "string"
           },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "contactFirstName": {
+            "type": "string"
+          },
+          "contactLastName": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          },
+          "physicalAddress": {
+            "type": "string"
+          },
+          "rating": {
+            "type": "number"
+          },
           "primaryContact": {
             "type": "object"
           },
@@ -9787,6 +11709,14 @@
           },
           "notes": {
             "type": "string"
+          },
+          "paymentTerms": {
+            "type": "string",
+            "description": "Payment terms (e.g. Net 30, COD)"
+          },
+          "type": {
+            "type": "string",
+            "description": "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)"
           }
         }
       },
@@ -9897,6 +11827,90 @@
         },
         "required": [
           "lastContactDate"
+        ]
+      },
+      "UpdateIntelligenceDto": {
+        "type": "object",
+        "properties": {
+          "profile_foundational": {
+            "type": "object",
+            "description": "Foundational intelligence profile (5 static dimensions)"
+          },
+          "profile_dynamic": {
+            "type": "object",
+            "description": "Dynamic intelligence profile (auto-updated by LLM)"
+          }
+        }
+      },
+      "CreateProviderLocationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "office | warehouse | store | other"
+          },
+          "address": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateProviderLocationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "office | warehouse | store | other"
+          },
+          "address": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RetroactiveOrderDto": {
+        "type": "object",
+        "properties": {
+          "wineName": {
+            "type": "string",
+            "description": "Wine name from invoice"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Quantity from invoice"
+          },
+          "finalConfirmedCost": {
+            "type": "number",
+            "description": "Invoice total cost"
+          },
+          "invoiceDate": {
+            "type": "string",
+            "description": "Invoice date (ISO 8601)"
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "description": "Invoice number"
+          },
+          "rawInvoiceContent": {
+            "type": "string",
+            "description": "Raw invoice email body for order_interactions"
+          }
+        },
+        "required": [
+          "wineName"
         ]
       },
       "CreateWineSubmissionDto": {
@@ -10122,6 +12136,10 @@
             "type": "string",
             "description": "Event time (HH:MM)"
           },
+          "eventTimeEnd": {
+            "type": "string",
+            "description": "Event end time (HH:MM)"
+          },
           "providerId": {
             "type": "string"
           },
@@ -10284,6 +12302,10 @@
           "eventTime": {
             "type": "string"
           },
+          "eventTimeEnd": {
+            "type": "string",
+            "description": "Event end time (HH:MM)"
+          },
           "providerId": {
             "type": "string"
           },
@@ -10427,6 +12449,10 @@
           "eventTime": {
             "type": "string"
           },
+          "eventTimeEnd": {
+            "type": "string",
+            "description": "Event end time (HH:MM)"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -10551,6 +12577,25 @@
           "status"
         ]
       },
+      "ICalTokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "64-char hex token",
+            "example": "abc123..."
+          },
+          "feedUrl": {
+            "type": "string",
+            "description": "Full subscription URL",
+            "example": "/api/v1/calendar/feed/abc123.ics"
+          }
+        },
+        "required": [
+          "token",
+          "feedUrl"
+        ]
+      },
       "FeatureFlagsDto": {
         "type": "object",
         "properties": {
@@ -10573,6 +12618,10 @@
           "enable_ai_negotiation": {
             "type": "boolean",
             "description": "Enable AI negotiation feature"
+          },
+          "enable_ai_autonomous_send": {
+            "type": "boolean",
+            "description": "Enable autonomous auto-send of AI vendor replies (default off)"
           },
           "enable_sommelier_ai": {
             "type": "boolean",
@@ -10649,6 +12698,7 @@
           "enable_visual_verification",
           "enable_predictive_analytics",
           "enable_ai_negotiation",
+          "enable_ai_autonomous_send",
           "enable_sommelier_ai",
           "enable_voice_agent",
           "enable_menu_analyzer",
@@ -10690,6 +12740,10 @@
           "enable_ai_negotiation": {
             "type": "boolean",
             "description": "Enable AI negotiation feature"
+          },
+          "enable_ai_autonomous_send": {
+            "type": "boolean",
+            "description": "Enable autonomous auto-send of AI vendor replies (default off)"
           },
           "enable_sommelier_ai": {
             "type": "boolean",
@@ -10777,6 +12831,38 @@
           "restaurant_id",
           "feature_name"
         ]
+      },
+      "CreateChainDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RenameChainDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateLocationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateLocationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateMemberRoleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AddMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ImportMenuDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateOnboardingProgressDto": {
+        "type": "object",
+        "properties": {}
       },
       "UserPreferencesResponseDto": {
         "type": "object",

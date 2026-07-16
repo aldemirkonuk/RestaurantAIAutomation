@@ -292,6 +292,76 @@ export class InventoryService {
     return await this.dbService.getLowStockItems(restaurantId);
   }
 
+  /**
+   * Activity for one inventory item, powering the row-expansion insight cards:
+   *   - daily: depletion per day for the last 14 days (velocity chart)
+   *   - heat:  7x8 matrix (Mon..Sun x 4pm..11pm) of depletion counts over the
+   *            last 28 days (busy-hours heatmap)
+   * Sourced from the inventory_transactions ledger; only outbound movements
+   * (sales, pours, negative adjustments) count as depletion.
+   */
+  async getItemActivity(restaurantId: string, itemId: string) {
+    const client = this.dbService.getClient();
+    const since = new Date();
+    since.setDate(since.getDate() - 28);
+
+    const { data, error } = await client
+      .from("inventory_transactions")
+      .select("*")
+      .eq("inventory_id", itemId)
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: true })
+      .limit(2000);
+
+    if (error) {
+      this.logger.warn(`getItemActivity ledger query failed: ${error.message}`);
+      return { daily: [], heat: [], totalOut28d: 0 };
+    }
+
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const dailyMap = new Map<string, number>();
+    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00
+    const heat: number[][] = Array.from({ length: 7 }, () =>
+      Array(8).fill(0),
+    );
+    let totalOut = 0;
+
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    for (const row of (data as any[]) || []) {
+      const qty = Number(row.quantity_change ?? row.quantity ?? 0);
+      const type = String(row.transaction_type || "").toLowerCase();
+      const isOut =
+        qty < 0 || ["sale", "pour", "glass_pour"].includes(type);
+      if (!isOut) continue;
+      const out = Math.abs(qty);
+      if (!(out > 0)) continue;
+
+      const ts = new Date(row.created_at);
+      totalOut += out;
+
+      if (ts >= fourteenDaysAgo) {
+        const k = dayKey(ts);
+        dailyMap.set(k, (dailyMap.get(k) ?? 0) + out);
+      }
+      const dow = (ts.getDay() + 6) % 7; // Mon=0
+      const slot = ts.getHours() - 16;
+      if (slot >= 0 && slot < 8) heat[dow][slot] += out;
+    }
+
+    // Dense 14-day series (zero-filled) so the chart has a stable x-axis.
+    const daily: Array<{ date: string; out: number }> = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const k = dayKey(d);
+      daily.push({ date: k, out: dailyMap.get(k) ?? 0 });
+    }
+
+    return { daily, heat, totalOut28d: totalOut };
+  }
+
   async getInventoryItem(restaurantId: string, itemId: string) {
     const client = this.dbService.getClient();
 

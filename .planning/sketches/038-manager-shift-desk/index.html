@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 038 - Manager Shift Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-700: #a51f47;
+    --wine-50: #fdeef2;
+    --ink: #18151b;
+    --ink-2: #39333d;
+    --muted: #6f6875;
+    --quiet: #9d96a3;
+    --canvas: #f3f1f5;
+    --sheet: #fbfafc;
+    --surface: #ffffff;
+    --surface-inset: #f6f4f7;
+    --line: rgba(40, 30, 44, .10);
+    --line-soft: rgba(40, 30, 44, .06);
+    --ok: #18794e;
+    --ok-bg: #eaf7f0;
+    --warn: #a96000;
+    --warn-bg: #fff4df;
+    --danger: #c43228;
+    --danger-bg: #fff0ee;
+    --info: #3559b7;
+    --info-bg: #eef3ff;
+    --violet: #7052a3;
+    --violet-bg: #f3effa;
+    --radius-control: 9px;
+    --radius-panel: 14px;
+    --radius-frame: 20px;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+  }
+
+  * { box-sizing: border-box; }
+  button, select { font: inherit; }
+  button { color: inherit; }
+
+  body {
+    margin: 0;
+    padding: 32px 24px 72px;
+    color: var(--ink);
+    background: var(--canvas);
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1460px; margin: 0 auto; }
+  .sketch-label {
+    color: var(--wine);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 6px 0 6px;
+    font-size: 28px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: -.035em;
+  }
+  .intro {
+    max-width: 820px;
+    margin: 0 0 22px;
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  .app {
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .86);
+    border-radius: var(--radius-frame);
+    background: var(--sheet);
+    box-shadow: 0 1px 2px rgba(28, 20, 31, .04), 0 18px 48px -22px rgba(28, 20, 31, .20);
+  }
+
+  /* Apple-inspired web glass approximation, limited to navigation chrome */
+  .appbar {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 62px;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, .5);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, .82), rgba(255, 255, 255, .55)),
+      rgba(255, 255, 255, .56);
+    backdrop-filter: blur(20px) saturate(155%);
+    -webkit-backdrop-filter: blur(20px) saturate(155%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .66);
+  }
+  .appbar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(circle at 14% 0%, rgba(255, 255, 255, .65), transparent 38%);
+  }
+  .app-title small {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .05em;
+  }
+  .app-title strong {
+    display: block;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .app-actions { display: flex; align-items: center; gap: 8px; }
+  .control {
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    outline: 0;
+    background: var(--surface-inset);
+    color: var(--ink-2);
+    font-size: 11.5px;
+    font-weight: 650;
+  }
+  .control:focus-visible, button:focus-visible {
+    outline: 3px solid rgba(205, 45, 91, .18);
+    outline-offset: 2px;
+  }
+  .primary {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    height: 34px;
+    padding: 0 15px;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 999px;
+    background: var(--wine);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), 0 4px 14px rgba(205, 45, 91, .23);
+    font-size: 11.5px;
+    font-weight: 750;
+    cursor: pointer;
+    transition: transform .24s var(--ease);
+  }
+  .primary::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    border-radius: inherit;
+    background: radial-gradient(80px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .38), transparent 64%);
+    transition: opacity .24s var(--ease);
+  }
+  .primary:hover { transform: translateY(-1px); }
+  .primary:hover::after { opacity: 1; }
+  .primary:active { transform: scale(.98); }
+
+  /* Restaurant-specific service pulse */
+  .service-pulse {
+    display: grid;
+    grid-template-columns: 1.15fr repeat(5, minmax(0, 1fr));
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .pulse-lead, .pulse-cell {
+    min-width: 0;
+    padding: 12px 14px;
+    border-right: 1px solid var(--line-soft);
+  }
+  .pulse-cell:last-child { border-right: 0; }
+  .pulse-lead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface-inset);
+  }
+  .pulse-date {
+    min-width: 38px;
+    text-align: center;
+    color: var(--wine-700);
+    font-variant-numeric: tabular-nums;
+  }
+  .pulse-date strong { display: block; font-size: 19px; line-height: 1; }
+  .pulse-date span { font-size: 9px; font-weight: 750; text-transform: uppercase; }
+  .pulse-lead h2 { margin: 0; font-size: 12px; font-weight: 800; }
+  .pulse-lead p { margin: 2px 0 0; color: var(--muted); font-size: 10px; line-height: 1.35; }
+  .pulse-cell {
+    border: 0;
+    border-right: 1px solid var(--line-soft);
+    text-align: left;
+    cursor: pointer;
+    transition: background .2s var(--ease);
+  }
+  .pulse-cell:hover { background: var(--surface-inset); }
+  .pulse-cell .label {
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .pulse-cell .value {
+    display: block;
+    margin-top: 3px;
+    font-size: 14px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .pulse-cell small {
+    display: block;
+    margin-top: 2px;
+    color: var(--quiet);
+    font-size: 9px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pulse-cell.warning .value { color: var(--warn); }
+  .pulse-cell.danger .value { color: var(--danger); }
+
+  /* Manager action shelf */
+  .action-shelf {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--sheet);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .action-shelf::-webkit-scrollbar { display: none; }
+  .action-label {
+    margin-right: 4px;
+    color: var(--quiet);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .action-button {
+    flex: none;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: 10.5px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: border-color .2s, color .2s, transform .2s var(--ease);
+  }
+  .action-button:hover {
+    border-color: rgba(205, 45, 91, .28);
+    color: var(--wine-700);
+    transform: translateY(-1px);
+  }
+  .action-button.urgent {
+    border-color: rgba(196, 50, 40, .18);
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 314px;
+    min-height: 660px;
+  }
+  .schedule-area { min-width: 0; border-right: 1px solid var(--line); }
+  .desk {
+    min-width: 0;
+    background: var(--surface-inset);
+  }
+
+  /* Schedule toolbar */
+  .schedule-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 14px 11px;
+    flex-wrap: wrap;
+  }
+  .week-nav { display: flex; align-items: center; gap: 8px; }
+  .nav-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .week-title { font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .week-title small {
+    display: block;
+    margin-top: 1px;
+    color: var(--quiet);
+    font-size: 9px;
+    font-weight: 600;
+  }
+  .published {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--ok-bg);
+    color: var(--ok);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .lens {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: #ece9ef;
+  }
+  .lens button {
+    padding: 6px 9px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .lens button.active {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(28, 20, 31, .09);
+  }
+  .schedule-tools { display: flex; align-items: center; gap: 7px; }
+  .quiet-btn, .publish-btn {
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--radius-control);
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .quiet-btn {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .publish-btn {
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: #fff;
+  }
+
+  /* Excel-style week */
+  .grid-wrap { overflow-x: auto; padding: 0 14px; }
+  .week-grid {
+    display: grid;
+    grid-template-columns: 142px repeat(7, minmax(108px, 1fr));
+    min-width: 910px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+  .week-grid > div {
+    min-width: 0;
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line);
+  }
+  .week-grid > div:nth-child(8n) { border-right: 0; }
+  .day-head {
+    min-height: 49px;
+    padding: 8px 6px;
+    background: var(--surface-inset);
+    text-align: center;
+  }
+  .day-head:first-child { text-align: left; padding-left: 11px; }
+  .day-head strong {
+    display: block;
+    color: var(--ink-2);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .day-head small {
+    display: block;
+    margin-top: 3px;
+    color: var(--quiet);
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .day-head.event strong { color: var(--wine-700); }
+  .day-head.risk small { color: var(--warn); }
+
+  .person-head {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 53px;
+    padding: 7px 9px;
+    background: var(--surface-inset);
+  }
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: #ece9ef;
+    color: var(--ink-2);
+    font-size: 9px;
+    font-weight: 800;
+  }
+  .avatar.owner { border-color: rgba(205, 45, 91, .16); background: var(--wine-50); color: var(--wine-700); }
+  .person-head .name { font-size: 10.5px; font-weight: 750; }
+  .person-head .role { margin-top: 1px; color: var(--quiet); font-size: 8.5px; font-weight: 600; }
+  .person-head .hours {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .person-head .hours.risk { color: var(--warn); }
+
+  .shift-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 53px;
+    padding: 4px;
+    background: var(--surface);
+  }
+  .shift-cell.off {
+    background: repeating-linear-gradient(45deg, #fbfafc 0 6px, #f5f3f7 6px 12px);
+  }
+  .shift-cell.unavailable { background: #f4f2f5; }
+  .shift-cell.unavailable::after {
+    content: "Unavailable";
+    width: 100%;
+    color: var(--quiet);
+    font-size: 8px;
+    font-weight: 650;
+    text-align: center;
+  }
+  .shift {
+    width: 100%;
+    padding: 5px 6px;
+    border: 0;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+  }
+  .shift:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 12px -8px rgba(28, 20, 31, .42);
+  }
+  .shift.selected { box-shadow: 0 0 0 2px var(--wine), 0 5px 12px -8px rgba(28, 20, 31, .42); }
+  .shift .time {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .shift .station { display: block; margin-top: 1px; font-size: 7.5px; font-weight: 650; opacity: .75; }
+  .shift.pm { background: var(--wine-50); color: var(--wine-700); }
+  .shift.am { background: var(--info-bg); color: var(--info); }
+  .shift.double { background: var(--violet-bg); color: var(--violet); }
+  .shift.borrowed { background: var(--ok-bg); color: var(--ok); border: 1px dashed rgba(24, 121, 78, .35); }
+  .shift.training { background: #f1f0ed; color: #645f55; border: 1px dashed rgba(100, 95, 85, .32); }
+  .shift.open { background: var(--danger-bg); color: var(--danger); border: 1px dashed rgba(196, 50, 40, .4); }
+  .shift.callout { background: var(--danger-bg); color: var(--danger); text-decoration: line-through; opacity: .84; }
+  .shift.fair-risk { outline: 2px solid transparent; outline-offset: 1px; }
+  .shift.compliance-risk { outline: 2px solid transparent; outline-offset: 1px; }
+  .schedule-area[data-lens="fairness"] .shift.fair-risk { outline-color: var(--warn); }
+  .schedule-area[data-lens="compliance"] .shift.compliance-risk { outline-color: var(--danger); }
+  .schedule-area[data-lens="labor"] .shift::after {
+    content: attr(data-cost);
+    display: block;
+    margin-top: 2px;
+    font-size: 7px;
+    font-weight: 800;
+    opacity: .8;
+  }
+  .schedule-area[data-lens="labor"] .shift .station { display: none; }
+
+  /* Per-day operational row */
+  .day-context {
+    display: grid;
+    grid-template-columns: 142px repeat(7, minmax(108px, 1fr));
+    min-width: 910px;
+    margin-top: 8px;
+  }
+  .context-label {
+    padding: 8px 9px;
+    color: var(--quiet);
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .context-cell {
+    margin: 2px 3px;
+    padding: 6px;
+    border-radius: 8px;
+    background: var(--surface-inset);
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 650;
+    line-height: 1.35;
+    text-align: center;
+  }
+  .context-cell.ok { background: var(--ok-bg); color: var(--ok); }
+  .context-cell.warn { background: var(--warn-bg); color: var(--warn); }
+  .context-cell.danger { background: var(--danger-bg); color: var(--danger); }
+
+  .handover {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 9px;
+    margin: 12px 14px 14px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--surface);
+  }
+  .handover .label {
+    padding: 4px 7px;
+    border-radius: 6px;
+    background: var(--info-bg);
+    color: var(--info);
+    font-size: 8.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .handover p { margin: 0; color: var(--ink-2); font-size: 10px; line-height: 1.45; }
+  .handover button {
+    border: 0;
+    background: transparent;
+    color: var(--wine-700);
+    font-size: 9.5px;
+    font-weight: 750;
+    cursor: pointer;
+  }
+
+  /* Manager desk */
+  .desk-header { padding: 13px 13px 10px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .desk-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .desk-title strong { font-size: 12.5px; font-weight: 800; }
+  .desk-count {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+  }
+  .desk-tabs { display: flex; gap: 3px; margin-top: 9px; }
+  .desk-tab {
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 9.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .desk-tab.active { background: var(--surface-inset); color: var(--ink); }
+
+  .desk-list { padding: 8px; }
+  .task {
+    display: grid;
+    grid-template-columns: 7px 1fr;
+    gap: 8px;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .task.hidden { display: none; }
+  .task.resolved { opacity: .42; }
+  .task-dot { width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: var(--info); }
+  .task[data-priority="urgent"] .task-dot { background: var(--danger); }
+  .task[data-priority="soon"] .task-dot { background: var(--warn); }
+  .task-title { font-size: 10.5px; font-weight: 750; line-height: 1.35; }
+  .task-meta { margin-top: 2px; color: var(--muted); font-size: 8.5px; font-weight: 550; line-height: 1.4; }
+  .task-actions { display: flex; gap: 5px; margin-top: 7px; }
+  .task-actions button {
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: 8.5px;
+    font-weight: 750;
+    cursor: pointer;
+  }
+  .task-actions .resolve { border-color: rgba(24, 121, 78, .18); background: var(--ok-bg); color: var(--ok); }
+  .task-actions .urgent-action { border-color: rgba(196, 50, 40, .18); background: var(--danger-bg); color: var(--danger); }
+
+  .publish-readiness {
+    margin: 4px 8px 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--surface);
+  }
+  .readiness-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .readiness-head strong { font-size: 10px; font-weight: 800; }
+  .readiness-head span { color: var(--warn); font-size: 9px; font-weight: 750; }
+  .check-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 7px;
+    color: var(--muted);
+    font-size: 8.5px;
+    font-weight: 650;
+  }
+  .check-row b { color: var(--ink-2); font-weight: 750; }
+  .check-row .good { color: var(--ok); }
+  .check-row .bad { color: var(--danger); }
+
+  /* Shift inspector, changed by clicking a cell */
+  .inspector {
+    margin-top: 4px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .inspector-head { padding: 11px 12px 8px; }
+  .inspector-head small {
+    display: block;
+    color: var(--wine-700);
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .inspector-head strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .inspector-head span { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+  .inspector-body { padding: 0 12px 11px; }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line-soft);
+    color: var(--muted);
+    font-size: 8.5px;
+    font-weight: 600;
+  }
+  .detail-row b { color: var(--ink-2); font-weight: 750; text-align: right; }
+  .inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 8px; }
+  .inspector-actions button {
+    height: 27px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--surface-inset);
+    color: var(--ink-2);
+    font-size: 8.5px;
+    font-weight: 750;
+    cursor: pointer;
+  }
+  .inspector-actions button.cover { border-color: rgba(205, 45, 91, .2); background: var(--wine-50); color: var(--wine-700); }
+
+  /* Staff performance panel (under the inspector) */
+  .performance {
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .perf-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 11px 12px 8px;
+  }
+  .perf-head small {
+    display: block;
+    color: var(--wine-700);
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .perf-head strong { display: block; margin-top: 3px; font-size: 12px; font-weight: 800; }
+  .perf-badge {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--wine-50);
+    color: var(--wine-700);
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    white-space: nowrap;
+  }
+  .perf-empty {
+    padding: 4px 12px 14px;
+    color: var(--quiet);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .perf-body { padding: 0 12px 13px; }
+  .perf-body[hidden] { display: none; }
+
+  .perf-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 11px;
+  }
+  .metric {
+    padding: 7px 8px;
+    border: 1px solid var(--line-soft);
+    border-radius: 9px;
+    background: var(--surface-inset);
+  }
+  .metric .m-value {
+    font-size: 14px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .metric .m-label {
+    margin-top: 1px;
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .metric .m-delta { margin-top: 2px; font-size: 8px; font-weight: 750; }
+  .metric .m-delta.up { color: var(--ok); }
+  .metric .m-delta.down { color: var(--danger); }
+  .metric .m-delta.flat { color: var(--quiet); }
+
+  .perf-section-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 12px 0 7px;
+    color: var(--quiet);
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  .perf-section-title span { color: var(--muted); font-weight: 700; text-transform: none; letter-spacing: 0; }
+
+  /* Sales-efficiency analytic: this server vs the team, last 6 services */
+  .analytic {
+    padding: 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: 9px;
+    background: var(--surface-inset);
+  }
+  .analytic-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .an-value { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .an-value small { color: var(--muted); font-size: 9px; font-weight: 700; }
+  .analytic-tags { display: flex; align-items: center; gap: 5px; }
+  .an-rank {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--wine-50);
+    color: var(--wine-700);
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .an-vs { font-size: 9px; font-weight: 800; white-space: nowrap; }
+  .an-vs.up { color: var(--ok); }
+  .an-vs.down { color: var(--danger); }
+  .an-vs.flat { color: var(--quiet); }
+  .analytic-chart { position: relative; height: 64px; margin-top: 9px; }
+  .analytic-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .an-dot {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--wine);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px rgba(205, 45, 91, .25);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .analytic-x { display: flex; justify-content: space-between; margin-top: 5px; }
+  .analytic-x span { color: var(--quiet); font-size: 7.5px; font-weight: 700; }
+  .analytic-x span.now { color: var(--wine-700); }
+  .an-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; color: var(--muted); font-size: 8px; font-weight: 700; }
+  .an-legend span { display: inline-flex; align-items: center; }
+  .an-legend .k { display: inline-block; width: 11px; height: 0; margin-right: 5px; border-top: 2px solid var(--wine); vertical-align: middle; }
+  .an-legend .k.med { border-top: 2px dashed var(--quiet); }
+  .an-legend .k.band { height: 8px; border: 0; border-radius: 2px; background: rgba(205, 45, 91, .12); }
+
+  /* Tonight coverage: selectable numbered table grid + section bars */
+  .coverage {
+    padding: 9px;
+    border: 1px solid var(--line-soft);
+    border-radius: 9px;
+    background: var(--surface-inset);
+  }
+  .coverage-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 9px;
+  }
+  .coverage-top .cov-tables { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .coverage-top .cov-tables small { color: var(--muted); font-size: 8.5px; font-weight: 700; }
+  .cov-views { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #ece9ef; }
+  .cov-views button {
+    padding: 4px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 8.5px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .cov-views button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(28, 20, 31, .1); }
+  .cov-view[hidden] { display: none; }
+
+  .table-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  .table-cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: transform .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  .table-cell:hover { transform: translateY(-1px); box-shadow: 0 4px 10px -6px rgba(28, 20, 31, .4); }
+  .table-cell.mine { background: var(--wine-50); border-color: rgba(205, 45, 91, .3); color: var(--wine-700); }
+  .table-cell.vip { background: var(--warn-bg); border-color: rgba(169, 96, 0, .35); color: var(--warn); }
+  .table-cell.vip::after { content: "★"; position: absolute; top: 1px; right: 3px; font-size: 6px; line-height: 1; }
+  .table-cell.open {
+    background: repeating-linear-gradient(45deg, #fff 0 4px, #f4f2f5 4px 8px);
+    border-style: dashed;
+    color: var(--quiet);
+  }
+  .table-cell.selected { box-shadow: 0 0 0 2px var(--wine); }
+  .cov-caption { margin-top: 9px; min-height: 13px; color: var(--muted); font-size: 8.5px; font-weight: 650; line-height: 1.4; }
+  .cov-caption b { color: var(--ink-2); font-weight: 800; }
+
+  .section-bars { display: flex; flex-direction: column; gap: 8px; }
+  .sec-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  .sec-row-top .s-label { font-size: 9.5px; font-weight: 750; color: var(--ink-2); }
+  .sec-row-top .s-label em { font-style: normal; color: var(--warn); font-weight: 700; }
+  .sec-row-top .s-count { font-size: 8.5px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .sec-bar { height: 8px; border-radius: 999px; background: #ece9ef; overflow: hidden; }
+  .sec-bar i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--wine), var(--wine-700)); transition: width .6s var(--ease); }
+  .sec-bar.open i { background: repeating-linear-gradient(45deg, #d9d4de 0 5px, #cfc9d5 5px 10px); }
+
+  .coverage-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 700;
+  }
+  .coverage-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 3px; vertical-align: middle; }
+  .lg-mine { background: var(--wine-50); box-shadow: inset 0 0 0 1px rgba(205, 45, 91, .4); }
+  .lg-vip { background: var(--warn-bg); box-shadow: inset 0 0 0 1px rgba(169, 96, 0, .45); }
+  .lg-other { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+
+  /* Sales mix over last 3 services */
+  .sales-mix { margin-bottom: 4px; }
+  .mix-bar { display: flex; height: 9px; border-radius: 999px; overflow: hidden; background: #ece9ef; }
+  .mix-bar i { height: 100%; transition: width .6s var(--ease); }
+  .mix-bar i:first-child { border-radius: 999px 0 0 999px; }
+  .mix-bar i:last-child { border-radius: 0 999px 999px 0; }
+  .mix-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 7px; }
+  .mix-legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 8.5px; font-weight: 700; }
+  .mix-legend span i { width: 8px; height: 8px; border-radius: 3px; }
+  .mix-legend b { color: var(--ink-2); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  /* Order history */
+  .order-history { display: flex; flex-direction: column; gap: 4px; }
+  .order-row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .order-row .o-time { color: var(--quiet); font-size: 8.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .order-row .o-item { font-size: 9.5px; font-weight: 700; line-height: 1.3; }
+  .order-row .o-sub { margin-top: 1px; color: var(--muted); font-size: 8px; font-weight: 600; }
+  .order-row .o-amt { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .order-row .o-tag {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    font-size: 7px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }
+  .o-tag.wine { background: var(--wine-50); color: var(--wine-700); }
+  .o-tag.vip { background: var(--warn-bg); color: var(--warn); }
+  .o-tag.comp { background: var(--danger-bg); color: var(--danger); }
+
+  .toast {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 20;
+    max-width: 320px;
+    padding: 10px 13px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--ink);
+    color: #fff;
+    box-shadow: 0 12px 30px -12px rgba(28, 20, 31, .5);
+    font-size: 10.5px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity .2s var(--ease), transform .2s var(--ease);
+  }
+  .toast.show { opacity: 1; transform: none; }
+  .foot { margin-top: 24px; color: var(--muted); font-size: 11.5px; text-align: center; }
+  .foot code { padding: 2px 6px; border-radius: 6px; background: #e9e5ec; font-size: 10.5px; }
+
+  @media (max-width: 1180px) {
+    .service-pulse { grid-template-columns: repeat(3, 1fr); }
+    .pulse-lead { grid-column: 1 / -1; border-bottom: 1px solid var(--line-soft); }
+    .workspace { grid-template-columns: minmax(0, 1fr) 286px; }
+  }
+  @media (max-width: 960px) {
+    body { padding: 20px 12px 48px; }
+    .workspace { display: block; }
+    .schedule-area { border-right: 0; }
+    .desk { border-top: 1px solid var(--line); }
+    .desk-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; }
+    .inspector { margin: 0 8px 12px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+  }
+  @media (max-width: 680px) {
+    .appbar { align-items: flex-start; }
+    .app-actions { align-items: stretch; flex-direction: column; }
+    .service-pulse { grid-template-columns: repeat(2, 1fr); }
+    .schedule-toolbar { align-items: flex-start; flex-direction: column; }
+    .schedule-tools { width: 100%; overflow-x: auto; }
+    .desk-list { display: block; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .appbar { background: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="sketch-label">Sketch 038 · Manager Shift Desk</div>
+  <h1>The schedule stays visible. Manager work comes to it.</h1>
+  <p class="intro">An evolution of sketch 036 for real service-floor interruptions. The weekly grid remains the main tool; a persistent Manager Desk resolves call-outs, breaks, overtime, compliance, and publish blockers in context.</p>
+
+  <main class="app">
+    <header class="appbar">
+      <div class="app-title">
+        <small>Team schedule</small>
+        <strong>Nob Hill Wine Bar</strong>
+      </div>
+      <div class="app-actions">
+        <select class="control" aria-label="Select location">
+          <option>Nob Hill Wine Bar</option>
+          <option>Marina Bistro</option>
+          <option>All locations</option>
+        </select>
+        <button class="primary ray-button" type="button">Invite member</button>
+      </div>
+    </header>
+
+    <section class="service-pulse" aria-label="Service pulse">
+      <div class="pulse-lead">
+        <div class="pulse-date"><strong>14</strong><span>Tue</span></div>
+        <div>
+          <h2>Dinner service pulse</h2>
+          <p>Doors 5pm. Lineup 4:30pm. One staffing decision needs action now.</p>
+        </div>
+      </div>
+      <button class="pulse-cell danger" type="button" data-message="Opening the tonight coverage gap">
+        <span class="label">Tonight staffing</span>
+        <span class="value">5 / 6</span>
+        <small>Server call-out at 3:08pm</small>
+      </button>
+      <button class="pulse-cell" type="button" data-message="Opening reservation pacing">
+        <span class="label">Expected covers</span>
+        <span class="value">86</span>
+        <small>Peak seating 7:00-7:45pm</small>
+      </button>
+      <button class="pulse-cell warning" type="button" data-message="Opening patio staffing options">
+        <span class="label">Patio risk</span>
+        <span class="value">Rain 6pm</span>
+        <small>Hold one server until 5:30pm</small>
+      </button>
+      <button class="pulse-cell warning" type="button" data-message="Opening labor details">
+        <span class="label">Week labor</span>
+        <span class="value">31.4%</span>
+        <small>Target 28%. Saturday drives risk.</small>
+      </button>
+      <button class="pulse-cell danger" type="button" data-message="Showing all manager tasks">
+        <span class="label">Manager actions</span>
+        <span class="value"><span id="pulseTaskCount">7</span> open</span>
+        <small>2 required before publish</small>
+      </button>
+    </section>
+
+    <nav class="action-shelf" aria-label="Manager quick actions">
+      <span class="action-label">Quick actions</span>
+      <button class="action-button" type="button" data-message="Add shift opened">Add shift</button>
+      <button class="action-button urgent" type="button" data-message="Call-out flow opened">Report call-out</button>
+      <button class="action-button" type="button" data-message="Finding available, qualified staff">Find cover</button>
+      <button class="action-button" type="button" data-message="Broadcast composer opened for tonight's crew">Broadcast crew</button>
+      <button class="action-button" type="button" data-message="Pre-shift note composer opened">Add lineup note</button>
+      <button class="action-button" type="button" data-message="Open shifts board opened">Open shifts</button>
+      <button class="action-button" type="button" data-message="Print preview opened">Print week</button>
+    </nav>
+
+    <div class="workspace">
+      <section class="schedule-area" data-lens="coverage">
+        <div class="schedule-toolbar">
+          <div class="week-nav">
+            <button class="nav-btn" type="button" aria-label="Previous week">‹</button>
+            <div class="week-title">Jul 14 - Jul 20<small>Published Monday 10:42am</small></div>
+            <button class="nav-btn" type="button" aria-label="Next week">›</button>
+            <span class="published">Published</span>
+          </div>
+          <div class="lens" aria-label="Schedule lens">
+            <button class="active" type="button" data-lens="coverage">Coverage</button>
+            <button type="button" data-lens="labor">Labor</button>
+            <button type="button" data-lens="fairness">Fairness</button>
+            <button type="button" data-lens="compliance">Compliance</button>
+          </div>
+          <div class="schedule-tools">
+            <button class="quiet-btn" type="button" data-message="Copied last week's pattern into draft">Copy last week</button>
+            <button class="quiet-btn" type="button" data-message="Schedule validation started">Validate</button>
+            <button class="publish-btn" type="button" data-message="Reviewing 2 publish blockers">Review changes</button>
+          </div>
+        </div>
+
+        <div class="grid-wrap">
+          <div class="week-grid">
+            <div class="day-head"><strong>Team member</strong><small>Role and weekly hours</small></div>
+            <div class="day-head"><strong>Mon 14</strong><small>42 covers · delivery</small></div>
+            <div class="day-head risk"><strong>Tue 15</strong><small>86 covers · rain 6pm</small></div>
+            <div class="day-head"><strong>Wed 16</strong><small>54 covers</small></div>
+            <div class="day-head"><strong>Thu 17</strong><small>Trial shift</small></div>
+            <div class="day-head event"><strong>Fri 18</strong><small>Private dinner · 80</small></div>
+            <div class="day-head event"><strong>Sat 19</strong><small>112 covers · patio</small></div>
+            <div class="day-head"><strong>Sun 20</strong><small>Brunch · 64</small></div>
+
+            <div class="person-head">
+              <div class="avatar owner">MC</div>
+              <div><div class="name">Mara Chen</div><div class="role">Owner · MOD</div></div>
+              <span class="hours">38h</span>
+            </div>
+            <div class="shift-cell"><button class="shift pm" data-person="Mara Chen" data-day="Mon 14" data-time="4:00pm - 11:00pm" data-station="MOD · Floor 1" data-break="7:30pm · covered by James" data-note="Invoice delivery at 4:30pm" data-cost="$252"><span class="time">4p-11p</span><span class="station">MOD · Floor 1</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Mara Chen" data-day="Tue 15" data-time="4:00pm - 11:00pm" data-station="MOD · Floor 1" data-break="7:30pm · covered" data-note="Watch patio cut at 5:30pm" data-cost="$252"><span class="time">4p-11p</span><span class="station">MOD · Floor 1</span></button></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Mara Chen" data-day="Thu 17" data-time="4:00pm - 11:00pm" data-station="MOD · Floor 1" data-break="7:30pm · covered" data-note="Evaluate Ana's trial shift" data-cost="$252"><span class="time">4p-11p</span><span class="station">MOD · trial review</span></button></div>
+            <div class="shift-cell"><button class="shift double compliance-risk" data-person="Mara Chen" data-day="Fri 18" data-time="12:00pm - 11:00pm" data-station="Event lead · MOD" data-break="Break plan missing" data-note="Private Burgundy dinner, 80 guests" data-cost="$396"><span class="time">12p-11p</span><span class="station">Event lead · double</span></button></div>
+            <div class="shift-cell"><button class="shift pm fair-risk" data-person="Mara Chen" data-day="Sat 19" data-time="4:00pm - 12:00am" data-station="Closing MOD" data-break="8:00pm · covered" data-note="Fourth Saturday close this month" data-cost="$288"><span class="time">4p-12a</span><span class="station">Closing MOD</span></button></div>
+            <div class="shift-cell off"></div>
+
+            <div class="person-head">
+              <div class="avatar">JO</div>
+              <div><div class="name">James Ortiz</div><div class="role">Manager · Bar</div></div>
+              <span class="hours risk">41.5h</span>
+            </div>
+            <div class="shift-cell"><button class="shift pm" data-person="James Ortiz" data-day="Mon 14" data-time="5:00pm - 11:00pm" data-station="Main bar" data-break="8:00pm · covered" data-note="Receive bar order" data-cost="$204"><span class="time">5p-11p</span><span class="station">Main bar</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="James Ortiz" data-day="Tue 15" data-time="5:00pm - 11:00pm" data-station="Main bar" data-break="8:00pm · covered" data-note="Prep one rain-floor batch" data-cost="$204"><span class="time">5p-11p</span><span class="station">Main bar</span></button></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell"><button class="shift pm" data-person="James Ortiz" data-day="Thu 17" data-time="5:00pm - 11:00pm" data-station="Main bar" data-break="8:00pm · covered" data-note="Coach Ana on POS close" data-cost="$204"><span class="time">5p-11p</span><span class="station">Main bar</span></button></div>
+            <div class="shift-cell"><button class="shift double compliance-risk" data-person="James Ortiz" data-day="Fri 18" data-time="12:00pm - 11:00pm" data-station="Event bar lead" data-break="One break scheduled, two required" data-note="Alcohol certificate renewal due in 12 days" data-cost="$374"><span class="time">12p-11p</span><span class="station">Event bar · double</span></button></div>
+            <div class="shift-cell"><button class="shift pm fair-risk" data-person="James Ortiz" data-day="Sat 19" data-time="5:00pm - 12:00am" data-station="Closing bar" data-break="8:30pm · covered" data-note="This shift creates 1.5 overtime hours" data-cost="$305"><span class="time">5p-12a</span><span class="station">Close · OT risk</span></button></div>
+            <div class="shift-cell"><button class="shift am" data-person="James Ortiz" data-day="Sun 20" data-time="11:00am - 4:00pm" data-station="Brunch bar" data-break="Not required" data-note="Open and inventory bar" data-cost="$170"><span class="time">11a-4p</span><span class="station">Brunch bar</span></button></div>
+
+            <div class="person-head">
+              <div class="avatar">SR</div>
+              <div><div class="name">Sofia Reyes</div><div class="role">Server · FOH</div></div>
+              <span class="hours">27h</span>
+            </div>
+            <div class="shift-cell unavailable"></div>
+            <div class="shift-cell"><button class="shift callout" data-person="Sofia Reyes" data-day="Tue 15" data-time="5:00pm - 10:00pm" data-station="Floor 2" data-break="Not required" data-note="Called out sick at 3:08pm. Cover not assigned." data-cost="$135"><span class="time">5p-10p</span><span class="station">Called out · no cover</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Sofia Reyes" data-day="Wed 16" data-time="5:00pm - 10:00pm" data-station="Floor 2" data-break="Not required" data-note="Standard dinner shift" data-cost="$135"><span class="time">5p-10p</span><span class="station">Floor 2</span></button></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Sofia Reyes" data-day="Fri 18" data-time="5:00pm - 11:00pm" data-station="Event section B" data-break="8:15pm · covered" data-note="Swap to Daniel accepted, manager approval pending" data-cost="$162"><span class="time">5p-11p</span><span class="station">Swap pending</span></button></div>
+            <div class="shift-cell"><button class="shift pm fair-risk" data-person="Sofia Reyes" data-day="Sat 19" data-time="5:00pm - 12:00am" data-station="Closing Floor 2" data-break="8:30pm · covered" data-note="Fifth consecutive Saturday close" data-cost="$189"><span class="time">5p-12a</span><span class="station">Close · fairness risk</span></button></div>
+            <div class="shift-cell"><button class="shift am" data-person="Sofia Reyes" data-day="Sun 20" data-time="10:00am - 4:00pm" data-station="Brunch floor" data-break="1:00pm · covered" data-note="Requested patio if open" data-cost="$162"><span class="time">10a-4p</span><span class="station">Brunch floor</span></button></div>
+
+            <div class="person-head">
+              <div class="avatar">DK</div>
+              <div><div class="name">Daniel Kim</div><div class="role">Server · Bar trained</div></div>
+              <span class="hours">28h</span>
+            </div>
+            <div class="shift-cell"><button class="shift pm" data-person="Daniel Kim" data-day="Mon 14" data-time="5:00pm - 10:00pm" data-station="Floor 1" data-break="Not required" data-note="Standard dinner shift" data-cost="$140"><span class="time">5p-10p</span><span class="station">Floor 1</span></button></div>
+            <div class="shift-cell"><button class="shift open" data-person="Open shift" data-day="Tue 15" data-time="5:00pm - 10:00pm" data-station="Floor 2" data-break="Not required" data-note="Cover needed for Sofia. Daniel is qualified and available." data-cost="$140"><span class="time">Open 5p-10p</span><span class="station">Offer to 3 staff</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Daniel Kim" data-day="Wed 16" data-time="5:00pm - 10:00pm" data-station="Floor 1" data-break="Not required" data-note="Standard dinner shift" data-cost="$140"><span class="time">5p-10p</span><span class="station">Floor 1</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Daniel Kim" data-day="Thu 17" data-time="5:00pm - 10:00pm" data-station="Floor 1 · Trainer" data-break="Not required" data-note="Shadow Ana during trial shift" data-cost="$140"><span class="time">5p-10p</span><span class="station">Floor 1 · trainer</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Daniel Kim" data-day="Fri 18" data-time="5:00pm - 11:00pm" data-station="Event section B" data-break="8:15pm · covered" data-note="Accepted Sofia's swap" data-cost="$168"><span class="time">5p-11p</span><span class="station">Swap accepted</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Daniel Kim" data-day="Sat 19" data-time="5:00pm - 11:00pm" data-station="Floor 1" data-break="8:00pm · covered" data-note="Candidate to take closing rotation" data-cost="$168"><span class="time">5p-11p</span><span class="station">Floor 1</span></button></div>
+            <div class="shift-cell"><button class="shift am" data-person="Daniel Kim" data-day="Sun 20" data-time="10:00am - 4:00pm" data-station="Brunch bar" data-break="1:00pm · covered" data-note="Cross-training bar shift" data-cost="$168"><span class="time">10a-4p</span><span class="station">Brunch bar</span></button></div>
+
+            <div class="person-head">
+              <div class="avatar">LB</div>
+              <div><div class="name">Lena Baros</div><div class="role">Sommelier · L3</div></div>
+              <span class="hours">24h</span>
+            </div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Lena Baros" data-day="Tue 15" data-time="6:00pm - 10:00pm" data-station="Wine floor" data-break="Not required" data-note="VIP anniversary at 8pm, Burgundy preference" data-cost="$152"><span class="time">6p-10p</span><span class="station">Wine floor</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Lena Baros" data-day="Wed 16" data-time="6:00pm - 10:00pm" data-station="Wine floor" data-break="Not required" data-note="Lead pre-shift wine taste" data-cost="$152"><span class="time">6p-10p</span><span class="station">Wine floor</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Lena Baros" data-day="Thu 17" data-time="6:00pm - 10:00pm" data-station="Wine floor" data-break="Not required" data-note="Score Ana's wine knowledge" data-cost="$152"><span class="time">6p-10p</span><span class="station">Wine floor</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Lena Baros" data-day="Fri 18" data-time="5:00pm - 11:00pm" data-station="Private dinner somm" data-break="8:15pm · Mara covers" data-note="PTO requested before event template was applied" data-cost="$228"><span class="time">5p-11p</span><span class="station">Event somm · PTO conflict</span></button></div>
+            <div class="shift-cell"><button class="shift pm" data-person="Lena Baros" data-day="Sat 19" data-time="6:00pm - 11:00pm" data-station="Wine floor" data-break="Not required" data-note="Grand Cru authority" data-cost="$190"><span class="time">6p-11p</span><span class="station">Wine floor</span></button></div>
+            <div class="shift-cell off"></div>
+
+            <div class="person-head">
+              <div class="avatar">RT</div>
+              <div><div class="name">Rui Torres</div><div class="role">Borrowed · Marina</div></div>
+              <span class="hours">6h</span>
+            </div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell"><button class="shift borrowed" data-person="Rui Torres" data-day="Fri 18" data-time="5:00pm - 11:00pm" data-station="Event bar support" data-break="8:00pm · covered" data-note="Borrowed from Marina. Travel buffer 55 minutes." data-cost="$174"><span class="time">5p-11p</span><span class="station">From Marina · bar</span></button></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+
+            <div class="person-head">
+              <div class="avatar">AD</div>
+              <div><div class="name">Ana Duarte</div><div class="role">Trial · Server</div></div>
+              <span class="hours">4h</span>
+            </div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell"><button class="shift training" data-person="Ana Duarte" data-day="Thu 17" data-time="5:00pm - 9:00pm" data-station="Shadow Daniel · Floor 1" data-break="Not required" data-note="Trial shift. Feedback form opens at 9:15pm." data-cost="$80"><span class="time">5p-9p</span><span class="station">Trial · shadow Daniel</span></button></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+            <div class="shift-cell off"></div>
+          </div>
+
+          <div class="day-context">
+            <div class="context-label">Service readiness</div>
+            <div class="context-cell ok">4 / 4 roles<br>Delivery 4:30p</div>
+            <div class="context-cell danger">5 / 6 staff<br>Cover open</div>
+            <div class="context-cell ok">4 / 4 roles<br>Balanced</div>
+            <div class="context-cell warn">Trial shift<br>Trainer assigned</div>
+            <div class="context-cell warn">7 / 8 staff<br>PTO conflict</div>
+            <div class="context-cell warn">Labor +3.4%<br>OT risk</div>
+            <div class="context-cell ok">4 / 4 roles<br>Balanced</div>
+          </div>
+        </div>
+
+        <div class="handover">
+          <span class="label">AM handover</span>
+          <p><strong>Table 12 dessert comped.</strong> VIP anniversary at 8pm prefers Burgundy. Two cellar cases need shelving before lineup.</p>
+          <button type="button" data-message="Handover thread opened">Open thread</button>
+        </div>
+      </section>
+
+      <aside class="desk">
+        <div class="desk-header">
+          <div class="desk-title">
+            <strong>Manager Desk</strong>
+            <span class="desk-count" id="deskCount">7</span>
+          </div>
+          <div class="desk-tabs">
+            <button class="desk-tab active" type="button" data-group="all">All</button>
+            <button class="desk-tab" type="button" data-group="now">Now</button>
+            <button class="desk-tab" type="button" data-group="publish">Before publish</button>
+            <button class="desk-tab" type="button" data-group="people">People</button>
+          </div>
+        </div>
+
+        <div class="desk-list">
+          <article class="task" data-group="now" data-priority="urgent">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">Cover Sofia's 5p-10p shift tonight</div>
+              <div class="task-meta">Daniel plus two qualified Marina servers are available. Travel time checked.</div>
+              <div class="task-actions">
+                <button class="urgent-action" type="button" data-message="Shift offered to 3 available servers">Offer to 3</button>
+                <button class="resolve" type="button">Assign Daniel</button>
+              </div>
+            </div>
+          </article>
+          <article class="task" data-group="now" data-priority="urgent">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">Break coverage missing for Mara's Friday double</div>
+              <div class="task-meta">11-hour event shift. Add two compliant breaks before publishing changes.</div>
+              <div class="task-actions">
+                <button class="urgent-action" type="button" data-message="Break planner opened">Plan breaks</button>
+                <button class="resolve" type="button">Use template</button>
+              </div>
+            </div>
+          </article>
+          <article class="task" data-group="publish" data-priority="soon">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">James reaches 41.5 hours on Saturday</div>
+              <div class="task-meta">Estimated overtime cost: $51. Shift can move to Rui without role loss.</div>
+              <div class="task-actions">
+                <button type="button" data-message="Suggested shift moves opened">See options</button>
+                <button class="resolve" type="button">Keep OT</button>
+              </div>
+            </div>
+          </article>
+          <article class="task" data-group="publish" data-priority="soon">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">Lena's PTO conflicts with Friday event</div>
+              <div class="task-meta">Request predates event template. One qualified sommelier is available at Marina.</div>
+              <div class="task-actions">
+                <button type="button" data-message="Counter-offer composer opened">Counter-offer</button>
+                <button class="resolve" type="button">Borrow somm</button>
+              </div>
+            </div>
+          </article>
+          <article class="task" data-group="publish" data-priority="normal">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">Two team members have not opened the update</div>
+              <div class="task-meta">Sofia and Lena. Auto-reminder sends at 4pm unless sent now.</div>
+              <div class="task-actions">
+                <button type="button" data-message="Reminder sent to Sofia and Lena">Remind now</button>
+                <button class="resolve" type="button">Wait until 4</button>
+              </div>
+            </div>
+          </article>
+          <article class="task" data-group="people" data-priority="soon">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">James's alcohol certificate expires in 12 days</div>
+              <div class="task-meta">Renewal required before next weekend to keep bar assignments.</div>
+              <div class="task-actions">
+                <button type="button" data-message="Renewal link sent to James">Send renewal</button>
+                <button class="resolve" type="button">Mark submitted</button>
+              </div>
+            </div>
+          </article>
+          <article class="task" data-group="people" data-priority="normal">
+            <span class="task-dot"></span>
+            <div>
+              <div class="task-title">Ana's trial shift needs an evaluator</div>
+              <div class="task-meta">Daniel is trainer. Mara can complete the scorecard after 9pm.</div>
+              <div class="task-actions">
+                <button type="button" data-message="Trial scorecard assigned to Mara">Assign Mara</button>
+                <button class="resolve" type="button">Done</button>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="publish-readiness">
+          <div class="readiness-head"><strong>Publish readiness</strong><span>2 blockers</span></div>
+          <div class="check-row"><span>Critical role coverage</span><b class="bad">1 gap</b></div>
+          <div class="check-row"><span>Break compliance</span><b class="bad">1 missing</b></div>
+          <div class="check-row"><span>Availability conflicts</span><b class="good">Clear</b></div>
+          <div class="check-row"><span>Schedule receipts</span><b>5 / 7 seen</b></div>
+        </div>
+
+        <section class="inspector" aria-live="polite">
+          <div class="inspector-head">
+            <small>Shift Inspector</small>
+            <strong id="inspectorPerson">Select any shift</strong>
+            <span id="inspectorTime">Details and actions appear here.</span>
+          </div>
+          <div class="inspector-body">
+            <div class="detail-row"><span>Station</span><b id="inspectorStation">-</b></div>
+            <div class="detail-row"><span>Break</span><b id="inspectorBreak">-</b></div>
+            <div class="detail-row"><span>Manager note</span><b id="inspectorNote">-</b></div>
+            <div class="inspector-actions">
+              <button type="button" data-message="Shift editor opened">Edit shift</button>
+              <button type="button" data-message="Shift duplicated">Duplicate</button>
+              <button class="cover" type="button" data-message="Cover finder opened">Find cover</button>
+              <button type="button" data-message="Message composer opened">Message staff</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="performance" aria-live="polite">
+          <div class="perf-head">
+            <div>
+              <small>Staff performance</small>
+              <strong id="perfName">Select any shift</strong>
+            </div>
+            <span class="perf-badge" id="perfBadge" hidden></span>
+          </div>
+
+          <p class="perf-empty" id="perfEmpty">Pick a shift to see that person's recent trend, the tables and section they cover tonight, and their live order history.</p>
+
+          <div class="perf-body" id="perfBody" hidden>
+            <div class="perf-metrics">
+              <div class="metric"><div class="m-value" id="mSales">-</div><div class="m-label">Sales / shift</div><div class="m-delta" id="mSalesDelta"></div></div>
+              <div class="metric"><div class="m-value" id="mCheck">-</div><div class="m-label">Avg check</div><div class="m-delta" id="mCheckDelta"></div></div>
+              <div class="metric"><div class="m-value" id="mAttach">-</div><div class="m-label">Wine attach</div><div class="m-delta" id="mAttachDelta"></div></div>
+            </div>
+
+            <div class="perf-section-title">Sales efficiency <span>vs team, last 6 services</span></div>
+            <div class="analytic">
+              <div class="analytic-head">
+                <div class="an-value"><span id="anValue">-</span> <small id="anUnit"></small></div>
+                <div class="analytic-tags">
+                  <span class="an-rank" id="anRank"></span>
+                  <span class="an-vs" id="anVs"></span>
+                </div>
+              </div>
+              <div class="analytic-chart">
+                <svg id="anSvg" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <span class="an-dot" id="anDot"></span>
+              </div>
+              <div class="analytic-x" id="anX"></div>
+              <div class="an-legend">
+                <span><i class="k"></i>This server</span>
+                <span><i class="k med"></i>Team median</span>
+                <span><i class="k band"></i>Team range</span>
+              </div>
+            </div>
+
+            <div class="perf-section-title">Tonight's coverage <span id="covMeta"></span></div>
+            <div class="coverage">
+              <div class="coverage-top">
+                <div class="cov-tables"><span id="covTables">0</span> tables <small id="covSeats"></small></div>
+                <div class="cov-views" role="tablist">
+                  <button type="button" class="active" data-cov="grid">Tables</button>
+                  <button type="button" data-cov="bars">Sections</button>
+                </div>
+              </div>
+              <div class="cov-view" id="covGrid">
+                <div class="table-grid" id="tableGrid"></div>
+                <div class="cov-caption" id="covCaption">Select a table to see seats and status.</div>
+                <div class="coverage-legend">
+                  <span><i class="lg-mine"></i>Assigned</span>
+                  <span><i class="lg-vip"></i>VIP / reserved</span>
+                  <span><i class="lg-other"></i>Open / unassigned</span>
+                </div>
+              </div>
+              <div class="cov-view" id="covBars" hidden>
+                <div class="section-bars" id="sectionBars"></div>
+              </div>
+            </div>
+
+            <div class="perf-section-title">Sales mix <span>last 3 services</span></div>
+            <div class="sales-mix">
+              <div class="mix-bar" id="mixBar"></div>
+              <div class="mix-legend" id="mixLegend"></div>
+            </div>
+
+            <div class="perf-section-title">Order history <span>tonight</span></div>
+            <div class="order-history" id="orderHistory"></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <p class="foot"><code>.planning/sketches/038-manager-shift-desk/index.html</code> · click shifts, switch lenses, filter Manager Desk, resolve tasks</p>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+  (() => {
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    const showToast = (message) => {
+      if (!message) return;
+      toast.textContent = message;
+      toast.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toast.classList.remove('show'), 2200);
+    };
+
+    document.querySelectorAll('[data-message]').forEach((button) => {
+      button.addEventListener('click', () => showToast(button.dataset.message));
+    });
+
+    document.querySelectorAll('.ray-button').forEach((button) => {
+      button.addEventListener('pointermove', (event) => {
+        const rect = button.getBoundingClientRect();
+        button.style.setProperty('--mx', `${((event.clientX - rect.left) / rect.width) * 100}%`);
+        button.style.setProperty('--my', `${((event.clientY - rect.top) / rect.height) * 100}%`);
+      });
+    });
+
+    const schedule = document.querySelector('.schedule-area');
+    document.querySelectorAll('.lens button').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.lens button').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        schedule.dataset.lens = button.dataset.lens;
+        showToast(`${button.textContent} lens active`);
+      });
+    });
+
+    const inspector = {
+      person: document.getElementById('inspectorPerson'),
+      time: document.getElementById('inspectorTime'),
+      station: document.getElementById('inspectorStation'),
+      break: document.getElementById('inspectorBreak'),
+      note: document.getElementById('inspectorNote'),
+    };
+
+    /* Per-staff performance keyed by person.
+       analytic = sales efficiency ($/cover or $/guest) across the last 6 services,
+       benchmarked against the team median and interquartile range.
+       coverage = numbered tables (selectable) + per-section coverage bars.
+       salesMix = category share of what they sold across the last 3 services. */
+    const performance = {
+      'Mara Chen': {
+        badge: 'MOD · Owner',
+        metrics: { sales: '$3.2k', salesDelta: ['up', '+11%'], check: '$74', checkDelta: ['up', '+$6'], attach: '68%', attachDelta: ['up', '+4pt'] },
+        analytic: { unit: '/cover', series: [58, 61, 60, 66, 63, 71], median: 55, band: [48, 62], rank: 'Top 15%', vs: ['up', '+29% vs team'] },
+        coverage: {
+          zone: 'Floor 1 · MOD',
+          tables: [
+            { n: 1, state: 'mine', seats: 4 },
+            { n: 2, state: 'mine', seats: 4 },
+            { n: 4, state: 'vip', seats: 4, note: 'Anniversary at 8pm' },
+            { n: 5, state: 'mine', seats: 2 },
+            { n: 6, state: 'mine', seats: 4 },
+            { n: 12, state: 'open', seats: 2, note: 'Comp recovery earlier' },
+          ],
+          sections: [
+            { label: 'Floor 1', mine: 4, total: 8 },
+            { label: 'VIP', mine: 1, total: 3 },
+          ],
+        },
+        salesMix: [{ label: 'Wine', pct: 44 }, { label: 'Food', pct: 42 }, { label: 'Cocktails', pct: 8 }, { label: 'Other', pct: 6 }],
+        orders: [
+          { time: '7:12', item: 'Barolo 2016, bottle', sub: 'Table 4 · anniversary', amt: '$180', tag: ['wine', 'Wine'] },
+          { time: '7:40', item: 'Tasting menu ×2', sub: 'Table 4', amt: '$240', tag: null },
+          { time: '8:05', item: 'Dessert comp', sub: 'Table 12 · service recovery', amt: '$0', tag: ['comp', 'Comp'] },
+        ],
+      },
+      'James Ortiz': {
+        badge: 'Bar lead',
+        metrics: { sales: '$2.4k', salesDelta: ['up', '+7%'], check: '$41', checkDelta: ['flat', '±$0'], attach: '54%', attachDelta: ['down', '-2pt'] },
+        analytic: { unit: '/guest', series: [34, 36, 35, 38, 37, 41], median: 33, band: [28, 38], rank: 'Top 25%', vs: ['up', '+24% vs team'] },
+        coverage: {
+          zone: 'Main bar',
+          tables: [
+            { n: 1, state: 'mine', seats: 2 }, { n: 2, state: 'mine', seats: 2 },
+            { n: 3, state: 'mine', seats: 2 }, { n: 4, state: 'mine', seats: 2 },
+            { n: 5, state: 'mine', seats: 1 }, { n: 6, state: 'mine', seats: 1 },
+            { n: 7, state: 'mine', seats: 1 }, { n: 8, state: 'mine', seats: 1 },
+          ],
+          sections: [
+            { label: 'Main bar', mine: 6, total: 6 },
+            { label: 'Service well', mine: 2, total: 4 },
+          ],
+        },
+        salesMix: [{ label: 'Cocktails', pct: 58 }, { label: 'Wine', pct: 24 }, { label: 'Food', pct: 10 }, { label: 'Other', pct: 8 }],
+        orders: [
+          { time: '6:50', item: 'Negroni ×3', sub: 'Bar 1-3', amt: '$45', tag: null },
+          { time: '7:25', item: 'Champagne, glass ×4', sub: 'Table 8', amt: '$72', tag: ['wine', 'Wine'] },
+          { time: '8:10', item: 'Old Fashioned ×2', sub: 'Bar 6', amt: '$34', tag: null },
+        ],
+      },
+      'Sofia Reyes': {
+        badge: 'Called out',
+        metrics: { sales: '$1.9k', salesDelta: ['down', '-8%'], check: '$52', checkDelta: ['up', '+$3'], attach: '61%', attachDelta: ['up', '+5pt'] },
+        analytic: { unit: '/cover', series: [50, 48, 52, 47, 49, 49], median: 46, band: [40, 52], rank: 'Top 40%', vs: ['up', '+7% vs team'] },
+        coverage: {
+          zone: 'Floor 2 · open',
+          tables: [
+            { n: 8, state: 'open', seats: 4, note: 'Uncovered call-out' },
+            { n: 9, state: 'open', seats: 2, note: 'Uncovered call-out' },
+            { n: 10, state: 'open', seats: 4, note: 'Uncovered call-out' },
+          ],
+          sections: [
+            { label: 'Floor 2', mine: 0, total: 5, open: true },
+          ],
+        },
+        salesMix: [{ label: 'Food', pct: 46 }, { label: 'Wine', pct: 40 }, { label: 'Cocktails', pct: 8 }, { label: 'Other', pct: 6 }],
+        orders: [
+          { time: 'n/a', item: 'No orders tonight', sub: 'Called out sick at 3:08pm', amt: 'n/a', tag: null },
+        ],
+      },
+      'Daniel Kim': {
+        badge: 'Server · bar trained',
+        metrics: { sales: '$2.1k', salesDelta: ['up', '+9%'], check: '$49', checkDelta: ['up', '+$4'], attach: '58%', attachDelta: ['up', '+3pt'] },
+        analytic: { unit: '/cover', series: [44, 47, 46, 50, 48, 53], median: 46, band: [40, 52], rank: 'Top 35%', vs: ['up', '+15% vs team'] },
+        coverage: {
+          zone: 'Floor 1',
+          tables: [
+            { n: 3, state: 'mine', seats: 4 }, { n: 7, state: 'mine', seats: 4 },
+            { n: 9, state: 'mine', seats: 4 }, { n: 11, state: 'mine', seats: 2 },
+            { n: 13, state: 'mine', seats: 4 }, { n: 15, state: 'mine', seats: 2 },
+            { n: 10, state: 'open', seats: 4, note: 'Floor 2, could cover Sofia' },
+          ],
+          sections: [
+            { label: 'Floor 1', mine: 6, total: 8 },
+            { label: 'Floor 2', mine: 0, total: 5, open: true },
+          ],
+        },
+        salesMix: [{ label: 'Food', pct: 50 }, { label: 'Wine', pct: 34 }, { label: 'Cocktails', pct: 10 }, { label: 'Other', pct: 6 }],
+        orders: [
+          { time: '7:05', item: 'Pinot Noir, bottle', sub: 'Table 6', amt: '$68', tag: ['wine', 'Wine'] },
+          { time: '7:33', item: 'Cheese board ×2', sub: 'Table 9', amt: '$54', tag: null },
+          { time: '8:20', item: 'Dessert flight', sub: 'Table 6', amt: '$28', tag: null },
+        ],
+      },
+      'Lena Baros': {
+        badge: 'Sommelier · L3',
+        metrics: { sales: '$4.6k', salesDelta: ['up', '+18%'], check: '$134', checkDelta: ['up', '+$21'], attach: '92%', attachDelta: ['up', '+6pt'] },
+        analytic: { unit: '/cover', series: [110, 124, 118, 140, 132, 158], median: 92, band: [70, 120], rank: 'Top 5%', vs: ['up', '+72% vs team'] },
+        coverage: {
+          zone: 'Wine floor',
+          tables: [
+            { n: 4, state: 'vip', seats: 4, note: 'Burgundy anniversary 8pm' },
+            { n: 11, state: 'vip', seats: 2, note: 'Grand Cru flight' },
+            { n: 7, state: 'mine', seats: 4 },
+            { n: 13, state: 'mine', seats: 4 },
+          ],
+          sections: [
+            { label: 'Wine floor', mine: 4, total: 6 },
+            { label: 'VIP', mine: 2, total: 3 },
+          ],
+        },
+        salesMix: [{ label: 'Wine', pct: 82 }, { label: 'Food', pct: 12 }, { label: 'Cocktails', pct: 2 }, { label: 'Other', pct: 4 }],
+        orders: [
+          { time: '7:50', item: 'Chambolle-Musigny', sub: 'Table 4 · VIP anniversary', amt: '$320', tag: ['vip', 'VIP'] },
+          { time: '8:15', item: 'Sauternes pairing ×2', sub: 'Table 4', amt: '$96', tag: ['wine', 'Wine'] },
+          { time: '8:44', item: 'Grand Cru flight', sub: 'Table 11', amt: '$185', tag: ['wine', 'Wine'] },
+        ],
+      },
+      'Rui Torres': {
+        badge: 'Borrowed · Marina',
+        metrics: { sales: '$1.4k', salesDelta: ['flat', 'new site'], check: '$44', checkDelta: ['flat', 'n/a'], attach: '49%', attachDelta: ['flat', 'n/a'] },
+        analytic: { unit: '/guest', series: [40, 44, 42, 46, 48, 45], median: 41, band: [36, 48], rank: 'Top 45%', vs: ['up', '+10% vs team'] },
+        coverage: {
+          zone: 'Event bar support',
+          tables: [
+            { n: 21, state: 'mine', seats: 6 }, { n: 22, state: 'mine', seats: 6 },
+            { n: 23, state: 'mine', seats: 4 }, { n: 24, state: 'mine', seats: 4 },
+          ],
+          sections: [
+            { label: 'Event bar', mine: 4, total: 6 },
+          ],
+        },
+        salesMix: [{ label: 'Wine', pct: 46 }, { label: 'Cocktails', pct: 40 }, { label: 'Food', pct: 6 }, { label: 'Other', pct: 8 }],
+        orders: [
+          { time: '6:40', item: 'Welcome sparkling ×8', sub: 'Event arrivals', amt: '$120', tag: null },
+          { time: '7:30', item: 'Burgundy service', sub: 'Private table', amt: '$210', tag: ['wine', 'Wine'] },
+        ],
+      },
+      'Ana Duarte': {
+        badge: 'Trial · shadowing',
+        metrics: { sales: '$0.6k', salesDelta: ['flat', 'trial'], check: '$38', checkDelta: ['flat', 'n/a'], attach: '31%', attachDelta: ['flat', 'n/a'] },
+        analytic: { unit: '/cover', series: [0, 0, 0, 0, 0, 38], median: 46, band: [40, 52], rank: 'Trial', vs: ['flat', 'first solo shift'] },
+        coverage: {
+          zone: 'Floor 1 · trial',
+          tables: [
+            { n: 5, state: 'mine', seats: 2, note: 'First solo table' },
+            { n: 6, state: 'mine', seats: 4, note: 'Shadowing Daniel' },
+          ],
+          sections: [
+            { label: 'Floor 1', mine: 2, total: 8 },
+          ],
+        },
+        salesMix: [{ label: 'Food', pct: 58 }, { label: 'Wine', pct: 20 }, { label: 'Cocktails', pct: 8 }, { label: 'Other', pct: 14 }],
+        orders: [
+          { time: '7:15', item: 'Runner assist', sub: 'Table 6 · with Daniel', amt: 'n/a', tag: null },
+          { time: '8:00', item: 'First solo order', sub: 'Table 5', amt: '$46', tag: null },
+        ],
+      },
+    };
+
+    const perfEl = {
+      name: document.getElementById('perfName'),
+      badge: document.getElementById('perfBadge'),
+      empty: document.getElementById('perfEmpty'),
+      body: document.getElementById('perfBody'),
+      sales: document.getElementById('mSales'),
+      salesDelta: document.getElementById('mSalesDelta'),
+      check: document.getElementById('mCheck'),
+      checkDelta: document.getElementById('mCheckDelta'),
+      attach: document.getElementById('mAttach'),
+      attachDelta: document.getElementById('mAttachDelta'),
+      anValue: document.getElementById('anValue'),
+      anUnit: document.getElementById('anUnit'),
+      anRank: document.getElementById('anRank'),
+      anVs: document.getElementById('anVs'),
+      anSvg: document.getElementById('anSvg'),
+      anDot: document.getElementById('anDot'),
+      anX: document.getElementById('anX'),
+      covTables: document.getElementById('covTables'),
+      covSeats: document.getElementById('covSeats'),
+      covMeta: document.getElementById('covMeta'),
+      tableGrid: document.getElementById('tableGrid'),
+      covCaption: document.getElementById('covCaption'),
+      sectionBars: document.getElementById('sectionBars'),
+      mixBar: document.getElementById('mixBar'),
+      mixLegend: document.getElementById('mixLegend'),
+      orders: document.getElementById('orderHistory'),
+    };
+
+    let currentName = '';
+
+    const setDelta = (node, [dir, text]) => {
+      node.className = `m-delta ${dir}`;
+      node.textContent = text;
+    };
+
+    const mixColors = { Wine: '#cd2d5b', Food: '#3559b7', Cocktails: '#7052a3', Other: '#9d96a3' };
+
+    const renderAnalytic = (a) => {
+      perfEl.anValue.textContent = `$${a.series[a.series.length - 1]}`;
+      perfEl.anUnit.textContent = a.unit;
+      perfEl.anRank.textContent = a.rank;
+      perfEl.anVs.className = `an-vs ${a.vs[0]}`;
+      perfEl.anVs.textContent = a.vs[1];
+
+      const W = 300, H = 64, pad = 6;
+      const all = [...a.series, a.median, a.band[0], a.band[1]];
+      let lo = Math.min(...all), hi = Math.max(...all);
+      const range = (hi - lo) || 1;
+      lo -= range * 0.15; hi += range * 0.15;
+      const X = (i) => pad + (i / (a.series.length - 1)) * (W - 2 * pad);
+      const Y = (v) => H - ((v - lo) / (hi - lo)) * H;
+
+      const bandTop = Y(a.band[1]), bandBot = Y(a.band[0]);
+      const med = Y(a.median);
+      const pts = a.series.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
+      const area = `${pad},${H} ${pts.join(' ')} ${W - pad},${H}`;
+
+      perfEl.anSvg.innerHTML =
+        `<rect x="0" y="${bandTop.toFixed(1)}" width="${W}" height="${Math.max(0, bandBot - bandTop).toFixed(1)}" fill="rgba(205,45,91,.10)"/>` +
+        `<line x1="0" y1="${med.toFixed(1)}" x2="${W}" y2="${med.toFixed(1)}" stroke="#9d96a3" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>` +
+        `<polygon points="${area}" fill="rgba(205,45,91,.09)"/>` +
+        `<polyline points="${pts.join(' ')}" fill="none" stroke="#cd2d5b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+
+      const lastX = X(a.series.length - 1), lastY = Y(a.series[a.series.length - 1]);
+      perfEl.anDot.style.left = `${(lastX / W) * 100}%`;
+      perfEl.anDot.style.top = `${lastY}px`;
+
+      perfEl.anX.innerHTML = a.series
+        .map((_, i) => `<span class="${i === a.series.length - 1 ? 'now' : ''}">${i === a.series.length - 1 ? 'Now' : 'S' + (i + 1)}</span>`)
+        .join('');
+    };
+
+    const renderCoverage = (c) => {
+      perfEl.covMeta.textContent = c.zone;
+      const assigned = c.tables.filter((t) => t.state === 'mine' || t.state === 'vip');
+      perfEl.covTables.textContent = assigned.length;
+      const seats = assigned.reduce((s, t) => s + (t.seats || 0), 0);
+      perfEl.covSeats.textContent = seats > 0 ? `· ${seats} seats` : '· none assigned tonight';
+
+      perfEl.tableGrid.innerHTML = c.tables
+        .map((t) => `<button type="button" class="table-cell ${t.state}" data-n="${t.n}" data-seats="${t.seats || 0}" data-state="${t.state}" data-note="${t.note || ''}">${t.n}</button>`)
+        .join('');
+      perfEl.covCaption.innerHTML = 'Select a table to see seats and status.';
+
+      perfEl.sectionBars.innerHTML = c.sections
+        .map((s) => {
+          const pct = s.total > 0 ? Math.round((s.mine / s.total) * 100) : 0;
+          const label = s.open ? `${s.label} <em>· open</em>` : s.label;
+          return `<div class="sec-row">
+            <div class="sec-row-top"><span class="s-label">${label}</span><span class="s-count">${s.mine} / ${s.total} tables</span></div>
+            <div class="sec-bar${s.open ? ' open' : ''}"><i data-w="${s.open ? 100 : pct}"></i></div>
+          </div>`;
+        })
+        .join('');
+      requestAnimationFrame(() => {
+        perfEl.sectionBars.querySelectorAll('.sec-bar i').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
+      });
+    };
+
+    const renderSalesMix = (mix) => {
+      perfEl.mixBar.innerHTML = mix
+        .map((m) => `<i data-w="${m.pct}" style="width:0;background:${mixColors[m.label] || '#9d96a3'}"></i>`)
+        .join('');
+      perfEl.mixLegend.innerHTML = mix
+        .map((m) => `<span><i style="background:${mixColors[m.label] || '#9d96a3'}"></i>${m.label} <b>${m.pct}%</b></span>`)
+        .join('');
+      requestAnimationFrame(() => {
+        perfEl.mixBar.querySelectorAll('i').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
+      });
+    };
+
+    const renderPerformance = (name) => {
+      const data = performance[name];
+      currentName = name;
+      if (!data) {
+        perfEl.name.textContent = name || 'Select any shift';
+        perfEl.badge.hidden = true;
+        perfEl.body.hidden = true;
+        perfEl.empty.hidden = false;
+        return;
+      }
+      perfEl.name.textContent = name;
+      perfEl.badge.hidden = false;
+      perfEl.badge.textContent = data.badge;
+      perfEl.empty.hidden = true;
+      perfEl.body.hidden = false;
+
+      perfEl.sales.textContent = data.metrics.sales;
+      setDelta(perfEl.salesDelta, data.metrics.salesDelta);
+      perfEl.check.textContent = data.metrics.check;
+      setDelta(perfEl.checkDelta, data.metrics.checkDelta);
+      perfEl.attach.textContent = data.metrics.attach;
+      setDelta(perfEl.attachDelta, data.metrics.attachDelta);
+
+      renderAnalytic(data.analytic);
+      renderCoverage(data.coverage);
+      renderSalesMix(data.salesMix);
+
+      perfEl.orders.innerHTML = data.orders.map((order) => {
+        const tag = order.tag ? `<span class="o-tag ${order.tag[0]}">${order.tag[1]}</span>` : '';
+        return `<div class="order-row">
+          <span class="o-time">${order.time}</span>
+          <div><div class="o-item">${order.item}${tag}</div><div class="o-sub">${order.sub}</div></div>
+          <span class="o-amt">${order.amt}</span>
+        </div>`;
+      }).join('');
+    };
+
+    // Coverage view toggle (Tables grid vs Section bars)
+    document.querySelectorAll('.cov-views button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.cov-views button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const grid = btn.dataset.cov === 'grid';
+        document.getElementById('covGrid').hidden = !grid;
+        document.getElementById('covBars').hidden = grid;
+      });
+    });
+
+    // Selectable numbered tables
+    perfEl.tableGrid.addEventListener('click', (event) => {
+      const cell = event.target.closest('.table-cell');
+      if (!cell) return;
+      perfEl.tableGrid.querySelectorAll('.selected').forEach((c) => c.classList.remove('selected'));
+      cell.classList.add('selected');
+      const state = cell.dataset.state;
+      const status = state === 'vip' ? 'VIP / reserved' : state === 'open' ? 'Open / unassigned' : `Assigned to ${currentName}`;
+      const note = cell.dataset.note ? ` · ${cell.dataset.note}` : '';
+      perfEl.covCaption.innerHTML = `<b>Table ${cell.dataset.n}</b> · ${cell.dataset.seats} seats · ${status}${note}`;
+    });
+
+    document.querySelectorAll('.shift').forEach((shift) => {
+      shift.addEventListener('click', () => {
+        document.querySelectorAll('.shift.selected').forEach((item) => item.classList.remove('selected'));
+        shift.classList.add('selected');
+        inspector.person.textContent = shift.dataset.person;
+        inspector.time.textContent = `${shift.dataset.day} · ${shift.dataset.time}`;
+        inspector.station.textContent = shift.dataset.station;
+        inspector.break.textContent = shift.dataset.break;
+        inspector.note.textContent = shift.dataset.note;
+        renderPerformance(shift.dataset.person);
+      });
+    });
+
+    document.querySelectorAll('.desk-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.desk-tab').forEach((item) => item.classList.remove('active'));
+        tab.classList.add('active');
+        const group = tab.dataset.group;
+        document.querySelectorAll('.task').forEach((task) => {
+          task.classList.toggle('hidden', group !== 'all' && task.dataset.group !== group);
+        });
+      });
+    });
+
+    const updateTaskCount = () => {
+      const remaining = document.querySelectorAll('.task:not(.resolved)').length;
+      document.getElementById('deskCount').textContent = remaining;
+      document.getElementById('pulseTaskCount').textContent = remaining;
+    };
+
+    document.querySelectorAll('.task .resolve').forEach((button) => {
+      button.addEventListener('click', () => {
+        const task = button.closest('.task');
+        task.classList.add('resolved');
+        showToast(`Resolved: ${task.querySelector('.task-title').textContent}`);
+        updateTaskCount();
+      });
+    });
+  })();
+</script>
+</body>
+</html>

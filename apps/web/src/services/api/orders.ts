@@ -31,6 +31,7 @@ function toBackendStatus(status: string | undefined): string | undefined {
     ordered: 'CONFIRMED',
     in_transit: 'IN_TRANSIT',
     delivered: 'DELIVERED',
+    partially_received: 'PARTIALLY_RECEIVED',
     cancelled: 'CANCELLED',
   };
   return map[status] ?? status.toUpperCase();
@@ -150,6 +151,37 @@ export async function markOrderDelivered(
   if (!id) throw new Error('No restaurant ID available');
 
   const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/deliver`, { notes });
+  return response.data;
+}
+
+/**
+ * Three-way match a delivered order: what we ordered, what the vendor billed, and what
+ * physically arrived. The server recomputes the verdict itself and derives the ledger
+ * correction — these fields are evidence, not instructions.
+ *
+ * Completes the order, or holds it open as PARTIALLY_RECEIVED when less was accepted than
+ * ordered. Throws 422 if the invoice price differs from the agreed price and no
+ * `priceOverrideReason` was given.
+ *
+ * `adjustments` carries unlisted extras that were not on the invoice.
+ */
+export async function verifyOrderReceipt(
+  orderId: string,
+  body: {
+    adjustments?: Array<{ inventoryId: string; delta: number; reason?: string }>;
+    invoiceQuantity?: number;
+    invoiceUnitPrice?: number;
+    acceptedQuantity?: number;
+    rejectedQuantity?: number;
+    rejectedReason?: string;
+    priceOverrideReason?: string;
+    note?: string;
+  }
+): Promise<Order> {
+  const response = await apiClient.post<Order>(
+    `${ORDERS_PATH}/${orderId}/verify-receipt`,
+    body
+  );
   return response.data;
 }
 

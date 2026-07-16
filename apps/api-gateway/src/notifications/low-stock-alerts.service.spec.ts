@@ -5,7 +5,11 @@ import { LowStockAlertsService } from "./low-stock-alerts.service";
  * (used by getAlertState); `.maybeSingle()` resolves to `singleResult`
  * (used by the alert-count read); `.upsert()`/terminal writes resolve OK.
  */
-function makeDbMock(alertStateRows: any[], prefsRows: any[] | null = null) {
+function makeDbMock(
+  alertStateRows: any[],
+  prefsRows: any[] | null = null,
+  opts: { upsertError?: boolean } = {},
+) {
   const makeChain = (table: string): any => {
     const chain: any = {
       select: () => chain,
@@ -14,7 +18,12 @@ function makeDbMock(alertStateRows: any[], prefsRows: any[] | null = null) {
       in: () => chain,
       update: () => chain,
       maybeSingle: () => Promise.resolve({ data: { alert_count: 0 } }),
-      upsert: () => Promise.resolve({ error: null }),
+      upsert: () =>
+        Promise.resolve(
+          opts.upsertError && table === "inventory_alert_state"
+            ? { error: { message: "fetch failed" } }
+            : { error: null },
+        ),
       then: (resolve: any) =>
         resolve({
           data:
@@ -58,9 +67,13 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     config = { get: jest.fn().mockReturnValue("") };
   });
 
-  function build(alertStateRows: any[], prefsRows: any[] | null = null) {
+  function build(
+    alertStateRows: any[],
+    prefsRows: any[] | null = null,
+    opts: { upsertError?: boolean } = {},
+  ) {
     return new LowStockAlertsService(
-      makeDbMock(alertStateRows, prefsRows),
+      makeDbMock(alertStateRows, prefsRows, opts),
       notifications as any,
       config as any,
       gmail as any,
@@ -168,5 +181,17 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
 
     expect(newCrossings).toHaveLength(0);
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("FAIL-CLOSED: does NOT alert when the state write fails (no re-send storm)", async () => {
+    // The exact production bug: inventory_alert_state upsert fails ("fetch
+    // failed"), so nothing is recorded — the alert must be held, not sent,
+    // otherwise the same wine re-fires every 2-minute sweep.
+    const svc = build([], null, { upsertError: true });
+    const { newCrossings } = await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+
+    expect(newCrossings).toHaveLength(1); // still detected
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled(); // but NOT alerted
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
   });
 });
