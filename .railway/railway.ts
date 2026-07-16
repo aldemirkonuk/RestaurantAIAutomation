@@ -18,6 +18,11 @@ export default defineRailway(() => {
     env: {
       API_GATEWAY_URL: preserve(),
       CORS_ORIGINS: preserve(),
+      // Expo 54 / RN 0.81's metro-config calls Array.prototype.toReversed(),
+      // which needs Node >= 20. Root engines says ">=18.0.0", so Railpack was
+      // resolving to Node 18 and Metro crashed on boot. Pin to 22 (Railpack's
+      // own default, and what local dev runs) with the highest-precedence lever.
+      RAILPACK_NODE_VERSION: "22",
     },
   });
   const servicesagentOrchestrator = service("services/agent-orchestrator", {
