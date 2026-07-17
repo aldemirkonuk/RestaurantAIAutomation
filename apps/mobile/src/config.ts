@@ -2,7 +2,9 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 
 const PROD_API = "https://wineopsapi-gateway-production.up.railway.app";
-const GATEWAY_PORT = 4000;
+// Matches the gateway's local dev port (.env PORT=8000). Prod is fronted by
+// Railway over https (no explicit port), so this only affects local dev.
+const GATEWAY_PORT = 8000;
 
 /**
  * API base resolution, most specific wins:
