@@ -192,3 +192,61 @@ export function useTeamMembers() {
     retry: false,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Analytics insight engine — plain-language conclusions + goals
+// ---------------------------------------------------------------------------
+
+export interface InsightSentence {
+  sentence: string;
+  category: string;
+  score: number;
+}
+
+/** Top plain-language insights (stored feed; server computes on cold start). */
+export function useInsightFeed() {
+  const { enabled, restaurantId } = useAuthed();
+  return useQuery({
+    queryKey: ["analytics", "insights", restaurantId],
+    queryFn: async () => {
+      const body = await api<any>(
+        `/analytics/insights/${restaurantId}?limit=12`,
+      );
+      const rows: any[] = body.insights ?? [];
+      return rows
+        .map((r) => ({
+          sentence: r.sentence,
+          category: r.category,
+          score: Number(r.score ?? 0),
+        }))
+        .filter((r) => r.sentence) as InsightSentence[];
+    },
+    enabled: enabled && !!restaurantId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useGoals() {
+  const { enabled, restaurantId } = useAuthed();
+  return useQuery({
+    queryKey: ["analytics", "goals", restaurantId],
+    queryFn: () => api<any[]>(`/analytics/goals/${restaurantId}`),
+    enabled: enabled && !!restaurantId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+/** Full pace/projection/suggestions detail for one goal. */
+export function useGoalProgress(goalId: string | undefined) {
+  const { enabled, restaurantId } = useAuthed();
+  return useQuery({
+    queryKey: ["analytics", "goal-progress", restaurantId, goalId],
+    queryFn: () =>
+      api<any>(`/analytics/goals/${restaurantId}/${goalId}/progress`),
+    enabled: enabled && !!restaurantId && !!goalId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}

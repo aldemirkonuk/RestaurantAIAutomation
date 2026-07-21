@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { ScrollView, View } from "react-native";
+import { Linking, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
@@ -7,8 +7,17 @@ import { Card, Hairline, Screen } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { FreshnessLabel } from "@/components/ui/StateViews";
 import { color, space } from "@/design/tokens";
-import { useInventory, useInventorySummary, useTodayPulse } from "@/api/queries";
+import {
+  useGoalProgress,
+  useGoals,
+  useInsightFeed,
+  useInventory,
+  useInventorySummary,
+  useTodayPulse,
+} from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
+
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
 function money(value: number): string {
   return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -18,11 +27,30 @@ function itemName(i: InventoryItem): string {
   return String(i.wineName ?? i.wine_name ?? "Unnamed");
 }
 
+const CATEGORY_LABEL: Record<string, string> = {
+  sales: "Sales",
+  purchasing: "Purchasing",
+  inventory: "Inventory",
+  efficiency: "Efficiency",
+  tables: "Tables",
+  staff: "Staff",
+  basket: "Pairings",
+  risk: "Risk",
+  forecast: "Forecast",
+  goals: "Goals",
+};
+
 export default function InsightsScreen() {
   const router = useRouter();
   const pulse = useTodayPulse();
   const inventory = useInventory();
   const summary = useInventorySummary();
+  const insights = useInsightFeed();
+  const goals = useGoals();
+  const activeGoals = (goals.data ?? []).filter(
+    (g: any) => g.status === "active",
+  );
+  const topGoalProgress = useGoalProgress(activeGoals[0]?.id);
 
   const analytics = useMemo(() => {
     const items = inventory.data ?? [];
@@ -54,6 +82,115 @@ export default function InsightsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: 0, gap: space.md, paddingBottom: space.huge }}>
+        {/* Conclusions — the plain-language insight box */}
+        <Card style={{ gap: space.md }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <AppText variant="caption" tone="tertiary">
+              What the numbers say
+            </AppText>
+            {WEB_URL ? (
+              <PressableScale onPress={() => Linking.openURL(`${WEB_URL}/reports`)}>
+                <AppText variant="caption" style={{ color: color.wine }}>
+                  Full reports →
+                </AppText>
+              </PressableScale>
+            ) : null}
+          </View>
+          {insights.isLoading && !insights.data ? (
+            <View style={{ gap: space.sm }}>
+              <Skeleton width="100%" height={15} />
+              <Skeleton width="90%" height={15} />
+              <Skeleton width="70%" height={15} />
+            </View>
+          ) : (insights.data?.length ?? 0) === 0 ? (
+            <AppText variant="footnote" tone="tertiary">
+              Conclusions appear as sales, pours, and orders accumulate — the
+              engine turns your data into 1–2 sentence takeaways here.
+            </AppText>
+          ) : (
+            insights.data!.slice(0, 6).map((ins, idx) => (
+              <View key={`${ins.category}-${idx}`} style={{ gap: 4 }}>
+                {idx > 0 ? <Hairline /> : null}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, paddingTop: idx > 0 ? space.xs : 0 }}>
+                  <View
+                    style={{
+                      backgroundColor: color.wineTintStrong,
+                      paddingHorizontal: space.sm,
+                      paddingVertical: 2,
+                      borderRadius: 999,
+                    }}
+                  >
+                    <AppText variant="caption" style={{ color: color.wine }}>
+                      {CATEGORY_LABEL[ins.category] ?? ins.category}
+                    </AppText>
+                  </View>
+                </View>
+                <AppText variant="body">{ins.sentence}</AppText>
+              </View>
+            ))
+          )}
+        </Card>
+
+        {/* Goals — work toward a target with AI assistance */}
+        <Card style={{ gap: space.md }}>
+          <AppText variant="caption" tone="tertiary">
+            Goals
+          </AppText>
+          {goals.isLoading && !goals.data ? (
+            <Skeleton width="100%" height={15} />
+          ) : activeGoals.length === 0 ? (
+            <AppText variant="footnote" tone="tertiary">
+              No active goals yet. Create one on the web dashboard — pick a
+              metric, a target, and a deadline; the engine tracks pace and
+              suggests levers here.
+            </AppText>
+          ) : (
+            activeGoals.slice(0, 3).map((g: any, idx: number) => {
+              const target = Number(g.target_value) || 0;
+              const current = Number(g.current_value) || 0;
+              const pct = target > 0 ? Math.min(1, current / target) : 0;
+              const detail =
+                idx === 0 && topGoalProgress.data ? topGoalProgress.data : null;
+              return (
+                <View key={g.id} style={{ gap: space.xs }}>
+                  {idx > 0 ? <Hairline /> : null}
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: idx > 0 ? space.xs : 0 }}>
+                    <AppText variant="bodyMedium" numberOfLines={1} style={{ flex: 1, paddingRight: space.md }}>
+                      {g.name}
+                    </AppText>
+                    <AppText variant="footnote" tone="secondary" style={{ fontVariant: ["tabular-nums"] }}>
+                      {Math.round(pct * 100)}%
+                    </AppText>
+                  </View>
+                  <View style={{ height: 6, backgroundColor: color.fill, borderRadius: 3 }}>
+                    <View
+                      style={{
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor:
+                          detail?.onTrack === false ? color.danger : color.wine,
+                        width: `${Math.max(4, pct * 100)}%`,
+                      }}
+                    />
+                  </View>
+                  {detail ? (
+                    <AppText variant="footnote" tone="secondary">
+                      {detail.onTrack === false
+                        ? `Behind pace${detail.daysLeft != null ? ` with ${detail.daysLeft} days left` : ""}.`
+                        : detail.onTrack === true
+                          ? `On pace${detail.daysLeft != null ? ` — ${detail.daysLeft} days left` : ""}.`
+                          : ""}
+                      {detail.suggestedActions?.[0]?.sentence
+                        ? ` Lever: ${detail.suggestedActions[0].sentence}`
+                        : ""}
+                    </AppText>
+                  ) : null}
+                </View>
+              );
+            })
+          )}
+        </Card>
+
         {/* Sales */}
         <Card style={{ gap: space.md }}>
           <AppText variant="caption" tone="tertiary">

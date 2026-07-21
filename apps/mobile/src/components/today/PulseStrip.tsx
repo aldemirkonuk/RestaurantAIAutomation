@@ -1,6 +1,8 @@
 import React from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { AppText } from "@/components/ui/AppText";
+import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { color, space } from "@/design/tokens";
@@ -12,10 +14,12 @@ function money(value: number): string {
 
 /**
  * The glance that costs zero taps: tonight's revenue, checks, and the delta
- * against the same window last week. Sales data needs Toast; without it the
- * strip quietly shows only the decision count.
+ * against the same window last week. Sales data needs a POS feed; without it
+ * the strip quietly shows only the decision count. Tapping the strip opens
+ * the Insights tab — the plain-language conclusions + goals home.
  */
 export function PulseStrip() {
+  const router = useRouter();
   const { data, isLoading } = useTodayPulse();
 
   if (isLoading && !data) {
@@ -33,15 +37,16 @@ export function PulseStrip() {
   const hasSales = data.revenueToday != null;
 
   return (
-    <Card
-      style={{
-        marginHorizontal: space.lg,
-        marginBottom: space.md,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-      }}
-    >
+    <PressableScale onPress={() => router.push("/insights")}>
+      <Card
+        style={{
+          marginHorizontal: space.lg,
+          marginBottom: space.md,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
       <View>
         <AppText variant="caption" tone="tertiary">
           Tonight
@@ -81,7 +86,8 @@ export function PulseStrip() {
             {data.deltaPct}% vs last week
           </AppText>
         </View>
-      ) : null}
-    </Card>
+        ) : null}
+      </Card>
+    </PressableScale>
   );
 }

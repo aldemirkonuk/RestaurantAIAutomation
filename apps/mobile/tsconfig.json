@@ -1,22 +1,12 @@
 {
-  // Not extending "expo/tsconfig.base" on purpose: that file sets
-  // "module": "preserve", an option TypeScript only added in 5.4. The
-  // workspace pins typescript to 5.3.3 for every package (root
-  // package.json -> pnpm.overrides, shared by web/api-gateway/storybook/
-  // jest tooling), and tsc validates each file in an "extends" chain
-  // independently — so even overriding "module" locally still fails on the
-  // base file's own declared value (TS6046).
-  //
-  // The options below are expo/tsconfig.base's own recommended set, copied
-  // in directly with "module" swapped to "esnext". tsc here only
-  // type-checks (noEmit) — Metro/Babel do all real bundling — so this has
-  // zero effect on what actually ships; it only changes how tsc itself
-  // reads import/export syntax while checking types.
   "compilerOptions": {
     "allowJs": true,
     "esModuleInterop": true,
     "jsx": "react-native",
-    "lib": ["DOM", "ESNext"],
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
     "module": "esnext",
     "moduleDetection": "force",
     "moduleResolution": "bundler",
@@ -26,7 +16,9 @@
     "target": "ESNext",
     "strict": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -34,5 +26,6 @@
     "app/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }
