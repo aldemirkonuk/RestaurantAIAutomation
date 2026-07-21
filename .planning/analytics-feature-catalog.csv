@@ -359,3 +359,103 @@ id,name,category,domain,description,data_sources,priority,status,toast_relations
 358,Labor Data Import,Toast Integration Layer,integration,Employee/job/hours feed powering labor analytics,Toast Labor API,tier2,planned,integration,import
 359,Guest Data Import,Toast Integration Layer,integration,Guest/payment-card feed powering CRM analytics,Toast Guest API,tier2,planned,integration,import
 360,Aggregated Sales Metrics Sync,Toast Integration Layer,integration,Daily/weekly sales+labor rollups cached for dashboards,Toast /era/v1/metrics,tier1,planned,integration,import
+361,Check-In Density per Seat,Seating Density Core,sales,Covers (check-ins) ÷ seats for a table/zone — occupancy intensity over seating,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+362,Checks per Seat,Seating Density Core,sales,Number of checks ÷ seats — visit intensity normalized by seating capacity,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+363,Sales per Seat,Seating Density Core,sales,Revenue ÷ seats — sales density over seating (extends revenue_per_seat),"pos_checks, restaurant_tables",tier1,,wineops_only,build
+364,Wine Sales per Seat,Seating Density Core,sales,Wine revenue ÷ seats — wine-program sales density over seating,"pos_checks, restaurant_tables",tier1,,wineops_bridge,bridge
+365,Revenue per Cover,Seating Density Core,sales,Revenue ÷ covers — spend intensity per check-in guest,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+366,Wine Revenue per Cover,Seating Density Core,sales,Wine $ ÷ covers — wine attach economics per guest check-in,"pos_checks, restaurant_tables",tier1,,wineops_bridge,bridge
+367,Seat Utilization Rate,Seating Density Core,operations,Occupied seat-hours ÷ available seat-hours in window,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+368,Table Turnover per Seat,Seating Density Core,operations,Turns ÷ seats — how hard each seat works,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+369,Cover Density vs Sales Elasticity,Seating Density Core,causal,Δ sales % / Δ check-in density % — does denser seating lift or crush spend?,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+370,Optimal Check-In Density Band,Seating Density Core,forecasting,Density band where avg check and wine attach jointly maximize,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+371,Overcrowding Penalty Score,Seating Density Core,risk,Sales shortfall when check-in density exceeds optimal band,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+372,Underutilized Seat Opportunity $,Seating Density Core,financial,Forgone sales when density below capacity-normalized target,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+373,BTG Pours per Seat,Seating Density Core,sales,By-the-glass pours ÷ seats — pour density over seating,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+374,Bottle Opens per Seat,Seating Density Core,sales,Full bottles ÷ seats,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+375,Tip $ per Seat,Seating Density Core,sales,Tips ÷ seats — gratuity density over seating,"pos_checks, restaurant_tables",tier2,,toast_overlap,build
+376,Hourly Check-In Density Heatmap,Density × Time,sales,Covers/seat by hour of day across the floor,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+377,Daypart Sales vs Density,Density × Time,sales,Lunch/dinner/late sales plotted against check-in density,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+378,Same-Weekday Density Baseline,Density × Time,sales,Today's covers/seat vs typical for that weekday,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+379,Weekend vs Weekday Density Gap,Density × Time,sales,Check-in density differential weekend vs weekday,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+380,Pre-Theater Density Spike,Density × Time,calendar,Check-in density in T-90..T-0 of calendar events,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+381,Weather-Adjusted Density,Density × Time,forecasting,Check-in density residual after weather controls,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+382,Density Ramp Curve,Density × Time,operations,How quickly covers/seat climb after open,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+383,Density Decay Curve,Density × Time,operations,How covers/seat fall after peak,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+384,15-Minute Density Pulse,Density × Time,operations,Rolling covers/seat every 15 minutes (live),"pos_checks, restaurant_tables",tier2,,wineops_only,build
+385,Density Forecast 7-Day,Density × Time,forecasting,Predicted covers/seat next 7 days by zone,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+386,Sales-per-Seat Trend 30d,Density × Time,sales,MoM trend of sales/seat,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+387,Check-In Density Anomaly Day,Density × Time,risk,Days where covers/seat z-score exceeds threshold,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+388,Happy-Hour Density vs Wine Attach,Density × Time,sales,Does denser happy hour lift or dilute wine attach?,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+389,Brunch Density Economics,Density × Time,sales,Brunch covers/seat vs wine/BTG sales,"pos_checks, restaurant_tables",tier3,,wineops_bridge,bridge
+390,Late-Night Density Margin,Density × Time,financial,Late-night covers/seat × contribution margin,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+391,Reservation Density Load,Density × Time,operations,Booked covers/seat vs walk-in residual capacity,"pos_checks, restaurant_tables",tier2,,toast_overlap,build
+392,No-Show Impact on Density,Density × Time,operations,Expected vs realized covers/seat after no-shows,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+393,Turn-Time vs Density,Density × Time,operations,Avg dwell minutes as check-in density rises,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+394,Server Load at Peak Density,Density × Time,labor,Covers/server when zone density is top-quartile,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+395,Density-Normalized Labor Cost,Density × Time,labor,Labor $ ÷ covers/seat — cost efficiency at density,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+396,Zone Check-In Density Ranking,Density × Space,operations,Rank zones by covers/seat,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+397,Zone Sales-per-Seat Ranking,Density × Space,sales,Rank zones by revenue/seat,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+398,Bar-Adjacent Density Premium,Density × Space,causal,Sales/seat lift for tables near bar controlling density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+399,Kitchen-Distance × Density Interaction,Density × Space,causal,Does far-from-kitchen hurt more when density is high?,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+400,Outdoor Seat Density Yield,Density × Space,sales,Outdoor covers/seat and sales/seat vs indoor,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+401,Poolside Density Seasonality,Density × Space,sales,Pool-adjacent covers/seat by season,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+402,2-Top vs 4-Top Density Efficiency,Density × Space,operations,Sales/seat and covers/seat by table size class,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+403,Communal Table Density,Density × Space,operations,Check-in density on communal vs standard tables,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+404,Booth vs Banquette Density,Density × Space,operations,Density and spend by seating furniture type,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+405,Sightline Density Effect,Density × Space,causal,Sales at high-density tables with/without kitchen sightline,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+406,Noise-Proxy Density Drag,Density × Space,causal,Spend drop when neighboring table density spikes,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+407,Patio Heater Zone Density,Density × Space,operations,Covers/seat in heated vs unheated patio segments,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+408,Window Seat Density Premium,Density × Space,sales,Sales/seat for window seats at matched density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+409,Private Dining Density Utilization,Density × Space,operations,PDR covers/seat vs main floor,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+410,Rebalancing Suggestion Map,Density × Space,ai,Move covers from over-dense to under-dense zones,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+411,Seat Cap Stress Test,Density × Space,forecasting,Simulated sales if seats ±10% at current demand,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+412,Fire-Code Density Headroom,Density × Space,compliance,Covers vs max occupancy headroom by zone,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+413,Wheelchair-Accessible Seat Yield,Density × Space,operations,Sales/seat on accessible tables vs peers,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+414,High-Top Density Wine Mix,Density × Space,menu,Wine category mix at high-top seating by density,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+415,Lounge Seat Check-In Cadence,Density × Space,operations,Arrival spacing (check-ins/hour/seat) in lounge,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+416,Floor Section Density Parity,Density × Space,operations,Variance of covers/seat across sections — fairness,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+417,Host Stand Density Feed,Density × Space,operations,Live covers/seat by section for host tablet,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+418,Waitlist Pressure vs Density,Density × Space,forecasting,Waitlist length predicted from current density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+419,Combine-Table Density Shock,Density × Space,operations,Density/spend change when tables are combined,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+420,Geomarker Density Clusters,Density × Space,ai,Spatial clusters of high sales/seat at similar density,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+421,Avg Check vs Check-In Density Scatter,Sales ↔ Density Link,sales,Per-table scatter of avg check against covers/seat,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+422,Wine Attach vs Density Curve,Sales ↔ Density Link,sales,Wine attach rate as a function of covers/seat,"pos_checks, restaurant_tables",tier1,,wineops_bridge,bridge
+423,Tip % vs Density,Sales ↔ Density Link,sales,Tip percentage response to seating density,"pos_checks, restaurant_tables",tier2,,toast_overlap,build
+424,Bottle Mix Shift at High Density,Sales ↔ Density Link,menu,BTG vs bottle share when density is high,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+425,Upsell Success vs Density,Sales ↔ Density Link,labor,Server upsell conversion at low/med/high density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+426,Dessert Attach vs Density,Sales ↔ Density Link,sales,Non-wine attach rates under density pressure,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+427,Price Realization vs Density,Sales ↔ Density Link,financial,Discounting/comping rate as density rises,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+428,VIP Guest Density Avoidance,Sales ↔ Density Link,guest,Do high-LTV guests avoid peak-density tables?,"pos_checks, restaurant_tables",tier3,,wineops_bridge,bridge
+429,Party Size × Density Interaction,Sales ↔ Density Link,sales,Large parties' spend at crowded vs calm density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+430,Duration × Density × Sales,Sales ↔ Density Link,causal,Three-way: dwell × covers/seat × revenue,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+431,Partial Correlation Sales~Distance | Density,Sales ↔ Density Link,causal,Geometry–sales link controlling for check-in density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+432,Partial Correlation Sales~Density | Seats,Sales ↔ Density Link,causal,Density–sales link controlling for raw seat count,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+433,Ridge Drivers including Density,Sales ↔ Density Link,ai,Driver weights for avg check with density as a feature,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+434,Density Peer Rank on Sales/Seat,Sales ↔ Density Link,sales,Table peer rank on sales/seat within density decile,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+435,Concentration of Sales in Dense Seats,Sales ↔ Density Link,risk,HHI of revenue across high-density seats,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+436,Forecast Gap: Sales given Density,Sales ↔ Density Link,forecasting,Actual sales vs forecast conditioned on realized density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+437,Goal Pace on Sales/Seat,Sales ↔ Density Link,forecasting,Pace to sales/seat goal,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+438,Live Surge: Density + Sales Spike,Sales ↔ Density Link,operations,Tables where covers/seat and sales spike together,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+439,Basket Affinity under Density,Sales ↔ Density Link,sales,Wine+food pairs that survive high-density service,"pos_checks, restaurant_tables",tier3,,wineops_bridge,bridge
+440,Comp Rate vs Density,Sales ↔ Density Link,risk,Manager comps per cover at each density band,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+441,Void/Remake vs Density,Sales ↔ Density Link,operations,Kitchen errors correlated with floor density,"pos_checks, restaurant_tables",tier3,,toast_overlap,build
+442,Wine Service Time vs Density,Sales ↔ Density Link,operations,Order-to-pour minutes as covers/seat rises,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+443,Sommelier Visit Rate vs Density,Sales ↔ Density Link,labor,Sommelier table touches per cover at density bands,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+444,Pairing Card Conversion vs Density,Sales ↔ Density Link,menu,Pairing suggestion acceptance under density,"pos_checks, restaurant_tables",tier3,,wineops_bridge,bridge
+445,Check Open-Rate Latency vs Density,Sales ↔ Density Link,operations,Time-to-first-item as seating fills,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+446,Density Alert Threshold Config,Density Ops & Alerts,operations,Configurable covers/seat alert bands per zone,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+447,Seat Rebalance Recommendation,Density Ops & Alerts,ai,AI suggestion to reseat parties to improve sales/seat,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+448,Open Section Timing by Density,Density Ops & Alerts,operations,When to open patio/PDR based on main-floor density,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+449,Server Section Density Balancing,Density Ops & Alerts,labor,Assign sections to equalize covers/seat load,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+450,Density-Aware Par for BTG,Density Ops & Alerts,inventory,Raise/lower BTG par when forecast density is high,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+451,Event Seating Density Planner,Density Ops & Alerts,calendar,Target covers/seat for calendar events with sales goals,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+452,Density Digest Email,Density Ops & Alerts,notifications,"Daily email: densest zones, sales/seat winners, alerts","pos_checks, restaurant_tables",tier1,,wineops_only,build
+453,Host Script at Peak Density,Density Ops & Alerts,operations,Prompt host with wait/upsell script when density high,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+454,Density Goal Setting,Density Ops & Alerts,forecasting,Set covers/seat and sales/seat goals by zone,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+455,Cross-Location Density Benchmark,Density Ops & Alerts,multi_location,Compare covers/seat and sales/seat across branches,"pos_checks, restaurant_tables",tier2,,wineops_only,build
+456,Density × Wine 86 Risk,Density Ops & Alerts,risk,Stockout risk for BTG when density forecast spikes,"pos_checks, restaurant_tables",tier2,,wineops_bridge,bridge
+457,Check-In Density SLA,Density Ops & Alerts,operations,Service-recovery flag when density > X and ticket time > Y,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+458,Seating Chart Density Overlay,Density Ops & Alerts,ux,Floor map colored by live covers/seat and sales/seat,"pos_checks, restaurant_tables",tier1,,wineops_only,build
+459,Density Experiment Framework,Density Ops & Alerts,causal,A/B seating layouts measuring sales vs density,"pos_checks, restaurant_tables",tier3,,wineops_only,build
+460,Post-Service Density Retro,Density Ops & Alerts,operations,End-of-night report: density bands vs sales outcomes,"pos_checks, restaurant_tables",tier1,,wineops_only,build

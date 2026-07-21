@@ -1,11 +1,13 @@
 # WineOps Analytics Feature Catalog
 
-**Version:** 1.1  
-**Created:** 2026-07-05 · **Updated:** 2026-07-05  
-**Total features:** 360  
+**Version:** 1.2  
+**Created:** 2026-07-05 · **Updated:** 2026-07-20  
+**Total features:** 460  
 **Status:** Planning only — not built
 
-> **v1.1 change:** Added Batch 5 (276–360) — Toast-parity / full-restaurant analytics, i.e. everything Toast Analytics covers that the original 275 did not (labor, payments, guest/CRM, cash & loss, kitchen, channels, tips), plus wine-intelligence "bridge" features that fuse Toast POS data with WineOps. Two new fields (`toast_relationship`, `build_strategy`) added to every feature.
+> **v1.1 change:** Added Batch 5 (276–360) — Toast-parity / full-restaurant analytics.
+>
+> **v1.2 change:** Added Batch 6 (361–460) — **100 outcome-linked seating metrics**: sales vs check-in density over seating (covers/seat, sales/seat, zone/time/geometry links, manager alerts).
 
 ---
 
@@ -19,7 +21,7 @@
 
 | Field | Description |
 |-------|-------------|
-| `id` | Unique feature number (1–360) |
+| `id` | Unique feature number (1–460) |
 | `name` | Short feature title |
 | `category` | Grouping for roadmap planning |
 | `domain` | Primary area: `inventory`, `financial`, `sales`, `vendor`, `menu`, `calendar`, `ux`, `market`, `ai`, `risk`, `compliance`, `multi_location`, `notifications`, `documents`, `causal`, `network`, `forecasting`, `agent_observability`, `labor`, `payments`, `guest`, `marketing`, `operations`, `integration` |
@@ -773,6 +775,136 @@ These close the gap against **Toast Analytics** — the whole-restaurant operati
 
 ---
 
+
+## Batch 6: Seating Density & Sales ↔ Check-In (361–460)
+
+> Outcome-linked metrics tying **sales** to **check-in density over seating** (covers÷seats, checks÷seats, sales÷seats) across time, space, causal links, and manager actions.
+
+### Seating Density Core (361–375)
+
+| ID | Name | Description | T | S | Priority |
+|----|------|-------------|---|---|----------|
+| 361 | Check-In Density per Seat | Covers (check-ins) ÷ seats for a table/zone — occupancy intensity over seating | W | build | tier1 |
+| 362 | Checks per Seat | Number of checks ÷ seats — visit intensity normalized by seating capacity | W | build | tier1 |
+| 363 | Sales per Seat | Revenue ÷ seats — sales density over seating (extends revenue_per_seat) | W | build | tier1 |
+| 364 | Wine Sales per Seat | Wine revenue ÷ seats — wine-program sales density over seating | B | bridge | tier1 |
+| 365 | Revenue per Cover | Revenue ÷ covers — spend intensity per check-in guest | W | build | tier1 |
+| 366 | Wine Revenue per Cover | Wine $ ÷ covers — wine attach economics per guest check-in | B | bridge | tier1 |
+| 367 | Seat Utilization Rate | Occupied seat-hours ÷ available seat-hours in window | W | build | tier2 |
+| 368 | Table Turnover per Seat | Turns ÷ seats — how hard each seat works | W | build | tier2 |
+| 369 | Cover Density vs Sales Elasticity | Δ sales % / Δ check-in density % — does denser seating lift or crush spend? | W | build | tier2 |
+| 370 | Optimal Check-In Density Band | Density band where avg check and wine attach jointly maximize | W | build | tier3 |
+| 371 | Overcrowding Penalty Score | Sales shortfall when check-in density exceeds optimal band | W | build | tier2 |
+| 372 | Underutilized Seat Opportunity $ | Forgone sales when density below capacity-normalized target | W | build | tier2 |
+| 373 | BTG Pours per Seat | By-the-glass pours ÷ seats — pour density over seating | B | bridge | tier2 |
+| 374 | Bottle Opens per Seat | Full bottles ÷ seats | B | bridge | tier2 |
+| 375 | Tip $ per Seat | Tips ÷ seats — gratuity density over seating | O | build | tier2 |
+
+### Density × Time (376–395)
+
+| ID | Name | Description | T | S | Priority |
+|----|------|-------------|---|---|----------|
+| 376 | Hourly Check-In Density Heatmap | Covers/seat by hour of day across the floor | W | build | tier1 |
+| 377 | Daypart Sales vs Density | Lunch/dinner/late sales plotted against check-in density | W | build | tier1 |
+| 378 | Same-Weekday Density Baseline | Today's covers/seat vs typical for that weekday | W | build | tier1 |
+| 379 | Weekend vs Weekday Density Gap | Check-in density differential weekend vs weekday | W | build | tier2 |
+| 380 | Pre-Theater Density Spike | Check-in density in T-90..T-0 of calendar events | W | build | tier2 |
+| 381 | Weather-Adjusted Density | Check-in density residual after weather controls | W | build | tier3 |
+| 382 | Density Ramp Curve | How quickly covers/seat climb after open | W | build | tier2 |
+| 383 | Density Decay Curve | How covers/seat fall after peak | W | build | tier2 |
+| 384 | 15-Minute Density Pulse | Rolling covers/seat every 15 minutes (live) | W | build | tier2 |
+| 385 | Density Forecast 7-Day | Predicted covers/seat next 7 days by zone | W | build | tier2 |
+| 386 | Sales-per-Seat Trend 30d | MoM trend of sales/seat | W | build | tier1 |
+| 387 | Check-In Density Anomaly Day | Days where covers/seat z-score exceeds threshold | W | build | tier2 |
+| 388 | Happy-Hour Density vs Wine Attach | Does denser happy hour lift or dilute wine attach? | B | bridge | tier2 |
+| 389 | Brunch Density Economics | Brunch covers/seat vs wine/BTG sales | B | bridge | tier3 |
+| 390 | Late-Night Density Margin | Late-night covers/seat × contribution margin | W | build | tier3 |
+| 391 | Reservation Density Load | Booked covers/seat vs walk-in residual capacity | O | build | tier2 |
+| 392 | No-Show Impact on Density | Expected vs realized covers/seat after no-shows | W | build | tier2 |
+| 393 | Turn-Time vs Density | Avg dwell minutes as check-in density rises | W | build | tier2 |
+| 394 | Server Load at Peak Density | Covers/server when zone density is top-quartile | W | build | tier2 |
+| 395 | Density-Normalized Labor Cost | Labor $ ÷ covers/seat — cost efficiency at density | W | build | tier3 |
+
+### Density × Space (396–420)
+
+| ID | Name | Description | T | S | Priority |
+|----|------|-------------|---|---|----------|
+| 396 | Zone Check-In Density Ranking | Rank zones by covers/seat | W | build | tier1 |
+| 397 | Zone Sales-per-Seat Ranking | Rank zones by revenue/seat | W | build | tier1 |
+| 398 | Bar-Adjacent Density Premium | Sales/seat lift for tables near bar controlling density | W | build | tier2 |
+| 399 | Kitchen-Distance × Density Interaction | Does far-from-kitchen hurt more when density is high? | W | build | tier3 |
+| 400 | Outdoor Seat Density Yield | Outdoor covers/seat and sales/seat vs indoor | W | build | tier2 |
+| 401 | Poolside Density Seasonality | Pool-adjacent covers/seat by season | W | build | tier3 |
+| 402 | 2-Top vs 4-Top Density Efficiency | Sales/seat and covers/seat by table size class | W | build | tier2 |
+| 403 | Communal Table Density | Check-in density on communal vs standard tables | W | build | tier3 |
+| 404 | Booth vs Banquette Density | Density and spend by seating furniture type | W | build | tier3 |
+| 405 | Sightline Density Effect | Sales at high-density tables with/without kitchen sightline | W | build | tier3 |
+| 406 | Noise-Proxy Density Drag | Spend drop when neighboring table density spikes | W | build | tier3 |
+| 407 | Patio Heater Zone Density | Covers/seat in heated vs unheated patio segments | W | build | tier3 |
+| 408 | Window Seat Density Premium | Sales/seat for window seats at matched density | W | build | tier2 |
+| 409 | Private Dining Density Utilization | PDR covers/seat vs main floor | W | build | tier2 |
+| 410 | Rebalancing Suggestion Map | Move covers from over-dense to under-dense zones | W | build | tier2 |
+| 411 | Seat Cap Stress Test | Simulated sales if seats ±10% at current demand | W | build | tier3 |
+| 412 | Fire-Code Density Headroom | Covers vs max occupancy headroom by zone | W | build | tier2 |
+| 413 | Wheelchair-Accessible Seat Yield | Sales/seat on accessible tables vs peers | W | build | tier3 |
+| 414 | High-Top Density Wine Mix | Wine category mix at high-top seating by density | B | bridge | tier2 |
+| 415 | Lounge Seat Check-In Cadence | Arrival spacing (check-ins/hour/seat) in lounge | W | build | tier3 |
+| 416 | Floor Section Density Parity | Variance of covers/seat across sections — fairness | W | build | tier2 |
+| 417 | Host Stand Density Feed | Live covers/seat by section for host tablet | W | build | tier1 |
+| 418 | Waitlist Pressure vs Density | Waitlist length predicted from current density | W | build | tier2 |
+| 419 | Combine-Table Density Shock | Density/spend change when tables are combined | W | build | tier3 |
+| 420 | Geomarker Density Clusters | Spatial clusters of high sales/seat at similar density | W | build | tier3 |
+
+### Sales ↔ Density Link (421–445)
+
+| ID | Name | Description | T | S | Priority |
+|----|------|-------------|---|---|----------|
+| 421 | Avg Check vs Check-In Density Scatter | Per-table scatter of avg check against covers/seat | W | build | tier1 |
+| 422 | Wine Attach vs Density Curve | Wine attach rate as a function of covers/seat | B | bridge | tier1 |
+| 423 | Tip % vs Density | Tip percentage response to seating density | O | build | tier2 |
+| 424 | Bottle Mix Shift at High Density | BTG vs bottle share when density is high | B | bridge | tier2 |
+| 425 | Upsell Success vs Density | Server upsell conversion at low/med/high density | W | build | tier2 |
+| 426 | Dessert Attach vs Density | Non-wine attach rates under density pressure | W | build | tier3 |
+| 427 | Price Realization vs Density | Discounting/comping rate as density rises | W | build | tier2 |
+| 428 | VIP Guest Density Avoidance | Do high-LTV guests avoid peak-density tables? | B | bridge | tier3 |
+| 429 | Party Size × Density Interaction | Large parties' spend at crowded vs calm density | W | build | tier2 |
+| 430 | Duration × Density × Sales | Three-way: dwell × covers/seat × revenue | W | build | tier3 |
+| 431 | Partial Correlation Sales~Distance | Density | Geometry–sales link controlling for check-in density | W | build | tier2 |
+| 432 | Partial Correlation Sales~Density | Seats | Density–sales link controlling for raw seat count | W | build | tier2 |
+| 433 | Ridge Drivers including Density | Driver weights for avg check with density as a feature | W | build | tier2 |
+| 434 | Density Peer Rank on Sales/Seat | Table peer rank on sales/seat within density decile | W | build | tier2 |
+| 435 | Concentration of Sales in Dense Seats | HHI of revenue across high-density seats | W | build | tier3 |
+| 436 | Forecast Gap: Sales given Density | Actual sales vs forecast conditioned on realized density | W | build | tier2 |
+| 437 | Goal Pace on Sales/Seat | Pace to sales/seat goal | W | build | tier2 |
+| 438 | Live Surge: Density + Sales Spike | Tables where covers/seat and sales spike together | W | build | tier1 |
+| 439 | Basket Affinity under Density | Wine+food pairs that survive high-density service | B | bridge | tier3 |
+| 440 | Comp Rate vs Density | Manager comps per cover at each density band | W | build | tier2 |
+| 441 | Void/Remake vs Density | Kitchen errors correlated with floor density | O | build | tier3 |
+| 442 | Wine Service Time vs Density | Order-to-pour minutes as covers/seat rises | B | bridge | tier2 |
+| 443 | Sommelier Visit Rate vs Density | Sommelier table touches per cover at density bands | W | build | tier3 |
+| 444 | Pairing Card Conversion vs Density | Pairing suggestion acceptance under density | B | bridge | tier3 |
+| 445 | Check Open-Rate Latency vs Density | Time-to-first-item as seating fills | W | build | tier3 |
+
+### Density Ops & Alerts (446–460)
+
+| ID | Name | Description | T | S | Priority |
+|----|------|-------------|---|---|----------|
+| 446 | Density Alert Threshold Config | Configurable covers/seat alert bands per zone | W | build | tier1 |
+| 447 | Seat Rebalance Recommendation | AI suggestion to reseat parties to improve sales/seat | W | build | tier2 |
+| 448 | Open Section Timing by Density | When to open patio/PDR based on main-floor density | W | build | tier2 |
+| 449 | Server Section Density Balancing | Assign sections to equalize covers/seat load | W | build | tier2 |
+| 450 | Density-Aware Par for BTG | Raise/lower BTG par when forecast density is high | B | bridge | tier2 |
+| 451 | Event Seating Density Planner | Target covers/seat for calendar events with sales goals | W | build | tier2 |
+| 452 | Density Digest Email | Daily email: densest zones, sales/seat winners, alerts | W | build | tier1 |
+| 453 | Host Script at Peak Density | Prompt host with wait/upsell script when density high | W | build | tier2 |
+| 454 | Density Goal Setting | Set covers/seat and sales/seat goals by zone | W | build | tier2 |
+| 455 | Cross-Location Density Benchmark | Compare covers/seat and sales/seat across branches | W | build | tier2 |
+| 456 | Density × Wine 86 Risk | Stockout risk for BTG when density forecast spikes | B | bridge | tier2 |
+| 457 | Check-In Density SLA | Service-recovery flag when density > X and ticket time > Y | W | build | tier3 |
+| 458 | Seating Chart Density Overlay | Floor map colored by live covers/seat and sales/seat | W | build | tier1 |
+| 459 | Density Experiment Framework | A/B seating layouts measuring sales vs density | W | build | tier3 |
+| 460 | Post-Service Density Retro | End-of-night report: density bands vs sales outcomes | W | build | tier1 |
+
 ## Toast vs WineOps — strategic read
 
 - **Don't rebuild (`toast_native`, 55 features):** Import via Toast Analytics API (`/era/v1/metrics`, check/labor/guest endpoints). These are commodity POS reports — 356–360 is the ingestion layer that unlocks them.
@@ -812,4 +944,4 @@ These close the gap against **Toast Analytics** — the whole-restaurant operati
 
 ---
 
-*Catalog maintained in `.planning/`. Machine-readable exports: [JSON](./analytics-feature-catalog.json) · [CSV](./analytics-feature-catalog.csv). 360 features across 28 domains.*
+*Catalog maintained in `.planning/`. Machine-readable exports: [JSON](./analytics-feature-catalog.json) · [CSV](./analytics-feature-catalog.csv). **460** features (Batch 6 = seating density). *
