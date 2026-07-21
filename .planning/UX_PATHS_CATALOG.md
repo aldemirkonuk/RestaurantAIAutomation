@@ -524,6 +524,17 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## F. Sommelier AI (`/sommelier`) (`NEW-254 … NEW-283`)
 
+> **Shipped 2026-07-20 (Sommelier batch):** NEW-254 model/persona selector
+> (Sommelier/Buyer/Floor-training dropdown, persisted to localStorage + sent as
+> `persona` in the chat request) · NEW-255 per-message Copy → clipboard + toast ·
+> NEW-256 ThumbsUp/Down feedback (session-local visual state) · NEW-257
+> Regenerate (truncates to the preceding user turn and re-runs) · NEW-260 rename
+> conversation (inline, via useUpsertSommelierConversation) · NEW-261 delete
+> conversation (confirm + useDeleteSommelierConversation + toast) · NEW-263
+> search conversations. Deferred: streaming/stop (258/259 — backend is a single
+> POST, no token stream), pin/star (262 — no pinned field on the conversation
+> schema), ⌘N/⌘[ ]/⌘⇧S shortcuts (271 — OS/browser conflicts), attachments/voice.
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-254 | `Click` | Model selector actually switches model/provider and persists preference. |

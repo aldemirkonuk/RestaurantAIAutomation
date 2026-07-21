@@ -16,12 +16,19 @@ import {
   TrendingUp,
   Users,
   Clock,
+  Search,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Check,
 } from 'lucide-react'
 import { useWines } from '../hooks/queries'
 import {
   useSommelierConversations,
   useUpsertSommelierConversation,
+  useDeleteSommelierConversation,
 } from '../hooks/queries/useSommelierQueries'
+import { useToast } from '../contexts/ToastContext'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
 import { formatVolume } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
@@ -66,12 +73,38 @@ const suggestedPrompts = [
   },
 ]
 
+const MODELS = [
+  { id: 'sommelier', label: 'Sommelier', hint: 'Balanced pairing + service' },
+  { id: 'buyer', label: 'Buyer', hint: 'Procurement & margins' },
+  { id: 'floor', label: 'Floor training', hint: 'Coaching for staff' },
+]
+const MODEL_KEY = 'wineops.sommelier.model'
+
 export function SommelierAI() {
   const { measurementUnit } = useRestaurantSettingsStore()
   const userId = useAuthStore(s => s.user?.userId) ?? ''
+  const toast = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const { data: savedConversations = [] } = useSommelierConversations()
   const upsertConversation = useUpsertSommelierConversation()
+  const deleteConversation = useDeleteSommelierConversation()
+
+  // Model / persona selector (NEW-254), persisted.
+  const [model, setModel] = useState<string>(() => localStorage.getItem(MODEL_KEY) || 'sommelier')
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const chooseModel = (id: string) => {
+    setModel(id)
+    localStorage.setItem(MODEL_KEY, id)
+    setModelMenuOpen(false)
+  }
+  const activeModel = MODELS.find((m) => m.id === model) ?? MODELS[0]
+
+  // Per-message feedback (NEW-256) + conversation management (NEW-260/261/263).
+  const [feedback, setFeedback] = useState<Record<string, 'up' | 'down'>>({})
+  const [convSearch, setConvSearch] = useState('')
+  const [convMenuId, setConvMenuId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const conversations: Conversation[] = useMemo(
     () =>
       savedConversations.map((c) => ({
@@ -126,6 +159,7 @@ export function SommelierAI() {
           query: userMessage,
           restaurant_id: restaurantId,
           wine_context: wineContext,
+          persona: localStorage.getItem(MODEL_KEY) || 'sommelier',
         },
         {
           timeout: 30000,
@@ -273,6 +307,74 @@ If you need immediate assistance, you can:
     inputRef.current?.focus()
   }
 
+  // ── Message actions (NEW-255/256/257) ────────────────────────────────────
+  const copyMessage = (content: string) => {
+    navigator.clipboard?.writeText(content)
+    toast.success('Copied to clipboard')
+  }
+  const setMsgFeedback = (id: string, value: 'up' | 'down') => {
+    setFeedback((prev) => ({ ...prev, [id]: prev[id] === value ? (undefined as any) : value }))
+  }
+  const regenerateMessage = async (assistantId: string) => {
+    if (isTyping) return
+    const idx = messages.findIndex((m) => m.id === assistantId)
+    if (idx < 1) return
+    const userMsg = [...messages.slice(0, idx)].reverse().find((m) => m.role === 'user')
+    if (!userMsg) return
+    setMessages(messages.slice(0, idx))
+    setIsTyping(true)
+    try {
+      const response = await generateResponse(userMsg.content)
+      setMessages((prev) => {
+        const updated = [...prev, { id: `msg-${Date.now()}`, role: 'assistant' as const, content: response, timestamp: new Date() }]
+        const convId = activeConvIdRef.current
+        if (convId) persistConversation(updated, convId, updated.find((m) => m.role === 'user')?.content.slice(0, 60) || 'New Chat')
+        return updated
+      })
+    } finally {
+      setIsTyping(false)
+    }
+  }
+
+  // ── Conversation management (NEW-260/261/263) ────────────────────────────
+  const filteredConversations = useMemo(() => {
+    const q = convSearch.trim().toLowerCase()
+    return q ? conversations.filter((c) => c.title.toLowerCase().includes(q)) : conversations
+  }, [conversations, convSearch])
+
+  const startRename = (conv: Conversation) => {
+    setRenamingId(conv.id)
+    setRenameValue(conv.title)
+    setConvMenuId(null)
+  }
+  const commitRename = (conv: Conversation) => {
+    const title = renameValue.trim() || conv.title
+    upsertConversation.mutate({
+      id: conv.id,
+      user_id: userId,
+      title,
+      messages: conv.messages.map((m) => ({ id: m.id, role: m.role, content: m.content, timestamp: m.timestamp.toISOString() })),
+    })
+    if (activeConversation?.id === conv.id) setActiveConversation({ ...activeConversation, title })
+    setRenamingId(null)
+  }
+  const handleDeleteConv = (conv: Conversation) => {
+    setConvMenuId(null)
+    if (!window.confirm(`Delete "${conv.title}"? This can't be undone.`)) return
+    deleteConversation.mutate(conv.id, {
+      onSuccess: () => toast.success('Conversation deleted'),
+    })
+    if (activeConvIdRef.current === conv.id) startNewChat()
+  }
+
+  // Close popovers on outside click.
+  useEffect(() => {
+    if (!convMenuId && !modelMenuOpen) return
+    const close = () => { setConvMenuId(null); setModelMenuOpen(false) }
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [convMenuId, modelMenuOpen])
+
   return (
     <div className="h-screen flex bg-[#212121] overflow-hidden">
       {/* Sidebar */}
@@ -296,24 +398,80 @@ If you need immediate assistance, you can:
               </button>
             </div>
 
+            {/* Search (NEW-263) */}
+            <div className="px-3 pb-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                <input
+                  value={convSearch}
+                  onChange={(e) => setConvSearch(e.target.value)}
+                  placeholder="Search chats"
+                  className="w-full h-8 pl-8 pr-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 outline-none focus:border-white/20"
+                />
+              </div>
+            </div>
+
             {/* Conversation History */}
             <div className="flex-1 overflow-y-auto px-2">
-              <div className="px-2 py-2">
+              <div className="px-2 py-1">
                 <p className="text-xs text-gray-500 font-medium">Recent</p>
               </div>
-              {conversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => loadConversation(conv)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors mb-1 ${
-                    activeConversation?.id === conv.id
-                      ? 'bg-white/10 text-white'
-                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-sm truncate">{conv.title}</span>
-                </button>
+              {filteredConversations.length === 0 && (
+                <p className="px-3 py-2 text-xs text-gray-600">
+                  {convSearch ? 'No matching chats' : 'No conversations yet'}
+                </p>
+              )}
+              {filteredConversations.map((conv) => (
+                <div key={conv.id} className="relative group mb-1">
+                  {renamingId === conv.id ? (
+                    <div className="flex items-center gap-1 px-2 py-1.5">
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitRename(conv)
+                          if (e.key === 'Escape') setRenamingId(null)
+                        }}
+                        className="flex-1 h-7 px-2 bg-white/10 border border-white/20 rounded text-sm text-white outline-none"
+                      />
+                      <button onClick={() => commitRename(conv)} className="p-1 text-emerald-400 hover:bg-white/10 rounded" aria-label="Save name">
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => loadConversation(conv)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 pr-8 rounded-lg text-left transition-colors ${
+                          activeConversation?.id === conv.id
+                            ? 'bg-white/10 text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                        }`}
+                      >
+                        <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                        <span className="text-sm truncate">{conv.title}</span>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConvMenuId(convMenuId === conv.id ? null : conv.id) }}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-gray-500 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        aria-label="Conversation options"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                      {convMenuId === conv.id && (
+                        <div className="absolute right-1 top-9 z-50 w-36 bg-[#2f2f2f] border border-white/10 rounded-lg shadow-xl p-1" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => startRename(conv)} className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-sm text-gray-300 hover:bg-white/5 rounded">
+                            <Pencil className="w-3.5 h-3.5" /> Rename
+                          </button>
+                          <button onClick={() => handleDeleteConv(conv)} className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-sm text-rose-400 hover:bg-white/5 rounded">
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               ))}
             </div>
 
@@ -344,11 +502,42 @@ If you need immediate assistance, you can:
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           
-          <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-lg transition-colors">
-            <Sparkles className="w-4 h-4 text-purple-400" />
-            <span className="text-white font-medium">Sommelier AI</span>
-            <ChevronDown className="w-4 h-4 text-gray-500" />
-          </button>
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setModelMenuOpen((o) => !o) }}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-lg transition-colors"
+              aria-haspopup="menu"
+              aria-expanded={modelMenuOpen}
+            >
+              <Sparkles className="w-4 h-4 text-purple-400" />
+              <span className="text-white font-medium">Sommelier AI</span>
+              <span className="text-gray-500 text-sm">· {activeModel.label}</span>
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            </button>
+            {modelMenuOpen && (
+              <div
+                role="menu"
+                className="absolute left-0 mt-1 w-60 bg-[#2f2f2f] border border-white/10 rounded-xl shadow-xl p-1 z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    role="menuitemradio"
+                    aria-checked={m.id === model}
+                    onClick={() => chooseModel(m.id)}
+                    className="flex items-start gap-2 w-full text-left px-3 py-2 rounded-lg hover:bg-white/5"
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm text-white">{m.label}</p>
+                      <p className="text-xs text-gray-500">{m.hint}</p>
+                    </div>
+                    {m.id === model && <Check className="w-4 h-4 text-purple-400 mt-0.5" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Messages Area */}
@@ -422,16 +611,33 @@ If you need immediate assistance, you can:
                         
                         {/* Message Actions */}
                         <div className="flex items-center gap-1 mt-3">
-                          <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500 hover:text-white">
+                          <button
+                            onClick={() => copyMessage(message.content)}
+                            title="Copy"
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500 hover:text-white"
+                          >
                             <Copy className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500 hover:text-white">
+                          <button
+                            onClick={() => setMsgFeedback(message.id, 'up')}
+                            title="Helpful"
+                            className={`p-1.5 hover:bg-white/10 rounded-lg transition-colors ${feedback[message.id] === 'up' ? 'text-emerald-400' : 'text-gray-500 hover:text-white'}`}
+                          >
                             <ThumbsUp className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500 hover:text-white">
+                          <button
+                            onClick={() => setMsgFeedback(message.id, 'down')}
+                            title="Not helpful"
+                            className={`p-1.5 hover:bg-white/10 rounded-lg transition-colors ${feedback[message.id] === 'down' ? 'text-rose-400' : 'text-gray-500 hover:text-white'}`}
+                          >
                             <ThumbsDown className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500 hover:text-white">
+                          <button
+                            onClick={() => regenerateMessage(message.id)}
+                            disabled={isTyping}
+                            title="Regenerate"
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500 hover:text-white disabled:opacity-40"
+                          >
                             <RotateCcw className="w-4 h-4" />
                           </button>
                         </div>
