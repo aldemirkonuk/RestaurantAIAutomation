@@ -25,6 +25,7 @@ import { isInteractiveReorderSurfaceTarget } from '../lib/reports-drag'
 import { ReportGenerator } from '../components/reports/ReportGenerator'
 import { TopBar } from '../components/reports/organisms/TopBar'
 import { AIInsightsSection } from '../components/reports/organisms/AIInsightsSection'
+import { EngineInsightsPanel } from '../components/reports/organisms/EngineInsightsPanel'
 import { DataTablesSection, ExpandedSections } from '../components/reports/organisms/DataTablesSection'
 import { AICommandPalette, AICommandPill } from '../components/reports/organisms/AICommandPalette'
 import { MonthlyReconciliation } from '../components/reports/organisms/MonthlyReconciliation'
@@ -679,12 +680,15 @@ export function Reports() {
     return (
       <>
         {sectionId === 'aiInsights' && (
-          <AIInsightsSection
-            insights={aiInsights}
-            isOpen={showAIInsights}
-            onToggle={() => setShowAIInsights(!showAIInsights)}
-            onInsightAction={(id) => console.log('Insight action:', id)}
-          />
+          <div className="space-y-4">
+            <EngineInsightsPanel />
+            <AIInsightsSection
+              insights={aiInsights}
+              isOpen={showAIInsights}
+              onToggle={() => setShowAIInsights(!showAIInsights)}
+              onInsightAction={(id) => console.log('Insight action:', id)}
+            />
+          </div>
         )}
 
         {sectionId === 'dataTable' && (
