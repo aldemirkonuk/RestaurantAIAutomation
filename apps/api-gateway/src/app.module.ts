@@ -11,6 +11,8 @@ import { ReportsModule } from "./reports/reports.module";
 import { WebsocketModule } from "./websocket/websocket.module";
 import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
+import { PosHubModule } from "./pos-hub/pos-hub.module";
 import { OneTapActionsModule } from "./one-tap-actions/one-tap-actions.module";
 import { ToastModule } from "./toast/toast.module";
 import { EventsModule } from "./events/events.module";
@@ -39,6 +41,7 @@ import { RateLimitModule, RateLimitGuard } from "./common/rate-limit";
 import { CacheModule } from "./common/cache/cache.module";
 import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
+import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
 
 @Module({
   imports: [
@@ -67,6 +70,9 @@ import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 
     // Feature modules
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
+    AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
+    UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
+    PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration
     InventoryModule,
