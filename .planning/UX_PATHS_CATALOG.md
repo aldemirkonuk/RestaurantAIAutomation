@@ -395,6 +395,17 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## D. Orders (`/orders`) (`NEW-135 … NEW-199`)
 
+> **Note:** Orders already shipped much of the §C-equivalent depth in Part 1
+> (multi-select + status-aware bulk bar, ⌘N/⌘A/⌘⇧A keyboard, KPI→status filter,
+> group-by). **Shipped 2026-07-20 (Orders batch):** NEW-159 export the filtered/
+> sorted order set to CSV (toolbar Export button) · NEW-143 `/` focuses the
+> orders search (and the stale "⌘K" search hint is corrected, since ⌘K is now the
+> global palette). Also cleaned the pre-existing `no-fallthrough` lint in the
+> status-mapping switch (intentional fallthrough — added the conventional marker,
+> no behavior change). Deferred as higher-risk in this 3446-line file: right-click
+> menu (135), Kanban view (140), inline delivery-date/notes edit (145/146), j/k
+> row nav (144), live-threads toggle (148).
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-135 | `R-Click` | Right-click an order → Approve / Reject / Mark Ordered / Mark Delivered / Open thread / Duplicate / Copy ID. |

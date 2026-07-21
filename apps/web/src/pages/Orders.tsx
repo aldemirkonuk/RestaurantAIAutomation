@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Download,
   Wine,
   X,
   Minus,
@@ -69,7 +70,8 @@ const mapApiStatusToUi = (status?: string): Order['status'] => {
     case 'IN_TRANSIT':
       return 'ordered'
     case 'DELIVERED':
-    // Physically arrived but short; this page's buckets have no finer grain than "delivered".
+    // Physically arrived but short; this page's buckets have no finer grain than
+    // "delivered", so this deliberately falls through.
     case 'PARTIALLY_RECEIVED':
     case 'COMPLETED':
       return 'delivered'
@@ -1114,6 +1116,31 @@ Shadow stock has been moved to Live Stock.`)
     return copy
   }, [filteredOrders])
 
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // NEW-159: export the current filtered/sorted order set to CSV.
+  const exportOrdersCsv = useCallback(() => {
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['Order ID', 'Wine', 'Provider', 'Status', 'Quantity', 'Price', 'Created'].join(',')
+    const lines = sortedOrdersWithAutoHide.map((o: Order) =>
+      [
+        q(o.order_id),
+        q(resolveOrderWineName(o)),
+        q(resolveOrderProviderName(o)),
+        q(o.status),
+        o.quantity ?? '',
+        (o as any).final_price ?? (o as any).total_cost ?? '',
+        q(o.created_at ? new Date(o.created_at).toISOString().slice(0, 10) : ''),
+      ].join(','),
+    )
+    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [sortedOrdersWithAutoHide, resolveOrderWineName, resolveOrderProviderName])
+
   // Re-group sortedOrdersWithAutoHide (hook's groupedOrders is based on sortedOrders, not sortedOrdersWithAutoHide)
   const groupedOrdersWithAutoHide = useMemo(() => {
     const sourceOrders = sortedOrdersWithAutoHide
@@ -1186,6 +1213,16 @@ Shadow stock has been moved to Live Stock.`)
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // "/" focuses the orders search (NEW-143), when not already typing.
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const t = e.target as HTMLElement | null
+        const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+        if (!typing) {
+          e.preventDefault()
+          searchRef.current?.focus()
+          return
+        }
+      }
       // Escape to close modals
       if (e.key === 'Escape') {
         setShowCreateOrderModal(false)
@@ -1406,13 +1443,22 @@ Shadow stock has been moved to Live Stock.`)
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
+                ref={searchRef}
                 type="text"
-                placeholder="Search orders... (⌘K)"
+                placeholder="Search orders... ( / )"
                 value={orderSearch}
                 onChange={(e) => setOrderSearch(e.target.value)}
                 className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-wine-500 focus:border-transparent"
               />
             </div>
+            <Button
+              variant="outline"
+              onClick={exportOrdersCsv}
+              title="Export the filtered orders to CSV"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
             <Button
               variant="default"
               onClick={openCreateOrderFlow}
