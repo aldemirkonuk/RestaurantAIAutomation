@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { CommandProvider } from '../command/CommandProvider'
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
@@ -7,18 +8,20 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <Sidebar />
+    <CommandProvider>
+      <div className="min-h-screen bg-gray-50">
+        {/* Sidebar */}
+        <Sidebar />
 
-      {/* Main Content Area */}
-      <div className="pl-[260px] transition-all duration-300" id="main-content">
-        {/* Content */}
-        <main className="min-h-screen">
-          {children || <Outlet />}
-        </main>
+        {/* Main Content Area */}
+        <div className="pl-[260px] transition-all duration-300" id="main-content">
+          {/* Content */}
+          <main className="min-h-screen">
+            {children || <Outlet />}
+          </main>
+        </div>
       </div>
-    </div>
+    </CommandProvider>
   )
 }
 

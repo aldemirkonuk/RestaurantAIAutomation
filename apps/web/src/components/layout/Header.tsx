@@ -260,11 +260,11 @@ export function Header({ title, subtitle }: HeaderProps) {
               </AnimatePresence>
             </div>
           )}
-          {/* Global Search */}
+          {/* Global Search → opens the ⌘K command palette (NEW-005 / NEW-007) */}
           <button
-            onClick={() => setShowSearch(true)}
+            onClick={() => window.dispatchEvent(new CustomEvent('wineops:command-open'))}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-500 transition-colors dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            aria-label="Open search"
+            aria-label="Open command palette"
           >
             <Search className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm hidden md:block">Search...</span>
