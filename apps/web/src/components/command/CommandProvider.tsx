@@ -21,10 +21,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { CommandPalette } from "./CommandPalette";
 import { ShortcutsSheet } from "./ShortcutsSheet";
-import { GOTO_MAP } from "./commands";
+import { RecentlyViewed } from "./RecentlyViewed";
+import { GOTO_MAP, routeLabel } from "./commands";
+import { recordView } from "./recents-store";
 
 interface CommandContextValue {
   openPalette: () => void;
@@ -54,10 +56,17 @@ function isTypingTarget(el: EventTarget | null): boolean {
 
 export function CommandProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
   const gPending = useRef<number | null>(null);
-  const overlayOpen = paletteOpen || shortcutsOpen;
+  const overlayOpen = paletteOpen || shortcutsOpen || recentOpen;
+
+  // Track visited routes for the recently-viewed switcher (NEW-034).
+  useEffect(() => {
+    recordView(location.pathname, routeLabel(location.pathname));
+  }, [location.pathname]);
 
   const openPalette = useCallback(() => {
     setShortcutsOpen(false);
@@ -68,13 +77,22 @@ export function CommandProvider({ children }: { children: ReactNode }) {
     setShortcutsOpen(true);
   }, []);
 
-  // ⌘K in capture phase → authoritative global palette toggle.
+  // ⌘K / ⌘⇧O in capture phase → authoritative global shortcuts.
   useEffect(() => {
     const onCapture = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "k") {
         e.preventDefault();
         e.stopPropagation();
         setPaletteOpen((o) => !o);
+      } else if (key === "o" && e.shiftKey) {
+        // ⌘⇧O — recently-viewed switcher (NEW-034).
+        e.preventDefault();
+        e.stopPropagation();
+        setPaletteOpen(false);
+        setShortcutsOpen(false);
+        setRecentOpen((o) => !o);
       }
     };
     window.addEventListener("keydown", onCapture, { capture: true });
@@ -136,6 +154,7 @@ export function CommandProvider({ children }: { children: ReactNode }) {
       {children}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <RecentlyViewed open={recentOpen} onClose={() => setRecentOpen(false)} />
     </CommandContext.Provider>
   );
 }

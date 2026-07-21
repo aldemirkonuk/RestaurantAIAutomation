@@ -27,6 +27,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Header } from "../components/layout/Header";
+import { Breadcrumbs } from "../components/layout/Breadcrumbs";
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 
@@ -215,6 +216,7 @@ export default function InsightCatalog() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <Breadcrumbs className="mb-3" />
         <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">

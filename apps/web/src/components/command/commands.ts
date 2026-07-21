@@ -103,6 +103,40 @@ export function staticCommands(): Command[] {
   return [...NAVIGATION, ...CREATE, ...INSIGHTS];
 }
 
+/** Human label for a route path — reused by recents + breadcrumbs. */
+const ROUTE_LABELS: Record<string, string> = {
+  '/': 'Dashboard',
+  '/recommendations/catalog': 'Insight Catalog',
+  '/documents-reports': 'Documents & Reports',
+  ...Object.fromEntries(NAVIGATION.map((c) => [c.href!, c.title])),
+};
+
+export function routeLabel(path: string): string {
+  const clean = path.split('?')[0].replace(/\/+$/, '') || '/';
+  if (ROUTE_LABELS[clean]) return ROUTE_LABELS[clean];
+  // Longest known prefix wins (e.g. /inventory/... -> Inventory).
+  const match = Object.keys(ROUTE_LABELS)
+    .filter((h) => h !== '/' && clean.startsWith(h))
+    .sort((a, b) => b.length - a.length)[0];
+  if (match) return ROUTE_LABELS[match];
+  const last = clean.split('/').filter(Boolean).pop() ?? 'Home';
+  return last.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Breadcrumb trail for a path (NEW-030), parent-aware for nested routes. */
+export function breadcrumbTrail(path: string): { label: string; href: string }[] {
+  const clean = path.split('?')[0].replace(/\/+$/, '') || '/';
+  if (clean === '/') return [{ label: 'Dashboard', href: '/' }];
+  const segments = clean.split('/').filter(Boolean);
+  const trail: { label: string; href: string }[] = [{ label: 'Dashboard', href: '/' }];
+  let acc = '';
+  for (const seg of segments) {
+    acc += `/${seg}`;
+    trail.push({ label: routeLabel(acc), href: acc });
+  }
+  return trail;
+}
+
 /**
  * Subsequence fuzzy score. Returns null when `query` is not a subsequence of
  * `text`; higher is better. Bonuses: word-boundary start, contiguous run,

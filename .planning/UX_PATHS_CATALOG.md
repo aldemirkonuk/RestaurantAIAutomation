@@ -219,9 +219,18 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 > NEW-028/029 (Create commands). Bulletproofing: capture-phase ⌘K (authoritative,
 > supersedes ad-hoc page ⌘K on Reports/Notifications/Dashboard), focus trap +
 > restore, listbox/option roles, reduced-motion, body-scroll lock, instant local
-> fuzzy ranking, and an insight-aware top-recommendation suggestion. Remaining in
-> §A: sidebar drag-reorder/flyouts (016/017), live nav badges (018), 3-way theme
-> menu (026), breadcrumbs (030), recently-viewed (034) — future batches.
+> fuzzy ranking, and an insight-aware top-recommendation suggestion.
+>
+> **Shipped 2026-07-20 (shell remainder):** NEW-018 live sidebar badges (pending
+> orders / unread notifications / low-stock, via useUnreadCount/
+> usePendingOrdersCount/useLowStockItems, 99+ cap), NEW-026 3-way theme menu
+> (Light/Dark/System dropdown replacing the binary toggle, click-outside/Esc),
+> NEW-030 breadcrumbs (route-derived, parent-aware, collapses on flat routes;
+> rendered on nested /recommendations/catalog), NEW-034 recently-viewed switcher
+> (⌘⇧O overlay over the last 10 visited routes, tracked in CommandProvider).
+> Remaining in §A: sidebar drag-reorder (016), hover flyout submenus (017 —
+> deferred: no real sub-routes to fly out to without query-param view wiring),
+> sync-status chip (032), quick-settings sheet (033), what's-new (035).
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|

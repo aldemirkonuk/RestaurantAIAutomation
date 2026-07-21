@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useAuth, RestaurantBranch } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
-import { ThemeToggle } from './ThemeToggle'
+import { ThemeMenu } from './ThemeMenu'
 import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead } from '../../hooks/queries'
 import type { Notification } from '../../services/api/notifications'
 import { useNotificationStore } from '../../stores'
@@ -274,7 +274,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           </button>
 
           {/* Theme Toggle */}
-          <ThemeToggle />
+          <ThemeMenu />
 
           {/* Notifications */}
           <div className="relative">

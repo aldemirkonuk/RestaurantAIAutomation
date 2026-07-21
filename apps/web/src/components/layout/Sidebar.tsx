@@ -27,6 +27,9 @@ import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
 import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress'
 import { GettingStartedPanel } from '../onboarding/GettingStartedPanel'
+import { useUnreadCount } from '../../hooks/queries/useNotificationQueries'
+import { usePendingOrdersCount } from '../../hooks/queries/useOrderQueries'
+import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
 
 interface NavItem {
   name: string
@@ -79,6 +82,24 @@ export function Sidebar() {
   const { user, logout } = useAuth()
   const { progress, update } = useOnboardingProgress()
 
+  // Live nav badges (NEW-018): pending orders, unread notifications, low stock.
+  const unread = useUnreadCount(user?.userId ?? '')
+  const pendingOrders = usePendingOrdersCount()
+  const lowStock = useLowStockItems()
+  const num = (v: unknown): number =>
+    typeof v === 'number'
+      ? v
+      : Array.isArray(v)
+        ? v.length
+        : typeof (v as any)?.count === 'number'
+          ? (v as any).count
+          : 0
+  const badgeByHref: Record<string, number> = {
+    '/orders': num(pendingOrders.data),
+    '/notifications': num(unread.data),
+    '/inventory': num(lowStock.data),
+  }
+
   const completedCount = progress
     ? [true, progress.menu_uploaded, progress.vendor_added, progress.team_member_invited].filter(
         Boolean,
@@ -89,6 +110,8 @@ export function Sidebar() {
   const NavItemComponent = ({ item, collapsed }: { item: NavItem; collapsed: boolean }) => {
     const isActive = location.pathname === item.href
     const Icon = item.icon
+    const badgeCount = item.badge ?? badgeByHref[item.href] ?? 0
+    const badgeLabel = badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null
 
     const isParentActive =
       isActive ||
@@ -117,15 +140,16 @@ export function Sidebar() {
         )}
 
         {/* Badge */}
-        {item.badge && (
+        {badgeLabel && (
           <span
             className={cn(
               'absolute flex items-center justify-center text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5',
               collapsed ? 'top-0 right-0' : 'right-3',
               isActive ? 'bg-white text-wine-600' : 'bg-wine-100 text-wine-600'
             )}
+            aria-label={`${badgeCount} unread`}
           >
-            {item.badge}
+            {badgeLabel}
           </span>
         )}
 
@@ -133,9 +157,9 @@ export function Sidebar() {
         {collapsed && hoveredItem === item.name && (
           <div className="absolute left-full ml-3 px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg shadow-xl z-50 whitespace-nowrap">
             {item.name}
-            {item.badge && (
+            {badgeLabel && (
               <span className="ml-2 px-1.5 py-0.5 bg-wine-500 rounded-full text-xs">
-                {item.badge}
+                {badgeLabel}
               </span>
             )}
           </div>
