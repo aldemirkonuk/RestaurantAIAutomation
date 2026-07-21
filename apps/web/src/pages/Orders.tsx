@@ -6,6 +6,7 @@ import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
+import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { CommsThreadDrawer } from '../components/orders/CommsThreadDrawer'
 import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
@@ -1364,6 +1365,9 @@ Shadow stock has been moved to Live Stock.`)
             </button>
           </motion.div>
         )}
+
+        {/* engine insights in context (NEW-738) */}
+        <ContextualInsights host="orders" defaultOpen={false} className="mb-6" />
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

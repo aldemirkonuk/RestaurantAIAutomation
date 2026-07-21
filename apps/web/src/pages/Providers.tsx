@@ -40,6 +40,7 @@ import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
 import { PageSkeleton, ErrorState } from '../components/ui'
 import { QuickGmailModal } from '../components/emails/QuickGmailModal'
+import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 
 type BusinessTypeFilter = 'All' | 'Distributor' | 'Importer' | 'Wholesaler'
@@ -439,6 +440,9 @@ export function Providers() {
 
         {providers.length > 0 && (
           <>
+            {/* engine insights in context (NEW-748) */}
+            <ContextualInsights host="providers" defaultOpen={false} className="mb-4" />
+
             {/* ════════════════════════════════════════
                 TOOLBAR  (sketch 008-A: two-row layout)
             ════════════════════════════════════════ */}

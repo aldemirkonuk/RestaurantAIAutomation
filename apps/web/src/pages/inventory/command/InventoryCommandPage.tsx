@@ -10,6 +10,7 @@ import {
   Search, Plus, Download, MapPin, LayoutGrid, Rows3, ChevronDown, PackageCheck,
 } from 'lucide-react'
 import { useInventoryPage, type InventoryItem } from '../index'
+import { ContextualInsights } from '../../../components/insights/ContextualInsights'
 import { useStorageLocations } from '../../../hooks/useStorageLocations'
 import { useCreateInventoryItem } from '../../../hooks/queries'
 import { getOrders } from '../../../services/api/orders'
@@ -20,7 +21,7 @@ import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
 import {
   Kpi, StockGauge, StatusChip, AbcBadge, TypeChip,
-  rowFlags, runwayDays, marketDeltaPct, fmtMoney, type RowFlag,
+  rowFlags, runwayDays, marketDeltaPct, daysSinceCounted, fmtMoney, COUNT_DUE_DAYS, type RowFlag,
 } from './bits'
 import { RowExpansion } from './RowExpansion'
 import { ReceivingWorkspace } from './ReceivingWorkspace'
@@ -163,6 +164,93 @@ export function InventoryCommandPage() {
     URL.revokeObjectURL(a.href)
   }
 
+  // A senior storage manager's read on a single row: the one thing worth flagging, if any.
+  const countObservation = (item: InventoryItem): string => {
+    const flags = rowFlags(item)
+    const runway = runwayDays(item)
+    const counted = daysSinceCounted(item)
+    const delta = marketDeltaPct(item)
+    const shadow = item.shadowStock ?? 0
+    const notes: string[] = []
+    if (flags.includes('dead')) notes.push(`Dead stock${item.daysSinceSale != null ? ` — no sale ${item.daysSinceSale}d` : ''}, consider clearance/86`)
+    if (runway != null && runway <= 3) notes.push(`Stockout risk — ${Math.round(runway)}d runway`)
+    else if (runway != null && runway <= 5) notes.push(`Reorder soon — ${Math.round(runway)}d runway`)
+    if (flags.includes('recon')) notes.push(`Shadow variance ${shadow} — reconcile after this count`)
+    if (counted == null) notes.push('Never counted')
+    else if (counted > COUNT_DUE_DAYS) notes.push(`Count overdue ${counted}d`)
+    if (delta != null && delta >= 15) notes.push(`Priced ${delta.toFixed(0)}% under market — margin opportunity`)
+    if (delta != null && delta <= -5) notes.push(`Cost ${Math.abs(delta).toFixed(0)}% above market — review supplier`)
+    if ((item.velocityPerDay ?? 0) > 0 && (item.liveStock ?? 0) + shadow > (item.threshold || 0) * 3) notes.push('Overstocked vs. par — tie up cash')
+    return notes.join('; ')
+  }
+
+  const exportCountSheet = () => {
+    const csvField = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const today = new Date().toISOString().slice(0, 10)
+
+    const totalBottles = filteredInventory.reduce((s, i) => s + (i.liveStock ?? 0) + (i.shadowStock ?? 0), 0)
+    const belowPar = filteredInventory.filter((i) => rowFlags(i).includes('low')).length
+    const reconcileCount = filteredInventory.filter((i) => rowFlags(i).includes('recon')).length
+    const countDue = filteredInventory.filter((i) => rowFlags(i).includes('count')).length
+    const deadCount = filteredInventory.filter((i) => rowFlags(i).includes('dead')).length
+    const priceSignals = filteredInventory.filter((i) => rowFlags(i).includes('price')).length
+    const stockoutRisk = filteredInventory.filter((i) => { const r = runwayDays(i); return r != null && r <= 5 }).length
+
+    const summary = [
+      `Inventory count sheet — generated ${today}`,
+      `Wines,${filteredInventory.length}`,
+      `Bottles on hand (live+shadow),${totalBottles}`,
+      `Value on hand (cost basis),${fmtMoney(kpis.valueOnHand)}`,
+      `Below par,${belowPar}`,
+      `Awaiting reconcile (shadow > 0),${reconcileCount}`,
+      `Count overdue (>${COUNT_DUE_DAYS}d or never),${countDue}`,
+      `Dead stock,${deadCount}`,
+      `Stockout risk (<=5d runway),${stockoutRisk}`,
+      `Price signals (market vs. cost),${priceSignals}`,
+      '',
+    ].join('\n')
+
+    const header = [
+      'Location', 'Wine', 'Producer', 'Vintage', 'Type', 'Bottle size',
+      'System qty (live)', 'System qty (shadow)', 'Par',
+      'Counted qty', 'Variance',
+      'Days since counted', 'Velocity/day', 'Runway d', 'WAC', 'Value',
+      'Observation',
+    ].map(csvField).join(',') + '\n'
+
+    const body = rows.map((i) => {
+      const loc = locName(i)
+      const r = runwayDays(i)
+      const counted = daysSinceCounted(i)
+      const value = (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
+      return [
+        csvField(loc ? loc.name : 'Unassigned'),
+        csvField(i.name),
+        csvField(i.producer ?? ''),
+        csvField(i.vintage ?? ''),
+        csvField(i.type ?? ''),
+        csvField(i.bottleSizeMl ? `${i.bottleSizeMl}ml` : ''),
+        i.liveStock ?? 0,
+        i.shadowStock ?? 0,
+        i.threshold,
+        '', '',
+        counted == null ? 'never' : counted,
+        (i.velocityPerDay ?? 0).toFixed(2),
+        r == null ? '' : Math.round(r),
+        i.wac ?? i.price ?? '',
+        value.toFixed(2),
+        csvField(countObservation(i)),
+      ].join(',')
+    }).join('\n')
+
+    const blob = new Blob([summary + header + body], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `inventory-count-${today}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   const locName = (item: InventoryItem) => {
     const first = (item.locations ?? []).find((l) => l.locationId)
     if (!first) return null
@@ -195,6 +283,9 @@ export function InventoryCommandPage() {
               <LayoutGrid className="w-3.5 h-3.5" /> Cellar Map
             </button>
           </div>
+          <button onClick={exportCountSheet} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
+            <Download className="w-3.5 h-3.5" /> Export count sheet
+          </button>
           <button onClick={exportCsv} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
             <Download className="w-3.5 h-3.5" /> Export valuation
           </button>
@@ -216,6 +307,9 @@ export function InventoryCommandPage() {
         <Kpi label="Below par" value={stats.low + stats.critical} sub={`${stats.critical} critical`} tone="amber" />
         <Kpi label="Runway alerts" value={kpis.runwayAlerts} sub="stockout inside 5 days" tone="red" />
       </div>
+
+      {/* engine insights in context (NEW-729) */}
+      <ContextualInsights host="inventory" defaultOpen={false} className="mb-3" />
 
       {/* attention rail */}
       <div className="flex items-center gap-2 flex-wrap mb-3">
