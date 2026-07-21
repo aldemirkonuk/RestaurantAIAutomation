@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   Download,
+  Copy,
   Wine,
   X,
   Minus,
@@ -1368,6 +1369,26 @@ Shadow stock has been moved to Live Stock.`)
     setSelectedOrders(newSelected)
   }
 
+  // ── Right-click context menu (NEW-135) + double-click open (NEW-136) ─────
+  const [orderMenu, setOrderMenu] = useState<{ orderId: string; x: number; y: number } | null>(null)
+  const openThread = useCallback((order: Order) => {
+    setCommsDrawerOrder({
+      orderId: order.order_id,
+      wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+      orderStatus: order.status,
+    })
+  }, [resolveOrderWineName])
+  const onOrderContextMenu = useCallback((e: React.MouseEvent, orderId: string) => {
+    e.preventDefault()
+    setOrderMenu({ orderId, x: e.clientX, y: e.clientY })
+  }, [])
+  useEffect(() => {
+    if (!orderMenu) return
+    const close = () => setOrderMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [orderMenu])
+
   // Filter orders with search
 
   if (loading) {
@@ -1451,6 +1472,19 @@ Shadow stock has been moved to Live Stock.`)
                 className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-wine-500 focus:border-transparent"
               />
             </div>
+            {activeConversations.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setIsActiveConvPanelOpen(true)}
+                title="Open live vendor conversation threads"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Live threads
+                <span className="ml-2 px-1.5 py-0.5 text-xs font-bold bg-wine-100 text-wine-700 rounded-full">
+                  {activeConversations.length}
+                </span>
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={exportOrdersCsv}
@@ -1805,9 +1839,11 @@ Shadow stock has been moved to Live Stock.`)
                                     return (
                                       <div
                                         key={order.order_id}
+                                        onContextMenu={(e) => onOrderContextMenu(e, order.order_id)}
+                                        onDoubleClick={() => openThread(order)}
                                         className={`bg-white rounded-xl p-4 shadow-sm border-2 transition-all ${
                                           isSelected ? 'border-wine-500 bg-wine-50' :
-                                          order.isRecurring ? 'border-blue-200 hover:border-blue-300' : 
+                                          order.isRecurring ? 'border-blue-200 hover:border-blue-300' :
                                           'border-gray-200 hover:shadow-md'
                                         }`}
                                       >
@@ -2561,6 +2597,8 @@ Shadow stock has been moved to Live Stock.`)
                             return (
                               <div
                                 key={order.order_id}
+                                onContextMenu={(e) => onOrderContextMenu(e, order.order_id)}
+                                onDoubleClick={() => openThread(order)}
                                 className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
                               >
                                 <div className="flex items-start justify-between">
@@ -3391,6 +3429,42 @@ Shadow stock has been moved to Live Stock.`)
           }
         }}
       />
+
+      {/* Right-click order context menu (NEW-135) */}
+      {orderMenu && (() => {
+        const order = orders.find((o) => o.order_id === orderMenu.orderId)
+        if (!order) return null
+        const MItem = ({ icon: Icon, label, danger, onClick }: { icon: any; label: string; danger?: boolean; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 ${danger ? 'text-red-600' : 'text-gray-700'}`}
+          >
+            <Icon className={`w-4 h-4 ${danger ? 'text-red-500' : 'text-gray-400'}`} /> {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-[60] w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(orderMenu.y, window.innerHeight - 240), left: Math.min(orderMenu.x, window.innerWidth - 220) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {order.status === 'pending_approval' && (
+              <>
+                <MItem icon={CheckCircle} label="Approve" onClick={() => { openThread(order); setOrderMenu(null) }} />
+                <MItem icon={XCircle} label="Reject" danger onClick={() => { handleReject(order.order_id); setOrderMenu(null) }} />
+              </>
+            )}
+            {order.status === 'approved' && (
+              <MItem icon={ShoppingCart} label="Mark as ordered" onClick={() => { handleMarkAsOrdered(order.order_id); setOrderMenu(null) }} />
+            )}
+            {order.status === 'ordered' && (
+              <MItem icon={Truck} label="Mark as delivered" onClick={() => { handleMarkAsDelivered(order.order_id); setOrderMenu(null) }} />
+            )}
+            <MItem icon={MessageSquare} label="Open thread" onClick={() => { openThread(order); setOrderMenu(null) }} />
+            <MItem icon={Copy} label="Copy order ID" onClick={() => { navigator.clipboard?.writeText(order.order_id); setOrderMenu(null) }} />
+          </div>
+        )
+      })()}
 
       {/* Active Conversations Panel */}
       <ActiveConversationsPanel

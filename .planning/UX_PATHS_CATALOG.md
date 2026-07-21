@@ -402,9 +402,16 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 > orders search (and the stale "⌘K" search hint is corrected, since ⌘K is now the
 > global palette). Also cleaned the pre-existing `no-fallthrough` lint in the
 > status-mapping switch (intentional fallthrough — added the conventional marker,
-> no behavior change). Deferred as higher-risk in this 3446-line file: right-click
-> menu (135), Kanban view (140), inline delivery-date/notes edit (145/146), j/k
-> row nav (144), live-threads toggle (148).
+> no behavior change).
+>
+> **Shipped 2026-07-20 (Orders depth pass):** NEW-135 right-click context menu on
+> both the unified and split row renders (status-appropriate Approve/Reject/Mark
+> Ordered/Mark Delivered reusing the exact existing handlers, plus Open thread +
+> Copy order ID) · NEW-136 double-click a row opens its comms thread · NEW-148
+> "Live threads" toolbar toggle (with count) makes the already-built
+> `ActiveConversationsPanel` reachable. Still deferred: Kanban view (140 — needs a
+> new drag-drop render), inline delivery-date/notes edit (145/146 — needs update
+> mutations), j/k row nav (144 — fiddly across two grouped renders).
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
