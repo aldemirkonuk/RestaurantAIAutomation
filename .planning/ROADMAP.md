@@ -440,5 +440,18 @@ After Phases 23-25 complete, expand to remaining agents:
 - InequalityDetector (105 lines), BookScraperAgent (113 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
 
 ---
+
+## Backlog
+
+### Phase 999.1: Consumer Food Profiles, Ratings & Restaurant Guest Insights (BACKLOG)
+
+**Goal:** Let people create profiles independent of restaurant organizations, add social handles and food preferences, and rate dishes and restaurants in a Beli-style consumer experience. Give restaurants consent-based, privacy-safe insights into who visits, what their guests prefer, and which audience segments they attract.
+**Requirements:** TBD — consumer identity/profile model, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation linking, consent controls, privacy safeguards, and aggregated restaurant audience insights.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+---
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
 *v1.0 roadmap archived (Phases 1-17, 2026-03-30 to 2026-04-08)*
