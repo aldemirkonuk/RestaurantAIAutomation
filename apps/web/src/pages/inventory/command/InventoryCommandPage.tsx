@@ -3,11 +3,12 @@
  * 3a live/shadow spine: 9-column table, row-expand detail, attention rail,
  * cellar map view, receiving verification, adjustable locations.
  */
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Search, Plus, Download, MapPin, LayoutGrid, Rows3, ChevronDown, PackageCheck,
+  ArrowUp, ArrowDown, Copy, X, FileDown, ChevronRight as ChevronRightIcon,
 } from 'lucide-react'
 import { useInventoryPage, type InventoryItem } from '../index'
 import { ContextualInsights } from '../../../components/insights/ContextualInsights'
@@ -27,7 +28,7 @@ import { RowExpansion } from './RowExpansion'
 import { ReceivingWorkspace } from './ReceivingWorkspace'
 import { CellarMapView } from './CellarMapView'
 
-const GRID = 'minmax(215px,1.5fr) 80px 128px 195px 90px 78px 84px 92px 106px 32px'
+const GRID = '34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 84px 92px 106px 32px'
 
 const SORTS = [
   { value: 'runway', label: 'Runway, shortest first' },
@@ -35,6 +36,23 @@ const SORTS = [
   { value: 'value', label: 'Value, highest first' },
   { value: 'name', label: 'Name, A to Z' },
 ]
+
+type SortKey = 'runway' | 'velocity' | 'value' | 'name'
+type SortDir = 'asc' | 'desc'
+/** Default direction per sort key (matches the dropdown's stated order). */
+const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {
+  runway: 'asc',
+  velocity: 'desc',
+  value: 'desc',
+  name: 'asc',
+}
+/** Which grid columns are click-to-sort, by header index (after checkbox col). */
+const SORTABLE_COL: Record<number, SortKey> = {
+  0: 'name', // Wine
+  4: 'velocity',
+  5: 'runway',
+  7: 'value',
+}
 
 const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
   { key: 'low', label: 'Below par', dot: 'bg-amber-500' },
@@ -55,14 +73,23 @@ export function InventoryCommandPage() {
 
   const { locations, setLocations } = useStorageLocations()
   const createInventoryItem = useCreateInventoryItem()
+  const navigate = useNavigate()
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const [view, setView] = useState<'table' | 'map'>('table')
-  const [sort, setSort] = useState('runway')
+  const [sort, setSort] = useState<SortKey>('runway')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [activeFlag, setActiveFlag] = useState<RowFlag | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showAddWine, setShowAddWine] = useState(false)
   const [showStorageManager, setShowStorageManager] = useState(false)
   const [verifyOrder, setVerifyOrder] = useState<any | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [focusedIndex, setFocusedIndex] = useState(-1)
+  const [showAllLocations, setShowAllLocations] = useState(false)
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+
+  const anyModalOpen = showAddWine || showStorageManager || !!verifyOrder
 
   // Deliveries still owed a three-way match. PARTIALLY_RECEIVED belongs here too: those orders
   // were matched once and left open for a backorder, so they still need a human when the rest
@@ -110,23 +137,141 @@ export function InventoryCommandPage() {
   }, [filteredInventory])
 
   const rows = useMemo(() => {
-    let items = activeFlag
+    const items = activeFlag
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory]
     const val = (i: InventoryItem) => ((i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)))
-    items.sort((a, b) => {
+    // Comparator in the key's natural ascending order; sortDir flips it.
+    const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
-        case 'velocity': return (b.velocityPerDay ?? 0) - (a.velocityPerDay ?? 0)
-        case 'value': return val(b) - val(a)
+        case 'velocity': return (a.velocityPerDay ?? 0) - (b.velocityPerDay ?? 0)
+        case 'value': return val(a) - val(b)
         case 'name': return a.name.localeCompare(b.name)
         default: {
           const ra = runwayDays(a); const rb = runwayDays(b)
           return (ra ?? Infinity) - (rb ?? Infinity)
         }
       }
-    })
+    }
+    items.sort((a, b) => (sortDir === 'asc' ? cmp(a, b) : -cmp(a, b)))
     return items
-  }, [filteredInventory, activeFlag, sort])
+  }, [filteredInventory, activeFlag, sort, sortDir])
+
+  // Column-header + dropdown sort control (NEW-087). Clicking the active column
+  // toggles direction; a new column adopts its natural default direction.
+  const applySort = useCallback((key: SortKey) => {
+    setSort((prev) => {
+      if (prev === key) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortDir(SORT_DEFAULT_DIR[key])
+      }
+      return key
+    })
+  }, [])
+
+  // ── Multi-select (NEW-064) ──────────────────────────────────────────────
+  const selectedRows = useMemo(
+    () => rows.filter((r) => r.inventoryId && selected.has(r.inventoryId)),
+    [rows, selected],
+  )
+  const allVisibleSelected = rows.length > 0 && rows.every((r) => r.inventoryId && selected.has(r.inventoryId))
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }, [])
+  const selectAllVisible = useCallback(() => {
+    setSelected((prev) =>
+      rows.length > 0 && rows.every((r) => r.inventoryId && prev.has(r.inventoryId))
+        ? new Set()
+        : new Set(rows.map((r) => r.inventoryId!).filter(Boolean)),
+    )
+  }, [rows])
+  const clearSelect = useCallback(() => setSelected(new Set()), [])
+
+  const download = (name: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = name
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+  const exportSelected = () => {
+    const header = 'Wine,Producer,Type,Live,Shadow,Par,Velocity/day,Runway d,WAC,Value\n'
+    const body = selectedRows.map((i) => {
+      const r = runwayDays(i)
+      return [
+        `"${i.name}"`, `"${i.producer ?? ''}"`, i.type ?? '', i.liveStock ?? 0, i.shadowStock ?? 0,
+        i.threshold, (i.velocityPerDay ?? 0).toFixed(2), r == null ? '' : Math.round(r),
+        i.wac ?? i.price ?? '',
+        ((i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))).toFixed(2),
+      ].join(',')
+    }).join('\n')
+    download(`inventory-selected-${new Date().toISOString().slice(0, 10)}.csv`, header + body)
+  }
+  const copySelectedNames = () => {
+    navigator.clipboard?.writeText(selectedRows.map((r) => r.name).join('\n'))
+  }
+
+  // Keep the focus index valid as the row set changes.
+  useEffect(() => {
+    setFocusedIndex((i) => (i >= rows.length ? rows.length - 1 : i))
+  }, [rows.length])
+
+  // ── Keyboard navigation (NEW-078/079/080) ───────────────────────────────
+  useEffect(() => {
+    if (view !== 'table') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return
+      const t = e.target as HTMLElement | null
+      const typing =
+        !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) {
+        if (typing || anyModalOpen) return
+        e.preventDefault()
+        setSelected(new Set(rows.map((r) => r.inventoryId!).filter(Boolean)))
+        return
+      }
+      if (e.metaKey || e.ctrlKey || typing || anyModalOpen) return
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return }
+      if (e.key === 'Escape' && selected.size) { clearSelect(); return }
+      if (rows.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setFocusedIndex((i) => Math.min(rows.length - 1, (i < 0 ? -1 : i) + 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setFocusedIndex((i) => Math.max(0, (i < 0 ? 0 : i) - 1))
+      } else if (e.key === 'Enter') {
+        const r = rows[focusedIndex]
+        if (r?.inventoryId) setExpandedId((cur) => (cur === r.inventoryId ? null : r.inventoryId!))
+      } else if (e.key === ' ') {
+        const r = rows[focusedIndex]
+        if (r?.inventoryId) { e.preventDefault(); toggleSelect(r.inventoryId) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view, rows, focusedIndex, anyModalOpen, selected.size, toggleSelect, clearSelect])
+
+  // Scroll the focused row into view.
+  useEffect(() => {
+    if (focusedIndex < 0) return
+    document.querySelector(`[data-inv-row="${focusedIndex}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [focusedIndex])
+
+  // Close the right-click menu on any outside click.
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menu])
 
   const kpis = useMemo(() => {
     const valueOnHand = filteredInventory.reduce(
@@ -302,9 +447,9 @@ export function InventoryCommandPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5">
         <Kpi label="On hand" value={stats.liveTotal + stats.shadowTotal} sub={`${stats.total} wines`} />
         <Kpi label="Live" value={stats.liveTotal} sub="POS-verified" tone="blue" />
-        <Kpi label="Shadow" value={stats.shadowTotal} sub="awaiting reconcile" tone="violet" />
+        <Kpi label="Shadow" value={stats.shadowTotal} sub="awaiting reconcile" tone="violet" active={activeFlag === 'recon'} onClick={() => setActiveFlag(activeFlag === 'recon' ? null : 'recon')} />
         <Kpi label="Value on hand" value={fmtMoney(kpis.valueOnHand)} sub={kpis.menuPotential > 0 ? `${fmtMoney(kpis.menuPotential)} menu` : 'cost basis'} tone="green" />
-        <Kpi label="Below par" value={stats.low + stats.critical} sub={`${stats.critical} critical`} tone="amber" />
+        <Kpi label="Below par" value={stats.low + stats.critical} sub={`${stats.critical} critical`} tone="amber" active={activeFlag === 'low'} onClick={() => setActiveFlag(activeFlag === 'low' ? null : 'low')} />
         <Kpi label="Runway alerts" value={kpis.runwayAlerts} sub="stockout inside 5 days" tone="red" />
       </div>
 
@@ -343,9 +488,10 @@ export function InventoryCommandPage() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
           <input
+            ref={searchRef}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search wines, producers, grapes"
+            placeholder="Search wines, producers, grapes    ( / )"
             className="w-full h-9 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-wine-100 focus:border-wine-500"
           />
         </div>
@@ -355,7 +501,7 @@ export function InventoryCommandPage() {
         >
           All locations
         </button>
-        {locations.slice(0, 4).map((l) => (
+        {(showAllLocations ? locations : locations.slice(0, 5)).map((l) => (
           <button
             key={l.id}
             onClick={() => setSelectedLocationFilter(selectedLocationFilter === l.id ? null : l.id)}
@@ -365,6 +511,14 @@ export function InventoryCommandPage() {
             {l.name}
           </button>
         ))}
+        {locations.length > 5 && (
+          <button
+            onClick={() => setShowAllLocations((s) => !s)}
+            className="h-9 px-3 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+          >
+            {showAllLocations ? 'Show less' : `+${locations.length - 5} more`}
+          </button>
+        )}
         {typeOptions.map((t) => (
           <button
             key={t}
@@ -375,39 +529,100 @@ export function InventoryCommandPage() {
           </button>
         ))}
         <div className="flex-1" />
-        <ThemedSelect value={sort} options={SORTS} onChange={setSort} />
+        <ThemedSelect
+          value={sort}
+          options={SORTS}
+          onChange={(v) => { setSort(v as SortKey); setSortDir(SORT_DEFAULT_DIR[v as SortKey]) }}
+        />
       </div>
 
       {/* ── TABLE VIEW ── */}
       {view === 'table' && (
         <>
+          {/* Bulk action bar (NEW-064/068) */}
+          {selected.size > 0 && (
+            <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-2.5 px-4 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg">
+              <span className="text-sm font-semibold">{selected.size} selected</span>
+              <div className="flex items-center gap-2">
+                <button onClick={exportSelected} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
+                  <FileDown className="w-3.5 h-3.5" /> Export selected
+                </button>
+                <button onClick={copySelectedNames} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
+                  <Copy className="w-3.5 h-3.5" /> Copy names
+                </button>
+                <button onClick={clearSelect} className="p-1.5 hover:bg-white/20 rounded-lg" aria-label="Clear selection">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <div className="min-w-[1180px]">
                 <div className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100" style={{ gridTemplateColumns: GRID }}>
-                  {['Wine', 'Type', 'Location', 'Stock, live / shadow', 'Velocity', 'Runway', 'Market', 'Value', 'Status', ''].map((h, i) => (
-                    <div key={i} className={cn('text-[10px] font-bold uppercase tracking-wider text-gray-500', (i === 6 || i === 7) && 'text-right')}>{h}</div>
-                  ))}
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={selectAllVisible}
+                      className="w-4 h-4 rounded border-gray-300 text-wine-600 focus:ring-wine-500 cursor-pointer"
+                      aria-label="Select all visible"
+                    />
+                  </div>
+                  {['Wine', 'Type', 'Location', 'Stock, live / shadow', 'Velocity', 'Runway', 'Market', 'Value', 'Status', ''].map((h, i) => {
+                    const sortKey = SORTABLE_COL[i]
+                    const rightAlign = i === 6 || i === 7
+                    if (sortKey) {
+                      const activeSort = sort === sortKey
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => applySort(sortKey)}
+                          className={cn('flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider transition-colors hover:text-gray-800', activeSort ? 'text-wine-700' : 'text-gray-500', rightAlign && 'justify-end')}
+                        >
+                          {h}
+                          {activeSort && (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                        </button>
+                      )
+                    }
+                    return <div key={i} className={cn('text-[10px] font-bold uppercase tracking-wider text-gray-500', rightAlign && 'text-right')}>{h}</div>
+                  })}
                 </div>
 
                 {rows.length === 0 && (
                   <div className="p-10 text-center text-sm text-gray-400">No wines match the current filters.</div>
                 )}
 
-                {rows.map((item) => {
+                {rows.map((item, idx) => {
                   const isOpen = expandedId === item.inventoryId
+                  const isSelected = !!item.inventoryId && selected.has(item.inventoryId)
+                  const isFocused = idx === focusedIndex
                   const run = runwayDays(item)
                   const delta = marketDeltaPct(item)
                   const value = (item.wac ?? item.price ?? 0) * ((item.liveStock ?? 0) + (item.shadowStock ?? 0))
                   const loc = locName(item)
                   const status = classifyStock(item.liveStock, item.threshold)
                   return (
-                    <div key={item.inventoryId}>
+                    <div key={item.inventoryId} data-inv-row={idx}>
                       <div
                         onClick={() => setExpandedId(isOpen ? null : item.inventoryId!)}
-                        className={cn('grid items-center gap-x-3 px-5 py-3 border-b border-gray-100 cursor-pointer transition-colors', isOpen ? 'bg-wine-50/60' : 'hover:bg-gray-50/60')}
+                        onContextMenu={(e) => { e.preventDefault(); if (item.inventoryId) setMenu({ id: item.inventoryId, x: e.clientX, y: e.clientY }) }}
+                        className={cn(
+                          'grid items-center gap-x-3 px-5 py-3 border-b border-gray-100 cursor-pointer transition-colors',
+                          isSelected ? 'bg-wine-50/40' : isOpen ? 'bg-wine-50/60' : 'hover:bg-gray-50/60',
+                          isFocused && 'ring-2 ring-inset ring-wine-300',
+                        )}
                         style={{ gridTemplateColumns: GRID }}
                       >
+                        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => item.inventoryId && toggleSelect(item.inventoryId)}
+                            className="w-4 h-4 rounded border-gray-300 text-wine-600 focus:ring-wine-500 cursor-pointer"
+                            aria-label={`Select ${item.name}`}
+                          />
+                        </div>
                         <div>
                           <div className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-900 leading-tight">
                             <span className="truncate">{item.name}</span>
@@ -512,6 +727,41 @@ export function InventoryCommandPage() {
       {verifyOrder && (
         <ReceivingWorkspace order={verifyOrder} items={filteredInventory} onClose={closeVerify} />
       )}
+
+      {/* Right-click row context menu (NEW-072) */}
+      {menu && (() => {
+        const item = filteredInventory.find((i) => i.inventoryId === menu.id)
+        if (!item) return null
+        const isOpen = expandedId === menu.id
+        const isSel = selected.has(menu.id)
+        const MenuItem = ({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded-lg"
+          >
+            <Icon className="w-4 h-4 text-gray-400" /> {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-50 w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(menu.y, window.innerHeight - 240), left: Math.min(menu.x, window.innerWidth - 220) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MenuItem icon={ChevronRightIcon} label={isOpen ? 'Collapse row' : 'Expand row'} onClick={() => { setExpandedId(isOpen ? null : menu.id); setMenu(null) }} />
+            <MenuItem icon={PackageCheck} label={isSel ? 'Deselect' : 'Select'} onClick={() => { toggleSelect(menu.id); setMenu(null) }} />
+            <MenuItem icon={Plus} label={`Draft PO, ${item.threshold} btl`} onClick={() => { navigate(`/orders?draft=new&inventoryId=${menu.id}&qty=${item.threshold}`); setMenu(null) }} />
+            <MenuItem icon={Copy} label="Copy name" onClick={() => { navigator.clipboard?.writeText(item.name); setMenu(null) }} />
+            <MenuItem icon={FileDown} label="Export this row" onClick={() => {
+              const r = runwayDays(item)
+              const header = 'Wine,Producer,Type,Live,Shadow,Par,Velocity/day,Runway d,WAC,Value\n'
+              const line = [`"${item.name}"`, `"${item.producer ?? ''}"`, item.type ?? '', item.liveStock ?? 0, item.shadowStock ?? 0, item.threshold, (item.velocityPerDay ?? 0).toFixed(2), r == null ? '' : Math.round(r), item.wac ?? item.price ?? '', ((item.wac ?? item.price ?? 0) * ((item.liveStock ?? 0) + (item.shadowStock ?? 0))).toFixed(2)].join(',')
+              download(`${item.name.replace(/[^\w]+/g, '-')}.csv`, header + line)
+              setMenu(null)
+            }} />
+          </div>
+        )
+      })()}
     </div>
   )
 }

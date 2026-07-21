@@ -307,6 +307,18 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## C. Inventory (`/inventory`) (`NEW-064 … NEW-134`)
 
+> **Shipped 2026-07-20 (inventory depth batch), on `InventoryCommandPage`:**
+> NEW-064 checkbox column + selection · NEW-068 bulk Export selected (+ Copy
+> names) via a sticky bulk bar · NEW-072 right-click row context menu
+> (Expand/Select/Draft PO/Copy name/Export row) · NEW-078 ↑/↓ row focus + Enter
+> expands · NEW-079 Space toggles selection + ⌘A selects all filtered · NEW-080
+> `/` focuses search · NEW-087 click-to-sort column headers (Wine/Velocity/
+> Runway/Value, asc/desc toggle with arrow indicator) · NEW-088 location filter
+> shows all with "+N more" toggle (was first-4-only) · NEW-092 Below-par & Shadow
+> KPIs are click-to-filter. Deferred (need backend mutations): inline qty edit
+> (074), bulk transfer/par/count-due (065–067), bulk draft-single-PO (069),
+> bulk archive (071).
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-064 | `Multi` | Checkbox column on inventory table; select N wines → bulk bar appears. |

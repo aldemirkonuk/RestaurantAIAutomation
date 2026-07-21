@@ -184,13 +184,28 @@ export function TypeChip({ type }: { type?: string }) {
 
 // ── KPI cell ─────────────────────────────────────────────────────────────────
 
-export function Kpi({ label, value, sub, tone }: { label: string; value: string | number; sub?: string; tone?: 'blue' | 'violet' | 'green' | 'amber' | 'red' }) {
+export function Kpi({ label, value, sub, tone, onClick, active }: { label: string; value: string | number; sub?: string; tone?: 'blue' | 'violet' | 'green' | 'amber' | 'red'; onClick?: () => void; active?: boolean }) {
   const tones = { blue: 'text-blue-600', violet: 'text-violet-600', green: 'text-emerald-600', amber: 'text-amber-600', red: 'text-rose-600' }
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl px-3.5 py-3">
+  const inner = (
+    <>
       <div className="text-[11px] font-semibold text-gray-400 mb-1.5">{label}</div>
       <div className={cn('text-xl font-extrabold leading-none tracking-tight', tone ? tones[tone] : 'text-gray-900')}>{value}</div>
       {sub && <div className="text-[10.5px] text-gray-400 mt-1">{sub}</div>}
-    </div>
+    </>
   )
+  if (onClick) {
+    return (
+      <button
+        onClick={onClick}
+        aria-pressed={active}
+        className={cn(
+          'bg-white border rounded-xl px-3.5 py-3 text-left transition-colors hover:border-gray-300',
+          active ? 'border-wine-500 ring-1 ring-wine-200' : 'border-gray-100',
+        )}
+      >
+        {inner}
+      </button>
+    )
+  }
+  return <div className="bg-white border border-gray-100 rounded-xl px-3.5 py-3">{inner}</div>
 }
