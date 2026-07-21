@@ -292,6 +292,57 @@ export default function CalendarPage() {
     [updateEvent]
   )
 
+  // ---- Keyboard shortcuts (NEW-399) ----
+  // t today · m/w/d/a views · n new event · ←/→ prev/next. Yields to the global
+  // ⌘K palette and `g`-then-key nav (skips when defaultPrevented / modifiers /
+  // typing / a modal is open).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      if (modalOpen || memoPromptOpen) return
+      const t = e.target as HTMLElement | null
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable)
+      )
+        return
+      switch (e.key) {
+        case 't':
+          goToToday()
+          break
+        case 'm':
+          setViewMode('month')
+          break
+        case 'w':
+          setViewMode('week')
+          break
+        case 'd':
+          setViewMode('day')
+          break
+        case 'a':
+          setViewMode('agenda')
+          break
+        case 'n':
+          e.preventDefault()
+          openCreateModal()
+          break
+        case 'ArrowLeft':
+          navigateDate('prev')
+          break
+        case 'ArrowRight':
+          navigateDate('next')
+          break
+        default:
+          return
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [modalOpen, memoPromptOpen, goToToday, setViewMode, openCreateModal, navigateDate])
+
   // ---- Render ----
 
   if (error) {

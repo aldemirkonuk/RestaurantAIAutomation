@@ -60,6 +60,8 @@ const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 
 // Heavy pages (lazy loaded)
 const Reports = lazyWithRefresh(() => import('./pages/Reports'))
+const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
+const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
@@ -72,6 +74,7 @@ const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
 const Calendar = lazyWithRefresh(() => import('./pages/Calendar'))
+const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 
@@ -161,10 +164,13 @@ function App() {
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
+                  <Route path="/recommendations" element={<Recommendations />} />
+                  <Route path="/recommendations/catalog" element={<InsightCatalog />} />
                   <Route path="/providers" element={<Providers />} />
                   <Route path="/promotions" element={<Promotions />} />
                   <Route path="/team" element={<TeamCommandPage />} />
-                  <Route path="/calendar" element={<Calendar />} />
+                  <Route path="/calendar" element={<CalendarModular />} />
+                  <Route path="/calendar-classic" element={<Calendar />} />
                   <Route path="/communications" element={<Communications />} />
                   <Route path="/documents-reports" element={<DocumentsPage />} />
                   <Route path="/notifications" element={<Notifications />} />
