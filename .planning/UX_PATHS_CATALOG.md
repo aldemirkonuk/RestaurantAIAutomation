@@ -7,6 +7,50 @@
 
 ---
 
+## Deferred Decisions Log (consolidated)
+
+> One place for every "shipped X, deliberately deferred Y" call made during the
+> 2026-07-20 burn-down, so nothing decided in a batch gets lost between
+> sessions. Each row also lives inline in its section's "Shipped" banner below —
+> this table exists purely so the full set is scannable without hunting through
+> ~20 banners. Update both places when a deferred item ships.
+
+| Section | Deferred item(s) | NEW-ID(s) | Why deferred | Unblocked by |
+|---|---|---|---|---|
+| §A Shell | Sidebar drag-reorder | 016 | Smaller value than the other §A items; needs persisted order-per-user | A `sidebar_nav_order` pref + dnd-kit wiring |
+| §A Shell | Hover flyout submenus | 017 | No real sub-routes exist to fly out to (nav is flat; things like "Cellar Map" are in-page view states, not routes) | Query-param view wiring per page first |
+| §A Shell | Sync-status chip | 032 | No polling/last-sync signal surfaced from the API yet | A lightweight `/health` or last-write timestamp endpoint |
+| §A Shell | Quick-settings sheet | 033 | Overlaps Settings page scope; needs a decision on what's "quick" vs full-page | Product call on scope |
+| §A Shell | What's-new changelog popover | 035 | No changelog data source | A changelog content source (CMS/MD file) |
+| §C Inventory | Inline qty edit | 074 | Needs a stock-adjustment mutation with reason capture, not just a UI change | `PATCH` inventory-adjust endpoint (exists in RowExpansion flow; needs table-row variant) |
+| §C Inventory | Bulk transfer / set par / count-due | 065–067 | Each needs its own mutation + confirm UX; multi-item transactional risk | Bulk-mutation endpoints on procurement/inventory-ledger |
+| §C Inventory | Bulk draft-single-PO | 069 | Needs order-line aggregation logic across selected rows | Extend order creation to accept multiple inventory IDs |
+| §C Inventory | Bulk archive | 071 | Needs soft-delete + undo semantics at the inventory-ledger level | Ledger soft-delete support |
+| §D Orders | Kanban view | 140 | New drag-drop render + status-transition rules, not a small addition | Dedicated build (own batch) |
+| §D Orders | Inline delivery-date / notes edit | 145–146 | Needs update mutations on those fields from the row, not just the modal | Order-patch endpoint accepting partial field updates |
+| §D Orders | j/k row navigation | 144 | Fiddly to map a single focus index across two grouped, re-rendered layouts (unified + split) cleanly | Refactor row rendering to a flat indexable list first |
+| §F Sommelier | Streaming responses + stop button | 258–259 | Backend `/sommelier/chat` is a single POST; no token stream to hook into | SSE/stream endpoint on the agent-orchestrator side |
+| §F Sommelier | Pin/star conversation | 262 | No `pinned` field on the conversation schema | Migration adding `pinned boolean` to sommelier conversations |
+| §F Sommelier | ⌘N / ⌘[ ] / ⌘⇧S chat shortcuts | 271 | Conflicts with OS/browser bindings and the now-global ⌘N (command palette "New") | Scope shortcuts to in-page-only key combos that don't collide |
+| §F Sommelier | Attachments / voice input | 265–266, 281 | No upload/voice pipeline wired to the chat endpoint | Multimodal endpoint support |
+| §K Calendar | Right-click event menu | 397 | Not yet built on top of the newly-routed modular calendar | Straightforward follow-up (same pattern as Inventory/Orders context menus) |
+| §K Calendar | Hover event peek | 396 | Same — follow-up, not blocked on anything | Follow-up batch |
+| §K Calendar | Delivery/promo overlay bands | 409–410 | Needs cross-referencing Orders delivery dates + Promotions windows onto the calendar grid | Calendar event synthesis from Orders/Promotions data |
+| §K Calendar | Conflict detection | 403 | Needs an overlap-detection pass over events sharing a resource | Small algorithm, own PR |
+| §K Calendar | Undo delete event | 413 | Needs a snackbar + soft-delete window on the calendar API | Calendar delete endpoint gains a grace-period/undo token |
+| Z1 Browse-All | Per-type enable/mute/pin | 715–717 | No per-restaurant type-preference storage | A `insight_type_prefs` table (parallel to `analytics_insight_prefs`, but per-type not per-category) |
+| Z1 Browse-All | "Run this type now" | 714 | Needs a single-type-scoped compute path; today the engine only computes in bulk | Add a `computeOne(candidateKey, restaurantId)` path to the insight generator |
+| Z1 Browse-All | Diff view (this run vs prior) | 723 | Needs to retain the previous run's snapshot for comparison | Store two generations of `analytics_insights` or a diff table |
+| Z1 Browse-All | Admin validity-matrix overrides | 726 | Deliberately locked down — the validity matrix is meant to stay catalog-only by default | Explicit admin-only override table + audit log |
+| Z2–Z4 Contextual insights | Per-row entity scoping | 730, 739, 749, 751 | `ContextualInsights` takes an `entityKey` prop already, but no host page passes a per-row entity yet | Wire `entityKey={item.inventoryId}` etc. from each row/expansion |
+| Z2–Z4 Contextual insights | Hover peek | 731, 740, 750 | Needs a lighter-weight preview affordance than the full expand | Small follow-up on `ContextualInsights` |
+| Z2–Z4 Contextual insights | `i`-key toggle | 737, 747, 757 | Needs page-level keyboard wiring per host | Follow-up, same pattern as other page shortcuts |
+| Recommendations | Scheduled digest send | 303 | Toggle + preferences persist (`recommendation_digest_prefs`); the actual cron/email send was never built, only feature-flagged | Wire `InsightSchedulerService` (or a new cron) to read `digest_enabled` and call the email service |
+| Analytics catalog | Seating-density UX (Batch 6) | 761–860 | 100 UX rows are fully written (trigger→outcome) and the 100 backing analytics features + 8 new measures are documented in `ANALYTICS_FEATURE_CATALOG.md` / `insight-catalog.ts`, but the **Reports "Seating Density" widget these rows reference does not exist yet** | Build the Reports widget + wire Act/hover/keyboard per the NEW-761–860 rows |
+| Self-Learning UX Agent | Runtime activation (Phase B/C/D) | — | Ships dark by design (`UX_OPTIMIZER_ENABLED=false`); not a gap, a staged rollout | See `.planning/UX_SELF_LEARNING_AGENT.md` → Rollout plan |
+
+---
+
 ## How to read this document
 
 A **UX path** here = a concrete user interaction or journey expressed as **trigger → action(s) → outcome**. This doubles as an end-to-end (E2E) test scenario: read each row as *Given I am on page X, When I <trigger/action>, Then <outcome>*.
