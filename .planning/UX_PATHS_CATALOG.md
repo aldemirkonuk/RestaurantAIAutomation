@@ -1109,6 +1109,24 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## P. Team (`/team`) (`NEW-519 … NEW-543`)
 
+> **Shipped 2026-07-21 (Team batch):** NEW-521 right-click a shift chip → Edit /
+> Duplicate / Message that member / Delete (with confirm), using the existing
+> `createShift`/`deleteShift`/`broadcast` APIs · NEW-529 Performance panel gains
+> a CSV export of the member's series with their headline metrics as a comment
+> header · NEW-538 "Print sheet" renders a clean printable week (own window, so
+> the desk chrome isn't printed) and "Export week" dumps every shift to CSV.
+> Already present, verified not re-done: clicking an empty grid cell creates a
+> shift (NEW-522 equivalent), overtime/fairness/compliance risk flags feed the
+> publish checklist (NEW-523 partial), and the shift inspector + cover/call-out
+> flows exist (NEW-525/526 partial).
+> Deferred: true drag-assign / drag-resize (519/520 — the desk is a CSS grid with
+> no drag layer; needs dnd-kit and a drop-target model), arrow-key desk
+> navigation (535), multi-select shifts (536), role/station filter (537), swap
+> requests (531), clock-in/out (532), ops-rule dry-run + version history
+> (533/534), training checklists (540), tip-pool config (541), leaderboard deep
+> link (542), coverage heatmap (543).
+
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-519 | `Click` | Drag-assign shifts on the manager desk grid. |

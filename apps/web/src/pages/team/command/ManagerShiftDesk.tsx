@@ -10,13 +10,14 @@ import { toast } from 'sonner'
 import {
   Plus, Copy, Send, Megaphone, ChevronLeft, ChevronRight, UserPlus,
   Users, ClipboardCheck, AlertTriangle, CheckCircle2, Sparkles, SlidersHorizontal,
+  Pencil, Trash2, MessageSquare, Printer, Download,
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog'
 import { fetchCalendarEvents } from '../../../services/api/calendar'
 import {
   getWeek, getTeamMembers, getCertifications, copyWeek, publishSchedule, createSchedule,
-  reportCallout, offerCover, assignCover, broadcast,
+  reportCallout, offerCover, assignCover, broadcast, createShift, deleteShift,
   type WeekPayload, type Shift, type TeamMember, type Certification,
 } from '../../../services/api/team'
 import { cn } from '../../../lib/utils'
@@ -46,6 +47,8 @@ export function ManagerShiftDesk() {
   const [memberEditor, setMemberEditor] = useState<{ member?: TeamMember | null } | null>(null)
   const [peopleOpen, setPeopleOpen] = useState(false)
   const [opsOpen, setOpsOpen] = useState(false)
+  /** NEW-521: right-click a shift chip. */
+  const [shiftMenu, setShiftMenu] = useState<{ shift: Shift; x: number; y: number } | null>(null)
 
   // Honor publish deep-link: /team?week=YYYY-MM-DD
   useEffect(() => {
@@ -200,6 +203,75 @@ export function ManagerShiftDesk() {
     onSuccess: (r: any) => { toast.success(`Copied ${r?.copied ?? 0} shifts from last week`); invalidateWeek() },
     onError: () => toast.error('Could not copy last week'),
   })
+  /** NEW-529: export the visible week as CSV. */
+  const exportWeekCsv = () => {
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['Date', 'Member', 'Position', 'Start', 'End', 'Role', 'Type', 'State', 'Labor cost'].join(',')
+    const lines = [...shifts]
+      .sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))
+      .map((sh) => {
+        const m = sh.member_id ? membersById.get(sh.member_id) : undefined
+        return [
+          q(sh.shift_date), q(m?.display_name), q(m?.position ?? m?.employment_type),
+          q(sh.start_time), q(sh.end_time), q(sh.role), q(sh.shift_type), q(sh.state),
+          sh.labor_cost ?? '',
+        ].join(',')
+      })
+    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `schedule-${weekStart}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  /** NEW-538: printable week sheet for the floor (own window so the desk UI isn't printed). */
+  const printWeek = () => {
+    const rows = [...shifts]
+      .sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))
+      .map((sh) => {
+        const m = sh.member_id ? membersById.get(sh.member_id) : undefined
+        return `<tr><td>${sh.shift_date}</td><td>${m?.display_name ?? ''}</td><td>${fmtTime(sh.start_time)}–${fmtTime(sh.end_time)}</td><td>${sh.role ?? sh.shift_type ?? ''}</td></tr>`
+      })
+      .join('')
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<!doctype html><html><head><title>Schedule ${weekStart}</title>
+      <style>
+        body{font-family:ui-sans-serif,system-ui,sans-serif;padding:24px;color:#111}
+        h1{font-size:18px;margin:0 0 4px} p{color:#666;font-size:12px;margin:0 0 16px}
+        table{width:100%;border-collapse:collapse;font-size:12px}
+        th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb}
+        th{background:#f9fafb;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}
+      </style></head><body>
+      <h1>Schedule — week of ${weekStart}</h1>
+      <p>${shifts.length} shifts · generated ${new Date().toLocaleString()}</p>
+      <table><thead><tr><th>Date</th><th>Member</th><th>Time</th><th>Role</th></tr></thead><tbody>${rows}</tbody></table>
+      </body></html>`)
+    w.document.close()
+    w.print()
+  }
+
+  /** NEW-521: duplicate a shift onto the same member+day. */
+  const doDuplicateShift = useMutation({
+    mutationFn: (sh: Shift) => createShift({
+      scheduleId: week?.schedule?.id,
+      memberId: sh.member_id ?? undefined,
+      shiftDate: sh.shift_date,
+      startTime: sh.start_time,
+      endTime: sh.end_time,
+      role: sh.role,
+      shiftType: sh.shift_type,
+    }),
+    onSuccess: () => { toast.success('Shift duplicated'); invalidateWeek() },
+    onError: () => toast.error('Could not duplicate the shift'),
+  })
+  const doDeleteShift = useMutation({
+    mutationFn: (shiftId: string) => deleteShift(shiftId),
+    onSuccess: () => { toast.success('Shift deleted'); setSelectedShiftId(null); invalidateWeek() },
+    onError: () => toast.error('Could not delete the shift'),
+  })
+
   const doCallout = useMutation({
     mutationFn: (shiftId: string) => reportCallout(shiftId),
     onSuccess: () => { toast.success('Call-out reported — shift opened'); invalidateWeek() },
@@ -347,6 +419,8 @@ export function ManagerShiftDesk() {
         <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew (inbox + push + email/SMS):'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
         <ActionBtn onClick={() => setInviteOpen(true)}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
         <ActionBtn onClick={() => setOpsOpen(true)}><SlidersHorizontal className="w-3.5 h-3.5" /> Ops rules</ActionBtn>
+        <ActionBtn onClick={exportWeekCsv}><Download className="w-3.5 h-3.5" /> Export week</ActionBtn>
+        <ActionBtn onClick={printWeek}><Printer className="w-3.5 h-3.5" /> Print sheet</ActionBtn>
         <ActionBtn onClick={() => doPublish.mutate()} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
 
@@ -433,6 +507,7 @@ export function ManagerShiftDesk() {
                                     data-fair-risk={risk.fair || undefined}
                                     data-compliance-risk={risk.compliance || undefined}
                                     onClick={() => openInspector(s.id)}
+                                    onContextMenu={(e) => { e.preventDefault(); setShiftMenu({ shift: s, x: e.clientX, y: e.clientY }) }}
                                     className={cn(
                                       'w-full px-1.5 py-1 rounded-md text-center transition-transform hover:-translate-y-px outline-offset-1',
                                       shiftClass(s),
@@ -567,6 +642,50 @@ export function ManagerShiftDesk() {
         />
       )}
       {opsOpen && <OpsRulesPanel members={members} onClose={() => setOpsOpen(false)} />}
+
+      {/* Right-click shift menu (NEW-521) */}
+      {shiftMenu && (() => {
+        const sh = shiftMenu.shift
+        const m = sh.member_id ? membersById.get(sh.member_id) : undefined
+        const Item = ({ icon: Icon, label, danger, onClick }: { icon: any; label: string; danger?: boolean; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            className={cn('flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50', danger ? 'text-rose-600' : 'text-gray-700')}
+          >
+            <Icon className={cn('w-4 h-4', danger ? 'text-rose-500' : 'text-gray-400')} /> {label}
+          </button>
+        )
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setShiftMenu(null)} />
+            <div
+              className="fixed z-50 w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+              style={{ top: Math.min(shiftMenu.y, window.innerHeight - 220), left: Math.min(shiftMenu.x, window.innerWidth - 220) }}
+            >
+              <Item icon={Pencil} label="Edit shift" onClick={() => { setShiftEditor({ shift: sh }); setShiftMenu(null) }} />
+              <Item icon={Copy} label="Duplicate" onClick={() => { doDuplicateShift.mutate(sh); setShiftMenu(null) }} />
+              <Item
+                icon={MessageSquare}
+                label={`Message ${m?.display_name?.split(' ')[0] ?? 'staff'}`}
+                onClick={() => {
+                  const msg = prompt(`Message to ${m?.display_name ?? 'this member'}:`)
+                  if (msg) doBroadcast.mutate(msg)
+                  setShiftMenu(null)
+                }}
+              />
+              <Item
+                icon={Trash2}
+                label="Delete shift"
+                danger
+                onClick={() => {
+                  setShiftMenu(null)
+                  if (confirm(`Delete ${m?.display_name ?? 'this'} shift on ${sh.shift_date}?`)) doDeleteShift.mutate(sh.id)
+                }}
+              />
+            </div>
+          </>
+        )
+      })()}
 
       {/* Modals */}
       {shiftEditor && (

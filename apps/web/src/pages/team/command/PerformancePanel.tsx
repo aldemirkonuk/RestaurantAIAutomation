@@ -6,7 +6,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { BarChart3, Plus, Upload } from 'lucide-react'
+import { BarChart3, Plus, Upload, Download } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
 
 export function PerformancePanel({ member }: { member: TeamMember | null }) {
@@ -20,6 +20,34 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
     queryFn: () => getMemberPerformance(member!.id),
     enabled: !!member,
   })
+
+  /** NEW-529: export this member's performance series as CSV. */
+  const exportCsv = () => {
+    const series = data?.analytic?.series ?? []
+    if (series.length === 0) {
+      toast.error('No performance data to export yet')
+      return
+    }
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['Member', 'Point', 'Value'].join(',')
+    const lines = series.map((v: any, i: number) =>
+      [q(member?.display_name), i + 1, typeof v === 'number' ? v : (v?.value ?? '')].join(','),
+    )
+    const summary = data?.metrics
+      ? [
+          `# Sales per shift,${data.metrics.salesPerShift}`,
+          `# Avg check,${data.metrics.avgCheck}`,
+          `# Wine attach %,${data.metrics.wineAttachPct}`,
+          '',
+        ].join('\n')
+      : ''
+    const blob = new Blob([summary + [header, ...lines].join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `performance-${(member?.display_name ?? 'member').replace(/[^\w]+/g, '-').toLowerCase()}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
 
   const save = useMutation({
     mutationFn: () =>
@@ -123,6 +151,13 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
             title="CSV columns: service_date, covers, net_sales, wine_sales, checks[, member_id]"
           >
             <Upload className="w-3 h-3" /> CSV
+          </button>
+          <button
+            onClick={exportCsv}
+            className="inline-flex items-center gap-1 h-7 px-2 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 hover:bg-gray-50"
+            title="Export this member's performance series"
+          >
+            <Download className="w-3 h-3" /> Export
           </button>
           <button
             onClick={() => setAdding((v) => !v)}
