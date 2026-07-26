@@ -861,9 +861,33 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 > packs + sharing (423–425), annotations (427), widget fullscreen/right-click
 > (429/430), presentation mode (439), metric alerts (448) — each needs either new
 > endpoints or a chart-library interaction layer.
-> Deferred in the seating batch: the remaining NEW-764–860 rows (density × time,
-> × space, causal links, manager alerts) now have a widget to extend, but need
-> their own passes — this shipped the core measures, not all 100 rows.
+> **Seating-density depth pass (2026-07-21):** extended `SeatingDensityPanel`
+> with everything the existing data actually supports — NEW-764/774 (`d` then
+> digit focuses the Nth measure) · NEW-804 (`z` opens the densest zone) ·
+> NEW-765/775/805 (zone multi-select → side-by-side compare strip, best zone
+> highlighted) · NEW-767 (right-click a measure → show / export CSV /
+> methodology / browse type) · NEW-796/806 (double-click a zone → drill-down
+> drawer with best+weakest table and the engine's venue-wide geometry
+> regression, R² and standardized betas) · NEW-797/807 (right-click a zone →
+> detail / compare / mute / open) · NEW-798/799/801 (tint tables by bar
+> adjacency, kitchen distance, poolside — each chip shows the engine's own
+> Pearson r for that attribute × measure) · NEW-402 (2-top vs 3–4 vs 5+ median
+> efficiency bands).
+>
+> **Blocked on data that does not exist (~70 of NEW-764–860).** These rows were
+> authored against features #364–460 that assume sources this product has no
+> table for, so building them would mean inventing numbers:
+> reservations/no-shows (#391/392), weather (#381), labor cost + server load
+> (#394/395/449), turn-time (#393), BTG pours & bottle-opens per seat
+> (#373/374 — `pos_checks.items` has no per-seat pour attribution), fire-code
+> limits (#412), noise/sightline/window/booth/patio-heater attributes
+> (#404–408 — `restaurant_tables` has zone, seats, outdoor flag and three
+> distances, nothing else), hourly/15-min time grain (#376/384 — the
+> table-performance endpoint aggregates the whole window, no per-hour series),
+> 7-day forecast (#385), cross-location benchmark (#455), host-tablet deep links
+> (#400/403/410), and the Density Ops settings/alert-centre surfaces
+> (#446–460). Each needs a schema or endpoint first; the widget is the place to
+> hang them once it exists.
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
