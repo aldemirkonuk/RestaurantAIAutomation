@@ -1157,6 +1157,32 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## Q. Admin (`/admin`, `/admin/health`) (`NEW-544 … NEW-563`)
 
+> **Shipped 2026-07-21 (Admin batch).** The headline here is removing two
+> **misleading fake successes**, not adding chrome:
+> - NEW-544: Save Settings waited 1s and reported "saved successfully" while
+>   writing nothing. There is no admin-config endpoint (the settings module only
+>   exposes feature flags), so it now persists locally, **rehydrates on mount**
+>   so the claim is true, and the toast says "saved on this device" with the
+>   reason.
+> - NEW-545: Restart Agent waited 2s and claimed the agent "restarted
+>   successfully" without calling anything. The orchestrator exposes only
+>   `GET /health/agents[/:name]` — no control endpoint — so it now re-checks
+>   live health and tells the user restart isn't wired, reporting what the agent
+>   actually says.
+> - NEW-548/552: Admin Health cards are clickable → live per-agent payload from
+>   `GET /health/agents/:name`, an endpoint that already existed and **nothing
+>   called**. NEW-549 status filter (All / Healthy / Needs attention). NEW-553
+>   `r` refreshes, `Esc` closes the sheet.
+>
+> Deferred — these need an orchestrator control plane or new tables that don't
+> exist, and faking them is exactly what this batch removed: integrations
+> Configure wizards (547), manual job trigger (550), kill switch (551), audit
+> trail (554), per-restaurant flag overrides (555), impersonation (556), LLM cost
+> dashboard (557), DLQ viewer (558), config diff (559), support bundle (560),
+> maintenance mode (561), agent right-click restart/pause (562), alert routing
+> (563).
+
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-544 | `Click` | Save Settings persists admin config to backend. |

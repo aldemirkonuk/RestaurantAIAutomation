@@ -20,6 +20,9 @@ import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 
+/** Admin config persists locally — there is no admin-config endpoint (NEW-544). */
+const ADMIN_SETTINGS_KEY = 'wineops.admin.settings'
+
 interface RestaurantSettings {
   buffer_window_minutes: number
   default_threshold_min: number
@@ -144,12 +147,21 @@ export default function AdminPanel() {
     Array<{ id: string; name: string; desc: string; status: string; healthy: boolean }>
   >([])
   
-  const [settings, setSettings] = useState<RestaurantSettings>({
-    buffer_window_minutes: 30,
-    default_threshold_min: 5,
-    enable_auto_procurement: true,
-    enable_visual_verification: false,
-    enable_predictive_analytics: false,
+  const [settings, setSettings] = useState<RestaurantSettings>(() => {
+    const defaults: RestaurantSettings = {
+      buffer_window_minutes: 30,
+      default_threshold_min: 5,
+      enable_auto_procurement: true,
+      enable_visual_verification: false,
+      enable_predictive_analytics: false,
+    }
+    // Rehydrate what Save wrote, so "saved on this device" is actually true.
+    try {
+      const stored = localStorage.getItem(ADMIN_SETTINGS_KEY)
+      return stored ? { ...defaults, ...JSON.parse(stored) } : defaults
+    } catch {
+      return defaults
+    }
   })
 
   // Provider health (Supabase / Gemini / Claude for Studio)
@@ -234,11 +246,20 @@ export default function AdminPanel() {
     }
   }, [activeTab])
 
+  /**
+   * NEW-544. This previously faked a 1s delay and reported "saved
+   * successfully" — a success message for a no-op. There is no admin-config
+   * endpoint (the settings module only exposes feature flags), so the values
+   * are persisted locally and the toast says exactly that instead of implying
+   * a server write.
+   */
   const handleSaveSettings = async () => {
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      toast.success('Settings saved successfully')
+      localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(settings))
+      toast.success('Settings saved on this device', {
+        description: 'Admin config has no server endpoint yet, so these apply locally.',
+      })
     } catch {
       toast.error('Failed to save settings')
     } finally {
@@ -246,10 +267,33 @@ export default function AdminPanel() {
     }
   }
 
+  /**
+   * NEW-545. This previously waited 2s and claimed the agent "restarted
+   * successfully" without calling anything. Restarting needs an orchestrator
+   * control endpoint that doesn't exist (only GET /health/agents[/:name] is
+   * exposed), so rather than lie we re-check the agent's live health and tell
+   * the user what's actually true.
+   */
   const handleRestartAgent = async (agentName: string) => {
-    toast.info(`Restarting ${agentName.replace('_', ' ')}...`)
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    toast.success(`${agentName.replace('_', ' ')} restarted successfully`)
+    const pretty = agentName.replace(/_/g, ' ')
+    try {
+      const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+      const token = localStorage.getItem('accessToken')
+      const res = await axios.get(`${apiUrl}/api/v1/health/agents/${agentName}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        timeout: 8000,
+      })
+      const healthy = res.data?.healthy ?? res.data?.agent?.healthy
+      toast.warning(`Restart isn't wired for ${pretty}`, {
+        description: healthy
+          ? `It currently reports healthy. Restarting needs an orchestrator control endpoint.`
+          : `It currently reports unhealthy. Restarting needs an orchestrator control endpoint — check the service logs.`,
+      })
+    } catch {
+      toast.error(`Couldn't reach ${pretty}`, {
+        description: 'Restart control is not implemented; the health check also failed.',
+      })
+    }
   }
 
   const tabs = [
