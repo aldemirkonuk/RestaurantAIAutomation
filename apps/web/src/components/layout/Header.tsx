@@ -417,15 +417,27 @@ export function Header({ title, subtitle }: HeaderProps) {
                       <p className="text-sm text-gray-500">{user?.email || 'user@example.com'}</p>
                     </div>
                     <div className="p-2">
-                      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" aria-label="View profile">
+                      <button
+                        onClick={() => { navigate('/profile'); setShowUserMenu(false) }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        aria-label="View profile"
+                      >
                         <User className="w-4 h-4" aria-hidden="true" />
                         Profile
                       </button>
-                      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Open settings">
+                      <button
+                        onClick={() => { navigate('/settings'); setShowUserMenu(false) }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        aria-label="Open settings"
+                      >
                         <Settings className="w-4 h-4" aria-hidden="true" />
                         Settings
                       </button>
-                      <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Get help and support">
+                      <button
+                        onClick={() => { navigate('/help'); setShowUserMenu(false) }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        aria-label="Get help and support"
+                      >
                         <HelpCircle className="w-4 h-4" aria-hidden="true" />
                         Help & Support
                       </button>

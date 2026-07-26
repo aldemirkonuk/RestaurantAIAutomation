@@ -1304,4 +1304,352 @@ export class AuthService {
 
     return !!existing;
   }
+
+  /** Build profile payload for GET/PATCH /auth/me */
+  async getProfileForUser(userId: string) {
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, email, name, phone, role, password_hash, oauth_provider")
+      .eq("user_id", userId)
+      .single();
+
+    if (error || !user) {
+      throw new UnauthorizedException("User not found");
+    }
+
+    const linkedProviders = await this.getLinkedProviders(userId);
+
+    return {
+      userId: user.user_id,
+      email: user.email,
+      name: user.name,
+      phone: user.phone ?? null,
+      role: user.role,
+      hasPassword: !!user.password_hash,
+      linkedProviders,
+    };
+  }
+
+  async updateProfile(
+    userId: string,
+    updates: { name?: string; phone?: string },
+  ) {
+    const patch: Record<string, unknown> = {};
+    if (updates.name !== undefined) {
+      const trimmed = updates.name.trim();
+      if (trimmed.length < 2) {
+        throw new BadRequestException(
+          "Display name must be at least 2 characters",
+        );
+      }
+      patch.name = trimmed;
+    }
+    if (updates.phone !== undefined) {
+      patch.phone = updates.phone.trim() || null;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return this.getProfileForUser(userId);
+    }
+
+    const { error } = await this.databaseService.supabase
+      .from("users")
+      .update(patch)
+      .eq("user_id", userId);
+
+    if (error) {
+      this.logger.error(`updateProfile failed: ${error.message}`);
+      throw new BadRequestException("Failed to update profile");
+    }
+
+    return this.getProfileForUser(userId);
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string | undefined,
+    newPassword: string,
+  ): Promise<void> {
+    if (!newPassword || newPassword.length < 8) {
+      throw new BadRequestException(
+        "New password must be at least 8 characters",
+      );
+    }
+
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("password_hash")
+      .eq("user_id", userId)
+      .single();
+
+    if (error || !user) {
+      throw new UnauthorizedException("User not found");
+    }
+
+    if (user.password_hash) {
+      if (!currentPassword) {
+        throw new BadRequestException("Current password is required");
+      }
+      const valid = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!valid) {
+        throw new UnauthorizedException("Current password is incorrect");
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
+    const { error: updateErr } = await this.databaseService.supabase
+      .from("users")
+      .update({
+        password_hash: passwordHash,
+      })
+      .eq("user_id", userId);
+
+    if (updateErr) {
+      this.logger.error(`changePassword failed: ${updateErr.message}`);
+      throw new BadRequestException("Failed to update password");
+    }
+  }
+
+  async getLinkedProviders(userId: string): Promise<{
+    google: boolean;
+    microsoft: boolean;
+  }> {
+    const { data: rows } = await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .select("provider")
+      .eq("user_id", userId);
+
+    const set = new Set((rows ?? []).map((r: { provider: string }) => r.provider));
+
+    // Legacy fallback
+    if (set.size === 0) {
+      const { data: user } = await this.databaseService.supabase
+        .from("users")
+        .select("oauth_provider")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (user?.oauth_provider === "google") set.add("google");
+      if (user?.oauth_provider === "microsoft") set.add("microsoft");
+    }
+
+    return {
+      google: set.has("google"),
+      microsoft: set.has("microsoft"),
+    };
+  }
+
+  async linkOAuthProvider(
+    userId: string,
+    provider: "google" | "microsoft",
+    token: string,
+  ) {
+    if (!token?.trim()) {
+      throw new BadRequestException("OAuth token is required");
+    }
+
+    let providerId: string;
+    let email: string;
+
+    if (provider === "google") {
+      const googleUser = await this.verifyGoogleToken(token);
+      providerId = googleUser.sub;
+      email = googleUser.email;
+    } else {
+      const msUser = await this.verifyMicrosoftToken(token);
+      providerId = msUser.oid;
+      email = msUser.email;
+    }
+
+    const { data: me } = await this.databaseService.supabase
+      .from("users")
+      .select("email")
+      .eq("user_id", userId)
+      .single();
+
+    if (
+      me?.email &&
+      email &&
+      me.email.toLowerCase() !== String(email).toLowerCase()
+    ) {
+      throw new BadRequestException(
+        "OAuth account email must match your WineOps email",
+      );
+    }
+
+    const { data: existing } = await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .select("user_id")
+      .eq("provider", provider)
+      .eq("provider_user_id", providerId)
+      .maybeSingle();
+
+    if (existing && existing.user_id !== userId) {
+      throw new ConflictException(
+        "This OAuth account is already linked to another user",
+      );
+    }
+
+    const { error } = await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .upsert(
+        {
+          user_id: userId,
+          provider,
+          provider_user_id: providerId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,provider" },
+      );
+
+    if (error) {
+      this.logger.error(`linkOAuthProvider failed: ${error.message}`);
+      throw new BadRequestException("Failed to link provider");
+    }
+
+    // Keep legacy columns in sync for older login paths
+    await this.databaseService.supabase
+      .from("users")
+      .update({
+        oauth_provider: provider,
+        oauth_id: providerId,
+      })
+      .eq("user_id", userId);
+
+    return this.getLinkedProviders(userId);
+  }
+
+  async unlinkOAuthProvider(
+    userId: string,
+    provider: "google" | "microsoft",
+  ) {
+    const linked = await this.getLinkedProviders(userId);
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("password_hash")
+      .eq("user_id", userId)
+      .single();
+
+    const otherLinked =
+      (provider === "google" ? linked.microsoft : linked.google) ||
+      !!user?.password_hash;
+
+    if (!otherLinked) {
+      throw new BadRequestException(
+        "Cannot unlink your only sign-in method. Set a password first.",
+      );
+    }
+
+    await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("provider", provider);
+
+    const { data: legacy } = await this.databaseService.supabase
+      .from("users")
+      .select("oauth_provider")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (legacy?.oauth_provider === provider) {
+      const remaining = await this.getLinkedProviders(userId);
+      const next =
+        remaining.google ? "google" : remaining.microsoft ? "microsoft" : null;
+      await this.databaseService.supabase
+        .from("users")
+        .update({
+          oauth_provider: next,
+          oauth_id: null,
+        })
+        .eq("user_id", userId);
+    }
+
+    return this.getLinkedProviders(userId);
+  }
+
+  async leaveRestaurant(userId: string, restaurantId: string): Promise<void> {
+    const { data: targetAccess } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!targetAccess) {
+      throw new BadRequestException("You are not a member of this restaurant");
+    }
+
+    if (targetAccess.role === "owner") {
+      const { count } = await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId)
+        .eq("role", "owner")
+        .eq("is_active", true);
+
+      if ((count ?? 0) <= 1) {
+        throw new BadRequestException(
+          "You're the only owner. Transfer ownership first.",
+        );
+      }
+    }
+
+    const { error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .delete()
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId);
+
+    if (error) {
+      this.logger.error(`leaveRestaurant failed: ${error.message}`);
+      throw new BadRequestException("Failed to leave restaurant");
+    }
+  }
+
+  async deleteAccount(userId: string): Promise<void> {
+    // Soft-guard: block if sole owner of any restaurant
+    const { data: ownerRows } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("restaurant_id, role")
+      .eq("user_id", userId)
+      .eq("role", "owner")
+      .eq("is_active", true);
+
+    for (const row of ownerRows ?? []) {
+      const { count } = await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", row.restaurant_id)
+        .eq("role", "owner")
+        .eq("is_active", true);
+      if ((count ?? 0) <= 1) {
+        throw new BadRequestException(
+          "Transfer ownership of all restaurants before deleting your account.",
+        );
+      }
+    }
+
+    await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .delete()
+      .eq("user_id", userId);
+
+    await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .delete()
+      .eq("user_id", userId);
+
+    const { error } = await this.databaseService.supabase
+      .from("users")
+      .delete()
+      .eq("user_id", userId);
+
+    if (error) {
+      this.logger.error(`deleteAccount failed: ${error.message}`);
+      throw new BadRequestException("Failed to delete account");
+    }
+
+    this.logger.log(`Account deleted: ${userId}`);
+  }
 }

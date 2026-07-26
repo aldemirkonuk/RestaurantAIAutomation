@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -809,6 +809,40 @@ export default function Settings() {
         <div className="text-center">
           <RefreshCw className="w-6 h-6 animate-spin text-wine-500 mx-auto mb-3" />
           <p className="text-sm text-slate-400">Loading settings…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Staff (waiter) — restaurant ops Settings are manager/owner only
+  const isStaffOnly = effectiveRole === 'staff';
+  if (isStaffOnly) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Header title="Settings" subtitle="Restaurant settings are managed by your manager" />
+        <div className="max-w-lg mx-auto px-6 py-16 text-center">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gray-100 flex items-center justify-center">
+            <SettingsIcon className="w-7 h-7 text-gray-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Ask a manager</h2>
+          <p className="text-sm text-gray-500 mb-8">
+            Team, locations, feature flags, and other restaurant settings can only be changed by
+            managers or owners. You can still manage your personal account.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/profile"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-wine-600 text-white text-sm font-medium hover:bg-wine-700"
+            >
+              Open Profile
+            </Link>
+            <Link
+              to="/help"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white"
+            >
+              Help & Support
+            </Link>
+          </div>
         </div>
       </div>
     );

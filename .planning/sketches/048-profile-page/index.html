@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 048 — Profile Page</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-body); background: var(--color-bg); color: var(--color-text); padding-top: 52px; }
+#variant-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+  background: #fff; border-bottom: 1px solid var(--color-border);
+  padding: 10px 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  font-size: 13px;
+}
+#variant-nav span { color: var(--color-text-muted); margin-right: 8px; font-weight: 500; }
+.vtab {
+  padding: 5px 12px; border-radius: 8px; border: 1.5px solid var(--color-border);
+  background: #fff; color: #6b7280; cursor: pointer; font-size: 13px; font-weight: 500;
+}
+.vtab:hover { background: #f9fafb; }
+.vtab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.variant { display: none; min-height: calc(100vh - 52px); }
+.variant.active { display: block; }
+.score { margin-left: auto; font-size: 12px; color: var(--color-text-muted); }
+.win-badge { background: #ecfdf5; color: #059669; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+
+.app-header {
+  background: rgba(255,255,255,0.88); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border); height: 64px;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
+}
+.brand { font-family: var(--font-display); font-weight: 700; color: var(--color-primary); }
+.avatar {
+  width: 32px; height: 32px; border-radius: 999px;
+  background: linear-gradient(135deg, #f4a9ba, var(--color-primary));
+  color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 13px;
+}
+.wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+.card {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: 20px 24px; margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.card h3 { font-family: var(--font-display); font-size: 15px; margin-bottom: 14px; }
+label { display: block; font-size: 12px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 6px; }
+input, select {
+  width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--color-border);
+  font-size: 14px; margin-bottom: 12px; background: #fff;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+  border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-primary { background: var(--color-primary); color: #fff; }
+.btn-ghost { background: #fff; border: 1px solid var(--color-border); color: var(--color-text); }
+.btn-danger { background: #fff; border: 1px solid #fecaca; color: #dc2626; }
+.row { display: flex; gap: 12px; align-items: center; }
+.muted { font-size: 12px; color: var(--color-text-muted); }
+.linked {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px; border: 1px solid #f3f4f6; border-radius: 12px; margin-bottom: 8px;
+}
+.badge { display: inline-block; padding: 3px 8px; border-radius: 8px; background: #f3f4f6; font-size: 12px; }
+.hero {
+  display: flex; gap: 16px; align-items: center; margin-bottom: 24px;
+}
+.hero .big {
+  width: 72px; height: 72px; border-radius: 20px;
+  background: linear-gradient(135deg, #f4a9ba, var(--color-primary));
+  color: #fff; display: grid; place-items: center; font-size: 28px; font-weight: 700;
+}
+.rail-layout { display: grid; grid-template-columns: 200px 1fr; gap: 28px; }
+.rail button {
+  width: 100%; text-align: left; padding: 10px 12px; border: none; background: transparent;
+  border-radius: 10px; font-size: 13px; color: #4b5563; cursor: pointer; margin-bottom: 4px;
+}
+.rail button.active { background: var(--color-primary-light); color: var(--color-primary-dark); font-weight: 600; }
+.drawer-backdrop {
+  position: fixed; inset: 52px 0 0 0; background: rgba(0,0,0,0.25); display: flex; justify-content: flex-end;
+}
+.drawer {
+  width: min(420px, 100%); background: #fff; height: 100%; overflow: auto;
+  padding: 24px; box-shadow: var(--shadow-md); animation: slideIn 0.25s ease;
+}
+@keyframes slideIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.membership {
+  display: flex; justify-content: space-between; padding: 14px 16px;
+  border: 1px solid #f3f4f6; border-radius: 14px; margin-bottom: 8px;
+}
+.wild {
+  background: linear-gradient(135deg, #fff 0%, #fdf2f4 45%, #f9fafb 100%);
+  padding: 48px 32px; min-height: calc(100vh - 52px);
+}
+.wild h1 {
+  font-family: var(--font-display); font-size: clamp(40px, 6vw, 64px);
+  line-height: 0.95; letter-spacing: -0.03em; max-width: 10ch; margin-bottom: 12px;
+}
+.wild-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; margin-top: 40px; }
+.upgrade {
+  border: 1px solid #f4a9ba; background: linear-gradient(135deg, #fdf2f4, #fff);
+  border-radius: 16px; padding: 16px; margin-top: 12px;
+}
+@media (max-width: 800px) {
+  .rail-layout, .wild-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<nav id="variant-nav">
+  <span>048 Profile</span>
+  <button class="vtab active" data-v="A">A Form</button>
+  <button class="vtab" data-v="B">B Hero</button>
+  <button class="vtab" data-v="C">C Rail ★</button>
+  <button class="vtab" data-v="D">D Drawer</button>
+  <button class="vtab" data-v="E">E Memberships</button>
+  <button class="vtab" data-v="F">F Wild</button>
+  <span class="score">Winner: <span class="win-badge">C · 81</span></span>
+</nav>
+
+<!-- A -->
+<section class="variant active" id="A">
+  <header class="app-header"><div class="brand">WineOps</div><div class="avatar">H</div></header>
+  <div class="wrap">
+    <h2 style="font-family:var(--font-display);margin-bottom:8px">Profile</h2>
+    <p class="muted" style="margin-bottom:20px">Single-column account form</p>
+    <div class="card">
+      <h3>Account</h3>
+      <label>Display name</label><input value="Hakki Germiyanligil">
+      <label>Email</label><input value="konukp@hotmail.com" readonly>
+      <label>Phone</label><input value="+1 415 555 0142" placeholder="Phone">
+      <span class="badge">Manager</span>
+      <div style="margin-top:12px"><button class="btn btn-primary">Save changes</button></div>
+    </div>
+    <div class="card"><h3>Security</h3>
+      <label>Current password</label><input type="password" value="********">
+      <label>New password</label><input type="password">
+      <button class="btn btn-ghost">Update password</button>
+    </div>
+    <div class="card"><h3>Linked accounts</h3>
+      <div class="linked"><span>Google · Connected</span><button class="btn btn-danger">Unlink</button></div>
+      <div class="linked"><span>Microsoft · Not connected</span><button class="btn btn-ghost">Connect</button></div>
+    </div>
+    <div class="card"><h3>Preferences</h3>
+      <label>Theme</label><select><option>Light</option><option>Dark</option><option>System</option></select>
+      <label>Active restaurant</label><select><option>Nob Hill Wine Bar</option></select>
+    </div>
+    <div class="card" style="border-color:#fecaca"><h3 style="color:#dc2626">Danger zone</h3>
+      <button class="btn btn-danger">Leave restaurant</button>
+      <button class="btn btn-danger" style="margin-left:8px">Delete account</button>
+    </div>
+  </div>
+</section>
+
+<!-- B -->
+<section class="variant" id="B">
+  <header class="app-header"><div class="brand">WineOps</div><div class="avatar">H</div></header>
+  <div class="wrap">
+    <div class="hero">
+      <div class="big">H</div>
+      <div>
+        <h2 style="font-family:var(--font-display);font-size:28px">Hakki Germiyanligil</h2>
+        <p class="muted">konukp@hotmail.com · Manager · Nob Hill Wine Bar</p>
+      </div>
+    </div>
+    <div class="card"><h3>Identity</h3>
+      <label>Display name</label><input value="Hakki Germiyanligil">
+      <label>Phone</label><input value="+1 415 555 0142">
+      <button class="btn btn-primary">Save</button>
+    </div>
+    <div class="card"><h3>Security & linked</h3>
+      <div class="linked"><span>Password set</span><button class="btn btn-ghost">Change</button></div>
+      <div class="linked"><span>Google</span><button class="btn btn-danger">Unlink</button></div>
+      <div class="linked"><span>Microsoft</span><button class="btn btn-ghost">Connect</button></div>
+    </div>
+    <div class="card"><h3>Preferences</h3>
+      <div class="row"><button class="btn btn-primary">Light</button><button class="btn btn-ghost">Dark</button><button class="btn btn-ghost">System</button></div>
+    </div>
+    <div class="card" style="border-color:#fecaca"><h3 style="color:#dc2626">Danger</h3>
+      <button class="btn btn-danger">Leave / Delete</button>
+    </div>
+  </div>
+</section>
+
+<!-- C WINNER -->
+<section class="variant" id="C">
+  <header class="app-header"><div class="brand">WineOps</div><div class="avatar">H</div></header>
+  <div class="wrap">
+    <div class="hero">
+      <div class="big" style="width:56px;height:56px;font-size:22px;border-radius:16px">H</div>
+      <div>
+        <h2 style="font-family:var(--font-display)">Hakki Germiyanligil</h2>
+        <p class="muted">konukp@hotmail.com · Manager · Nob Hill Wine Bar</p>
+      </div>
+    </div>
+    <div class="rail-layout">
+      <nav class="rail">
+        <button class="active">Account</button>
+        <button>Security</button>
+        <button>Linked accounts</button>
+        <button>Preferences</button>
+        <button style="color:var(--color-primary-dark);font-weight:600">Restaurant ★</button>
+        <button>Payment ★</button>
+        <button>Memberships ★</button>
+        <button>Danger zone</button>
+        <p class="muted" style="margin-top:12px;padding:0 12px">★ Manager / owner only</p>
+      </nav>
+      <div>
+        <div class="card">
+          <h3>Restaurant <span class="badge">Manager</span></h3>
+          <label>Restaurant name</label><input value="Nob Hill Wine Bar">
+          <label>City</label><input value="San Francisco">
+          <button class="btn btn-primary">Save restaurant</button>
+        </div>
+        <div class="card">
+          <h3>Payment <span class="badge">Manager</span></h3>
+          <p class="muted" style="margin-bottom:10px">Plan: Free · Card checkout later</p>
+          <label>Billing email</label><input value="billing@nobhill.wine">
+          <label>Billing phone</label><input value="+1 415 555 0100">
+          <button class="btn btn-ghost">Save payment details</button>
+        </div>
+        <div class="card">
+          <h3>Memberships <span class="badge">Manager</span></h3>
+          <div class="linked"><span><strong>Nob Hill Wine Bar</strong><br><span class="muted">Manager · Active</span></span><span class="badge">Active</span></div>
+          <div class="linked"><span><strong>Mission Bistro</strong><br><span class="muted">Staff</span></span><button class="btn btn-ghost">Switch</button></div>
+        </div>
+        <div class="upgrade">
+          <strong style="font-size:14px">Upgrade</strong>
+          <p class="muted" style="margin:6px 0 10px">Advanced analytics & priority support — Coming soon</p>
+          <button class="btn btn-ghost" disabled>Coming soon</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- D -->
+<section class="variant" id="D">
+  <header class="app-header">
+    <div class="brand">WineOps</div>
+    <div class="row"><span class="muted">Dashboard</span><div class="avatar">H</div></div>
+  </header>
+  <div class="drawer-backdrop">
+    <aside class="drawer">
+      <h2 style="font-family:var(--font-display);margin-bottom:4px">Your profile</h2>
+      <p class="muted" style="margin-bottom:16px">Compact sheet from avatar</p>
+      <label>Display name</label><input value="Hakki Germiyanligil">
+      <label>Phone</label><input value="+1 415 555 0142">
+      <div class="linked"><span>Google</span><button class="btn btn-danger">Unlink</button></div>
+      <div class="linked"><span>Microsoft</span><button class="btn btn-ghost">Connect</button></div>
+      <label>Theme</label><select><option>Light</option></select>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px">Save</button>
+      <hr style="border:none;border-top:1px solid #f3f4f6;margin:16px 0">
+      <button class="btn btn-danger" style="width:100%;justify-content:center">Danger actions…</button>
+    </aside>
+  </div>
+</section>
+
+<!-- E -->
+<section class="variant" id="E">
+  <header class="app-header"><div class="brand">WineOps</div><div class="avatar">H</div></header>
+  <div class="wrap">
+    <div class="hero">
+      <div class="big">H</div>
+      <div>
+        <h2 style="font-family:var(--font-display)">Hakki Germiyanligil</h2>
+        <p class="muted">konukp@hotmail.com</p>
+        <button class="btn btn-ghost" style="margin-top:8px">Edit identity</button>
+      </div>
+    </div>
+    <h3 style="font-family:var(--font-display);margin-bottom:12px">Your restaurants</h3>
+    <div class="membership"><div><strong>Nob Hill Wine Bar</strong><div class="muted">Manager · Active</div></div><span class="badge">Switch</span></div>
+    <div class="membership"><div><strong>Mission Bistro</strong><div class="muted">Staff</div></div><span class="badge">Switch</span></div>
+    <div class="card" style="margin-top:20px"><h3>Security & linked</h3>
+      <div class="linked"><span>Password</span><button class="btn btn-ghost">Change</button></div>
+      <div class="linked"><span>Google / Microsoft</span><button class="btn btn-ghost">Manage</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- F wild -->
+<section class="variant" id="F">
+  <div class="wild">
+    <p class="muted" style="letter-spacing:0.12em;text-transform:uppercase;font-size:11px;margin-bottom:16px">Account · Personal</p>
+    <h1>Hakki<br>Germiyanligil</h1>
+    <p style="max-width:36ch;color:#4b5563;margin-top:8px">Your identity lives here. Restaurant ops stay in Settings.</p>
+    <div class="wild-grid">
+      <div class="card" style="transform:rotate(-0.5deg)">
+        <h3>Core</h3>
+        <label>Display name</label><input value="Hakki Germiyanligil">
+        <label>Phone</label><input value="+1 415 555 0142">
+        <button class="btn btn-primary">Save</button>
+      </div>
+      <div>
+        <div class="card" style="transform:rotate(1deg)"><h3>Linked</h3>
+          <div class="linked"><span>Google</span><span class="badge">On</span></div>
+          <div class="linked"><span>Microsoft</span><span class="badge">Off</span></div>
+        </div>
+        <div class="upgrade">
+          <strong>Free → Pro</strong>
+          <p class="muted" style="margin:6px 0">Editorial upgrade moment — Coming soon</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+document.querySelectorAll('.vtab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.vtab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.variant').forEach((v) => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.v).classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

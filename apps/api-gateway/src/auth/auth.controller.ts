@@ -11,6 +11,9 @@ import {
   Headers,
   Param,
   Query,
+  Patch,
+  Delete,
+  BadRequestException,
 } from "@nestjs/common";
 import { AuthService, LoginCredentials, RegisterData } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -21,6 +24,10 @@ import { CheckEmailDto } from "./dto/check-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
+import { UpdateProfileDto } from "./dto/update-profile.dto";
+import { ChangePasswordDto } from "./dto/change-password.dto";
+import { LinkProviderDto } from "./dto/link-provider.dto";
+import { LeaveRestaurantDto } from "./dto/leave-restaurant.dto";
 import { Request } from "express";
 
 @Controller("auth")
@@ -128,10 +135,98 @@ export class AuthController {
   @Get("me")
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: Request & { user: any }) {
+    const user = await this.authService.getProfileForUser(req.user.userId);
     return {
       success: true,
-      user: req.user,
+      user,
     };
+  }
+
+  @Patch("me")
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @Req() req: Request & { user: any },
+    @Body() body: UpdateProfileDto,
+  ) {
+    const user = await this.authService.updateProfile(req.user.userId, body);
+    return { success: true, user };
+  }
+
+  @Post("me/password")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @Req() req: Request & { user: any },
+    @Body() body: ChangePasswordDto,
+  ) {
+    await this.authService.changePassword(
+      req.user.userId,
+      body.currentPassword,
+      body.newPassword,
+    );
+    return { success: true, message: "Password updated" };
+  }
+
+  @Get("me/linked-providers")
+  @UseGuards(JwtAuthGuard)
+  async getLinkedProviders(@Req() req: Request & { user: any }) {
+    const linkedProviders = await this.authService.getLinkedProviders(
+      req.user.userId,
+    );
+    return { success: true, linkedProviders };
+  }
+
+  @Post("me/link/:provider")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async linkProvider(
+    @Req() req: Request & { user: any },
+    @Param("provider") provider: string,
+    @Body() body: LinkProviderDto,
+  ) {
+    if (provider !== "google" && provider !== "microsoft") {
+      throw new BadRequestException("Unsupported provider");
+    }
+    const linkedProviders = await this.authService.linkOAuthProvider(
+      req.user.userId,
+      provider,
+      body.token,
+    );
+    return { success: true, linkedProviders };
+  }
+
+  @Delete("me/link/:provider")
+  @UseGuards(JwtAuthGuard)
+  async unlinkProvider(
+    @Req() req: Request & { user: any },
+    @Param("provider") provider: string,
+  ) {
+    if (provider !== "google" && provider !== "microsoft") {
+      throw new BadRequestException("Unsupported provider");
+    }
+    const linkedProviders = await this.authService.unlinkOAuthProvider(
+      req.user.userId,
+      provider,
+    );
+    return { success: true, linkedProviders };
+  }
+
+  @Post("me/leave-restaurant")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async leaveRestaurant(
+    @Req() req: Request & { user: any },
+    @Body() body: LeaveRestaurantDto,
+  ) {
+    await this.authService.leaveRestaurant(req.user.userId, body.restaurantId);
+    return { success: true, message: "Left restaurant" };
+  }
+
+  @Delete("me")
+  @UseGuards(JwtAuthGuard)
+  async deleteAccount(@Req() req: Request & { user: any }) {
+    await this.authService.deleteAccount(req.user.userId);
+    return { success: true, message: "Account deleted" };
   }
 
   @Get("me/role")

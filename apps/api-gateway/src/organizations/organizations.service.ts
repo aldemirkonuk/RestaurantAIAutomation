@@ -87,10 +87,81 @@ export class OrganizationsService {
     await this.updateLocation(userId, restaurantId, { chainId });
   }
 
+  /**
+   * Manager or owner at this restaurant (via user_restaurant_access).
+   * Falls back to users.role when URA row is missing (legacy).
+   */
+  private async assertManagerOrOwner(
+    userId: string,
+    restaurantId: string,
+  ): Promise<void> {
+    const { data: access } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    let role = access?.role as string | undefined;
+    if (!role) {
+      const { data: user } = await this.databaseService.supabase
+        .from("users")
+        .select("role, restaurant_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (user?.restaurant_id === restaurantId) role = user.role;
+    }
+
+    if (role !== "owner" && role !== "manager") {
+      throw new ForbiddenException(
+        "Only managers and owners can edit restaurant details",
+      );
+    }
+  }
+
+  async getLocation(
+    userId: string,
+    restaurantId: string,
+  ): Promise<{
+    id: string;
+    name: string;
+    city: string | null;
+    email: string | null;
+    phone: string | null;
+  }> {
+    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    if (orgIds.length === 0)
+      throw new ForbiddenException("User has no organization");
+
+    const { data: rest } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("id, name, city, email, phone")
+      .eq("id", restaurantId)
+      .in("organization_id", orgIds)
+      .maybeSingle();
+    if (!rest)
+      throw new NotFoundException("Restaurant not found or access denied");
+
+    return {
+      id: rest.id,
+      name: rest.name,
+      city: rest.city ?? null,
+      email: rest.email ?? null,
+      phone: rest.phone ?? null,
+    };
+  }
+
   async updateLocation(
     userId: string,
     restaurantId: string,
-    dto: { chainId?: string | null; name?: string; city?: string },
+    dto: {
+      chainId?: string | null;
+      name?: string;
+      city?: string;
+      email?: string;
+      phone?: string;
+    },
   ): Promise<void> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0)
@@ -104,6 +175,16 @@ export class OrganizationsService {
       .maybeSingle();
     if (!rest)
       throw new NotFoundException("Restaurant not found or access denied");
+
+    const touchesOps =
+      dto.name !== undefined ||
+      dto.city !== undefined ||
+      dto.email !== undefined ||
+      dto.phone !== undefined ||
+      dto.chainId !== undefined;
+    if (touchesOps) {
+      await this.assertManagerOrOwner(userId, restaurantId);
+    }
 
     if (dto.chainId !== undefined && dto.chainId !== null) {
       const { data: chain } = await this.databaseService.supabase
@@ -120,6 +201,8 @@ export class OrganizationsService {
     if (dto.chainId !== undefined) patch.chain_id = dto.chainId;
     if (dto.name?.trim()) patch.name = dto.name.trim();
     if (dto.city !== undefined) patch.city = dto.city?.trim() || null;
+    if (dto.email !== undefined) patch.email = dto.email.trim() || null;
+    if (dto.phone !== undefined) patch.phone = dto.phone.trim() || null;
 
     if (Object.keys(patch).length === 0) return;
 

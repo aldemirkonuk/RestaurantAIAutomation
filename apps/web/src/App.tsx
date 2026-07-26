@@ -78,6 +78,7 @@ const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 const Help = lazyWithRefresh(() => import('./pages/Help'))
+const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -176,6 +177,7 @@ function App() {
                   <Route path="/documents-reports" element={<DocumentsPage />} />
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/profile" element={<Profile />} />
                   <Route path="/help" element={<Help />} />
                   <Route path="/admin" element={<AdminPanel />} />
                   <Route path="/admin/health" element={<AdminHealth />} />

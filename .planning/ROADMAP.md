@@ -392,6 +392,28 @@ Plans:
 
 ---
 
+### Phase 35: Account Surfaces (Profile, Help, Settings nav)
+**Goal**: Make the header user menu fully functional. Wire Settings and Help immediately; ship a role-aware personal Profile (identity, security, linked Google/Microsoft, theme, branch switch, danger zone) distinct from restaurant Settings; replace Help with FAQ + Slack/email support channels.
+**Depends on**: Phase 33 (membership + activeRole), existing auth OAuth strategies
+**Requirements**: ACCT-01..12
+**Success Criteria** (what must be TRUE):
+  1. Header Profile / Settings / Help navigate to `/profile`, `/settings`, `/help`
+  2. `/profile` owns personal identity (name, phone, email read-only, password, linked OAuth, theme, active restaurant, danger zone); restaurant ops stay on `/settings`
+  3. Staff see a Settings shell (no ops sections) with links to Profile and Help; owners/managers keep full Settings
+  4. `PATCH /auth/me`, `POST /auth/me/password`, linked-provider GET/link/unlink, leave-restaurant, delete-account work
+  5. Help page exposes FAQ stubs + Email + Slack (env-configured)
+  6. Six light-theme profile sketches (A–F) scored; winner drives Profile UI (left-rail C)
+  7. Owner-only Upgrade CTA stub on Profile (non-functional)
+  8. Command palette includes Profile
+**Plans:** implemented in-repo (wire + API + Profile UI + sketches + staff shell)
+Plans:
+- [x] Wire Header nav + Help Slack/email FAQ + `/profile` route
+- [x] Auth profile APIs + `user_oauth_accounts` migration
+- [x] Profile page (sketch C winner) + staff Settings shell
+- [x] Sketches 048 A–F + SUPPORT channel taxonomy backlog note
+
+---
+
 ### Phase 28: Onboarding Reform + Menu Import ✓ COMPLETE (2026-05-11)
 **Goal**: Replace the 9-step onboarding wizard with a focused post-registration "Import your menu" screen (skippable), followed by a dashboard-embedded 3-task activation checklist. Menu uploads feed directly into `master_wine_library_submissions` via the LLM enrichment pipeline, creating a data flywheel. This is the most impactful onboarding improvement for both conversion and AI data quality.
 **Depends on**: Phase 26 (registration flow complete), Phase 27 (vendors discoverable)
