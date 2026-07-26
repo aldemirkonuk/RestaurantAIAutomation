@@ -903,6 +903,25 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## N. Notifications (`/notifications`) (`NEW-474 … NEW-493`)
 
+> **Shipped 2026-07-21 (Notifications batch):** NEW-474 **mark-as-unread works
+> end-to-end** — this needed a real backend addition, not just UI: new
+> `PATCH /notifications/:id/unread` route + `markAsUnread` service (clears
+> `read_at` so the unread count and "unread" filter agree), API client,
+> `useMarkNotificationAsUnread` hook, and the previously-**disabled**
+> "coming soon" row button is now live · NEW-483 keyboard (`j`/`k` move,
+> `u` toggle read/unread, `e` archive, `s` star, `Enter` open, `Esc` close
+> detail, `⌘B` batch mode — the page advertised `⌘B`/`⌘K` in tooltips but had
+> **no keydown handler at all**) · NEW-488 context menu gains Mark-as-unread
+> (mirrors row state) and Copy link · NEW-493 "Mark all read" confirms above 50
+> unread. NEW-478 grouping by day already existed (starred/today/yesterday/
+> this-week/older) — keyboard focus follows that *display* order via a flat
+> display list, not filter order.
+> Deferred: snooze (476 — needs a `snoozed_until` column + a filter that
+> respects it), undo archive/delete (482 — delete is permanent server-side and
+> there's no unarchive route), mute-type (479) and priority rules (484 — need a
+> per-user notification-rules table), assign to teammate (489), desktop push
+> prompt (486), audit export (491).
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-474 | `Click` | "Mark as unread" works end-to-end (remove coming soon). |

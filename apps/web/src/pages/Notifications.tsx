@@ -32,8 +32,9 @@ import {
   Link as LinkIcon,
   MessageSquare,
   Mail,
+  Copy,
 } from 'lucide-react'
-import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useArchiveNotification, useDeleteNotification } from '../hooks/queries'
+import { useNotifications, useMarkNotificationAsRead, useMarkNotificationAsUnread, useMarkAllNotificationsAsRead, useArchiveNotification, useDeleteNotification } from '../hooks/queries'
 import { useAuthStore } from '../stores'
 import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
 import type { Notification, NotificationType } from '../services/api/notifications'
@@ -90,6 +91,7 @@ export function Notifications() {
   })
   const notifications: Notification[] = Array.isArray(rawNotifications) ? rawNotifications : []
   const markAsRead = useMarkNotificationAsRead()
+  const markAsUnread = useMarkNotificationAsUnread()
   const markAllAsRead = useMarkAllNotificationsAsRead()
   const archiveNotificationMutation = useArchiveNotification()
   const deleteNotification = useDeleteNotification()
@@ -181,6 +183,22 @@ export function Notifications() {
 
     return groups
   }, [filteredNotifications, starredNotifications])
+
+  /**
+   * Display-ordered flat list. Rows render grouped (starred → today → …), so
+   * keyboard focus must follow what the eye sees, not filteredNotifications'
+   * order. Render assigns each row its index from this list.
+   */
+  const flatDisplayNotifications = useMemo(
+    () => ([] as Notification[]).concat(
+      groupedNotifications.starred,
+      groupedNotifications.today,
+      groupedNotifications.yesterday,
+      groupedNotifications.thisWeek,
+      groupedNotifications.older,
+    ),
+    [groupedNotifications],
+  )
 
   const stats = useMemo(() => {
     const safeNotifications = Array.isArray(notifications) ? notifications : []
@@ -280,6 +298,15 @@ export function Notifications() {
     await refetch()
   }
 
+  /** NEW-474: mark back to unread (was a disabled "coming soon" button). */
+  const handleMarkAsUnread = async (id: string) => {
+    await markAsUnread.mutateAsync(id)
+    await refetch()
+  }
+
+  // Row focus for keyboard navigation (NEW-483).
+  const [focusedIndex, setFocusedIndex] = useState(-1)
+
   const handleArchiveNotification = async (id: string) => {
     await archiveNotificationMutation.mutateAsync(id)
     await refetch()
@@ -323,8 +350,70 @@ export function Notifications() {
     })
   }
 
+  // ── Keyboard shortcuts (NEW-483) ─────────────────────────────────────────
+  // j/k move · u toggles read/unread · e archives · s stars · Enter opens.
+  // ⌘B / ⌘K were already advertised in the UI's tooltips but never bound.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return
+      const t = e.target as HTMLElement | null
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        if (typing) return
+        e.preventDefault()
+        setBatchMode(b => !b)
+        return
+      }
+      if (e.metaKey || e.ctrlKey || typing) return
+      if (selectedNotification) {
+        if (e.key === 'Escape') setSelectedNotification(null)
+        return
+      }
+      const list = flatDisplayNotifications
+      if (list.length === 0) return
+      const current = list[focusedIndex]
+      switch (e.key) {
+        case 'j':
+          e.preventDefault()
+          setFocusedIndex(i => Math.min(list.length - 1, (i < 0 ? -1 : i) + 1))
+          break
+        case 'k':
+          e.preventDefault()
+          setFocusedIndex(i => Math.max(0, (i < 0 ? 0 : i) - 1))
+          break
+        case 'u':
+          if (current) void (current.status === 'unread' ? handleMarkAsRead(current.id) : handleMarkAsUnread(current.id))
+          break
+        case 'e':
+          if (current) void handleArchiveNotification(current.id)
+          break
+        case 's':
+          if (current) toggleStar(current.id)
+          break
+        case 'Enter':
+          if (current) { e.preventDefault(); handleNotificationClick(current) }
+          break
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatDisplayNotifications, focusedIndex, selectedNotification])
+
+  // Keep the focused row in view and valid as the list changes.
+  useEffect(() => {
+    setFocusedIndex(i => (i >= flatDisplayNotifications.length ? flatDisplayNotifications.length - 1 : i))
+  }, [flatDisplayNotifications.length])
+  useEffect(() => {
+    if (focusedIndex < 0) return
+    document.querySelector(`[data-notif-row="${focusedIndex}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [focusedIndex])
+
   const handleMarkAllAsRead = async () => {
     if (!user?.userId) return
+    // NEW-493: a bulk read of this size is hard to undo, so confirm first.
+    const unread = notifications.filter(n => n.status === 'unread').length
+    if (unread > 50 && !confirm(`Mark all ${unread} unread notifications as read?`)) return
     await markAllAsRead.mutateAsync(user.userId)
     await refetch()
   }
@@ -741,20 +830,24 @@ export function Notifications() {
                     const isUnread = notification.status === 'unread'
                     const isSelected = selectedNotifications.has(notification.id)
                     const isStarred = starredNotifications.has(notification.id)
+                    // Display-order index so j/k focus matches what's on screen.
+                    const displayIndex = flatDisplayNotifications.indexOf(notification)
+                    const isFocused = displayIndex === focusedIndex
 
                     return (
                       <motion.div
                         key={notification.id}
+                        data-notif-row={displayIndex}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
                         onClick={() => handleNotificationClick(notification)}
                         onContextMenu={(e) => handleContextMenu(e, notification.id)}
                         className={`relative bg-white rounded-xl p-4 shadow-sm border-l-4 ${getPriorityColor(notification.priority)} ${
-                          isUnread ? 'border border-wine-200 bg-wine-50/30' : 
+                          isUnread ? 'border border-wine-200 bg-wine-50/30' :
                           isSelected ? 'border border-emerald-200 bg-emerald-50/30' :
                           'border border-gray-100'
-                        } hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group`}
+                        } ${isFocused ? 'ring-2 ring-wine-400' : ''} hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group`}
                       >
                         <div className="flex items-start gap-4">
                           {batchMode && (
@@ -866,14 +959,12 @@ export function Notifications() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  // TODO: Add mark-as-unread API endpoint and mutation
-                                  console.log('Mark as unread not implemented yet')
+                                  void handleMarkAsUnread(notification.id)
                                 }}
                                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                title="Mark as unread (coming soon)"
-                                disabled
+                                title="Mark as unread"
                               >
-                                <EyeOff className="w-4 h-4 text-gray-300" />
+                                <EyeOff className="w-4 h-4 text-gray-400" />
                               </button>
                             )}
                             
@@ -1466,15 +1557,39 @@ export function Notifications() {
                     <Star className={`w-4 h-4 ${isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'}`} />
                     {isStarred ? 'Unstar' : 'Star'}
                   </button>
+                  {notif.status === 'unread' ? (
+                    <button
+                      onClick={() => {
+                        if (contextMenu) markAsRead.mutateAsync(contextMenu.id)
+                        setContextMenu(null)
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
+                    >
+                      <Eye className="w-4 h-4 text-gray-400" />
+                      Mark as Read
+                    </button>
+                  ) : (
+                    /* NEW-488: the menu mirrors the row — unread when already read */
+                    <button
+                      onClick={() => {
+                        if (contextMenu) void handleMarkAsUnread(contextMenu.id)
+                        setContextMenu(null)
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
+                    >
+                      <EyeOff className="w-4 h-4 text-gray-400" />
+                      Mark as Unread
+                    </button>
+                  )}
                   <button
                     onClick={() => {
-                      if (contextMenu) markAsRead.mutateAsync(contextMenu.id)
+                      navigator.clipboard?.writeText(`${window.location.origin}/notifications?id=${notif.id}`)
                       setContextMenu(null)
                     }}
                     className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                   >
-                    <Eye className="w-4 h-4 text-gray-400" />
-                    Mark as Read
+                    <Copy className="w-4 h-4 text-gray-400" />
+                    Copy link
                   </button>
                   <button
                     onClick={() => {

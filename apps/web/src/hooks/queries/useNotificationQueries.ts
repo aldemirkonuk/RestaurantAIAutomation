@@ -6,6 +6,7 @@ import {
   fetchUnreadNotifications,
   fetchUnreadCount,
   markNotificationAsRead,
+  markNotificationAsUnread,
   markNotificationsAsRead,
   markAllNotificationsAsRead,
   archiveNotification,
@@ -154,6 +155,25 @@ export function useMarkNotificationAsRead() {
       
       // Update store
       notificationStore.decrementUnreadCount()
+    },
+  })
+}
+
+/**
+ * Hook to mark a notification back to unread (NEW-474)
+ */
+export function useMarkNotificationAsUnread() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => markNotificationAsUnread(id),
+    onSuccess: (updated) => {
+      if (updated?.userId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.list(updated.userId) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unread(updated.userId) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.count(updated.userId) })
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all })
     },
   })
 }

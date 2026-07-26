@@ -838,6 +838,26 @@ export class NotificationsService {
     return this.mapNotificationRow(data);
   }
 
+  /**
+   * Inverse of markAsRead (UX path NEW-474). Clears read_at so the unread
+   * count and the "unread" filter both agree with the row's status again.
+   */
+  async markAsUnread(id: string) {
+    const { data, error } = await this.databaseService.supabase
+      .from("notifications")
+      .update({ status: "unread", read_at: null })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error(`markAsUnread error: ${error.message}`);
+      throw error;
+    }
+
+    return this.mapNotificationRow(data);
+  }
+
   async markBulkAsRead(ids: string[]): Promise<number> {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
