@@ -1,9 +1,14 @@
 import { Search, X } from 'lucide-react'
 import { ThemedSelect } from '../ui/ThemedSelect'
+import { ConversationTimeFilter } from './ConversationTimeFilter'
 import { cn } from '../../lib/utils'
 import {
+  EMPTY_CONVERSATION_FILTERS,
+  EMPTY_TIME_FILTER,
   FILTER_OPTIONS,
   hasActiveConversationFilters,
+  hasTimeFilter,
+  timeFilterLabel,
   type ConversationFilterState,
   channelLabel,
   directionLabel,
@@ -69,54 +74,60 @@ export function ConversationFilterBar({
     providerOptions?.find((o) => o.value === filters.providerId)?.label ??
     filters.providerId
 
-  const chips: { key: keyof ConversationFilterState; label: string }[] = []
+  const chips: { key: string; label: string; remove: () => void }[] = []
+  const simpleChip = (key: keyof ConversationFilterState, label: string) => ({
+    key,
+    label,
+    remove: () => onChange(patch(filters, { [key]: '' })),
+  })
+
   if (filters.providerId && !hideProviderFilter) {
-    chips.push({ key: 'providerId', label: providerLabel })
+    chips.push(simpleChip('providerId', providerLabel))
   }
   if (filters.orderNumber) {
-    chips.push({ key: 'orderNumber', label: `Order ${filters.orderNumber}` })
+    chips.push(simpleChip('orderNumber', `Order ${filters.orderNumber}`))
   }
   if (filters.channel) {
-    chips.push({ key: 'channel', label: channelLabel(filters.channel) })
+    chips.push(simpleChip('channel', channelLabel(filters.channel)))
   }
   if (filters.direction) {
-    chips.push({ key: 'direction', label: directionLabel(filters.direction) })
+    chips.push(simpleChip('direction', directionLabel(filters.direction)))
   }
   if (filters.sentiment) {
-    chips.push({
-      key: 'sentiment',
-      label: sentimentLabel(
-        filters.sentiment === 'unclassified'
-          ? 'unclassified'
-          : (filters.sentiment as 'positive' | 'neutral' | 'negative'),
+    chips.push(
+      simpleChip(
+        'sentiment',
+        sentimentLabel(
+          filters.sentiment === 'unclassified'
+            ? 'unclassified'
+            : (filters.sentiment as 'positive' | 'neutral' | 'negative'),
+        ),
       ),
-    })
+    )
   }
   if (filters.status) {
+    chips.push(
+      simpleChip(
+        'status',
+        filters.status.charAt(0).toUpperCase() + filters.status.slice(1),
+      ),
+    )
+  }
+  if (hasTimeFilter(filters)) {
     chips.push({
-      key: 'status',
-      label: filters.status.charAt(0).toUpperCase() + filters.status.slice(1),
+      key: 'time',
+      label: timeFilterLabel(filters),
+      remove: () => onChange(patch(filters, EMPTY_TIME_FILTER)),
     })
   }
-  if (filters.quarter) {
-    chips.push({ key: 'quarter', label: filters.quarter })
-  }
   if (filters.search) {
-    chips.push({ key: 'search', label: `“${filters.search}”` })
+    chips.push(simpleChip('search', `“${filters.search}”`))
   }
 
   const clearAll = () =>
     onChange({
-      channel: '',
-      direction: '',
-      sentiment: '',
-      status: '',
-      quarter: '',
-      year: '',
-      search: '',
+      ...EMPTY_CONVERSATION_FILTERS,
       providerId: hideProviderFilter ? filters.providerId : '',
-      orderNumber: '',
-      page: 1,
     })
 
   return (
@@ -183,18 +194,9 @@ export function ConversationFilterBar({
           onChange={(status) => onChange(patch(filters, { status }))}
           align="left"
         />
-        <ThemedSelect
-          aria-label="Filter by quarter"
-          value={filters.quarter}
-          options={[...FILTER_OPTIONS.quarter]}
-          onChange={(quarter) => {
-            const year =
-              quarter && !filters.year
-                ? String(new Date().getFullYear())
-                : filters.year
-            onChange(patch(filters, { quarter, year }))
-          }}
-          align="left"
+        <ConversationTimeFilter
+          value={filters}
+          onChange={(time) => onChange(patch(filters, time))}
         />
 
         {(() => {
@@ -204,9 +206,9 @@ export function ConversationFilterBar({
                   filters.direction ||
                   filters.sentiment ||
                   filters.status ||
-                  filters.quarter ||
                   filters.search ||
-                  filters.orderNumber,
+                  filters.orderNumber ||
+                  hasTimeFilter(filters),
               )
             : hasActiveConversationFilters(filters)
           return (
@@ -230,13 +232,7 @@ export function ConversationFilterBar({
             <button
               key={chip.key}
               type="button"
-              onClick={() => {
-                if (chip.key === 'quarter') {
-                  onChange(patch(filters, { quarter: '', year: '' }))
-                } else {
-                  onChange(patch(filters, { [chip.key]: '' }))
-                }
-              }}
+              onClick={chip.remove}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-wine-50 text-wine-700 border border-wine-100 hover:bg-wine-100 transition-colors"
             >
               {chip.label}

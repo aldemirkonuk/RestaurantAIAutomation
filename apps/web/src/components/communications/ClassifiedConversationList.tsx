@@ -40,6 +40,7 @@ import {
   sentimentLabel,
   orderBucketLabel,
   orderBucketBadgeClass,
+  toApiDateRange,
   type ConversationFilterState,
 } from '../../lib/conversationFilters'
 import {
@@ -415,6 +416,8 @@ export function ClassifiedConversationList({
     search: filters.search || undefined,
     quarter: filters.quarter || undefined,
     year: filters.year || undefined,
+    month: filters.month || undefined,
+    ...toApiDateRange(filters),
     providerId: effectiveProviderId || undefined,
     orderNumber: filters.orderNumber || undefined,
     page: filters.page,
@@ -449,16 +452,6 @@ export function ClassifiedConversationList({
     [providers],
   )
 
-  const scopedProviderName = useMemo(() => {
-    if (!effectiveProviderId) return null
-    const fromList = providers.find((p) => p.id === effectiveProviderId)?.name
-    if (fromList) return fromList
-    return (
-      conversations.find((c) => c.provider_id === effectiveProviderId)
-        ?.providers?.name || 'Distributor'
-    )
-  }, [effectiveProviderId, providers, conversations])
-
   const distributorGroups = useMemo(
     () => groupConversationsByDistributorAndOrder(conversations),
     [conversations],
@@ -467,6 +460,28 @@ export function ClassifiedConversationList({
     () => groupConversationsByOrder(conversations),
     [conversations],
   )
+
+  /**
+   * Collapse the distributor accordion when the results only concern one
+   * distributor — either because a filter pinned it or because that is all the
+   * page contains. The name then lives in a single header chip instead of
+   * repeating on every row.
+   */
+  const collapseDistributorLevel =
+    isProviderScoped || distributorGroups.length === 1
+
+  const headerProviderName = useMemo(() => {
+    if (effectiveProviderId) {
+      const fromList = providers.find((p) => p.id === effectiveProviderId)?.name
+      if (fromList) return fromList
+      return (
+        conversations.find((c) => c.provider_id === effectiveProviderId)
+          ?.providers?.name || 'Distributor'
+      )
+    }
+    if (distributorGroups.length === 1) return distributorGroups[0].providerName
+    return null
+  }, [effectiveProviderId, providers, conversations, distributorGroups])
 
   const setFilterChannel = (channel: string) =>
     setFilters((f) => ({ ...f, channel, page: 1 }))
@@ -715,9 +730,9 @@ export function ClassifiedConversationList({
               <p className="text-sm text-gray-500">
                 {total} conversations {isLoading && '(loading...)'}
               </p>
-              {isProviderScoped && scopedProviderName && (
+              {collapseDistributorLevel && headerProviderName && (
                 <div className="mt-2">
-                  <ProviderChip name={scopedProviderName} />
+                  <ProviderChip name={headerProviderName} />
                 </div>
               )}
             </div>
@@ -752,9 +767,9 @@ export function ClassifiedConversationList({
               <p className="text-gray-600 font-medium">No conversations found</p>
               <p className="text-sm text-gray-400">Try adjusting your filters</p>
             </div>
-          ) : isProviderScoped ? (
+          ) : collapseDistributorLevel ? (
             <div>
-              {orderGroups.map((order, idx) => (
+              {orderGroups.map((order) => (
                 <OrderGroupBlock
                   key={order.key}
                   group={order}
@@ -762,20 +777,19 @@ export function ClassifiedConversationList({
                   expandedId={expandedId}
                   onToggleMessage={(id) => setExpandedId(id || null)}
                   onViewThread={setSelectedThreadId}
-                  defaultOpen={idx === 0}
                 />
               ))}
             </div>
           ) : (
             <div>
-              {distributorGroups.map((dist, idx) => (
+              {distributorGroups.map((dist) => (
                 <DistributorAccordion
                   key={dist.providerId}
                   group={dist}
                   expandedId={expandedId}
                   onToggleMessage={(id) => setExpandedId(id || null)}
                   onViewThread={setSelectedThreadId}
-                  defaultOpen={idx === 0}
+                  defaultOpen
                 />
               ))}
             </div>

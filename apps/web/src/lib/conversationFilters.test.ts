@@ -12,7 +12,16 @@ import {
   searchParamsToFilters,
   hasActiveConversationFilters,
   EMPTY_CONVERSATION_FILTERS,
+  EMPTY_TIME_FILTER,
   FILTER_OPTIONS,
+  MONTHS,
+  hasTimeFilter,
+  recentYearOptions,
+  resolveTimePreset,
+  timeFilterLabel,
+  timeFilterMode,
+  toApiDateRange,
+  toCalendarDay,
 } from './conversationFilters'
 
 describe('sentiment vocabulary', () => {
@@ -112,7 +121,7 @@ describe('URL serialization', () => {
     expect(p.get('page')).toBe('2')
   })
 
-  it('round-trips filters through URLSearchParams including distributor and order', () => {
+  it('round-trips filters through URLSearchParams including distributor, order and dates', () => {
     const original = {
       ...EMPTY_CONVERSATION_FILTERS,
       channel: 'email',
@@ -120,6 +129,8 @@ describe('URL serialization', () => {
       search: 'cabernet',
       providerId: 'prov-1',
       orderNumber: 'WO-99',
+      dateFrom: '2026-03-01',
+      dateTo: '2026-03-31',
       page: 3,
     }
     const restored = searchParamsToFilters(filtersToSearchParams(original))
@@ -146,5 +157,160 @@ describe('URL serialization', () => {
         orderNumber: 'WO-1',
       }),
     ).toBe(true)
+  })
+
+  it('treats a custom date range as an active filter', () => {
+    expect(
+      hasActiveConversationFilters({
+        ...EMPTY_CONVERSATION_FILTERS,
+        dateFrom: '2026-01-01',
+      }),
+    ).toBe(true)
+    expect(
+      hasActiveConversationFilters({
+        ...EMPTY_CONVERSATION_FILTERS,
+        dateTo: '2026-01-31',
+      }),
+    ).toBe(true)
+  })
+})
+
+describe('time filter modes', () => {
+  it('reports "all" for the empty time filter', () => {
+    expect(timeFilterMode(EMPTY_TIME_FILTER)).toBe('all')
+    expect(hasTimeFilter(EMPTY_TIME_FILTER)).toBe(false)
+    expect(timeFilterLabel(EMPTY_TIME_FILTER)).toBe('All time')
+  })
+
+  it('prefers an explicit day range over month and quarter', () => {
+    const f = {
+      ...EMPTY_TIME_FILTER,
+      dateFrom: '2026-02-01',
+      dateTo: '2026-02-28',
+      month: '7',
+      quarter: 'Q3',
+      year: '2026',
+    }
+    expect(timeFilterMode(f)).toBe('range')
+    expect(timeFilterLabel(f)).toBe('2026-02-01 → 2026-02-28')
+  })
+
+  it('labels open-ended and single-day ranges', () => {
+    expect(
+      timeFilterLabel({ ...EMPTY_TIME_FILTER, dateFrom: '2026-05-04' }),
+    ).toBe('From 2026-05-04')
+    expect(timeFilterLabel({ ...EMPTY_TIME_FILTER, dateTo: '2026-05-04' })).toBe(
+      'Until 2026-05-04',
+    )
+    expect(
+      timeFilterLabel({
+        ...EMPTY_TIME_FILTER,
+        dateFrom: '2026-05-04',
+        dateTo: '2026-05-04',
+      }),
+    ).toBe('2026-05-04')
+  })
+
+  it('detects month mode only when year and month are both set', () => {
+    expect(timeFilterMode({ ...EMPTY_TIME_FILTER, month: '7' })).toBe('all')
+    const f = { ...EMPTY_TIME_FILTER, month: '7', year: '2026' }
+    expect(timeFilterMode(f)).toBe('month')
+    expect(timeFilterLabel(f)).toBe('July 2026')
+  })
+
+  it('detects quarter mode and labels it with the year', () => {
+    const f = { ...EMPTY_TIME_FILTER, quarter: 'Q3', year: '2026' }
+    expect(timeFilterMode(f)).toBe('quarter')
+    expect(timeFilterLabel(f)).toBe('Q3 2026')
+  })
+})
+
+describe('resolveTimePreset', () => {
+  const now = new Date(2026, 6, 26) // 26 Jul 2026, local time
+
+  it('makes rolling day windows inclusive of today', () => {
+    expect(resolveTimePreset('last7', now)).toEqual({
+      ...EMPTY_TIME_FILTER,
+      dateFrom: '2026-07-20',
+      dateTo: '2026-07-26',
+    })
+    expect(resolveTimePreset('last30', now).dateFrom).toBe('2026-06-27')
+    expect(resolveTimePreset('last90', now).dateFrom).toBe('2026-04-28')
+  })
+
+  it('resolves month presets to year + month, not a raw range', () => {
+    expect(resolveTimePreset('thisMonth', now)).toEqual({
+      ...EMPTY_TIME_FILTER,
+      year: '2026',
+      month: '7',
+    })
+    expect(resolveTimePreset('lastMonth', now)).toEqual({
+      ...EMPTY_TIME_FILTER,
+      year: '2026',
+      month: '6',
+    })
+  })
+
+  it('rolls lastMonth back across the year boundary', () => {
+    expect(resolveTimePreset('lastMonth', new Date(2026, 0, 15))).toEqual({
+      ...EMPTY_TIME_FILTER,
+      year: '2025',
+      month: '12',
+    })
+  })
+
+  it('spans the full calendar year for thisYear', () => {
+    expect(resolveTimePreset('thisYear', now)).toEqual({
+      ...EMPTY_TIME_FILTER,
+      dateFrom: '2026-01-01',
+      dateTo: '2026-12-31',
+    })
+  })
+
+  it('never emits two overlapping windows', () => {
+    for (const preset of [
+      'last7',
+      'last30',
+      'last90',
+      'thisMonth',
+      'lastMonth',
+      'thisYear',
+    ] as const) {
+      const f = resolveTimePreset(preset, now)
+      const isRange = Boolean(f.dateFrom || f.dateTo)
+      expect(isRange && Boolean(f.month || f.quarter)).toBe(false)
+    }
+  })
+})
+
+describe('toApiDateRange', () => {
+  it('widens dateTo to the end of its day so single days match', () => {
+    expect(
+      toApiDateRange({ ...EMPTY_TIME_FILTER, dateFrom: '2026-07-01', dateTo: '2026-07-01' }),
+    ).toEqual({
+      dateFrom: '2026-07-01T00:00:00.000Z',
+      dateTo: '2026-07-01T23:59:59.999Z',
+    })
+  })
+
+  it('omits unset bounds instead of sending empty strings', () => {
+    expect(toApiDateRange(EMPTY_TIME_FILTER)).toEqual({
+      dateFrom: undefined,
+      dateTo: undefined,
+    })
+  })
+})
+
+describe('calendar helpers', () => {
+  it('formats local calendar days without UTC drift', () => {
+    expect(toCalendarDay(new Date(2026, 0, 5))).toBe('2026-01-05')
+    expect(toCalendarDay(new Date(2026, 11, 31, 23, 30))).toBe('2026-12-31')
+  })
+
+  it('offers twelve months and descending recent years', () => {
+    expect(MONTHS).toHaveLength(12)
+    expect(FILTER_OPTIONS.month.map((o) => o.value)[0]).toBe('')
+    const years = recentYearOptions(3, new Date(2026, 6, 1)).map((o) => o.value)
+    expect(years).toEqual(['2026', '2025', '2024'])
   })
 })

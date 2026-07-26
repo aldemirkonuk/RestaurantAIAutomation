@@ -21,6 +21,21 @@ export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number]
 
 export const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'] as const
 
+export const MONTHS = [
+  { value: '1', label: 'January' },
+  { value: '2', label: 'February' },
+  { value: '3', label: 'March' },
+  { value: '4', label: 'April' },
+  { value: '5', label: 'May' },
+  { value: '6', label: 'June' },
+  { value: '7', label: 'July' },
+  { value: '8', label: 'August' },
+  { value: '9', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+] as const
+
 export interface ConversationFilterState {
   channel: string
   direction: string
@@ -28,6 +43,12 @@ export interface ConversationFilterState {
   status: string
   quarter: string
   year: string
+  /** 1–12 as a string; only meaningful together with `year`. */
+  month: string
+  /** Inclusive local calendar day, `YYYY-MM-DD`. */
+  dateFrom: string
+  /** Inclusive local calendar day, `YYYY-MM-DD`. */
+  dateTo: string
   search: string
   /** Provider UUID — filters list to one distributor. */
   providerId: string
@@ -43,6 +64,9 @@ export const EMPTY_CONVERSATION_FILTERS: ConversationFilterState = {
   status: '',
   quarter: '',
   year: '',
+  month: '',
+  dateFrom: '',
+  dateTo: '',
   search: '',
   providerId: '',
   orderNumber: '',
@@ -154,6 +178,137 @@ export function directionLabel(direction: string): string {
   return 'All directions'
 }
 
+// ── Time filtering ────────────────────────────────────────────────
+//
+// Three mutually exclusive modes share one control: an explicit day range
+// (dateFrom/dateTo), a single month (year + month), or a quarter (year +
+// quarter). Selecting one mode clears the others so the API never receives
+// two overlapping windows for `created_at`.
+
+export type TimeFilterMode = 'all' | 'range' | 'month' | 'quarter'
+
+export type TimeFilterFields = Pick<
+  ConversationFilterState,
+  'dateFrom' | 'dateTo' | 'month' | 'quarter' | 'year'
+>
+
+export const EMPTY_TIME_FILTER: TimeFilterFields = {
+  dateFrom: '',
+  dateTo: '',
+  month: '',
+  quarter: '',
+  year: '',
+}
+
+/** Local `YYYY-MM-DD` — never UTC, so "today" matches the user's calendar. */
+export function toCalendarDay(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+export function timeFilterMode(f: TimeFilterFields): TimeFilterMode {
+  if (f.dateFrom || f.dateTo) return 'range'
+  if (f.year && f.month) return 'month'
+  if (f.quarter) return 'quarter'
+  return 'all'
+}
+
+export function hasTimeFilter(f: TimeFilterFields): boolean {
+  return timeFilterMode(f) !== 'all'
+}
+
+export const TIME_PRESETS = [
+  { value: 'last7', label: 'Last 7 days' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'last90', label: 'Last 90 days' },
+  { value: 'thisMonth', label: 'This month' },
+  { value: 'lastMonth', label: 'Last month' },
+  { value: 'thisYear', label: 'This year' },
+] as const
+
+export type TimePreset = (typeof TIME_PRESETS)[number]['value']
+
+/** Expand a preset into concrete filter fields, relative to `now`. */
+export function resolveTimePreset(
+  preset: TimePreset,
+  now: Date = new Date(),
+): TimeFilterFields {
+  const range = (from: Date, to: Date): TimeFilterFields => ({
+    ...EMPTY_TIME_FILTER,
+    dateFrom: toCalendarDay(from),
+    dateTo: toCalendarDay(to),
+  })
+
+  switch (preset) {
+    case 'last7':
+    case 'last30':
+    case 'last90': {
+      const days = preset === 'last7' ? 7 : preset === 'last30' ? 30 : 90
+      const from = new Date(now)
+      // Inclusive window: "last 7 days" spans today plus the 6 days before it.
+      from.setDate(from.getDate() - (days - 1))
+      return range(from, now)
+    }
+    case 'thisMonth':
+      return {
+        ...EMPTY_TIME_FILTER,
+        year: String(now.getFullYear()),
+        month: String(now.getMonth() + 1),
+      }
+    case 'lastMonth': {
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      return {
+        ...EMPTY_TIME_FILTER,
+        year: String(prev.getFullYear()),
+        month: String(prev.getMonth() + 1),
+      }
+    }
+    case 'thisYear':
+      return range(
+        new Date(now.getFullYear(), 0, 1),
+        new Date(now.getFullYear(), 11, 31),
+      )
+  }
+}
+
+export function monthLabel(month: string): string {
+  return MONTHS.find((m) => m.value === String(parseInt(month, 10)))?.label ?? month
+}
+
+/** Label for the time control trigger and its removable chip. */
+export function timeFilterLabel(f: TimeFilterFields): string {
+  switch (timeFilterMode(f)) {
+    case 'range':
+      if (f.dateFrom && f.dateTo) {
+        return f.dateFrom === f.dateTo
+          ? f.dateFrom
+          : `${f.dateFrom} → ${f.dateTo}`
+      }
+      return f.dateFrom ? `From ${f.dateFrom}` : `Until ${f.dateTo}`
+    case 'month':
+      return `${monthLabel(f.month)} ${f.year}`
+    case 'quarter':
+      return f.year ? `${f.quarter} ${f.year}` : f.quarter
+    case 'all':
+      return 'All time'
+  }
+}
+
+/**
+ * Convert a calendar-day range into API timestamps. `dateTo` is widened to the
+ * end of its day so a single-day range still includes that day's messages.
+ */
+export function toApiDateRange(f: TimeFilterFields): {
+  dateFrom?: string
+  dateTo?: string
+} {
+  return {
+    dateFrom: f.dateFrom ? `${f.dateFrom}T00:00:00.000Z` : undefined,
+    dateTo: f.dateTo ? `${f.dateTo}T23:59:59.999Z` : undefined,
+  }
+}
+
 /** True when any dimension (except page) differs from empty defaults. */
 export function hasActiveConversationFilters(f: ConversationFilterState): boolean {
   return Boolean(
@@ -161,10 +316,10 @@ export function hasActiveConversationFilters(f: ConversationFilterState): boolea
       f.direction ||
       f.sentiment ||
       f.status ||
-      f.quarter ||
       f.search ||
       f.providerId ||
-      f.orderNumber,
+      f.orderNumber ||
+      hasTimeFilter(f),
   )
 }
 
@@ -179,6 +334,9 @@ export function filtersToSearchParams(
   if (f.status) p.set('status', f.status)
   if (f.quarter) p.set('quarter', f.quarter)
   if (f.year) p.set('year', f.year)
+  if (f.month) p.set('month', f.month)
+  if (f.dateFrom) p.set('dateFrom', f.dateFrom)
+  if (f.dateTo) p.set('dateTo', f.dateTo)
   if (f.search) p.set('q', f.search)
   if (f.providerId) p.set('providerId', f.providerId)
   if (f.orderNumber) p.set('orderNumber', f.orderNumber)
@@ -198,6 +356,9 @@ export function searchParamsToFilters(
     status: params.get('status') ?? '',
     quarter: params.get('quarter') ?? '',
     year: params.get('year') ?? '',
+    month: params.get('month') ?? '',
+    dateFrom: params.get('dateFrom') ?? '',
+    dateTo: params.get('dateTo') ?? '',
     search: params.get('q') ?? '',
     providerId: params.get('providerId') ?? '',
     orderNumber: params.get('orderNumber') ?? '',
@@ -228,7 +389,23 @@ export const FILTER_OPTIONS = {
     })),
   ],
   quarter: [
-    { value: '', label: 'All time' },
+    { value: '', label: 'Any quarter' },
     ...QUARTERS.map((q) => ({ value: q, label: q })),
   ],
+  month: [
+    { value: '', label: 'Any month' },
+    ...MONTHS.map((m) => ({ value: m.value, label: m.label })),
+  ],
 } as const
+
+/** Descending year options for the month/quarter pickers. */
+export function recentYearOptions(
+  count = 5,
+  now: Date = new Date(),
+): { value: string; label: string }[] {
+  const current = now.getFullYear()
+  return Array.from({ length: count }, (_, i) => {
+    const year = String(current - i)
+    return { value: year, label: year }
+  })
+}
