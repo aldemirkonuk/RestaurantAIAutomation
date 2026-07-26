@@ -19,13 +19,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
-import { Search, CornerDownLeft, Lightbulb, ArrowRight } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useToast } from "../../contexts/ToastContext";
+import { LANDING_KEY } from "./CommandProvider";
 import {
   Command,
   CommandSection,
   rankCommands,
+  routeLabel,
   staticCommands,
 } from "./commands";
 
@@ -59,6 +62,8 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
   const { user } = useAuth();
   const restaurantId = user?.restaurantId;
   const [query, setQuery] = useState("");
@@ -110,8 +115,47 @@ export function CommandPalette({
 
   const allCommands = useMemo(() => {
     const base = staticCommands();
-    return topRec ? [topRec, ...base] : base;
-  }, [topRec]);
+
+    // NEW-518 / NEW-681: default landing page, set from wherever you are.
+    // Per-device (localStorage); CommandProvider honors it once per app boot.
+    const here = location.pathname;
+    const stored = (() => {
+      try { return localStorage.getItem(LANDING_KEY); } catch { return null; }
+    })();
+    const landing: Command[] = [];
+    if (here !== "/" && here !== stored) {
+      landing.push({
+        id: "landing-set",
+        title: `Set "${routeLabel(here)}" as default landing page`,
+        subtitle: "Opens this page after sign-in on this device",
+        section: "Navigation",
+        icon: Home,
+        keywords: "default landing homepage start page after login",
+        action: () => {
+          try { localStorage.setItem(LANDING_KEY, here); } catch { /* ignore */ }
+          toast.success(`${routeLabel(here)} is now your landing page`, {
+            description: "Applies on this device, next time you open the app.",
+          });
+        },
+      });
+    }
+    if (stored && stored !== "/") {
+      landing.push({
+        id: "landing-clear",
+        title: `Clear default landing page (currently ${routeLabel(stored)})`,
+        section: "Navigation",
+        icon: Home,
+        keywords: "default landing homepage reset dashboard",
+        action: () => {
+          try { localStorage.removeItem(LANDING_KEY); } catch { /* ignore */ }
+          toast.success("Landing page reset to Dashboard");
+        },
+      });
+    }
+
+    const merged = [...base, ...landing];
+    return topRec ? [topRec, ...merged] : merged;
+  }, [topRec, location.pathname, toast]);
 
   // Ranked + grouped result set.
   const groups = useMemo(() => {

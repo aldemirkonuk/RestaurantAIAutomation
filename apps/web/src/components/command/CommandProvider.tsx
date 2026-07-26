@@ -28,6 +28,9 @@ import { RecentlyViewed } from "./RecentlyViewed";
 import { GOTO_MAP, routeLabel } from "./commands";
 import { recordView } from "./recents-store";
 
+/** localStorage key for the default landing route (NEW-518 / NEW-681). */
+export const LANDING_KEY = "wineops.defaultLanding";
+
 interface CommandContextValue {
   openPalette: () => void;
   openShortcuts: () => void;
@@ -67,6 +70,28 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     recordView(location.pathname, routeLabel(location.pathname));
   }, [location.pathname]);
+
+  /**
+   * NEW-518 / NEW-681: default landing page. Fires exactly once per app boot,
+   * and only when the app was ENTERED at "/" — a later deliberate visit to the
+   * dashboard is never hijacked (the ref is already consumed). Stored in
+   * localStorage, so it is a per-device preference; set/cleared from the ⌘K
+   * palette.
+   */
+  const bootRedirected = useRef(false);
+  useEffect(() => {
+    if (bootRedirected.current) return;
+    bootRedirected.current = true;
+    try {
+      const dest = localStorage.getItem(LANDING_KEY);
+      if (dest && dest !== "/" && location.pathname === "/") {
+        navigate(dest, { replace: true });
+      }
+    } catch {
+      /* storage unavailable — land on the dashboard as before */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openPalette = useCallback(() => {
     setShortcutsOpen(false);

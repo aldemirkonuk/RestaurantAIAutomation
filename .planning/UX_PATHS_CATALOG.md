@@ -48,6 +48,20 @@
 | Recommendations | Scheduled digest send | 303 | Toggle + preferences persist (`recommendation_digest_prefs`); the actual cron/email send was never built, only feature-flagged | Wire `InsightSchedulerService` (or a new cron) to read `digest_enabled` and call the email service |
 | Analytics catalog | Seating-density UX (Batch 6) | 761–860 | 100 UX rows are fully written (trigger→outcome) and the 100 backing analytics features + 8 new measures are documented in `ANALYTICS_FEATURE_CATALOG.md` / `insight-catalog.ts`, but the **Reports "Seating Density" widget these rows reference does not exist yet** | Build the Reports widget + wire Act/hover/keyboard per the NEW-761–860 rows |
 | Self-Learning UX Agent | Runtime activation (Phase B/C/D) | — | Ships dark by design (`UX_OPTIMIZER_ENABLED=false`); not a gap, a staged rollout | See `.planning/UX_SELF_LEARNING_AGENT.md` → Rollout plan |
+| §E Wine Library | Inline bin/price edit; scan persistence; reorder-without-reload; compare sheet; collections; notes/photos; price history; vendor matrix | 207, 211–215, 216, 218/219, 224/225, 228/229 | Need wine-patch mutation, scanner ingest pipeline, or new endpoints | Respective endpoints |
+| §H Providers | Multi-select bulk bar; notes CRUD; locations persistence; merge; archive; credit terms; price lists; SLA; map view | 309, 314, 315, 318–320, 322, 324, 328 | Four view surfaces need checkbox affordances; rest need endpoints/schema | Own pass + endpoints |
+| §N Notifications | Snooze; undo archive/delete; mute-type; priority rules; assign; desktop push; audit export | 476, 482, 479, 484, 489, 486, 491 | Delete is permanent server-side; no snoozed_until column or rules table | `snoozed_until` column, unarchive route, rules table |
+| §L Reports | Chart drill-down; cross-filter; saved packs + sharing; annotations; widget fullscreen; presentation mode; metric alerts | 421–425, 427, 429/430, 439, 448 | Need chart-interaction layer or new endpoints | Chart library work + endpoints |
+| §I Promotions | Durable dismiss; savings estimate; manual promo; attach-to-wines; calendar overlay; bulk prospects; apply-best; redemption tracking | 339 (server half), 343–348, 354–357 | Dismiss is localStorage-only — no dismiss endpoint | `promotion_dismissals` table + endpoints |
+| §J Communications | CC/BCC reveal; history replay/resend; template test-send/versions; SMS receipts; shared inbox; slash-commands; translation; retention; channel health | 361–383 (minus 359/360) | Each needs endpoints that don't exist | Respective endpoints |
+| §M Documents | Folder CRUD; tags; full-text/OCR search; thumbnails; bulk ZIP; share links; version history; retention | 453–459, 461–464, 467, 471 | Need storage features or a zip/archive endpoint | Storage-side work |
+| §B Dashboard | Custom quick-action persistence; drag layout; date-range KPI recompute; sparklines; morning briefing; watchlist; snapshot export | 042/043, 050/051, 052, 053, 060–062 | Need a preferences slot or new aggregation endpoints | Prefs slot + endpoints |
+| §P Team | Drag-assign/resize shifts; arrow-key desk nav; multi-select; role filter; swaps; clock-in; ops dry-run; training; tip pool; coverage heatmap | 519/520, 535–537, 531/532, 533/534, 540/541, 543 | Desk is a plain CSS grid — no drag layer; rest need endpoints | dnd-kit layer + endpoints |
+| §Q Admin | Integration wizards; job trigger; kill switch; audit trail; flag overrides; impersonation; cost dashboard; DLQ viewer; config diff; support bundle; maintenance mode; alert routing | 547, 550–551, 554–563 | No orchestrator control plane — §Q's fix was *removing* fakes of exactly these | Orchestrator control endpoints |
+| §R Studio | Bulk promote; sortable columns; confidence filters; row right-click; keyboard; PDF sync; paste; conflict UI; undo promote; assignments; comments | 566–578, 580–588 | Need queue/record endpoints beyond current CRUD | Studio API work |
+| §O Settings | Flag export/diff; danger zone; API tokens; billing; audit log; locale; density defaults; roles matrix; receiving default; pour-cost preview; 2FA; GDPR; impersonation; shortcut customization | 497–499, 501–504, 507–509, 513, 515–517 | Backend/schema absent; 494/500/505/511/512/514 owned by the concurrent account/POS workstream | See §O audit banner |
+| §G Recommendations | Hover metrics peek; impact tracker | 291, 304 | API returns no time series; lift needs an act-time snapshot job (`acted_at` is the hook). 307 deliberately superseded by data-derived chips | Evidence series + measurement job |
+| Seating density | ~70 of the density × time/space/causal/alert rows | 764–860 (subset) | Authored against data with no table: reservations, weather, labor, turn-time, per-seat pours, per-hour series, forecasts, host tablets | Each source's schema first |
 
 ---
 
@@ -1104,28 +1118,31 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## O. Settings (`/settings`) (`NEW-494 … NEW-518`)
 
-> **Shipped 2026-07-21 (Settings batch):** NEW-495 the email section gains a
-> **Send test email** button. `POST /communications/test/email` existed with no
-> caller; the copy states it goes to the gateway's configured *manager*
-> recipients, not to the sign-off name in the form, so it can't be misread.
+> **Audited 2026-07-26 — every row's true status, with evidence:**
 >
-> **Audited as already shipped, deliberately not re-done:** NEW-496 quiet hours
-> and per-channel modes exist in `NotificationsSection`, and NEW-506 invite
-> copy-link + expiry exist in `InviteTeamDialog`. Part 1's description of this
-> section is out of date on both.
+> **Shipped:** 495 test-email caller (2026-07-21) · 496 quiet hours + per-channel
+> modes (`NotificationsSection`) · **518 default landing page (this pass)** — set
+> or clear from the ⌘K palette ("Set 'X' as default landing page"), stored per
+> device, honored **once per app boot** by `CommandProvider` only when the app was
+> entered at `/`, so a deliberate dashboard visit is never hijacked. Also
+> satisfies NEW-681. 510 is **half-shipped**: iCal token regenerate exists;
+> a subscriber list does not (nothing stores per-device feed identities).
+> 506 is **half-shipped**: copy-link + expiry exist in `InviteTeamDialog`;
+> resend does not (generating a fresh link is the near-equivalent).
 >
-> **Owned by a concurrent workstream, intentionally untouched:** a parallel
-> session is actively building the Profile page, `Settings.tsx` sections and the
-> OAuth/POS integration surfaces — that covers NEW-500 (POS wizard), NEW-511
-> (profile photo), NEW-512 (password + sessions) and NEW-514 (connected apps).
-> Editing those files here would clobber in-flight work.
-> Deferred: unsaved-changes guard (494), flag export/import (497), danger zone
-> (498), API tokens/webhooks (499), billing (501), audit log (502), locale (503),
-> density defaults (504), `⌘S` save (505 — needs the dirty `Settings.tsx`),
-> custom roles (507), receiving-location default (508), pour-cost preview (509),
-> subscriber list (510), 2FA (513), GDPR export (515), impersonation banner
-> (516), shortcut customization (517), landing page (518).
-
+> **Owned by the concurrent account/POS workstream — do not touch from here:**
+> 500 POS wizard (`PosSettingsSection.tsx` + `posHub.ts` are in their working
+> tree right now, and their webhook-URL display partially covers 499's webhook
+> half) · 511 photo / 512 password + sessions / 514 connected apps (their
+> `Profile.tsx`) · 494 + 505 (both need the dirty `Settings.tsx`).
+>
+> **Not built — flagged, needs backend/schema that doesn't exist:** 497 flag
+> export/import/diff · 498 danger zone (transfer/delete) · 499 API-token half ·
+> 501 billing · 502 settings audit log · 503 locale/currency/timezone ·
+> 504 density + table defaults · 507 custom-roles matrix · 508 default receiving
+> location · 509 pour-cost preview (only a feature flag exists, not the
+> calculator) · 513 2FA · 515 GDPR export · 516 impersonation banner ·
+> 517 shortcut customization.
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
