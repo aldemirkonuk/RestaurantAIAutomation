@@ -657,6 +657,8 @@ export class AnalyticsController {
       pinned?: boolean;
       acted?: boolean;
       feedback?: "helpful" | "not_helpful" | null;
+      assignedTo?: string | null;
+      assignedName?: string | null;
       snapshot?: {
         observation?: string;
         recommendation?: string;
@@ -678,6 +680,8 @@ export class AnalyticsController {
           pinned: body.pinned,
           acted: body.acted,
           feedback: body.feedback,
+          assignedTo: body.assignedTo,
+          assignedName: body.assignedName,
         },
         body.snapshot,
         body.createdBy,

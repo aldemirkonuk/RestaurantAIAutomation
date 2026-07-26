@@ -42,12 +42,14 @@ import {
   ThumbsDown,
   ThumbsUp,
   Undo2,
+  UserPlus,
   X,
   Zap,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Header } from "../components/layout/Header";
+import { getTeamMembers } from "../services/api/team";
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 
@@ -69,6 +71,8 @@ interface Card {
   reason?: string | null;
   snoozeUntil?: string | null;
   feedback?: "helpful" | "not_helpful" | null;
+  assignedTo?: string | null;
+  assignedName?: string | null;
   updatedAt?: string;
 }
 
@@ -177,6 +181,9 @@ export default function Recommendations() {
   const [snoozeDate, setSnoozeDate] = useState("");
   const [digestEnabled, setDigestEnabled] = useState(false);
   const [undo, setUndo] = useState<{ ruleKey: string; label: string } | null>(null);
+  /** NEW-296: assign to a teammate. Roster is loaded lazily on first use. */
+  const [assignFor, setAssignFor] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; display_name: string }>>([]);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightKey = searchParams.get("insight");
 
@@ -329,6 +336,37 @@ export default function Recommendations() {
       prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, feedback: next } : r)),
     );
     await patchAction(rec.ruleKey, { feedback: next }, snapshotOf(rec));
+  };
+
+  const openAssign = useCallback(async (ruleKey: string) => {
+    setAssignFor(ruleKey);
+    setMenu(null);
+    if (teamMembers.length === 0) {
+      try {
+        const rows = await getTeamMembers();
+        setTeamMembers(rows.map((m: any) => ({ id: m.id, display_name: m.display_name })));
+      } catch {
+        toast.error("Couldn't load the team roster");
+      }
+    }
+  }, [teamMembers.length, toast]);
+
+  /** NEW-296: persist the assignment (or clear it) on the shared action store. */
+  const doAssign = async (rec: Card, member: { id: string; display_name: string } | null) => {
+    setRecs((prev) =>
+      prev.map((r) =>
+        r.ruleKey === rec.ruleKey
+          ? { ...r, assignedTo: member?.id ?? null, assignedName: member?.display_name ?? null }
+          : r,
+      ),
+    );
+    setAssignFor(null);
+    await patchAction(
+      rec.ruleKey,
+      { assignedTo: member?.id ?? null, assignedName: member?.display_name ?? null },
+      snapshotOf(rec),
+    );
+    toast.success(member ? `Assigned to ${member.display_name}` : "Assignment cleared");
   };
 
   const doAct = (rec: Card) => {
@@ -752,6 +790,11 @@ export default function Recommendations() {
                             <Pin className="w-3 h-3" /> Pinned
                           </span>
                         )}
+                        {r.assignedName && (
+                          <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700">
+                            <UserPlus className="w-3 h-3" /> {r.assignedName}
+                          </span>
+                        )}
                         {readonly && r.status && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                             {r.status}
@@ -920,12 +963,66 @@ export default function Recommendations() {
                 <MenuItem icon={Clock} label="Snooze 1 week" onClick={() => doSnooze(rec, new Date(Date.now() + 7 * 864e5), "1 week")} />
                 <MenuItem icon={X} label="Dismiss" onClick={() => doDismiss(rec, "not_now")} />
                 <MenuItem icon={Pin} label={rec.pinned ? "Unpin" : "Pin to top"} onClick={() => { doPin(rec); setMenu(null); }} />
+                <MenuItem
+                  icon={UserPlus}
+                  label={rec.assignedName ? `Assigned: ${rec.assignedName}` : "Assign to…"}
+                  onClick={() => openAssign(rec.ruleKey)}
+                />
                 <MenuItem icon={Copy} label="Copy link" onClick={() => copyLink(rec)} />
               </>
             );
           })()}
         </div>
       )}
+
+      {/* Assignee picker (NEW-296) */}
+      {assignFor && (() => {
+        const rec = recs.find((r) => r.ruleKey === assignFor);
+        if (!rec) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setAssignFor(null); }}
+          >
+            <div className="absolute inset-0 bg-gray-900/40" aria-hidden />
+            <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" role="dialog" aria-modal="true">
+              <div className="px-5 py-3 border-b border-gray-100">
+                <p className="text-sm font-bold text-gray-900">Assign this recommendation</p>
+                <p className="text-xs text-gray-400 truncate">{rec.recommendation}</p>
+              </div>
+              <div className="max-h-64 overflow-y-auto py-1">
+                {teamMembers.length === 0 ? (
+                  <p className="px-5 py-4 text-sm text-gray-400">Loading the roster…</p>
+                ) : (
+                  teamMembers.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => doAssign(rec, m)}
+                      className={`w-full flex items-center gap-2 px-5 py-2 text-left text-sm hover:bg-gray-50 ${
+                        rec.assignedTo === m.id ? "text-violet-700 font-semibold" : "text-gray-700"
+                      }`}
+                    >
+                      <UserPlus className="w-4 h-4 text-gray-300" />
+                      {m.display_name}
+                      {rec.assignedTo === m.id && <Check className="w-4 h-4 ml-auto text-violet-600" />}
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-t border-gray-100">
+                {rec.assignedTo ? (
+                  <button onClick={() => doAssign(rec, null)} className="text-xs font-medium text-rose-600 hover:underline">
+                    Clear assignment
+                  </button>
+                ) : <span />}
+                <button onClick={() => setAssignFor(null)} className="text-xs font-medium text-gray-500 hover:text-gray-800">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Undo snackbar (NEW-285/286/287) */}
       {undo && (

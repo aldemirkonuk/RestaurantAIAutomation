@@ -68,3 +68,19 @@ create table if not exists recommendation_digest_prefs (
 -- ===========================================================================
 alter table recommendation_actions enable row level security;
 alter table recommendation_digest_prefs enable row level security;
+
+-- ===========================================================================
+-- 3. Assignment (NEW-296) — added 2026-07-21
+--    assigned_to holds a team_members.id (the roster identity used across the
+--    Team surfaces). assigned_name is denormalised so History renders an
+--    assignment without a second lookup, matching the observation/
+--    recommendation snapshot columns above.
+-- ===========================================================================
+alter table recommendation_actions
+  add column if not exists assigned_to uuid,
+  add column if not exists assigned_name text,
+  add column if not exists assigned_at timestamptz;
+
+create index if not exists idx_recommendation_actions_assignee
+  on recommendation_actions (restaurant_id, assigned_to)
+  where assigned_to is not null;

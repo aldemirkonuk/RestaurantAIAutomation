@@ -19,6 +19,9 @@ export interface RecommendationActionRow {
   pinned: boolean;
   actedAt: string | null;
   feedback: "helpful" | "not_helpful" | null;
+  assignedTo: string | null;
+  assignedName: string | null;
+  assignedAt: string | null;
   observation: string | null;
   recommendation: string | null;
   category: string | null;
@@ -35,6 +38,9 @@ export interface RecommendationActionPatch {
   /** Mark that the manager followed the Act deep-link (sets acted_at=now). */
   acted?: boolean;
   feedback?: "helpful" | "not_helpful" | null;
+  /** NEW-296: team member id + display name, or null to unassign. */
+  assignedTo?: string | null;
+  assignedName?: string | null;
 }
 
 /** Denormalised snapshot stored so History reads without a recompute. */
@@ -90,6 +96,9 @@ export class RecommendationActionsService {
           pinned: !!r.pinned,
           actedAt: r.acted_at ?? null,
           feedback: r.feedback ?? null,
+          assignedTo: r.assigned_to ?? null,
+          assignedName: r.assigned_name ?? null,
+          assignedAt: r.assigned_at ?? null,
           observation: r.observation ?? null,
           recommendation: r.recommendation ?? null,
           category: r.category ?? null,
@@ -135,6 +144,13 @@ export class RecommendationActionsService {
     if (patch.pinned !== undefined) row.pinned = patch.pinned;
     if (patch.acted) row.acted_at = new Date().toISOString();
     if (patch.feedback !== undefined) row.feedback = patch.feedback;
+    if (patch.assignedTo !== undefined) {
+      row.assigned_to = patch.assignedTo;
+      // Clearing the assignee clears its denormalised name + timestamp too.
+      row.assigned_at = patch.assignedTo ? new Date().toISOString() : null;
+      if (!patch.assignedTo) row.assigned_name = null;
+    }
+    if (patch.assignedName !== undefined) row.assigned_name = patch.assignedName;
     if (snapshot?.observation !== undefined) row.observation = snapshot.observation;
     if (snapshot?.recommendation !== undefined)
       row.recommendation = snapshot.recommendation;
@@ -274,6 +290,9 @@ export class RecommendationActionsService {
       pinned: !!d.pinned,
       actedAt: d.acted_at ?? null,
       feedback: d.feedback ?? null,
+      assignedTo: d.assigned_to ?? null,
+      assignedName: d.assigned_name ?? null,
+      assignedAt: d.assigned_at ?? null,
       observation: d.observation ?? null,
       recommendation: d.recommendation ?? null,
       category: d.category ?? null,

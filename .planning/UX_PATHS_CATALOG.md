@@ -669,6 +669,31 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## G. Recommendations (`/recommendations`) (`NEW-284 … NEW-308`)
 
+> **Completed 2026-07-21.** The P0 batch shipped 284–290, 292–295, 297, 298,
+> 299–301 (Act deep-links), 302, 303, 305, 306 and 308. This pass closes the
+> last actionable gap: **NEW-296 assign to a teammate** — added
+> `assigned_to`/`assigned_name`/`assigned_at` to `recommendation_actions`
+> (applied live + appended to the migration file), threaded through the service,
+> controller and engine merge, and a roster picker in the card context menu with
+> an assignee badge and a Clear-assignment path. Verified against the live DB
+> that both assign and clear round-trip.
+>
+> **Not built, with reasons rather than silence:**
+> - NEW-291 hover metrics-chart peek — the recommendations API returns
+>   observation/rationale/score, no time series. The card already shows the
+>   observation, so a peek would duplicate it; a real chart needs the engine to
+>   return supporting evidence points.
+> - NEW-304 impact tracker (measured lift 7/30d) — needs a measurement job that
+>   snapshots the metric at act-time and re-reads it later. `acted_at` is already
+>   stored, which is the hook it would build on.
+> - NEW-307 category tabs — **intentionally superseded.** The catalog's proposed
+>   tabs (Inventory, Pricing, Labor, Vendors, Menu) don't match the engine's real
+>   categories (sales / inventory / efficiency / risk / purchasing / staff /
+>   basket / goals). The shipped filter chips are derived from live data instead,
+>   so they can't drift from the engine; adding hardcoded tabs would be a second,
+>   less accurate control for the same job.
+
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-284 | `Click` | Act CTA on a recommendation → navigates to the relevant page with context prefilled. |

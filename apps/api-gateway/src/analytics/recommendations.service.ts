@@ -27,6 +27,8 @@ export interface Recommendation {
   reason?: string | null;
   snoozeUntil?: string | null;
   feedback?: "helpful" | "not_helpful" | null;
+  assignedTo?: string | null;
+  assignedName?: string | null;
 }
 
 /**
@@ -335,6 +337,8 @@ export class RecommendationsService {
       r.reason = s.reason;
       r.snoozeUntil = s.snoozeUntil;
       r.feedback = s.feedback;
+      r.assignedTo = s.assignedTo;
+      r.assignedName = s.assignedName;
     }
 
     // Counts are computed BEFORE filtering so the status tabs stay accurate
