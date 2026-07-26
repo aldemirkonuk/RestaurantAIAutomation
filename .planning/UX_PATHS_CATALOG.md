@@ -1208,6 +1208,24 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## R. Studio (`/studio/*`) (`NEW-564 … NEW-588`)
 
+> **Shipped 2026-07-21 (Studio batch):** NEW-564/565 the `ContributorTable` ⋮
+> button had **no handler at all**, and the component destructured its
+> `onRevoke` prop as `_onRevoke` — i.e. `StudioCertify` was passing a
+> fully-working revoke implementation that the table then threw away. The menu
+> now opens (Disable/Enable access · Copy email or user id · Revoke contributor)
+> and revoke goes end-to-end through the existing
+> `PATCH /studio/contributors/:id/revoke`, behind a confirm that names the
+> person and states they lose submit/override rights immediately.
+> Deferred: multi-select bulk promote/review (566), sortable columns (567),
+> confidence/source filters (568), row right-click (569), `j`/`k`/`p`/`e`
+> keyboard (570), confidence hover breakdown (571), side-by-side PDF sync (572),
+> spreadsheet paste (574), promote-conflict UI (575), queue bulk approve (576),
+> invite permission editing (577), clickable metrics (578), undo promote (580),
+> review assignment (581), record comments (582), quality report export (583),
+> multi-PDF drag (584), URL fetch preview (585), template picker (586), dense
+> mode (587), `?` cheat sheet (588).
+
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-564 | `Click` | ContributorTable ⋮ menu works: view profile / resend / revoke. |

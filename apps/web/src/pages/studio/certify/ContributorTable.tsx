@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { MoreHorizontal, UserX, Power, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Badge } from '../../../components/ui/badge'
@@ -25,8 +25,40 @@ interface ContributorTableProps {
   onToggleEnable: (userId: string, enabled: boolean) => Promise<void>
 }
 
-export function ContributorTable({ contributors, onRevoke: _onRevoke, onToggleEnable }: ContributorTableProps) {
+export function ContributorTable({ contributors, onRevoke, onToggleEnable }: ContributorTableProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  /** NEW-564: the ⋮ button had no handler and onRevoke was destructured unused. */
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!menuFor) return
+    const close = () => setMenuFor(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menuFor])
+
+  /** NEW-565: revoke end-to-end, with a confirm step before the destructive call. */
+  const handleRevoke = (c: Contributor) => {
+    setMenuFor(null)
+    toast(`Revoke ${c.email ?? c.user_id.slice(0, 8)}'s contributor access?`, {
+      description: 'They lose submit and override rights immediately.',
+      action: {
+        label: 'Revoke',
+        onClick: async () => {
+          setLoadingId(c.user_id)
+          try {
+            await onRevoke(c.user_id)
+            toast.success('Contributor revoked')
+          } catch {
+            toast.error('Could not revoke this contributor')
+          } finally {
+            setLoadingId(null)
+          }
+        },
+      },
+      cancel: { label: 'Cancel', onClick: () => {} },
+    })
+  }
 
   const handleToggle = async (c: Contributor) => {
     const enable = !!c.revoked_at
@@ -109,10 +141,48 @@ export function ContributorTable({ contributors, onRevoke: _onRevoke, onToggleEn
                     {format(new Date(c.granted_at), 'MMM d, yyyy')}
                   </span>
                 </td>
-                <td className="px-4 py-3 w-[80px]">
-                  <button className="text-slate-400 hover:text-slate-600 p-1 rounded">
+                <td className="px-4 py-3 w-[80px] relative">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === c.user_id ? null : c.user_id) }}
+                    disabled={loadingId === c.user_id}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded disabled:opacity-40"
+                    aria-label="Contributor actions"
+                    aria-haspopup="menu"
+                  >
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
+                  {menuFor === c.user_id && (
+                    <div
+                      role="menu"
+                      className="absolute right-2 top-10 z-30 w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => { setMenuFor(null); handleToggle(c) }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg"
+                      >
+                        <Power className="w-4 h-4 text-slate-400" />
+                        {isActive ? 'Disable access' : 'Enable access'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard?.writeText(c.email ?? c.user_id)
+                          setMenuFor(null)
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg"
+                      >
+                        <Copy className="w-4 h-4 text-slate-400" />
+                        Copy {c.email ? 'email' : 'user id'}
+                      </button>
+                      <button
+                        onClick={() => handleRevoke(c)}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
+                      >
+                        <UserX className="w-4 h-4 text-rose-500" />
+                        Revoke contributor
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             )
