@@ -26,6 +26,7 @@ import { ReportGenerator } from '../components/reports/ReportGenerator'
 import { TopBar } from '../components/reports/organisms/TopBar'
 import { AIInsightsSection } from '../components/reports/organisms/AIInsightsSection'
 import { EngineInsightsPanel } from '../components/reports/organisms/EngineInsightsPanel'
+import { SeatingDensityPanel } from '../components/reports/organisms/SeatingDensityPanel'
 import { DataTablesSection, ExpandedSections } from '../components/reports/organisms/DataTablesSection'
 import { AICommandPalette, AICommandPill } from '../components/reports/organisms/AICommandPalette'
 import { MonthlyReconciliation } from '../components/reports/organisms/MonthlyReconciliation'
@@ -650,15 +651,77 @@ export function Reports() {
         }
         break
       }
-      case 'excel':
-        alert('Excel export coming soon. Use CSV for now.')
+      case 'excel': {
+        // NEW-419: real .xlsx export (was an alert stub). ExcelJS is already a
+        // dependency for the wine-library export, so this adds no new weight
+        // beyond a dynamic import that keeps it out of the main chunk.
+        const ExcelJS = (await import('exceljs')).default
+        const workbook = new ExcelJS.Workbook()
+        workbook.creator = 'WineOps AI'
+        workbook.created = new Date()
+
+        const summary = workbook.addWorksheet('Summary')
+        summary.columns = [
+          { header: 'Metric', key: 'metric', width: 28 },
+          { header: 'Value', key: 'value', width: 20 },
+        ]
+        summary.addRows([
+          { metric: 'Period', value: timeRange },
+          { metric: 'Generated', value: new Date().toLocaleString() },
+          { metric: 'Revenue', value: metrics.totalRevenue },
+          { metric: 'Orders', value: metrics.totalOrders },
+          { metric: 'Bottles', value: metrics.totalBottles },
+          { metric: 'Avg order value', value: metrics.avgOrderValue },
+          { metric: 'Profit margin %', value: metrics.profitMargin },
+        ])
+        summary.getRow(1).font = { bold: true }
+
+        const daily = workbook.addWorksheet('Daily breakdown')
+        daily.columns = [
+          { header: 'Date', key: 'date', width: 14 },
+          { header: 'Revenue', key: 'revenue', width: 12 },
+          { header: 'Orders', key: 'orders', width: 10 },
+          { header: 'Bottles', key: 'bottles', width: 10 },
+          { header: 'Red', key: 'red', width: 8 },
+          { header: 'White', key: 'white', width: 8 },
+          { header: 'Sparkling', key: 'sparkling', width: 10 },
+        ]
+        daily.addRows(salesData)
+        daily.getRow(1).font = { bold: true }
+
+        const buffer = await workbook.xlsx.writeBuffer()
+        const blob = new Blob([buffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        })
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `wineops-report-${new Date().toISOString().slice(0, 10)}.xlsx`
+        a.click()
+        URL.revokeObjectURL(a.href)
         break
+      }
       case 'sheets':
-        alert('Google Sheets integration coming soon.')
+      case 'drive': {
+        // Google Sheets/Drive need an OAuth app + Drive scopes that aren't
+        // provisioned. Rather than another dead alert, hand the user a real
+        // file they can import in one step, and say so plainly.
+        alert(
+          format === 'sheets'
+            ? 'Google Sheets sync needs Drive authorization (not configured yet).\n\nDownloading a CSV instead — File ▸ Import in Sheets will load it directly.'
+            : 'Google Drive sync needs Drive authorization (not configured yet).\n\nDownloading a CSV instead so you can upload it to Drive.',
+        )
+        const header = 'Date,Revenue,Orders,Bottles,Red,White,Sparkling\n'
+        const body = salesData
+          .map((d) => [d.date, d.revenue, d.orders, d.bottles, d.red, d.white, d.sparkling].join(','))
+          .join('\n')
+        const blob = new Blob([header + body], { type: 'text/csv' })
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `wineops-report-${new Date().toISOString().slice(0, 10)}.csv`
+        a.click()
+        URL.revokeObjectURL(a.href)
         break
-      case 'drive':
-        alert('Google Drive integration coming soon.')
-        break
+      }
     }
 
     await dispatchReportEvent({
@@ -682,6 +745,7 @@ export function Reports() {
         {sectionId === 'aiInsights' && (
           <div className="space-y-4">
             <EngineInsightsPanel />
+            <SeatingDensityPanel />
             <AIInsightsSection
               insights={aiInsights}
               isOpen={showAIInsights}

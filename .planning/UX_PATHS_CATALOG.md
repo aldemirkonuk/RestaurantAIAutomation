@@ -838,6 +838,33 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## L. Reports (`/reports`) (`NEW-419 … NEW-448`)
 
+> **Shipped 2026-07-21 (Reports batch + Seating Density widget):**
+> **NEW-419 Excel export is real** — a true multi-sheet `.xlsx` (Summary +
+> Daily breakdown) via the ExcelJS dependency already used by the wine-library
+> export, dynamically imported so it stays out of the main chunk. Sheets/Drive
+> still lack Drive OAuth, so instead of a third dead alert they now say exactly
+> what's missing and hand the user a CSV that imports in one step.
+>
+> **Seating Density widget (`SeatingDensityPanel`) — unblocks NEW-761–860.**
+> The 100-row seating-density UX batch was fully written but had no surface to
+> attach to; this is that surface, mounted on Reports beside `EngineInsightsPanel`.
+> It reads `GET /analytics/table-performance/:id`, which **already computed every
+> density measure per table** (covers/seat, checks/seat, $/seat, $/cover,
+> utilization, turns/seat, tips/seat) — the panel adds no math beyond zone/venue
+> **medians**, so the numbers stay the engine's. Ships NEW-761 (check-ins/seat KPI
+> + methodology sheet), NEW-762 (hover a table → % vs its zone median), NEW-763
+> (Act → Recommendations / table insight types), NEW-365/366 ($/cover), NEW-367
+> (seat utilization), NEW-368 (turns/seat), NEW-371/372 (over- and
+> under-utilization flags at 1.5×/0.5× the venue median), and a taught empty
+> state naming the missing POS/seat data.
+> Deferred in §L: chart-point drill-down (421), cross-filter (422), saved report
+> packs + sharing (423–425), annotations (427), widget fullscreen/right-click
+> (429/430), presentation mode (439), metric alerts (448) — each needs either new
+> endpoints or a chart-library interaction layer.
+> Deferred in the seating batch: the remaining NEW-764–860 rows (density × time,
+> × space, causal links, manager alerts) now have a widget to extend, but need
+> their own passes — this shipped the core measures, not all 100 rows.
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-419 | `Click` | Excel / Google Sheets / Drive export options actually work (remove "coming soon"). |
