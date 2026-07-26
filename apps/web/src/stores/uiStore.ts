@@ -64,7 +64,7 @@ export const useUIStore = create<UIState>()(
       sidebarCollapsed: false,
       // Mobile drawer starts closed; desktop ignores this (always visible via md:translate-x-0)
       sidebarOpen: false,
-      theme: 'system',
+      theme: 'light',
       resolvedTheme: 'light',
       modals: [],
       globalLoading: false,
@@ -130,6 +130,13 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'ui-storage',
+      // v1: product default switched to light; reset themes stored under the
+      // old default (system/dark) exactly once.
+      version: 1,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<UIState>
+        return { ...state, theme: 'light' as Theme }
+      },
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
         theme: state.theme,

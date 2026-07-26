@@ -135,7 +135,7 @@ export function ServicesPermissions() {
                   onClick={() => toggle(svc.id)}
                   className={cn(
                     'relative w-11 h-6 rounded-full transition-colors',
-                    enabled ? 'bg-[#722F37]' : 'bg-gray-200',
+                    enabled ? 'bg-wine-600' : 'bg-gray-200',
                   )}
                 >
                   <span

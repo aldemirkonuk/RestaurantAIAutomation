@@ -165,5 +165,10 @@ export class BroadcastDto {
 export class UpdateTeamSettingsDto {
   @IsOptional() @IsBoolean() laborTrackingEnabled?: boolean;
   @IsOptional() @IsBoolean() wageVisible?: boolean;
-  @IsOptional() @IsNumber() laborTargetPct?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(100)
+  laborTargetPct?: number;
 }

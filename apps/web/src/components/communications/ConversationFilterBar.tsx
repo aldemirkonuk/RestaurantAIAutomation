@@ -1,0 +1,181 @@
+import { Search, X } from 'lucide-react'
+import { ThemedSelect } from '../ui/ThemedSelect'
+import { cn } from '../../lib/utils'
+import {
+  FILTER_OPTIONS,
+  hasActiveConversationFilters,
+  type ConversationFilterState,
+  channelLabel,
+  directionLabel,
+  sentimentLabel,
+} from '../../lib/conversationFilters'
+
+export interface ConversationFilterBarProps {
+  filters: ConversationFilterState
+  onChange: (next: ConversationFilterState) => void
+  /** Optional counts from stats.bySentiment — zero-count options stay selectable but annotated. */
+  sentimentCounts?: Record<string, number>
+  className?: string
+}
+
+function patch(
+  filters: ConversationFilterState,
+  partial: Partial<ConversationFilterState>,
+): ConversationFilterState {
+  return { ...filters, ...partial, page: 1 }
+}
+
+/**
+ * Theme-based conversation filter bar (ThemedSelect — not native iOS selects).
+ * Dimensions AND together; chips remove one dimension at a time.
+ */
+export function ConversationFilterBar({
+  filters,
+  onChange,
+  sentimentCounts,
+  className,
+}: ConversationFilterBarProps) {
+  const sentimentOptions = FILTER_OPTIONS.sentiment.map((o) => {
+    if (!o.value || !sentimentCounts) return { ...o }
+    const count = sentimentCounts[o.value] ?? 0
+    return {
+      value: o.value,
+      label: count > 0 ? `${o.label} (${count})` : `${o.label} (0)`,
+    }
+  })
+
+  const chips: { key: keyof ConversationFilterState; label: string }[] = []
+  if (filters.channel) {
+    chips.push({ key: 'channel', label: channelLabel(filters.channel) })
+  }
+  if (filters.direction) {
+    chips.push({ key: 'direction', label: directionLabel(filters.direction) })
+  }
+  if (filters.sentiment) {
+    chips.push({
+      key: 'sentiment',
+      label: sentimentLabel(
+        filters.sentiment === 'unclassified'
+          ? 'unclassified'
+          : (filters.sentiment as 'positive' | 'neutral' | 'negative'),
+      ),
+    })
+  }
+  if (filters.status) {
+    chips.push({
+      key: 'status',
+      label: filters.status.charAt(0).toUpperCase() + filters.status.slice(1),
+    })
+  }
+  if (filters.quarter) {
+    chips.push({ key: 'quarter', label: filters.quarter })
+  }
+  if (filters.search) {
+    chips.push({ key: 'search', label: `“${filters.search}”` })
+  }
+
+  const clearAll = () =>
+    onChange({
+      channel: '',
+      direction: '',
+      sentiment: '',
+      status: '',
+      quarter: '',
+      year: '',
+      search: '',
+      page: 1,
+    })
+
+  return (
+    <div className={cn('space-y-2', className)}>
+      <div className="flex flex-wrap items-center gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="search"
+            value={filters.search}
+            onChange={(e) => onChange(patch(filters, { search: e.target.value }))}
+            placeholder="Search conversations…"
+            aria-label="Search conversations"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none"
+          />
+        </div>
+
+        <ThemedSelect
+          aria-label="Filter by channel"
+          value={filters.channel}
+          options={[...FILTER_OPTIONS.channel]}
+          onChange={(channel) => onChange(patch(filters, { channel }))}
+          align="left"
+        />
+        <ThemedSelect
+          aria-label="Filter by direction"
+          value={filters.direction}
+          options={[...FILTER_OPTIONS.direction]}
+          onChange={(direction) => onChange(patch(filters, { direction }))}
+          align="left"
+        />
+        <ThemedSelect
+          aria-label="Filter by sentiment"
+          value={filters.sentiment}
+          options={sentimentOptions}
+          onChange={(sentiment) => onChange(patch(filters, { sentiment }))}
+          align="left"
+        />
+        <ThemedSelect
+          aria-label="Filter by delivery status"
+          value={filters.status}
+          options={[...FILTER_OPTIONS.status]}
+          onChange={(status) => onChange(patch(filters, { status }))}
+          align="left"
+        />
+        <ThemedSelect
+          aria-label="Filter by quarter"
+          value={filters.quarter}
+          options={[...FILTER_OPTIONS.quarter]}
+          onChange={(quarter) => {
+            const year =
+              quarter && !filters.year
+                ? String(new Date().getFullYear())
+                : filters.year
+            onChange(patch(filters, { quarter, year }))
+          }}
+          align="left"
+        />
+
+        {hasActiveConversationFilters(filters) && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="px-3 py-2 text-sm text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center gap-1"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
+        )}
+      </div>
+
+      {chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => {
+                if (chip.key === 'quarter') {
+                  onChange(patch(filters, { quarter: '', year: '' }))
+                } else {
+                  onChange(patch(filters, { [chip.key]: '' }))
+                }
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-wine-50 text-wine-700 border border-wine-100 hover:bg-wine-100 transition-colors"
+            >
+              {chip.label}
+              <X className="w-3 h-3 opacity-70" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

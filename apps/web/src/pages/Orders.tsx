@@ -19,7 +19,6 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Download,
   Copy,
   Wine,
   X,
@@ -40,6 +39,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import axios from 'axios'
 import { Wine as WineType } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
@@ -52,6 +52,8 @@ import { formatVolume } from '../utils/volumeUtils'
 import { useOrders } from '../hooks/queries/useOrderQueries'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
 
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
@@ -1119,28 +1121,46 @@ Shadow stock has been moved to Live Stock.`)
 
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // NEW-159: export the current filtered/sorted order set to CSV.
-  const exportOrdersCsv = useCallback(() => {
-    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const header = ['Order ID', 'Wine', 'Provider', 'Status', 'Quantity', 'Price', 'Created'].join(',')
-    const lines = sortedOrdersWithAutoHide.map((o: Order) =>
-      [
-        q(o.order_id),
-        q(resolveOrderWineName(o)),
-        q(resolveOrderProviderName(o)),
-        q(o.status),
-        o.quantity ?? '',
-        (o as any).final_price ?? (o as any).total_cost ?? '',
-        q(o.created_at ? new Date(o.created_at).toISOString().slice(0, 10) : ''),
-      ].join(','),
-    )
-    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }, [sortedOrdersWithAutoHide, resolveOrderWineName, resolveOrderProviderName])
+  // NEW-159: export the current filtered/sorted order set in the chosen format.
+  const exportOrders = useCallback(
+    async (format: TableExportFormat) => {
+      const columns: TableExportColumn<Order>[] = [
+        { header: 'Order ID', value: (o) => o.order_id },
+        { header: 'Wine', value: (o) => resolveOrderWineName(o) },
+        { header: 'Provider', value: (o) => resolveOrderProviderName(o) },
+        { header: 'Status', value: (o) => o.status },
+        { header: 'Quantity', value: (o) => o.quantity ?? '' },
+        {
+          header: 'Price',
+          value: (o) => (o as any).final_price ?? (o as any).total_cost ?? '',
+        },
+        {
+          header: 'Created',
+          value: (o) => (o.created_at ? new Date(o.created_at).toISOString().slice(0, 10) : ''),
+        },
+      ]
+
+      try {
+        await exportTable({
+          format,
+          rows: sortedOrdersWithAutoHide,
+          columns,
+          filename: `orders-${new Date().toISOString().slice(0, 10)}`,
+          title: 'Orders',
+        })
+        toast.success(
+          format === 'clipboard'
+            ? `Copied ${sortedOrdersWithAutoHide.length} orders to clipboard`
+            : format === 'print'
+              ? 'Opening print view'
+              : `Exported ${sortedOrdersWithAutoHide.length} orders`,
+        )
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [sortedOrdersWithAutoHide, resolveOrderWineName, resolveOrderProviderName],
+  )
 
   // Re-group sortedOrdersWithAutoHide (hook's groupedOrders is based on sortedOrders, not sortedOrdersWithAutoHide)
   const groupedOrdersWithAutoHide = useMemo(() => {
@@ -1485,14 +1505,10 @@ Shadow stock has been moved to Live Stock.`)
                 </span>
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={exportOrdersCsv}
-              title="Export the filtered orders to CSV"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
+            <ExportMenu
+              onExport={exportOrders}
+              count={sortedOrdersWithAutoHide.length}
+            />
             <Button
               variant="default"
               onClick={openCreateOrderFlow}

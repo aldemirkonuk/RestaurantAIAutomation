@@ -87,6 +87,8 @@ export interface ConversationFilters {
   orderId?: string
   channel?: string
   direction?: string
+  /** positive | neutral | negative | unclassified */
+  sentiment?: string
   dateFrom?: string
   dateTo?: string
   quarter?: string

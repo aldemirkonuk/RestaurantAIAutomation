@@ -46,35 +46,41 @@ import {
   type ConversationFilters,
 } from '../hooks/queries/useConversationQueries'
 import { useGeneratedReports, useDeleteReport, type GeneratedReport } from '../hooks/queries/useReportQueries'
+import { ConversationFilterBar } from '../components/communications/ConversationFilterBar'
+import {
+  EMPTY_CONVERSATION_FILTERS,
+  normalizeDirection,
+  normalizeSentiment,
+  sentimentBadgeClass,
+  sentimentLabel,
+  type ConversationFilterState,
+} from '../lib/conversationFilters'
 
 // Communication History Section Component — uses real API via useConversations
 function CommunicationHistorySection() {
-  const [filterChannel, setFilterChannel] = useState<string>('')
-  const [filterDirection, setFilterDirection] = useState<string>('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState<ConversationFilterState>(EMPTY_CONVERSATION_FILTERS)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [quarter, setQuarter] = useState('')
-  const [year, setYear] = useState('')
+  const [dateFrom] = useState('')
+  const [dateTo] = useState('')
 
-  const filters: ConversationFilters = {
-    channel: filterChannel || undefined,
-    direction: filterDirection || undefined,
-    search: searchQuery || undefined,
+  const apiFilters: ConversationFilters = {
+    channel: filters.channel || undefined,
+    direction: filters.direction || undefined,
+    sentiment: filters.sentiment || undefined,
+    status: filters.status || undefined,
+    search: filters.search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-    quarter: quarter || undefined,
-    year: year || undefined,
-    page,
+    quarter: filters.quarter || undefined,
+    year: filters.year || undefined,
+    page: filters.page,
     limit: 20,
     sortBy: 'created_at',
     sortOrder: 'desc',
   }
 
-  const { data: conversationsData, isLoading, error } = useConversations(filters)
+  const { data: conversationsData, isLoading, error } = useConversations(apiFilters)
   const { data: statsData } = useConversationStats()
   const { data: threadData, isLoading: threadLoading } = useConversationThread(selectedThreadId)
   const regenerateSummary = useRegenerateSummary()
@@ -82,6 +88,9 @@ function CommunicationHistorySection() {
   const conversations = conversationsData?.conversations || []
   const total = conversationsData?.total || 0
   const totalPages = conversationsData?.totalPages || 0
+
+  const setFilterChannel = (channel: string) =>
+    setFilters((f) => ({ ...f, channel, page: 1 }))
 
   const sourceConfig: Record<string, { icon: any; color: string; label: string }> = {
     email: { icon: Mail, color: 'bg-blue-100 text-blue-600', label: 'Email' },
@@ -218,9 +227,9 @@ function CommunicationHistorySection() {
           return (
             <button
               key={channel}
-              onClick={() => setFilterChannel(filterChannel === channel ? '' : channel)}
+              onClick={() => setFilterChannel(filters.channel === channel ? '' : channel)}
               className={`p-3 rounded-xl border-2 transition-all ${
-                filterChannel === channel
+                filters.channel === channel
                   ? 'border-wine-500 bg-wine-50'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
@@ -249,60 +258,12 @@ function CommunicationHistorySection() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search conversations..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent"
-          />
-        </div>
-
-        <select
-          value={filterDirection}
-          onChange={(e) => setFilterDirection(e.target.value)}
-          className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 bg-white"
-        >
-          <option value="">All Directions</option>
-          <option value="inbound">Inbound</option>
-          <option value="outbound">Outbound</option>
-        </select>
-
-        <select
-          value={quarter}
-          onChange={(e) => { setQuarter(e.target.value); if (!year) setYear(String(new Date().getFullYear())) }}
-          className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 bg-white"
-        >
-          <option value="">All Time</option>
-          <option value="Q1">Q1</option>
-          <option value="Q2">Q2</option>
-          <option value="Q3">Q3</option>
-          <option value="Q4">Q4</option>
-        </select>
-
-        {(filterChannel || filterDirection || searchQuery || quarter) && (
-          <button
-            onClick={() => {
-              setFilterChannel('')
-              setFilterDirection('')
-              setSearchQuery('')
-              setQuarter('')
-              setYear('')
-              setDateFrom('')
-              setDateTo('')
-              setPage(1)
-            }}
-            className="px-3 py-2 text-sm text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center gap-1"
-          >
-            <X className="w-4 h-4" />
-            Clear filters
-          </button>
-        )}
-      </div>
+      {/* Filters — theme ThemedSelect bar (not native iOS selects) */}
+      <ConversationFilterBar
+        filters={filters}
+        onChange={setFilters}
+        sentimentCounts={statsData?.bySentiment}
+      />
 
       {/* Communications List */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -366,7 +327,7 @@ function CommunicationHistorySection() {
                               <User className="w-3.5 h-3.5" />
                               <span>{conv.providers?.name || 'Unknown vendor'}</span>
                               <span className="text-gray-300">|</span>
-                              {conv.direction === 'outbound' ? (
+                              {normalizeDirection(conv.direction) === 'outbound' ? (
                                 <span className="flex items-center gap-1 text-blue-600">
                                   <ArrowUpRight className="w-3.5 h-3.5" />
                                   Outbound
@@ -380,15 +341,16 @@ function CommunicationHistorySection() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {conv.detected_sentiment && (
-                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                conv.detected_sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700' :
-                                conv.detected_sentiment === 'negative' ? 'bg-red-100 text-red-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
-                                {conv.detected_sentiment}
-                              </span>
-                            )}
+                            {(() => {
+                              const bucket = normalizeSentiment(conv.detected_sentiment)
+                              return (
+                                <span
+                                  className={`px-2 py-1 text-xs font-medium rounded-full ${sentimentBadgeClass(bucket)}`}
+                                >
+                                  {sentimentLabel(bucket)}
+                                </span>
+                              )
+                            })()}
                             <span className="text-sm text-gray-500">{formatDate(conv.created_at)}</span>
                             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                           </div>
@@ -468,16 +430,16 @@ function CommunicationHistorySection() {
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
             <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={filters.page <= 1}
+              onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))}
               className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
             >
               Previous
             </button>
-            <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+            <span className="text-sm text-gray-600">Page {filters.page} of {totalPages}</span>
             <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
+              disabled={filters.page >= totalPages}
+              onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
               className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
             >
               Next

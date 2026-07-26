@@ -8,8 +8,8 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
-  Menu,
-  X,
+  PanelLeftClose,
+  PanelLeft,
   Plus,
 } from 'lucide-react'
 import { useCalendarPage } from './useCalendarPage'
@@ -41,6 +41,17 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   reminder: '#EF4444',
   recurring: '#6366F1',
   custom: '#6B7280',
+}
+
+const CALENDAR_SIDEBAR_KEY = 'wineops-calendar-sidebar'
+
+function readSidebarOpen(): boolean {
+  if (typeof window === 'undefined') return true
+  const stored = localStorage.getItem(CALENDAR_SIDEBAR_KEY)
+  if (stored === '0') return false
+  if (stored === '1') return true
+  // Default: open on desktop, closed on phone (drawer pattern)
+  return window.matchMedia('(min-width: 768px)').matches
 }
 
 const VIEW_TABS: { key: ViewMode; label: string }[] = [
@@ -119,8 +130,17 @@ export default function CalendarPage() {
     () => new Set(Object.keys(EVENT_TYPE_COLORS))
   )
 
-  // Mobile sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Sidebar: desktop collapses like Cursor’s primary sidebar; mobile is a drawer.
+  // Preference persists across visits (⌘B / Ctrl+B).
+  const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen)
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen((prev) => {
+      const next = !prev
+      localStorage.setItem(CALENDAR_SIDEBAR_KEY, next ? '1' : '0')
+      return next
+    })
+  }, [])
 
   const handleToggleType = useCallback((type: string) => {
     setEnabledTypes((prev) => {
@@ -293,12 +313,12 @@ export default function CalendarPage() {
   )
 
   // ---- Keyboard shortcuts (NEW-399) ----
-  // t today · m/w/d/a views · n new event · ←/→ prev/next. Yields to the global
-  // ⌘K palette and `g`-then-key nav (skips when defaultPrevented / modifiers /
-  // typing / a modal is open).
+  // t today · m/w/d/a views · n new event · ←/→ prev/next · ⌘B toggle sidebar.
+  // Yields to the global ⌘K palette and `g`-then-key nav (skips when
+  // defaultPrevented / typing / a modal is open).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.defaultPrevented) return
       if (modalOpen || memoPromptOpen) return
       const t = e.target as HTMLElement | null
       if (
@@ -309,6 +329,16 @@ export default function CalendarPage() {
           t.isContentEditable)
       )
         return
+
+      // Cursor-style primary sidebar toggle
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        toggleSidebar()
+        return
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+
       switch (e.key) {
         case 't':
           goToToday()
@@ -341,7 +371,15 @@ export default function CalendarPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [modalOpen, memoPromptOpen, goToToday, setViewMode, openCreateModal, navigateDate])
+  }, [
+    modalOpen,
+    memoPromptOpen,
+    goToToday,
+    setViewMode,
+    openCreateModal,
+    navigateDate,
+    toggleSidebar,
+  ])
 
   // ---- Render ----
 
@@ -370,16 +408,18 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 bg-white shrink-0">
         {/* Left: navigation */}
         <div className="flex items-center gap-2">
-          {/* Mobile sidebar toggle */}
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden p-1.5 rounded-md hover:bg-gray-100 transition-colors"
-            aria-label="Toggle sidebar"
+            type="button"
+            onClick={toggleSidebar}
+            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-600"
+            aria-label={sidebarOpen ? 'Hide calendar sidebar' : 'Show calendar sidebar'}
+            aria-pressed={sidebarOpen}
+            title={sidebarOpen ? 'Hide sidebar (⌘B / Ctrl+B)' : 'Show sidebar (⌘B / Ctrl+B)'}
           >
             {sidebarOpen ? (
-              <X className="w-5 h-5 text-gray-600" />
+              <PanelLeftClose className="w-5 h-5" />
             ) : (
-              <Menu className="w-5 h-5 text-gray-600" />
+              <PanelLeft className="w-5 h-5" />
             )}
           </button>
           <button
@@ -456,16 +496,19 @@ export default function CalendarPage() {
         {sidebarOpen && (
           <div
             className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setSidebarOpen(false)}
+            onClick={toggleSidebar}
           />
         )}
 
-        {/* Sidebar */}
+        {/* Sidebar — collapses on all breakpoints (⌘B), drawer overlay on phone */}
         <div
           className={`
-            absolute md:relative z-50 md:z-auto h-full transition-transform duration-300 ease-in-out
-            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+            absolute z-50 h-full transition-transform duration-300 ease-in-out
+            ${sidebarOpen
+              ? 'translate-x-0 md:relative md:z-auto'
+              : '-translate-x-full pointer-events-none'}
           `}
+          aria-hidden={!sidebarOpen}
         >
           <CalendarSidebar
             currentDate={currentDate}
@@ -473,11 +516,16 @@ export default function CalendarPage() {
             onDateSelect={(date) => {
               setSelectedDate(date)
               setCurrentDate(date)
-              setSidebarOpen(false) // Close sidebar on mobile after selection
+              // Close drawer after pick on phone — don't persist (desktop pref stays)
+              if (window.matchMedia('(max-width: 767px)').matches) {
+                setSidebarOpen(false)
+              }
             }}
             onCreateEvent={() => {
               openCreateModal()
-              setSidebarOpen(false) // Close sidebar on mobile after create
+              if (window.matchMedia('(max-width: 767px)').matches) {
+                setSidebarOpen(false)
+              }
             }}
             eventTypeColors={EVENT_TYPE_COLORS}
             enabledTypes={enabledTypes}

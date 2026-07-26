@@ -551,7 +551,11 @@ export class TeamService {
       .upsert(patch, { onConflict: "restaurant_id" })
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to update settings");
+    if (error) {
+      throw new InternalServerErrorException(
+        `Failed to update team settings: ${error.message}`,
+      );
+    }
     return data;
   }
 }

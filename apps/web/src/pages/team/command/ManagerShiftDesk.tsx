@@ -345,7 +345,7 @@ export function ManagerShiftDesk() {
         <ActionBtn onClick={() => setShiftEditor({ date: today })}><Plus className="w-3.5 h-3.5" /> Add shift</ActionBtn>
         <ActionBtn onClick={() => doCopy.mutate()}><Copy className="w-3.5 h-3.5" /> Copy last week</ActionBtn>
         <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew (inbox + push + email/SMS):'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
-        <ActionBtn onClick={() => setMemberEditor({ member: null })}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
+        <ActionBtn onClick={() => setInviteOpen(true)}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
         <ActionBtn onClick={() => setOpsOpen(true)}><SlidersHorizontal className="w-3.5 h-3.5" /> Ops rules</ActionBtn>
         <ActionBtn onClick={() => doPublish.mutate()} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
@@ -557,7 +557,14 @@ export function ManagerShiftDesk() {
 
       {/* People sheet */}
       {peopleOpen && (
-        <PeopleSheet members={members} certs={certs} onClose={() => setPeopleOpen(false)} onEdit={(m) => { setPeopleOpen(false); setMemberEditor({ member: m }) }} onAdd={() => { setPeopleOpen(false); setMemberEditor({ member: null }) }} onOps={() => { setPeopleOpen(false); setOpsOpen(true) }} />
+        <PeopleSheet
+          members={members}
+          certs={certs}
+          onClose={() => setPeopleOpen(false)}
+          onEdit={(m) => { setPeopleOpen(false); setMemberEditor({ member: m }) }}
+          onAdd={() => { setPeopleOpen(false); setInviteOpen(true) }}
+          onOps={() => { setPeopleOpen(false); setOpsOpen(true) }}
+        />
       )}
       {opsOpen && <OpsRulesPanel members={members} onClose={() => setOpsOpen(false)} />}
 
@@ -566,7 +573,13 @@ export function ManagerShiftDesk() {
         <ShiftEditor shift={shiftEditor.shift} defaultDate={shiftEditor.date} defaultMemberId={shiftEditor.memberId} members={members} onClose={() => setShiftEditor(null)} />
       )}
       {memberEditor && <MemberEditor member={memberEditor.member} wageVisible={week?.settings?.wage_visible ?? true} onClose={() => setMemberEditor(null)} />}
-      <InviteTeamDialog open={inviteOpen} onClose={() => setInviteOpen(false)} restaurantId={activeRestaurantId ?? ''} anchorRef={inviteAnchor} />
+      <InviteTeamDialog
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        restaurantId={activeRestaurantId ?? ''}
+        anchorRef={inviteAnchor}
+        onRosterOnly={() => setMemberEditor({ member: null })}
+      />
     </div>
   )
 }

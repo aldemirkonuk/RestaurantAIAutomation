@@ -17,6 +17,7 @@ interface ListConversationsOptions {
   orderId?: string;
   channel?: string;
   direction?: string;
+  sentiment?: string;
   dateFrom?: string;
   dateTo?: string;
   quarter?: string;
@@ -29,6 +30,14 @@ interface ListConversationsOptions {
   sortBy: string;
   sortOrder: "asc" | "desc";
 }
+
+const ALLOWED_SENTIMENTS = new Set([
+  "positive",
+  "neutral",
+  "negative",
+  "unclassified",
+]);
+const ALLOWED_DIRECTIONS = new Set(["inbound", "outbound"]);
 
 @Injectable()
 export class ConversationsService {
@@ -70,8 +79,29 @@ export class ConversationsService {
       if (options.channel) {
         query = query.eq("channel", options.channel);
       }
+      // Direction may be stored as OUTBOUND/INBOUND (legacy) or lowercase —
+      // match case-insensitively via ilike exact pattern.
       if (options.direction) {
-        query = query.eq("direction", options.direction);
+        const dir = options.direction.trim().toLowerCase();
+        if (!ALLOWED_DIRECTIONS.has(dir)) {
+          throw new Error(
+            `Invalid direction "${options.direction}". Use inbound or outbound.`,
+          );
+        }
+        query = query.ilike("direction", dir);
+      }
+      if (options.sentiment) {
+        const sent = options.sentiment.trim().toLowerCase();
+        if (!ALLOWED_SENTIMENTS.has(sent)) {
+          throw new Error(
+            `Invalid sentiment "${options.sentiment}". Use positive, neutral, negative, or unclassified.`,
+          );
+        }
+        if (sent === "unclassified") {
+          query = query.is("detected_sentiment", null);
+        } else {
+          query = query.ilike("detected_sentiment", sent);
+        }
       }
       if (options.dateFrom) {
         query = query.gte("created_at", options.dateFrom);
@@ -267,17 +297,21 @@ export class ConversationsService {
       for (const c of conversations) {
         // By channel
         byChannel[c.channel] = (byChannel[c.channel] || 0) + 1;
-        // By direction
-        byDirection[c.direction] = (byDirection[c.direction] || 0) + 1;
+        // By direction (normalize casing)
+        const dir = String(c.direction || "")
+          .trim()
+          .toLowerCase();
+        if (dir) byDirection[dir] = (byDirection[dir] || 0) + 1;
         // By provider
         if (c.provider_id) {
           byProvider[c.provider_id] = (byProvider[c.provider_id] || 0) + 1;
         }
-        // By sentiment
-        if (c.detected_sentiment) {
-          bySentiment[c.detected_sentiment] =
-            (bySentiment[c.detected_sentiment] || 0) + 1;
-        }
+        // By sentiment (normalize; null → unclassified)
+        const sent = String(c.detected_sentiment || "")
+          .trim()
+          .toLowerCase();
+        const sentKey = sent || "unclassified";
+        bySentiment[sentKey] = (bySentiment[sentKey] || 0) + 1;
         // By month
         if (c.created_at) {
           const monthKey = c.created_at.substring(0, 7); // YYYY-MM

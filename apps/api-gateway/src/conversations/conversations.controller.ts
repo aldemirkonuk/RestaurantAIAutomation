@@ -49,6 +49,7 @@ export class ConversationsController {
   @ApiQuery({ name: "orderId", required: false })
   @ApiQuery({ name: "channel", required: false })
   @ApiQuery({ name: "direction", required: false })
+  @ApiQuery({ name: "sentiment", required: false })
   @ApiQuery({ name: "dateFrom", required: false })
   @ApiQuery({ name: "dateTo", required: false })
   @ApiQuery({ name: "quarter", required: false })
@@ -66,6 +67,7 @@ export class ConversationsController {
     @Query("orderId") orderId?: string,
     @Query("channel") channel?: string,
     @Query("direction") direction?: string,
+    @Query("sentiment") sentiment?: string,
     @Query("dateFrom") dateFrom?: string,
     @Query("dateTo") dateTo?: string,
     @Query("quarter") quarter?: string,
@@ -85,6 +87,7 @@ export class ConversationsController {
         orderId,
         channel,
         direction,
+        sentiment,
         dateFrom,
         dateTo,
         quarter,
@@ -102,6 +105,10 @@ export class ConversationsController {
         `Failed to list conversations: ${error.message}`,
         error.stack,
       );
+      const msg = String(error?.message || "");
+      if (msg.startsWith("Invalid ")) {
+        throw new HttpException(msg, HttpStatus.BAD_REQUEST);
+      }
       throw new HttpException(
         "Failed to list conversations",
         HttpStatus.INTERNAL_SERVER_ERROR,

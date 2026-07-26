@@ -50,7 +50,7 @@ describe('ThemeContext', () => {
     expect(typeof result.current.toggleTheme).toBe('function')
   })
 
-  it('defaults to system theme', () => {
+  it('defaults to light theme', () => {
     localStorageMock.getItem.mockReturnValue(null)
 
     const { result } = renderHook(() => useTheme(), {
@@ -59,7 +59,8 @@ describe('ThemeContext', () => {
       ),
     })
 
-    expect(result.current.theme).toBe('system')
+    expect(result.current.theme).toBe('light')
+    expect(result.current.resolvedTheme).toBe('light')
   })
 
   it('allows setting theme', () => {

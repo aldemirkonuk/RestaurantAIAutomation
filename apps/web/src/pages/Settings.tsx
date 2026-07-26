@@ -34,6 +34,7 @@ import {
   Link2,
   Check,
   Copy,
+  ChefHat,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
@@ -41,8 +42,10 @@ import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../service
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '../components/team/TeamLaborSettings';
+import { TeamGoalsSettings } from '../components/team/TeamGoalsSettings';
 import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
+import { IntegrationsAuth } from '../components/settings/IntegrationsAuth';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
 import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
@@ -319,6 +322,82 @@ function MeasurementVolumeSection() {
             <span className="text-sm text-gray-500">{formatVolumeWithBothUnits(effectivePourMl)}</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RecipesSection() {
+  const {
+    recipesEnabled,
+    recipeYieldUnit,
+    measurementUnit,
+    setRecipesEnabled,
+    setRecipeYieldUnit,
+  } = useRestaurantSettingsStore();
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
+      <div className="px-6 py-4 flex items-center gap-2 border-b border-gray-100">
+        <ChefHat className="w-4 h-4 text-wine-500" />
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Recipes</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Cocktail and by-the-glass recipes tied to bottle pours
+          </p>
+        </div>
+      </div>
+      <div className="divide-y divide-gray-50">
+        <div className="px-6 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Enable recipes</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Track recipe yields and deduct pours from inventory
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={recipesEnabled}
+            onClick={() => setRecipesEnabled(!recipesEnabled)}
+            className={cn(
+              'relative w-11 h-6 rounded-full transition-colors',
+              recipesEnabled ? 'bg-wine-600' : 'bg-gray-200',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                recipesEnabled && 'translate-x-5',
+              )}
+            />
+          </button>
+        </div>
+        {recipesEnabled && (
+          <div className="px-6 py-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">Default recipe yield unit</p>
+            <div className="flex gap-2">
+              {(['ml', 'oz'] as const).map((unit) => (
+                <button
+                  key={unit}
+                  type="button"
+                  onClick={() => setRecipeYieldUnit(unit)}
+                  className={cn(
+                    'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                    recipeYieldUnit === unit
+                      ? 'bg-wine-600 text-white'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+                  )}
+                >
+                  {unit === 'ml' ? 'Metric (ml)' : 'US (oz)'}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Display unit is currently {measurementUnit}. Recipe yields can use a different unit.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -910,11 +989,6 @@ export default function Settings() {
           )}
         </AnimatePresence>
 
-        {/* ── Services & permissions ── */}
-        <div id="services" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden p-6">
-          <ServicesPermissions />
-        </div>
-
         {/* ── Team ── */}
         <div id="team" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-6 py-4 flex items-center justify-between border-b border-gray-50">
@@ -947,7 +1021,10 @@ export default function Settings() {
           </div>
           <div className="px-6 py-5">
             {activeRestaurantId && (effectiveRole === 'owner' || effectiveRole === 'manager') && (
-              <TeamLaborSettings />
+              <>
+                <TeamLaborSettings />
+                <TeamGoalsSettings />
+              </>
             )}
             {!activeRestaurantId ? (
               <p className="text-sm text-gray-500 text-center py-6">
@@ -1089,6 +1166,11 @@ export default function Settings() {
             anchorRef={teamInviteAnchorRef}
           />
         )}
+
+        {/* ── Services & permissions ── */}
+        <div id="services" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden p-6">
+          <ServicesPermissions />
+        </div>
 
         {/* ── Email sign-off ── */}
         <EmailSenderSettings />
@@ -1285,6 +1367,7 @@ export default function Settings() {
         {/* ── Measurement ── */}
         <div id="measurement" className="scroll-mt-32">
           <MeasurementVolumeSection />
+          <RecipesSection />
         </div>
 
         {/* ── Feature Flags ── */}
@@ -1315,7 +1398,10 @@ export default function Settings() {
           )}
 
           {Object.entries(groupedFlags).map(([category, items]) => {
-            const enabledCount = items.filter((f) => localFlags?.[f.key]).length;
+            const flagEnabled = items.filter((f) => localFlags?.[f.key]).length;
+            const authExtra = category === 'integrations' ? 2 : 0;
+            const enabledCount = flagEnabled; // auth rows tracked separately in IntegrationsAuth
+            const totalCount = items.length + authExtra;
             return (
               <motion.div
                 key={category}
@@ -1331,7 +1417,7 @@ export default function Settings() {
                     'text-xs px-2 py-0.5 rounded-full font-medium',
                     enabledCount > 0 ? 'bg-wine-50 text-wine-600' : 'bg-gray-100 text-gray-400',
                   )}>
-                    {enabledCount}/{items.length} on
+                    {enabledCount}/{totalCount} on
                   </span>
                 </div>
 
@@ -1372,6 +1458,7 @@ export default function Settings() {
                     );
                   })}
                 </div>
+                {category === 'integrations' && <IntegrationsAuth />}
               </motion.div>
             );
           })}

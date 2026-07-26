@@ -150,6 +150,56 @@ export default function Profile() {
     }
   }, [isManagerOrOwner, activeRestaurantId, activeBranch?.name, activeBranch?.city])
 
+  // Scroll spy: highlight the rail item for the section under the reading line
+  useEffect(() => {
+    const ids: SectionId[] = [
+      ...PERSONAL_SECTIONS.map((s) => s.id),
+      ...(isManagerOrOwner ? MANAGER_SECTIONS.map((s) => s.id) : []),
+      'danger',
+    ]
+    let ticking = false
+
+    const update = () => {
+      ticking = false
+      // At the very bottom, the last section wins even if its top never
+      // crosses the reading line (short sections at the end of the page).
+      const scrolledToBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 2
+      if (scrolledToBottom) {
+        setActiveSection(ids[ids.length - 1])
+        return
+      }
+      const readingLine = 120 // just below the sticky header
+      let current: SectionId = ids[0]
+      for (const id of ids) {
+        const el = document.getElementById(`profile-${id}`)
+        if (!el) continue
+        if (el.getBoundingClientRect().top <= readingLine) {
+          current = id
+        } else {
+          break
+        }
+      }
+      setActiveSection(current)
+    }
+
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true
+        requestAnimationFrame(update)
+      }
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll, { passive: true })
+    update()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [isManagerOrOwner])
+
   const scrollTo = (id: SectionId) => {
     setActiveSection(id)
     document.getElementById(`profile-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -363,7 +413,7 @@ export default function Profile() {
               id="profile-account"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl border border-gray-200 p-6"
+              className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6"
             >
               <h3 className="text-base font-semibold text-gray-900 mb-4">Account</h3>
               <div className="space-y-4">
@@ -431,7 +481,7 @@ export default function Profile() {
               </div>
             </motion.section>
 
-            <section id="profile-security" className="bg-white rounded-2xl border border-gray-200 p-6">
+            <section id="profile-security" className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6">
               <h3 className="text-base font-semibold text-gray-900 mb-4">Security</h3>
               {!hasPassword ? (
                 <p className="text-sm text-gray-500 mb-4">
@@ -492,7 +542,7 @@ export default function Profile() {
               </div>
             </section>
 
-            <section id="profile-linked" className="bg-white rounded-2xl border border-gray-200 p-6">
+            <section id="profile-linked" className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6">
               <h3 className="text-base font-semibold text-gray-900 mb-1">Linked accounts</h3>
               <p className="text-sm text-gray-500 mb-4">Sign in faster with Google or Microsoft.</p>
               <div className="space-y-3">
@@ -540,7 +590,7 @@ export default function Profile() {
               </div>
             </section>
 
-            <section id="profile-preferences" className="bg-white rounded-2xl border border-gray-200 p-6">
+            <section id="profile-preferences" className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6">
               <h3 className="text-base font-semibold text-gray-900 mb-4">Preferences</h3>
               <div className="space-y-5">
                 <div>
@@ -590,7 +640,7 @@ export default function Profile() {
 
             {isManagerOrOwner && (
               <>
-                <section id="profile-restaurant" className="bg-white rounded-2xl border border-gray-200 p-6">
+                <section id="profile-restaurant" className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Restaurant</h3>
                   <p className="text-sm text-gray-500 mb-4">
                     Managers and owners can rename the active location. Staff cannot edit this.
@@ -634,7 +684,7 @@ export default function Profile() {
                   </div>
                 </section>
 
-                <section id="profile-payment" className="bg-white rounded-2xl border border-gray-200 p-6">
+                <section id="profile-payment" className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Payment</h3>
                   <p className="text-sm text-gray-500 mb-4">
                     Billing contact for invoices and plan notices. Card checkout coming later.
@@ -693,7 +743,7 @@ export default function Profile() {
                   </div>
                 </section>
 
-                <section id="profile-memberships" className="bg-white rounded-2xl border border-gray-200 p-6">
+                <section id="profile-memberships" className="scroll-mt-24 bg-white rounded-2xl border border-gray-200 p-6">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Memberships</h3>
                   <p className="text-sm text-gray-500 mb-4">
                     Restaurants you belong to. Switch the active location anytime.
@@ -773,7 +823,7 @@ export default function Profile() {
 
             <section
               id="profile-danger"
-              className="bg-white rounded-2xl border border-red-100 p-6"
+              className="scroll-mt-24 bg-white rounded-2xl border border-red-100 p-6"
             >
               <h3 className="text-base font-semibold text-red-700 mb-4">Danger zone</h3>
               <div className="space-y-6">

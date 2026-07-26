@@ -27,6 +27,16 @@ export interface UserPreferences {
   servicePermissions?: Partial<
     Record<'email' | 'web' | 'privacy_analytics' | 'privacy_sharing', boolean>
   >
+  /** Settings → Team → Goals */
+  teamGoals?: {
+    weeklyCountTarget?: number
+    parComplianceTargetPct?: number
+    trainingCompletionTargetPct?: number
+  }
+  /** Settings → Features → Integrations auth (Excel / Drive) */
+  integrationsAuth?: Partial<
+    Record<'excel' | 'google_drive', { connected: boolean; account?: string }>
+  >
   /** Home dashboard Quick Actions (order, hidden builtins, custom shortcuts) */
   quickActions?: {
     order: string[]

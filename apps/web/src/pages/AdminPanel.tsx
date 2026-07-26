@@ -140,6 +140,9 @@ export default function AdminPanel() {
   const [agentStatus, setAgentStatus] = useState<Record<string, { status: 'active' | 'inactive' | 'warning', messages: number | string, avgTime: string, errors: string }>>({})
   const [agentStatusLoading, setAgentStatusLoading] = useState(true)
   const [agentStatusError, setAgentStatusError] = useState<string | null>(null)
+  const [infraProviders, setInfraProviders] = useState<
+    Array<{ id: string; name: string; desc: string; status: string; healthy: boolean }>
+  >([])
   
   const [settings, setSettings] = useState<RestaurantSettings>({
     buffer_window_minutes: 30,
@@ -148,6 +151,47 @@ export default function AdminPanel() {
     enable_visual_verification: false,
     enable_predictive_analytics: false,
   })
+
+  // Provider health (Supabase / Gemini / Claude for Studio)
+  useEffect(() => {
+    const fetchProviders = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+        const token = localStorage.getItem('accessToken')
+        const { data } = await axios.get(`${apiUrl}/api/v1/health/providers`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          timeout: 5000,
+        })
+        const fromApi = (data?.providers ?? []) as Array<{
+          id: string
+          name: string
+          desc: string
+          status: string
+          healthy: boolean
+        }>
+        setInfraProviders([
+          ...fromApi,
+          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: 'Active', healthy: true },
+          { id: 'redis', name: 'Cache', desc: 'Redis', status: 'Running', healthy: true },
+        ])
+      } catch {
+        setInfraProviders([
+          { id: 'supabase', name: 'Database', desc: 'Supabase PostgreSQL', status: 'Unknown', healthy: false },
+          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: 'Unknown', healthy: false },
+          { id: 'redis', name: 'Cache', desc: 'Redis', status: 'Unknown', healthy: false },
+          { id: 'gemini', name: 'AI Engine', desc: 'Gemini Pro', status: 'Unknown', healthy: false },
+          {
+            id: 'claude',
+            name: 'Studio Vision',
+            desc: 'Claude API (Haiku / Sonnet — /studio extract)',
+            status: 'Unknown',
+            healthy: false,
+          },
+        ])
+      }
+    }
+    if (activeTab === 'general') void fetchProviders()
+  }, [activeTab])
 
   // Fetch agent metrics from agent-orchestrator
   useEffect(() => {
@@ -393,26 +437,55 @@ export default function AdminPanel() {
                     <p className="text-sm text-slate-500 mt-1">Infrastructure health overview</p>
                   </div>
                   <div className="p-6 space-y-3">
-                    {[
-                      { name: 'Database', desc: 'Supabase PostgreSQL', icon: Database, status: 'Connected' },
-                      { name: 'Message Queue', desc: 'RabbitMQ', icon: Server, status: 'Active' },
-                      { name: 'Cache', desc: 'Redis', icon: Cpu, status: 'Running' },
-                      { name: 'AI Engine', desc: 'Gemini Pro', icon: Zap, status: 'Ready' },
-                    ].map((service) => (
+                    {(infraProviders.length
+                      ? infraProviders
+                      : [
+                          { id: 'supabase', name: 'Database', desc: 'Supabase PostgreSQL', status: '…', healthy: true },
+                          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: '…', healthy: true },
+                          { id: 'redis', name: 'Cache', desc: 'Redis', status: '…', healthy: true },
+                          { id: 'gemini', name: 'AI Engine', desc: 'Gemini Pro', status: '…', healthy: true },
+                          {
+                            id: 'claude',
+                            name: 'Studio Vision',
+                            desc: 'Claude API (Haiku / Sonnet — /studio extract)',
+                            status: '…',
+                            healthy: true,
+                          },
+                        ]
+                    ).map((service) => {
+                      const Icon =
+                        service.id === 'supabase'
+                          ? Database
+                          : service.id === 'rabbitmq'
+                            ? Server
+                            : service.id === 'redis'
+                              ? Cpu
+                              : Zap
+                      return (
                       <div
-                        key={service.name}
+                        key={service.id}
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-xl"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-2.5 h-2.5 bg-success-500 rounded-full animate-pulse-soft" />
-                          <div>
-                            <p className="font-medium text-slate-900">{service.name}</p>
-                            <p className="text-sm text-slate-500">{service.desc}</p>
+                          <div
+                            className={`w-2.5 h-2.5 rounded-full ${
+                              service.healthy ? 'bg-success-500 animate-pulse-soft' : 'bg-amber-400'
+                            }`}
+                          />
+                          <div className="flex items-center gap-2.5">
+                            <Icon className="w-4 h-4 text-slate-400" />
+                            <div>
+                              <p className="font-medium text-slate-900">{service.name}</p>
+                              <p className="text-sm text-slate-500">{service.desc}</p>
+                            </div>
                           </div>
                         </div>
-                        <span className="badge-success">{service.status}</span>
+                        <span className={service.healthy ? 'badge-success' : 'badge-warning'}>
+                          {service.status}
+                        </span>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               </div>
