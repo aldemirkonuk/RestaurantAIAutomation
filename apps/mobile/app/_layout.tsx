@@ -25,6 +25,9 @@ import {
 import { useOutbox } from "@/state/outbox";
 import { useSession } from "@/state/session";
 import { color } from "@/design/tokens";
+import { GuidanceProvider } from "@/guidance/GuidanceProvider";
+import { TourSheet } from "@/guidance/TourSheet";
+import { WineAgentFab } from "@/guidance/WineAgentFab";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -91,21 +94,37 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: color.surfaceSecondary },
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="login" options={{ animation: "fade" }} />
-            <Stack.Screen name="lock" options={{ animation: "fade" }} />
-            <Stack.Screen
-              name="settings"
-              options={{ presentation: "modal", animation: "slide_from_bottom" }}
-            />
-          </Stack>
+          <GuidanceProvider>
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: color.surfaceSecondary },
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="login" options={{ animation: "fade" }} />
+              <Stack.Screen name="lock" options={{ animation: "fade" }} />
+              <Stack.Screen
+                name="settings"
+                options={{ presentation: "modal", animation: "slide_from_bottom" }}
+              />
+              <Stack.Screen
+                name="get-started"
+                options={{ presentation: "modal", animation: "slide_from_bottom" }}
+              />
+              <Stack.Screen
+                name="help"
+                options={{ presentation: "modal", animation: "slide_from_bottom" }}
+              />
+              <Stack.Screen
+                name="wine-agent"
+                options={{ presentation: "modal", animation: "slide_from_bottom" }}
+              />
+            </Stack>
+            <TourSheet />
+            <WineAgentFab />
+          </GuidanceProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

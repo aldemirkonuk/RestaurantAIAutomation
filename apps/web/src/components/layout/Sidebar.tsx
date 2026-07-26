@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -9,6 +9,7 @@ import {
   Wine,
   Users,
   Settings,
+  User,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -32,6 +33,7 @@ import { trackGuidance } from '../../guidance/analytics'
 import { useUnreadCount } from '../../hooks/queries/useNotificationQueries'
 import { usePendingOrdersCount } from '../../hooks/queries/useOrderQueries'
 import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
+import { useUIStore } from '../../stores/uiStore'
 
 interface NavItem {
   name: string
@@ -71,18 +73,37 @@ const aiNavItems: NavItem[] = [
 ]
 
 const bottomNavItems: NavItem[] = [
+  { name: 'Profile', href: '/profile', icon: User },
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Help & Support', href: '/help', icon: HelpCircle },
 ]
 
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false)
+  const collapsed = useUIStore((s) => s.sidebarCollapsed)
+  const setCollapsed = useUIStore((s) => s.setSidebarCollapsed)
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen)
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const [showChecklist, setShowChecklist] = useState(false)
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const location = useLocation()
   const { user, logout } = useAuth()
   const { progress, update } = useOnboardingProgress()
+
+  // Force expanded labels in the mobile drawer
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const apply = () => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+  const effectiveCollapsed = isMobile ? false : collapsed
+
+  const closeMobileNav = () => {
+    if (isMobile) setSidebarOpen(false)
+  }
 
   // Live nav badges (NEW-018): pending orders, unread notifications, low stock.
   const unread = useUnreadCount(user?.userId ?? '')
@@ -126,10 +147,11 @@ export function Sidebar() {
     return (
       <NavLink
         to={item.href}
+        onClick={closeMobileNav}
         onMouseEnter={() => setHoveredItem(item.name)}
         onMouseLeave={() => setHoveredItem(null)}
         className={cn(
-          'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl',
+          'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl min-h-[44px]',
           isParentActive
             ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -177,18 +199,29 @@ export function Sidebar() {
   return (
     <motion.aside
       initial={false}
-      animate={{ width: collapsed ? 80 : 260 }}
+      animate={{ width: effectiveCollapsed ? 80 : 260 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className="fixed left-0 top-0 h-screen bg-white border-r border-gray-200 flex flex-col z-40 shadow-sm"
+      className={cn(
+        'fixed left-0 top-0 h-screen bg-white border-r border-gray-200 flex flex-col shadow-sm',
+        'z-50 md:z-40',
+        'safe-area-pad transition-transform duration-300 ease-in-out',
+        // Mobile drawer: off-canvas unless open
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+      )}
     >
       {/* Logo */}
       <div className="flex items-center justify-between h-16 px-4 border-b border-gray-100">
-        <NavLink to="/" className="flex items-center gap-3" aria-label="WineOps AI home">
+        <NavLink
+          to="/"
+          onClick={closeMobileNav}
+          className="flex items-center gap-3"
+          aria-label="WineOps AI home"
+        >
           <div className="w-10 h-10 bg-gradient-to-br from-wine-500 to-wine-700 rounded-xl flex items-center justify-center shadow-lg">
             <Wine className="w-6 h-6 text-white" aria-hidden="true" />
           </div>
           <AnimatePresence>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
@@ -207,15 +240,15 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {/* Primary Section */}
         <div className="space-y-1">
-          {!collapsed && (
+          {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               Main
             </p>
           )}
           {mainNavItems.map((item) => (
             <div key={item.name} className="space-y-1">
-              <NavItemComponent item={item} collapsed={collapsed} />
-              {!collapsed && item.children && (
+              <NavItemComponent item={item} collapsed={effectiveCollapsed} />
+              {!effectiveCollapsed && item.children && (
                 <div className="ml-9 space-y-1">
                   {item.children.map((child) => {
                     const childActive = location.pathname.startsWith(child.href)
@@ -223,8 +256,9 @@ export function Sidebar() {
                       <NavLink
                         key={child.name}
                         to={child.href}
+                        onClick={closeMobileNav}
                         className={cn(
-                          'block text-sm px-3 py-2 rounded-lg transition-all',
+                          'block text-sm px-3 py-2 rounded-lg transition-all min-h-[44px]',
                           childActive ? 'bg-wine-50 text-wine-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
                         )}
                       >
@@ -240,15 +274,15 @@ export function Sidebar() {
 
         {/* Secondary Section */}
         <div className="mt-8 space-y-1">
-          {!collapsed && (
+          {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               Workspace
             </p>
           )}
           {secondaryNavItems.map((item) => (
             <div key={item.name} className="space-y-1">
-              <NavItemComponent item={item} collapsed={collapsed} />
-              {!collapsed && item.children && (
+              <NavItemComponent item={item} collapsed={effectiveCollapsed} />
+              {!effectiveCollapsed && item.children && (
                 <div className="ml-9 space-y-1">
                   {item.children.map((child) => {
                     const childActive = location.pathname.startsWith(child.href)
@@ -256,8 +290,9 @@ export function Sidebar() {
                       <NavLink
                         key={child.name}
                         to={child.href}
+                        onClick={closeMobileNav}
                         className={cn(
-                          'block text-sm px-3 py-2 rounded-lg transition-all',
+                          'block text-sm px-3 py-2 rounded-lg transition-all min-h-[44px]',
                           childActive ? 'bg-wine-50 text-wine-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
                         )}
                       >
@@ -273,27 +308,27 @@ export function Sidebar() {
 
         {/* AI Section */}
         <div className="mt-8 space-y-1">
-          {!collapsed && (
+          {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               AI Assistants
             </p>
           )}
           {aiNavItems.map((item) => (
-            <NavItemComponent key={item.name} item={item} collapsed={collapsed} />
+            <NavItemComponent key={item.name} item={item} collapsed={effectiveCollapsed} />
           ))}
         </div>
 
         {/* Admin Section (if admin/owner) */}
         {user?.role === 'owner' && (
           <div className="mt-8 space-y-1">
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Admin
               </p>
             )}
             <NavItemComponent
               item={{ name: 'Admin Panel', href: '/admin', icon: Shield }}
-              collapsed={collapsed}
+              collapsed={effectiveCollapsed}
             />
           </div>
         )}
@@ -322,12 +357,12 @@ export function Sidebar() {
                   </span>
                 )}
               </div>
-              {!collapsed && (
+              {!effectiveCollapsed && (
                 <span className="font-medium text-sm whitespace-nowrap overflow-hidden flex-1">
                   Get started
                 </span>
               )}
-              {!collapsed && (
+              {!effectiveCollapsed && (
                 <span className="text-xs text-gray-400">{completedCount}/4</span>
               )}
             </button>
@@ -368,7 +403,7 @@ export function Sidebar() {
               )}
             >
               <BookOpen className="w-5 h-5 flex-shrink-0" />
-              {!collapsed && (
+              {!effectiveCollapsed && (
                 <span className="font-medium whitespace-nowrap overflow-hidden">
                   Learn & Help
                 </span>
@@ -387,7 +422,7 @@ export function Sidebar() {
           </div>
         )}
         {bottomNavItems.map((item) => (
-          <NavItemComponent key={item.name} item={item} collapsed={collapsed} />
+          <NavItemComponent key={item.name} item={item} collapsed={effectiveCollapsed} />
         ))}
 
         {/* Logout */}
@@ -397,7 +432,7 @@ export function Sidebar() {
         >
           <LogOut className="w-5 h-5 flex-shrink-0" />
           <AnimatePresence>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <motion.span
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
@@ -416,14 +451,14 @@ export function Sidebar() {
         <div
           className={cn(
             'flex items-center gap-3 p-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer',
-            collapsed && 'justify-center'
+            effectiveCollapsed && 'justify-center'
           )}
         >
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wine-400 to-wine-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
             {user?.name?.charAt(0) || 'U'}
           </div>
           <AnimatePresence>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
@@ -440,12 +475,13 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Collapse Toggle */}
+      {/* Collapse Toggle — desktop only */}
       <button
+        type="button"
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-md hover:shadow-lg hover:bg-gray-50 transition-all z-50"
+        className="hidden md:flex absolute -right-3 top-20 w-6 h-6 bg-white border border-gray-200 rounded-full items-center justify-center shadow-md hover:shadow-lg hover:bg-gray-50 transition-all z-50"
       >
-        {collapsed ? (
+        {effectiveCollapsed ? (
           <ChevronRight className="w-4 h-4 text-gray-600" />
         ) : (
           <ChevronLeft className="w-4 h-4 text-gray-600" />

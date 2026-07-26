@@ -9,6 +9,7 @@ import { OrderRow } from "@/components/supply/OrderRow";
 import { color, space } from "@/design/tokens";
 import { useOrderHistory, usePendingOrders } from "@/api/queries";
 import type { ProcurementOrder } from "@/api/types";
+import { TipStrip } from "@/guidance/TipStrip";
 
 const OPEN_STATUSES = new Set([
   "PENDING",
@@ -43,6 +44,7 @@ export default function SupplyScreen() {
 
   return (
     <Screen>
+      <TipStrip pageId="orders" />
       <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.md }}>
         <AppText variant="title">Supply</AppText>
         <FreshnessLabel updatedAt={pending.dataUpdatedAt || history.dataUpdatedAt || null} />

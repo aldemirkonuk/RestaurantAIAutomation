@@ -362,7 +362,7 @@ export default function GetStarted() {
                       </div>
                       <Button
                         variant="outline"
-                        className="flex-shrink-0"
+                        className="flex-shrink-0 min-h-[44px]"
                         onClick={() => {
                           trackGuidance('guide_card_clicked', { cardId: card.id })
                           if ('action' in card && card.action === 'activate') {

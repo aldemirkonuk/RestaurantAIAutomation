@@ -43,3 +43,6 @@ function resolveBase(): string {
 export const API_BASE = resolveBase();
 export const API_URL = `${API_BASE}/api/v1`;
 export const SOCKET_URL = API_BASE;
+
+/** Web dashboard origin for deep-links (menu import, Wine Agent, reports). */
+export const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL ?? "").replace(/\/$/, "");

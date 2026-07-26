@@ -20,6 +20,9 @@ import { useFeedLocal } from "@/state/feedLocal";
 import { useOutbox } from "@/state/outbox";
 import { useSession } from "@/state/session";
 import type { FeedItem } from "@/api/types";
+import { TipStrip } from "@/guidance/TipStrip";
+import { useGuidanceOptional } from "@/guidance/GuidanceProvider";
+import { trackGuidance } from "@/guidance/analytics";
 
 /** Sediment Settle — remaining cards drift down and settle after a removal. */
 const sedimentTransition = LinearTransition.springify()
@@ -30,7 +33,13 @@ const sedimentTransition = LinearTransition.springify()
 export default function TodayScreen() {
   const router = useRouter();
   const user = useSession((s) => s.user);
+  const guidance = useGuidanceOptional();
   const { data, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useFeed();
+  const showActivateBanner =
+    !!guidance &&
+    guidance.onboarding !== null &&
+    !guidance.onboarding.menu_uploaded &&
+    !guidance.onboarding.completed_at;
   const hidden = useFeedLocal((s) => s.hidden);
   const clearedThisSession = useFeedLocal((s) => s.clearedThisSession);
   const entries = useOutbox((s) => s.entries);
@@ -99,22 +108,41 @@ export default function TodayScreen() {
           <AppText variant="title">{greeting}</AppText>
           <FreshnessLabel updatedAt={dataUpdatedAt || null} />
         </View>
-        <PressableScale
-          onPress={() => router.push("/settings")}
-          accessibilityLabel="Settings"
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 999,
-            backgroundColor: color.wineTint,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <AppText variant="bodyMedium" tone="wine">
-            {(user?.name ?? user?.email ?? "W").slice(0, 1).toUpperCase()}
-          </AppText>
-        </PressableScale>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+          <PressableScale
+            onPress={() => {
+              trackGuidance("learn_opened", { mode: "today" });
+              router.push("/help");
+            }}
+            accessibilityLabel="Help and Learn"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              backgroundColor: color.fill,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="book-outline" size={18} color={color.inkSecondary} />
+          </PressableScale>
+          <PressableScale
+            onPress={() => router.push("/settings")}
+            accessibilityLabel="Settings"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              backgroundColor: color.wineTint,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <AppText variant="bodyMedium" tone="wine">
+              {(user?.name ?? user?.email ?? "W").slice(0, 1).toUpperCase()}
+            </AppText>
+          </PressableScale>
+        </View>
       </View>
 
       <Animated.FlatList
@@ -130,6 +158,33 @@ export default function TodayScreen() {
         }
         ListHeaderComponent={
           <>
+            {showActivateBanner ? (
+              <PressableScale
+                onPress={() => router.push("/get-started")}
+                style={{
+                  marginHorizontal: space.lg,
+                  marginBottom: space.md,
+                  padding: space.md,
+                  borderRadius: 12,
+                  backgroundColor: color.wineTint,
+                  borderWidth: 1,
+                  borderColor: color.wineTintStrong,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: space.sm,
+                }}
+              >
+                <Ionicons name="rocket-outline" size={20} color={color.wineStrong} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyMedium">Finish setup</AppText>
+                  <AppText variant="caption" tone="secondary">
+                    Import your wine list and learn the app — optional, anytime.
+                  </AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={color.inkQuaternary} />
+              </PressableScale>
+            ) : null}
+            <TipStrip pageId="dashboard" />
             <PulseStrip />
             {failed.length > 0 ? (
               <View style={{ marginHorizontal: space.lg, marginBottom: space.md, gap: space.sm }}>

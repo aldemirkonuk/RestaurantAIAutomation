@@ -107,19 +107,19 @@ export function Header({ title, subtitle }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/80 dark:border-gray-800">
-      <div className="flex items-center justify-between h-16 px-6">
-        {/* Left: Page Title */}
-        <div>
+      <div className="flex items-center justify-between h-16 px-4 sm:px-6 gap-2">
+        {/* Left: Page Title (mobile nav lives in DashboardLayout chrome) */}
+        <div className="min-w-0">
           {title && (
-            <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{title}</h1>
           )}
           {subtitle && (
-            <p className="text-sm text-gray-500">{subtitle}</p>
+            <p className="text-sm text-gray-500 truncate hidden sm:block">{subtitle}</p>
           )}
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {/* Restaurant Switcher — Rich card (sketch 005 variant B) */}
           {availableRestaurants.length > 1 && (
             <div className="relative">

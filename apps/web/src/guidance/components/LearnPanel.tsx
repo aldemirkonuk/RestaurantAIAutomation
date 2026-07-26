@@ -83,16 +83,26 @@ export function LearnPanel({
 
   const completedCount = tasks.filter((t) => t.done).length
   const rect = anchorRef.current?.getBoundingClientRect()
+  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
   const top = rect ? Math.min(rect.top, window.innerHeight - 420) : 80
   const left = rect ? rect.right + 8 : 260
 
   return createPortal(
     <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      style={{ top, left }}
-      className="fixed w-72 bg-white rounded-2xl shadow-xl border-l-4 border-[#722F37] z-50 overflow-hidden max-h-[min(80vh,560px)] flex flex-col"
+      initial={isNarrow ? { opacity: 0, y: 24 } : { opacity: 0, x: -20 }}
+      animate={isNarrow ? { opacity: 1, y: 0 } : { opacity: 1, x: 0 }}
+      exit={isNarrow ? { opacity: 0, y: 24 } : { opacity: 0, x: -20 }}
+      style={
+        isNarrow
+          ? undefined
+          : { top, left }
+      }
+      className={cn(
+        'fixed z-[60] bg-white shadow-xl border-l-4 border-[#722F37] overflow-hidden flex flex-col',
+        isNarrow
+          ? 'inset-x-3 bottom-3 max-h-[min(75vh,560px)] w-auto rounded-2xl mb-safe'
+          : 'w-72 max-h-[min(80vh,560px)] rounded-2xl',
+      )}
       role="dialog"
       aria-label={mode === 'learn' ? 'Learn & Help' : 'Get started'}
     >

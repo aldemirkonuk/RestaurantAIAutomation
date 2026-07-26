@@ -56,13 +56,15 @@ export function useTourEngine(handlers: {
           }
         })
 
+        const shortViewport =
+          typeof window !== 'undefined' && window.innerHeight < 700
         const steps = (availableSteps.length ? availableSteps : def.steps).map(
           (s, i, arr) => ({
             element: s.element,
             popover: {
               title: `${i + 1}/${arr.length}  ${s.title}`,
               description: s.description,
-              side: 'bottom' as const,
+              side: (shortViewport ? 'top' : 'bottom') as 'top' | 'bottom',
               align: 'start' as const,
             },
           }),
@@ -77,6 +79,7 @@ export function useTourEngine(handlers: {
           overlayColor: 'rgba(15, 23, 42, 0.55)',
           stagePadding: 6,
           stageRadius: 8,
+          popoverOffset: shortViewport ? 12 : 10,
           nextBtnText: 'Next',
           prevBtnText: 'Back',
           doneBtnText: 'Done',

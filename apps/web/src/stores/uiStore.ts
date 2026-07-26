@@ -62,7 +62,8 @@ export const useUIStore = create<UIState>()(
     (set, get) => ({
       // Initial state
       sidebarCollapsed: false,
-      sidebarOpen: true,
+      // Mobile drawer starts closed; desktop ignores this (always visible via md:translate-x-0)
+      sidebarOpen: false,
       theme: 'system',
       resolvedTheme: 'light',
       modals: [],

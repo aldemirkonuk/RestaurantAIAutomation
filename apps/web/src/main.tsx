@@ -6,6 +6,7 @@ import { initGlobalErrorHandler } from './lib/global-error-handler'
 import { initErrorTracking } from './lib/error-tracking'
 import { startEmailScheduler } from './lib/email-scheduler'
 import { startReminderScheduler } from './lib/reminder-scheduler'
+import { registerServiceWorker } from './lib/register-sw'
 
 // Initialize global error handler
 initGlobalErrorHandler()
@@ -16,6 +17,9 @@ startEmailScheduler()
 
 // Start reminder scheduler
 startReminderScheduler()
+
+// PWA service worker (production builds)
+registerServiceWorker()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

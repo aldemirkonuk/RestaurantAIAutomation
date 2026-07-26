@@ -12,6 +12,7 @@ import { WineRow } from "@/components/cellar/WineRow";
 import { color, font, radius, space } from "@/design/tokens";
 import { useInventory } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
+import { TipStrip } from "@/guidance/TipStrip";
 
 type Filter = "all" | "low" | "reorder" | "dead";
 
@@ -57,6 +58,7 @@ export default function CellarScreen() {
 
   return (
     <Screen>
+      <TipStrip pageId="inventory" />
       <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.md }}>
         <AppText variant="title">Cellar</AppText>
 

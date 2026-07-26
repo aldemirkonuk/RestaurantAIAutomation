@@ -8,6 +8,9 @@ const urlsToCache = [
   "/",
   "/logo.png",
   "/badge.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/manifest.json",
 ]
 
 // Install event - cache assets
