@@ -731,6 +731,26 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## I. Promotions (`/promotions`) (`NEW-339 … NEW-358`)
 
+> **Shipped 2026-07-21 (Promotions batch):** the Offers tab was entirely
+> read-only cards; it now has NEW-339 (Apply-to-order deep link carrying the
+> promo + provider, and Dismiss with an 8s undo) · NEW-340 (click a card → detail
+> sheet with every discount/condition field, expiry, extraction confidence, and
+> the wines it applies to) · NEW-342 (search + sort: ending-soonest / biggest
+> discount / vendor A–Z) · NEW-351 (right-click → details / apply / copy code /
+> dismiss) · NEW-352 (`1`/`2`/`3` switch tabs) · NEW-353 (filter chips: expiring
+> ≤7d, has code, on my wines) · NEW-358 (CSV export of the visible offers), plus
+> a "restore N dismissed" affordance and a filtered empty state.
+>
+> **Honest note on dismissal:** there is no promotions-dismiss endpoint, so
+> Dismiss is a **local preference** (localStorage, same pattern as wine-library
+> removals) with undo — not presented as a server action. Making it durable
+> needs a `promotion_dismissals` table.
+> Deferred: savings-vs-last-paid estimate (347 — needs invoice price history
+> joined to promo SKUs), manual promo creation (343), attach-to-wines (344),
+> calendar overlay (345), bulk prospect actions (346), apply-best-promo during
+> order creation (348), redemption/margin tracking (354), share/@mention (355),
+> duplicate (356), auto-archive (357) — all need new endpoints or schema.
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-339 | `Click` | Offer cards become actionable: Redeem / Apply to order / Dismiss / Snooze. |

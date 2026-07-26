@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Tag, ShieldCheck, ShieldAlert, ShieldOff, Clock, Sparkles, Loader2, AlertTriangle, Check,
   UserPlus, X, Paperclip, Mail, FileText, ChevronDown, RotateCcw, Download, Info,
+  Search, Copy, ShoppingCart, Undo2,
 } from 'lucide-react'
 import {
   useActivePromotions, useSenderReputation, useSetSenderTrust,
@@ -22,10 +23,24 @@ export default function Promotions() {
   const multiLocation = availableRestaurants.length > 1
   const { data: prospects = [] } = useProspects(multiLocation)
 
-  const selectTab = (t: Tab) => {
+  const selectTab = useCallback((t: Tab) => {
     setTab(t)
     setSearchParams(t === 'promotions' ? {} : { tab: t }, { replace: true })
-  }
+  }, [setSearchParams])
+
+  // NEW-352: 1 / 2 / 3 switch tabs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      const map: Record<string, Tab> = { '1': 'promotions', '2': 'senders', '3': 'prospects' }
+      const next = map[e.key]
+      if (next) { e.preventDefault(); selectTab(next) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectTab])
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -76,18 +91,303 @@ function TabBtn({ active, onClick, icon, children, badge }: { active: boolean; o
 
 /* ─── Offers (vendor promotions) ─────────────────────────────────────────────── */
 
+const DISMISSED_KEY = 'wineops.promos.dismissed'
+
+function loadDismissed(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
+}
+
 function PromotionsTab() {
   const { data: promos = [], isLoading } = useActivePromotions()
+  // NEW-342/353: search, filter and sort the offer set.
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<'all' | 'expiring' | 'code' | 'wines'>('all')
+  const [sort, setSort] = useState<'expiry' | 'value' | 'vendor'>('expiry')
+  /**
+   * NEW-339 dismiss. There is no promotions-dismiss endpoint, so this is a
+   * local preference (same pattern as the wine-library removals) with an undo
+   * window — deliberately not presented as a server-side action.
+   */
+  const [dismissed, setDismissed] = useState<string[]>(loadDismissed)
+  const [undo, setUndo] = useState<PromotionDto | null>(null)
+  const [detail, setDetail] = useState<PromotionDto | null>(null)
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+
+  const persistDismissed = useCallback((next: string[]) => {
+    setDismissed(next)
+    try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+  }, [])
+
+  const dismissPromo = useCallback((p: PromotionDto) => {
+    persistDismissed([...loadDismissed().filter(id => id !== p.id), p.id])
+    setUndo(p)
+    setMenu(null)
+    window.setTimeout(() => setUndo(cur => (cur?.id === p.id ? null : cur)), 8000)
+  }, [persistDismissed])
+
+  const restorePromo = useCallback((p: PromotionDto) => {
+    persistDismissed(loadDismissed().filter(id => id !== p.id))
+    setUndo(null)
+  }, [persistDismissed])
+
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menu])
+
+  const discountAmount = (p: PromotionDto) => {
+    const dv = p.discount_value ?? {}
+    return Number(dv.percent ?? dv.amount ?? 0)
+  }
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    let out = promos.filter(p => !dismissed.includes(p.id))
+    if (q) {
+      out = out.filter(p =>
+        `${p.providers?.name ?? ''} ${p.name} ${p.description ?? ''} ${p.promo_type} ${(p.applicable_wines ?? []).join(' ')}`
+          .toLowerCase().includes(q),
+      )
+    }
+    if (filter === 'expiring') {
+      out = out.filter(p => {
+        if (!p.end_date) return false
+        const d = Math.ceil((new Date(p.end_date).getTime() - Date.now()) / 86_400_000)
+        return d >= 0 && d <= 7
+      })
+    } else if (filter === 'code') {
+      out = out.filter(p => !!(p.conditions ?? {}).code)
+    } else if (filter === 'wines') {
+      out = out.filter(p => (p.applicable_wines ?? []).length > 0)
+    }
+    return [...out].sort((a, b) => {
+      if (sort === 'vendor') return (a.providers?.name ?? '').localeCompare(b.providers?.name ?? '')
+      if (sort === 'value') return discountAmount(b) - discountAmount(a)
+      const at = a.end_date ? new Date(a.end_date).getTime() : Infinity
+      const bt = b.end_date ? new Date(b.end_date).getTime() : Infinity
+      return at - bt
+    })
+  }, [promos, dismissed, query, filter, sort])
+
+  /** NEW-358: export the visible offer set. */
+  const exportCsv = useCallback(() => {
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['Vendor', 'Offer', 'Type', 'Discount', 'Code', 'Min qty', 'Ends', 'Wines'].join(',')
+    const lines = visible.map(p => {
+      const dv = p.discount_value ?? {}
+      const cond = p.conditions ?? {}
+      return [
+        q(p.providers?.name), q(p.name), q(p.promo_type),
+        q(dv.percent != null ? `${dv.percent}%` : dv.amount != null ? dv.amount : dv.free_shipping ? 'free shipping' : ''),
+        q(cond.code), q(cond.min_qty), q(p.end_date?.slice(0, 10)),
+        q((p.applicable_wines ?? []).join('; ')),
+      ].join(',')
+    })
+    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `promotions-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [visible])
+
   if (isLoading) return <Center><Loader2 className="w-5 h-5 text-wine-300 animate-spin" /></Center>
   if (!promos.length) return <Empty icon={<Tag className="w-5 h-5 text-wine-300" />} text="No active offers yet" hint="As vendors email offers, the AI files them here." />
+
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-      {promos.map((p) => <PromoCard key={p.id} p={p} />)}
-    </div>
+    <>
+      {/* Toolbar (NEW-342/353/358) */}
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search offers, vendors, wines…"
+            className="w-full h-8 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-wine-100 focus:border-wine-400"
+          />
+        </div>
+        {([
+          { key: 'all' as const, label: 'All' },
+          { key: 'expiring' as const, label: 'Expiring ≤7d' },
+          { key: 'code' as const, label: 'Has code' },
+          { key: 'wines' as const, label: 'On my wines' },
+        ]).map(f => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border ${filter === f.key ? 'bg-wine-50 text-wine-700 border-wine-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
+          >
+            {f.label}
+          </button>
+        ))}
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as typeof sort)}
+          className="h-8 px-2 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 outline-none"
+        >
+          <option value="expiry">Ending soonest</option>
+          <option value="value">Biggest discount</option>
+          <option value="vendor">Vendor A–Z</option>
+        </select>
+        <button
+          onClick={exportCsv}
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:border-gray-300"
+        >
+          <Download className="w-3.5 h-3.5" /> CSV
+        </button>
+      </div>
+
+      {visible.length === 0 ? (
+        <Empty
+          icon={<Tag className="w-5 h-5 text-wine-300" />}
+          text="No offers match those filters"
+          hint={dismissed.length > 0 ? `${dismissed.length} offer(s) dismissed. Clear filters or restore them.` : 'Try clearing the search or filter.'}
+        />
+      ) : (
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          {visible.map((p) => (
+            <PromoCard
+              key={p.id}
+              p={p}
+              onOpen={() => setDetail(p)}
+              onMenu={(e) => { e.preventDefault(); setMenu({ id: p.id, x: e.clientX, y: e.clientY }) }}
+            />
+          ))}
+        </div>
+      )}
+
+      {dismissed.length > 0 && (
+        <button
+          onClick={() => persistDismissed([])}
+          className="mt-3 text-xs font-medium text-gray-400 hover:text-gray-700"
+        >
+          Restore {dismissed.length} dismissed offer{dismissed.length === 1 ? '' : 's'}
+        </button>
+      )}
+
+      {/* Right-click menu (NEW-351) */}
+      {menu && (() => {
+        const p = promos.find(x => x.id === menu.id)
+        if (!p) return null
+        const code = (p.conditions ?? {}).code
+        const Item = ({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) => (
+          <button
+            onClick={onClick}
+            disabled={disabled}
+            className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded-lg disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-[60] w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(menu.y, window.innerHeight - 200), left: Math.min(menu.x, window.innerWidth - 220) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Item label="View details" onClick={() => { setDetail(p); setMenu(null) }} />
+            <Item
+              label="Apply to a new order"
+              onClick={() => {
+                const params = new URLSearchParams({ new: '1', promo: p.id })
+                if (p.provider_id) params.set('provider', p.provider_id)
+                window.location.href = `/orders?${params.toString()}`
+              }}
+            />
+            <Item label="Copy code" disabled={!code} onClick={() => { navigator.clipboard?.writeText(String(code)); setMenu(null) }} />
+            <Item label="Dismiss" onClick={() => dismissPromo(p)} />
+          </div>
+        )
+      })()}
+
+      {/* Detail sheet (NEW-340) */}
+      {detail && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetail(null) }}>
+          <div className="absolute inset-0 bg-gray-900/40" aria-hidden />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 p-5" role="dialog" aria-modal="true">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-wine-700">{detail.promo_type.replace(/_/g, ' ')}</p>
+                <h3 className="text-base font-bold text-gray-900 mt-0.5">{detail.providers?.name ?? 'A vendor'}</h3>
+              </div>
+              <button onClick={() => setDetail(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded-lg" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {detail.description && <p className="text-sm text-gray-600 mb-3">{detail.description}</p>}
+            <dl className="text-sm space-y-1.5 mb-4">
+              {Object.entries(detail.discount_value ?? {}).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3">
+                  <dt className="text-gray-400 capitalize">{k.replace(/_/g, ' ')}</dt>
+                  <dd className="text-gray-800 font-medium">{String(v)}</dd>
+                </div>
+              ))}
+              {Object.entries(detail.conditions ?? {}).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3">
+                  <dt className="text-gray-400 capitalize">{k.replace(/_/g, ' ')}</dt>
+                  <dd className="text-gray-800 font-medium">{String(v)}</dd>
+                </div>
+              ))}
+              {detail.end_date && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-gray-400">Ends</dt>
+                  <dd className="text-gray-800 font-medium">{new Date(detail.end_date).toLocaleDateString()}</dd>
+                </div>
+              )}
+              {detail.confidence != null && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-gray-400">Extraction confidence</dt>
+                  <dd className="text-gray-800 font-medium">{Math.round(detail.confidence * 100)}%</dd>
+                </div>
+              )}
+            </dl>
+            {(detail.applicable_wines ?? []).length > 0 && (
+              <div className="mb-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 mb-1">Applies to</p>
+                <p className="text-xs text-gray-600 leading-relaxed">{(detail.applicable_wines ?? []).join(', ')}</p>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams({ new: '1', promo: detail.id })
+                  if (detail.provider_id) params.set('provider', detail.provider_id)
+                  window.location.href = `/orders?${params.toString()}`
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold text-white bg-wine-600 hover:bg-wine-700 rounded-lg"
+              >
+                <ShoppingCart className="w-4 h-4" /> Apply to a new order
+              </button>
+              {(detail.conditions ?? {}).code && (
+                <button
+                  onClick={() => navigator.clipboard?.writeText(String((detail.conditions ?? {}).code))}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  <Copy className="w-4 h-4" /> Code
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Undo dismissal */}
+      {undo && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-xl">
+          <span className="text-sm">Offer dismissed</span>
+          <button onClick={() => restorePromo(undo)} className="flex items-center gap-1.5 text-sm font-semibold text-amber-300 hover:text-amber-200">
+            <Undo2 className="w-4 h-4" /> Undo
+          </button>
+        </div>
+      )}
+    </>
   )
 }
 
-function PromoCard({ p }: { p: PromotionDto }) {
+function PromoCard({ p, onOpen, onMenu }: { p: PromotionDto; onOpen?: () => void; onMenu?: (e: React.MouseEvent) => void }) {
   const dv = p.discount_value ?? {}
   const cond = p.conditions ?? {}
   const priority = String(cond.priority ?? '')
@@ -99,7 +399,11 @@ function PromoCard({ p }: { p: PromotionDto }) {
       : dv.free_shipping ? 'Free shipping' : ''
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
+    <div
+      onClick={onOpen}
+      onContextMenu={onMenu}
+      className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:border-wine-200 hover:shadow-sm transition-all"
+    >
       <div className="flex items-start justify-between gap-2 mb-2">
         <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-wine-800 bg-wine-50 border border-wine-100 rounded-full px-2 py-0.5">
           {p.promo_type.replace(/_/g, ' ')}
