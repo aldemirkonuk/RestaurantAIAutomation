@@ -288,7 +288,6 @@ export function InventoryCommandPage() {
       { header: 'Observation', value: (i) => countObservation(i) },
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [locations],
   )
 

@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest'
 import { userProfileSchema } from './validation-schemas'
 
 describe('userProfileSchema', () => {

@@ -135,7 +135,7 @@ export const useUIStore = create<UIState>()(
       version: 1,
       migrate: (persistedState) => {
         const state = persistedState as Partial<UIState>
-        return { ...state, theme: 'light' as Theme }
+        return { sidebarCollapsed: state.sidebarCollapsed ?? false, theme: 'light' as Theme }
       },
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,

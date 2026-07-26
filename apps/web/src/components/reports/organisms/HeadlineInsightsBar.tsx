@@ -11,8 +11,8 @@ import {
   useEngineInsights,
   type EngineInsight,
   type InsightTone,
-} from '../../hooks/useEngineInsights'
-import { cn } from '../../lib/utils'
+} from '../../../hooks/useEngineInsights'
+import { cn } from '../../../lib/utils'
 
 interface HeadlineInsightsBarProps {
   onSeeDetails?: () => void

@@ -433,7 +433,10 @@ export function ClassifiedConversationList({
   const regenerateSummary = useRegenerateSummary()
   const { data: providers = [] } = useProviders(activeRestaurantId || '', undefined)
 
-  const conversations = conversationsData?.conversations || []
+  const conversations = useMemo(
+    () => conversationsData?.conversations ?? [],
+    [conversationsData?.conversations],
+  )
   const total = conversationsData?.total || 0
   const totalPages = conversationsData?.totalPages || 0
 

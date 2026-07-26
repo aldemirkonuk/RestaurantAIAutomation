@@ -115,7 +115,7 @@ export function PosSettingsSection() {
     setSearchParams(next, { replace: true })
   }
 
-  const useProvider = (p: PosProviderMeta) => {
+  const activateProvider = (p: PosProviderMeta) => {
     updatePreferences({
       posConfig: {
         activeProvider: p.key,
@@ -345,7 +345,7 @@ export function PosSettingsSection() {
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => useProvider(selected)}
+                  onClick={() => activateProvider(selected)}
                   disabled={activeProvider === selected.key}
                   className={cn(
                     'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors',

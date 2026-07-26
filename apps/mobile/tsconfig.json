@@ -10,6 +10,9 @@
     "module": "esnext",
     "moduleDetection": "force",
     "moduleResolution": "bundler",
+    "customConditions": [
+      "react-native"
+    ],
     "noEmit": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
@@ -27,5 +30,12 @@
     "src/**/*.ts",
     "src/**/*.tsx"
   ],
-  "extends": "expo/tsconfig.base"
+  "exclude": [
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js",
+    "jest.config.js",
+    "android",
+    "ios"
+  ]
 }

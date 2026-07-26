@@ -23,7 +23,6 @@ export function trackGuidance(
   const payload = { event: `guidance_${event}`, ...props, ts: Date.now() }
 
   if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
     console.debug('[guidance]', payload)
   }
 
