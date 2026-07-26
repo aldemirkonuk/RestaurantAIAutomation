@@ -47,6 +47,7 @@ export class ConversationsController {
   @ApiQuery({ name: "restaurantId", required: false })
   @ApiQuery({ name: "providerId", required: false })
   @ApiQuery({ name: "orderId", required: false })
+  @ApiQuery({ name: "orderNumber", required: false })
   @ApiQuery({ name: "channel", required: false })
   @ApiQuery({ name: "direction", required: false })
   @ApiQuery({ name: "sentiment", required: false })
@@ -65,6 +66,7 @@ export class ConversationsController {
     @Query("restaurantId") restaurantId?: string,
     @Query("providerId") providerId?: string,
     @Query("orderId") orderId?: string,
+    @Query("orderNumber") orderNumber?: string,
     @Query("channel") channel?: string,
     @Query("direction") direction?: string,
     @Query("sentiment") sentiment?: string,
@@ -85,6 +87,7 @@ export class ConversationsController {
         restaurantId,
         providerId,
         orderId,
+        orderNumber,
         channel,
         direction,
         sentiment,

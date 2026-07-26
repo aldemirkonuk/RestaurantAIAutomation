@@ -29,6 +29,10 @@ export interface ConversationFilterState {
   quarter: string
   year: string
   search: string
+  /** Provider UUID — filters list to one distributor. */
+  providerId: string
+  /** Human-readable procurement order number (not UUID). */
+  orderNumber: string
   page: number
 }
 
@@ -40,8 +44,13 @@ export const EMPTY_CONVERSATION_FILTERS: ConversationFilterState = {
   quarter: '',
   year: '',
   search: '',
+  providerId: '',
+  orderNumber: '',
   page: 1,
 }
+
+/** UI bucket when order_id is null. */
+export type OrderBucket = 'unassigned' | string
 
 const SENTIMENT_SET = new Set<string>(SENTIMENTS)
 
@@ -88,6 +97,36 @@ export function sentimentLabel(bucket: SentimentBucket): string {
 }
 
 /**
+ * Normalize order linkage into a stable group key.
+ * Missing order_id → unassigned (mirrors sentiment Unclassified).
+ */
+export function normalizeOrderKey(
+  orderId: string | null | undefined,
+): OrderBucket {
+  if (orderId == null || !String(orderId).trim()) return 'unassigned'
+  return String(orderId).trim()
+}
+
+export function isUnassignedOrder(key: OrderBucket): boolean {
+  return key === 'unassigned'
+}
+
+export function orderBucketLabel(
+  orderNumber: string | null | undefined,
+  key: OrderBucket,
+): string {
+  if (isUnassignedOrder(key)) return 'Unassigned'
+  const num = orderNumber?.trim()
+  return num || 'Order'
+}
+
+/** Amber for Unassigned; mono gray for real order numbers. */
+export function orderBucketBadgeClass(key: OrderBucket): string {
+  if (isUnassignedOrder(key)) return 'bg-amber-50 text-amber-700'
+  return 'bg-gray-100 text-gray-700 font-mono'
+}
+
+/**
  * Direction in DB may be UPPERCASE (legacy) or lowercase — normalize for UI + filters.
  */
 export function normalizeDirection(
@@ -118,7 +157,14 @@ export function directionLabel(direction: string): string {
 /** True when any dimension (except page) differs from empty defaults. */
 export function hasActiveConversationFilters(f: ConversationFilterState): boolean {
   return Boolean(
-    f.channel || f.direction || f.sentiment || f.status || f.quarter || f.search,
+    f.channel ||
+      f.direction ||
+      f.sentiment ||
+      f.status ||
+      f.quarter ||
+      f.search ||
+      f.providerId ||
+      f.orderNumber,
   )
 }
 
@@ -134,6 +180,8 @@ export function filtersToSearchParams(
   if (f.quarter) p.set('quarter', f.quarter)
   if (f.year) p.set('year', f.year)
   if (f.search) p.set('q', f.search)
+  if (f.providerId) p.set('providerId', f.providerId)
+  if (f.orderNumber) p.set('orderNumber', f.orderNumber)
   if (f.page > 1) p.set('page', String(f.page))
   return p
 }
@@ -151,6 +199,8 @@ export function searchParamsToFilters(
     quarter: params.get('quarter') ?? '',
     year: params.get('year') ?? '',
     search: params.get('q') ?? '',
+    providerId: params.get('providerId') ?? '',
+    orderNumber: params.get('orderNumber') ?? '',
     page,
   }
 }

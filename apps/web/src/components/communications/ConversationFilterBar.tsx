@@ -15,6 +15,12 @@ export interface ConversationFilterBarProps {
   onChange: (next: ConversationFilterState) => void
   /** Optional counts from stats.bySentiment — zero-count options stay selectable but annotated. */
   sentimentCounts?: Record<string, number>
+  /** Distributor options: `{ value: providerId, label: name }`. Empty value = All. */
+  providerOptions?: { value: string; label: string }[]
+  /** Optional counts from stats.byProvider keyed by provider UUID. */
+  providerCounts?: Record<string, number>
+  /** When true, hide distributor select (parent locked / scoped provider). */
+  hideProviderFilter?: boolean
   className?: string
 }
 
@@ -33,6 +39,9 @@ export function ConversationFilterBar({
   filters,
   onChange,
   sentimentCounts,
+  providerOptions,
+  providerCounts,
+  hideProviderFilter = false,
   className,
 }: ConversationFilterBarProps) {
   const sentimentOptions = FILTER_OPTIONS.sentiment.map((o) => {
@@ -44,7 +53,29 @@ export function ConversationFilterBar({
     }
   })
 
+  const distributorOptions = [
+    { value: '', label: 'All distributors' },
+    ...(providerOptions ?? []).map((o) => {
+      if (!providerCounts) return o
+      const count = providerCounts[o.value] ?? 0
+      return {
+        value: o.value,
+        label: count > 0 ? `${o.label} (${count})` : `${o.label} (0)`,
+      }
+    }),
+  ]
+
+  const providerLabel =
+    providerOptions?.find((o) => o.value === filters.providerId)?.label ??
+    filters.providerId
+
   const chips: { key: keyof ConversationFilterState; label: string }[] = []
+  if (filters.providerId && !hideProviderFilter) {
+    chips.push({ key: 'providerId', label: providerLabel })
+  }
+  if (filters.orderNumber) {
+    chips.push({ key: 'orderNumber', label: `Order ${filters.orderNumber}` })
+  }
   if (filters.channel) {
     chips.push({ key: 'channel', label: channelLabel(filters.channel) })
   }
@@ -83,6 +114,8 @@ export function ConversationFilterBar({
       quarter: '',
       year: '',
       search: '',
+      providerId: hideProviderFilter ? filters.providerId : '',
+      orderNumber: '',
       page: 1,
     })
 
@@ -100,6 +133,27 @@ export function ConversationFilterBar({
             className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none"
           />
         </div>
+
+        {!hideProviderFilter && providerOptions && (
+          <ThemedSelect
+            aria-label="Filter by distributor"
+            value={filters.providerId}
+            options={distributorOptions}
+            onChange={(providerId) => onChange(patch(filters, { providerId }))}
+            align="left"
+          />
+        )}
+
+        <input
+          type="search"
+          value={filters.orderNumber}
+          onChange={(e) =>
+            onChange(patch(filters, { orderNumber: e.target.value }))
+          }
+          placeholder="Order #"
+          aria-label="Filter by order number"
+          className="w-[120px] px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none"
+        />
 
         <ThemedSelect
           aria-label="Filter by channel"
@@ -143,16 +197,31 @@ export function ConversationFilterBar({
           align="left"
         />
 
-        {hasActiveConversationFilters(filters) && (
-          <button
-            type="button"
-            onClick={clearAll}
-            className="px-3 py-2 text-sm text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center gap-1"
-          >
-            <X className="w-4 h-4" />
-            Clear
-          </button>
-        )}
+        {(() => {
+          const active = hideProviderFilter
+            ? Boolean(
+                filters.channel ||
+                  filters.direction ||
+                  filters.sentiment ||
+                  filters.status ||
+                  filters.quarter ||
+                  filters.search ||
+                  filters.orderNumber,
+              )
+            : hasActiveConversationFilters(filters)
+          return (
+            active && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="px-3 py-2 text-sm text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <X className="w-4 h-4" />
+                Clear
+              </button>
+            )
+          )
+        })()}
       </div>
 
       {chips.length > 0 && (

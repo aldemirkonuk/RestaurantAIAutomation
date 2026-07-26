@@ -15,6 +15,7 @@ interface ListConversationsOptions {
   restaurantId?: string;
   providerId?: string;
   orderId?: string;
+  orderNumber?: string;
   channel?: string;
   direction?: string;
   sentiment?: string;
@@ -55,13 +56,17 @@ export class ConversationsService {
       const { page, limit, sortBy, sortOrder } = options;
       const offset = (page - 1) * limit;
 
+      const orderJoin = options.orderNumber
+        ? `procurement_orders!inner(id, order_number, quantity, status, negotiated_price, final_price, inventory:inventory_id(wine_name))`
+        : `procurement_orders(id, order_number, quantity, status, negotiated_price, final_price, inventory:inventory_id(wine_name))`;
+
       let query = this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           `
           *,
           providers (id, name),
-          procurement_orders (id, order_number, quantity, status, negotiated_price, final_price)
+          ${orderJoin}
         `,
           { count: "exact" },
         );
@@ -75,6 +80,12 @@ export class ConversationsService {
       }
       if (options.orderId) {
         query = query.eq("order_id", options.orderId);
+      }
+      if (options.orderNumber) {
+        query = query.ilike(
+          "procurement_orders.order_number",
+          `%${options.orderNumber.trim()}%`,
+        );
       }
       if (options.channel) {
         query = query.eq("channel", options.channel);
@@ -98,7 +109,10 @@ export class ConversationsService {
           );
         }
         if (sent === "unclassified") {
-          query = query.is("detected_sentiment", null);
+          // Align with client normalizeSentiment: null OR empty string
+          query = query.or(
+            "detected_sentiment.is.null,detected_sentiment.eq.",
+          );
         } else {
           query = query.ilike("detected_sentiment", sent);
         }
@@ -154,8 +168,25 @@ export class ConversationsService {
         throw new Error(error.message);
       }
 
+      // Flatten nested inventory.wine_name onto procurement_orders.wine_name
+      // so the frontend can keep a single wine_name field.
+      const conversations = (data || []).map((row: any) => {
+        const order = row.procurement_orders;
+        if (!order) return row;
+        const wineName =
+          order.inventory?.wine_name ?? order.wine_name ?? null;
+        const { inventory: _inv, ...rest } = order;
+        return {
+          ...row,
+          procurement_orders: {
+            ...rest,
+            wine_name: wineName,
+          },
+        };
+      });
+
       return {
-        conversations: data || [],
+        conversations,
         total: count || 0,
         page,
         limit,

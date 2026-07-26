@@ -42,13 +42,17 @@ export interface ConversationMessage {
   provider_id: string | null
   restaurant_id: string | null
   manager_approval_status: string | null
-  providers?: { id: string; name: string; primary_contact: any } | null
+  providers?: { id: string; name: string; primary_contact?: unknown } | null
   procurement_orders?: {
     id: string
-    wine_name: string
+    order_number: string | null
+    wine_name: string | null
     quantity: number
     status: string
-    negotiated_price_per_bottle: number | null
+    negotiated_price?: number | null
+    final_price?: number | null
+    negotiated_price_per_bottle?: number | null
+    inventory?: { wine_name: string | null } | null
   } | null
 }
 
@@ -85,6 +89,8 @@ export interface ConversationFilters {
   restaurantId?: string
   providerId?: string
   orderId?: string
+  /** Filter by human-readable procurement order number (ilike). */
+  orderNumber?: string
   channel?: string
   direction?: string
   /** positive | neutral | negative | unclassified */

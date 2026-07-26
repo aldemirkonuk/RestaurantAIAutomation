@@ -5,6 +5,9 @@ import {
   sentimentBadgeClass,
   sentimentLabel,
   normalizeDirection,
+  normalizeOrderKey,
+  orderBucketLabel,
+  orderBucketBadgeClass,
   filtersToSearchParams,
   searchParamsToFilters,
   hasActiveConversationFilters,
@@ -67,6 +70,30 @@ describe('normalizeDirection', () => {
   })
 })
 
+describe('normalizeOrderKey', () => {
+  it.each([
+    ['order-uuid-1', 'order-uuid-1'],
+    [null, 'unassigned'],
+    [undefined, 'unassigned'],
+    ['', 'unassigned'],
+    ['   ', 'unassigned'],
+  ] as const)('maps %j → %j', (input, expected) => {
+    expect(normalizeOrderKey(input)).toBe(expected)
+  })
+})
+
+describe('orderBucket labels', () => {
+  it('labels Unassigned with amber badge', () => {
+    expect(orderBucketLabel(null, 'unassigned')).toBe('Unassigned')
+    expect(orderBucketBadgeClass('unassigned')).toContain('amber')
+  })
+
+  it('labels real orders with order number and mono badge', () => {
+    expect(orderBucketLabel('WO-1234', 'abc')).toBe('WO-1234')
+    expect(orderBucketBadgeClass('abc')).toContain('font-mono')
+  })
+})
+
 describe('URL serialization', () => {
   it('omits empty defaults from search params', () => {
     const p = filtersToSearchParams(EMPTY_CONVERSATION_FILTERS)
@@ -85,24 +112,38 @@ describe('URL serialization', () => {
     expect(p.get('page')).toBe('2')
   })
 
-  it('round-trips filters through URLSearchParams', () => {
+  it('round-trips filters through URLSearchParams including distributor and order', () => {
     const original = {
       ...EMPTY_CONVERSATION_FILTERS,
       channel: 'email',
       sentiment: 'positive',
       search: 'cabernet',
+      providerId: 'prov-1',
+      orderNumber: 'WO-99',
       page: 3,
     }
     const restored = searchParamsToFilters(filtersToSearchParams(original))
     expect(restored).toEqual(original)
   })
 
-  it('detects active filters', () => {
+  it('detects active filters including provider and order', () => {
     expect(hasActiveConversationFilters(EMPTY_CONVERSATION_FILTERS)).toBe(false)
     expect(
       hasActiveConversationFilters({
         ...EMPTY_CONVERSATION_FILTERS,
         sentiment: 'neutral',
+      }),
+    ).toBe(true)
+    expect(
+      hasActiveConversationFilters({
+        ...EMPTY_CONVERSATION_FILTERS,
+        providerId: 'p1',
+      }),
+    ).toBe(true)
+    expect(
+      hasActiveConversationFilters({
+        ...EMPTY_CONVERSATION_FILTERS,
+        orderNumber: 'WO-1',
       }),
     ).toBe(true)
   })
