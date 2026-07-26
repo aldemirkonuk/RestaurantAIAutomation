@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import { AddWineModal } from '../components/wines/AddWineModal'
@@ -37,6 +37,8 @@ import {
   Download,
   FileSpreadsheet,
   ChevronDown,
+  Copy,
+  CheckSquare,
 } from 'lucide-react'
 import { Wine as WineType, getWineTypeColor } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
@@ -125,7 +127,10 @@ export function WineLibrary() {
   
   const [showAddToInventoryModal, setShowAddToInventoryModal] = useState(false)
   const [selectedWineForInventory, setSelectedWineForInventory] = useState<WineType | null>(null)
-  const [_bulkSelectedWines, _setBulkSelectedWines] = useState<Set<string>>(new Set())
+  // Multi-select (NEW-200): the stub that shipped with no UI is now the real thing.
+  const [bulkSelectedWines, setBulkSelectedWines] = useState<Set<string>>(new Set())
+  const [wineMenu, setWineMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
 
   // Apply removed-wines filter on top of hook's filtered wines
@@ -369,6 +374,96 @@ Redirecting to Orders page...`)
 
   const activeFiltersCount = Object.values(filters).filter(v => v !== 'All').length
 
+  // ── Multi-select (NEW-200/201/250) ────────────────────────────────────────
+  const toggleWineSelection = useCallback((id: string) => {
+    setBulkSelectedWines(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const allPageSelected = pagedWines.length > 0 && pagedWines.every(w => bulkSelectedWines.has(w.id))
+  const toggleSelectAllFiltered = useCallback(() => {
+    setBulkSelectedWines(prev =>
+      filteredWines.length > 0 && filteredWines.every(w => prev.has(w.id))
+        ? new Set()
+        : new Set(filteredWines.map(w => w.id)),
+    )
+  }, [filteredWines])
+  const clearWineSelection = useCallback(() => setBulkSelectedWines(new Set()), [])
+
+  const selectedWineObjects = useMemo(
+    () => filteredWines.filter(w => bulkSelectedWines.has(w.id)),
+    [filteredWines, bulkSelectedWines],
+  )
+
+  /** NEW-201: bulk favorite / unfavorite. Unfavorites only when all are already starred. */
+  const bulkToggleFavorite = useCallback(() => {
+    const ids = selectedWineObjects.map(w => w.id)
+    if (ids.length === 0) return
+    const allFav = ids.every(id => favorites.has(id))
+    const next = allFav
+      ? favoritesArray.filter(id => !ids.includes(id))
+      : Array.from(new Set([...favoritesArray, ...ids]))
+    updatePreferences({ wineFavorites: next })
+  }, [selectedWineObjects, favorites, favoritesArray, updatePreferences])
+
+  /** NEW-250: bulk remove from library (master library keeps the record). */
+  const bulkRemoveFromLibrary = useCallback(() => {
+    const ids = selectedWineObjects.map(w => w.id)
+    if (ids.length === 0) return
+    if (!confirm(`Remove ${ids.length} wine${ids.length === 1 ? '' : 's'} from your Wine Library?\n\nThey stay in the Master Library and can be re-added. Inventory and orders are unaffected.`)) return
+    updatePreferences({
+      removedWines: Array.from(new Set([...removedWinesArray, ...ids])),
+      wineFavorites: favoritesArray.filter(id => !ids.includes(id)),
+    })
+    clearWineSelection()
+  }, [selectedWineObjects, removedWinesArray, favoritesArray, updatePreferences, clearWineSelection])
+
+  /** Bulk export just the selected rows (NEW-200 bulk bar). */
+  const bulkExportSelected = useCallback(() => {
+    if (selectedWineObjects.length === 0) return
+    exportWineLibraryToCSV(selectedWineObjects, `wine-library-selection-${new Date().toISOString().slice(0, 10)}.csv`)
+  }, [selectedWineObjects])
+
+  // ── Keyboard shortcuts (NEW-208/234) ──────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return
+      const t = e.target as HTMLElement | null
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+      const modalOpen = !!selectedWine || !!reorderModal || showAddModal || showMenuScanner || showAddToInventoryModal
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        if (typing || modalOpen) return
+        e.preventDefault()
+        setBulkSelectedWines(new Set(filteredWines.map(w => w.id)))
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
+        if (typing || modalOpen) return
+        e.preventDefault()
+        exportWineLibraryToCSV(filteredWines, `wine-library-${new Date().toISOString().slice(0, 10)}.csv`)
+        return
+      }
+      if (e.metaKey || e.ctrlKey || typing || modalOpen) return
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
+      else if (e.key === 'g') setViewMode('grid')
+      else if (e.key === 'l') setViewMode('list')
+      else if (e.key === 'f') setShowFilters(s => !s)
+      else if (e.key === 'Escape' && bulkSelectedWines.size) clearWineSelection()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [filteredWines, selectedWine, reorderModal, showAddModal, showMenuScanner, showAddToInventoryModal, bulkSelectedWines.size, clearWineSelection, setViewMode])
+
+  // Close the right-click menu on any outside click.
+  useEffect(() => {
+    if (!wineMenu) return
+    const close = () => setWineMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [wineMenu])
 
   return (
     <div className="min-h-screen">
@@ -424,8 +519,9 @@ Redirecting to Orders page...`)
           <div className="flex-1 relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              ref={searchRef}
               type="text"
-              placeholder="Search wines, grapes, producers, regions..."
+              placeholder="Search wines, grapes, producers, regions...    ( / )"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
@@ -723,7 +819,57 @@ Redirecting to Orders page...`)
         </div>
 
         {/* Wine List View - With Year, Country, Vintage columns - Horizontally Scrollable */}
-        {viewMode === 'list' ? (
+        {/* Bulk action bar (NEW-200/201/250) */}
+        {bulkSelectedWines.size > 0 && (
+          <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-4 px-4 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg">
+            <span className="text-sm font-semibold">
+              {bulkSelectedWines.size} selected
+              {bulkSelectedWines.size < filteredWines.length && (
+                <button onClick={toggleSelectAllFiltered} className="ml-3 text-xs font-medium text-amber-300 hover:text-amber-200">
+                  Select all {filteredWines.length}
+                </button>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={bulkToggleFavorite} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
+                <Star className="w-3.5 h-3.5" /> Favorite
+              </button>
+              <button onClick={bulkExportSelected} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
+                <Download className="w-3.5 h-3.5" /> Export
+              </button>
+              <button onClick={bulkRemoveFromLibrary} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/80 hover:bg-rose-500 rounded-lg">
+                <Trash2 className="w-3.5 h-3.5" /> Remove
+              </button>
+              <button onClick={clearWineSelection} className="p-1.5 hover:bg-white/20 rounded-lg" aria-label="Clear selection">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {filteredWines.length === 0 ? (
+          /* Empty filter state (NEW-244): name what emptied the set + one-click clear */
+          <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+            <Wine className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+            <p className="text-gray-900 font-semibold mb-1">No wines match your filters</p>
+            <p className="text-sm text-gray-500 mb-4">
+              {[
+                searchQuery ? `search “${searchQuery}”` : null,
+                ...Object.entries(filters)
+                  .filter(([, v]) => v !== 'All')
+                  .map(([k, v]) => `${k}: ${v}`),
+              ].filter(Boolean).join(' · ') || 'Your library is empty.'}
+            </p>
+            {(searchQuery || activeFiltersCount > 0) && (
+              <button
+                onClick={() => { setSearchQuery(''); clearAllFilters() }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-wine-600 hover:bg-wine-700 rounded-lg"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'list' ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -734,6 +880,21 @@ Redirecting to Orders page...`)
               <table className="w-full min-w-[1000px]">
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
+                    <th className="pl-4 py-4 text-left w-[40px]">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={() =>
+                          setBulkSelectedWines(prev =>
+                            allPageSelected
+                              ? new Set([...prev].filter(id => !pagedWines.some(w => w.id === id)))
+                              : new Set([...prev, ...pagedWines.map(w => w.id)]),
+                          )
+                        }
+                        className="w-4 h-4 rounded border-gray-300 text-wine-600 focus:ring-wine-500 cursor-pointer"
+                        aria-label="Select all on this page"
+                      />
+                    </th>
                     <th className="px-4 py-4 text-left w-[300px]">
                       <button onClick={() => handleSort('name')} className="flex items-center gap-1 text-sm font-semibold text-gray-900">
                         Wine <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
@@ -787,9 +948,29 @@ Redirecting to Orders page...`)
                       <tr
                         key={wine.id}
                         onClick={() => setSelectedWine(wine)}
-                        className="hover:bg-gray-50 cursor-pointer transition-colors"
+                        onContextMenu={(e) => { e.preventDefault(); setWineMenu({ id: wine.id, x: e.clientX, y: e.clientY }) }}
+                        className={`cursor-pointer transition-colors ${bulkSelectedWines.has(wine.id) ? 'bg-wine-50/60' : 'hover:bg-gray-50'}`}
                         data-wine-item="list-row"
                       >
+                        <td className="pl-4 py-3 w-[40px]" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={bulkSelectedWines.has(wine.id)}
+                              onChange={() => toggleWineSelection(wine.id)}
+                              className="w-4 h-4 rounded border-gray-300 text-wine-600 focus:ring-wine-500 cursor-pointer"
+                              aria-label={`Select ${wine.name}`}
+                            />
+                            {/* NEW-210: favorite star in list view (parity with grid) */}
+                            <button
+                              onClick={() => toggleFavorite(wine.id)}
+                              title={favorites.has(wine.id) ? 'Unfavorite' : 'Add to Favorites'}
+                              className="p-0.5 rounded hover:bg-gray-100"
+                            >
+                              <Star className={`w-3.5 h-3.5 ${favorites.has(wine.id) ? 'fill-amber-500 text-amber-500' : 'text-gray-300'}`} />
+                            </button>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 w-[300px]">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-14 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
@@ -908,9 +1089,25 @@ Redirecting to Orders page...`)
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.02 }}
                   onClick={() => setSelectedWine(wine)}
-                  className="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl hover:border-wine-200 transition-all cursor-pointer relative"
+                  onContextMenu={(e) => { e.preventDefault(); setWineMenu({ id: wine.id, x: e.clientX, y: e.clientY }) }}
+                  className={`group bg-white rounded-2xl border overflow-hidden hover:shadow-xl transition-all cursor-pointer relative ${
+                    bulkSelectedWines.has(wine.id) ? 'border-wine-500 ring-2 ring-wine-200' : 'border-gray-100 hover:border-wine-200'
+                  }`}
                   data-wine-item="grid-card"
                 >
+                  {/* Selection checkbox (NEW-200) — visible when selected or on hover */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className={`absolute top-3 left-3 z-10 transition-opacity ${bulkSelectedWines.has(wine.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={bulkSelectedWines.has(wine.id)}
+                      onChange={() => toggleWineSelection(wine.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-wine-600 focus:ring-wine-500 cursor-pointer shadow"
+                      aria-label={`Select ${wine.name}`}
+                    />
+                  </div>
                   <div className="relative h-56 bg-gradient-to-b from-gray-50 to-gray-100 p-4">
                     <img
                       src={getWineImage(wine)}
@@ -936,7 +1133,8 @@ Redirecting to Orders page...`)
                         }`}
                       />
                     </button>
-                    <div className="absolute top-3 left-3 flex items-center gap-2">
+                    {/* left-10 leaves room for the selection checkbox at left-3 */}
+                    <div className="absolute top-3 left-10 flex items-center gap-2">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${typeColors.bg} ${typeColors.text}`}>
                         {normalizeType(wine.type)}
                       </span>
@@ -1591,6 +1789,39 @@ Redirecting to Orders page...`)
           />
         )}
       </div>
+
+      {/* Right-click wine context menu (NEW-203) */}
+      {wineMenu && (() => {
+        const wine = filteredWines.find(w => w.id === wineMenu.id)
+        if (!wine) return null
+        const MItem = ({ icon: Icon, label, danger, onClick }: { icon: any; label: string; danger?: boolean; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 ${danger ? 'text-red-600' : 'text-gray-700'}`}
+          >
+            <Icon className={`w-4 h-4 ${danger ? 'text-red-500' : 'text-gray-400'}`} /> {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-[60] w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(wineMenu.y, window.innerHeight - 260), left: Math.min(wineMenu.x, window.innerWidth - 240) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MItem icon={Wine} label="Open details" onClick={() => { setSelectedWine(wine); setWineMenu(null) }} />
+            <MItem icon={Package} label="Add to inventory" onClick={() => { handleAddToInventory(wine); setWineMenu(null) }} />
+            <MItem icon={ShoppingCart} label="Reorder" onClick={() => { openReorderModal(wine); setWineMenu(null) }} />
+            <MItem
+              icon={Star}
+              label={favorites.has(wine.id) ? 'Unfavorite' : 'Add to favorites'}
+              onClick={() => { toggleFavorite(wine.id); setWineMenu(null) }}
+            />
+            <MItem icon={CheckSquare} label={bulkSelectedWines.has(wine.id) ? 'Deselect' : 'Select'} onClick={() => { toggleWineSelection(wine.id); setWineMenu(null) }} />
+            <MItem icon={Copy} label="Copy name" onClick={() => { navigator.clipboard?.writeText(wine.name); setWineMenu(null) }} />
+            <MItem icon={Trash2} label="Remove from library" danger onClick={() => { setWineMenu(null); handleRemoveFromLibrary(wine) }} />
+          </div>
+        )
+      })()}
 
       {/* 🔧 DEV: Wine Photo Testing Modal */}
       {showDevPhotoUpload && (

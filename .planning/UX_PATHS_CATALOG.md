@@ -527,6 +527,24 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## E. Wine Library (`/wines`) (`NEW-200 … NEW-253`)
 
+> **Shipped 2026-07-21 (Wine Library batch):** NEW-200 multi-select on **both**
+> grid and list (the `_bulkSelectedWines` stub that shipped with no UI is now
+> real) + sticky bulk bar (Favorite / Export selected / Remove / clear, with
+> "Select all N") · NEW-201 bulk favorite-or-unfavorite (unfavorites only when
+> every selected wine is already starred) · NEW-203 right-click context menu on
+> card and row (Open details, Add to inventory, Reorder, Favorite, Select, Copy
+> name, Remove — all reusing existing handlers) · NEW-208 keyboard (`/` search,
+> `g`/`l` grid-list, `f` filters, `⌘A` select all filtered, `Esc` clear) ·
+> NEW-210 favorite star in list view (parity with grid) · NEW-234 `⌘E` exports
+> the filtered set · NEW-244 empty-filter state naming which search/filters
+> emptied the set + one-click clear (there was no empty state at all before) ·
+> NEW-250 bulk remove from library (master library keeps the record).
+> Deferred: inline bin/price edit (207 — needs a wine-patch mutation), scan
+> persistence (211–213, 220–221 — scanner is mocked, needs the ingest pipeline),
+> reorder-without-reload (214/215 — needs the order API wired to this modal),
+> compare sheet (216), collections/smart-lists (224/225), tasting notes/photos
+> (218/219), price history + vendor matrix (228/229 — need new endpoints).
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-200 | `Multi` | Enable multi-select on grid and list; bulk bar: Add to Inventory, Reorder, Export, Remove, Tag. |
