@@ -6,7 +6,11 @@ import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [AuthModule, OrchestratorModule, forwardRef(() => NotificationsModule)],
+  imports: [
+    AuthModule,
+    OrchestratorModule,
+    forwardRef(() => NotificationsModule),
+  ],
   controllers: [InventoryController],
   providers: [InventoryService],
   exports: [InventoryService],

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send,
@@ -81,6 +82,8 @@ const MODELS = [
 const MODEL_KEY = 'wineops.sommelier.model'
 
 export function SommelierAI() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { measurementUnit } = useRestaurantSettingsStore()
   const userId = useAuthStore(s => s.user?.userId) ?? ''
   const toast = useToast()
@@ -133,6 +136,19 @@ export function SommelierAI() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Ask-AI re-entry from other pages: `navigate('/sommelier', { state: { prompt } })`
+  // prefills (but does not auto-send) so the user can review before asking.
+  useEffect(() => {
+    const preset = (location.state as { prompt?: string } | null)?.prompt
+    if (!preset) return
+    setInput(preset)
+    inputRef.current?.focus()
+    // Clear the router state so back/forward or a refresh doesn't re-prefill.
+    navigate(location.pathname, { replace: true, state: null })
+    // Only ever meant to run once for the state that arrived with this visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const generateResponse = async (userMessage: string): Promise<string> => {
     try {
@@ -502,7 +518,7 @@ If you need immediate assistance, you can:
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           
-          <div className="relative">
+          <div className="relative" data-tour="sommelier-persona">
             <button
               onClick={(e) => { e.stopPropagation(); setModelMenuOpen((o) => !o) }}
               className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-lg transition-colors"
@@ -556,7 +572,7 @@ If you need immediate assistance, you can:
                 </div>
 
                 {/* Suggested Prompts */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3" data-tour="sommelier-prompts">
                   {suggestedPrompts.map((item, index) => {
                     const Icon = item.icon
                     return (
@@ -669,7 +685,10 @@ If you need immediate assistance, you can:
         {/* Input Area */}
         <div className="p-4 border-t border-white/10">
           <div className="max-w-3xl mx-auto">
-            <div className="relative bg-[#2f2f2f] rounded-2xl border border-white/10 focus-within:border-white/20 transition-colors">
+            <div
+              className="relative bg-[#2f2f2f] rounded-2xl border border-white/10 focus-within:border-white/20 transition-colors"
+              data-tour="sommelier-input"
+            >
               <textarea
                 ref={inputRef}
                 value={input}

@@ -7,7 +7,7 @@ export function usePageGuidance() {
   const location = useLocation()
   const guidance = useGuidanceOptional()
   const pageId =
-    guidance?.resolvePageId(location.pathname) ??
+    guidance?.resolvePageId(location.pathname, location.search) ??
     (null as PageTourId | null)
 
   const tipDef = pageId ? TIP_REGISTRY[pageId] : null

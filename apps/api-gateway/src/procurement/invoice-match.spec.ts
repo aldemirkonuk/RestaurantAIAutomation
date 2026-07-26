@@ -76,7 +76,11 @@ describe("computeMatch", () => {
     });
 
     it("ignores a whitespace-only override reason", () => {
-      const r = computeMatch({ ...base, invoiceUnitPrice: 24, priceOverrideReason: "   " });
+      const r = computeMatch({
+        ...base,
+        invoiceUnitPrice: 24,
+        priceOverrideReason: "   ",
+      });
 
       expect(r.requiresOverride).toBe(true);
       expect(r.verdict).toBe("price_variance");
@@ -109,7 +113,11 @@ describe("computeMatch", () => {
     });
 
     it("distinguishes damage from a short ship even though both leave 22 in stock", () => {
-      const damaged = computeMatch({ ...base, acceptedQty: 22, rejectedQty: 2 });
+      const damaged = computeMatch({
+        ...base,
+        acceptedQty: 22,
+        rejectedQty: 2,
+      });
       const short = computeMatch({ ...base, acceptedQty: 22, rejectedQty: 0 });
 
       expect(damaged.ledgerDelta).toBe(short.ledgerDelta); // same stock outcome
@@ -202,7 +210,11 @@ describe("computeMatch", () => {
     });
 
     it("does not compare prices when the order never carried one", () => {
-      const r = computeMatch({ ...base, poUnitPrice: null, invoiceUnitPrice: null });
+      const r = computeMatch({
+        ...base,
+        poUnitPrice: null,
+        invoiceUnitPrice: null,
+      });
 
       expect(r.requiresOverride).toBe(false);
       expect(r.priceVerified).toBe(false);

@@ -379,7 +379,7 @@ export function Communications() {
       />
 
       {/* Top tab bar */}
-      <div className="flex gap-1 px-6 pt-4 pb-0 bg-white border-b border-gray-100">
+      <div className="flex gap-1 px-6 pt-4 pb-0 bg-white border-b border-gray-100" data-tour="communications-tabs">
         {([
           { key: 'templates',          label: 'Templates',          Icon: LayoutTemplate },
           { key: 'history',            label: 'Send History',       Icon: Clock },
@@ -431,7 +431,7 @@ export function Communications() {
             </div>
 
             {/* New Template dropdown */}
-            <div className="relative">
+            <div className="relative" data-tour="communications-new-template">
               <button
                 onClick={() => setShowNewMenu(v => !v)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-wine-600 hover:bg-wine-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"

@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, InternalServerErrorException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { TeamService } from "./team.service";
 import { IngestSalesDto } from "./dto/team.dto";
@@ -43,7 +47,11 @@ export class PerformanceService {
     return data;
   }
 
-  async ingestBatch(userId: string, restaurantId: string, rows: IngestSalesDto[]) {
+  async ingestBatch(
+    userId: string,
+    restaurantId: string,
+    rows: IngestSalesDto[],
+  ) {
     await this.team.assertAccess(userId, restaurantId, "manager");
     if (!rows?.length) return { inserted: 0 };
     // Reject rows referencing members outside this tenant.
@@ -69,7 +77,8 @@ export class PerformanceService {
     const { error } = await this.sb
       .from("server_sales")
       .upsert(payload, { onConflict: "restaurant_id,member_id,service_date" });
-    if (error) throw new InternalServerErrorException("Failed to ingest sales batch");
+    if (error)
+      throw new InternalServerErrorException("Failed to ingest sales batch");
     return { inserted: payload.length };
   }
 

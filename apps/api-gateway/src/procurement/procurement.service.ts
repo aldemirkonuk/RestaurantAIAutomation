@@ -808,7 +808,8 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("restaurant_inventory")
         .update({
-          in_transit_quantity: ((inv as any)?.in_transit_quantity ?? 0) + quantity,
+          in_transit_quantity:
+            ((inv as any)?.in_transit_quantity ?? 0) + quantity,
         })
         .eq("restaurant_id", restaurantId)
         .eq("id", inventoryId);
@@ -987,7 +988,7 @@ export class ProcurementService {
             const currentShadow = currentStock?.shadow_stock ?? 0;
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
             const shadowRelease = Math.min(resolvedQuantity, currentShadow);
-            const unitCost = (row.final_price ?? row.suggested_price) ?? null;
+            const unitCost = row.final_price ?? row.suggested_price ?? null;
 
             if (shadowRelease > 0) {
               await this.databaseService.supabase.rpc("apply_stock_movement", {

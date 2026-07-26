@@ -171,7 +171,9 @@ export default function Help() {
               variant="outline"
               onClick={() => {
                 trackGuidance('wine_agent_fab_clicked', { source: 'help' })
-                navigate('/wineagent')
+                // /wineagent is still a placeholder (App.tsx) — Sommelier AI
+                // is the real inventory & ordering help surface today.
+                navigate('/sommelier')
               }}
             >
               Open Wine Agent

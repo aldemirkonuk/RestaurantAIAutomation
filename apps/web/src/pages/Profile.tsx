@@ -22,6 +22,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import { cn } from '../lib/utils'
 import { apiClient } from '../services/api/client'
 import { profileApi, type LinkedProviders } from '../services/api/profile'
+import { GoogleLinkButton } from '../components/auth/GoogleLinkButton'
 
 type SectionId =
   | 'account'
@@ -546,47 +547,75 @@ export default function Profile() {
               <h3 className="text-base font-semibold text-gray-900 mb-1">Linked accounts</h3>
               <p className="text-sm text-gray-500 mb-4">Sign in faster with Google or Microsoft.</p>
               <div className="space-y-3">
-                {(['google', 'microsoft'] as const).map((provider) => {
-                  const isLinked = linked?.[provider] ?? false
-                  const label = provider === 'google' ? 'Google' : 'Microsoft'
-                  return (
-                    <div
-                      key={provider}
-                      className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-100"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center">
-                          <Link2 className="w-4 h-4 text-gray-500" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{label}</p>
-                          <p className="text-xs text-gray-400">{isLinked ? 'Connected' : 'Not connected'}</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={linking === provider}
-                        onClick={() =>
-                          void (isLinked ? unlinkProvider(provider) : linkProvider(provider))
-                        }
-                        className={cn(
-                          'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                          isLinked
-                            ? 'text-red-600 hover:bg-red-50'
-                            : 'text-wine-700 hover:bg-wine-50',
-                        )}
-                      >
-                        {linking === provider ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : isLinked ? (
-                          'Unlink'
-                        ) : (
-                          'Connect'
-                        )}
-                      </button>
+                <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center">
+                      <Link2 className="w-4 h-4 text-gray-500" />
                     </div>
-                  )
-                })}
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Google</p>
+                      <p className="text-xs text-gray-400">
+                        {linked?.google ? 'Connected' : 'Not connected'}
+                      </p>
+                    </div>
+                  </div>
+                  <GoogleLinkButton
+                    isLinked={linked?.google ?? false}
+                    onLinked={async () => {
+                      const result = await profileApi.getLinkedProviders()
+                      setLinked(result)
+                      toast.success('Google linked')
+                    }}
+                    onError={(message) => toast.error(message)}
+                  />
+                  {linked?.google && (
+                    <button
+                      type="button"
+                      disabled={linking === 'google'}
+                      onClick={() => void unlinkProvider('google')}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      {linking === 'google' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlink'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center">
+                      <Link2 className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Microsoft</p>
+                      <p className="text-xs text-gray-400">
+                        {linked?.microsoft ? 'Connected' : 'Not connected'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={linking === 'microsoft'}
+                    onClick={() =>
+                      void (linked?.microsoft
+                        ? unlinkProvider('microsoft')
+                        : linkProvider('microsoft'))
+                    }
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                      linked?.microsoft
+                        ? 'text-red-600 hover:bg-red-50'
+                        : 'text-wine-700 hover:bg-wine-50',
+                    )}
+                  >
+                    {linking === 'microsoft' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : linked?.microsoft ? (
+                      'Unlink'
+                    ) : (
+                      'Connect'
+                    )}
+                  </button>
+                </div>
               </div>
             </section>
 

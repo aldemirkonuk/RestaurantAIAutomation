@@ -352,7 +352,9 @@ export class ScheduledTasksService implements OnModuleInit {
       "orders",
     );
     if (!ordersMode.enabled) {
-      this.logger.log("Recurring order reminders skipped: orders notifications off");
+      this.logger.log(
+        "Recurring order reminders skipped: orders notifications off",
+      );
       return;
     }
 

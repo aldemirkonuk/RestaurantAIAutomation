@@ -1,7 +1,10 @@
 import { AuthService } from "./auth.service";
 import { BadRequestException } from "@nestjs/common";
 
-function makeAuthService(userRow: Record<string, unknown>, oauthRows: { provider: string }[] = []) {
+function makeAuthService(
+  userRow: Record<string, unknown>,
+  oauthRows: { provider: string }[] = [],
+) {
   const usersChain: any = {
     select: () => usersChain,
     update: () => usersChain,
@@ -38,7 +41,8 @@ function makeAuthService(userRow: Record<string, unknown>, oauthRows: { provider
       error: null,
     }),
   };
-  uraChain.then = (resolve: any) => resolve({ count: 2, data: [], error: null });
+  uraChain.then = (resolve: any) =>
+    resolve({ count: 2, data: [], error: null });
 
   const from = jest.fn((table: string) => {
     if (table === "users") return usersChain;
@@ -48,7 +52,11 @@ function makeAuthService(userRow: Record<string, unknown>, oauthRows: { provider
   });
 
   const databaseService = { supabase: { from } } as any;
-  const jwtService = { sign: jest.fn(), verify: jest.fn(), decode: jest.fn() } as any;
+  const jwtService = {
+    sign: jest.fn(),
+    verify: jest.fn(),
+    decode: jest.fn(),
+  } as any;
   const configService = { get: jest.fn() } as any;
   const tokenBlacklist = { blacklistToken: jest.fn() } as any;
   const gmail = {} as any;
@@ -128,8 +136,8 @@ describe("AuthService profile APIs", () => {
       [{ provider: "google" }],
     );
 
-    await expect(svc.unlinkOAuthProvider("u1", "google")).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      svc.unlinkOAuthProvider("u1", "google"),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

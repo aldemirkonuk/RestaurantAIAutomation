@@ -324,20 +324,26 @@ Ship in this order; everything else is opt-in, triggered by a felt need:
 
 ---
 
-## 13. Future plans — BevOps expansion *(post–WineOps, not scheduled)*
+## 13. Future plans — Mudavym expansion *(post–wine trust, not scheduled)*
 
-When the platform expands from **WineOps → BevOps** (full beverage program: spirits, beer, cocktails, NA):
+> Canonical vision: [`.planning/FUTURES.md`](./FUTURES.md). Ultimate goal remains a **full autonomous restaurant backend**. Sequencing: **wine → full beverages → bakery → rest of kitchen**.
 
-| Item | Scope | UX anchor |
+Inventory implications when the product expands under **Mudavym**:
+
+| Stage | Inventory / UX work | UX anchor |
 |---|---|---|
-| **Cocktail recipes in inventory row detail** | Each cocktail (or composed bev) SKU gets a **Recipes** section inside the inventory row expansion / detail dropdown — build sheet with linked ingredient SKUs, pour specs, method, garnish, and optional cost roll-up from lot WAC. | Same panel as today's `RowExpansion` on `/inventory` command table (`apps/web/src/pages/inventory/command/RowExpansion.tsx`). |
+| **1 — Beverages** | Catalog + filters: `domain=beverage` → subsection (`wine`, `beer`, `cocktail`, `hard_alcohol`, `na`) → subtype (e.g. wine/red, spirits/gin). Each leaf item: fine-grained attributes + photos (wine depth as the bar). | Inventory command table filters + detail |
+| **1 — Cocktail recipes** | Composed SKUs get a **Recipes** section — build sheet, linked ingredient SKUs, pour specs, method, garnish, optional cost roll-up from lot WAC. | `RowExpansion` on `/inventory` (`apps/web/src/pages/inventory/command/RowExpansion.tsx`) |
+| **2 — Bakery (first food)** | `domain=food` → `bakery`: ingredients, intermediates, finished goods. MVP: catalog+photos, pars/alerts, manual recipes, manual waste, simple POS finished-good decrement. North star adds full BOM explosion + spoilage intelligence. | Same inventory surfaces + recipe panel |
+| **3 — Rest of kitchen** | Broader food subsections after bakery proves the model. | — |
 
 **Notes:**
-- Wine bottle rows stay as-is (vintage, par, cellar location); recipes apply to **composed** items only.
-- Ingredient lines should deplete linked inventory SKUs (future pour-through / recipe costing), gated on Phase 2 lots + ledger trust.
-- Schema should treat `item_type ∈ {wine, spirit, beer, cocktail, na}` early so the UI can conditionally show Recipes without a later rewrite.
+- Wine bottle rows stay as-is (vintage, par, cellar location); recipes apply to **composed** items (cocktails, bakery finished goods) only.
+- Ingredient lines should deplete linked inventory SKUs (pour-through / recipe costing), gated on Phase 2 lots + ledger trust.
+- Schema early: `domain ∈ {beverage, food, supply}`, `subsection`, `subtype`, plus type-specific attribute packs — so UI can branch without a later rewrite.
+- Do not invent a thinner product row model; extraction + photos must match wine’s finest-feature standard (see FUTURES §4).
 
-**Trigger:** BevOps milestone — cocktail/spirits inventory in scope, not before.
+**Trigger:** Promote from ROADMAP backlog 999.x when wine inventory trust (this plan’s Phase 1–2) is earned.
 
 ---
 

@@ -88,7 +88,11 @@ export class LowStockAlertsService {
       const byRestaurant = await this.getLowStockByRestaurant();
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
-        await this.evaluateRestaurant(restaurantId, rows, names.get(restaurantId));
+        await this.evaluateRestaurant(
+          restaurantId,
+          rows,
+          names.get(restaurantId),
+        );
       }
       // Reconcile restocks even for restaurants that dropped off the low list.
       await this.reconcileRecoveries(byRestaurant);
@@ -203,7 +207,8 @@ export class LowStockAlertsService {
     );
     const now = Date.now();
     const cooledDown =
-      now - (this.lastInstantAt.get(restaurantId) ?? 0) >= this.INSTANT_COOLDOWN_MS;
+      now - (this.lastInstantAt.get(restaurantId) ?? 0) >=
+      this.INSTANT_COOLDOWN_MS;
     if (immediate.length > 0 && cooledDown) {
       this.lastInstantAt.set(restaurantId, now);
       await this.fireInstantAlert(restaurantId, immediate, restaurantName);
@@ -251,7 +256,11 @@ export class LowStockAlertsService {
         .filter((r): r is LowStockRow => !!r);
       if (nowLow.length > 0) {
         const names = await this.getRestaurantNames([restaurantId]);
-        await this.evaluateRestaurant(restaurantId, nowLow, names.get(restaurantId));
+        await this.evaluateRestaurant(
+          restaurantId,
+          nowLow,
+          names.get(restaurantId),
+        );
       }
 
       // Depleted (or restocked) items that are no longer low → clear stale state.
@@ -282,7 +291,8 @@ export class LowStockAlertsService {
     restaurantName?: string,
   ): Promise<void> {
     const criticalCount = wines.filter((w) => w.severity === "critical").length;
-    const priority: "critical" | "high" = criticalCount > 0 ? "critical" : "high";
+    const priority: "critical" | "high" =
+      criticalCount > 0 ? "critical" : "high";
     const list = wines
       .map((w) => `${w.wineName} (${w.currentStock}/${w.threshold})`)
       .join(", ");
@@ -427,7 +437,10 @@ export class LowStockAlertsService {
         if (!stillLow) {
           await this.db.supabase
             .from("inventory_alert_state")
-            .update({ last_alert_level: "ok", updated_at: new Date().toISOString() })
+            .update({
+              last_alert_level: "ok",
+              updated_at: new Date().toISOString(),
+            })
             .eq("restaurant_id", s.restaurant_id)
             .eq("inventory_id", s.inventory_id);
         }
@@ -500,8 +513,12 @@ export class LowStockAlertsService {
         .sort();
       return {
         enabled: data.some((p: any) => p.low_stock_enabled !== false),
-        instantFirstAlert: data.some((p: any) => p.instant_first_alert !== false),
-        criticalImmediate: data.some((p: any) => p.critical_immediate !== false),
+        instantFirstAlert: data.some(
+          (p: any) => p.instant_first_alert !== false,
+        ),
+        criticalImmediate: data.some(
+          (p: any) => p.critical_immediate !== false,
+        ),
         digestFrequency: dailyTimes.length > 0 ? "daily" : "off",
         digestTime: dailyTimes[0] || "12:00",
       };
@@ -558,7 +575,9 @@ export class LowStockAlertsService {
       .select("inventory_id, last_alert_level")
       .eq("restaurant_id", restaurantId);
     for (const r of data || []) {
-      map.set(r.inventory_id, { level: (r.last_alert_level || "ok") as AlertLevel });
+      map.set(r.inventory_id, {
+        level: (r.last_alert_level || "ok") as AlertLevel,
+      });
     }
     return map;
   }
@@ -608,7 +627,9 @@ export class LowStockAlertsService {
         .from("inventory_alert_state")
         .upsert(row, { onConflict: "restaurant_id,inventory_id" });
       if (error) {
-        this.logger.warn(`inventory_alert_state upsert failed: ${error.message}`);
+        this.logger.warn(
+          `inventory_alert_state upsert failed: ${error.message}`,
+        );
         return false;
       }
       return true;
@@ -619,7 +640,9 @@ export class LowStockAlertsService {
     }
   }
 
-  private async getRestaurantNames(ids: string[]): Promise<Map<string, string>> {
+  private async getRestaurantNames(
+    ids: string[],
+  ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     if (ids.length === 0) return map;
     const { data } = await this.db.supabase

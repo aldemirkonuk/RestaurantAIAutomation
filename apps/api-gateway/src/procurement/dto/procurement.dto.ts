@@ -168,7 +168,9 @@ export class ReceiptAdjustmentDto {
   @IsString()
   inventoryId: string;
 
-  @ApiProperty({ description: "Signed correction; positive adds, negative removes." })
+  @ApiProperty({
+    description: "Signed correction; positive adds, negative removes.",
+  })
   @IsNumber()
   delta: number;
 
@@ -192,7 +194,9 @@ export class VerifyReceiptDto {
   @Type(() => ReceiptAdjustmentDto)
   adjustments?: ReceiptAdjustmentDto[];
 
-  @ApiPropertyOptional({ description: "Quantity the vendor invoice bills for." })
+  @ApiPropertyOptional({
+    description: "Quantity the vendor invoice bills for.",
+  })
   @IsInt()
   @Min(0)
   @IsOptional()
@@ -210,7 +214,9 @@ export class VerifyReceiptDto {
   @IsOptional()
   acceptedQuantity?: number;
 
-  @ApiPropertyOptional({ description: "Units that arrived but were refused (damaged)." })
+  @ApiPropertyOptional({
+    description: "Units that arrived but were refused (damaged).",
+  })
   @IsInt()
   @Min(0)
   @IsOptional()
@@ -222,7 +228,8 @@ export class VerifyReceiptDto {
   rejectedReason?: string;
 
   @ApiPropertyOptional({
-    description: "Required when the invoice price differs from the agreed price.",
+    description:
+      "Required when the invoice price differs from the agreed price.",
   })
   @IsString()
   @IsOptional()

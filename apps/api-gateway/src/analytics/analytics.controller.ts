@@ -225,7 +225,8 @@ export class AnalyticsController {
     const catalog = this.insightGenerator.getCatalogTypes();
     if (!restaurantId) return { ...catalog, available: null };
     try {
-      const available = await this.insightGenerator.getAvailability(restaurantId);
+      const available =
+        await this.insightGenerator.getAvailability(restaurantId);
       return { ...catalog, available };
     } catch {
       return { ...catalog, available: null };
@@ -629,9 +630,12 @@ export class AnalyticsController {
     @Query("includeHidden") includeHidden?: string,
   ) {
     try {
-      return await this.recommendationsService.getRecommendations(restaurantId, {
-        includeHidden: includeHidden === "true",
-      });
+      return await this.recommendationsService.getRecommendations(
+        restaurantId,
+        {
+          includeHidden: includeHidden === "true",
+        },
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute recommendations",
@@ -769,7 +773,9 @@ export class AnalyticsController {
   @ApiOperation({ summary: "Acted/dismissed/completed history (NEW-302)" })
   async recommendationHistory(@Param("restaurantId") restaurantId: string) {
     try {
-      return { items: await this.recommendationActions.listHistory(restaurantId) };
+      return {
+        items: await this.recommendationActions.listHistory(restaurantId),
+      };
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to load recommendation history",
@@ -779,7 +785,9 @@ export class AnalyticsController {
   }
 
   @Get("recommendations/:restaurantId/digest")
-  @ApiOperation({ summary: "Daily recommendation digest preferences (NEW-303)" })
+  @ApiOperation({
+    summary: "Daily recommendation digest preferences (NEW-303)",
+  })
   async getRecommendationDigest(@Param("restaurantId") restaurantId: string) {
     return this.recommendationActions.getDigestPref(restaurantId);
   }
@@ -801,7 +809,10 @@ export class AnalyticsController {
     },
   ) {
     try {
-      return await this.recommendationActions.setDigestPref(restaurantId, body || {});
+      return await this.recommendationActions.setDigestPref(
+        restaurantId,
+        body || {},
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to set digest preferences",

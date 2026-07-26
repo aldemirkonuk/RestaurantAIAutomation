@@ -439,8 +439,16 @@ export class ToastService {
         .maybeSingle();
 
       let inventoryId = mapping?.inventory_id as string | undefined;
-      const saleUnit = mapping?.sale_unit as "glass" | "bottle" | null | undefined;
-      const itemName = (mapping?.toast_item_name || line.name || "").toLowerCase();
+      const saleUnit = mapping?.sale_unit as
+        | "glass"
+        | "bottle"
+        | null
+        | undefined;
+      const itemName = (
+        mapping?.toast_item_name ||
+        line.name ||
+        ""
+      ).toLowerCase();
 
       // Fallback: single-guid mapping on restaurant_inventory.toast_item_guid.
       let invSaleType: string | undefined;
@@ -464,7 +472,8 @@ export class ToastService {
       // Unit: explicit mapping → name heuristic → inventory sale_type → default bottle.
       const looksGlass = /glass|btg|by[\s-]?the[\s-]?glass|pour/.test(itemName);
       const unit: "glass" | "bottle" =
-        saleUnit ?? (looksGlass || invSaleType === "glass" ? "glass" : "bottle");
+        saleUnit ??
+        (looksGlass || invSaleType === "glass" ? "glass" : "bottle");
 
       const idem = `toast_${isVoid ? "void" : "sale"}_${order.guid}_${menuGuid}`;
       try {

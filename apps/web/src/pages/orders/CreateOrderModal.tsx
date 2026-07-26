@@ -156,7 +156,7 @@ export function CreateOrderModal({
               </div>
               
               {/* Recurring Toggle */}
-              <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-200">
+              <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-200" data-tour="orders-create-recurring">
                 <button
                   onClick={() => setIsCreatingRecurring(!isCreatingRecurring)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
@@ -226,7 +226,7 @@ export function CreateOrderModal({
 
             <div className="flex-1 overflow-hidden flex">
               {/* Wine Selection */}
-              <div className="flex-1 border-r border-gray-200 overflow-hidden flex flex-col">
+              <div className="flex-1 border-r border-gray-200 overflow-hidden flex flex-col" data-tour="orders-create-wines">
                 <div className="p-4 border-b border-gray-100">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -331,7 +331,7 @@ export function CreateOrderModal({
               </div>
 
               {/* Order Summary */}
-              <div className="w-80 flex flex-col">
+              <div className="w-80 flex flex-col" data-tour="orders-create-summary">
                 <div className="p-4 border-b border-gray-100">
                   <h4 className="font-semibold text-gray-900">Order Summary</h4>
                   <p className="text-sm text-gray-500">{createOrderItems.length} wines</p>
@@ -462,6 +462,7 @@ export function CreateOrderModal({
                       variant="default"
                       onClick={onContactProviders}
                       disabled={isLoading}
+                      data-tour="orders-create-submit"
                       className="w-full bg-wine-600 hover:bg-wine-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {isLoading ? (

@@ -26,7 +26,8 @@ export class UxOptimizerService {
   /** Non-negotiable: the agent NEVER applies its own proposals. */
   private static readonly AUTO_APPLY = false as const;
 
-  private static readonly ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+  private static readonly ANTHROPIC_URL =
+    "https://api.anthropic.com/v1/messages";
 
   /**
    * SOTA usability rubric the agent reasons against. Kept explicit so proposals
@@ -76,7 +77,8 @@ export class UxOptimizerService {
     sessionId?: string | null;
     meta?: Record<string, unknown>;
   }): Promise<{ ok: boolean }> {
-    if (!input?.page || !input?.event) throw new Error("page and event are required");
+    if (!input?.page || !input?.event)
+      throw new Error("page and event are required");
     const { error } = await this.dbService
       .getClient()
       .from("ux_signals")
@@ -106,7 +108,9 @@ export class UxOptimizerService {
     hotspots: Array<{ targetKey: string; event: string; count: number }>;
     avgSlowTtiMs: number | null;
   }> {
-    const sinceIso = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString();
+    const sinceIso = new Date(
+      Date.now() - sinceHours * 3600 * 1000,
+    ).toISOString();
     let q = this.dbService
       .getClient()
       .from("ux_signals")
@@ -256,7 +260,9 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     });
     if (!res.ok) throw new Error(`Anthropic ${res.status}`);
     const payload: any = await res.json();
-    const textBlock = (payload.content || []).find((b: any) => b.type === "text");
+    const textBlock = (payload.content || []).find(
+      (b: any) => b.type === "text",
+    );
     const parsed = JSON.parse(
       (textBlock?.text || "{}").replace(/^```json\s*|\s*```$/g, ""),
     );
@@ -369,7 +375,8 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .select("*")
       .eq("id", proposalId)
       .single();
-    if (error || !proposal) throw new Error(error?.message || "Proposal not found");
+    if (error || !proposal)
+      throw new Error(error?.message || "Proposal not found");
 
     if (decision === "reject") {
       await this.dbService
@@ -397,7 +404,10 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
 
     // Approve → create/enable a gated override. This is the ONLY path that can
     // affect the live product, and it is human-initiated + rollout-limited.
-    const rollout = rolloutPct != null ? Math.min(100, Math.max(0, rolloutPct)) : this.defaultRollout();
+    const rollout =
+      rolloutPct != null
+        ? Math.min(100, Math.max(0, rolloutPct))
+        : this.defaultRollout();
     await this.dbService
       .getClient()
       .from("ux_overrides")
@@ -577,7 +587,13 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     if (!ov) throw new Error("Override not found");
     const now = summarizeWindowBounds();
     const [before, after] = await Promise.all([
-      this.countEvents(ov.page, ov.target_key, metric, now.prevStart, now.midpoint),
+      this.countEvents(
+        ov.page,
+        ov.target_key,
+        metric,
+        now.prevStart,
+        now.midpoint,
+      ),
       this.countEvents(ov.page, ov.target_key, metric, now.midpoint, now.end),
     ]);
     const liftPct = before === 0 ? 0 : ((after - before) / before) * 100;
@@ -585,7 +601,10 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       liftPct < -10 ? "improved" : liftPct > 10 ? "regressed" : "neutral";
     const verdict = outcome === "regressed" ? "revert" : "keep";
     if (verdict === "revert" && ov.proposal_id)
-      await this.rollback(ov.proposal_id, `Auto-revert: ${metric} +${liftPct.toFixed(0)}%`);
+      await this.rollback(
+        ov.proposal_id,
+        `Auto-revert: ${metric} +${liftPct.toFixed(0)}%`,
+      );
     await this.appendLearning({
       restaurantId: ov.restaurant_id,
       page: ov.page,

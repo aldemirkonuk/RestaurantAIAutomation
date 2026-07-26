@@ -307,7 +307,9 @@ export class InventoryController {
   }
 
   @Post(":restaurantId/item/:itemId/pour")
-  @ApiOperation({ summary: "Record by-the-glass pours (POS or manual override)" })
+  @ApiOperation({
+    summary: "Record by-the-glass pours (POS or manual override)",
+  })
   async recordPour(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,

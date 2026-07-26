@@ -107,7 +107,9 @@ export class InventoryService {
   }
 
   /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
-  private async fetchLotRollup(restaurantId: string): Promise<Map<string, any>> {
+  private async fetchLotRollup(
+    restaurantId: string,
+  ): Promise<Map<string, any>> {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
@@ -321,9 +323,7 @@ export class InventoryService {
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
     const dailyMap = new Map<string, number>();
     // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00
-    const heat: number[][] = Array.from({ length: 7 }, () =>
-      Array(8).fill(0),
-    );
+    const heat: number[][] = Array.from({ length: 7 }, () => Array(8).fill(0));
     let totalOut = 0;
 
     const fourteenDaysAgo = new Date();
@@ -332,8 +332,7 @@ export class InventoryService {
     for (const row of (data as any[]) || []) {
       const qty = Number(row.quantity_change ?? row.quantity ?? 0);
       const type = String(row.transaction_type || "").toLowerCase();
-      const isOut =
-        qty < 0 || ["sale", "pour", "glass_pour"].includes(type);
+      const isOut = qty < 0 || ["sale", "pour", "glass_pour"].includes(type);
       if (!isOut) continue;
       const out = Math.abs(qty);
       if (!(out > 0)) continue;
@@ -605,7 +604,9 @@ export class InventoryService {
     // Fetch old values for event payload (before update)
     const { data: oldItem } = await client
       .from("restaurant_inventory")
-      .select("stock_live, shadow_stock, threshold_min, master_wine_id, version")
+      .select(
+        "stock_live, shadow_stock, threshold_min, master_wine_id, version",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", itemId)
       .single();
@@ -672,7 +673,11 @@ export class InventoryService {
       await applyStockDelta("live", dto.stockLive, oldItem?.stock_live ?? 0);
     }
     if (dto.shadowStock !== undefined) {
-      await applyStockDelta("shadow", dto.shadowStock, oldItem?.shadow_stock ?? 0);
+      await applyStockDelta(
+        "shadow",
+        dto.shadowStock,
+        oldItem?.shadow_stock ?? 0,
+      );
     }
 
     // Re-fetch the row (projection now reflects lot changes) for the response.

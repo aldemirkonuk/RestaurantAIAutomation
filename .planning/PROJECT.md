@@ -1,16 +1,36 @@
-# WineOps AI — Autonomous Restaurant Operations Platform
+# Mudavym — Autonomous Restaurant Operations Platform
+
+> Formerly framed as **WineOps AI**. Product brand going forward: **Mudavym**.  
+> Canonical expansion vision: [FUTURES.md](./FUTURES.md).
 
 ## What This Is
 
-WineOps AI is an autonomous restaurant wine inventory, procurement, and operations platform with 24 intelligent agents. v1.0 built the hybrid extraction pipeline (Claude Vision + Gemini Flash + YOLO 2-class + Haiku enrichment). v2.0 transforms the agent system from prototype to production: hardening all 24 agents to Level 4 (Resilient), implementing the 7 core backend principles (determinism, idempotency, replayability, observability, isolation, temporal reasoning, evolvability), and deploying with real Toast POS data from a Turkish restaurant in San Francisco.
+Mudavym is a full autonomous backend system for restaurants — inventory, procurement, communications, POS integration, and intelligent agents. Wine is the first vertical and the **quality bar** for deep extraction (producer, vintage, region, ontology, images). The platform expands in locked order: **wine → full beverages → bakery (first food) → rest of kitchen**.
+
+The current codebase and milestone naming may still say WineOps; identity migrates gradually. The ultimate goal does **not** change: kitchen-grade autonomous restaurant operations.
 
 ## Core Value
 
 The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
 
+## Product expansion (futures — not current milestone)
+
+See [FUTURES.md](./FUTURES.md). Summary:
+
+| Stage | Scope |
+|---|---|
+| 0 (now) | Wine — deep extraction, cellar, procurement |
+| 1 | Full beverages — wine subtypes, beer, cocktail, hard alcohol, NA; fine features + photos |
+| 2 | Food → bakery MVP (ingredients, recipes, finished goods, waste, POS) then full bakery north star |
+| 3 | Rest of kitchen food categories |
+
+**Profile types:** restaurant **members** (owner/manager/staff, per-restaurant roles) and — as a futures addition — **guests**: customers who visit these restaurants, with Beli-style ratings and **points earned for sharing/recommending**. Guest signal is demand-side input to the backend, not a standalone social product. See FUTURES.md §7 and ROADMAP backlog 999.1.
+
+**Ask AI:** global entry that **creates allowlisted actions** (draft PO, vendor email, calendar, inventory drafts, nav) with human confirm — eases complexity as the product expands. See FUTURES.md §8 and ROADMAP backlog 999.5.
+
 ## Current Milestone: v2.0 Backend Kitchen Architecture — Production-Grade Agent System
 
-**Goal:** Transform 24 Level 0-1 agents into Level 4 (Resilient) production agents, starting with 4 core agents in the golden path workflow, deployed and tested with real Toast data.
+**Goal:** Transform 24 Level 0-1 agents into Level 4 (Resilient) production agents, starting with 4 core agents in the golden path workflow, deployed and tested with real Toast POS data from a Turkish restaurant in San Francisco.
 
 **Target features:**
 - BaseAgent infrastructure upgrade (6 additions: idempotency, decision logging, structured JSON logging, distributed tracing, dead letter queue, saga state)
@@ -84,6 +104,9 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 - Waves 2-6 agent hardening (20 remaining agents) — future milestone
 - Multi-POS support (Square, Clover) — future
 - Invoice OCR pipeline — separate pipeline
+- Mudavym beverage / bakery / kitchen expansion — see FUTURES.md + ROADMAP backlog 999.2–999.4
+- Guest profiles / points — see FUTURES.md §7 + ROADMAP backlog 999.1
+- Ask AI action creation — see FUTURES.md §8 + ROADMAP backlog 999.5
 
 ## Context
 
@@ -112,15 +135,20 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 - **Architectural defaults locked**: RabbitMQ+saga, PG events, Redis, Sentry+logs, Diamond testing
 - **Backward compatibility**: v2.0 infrastructure must not break v1.0 extraction pipeline
 - **Real data**: All E2E testing against real Toast data from friend's restaurant
+- **Expansion quality bar**: Non-wine categories must meet wine-depth extraction + photos (FUTURES.md); no thin SKU rows
 
 ## Current State
 
-v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extraction, enrichment, verification, ontology, research, and UI phases done. v2.0 milestone setup in progress — surgical audit of Wave 1 agents complete, requirements defined, phase sequencing planned (Phases 18-22+).
+v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extraction, enrichment, verification, ontology, research, and UI phases done. v2.0 milestone setup in progress — surgical audit of Wave 1 agents complete, requirements defined, phase sequencing planned (Phases 18-22+). Product futures locked 2026-07-26 as **Mudavym** (see FUTURES.md).
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
+| Brand: Mudavym | Broader than wine; autonomous restaurant backend | Locked 2026-07-26 — FUTURES.md |
+| Expansion sequence A | Wine → beverages → bakery → kitchen | Locked 2026-07-26 |
+| Wine = extraction quality bar | Other categories must match finest-feature + photo depth | Locked 2026-07-26 |
+| Bakery first food vertical | Clearest recipe/inventory loop; MVP then north star | Locked 2026-07-26 |
 | Extend BaseAgent, not rebuild | BaseAgent already Level 3 (circuit breaker, retry, backpressure, metrics, health, shutdown) | — v2.0 |
 | Workflow-first agent hardening | Identify first E2E workflow → bring its agents to Level 4 → expand | — v2.0 |
 | Wave sequencing (6 waves, 24 agents) | Golden path first, then communication, intelligence, support, stubs, specialty | — v2.0 |
@@ -137,4 +165,4 @@ v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extracti
 | Claude Haiku: enrichment | $0.01/wine background enrichment | ✓ Validated |
 
 ---
-*Last updated: 2026-04-09 — v2.0 milestone setup in progress, surgical audit complete*
+*Last updated: 2026-07-26 — Mudavym brand + futures vision linked; v2.0 milestone unchanged*

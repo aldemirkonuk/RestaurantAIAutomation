@@ -13,10 +13,9 @@ export function WineAgentFab() {
   const guidance = useGuidanceOptional()
   const { progress } = useOnboardingProgress()
 
-  const activated = !!(
-    progress?.menu_uploaded ||
-    progress?.completed_at
-  )
+  // "Activated" = menu uploaded AND a low-stock threshold explicitly set —
+  // completed_at (all 4 checklist tasks done) always implies this too.
+  const activated = !!(progress?.activated || progress?.completed_at)
   const unlocked = !!guidance?.state.global.wine_agent_fab_unlocked
   const showFabPref = guidance?.state.global.show_wine_agent_fab !== false
   const onServices =
@@ -35,7 +34,9 @@ export function WineAgentFab() {
       type="button"
       onClick={() => {
         trackGuidance('wine_agent_fab_clicked')
-        navigate('/wineagent')
+        // /wineagent is still a placeholder (App.tsx) — Sommelier AI is the
+        // real inventory & ordering help surface today.
+        navigate('/sommelier')
       }}
       aria-label="Wine Agent — inventory & ordering help"
       title="Wine Agent — inventory & ordering help"

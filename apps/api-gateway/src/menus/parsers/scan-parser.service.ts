@@ -11,10 +11,13 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const WINE_EXTRACTION_PROMPT =
   "You are analyzing a restaurant wine list or beverage menu image. " +
   "Extract all wine and beverage items you can identify. For each item return JSON: " +
-  "{ name, category, vintage, region, grape_variety, by_glass_price, bottle_price, raw_text }. " +
+  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, raw_text }. " +
+  "producer is the winery/estate/château name if distinguishable from the wine's cuvée/label name " +
+  "(e.g. for 'Duckhorn Merlot', producer is 'Duckhorn' and name is 'Merlot' or 'Duckhorn Merlot' as printed). " +
+  "If the menu only prints one name with no separable producer, set producer to the same value as name. " +
   "Return ONLY a JSON array with no surrounding text. " +
   "If a field is not visible, omit it. " +
-  'Example: [{"name":"Chateau Margaux","category":"red","vintage":"2018","bottle_price":120}]';
+  'Example: [{"name":"Chateau Margaux","producer":"Chateau Margaux","category":"red","vintage":"2018","bottle_price":120}]';
 
 @Injectable()
 export class ScanParserService {

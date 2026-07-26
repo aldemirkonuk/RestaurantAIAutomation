@@ -8,7 +8,8 @@ export class ImportMenuDto {
   @IsObject()
   data: {
     imageBase64?: string; // for scan
-    csvContent?: string; // for csv
+    csvContent?: string; // for csv (text)
+    fileBase64?: string; // for csv (binary .xlsx/.xls workbook)
     items?: WineExtractItem[]; // for manual
   };
 

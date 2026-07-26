@@ -1309,7 +1309,9 @@ export class AuthService {
   async getProfileForUser(userId: string) {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
-      .select("user_id, email, name, phone, role, password_hash, oauth_provider")
+      .select(
+        "user_id, email, name, phone, role, password_hash, oauth_provider",
+      )
       .eq("user_id", userId)
       .single();
 
@@ -1419,7 +1421,9 @@ export class AuthService {
       .select("provider")
       .eq("user_id", userId);
 
-    const set = new Set((rows ?? []).map((r: { provider: string }) => r.provider));
+    const set = new Set(
+      (rows ?? []).map((r: { provider: string }) => r.provider),
+    );
 
     // Legacy fallback
     if (set.size === 0) {
@@ -1518,10 +1522,7 @@ export class AuthService {
     return this.getLinkedProviders(userId);
   }
 
-  async unlinkOAuthProvider(
-    userId: string,
-    provider: "google" | "microsoft",
-  ) {
+  async unlinkOAuthProvider(userId: string, provider: "google" | "microsoft") {
     const linked = await this.getLinkedProviders(userId);
     const { data: user } = await this.databaseService.supabase
       .from("users")
@@ -1553,8 +1554,11 @@ export class AuthService {
 
     if (legacy?.oauth_provider === provider) {
       const remaining = await this.getLinkedProviders(userId);
-      const next =
-        remaining.google ? "google" : remaining.microsoft ? "microsoft" : null;
+      const next = remaining.google
+        ? "google"
+        : remaining.microsoft
+          ? "microsoft"
+          : null;
       await this.databaseService.supabase
         .from("users")
         .update({

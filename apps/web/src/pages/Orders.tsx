@@ -54,6 +54,7 @@ import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
 import { ExportMenu } from '../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
+import { useGuidanceOptional } from '../guidance'
 
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
@@ -301,6 +302,18 @@ export function Orders() {
     }
     setShowCreateOrderModal(true)
   }, [providers])
+
+  // First-visit tutorial for the create-order modal. It has no dedicated
+  // route (see PAGE_TOUR_ROUTES), so it's started manually on first open
+  // rather than via the route-based tip strip.
+  const guidance = useGuidanceOptional()
+  useEffect(() => {
+    if (!showCreateOrderModal || !guidance) return
+    const tourStatus = guidance.state.pages['orders-create']?.tour ?? 'unseen'
+    if (tourStatus !== 'unseen') return
+    const timer = setTimeout(() => guidance.startTour('orders-create'), 300)
+    return () => clearTimeout(timer)
+  }, [showCreateOrderModal, guidance])
   const [createOrderItems, setCreateOrderItems] = useState<CreateOrderItem[]>([])
   const [wineSearch, setWineSearch] = useState('')
   const inventoryMasterIds = useMemo(() => {

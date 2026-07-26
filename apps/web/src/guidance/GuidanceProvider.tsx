@@ -12,10 +12,13 @@ import { useLocation } from 'react-router-dom'
 import { useUserPreferences } from '../hooks/useUserPreferences'
 import {
   DEFAULT_GUIDANCE_STATE,
-  ROUTE_TO_PAGE_TOUR,
+  DEFAULT_SETUP_NUDGE,
+  isSetupNudgeDue,
+  resolveGuidancePageId,
   type GuidanceState,
   type PageGuidanceState,
   type PageTourId,
+  type SetupNudgeState,
 } from './types'
 import { useTourEngine } from './tours/TourEngine'
 import { trackGuidance } from './analytics'
@@ -33,7 +36,13 @@ interface GuidanceContextValue {
   resetTips: () => void
   setShowWineAgentFab: (show: boolean) => void
   markUseCardSeen: (cardId: string) => void
-  resolvePageId: (pathname: string) => PageTourId | null
+  resolvePageId: (pathname: string, search?: string) => PageTourId | null
+  /** Finish-setup nudge banner — see `isSetupNudgeDue` for the escalating-backoff cadence. */
+  isSetupNudgeDue: boolean
+  setupNudgeDismissedThisSession: boolean
+  markSetupNudgeShown: () => void
+  snoozeSetupNudge: () => void
+  dismissSetupNudgeForever: () => void
 }
 
 const GuidanceContext = createContext<GuidanceContextValue | null>(null)
@@ -41,18 +50,23 @@ const GuidanceContext = createContext<GuidanceContextValue | null>(null)
 const SESSION_KEY = 'wineops_guidance_session'
 
 type SessionFatigue = {
-  offers: number
+  /** Pages whose first-visit tip has already been surfaced this session (dedupes analytics). */
+  offeredPageIds: PageTourId[]
+  /** Snoozes/dismissals this session — a genuine "stop nagging me" signal, unlike first-visit offers. */
   skips: number
-  offeredPageId?: PageTourId
 }
 
 function readSession(): SessionFatigue {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY)
-    if (!raw) return { offers: 0, skips: 0 }
-    return JSON.parse(raw) as SessionFatigue
+    if (!raw) return { offeredPageIds: [], skips: 0 }
+    const parsed = JSON.parse(raw) as Partial<SessionFatigue> & { offeredPageId?: PageTourId }
+    // Back-compat with the previous single-page shape.
+    const offeredPageIds =
+      parsed.offeredPageIds ?? (parsed.offeredPageId ? [parsed.offeredPageId] : [])
+    return { offeredPageIds, skips: parsed.skips ?? 0 }
   } catch {
-    return { offers: 0, skips: 0 }
+    return { offeredPageIds: [], skips: 0 }
   }
 }
 
@@ -72,6 +86,27 @@ function mergeGuidance(raw: unknown): GuidanceState {
     guide: {
       use_cards_seen: g.guide?.use_cards_seen ?? [],
     },
+    setup_nudge: { ...DEFAULT_SETUP_NUDGE, ...g.setup_nudge },
+  }
+}
+
+const NUDGE_SESSION_KEY = 'wineops_nudge_session'
+
+/** True once the user has explicitly dismissed the nudge banner this session (X or "Later"). */
+function readNudgeSessionDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(NUDGE_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeNudgeSessionDismissed(dismissed: boolean) {
+  try {
+    if (dismissed) sessionStorage.setItem(NUDGE_SESSION_KEY, '1')
+    else sessionStorage.removeItem(NUDGE_SESSION_KEY)
+  } catch {
+    // ignore
   }
 }
 
@@ -89,6 +124,9 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const [tourRunning, setTourRunning] = useState(false)
   const sessionRef = useRef(readSession())
   const [sessionTick, setSessionTick] = useState(0)
+  const [nudgeDismissedThisSession, setNudgeDismissedThisSession] = useState(
+    readNudgeSessionDismissed,
+  )
 
   const persist = useCallback(
     (next: GuidanceState) => {
@@ -138,9 +176,11 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     [engineStart, patchPage],
   )
 
-  const resolvePageId = useCallback((pathname: string): PageTourId | null => {
-    return ROUTE_TO_PAGE_TOUR[pathname] ?? null
-  }, [])
+  const resolvePageId = useCallback(
+    (pathname: string, search?: string): PageTourId | null =>
+      resolveGuidancePageId(pathname, search ?? location.search),
+    [location.search],
+  )
 
   const tipVisibleFor = useMemo((): PageTourId | null => {
     if (state.global.hide_all_tips) return null
@@ -149,9 +189,13 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     const snoozedUntil = state.global.tips_snoozed_until
     if (snoozedUntil && new Date(snoozedUntil).getTime() > Date.now()) return null
 
+    // A genuine first-visit tutorial should show on every unseen page, so this
+    // fatigue guard only kicks in once the user has actively snoozed/dismissed
+    // a couple of tips this session — it does not cap the *number of distinct
+    // pages* offered, only repeat nagging after explicit rejection.
     if (sessionRef.current.skips >= 2) return null
 
-    const pageId = ROUTE_TO_PAGE_TOUR[location.pathname]
+    const pageId = resolveGuidancePageId(location.pathname, location.search)
     if (!pageId) return null
 
     const page = state.pages[pageId] ?? defaultPageState()
@@ -160,26 +204,16 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
       return null
     }
 
-    // At most one auto tip page per session
-    if (
-      sessionRef.current.offers >= 1 &&
-      sessionRef.current.offeredPageId &&
-      sessionRef.current.offeredPageId !== pageId
-    ) {
-      return null
-    }
-
     return pageId
     // sessionTick forces recompute after skip/offer mutations
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, tourRunning, location.pathname, sessionTick])
+  }, [state, tourRunning, location.pathname, location.search, sessionTick])
 
   useEffect(() => {
     if (!tipVisibleFor) return
     const s = readSession()
-    if (s.offers < 1 || s.offeredPageId !== tipVisibleFor) {
-      s.offers = 1
-      s.offeredPageId = tipVisibleFor
+    if (!s.offeredPageIds.includes(tipVisibleFor)) {
+      s.offeredPageIds = [...s.offeredPageIds, tipVisibleFor]
       writeSession(s)
       sessionRef.current = s
       trackGuidance('tip_shown', { pageId: tipVisibleFor })
@@ -230,7 +264,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     for (const key of Object.keys(pages) as PageTourId[]) {
       pages[key] = { tip: 'unseen', tour: pages[key]?.tour ?? 'unseen' }
     }
-    sessionRef.current = { offers: 0, skips: 0, offeredPageId: undefined }
+    sessionRef.current = { offeredPageIds: [], skips: 0 }
     writeSession(sessionRef.current)
     setSessionTick((n) => n + 1)
     persist({
@@ -275,6 +309,41 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     [persist, state],
   )
 
+  const patchSetupNudge = useCallback(
+    (patch: Partial<SetupNudgeState>) => {
+      persist({
+        ...state,
+        setup_nudge: { ...state.setup_nudge, ...patch },
+      })
+    },
+    [persist, state],
+  )
+
+  // Fires once per render pass when the banner actually becomes visible —
+  // callers gate this behind their own visibility check (role, route,
+  // activation status) since GuidanceProvider doesn't know those.
+  const markSetupNudgeShown = useCallback(() => {
+    trackGuidance('tip_shown', { pageId: 'setup-nudge' })
+    patchSetupNudge({
+      last_shown_at: new Date().toISOString(),
+      session_count: state.setup_nudge.session_count + 1,
+    })
+  }, [patchSetupNudge, state.setup_nudge.session_count])
+
+  const snoozeSetupNudge = useCallback(() => {
+    writeNudgeSessionDismissed(true)
+    setNudgeDismissedThisSession(true)
+    trackGuidance('tip_snoozed', { pageId: 'setup-nudge' })
+    patchSetupNudge({ snooze_count: state.setup_nudge.snooze_count + 1 })
+  }, [patchSetupNudge, state.setup_nudge.snooze_count])
+
+  const dismissSetupNudgeForever = useCallback(() => {
+    writeNudgeSessionDismissed(true)
+    setNudgeDismissedThisSession(true)
+    trackGuidance('tip_dismissed', { pageId: 'setup-nudge' })
+    patchSetupNudge({ dismissed_forever: true })
+  }, [patchSetupNudge])
+
   const value: GuidanceContextValue = {
     state,
     tipVisibleFor,
@@ -289,6 +358,11 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     setShowWineAgentFab,
     markUseCardSeen,
     resolvePageId,
+    isSetupNudgeDue: isSetupNudgeDue(state.setup_nudge),
+    setupNudgeDismissedThisSession: nudgeDismissedThisSession,
+    markSetupNudgeShown,
+    snoozeSetupNudge,
+    dismissSetupNudgeForever,
   }
 
   // stopTour available for unmount scenarios

@@ -1402,7 +1402,9 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 | NEW-650 | `Click` | Status page link for incidents. |
 | NEW-651 | `Click` | Onboarding video embeds per major page from Help. |
 
-## W. Consumer Food Profiles & Guest Insights (Phase 999.1 backlog) (`NEW-652 … NEW-666`)
+## W. Guest Profiles & Guest Insights (Phase 999.1 backlog) (`NEW-652 … NEW-666`)
+
+> Points / share-and-recommend paths continue in §AB (`NEW-861 … NEW-885`).
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
@@ -1700,10 +1702,74 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 | NEW-859 | `Click` | #459 Density Experiment Framework | Settings → Density Ops: configure **Density Experiment Framework** (#459). |
 | NEW-860 | `Flow` | #460 Post-Service Density Retro | Alert for **Post-Service Density Retro** (#460) → One-Tap Action (reseating / BTG par / host script). |
 
+## AB. Guest points, share & recommend economy (Phase 999.1 backlog) (`NEW-861 … NEW-885`)
+
+Extends §W. Design contract: `.planning/FUTURES.md` §7 — append-only points ledger, verification gates value, consent-first.
+
+| # | Trigger | Path → Outcome |
+|---|---------|----------------|
+| NEW-861 | `Flow` | Guest signs up as a guest profile (not a restaurant member) → sees points balance from day one. |
+| NEW-862 | `Click` | Guest profile shows points balance, tier, and next-tier progress. |
+| NEW-863 | `Click` | Points history drawer: every credit with its source event (append-only ledger view). |
+| NEW-864 | `Click` | Rate a dish → points credited, provisional until quality gate + visit verification pass. |
+| NEW-865 | `Click` | Add a dish photo → bonus points; consent prompt for catalog reuse. |
+| NEW-866 | `Click` | Share restaurant → attributed share link generated (per-guest, per-restaurant). |
+| NEW-867 | `Click` | Share a single dish or bottle → attributed deep link into that item. |
+| NEW-868 | `Flow` | Recipient opens share link → signs up → referrer's conversion bonus credited. |
+| NEW-869 | `Flow` | Recipient logs a verified visit → referrer gets the higher visit-conversion bonus. |
+| NEW-870 | `Click` | Recommend to a specific followed guest (in-app) rather than an external share. |
+| NEW-871 | `Click` | Provisional vs confirmed points are visually distinct; hover explains what confirms them. |
+| NEW-872 | `Flow` | Unconfirmed points expire → guest notified before expiry, not after. |
+| NEW-873 | `Click` | Tier/badge detail: what each tier unlocks (status first, perks only if a restaurant opted in). |
+| NEW-874 | `Click` | Guest sees which restaurants near them offer opt-in perks for their tier. |
+| NEW-875 | `Flow` | Redeem an opt-in restaurant perk → redemption event on ledger → restaurant sees it. |
+| NEW-876 | `Click` | Leaderboard / streak view scoped to a city or a followed restaurant. |
+| NEW-877 | `Click` | First-review discovery bonus surfaces items nobody has reviewed yet. |
+| NEW-878 | `Flow` | Suspected abuse (self-referral / duplicate device) → points held + appeal path, not silent zeroing. |
+| NEW-879 | `Click` | Guest consent screen governs whether share/rating activity is attributable to them. |
+| NEW-880 | `Click` | Restaurant dashboard: which guests' shares actually drove verified visits (aggregated). |
+| NEW-881 | `Click` | Restaurant configures its own perk offers + funding cap (opt-in per restaurant). |
+| NEW-882 | `Flow` | Manager reviews advocacy digest → promotes a dish that guests keep recommending. |
+| NEW-883 | `Flow` | Guest advocacy signal feeds par/promotion suggestions in the ops backend. |
+| NEW-884 | `Click` | Guest exports or deletes their own points and rating history. |
+| NEW-885 | `Click` | Restaurant sees points-program cost to date (funded perks only, no platform liability). |
+
+## AC. Ask AI — action creation (Phase 999.5 backlog) (`NEW-886 … NEW-910`)
+
+Extends Reports Ask AI pill + Wine Agent. Design contract: `.planning/FUTURES.md` §8 — ask → propose → confirm → execute; allowlist only.
+
+| # | Trigger | Path → Outcome |
+|---|---------|----------------|
+| NEW-886 | `Click` | Global Ask AI entry available on every authenticated page (not Reports-only). |
+| NEW-887 | `Key` | `⌘J` (or documented shortcut) opens Ask AI without leaving current context. |
+| NEW-888 | `Flow` | Ask AI receives page context (current wine / order / provider / location) automatically. |
+| NEW-889 | `Click` | Prompt “reorder low stock Barolo” → **draft PO** action card with editable qty/provider. |
+| NEW-890 | `Click` | Confirm on draft PO card → lands in Orders for existing approval flow (no silent send). |
+| NEW-891 | `Click` | Prompt “follow up with Acme about late delivery” → **draft vendor email** card. |
+| NEW-892 | `Click` | Approve email draft from Ask AI → same outbound engine constraints as Phase 32. |
+| NEW-893 | `Click` | Prompt “block Friday 4–6 for tasting” → **calendar event** draft card. |
+| NEW-894 | `Click` | Prompt “move 6 bottles of X to fridge B” → **transfer** draft card. |
+| NEW-895 | `Click` | Prompt “log waste on croissants” → **waste** draft card (bakery-ready). |
+| NEW-896 | `Click` | Prompt “start sourdough recipe” → opens bakery recipe draft with suggested ingredients. |
+| NEW-897 | `Click` | Prompt “where do I set par?” → deep-link + short coach mark (no mutation). |
+| NEW-898 | `Click` | Insight answer includes optional **Act** button that creates a one-tap action. |
+| NEW-899 | `Click` | Action card: Confirm / Edit fields / Discard — never free-text-only execute. |
+| NEW-900 | `Click` | Role-gated allowlist: staff see fewer action types than manager/owner. |
+| NEW-901 | `Flow` | Rejected / discarded proposal is logged; does not leave phantom drafts. |
+| NEW-902 | `Click` | Ask AI history of proposed vs confirmed actions for this restaurant (audit). |
+| NEW-903 | `Flow` | Wine Agent FAB and Ask AI share one action schema (no divergent bots). |
+| NEW-904 | `Click` | “Ask about this page” (`NEW-688`) opens the same Ask AI with page-scoped context. |
+| NEW-905 | `Flow` | Multi-step request (“reorder X and email the provider”) → sequenced cards, each confirmable. |
+| NEW-906 | `Click` | Dangerous intents (delete inventory, change billing, grant roles) → refused with explanation. |
+| NEW-907 | `Flow` | Idempotent confirm: double-click Confirm does not create duplicate orders. |
+| NEW-908 | `Click` | Mobile Ask AI parity — same allowlist, confirm cards sized for thumb. |
+| NEW-909 | `Hover` | Suggestion chips show top allowlisted intents for the current page. |
+| NEW-910 | `Flow` | Failed execution after confirm surfaces error + retry against the same action id. |
+
 
 ---
 
-**Part 2 total: 860 new UX paths (`NEW-001`–`NEW-860`).** Part 1 documents current (shipped/partial/dead) paths for contrast.
+**Part 2 total: 910 new UX paths (`NEW-001`–`NEW-910`).** Part 1 documents current (shipped/partial/dead) paths for contrast.
 
 **Analytics wiring checklist (engine → UX):**
 1. ✅ Wire Recommendations actions → `NEW-284`–`NEW-308` *(shipped 2026-07-20)*
@@ -1729,3 +1795,7 @@ shipped 2026-07-20. Observes friction telemetry → proposes SOTA-aligned change
 (`UX_OPTIMIZER_ENABLED=false`).
 
 **Seating density Batch 6 (2026-07-20):** analytics features **#361–#460** (sales vs check-in density over seating) + UX paths **NEW-761–NEW-860**. Insight catalog measures expanded (`checkin_density`, `checks_per_seat`, `wine_revenue_per_seat`, `revenue_per_cover`, `wine_per_cover`, `seat_utilization`, `turnover_per_seat`, `tip_per_seat`); candidate types now **573+**.
+
+**Guest points economy (2026-07-26):** §AB adds **NEW-861–NEW-885** — guest profile type (distinct from restaurant members), share/recommend attribution with conversion bonus, append-only points ledger, provisional→confirmed states, tiers/badges, and opt-in restaurant-funded perks. Backlog **999.1**; design contract in `.planning/FUTURES.md` §7.
+
+**Ask AI action creation (2026-07-26):** §AC adds **NEW-886–NEW-910** — global Ask AI proposes allowlisted actions (draft PO, vendor email, calendar, inventory/waste drafts, recipe start, insight→Act, deep-link) with confirm cards; unifies Reports Ask AI + Wine Agent. Backlog **999.5**; design contract in `.planning/FUTURES.md` §8.

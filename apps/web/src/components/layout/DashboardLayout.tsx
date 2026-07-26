@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { CommandProvider } from '../command/CommandProvider'
 import { GuidanceProvider } from '../../guidance/GuidanceProvider'
 import { PageTipStrip } from '../../guidance/components/PageTipStrip'
+import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
 import { WineAgentFab } from '../../guidance/components/WineAgentFab'
 import { TourHelpButton } from '../../guidance/components/TourHelpButton'
 import { useUIStore } from '../../stores/uiStore'
@@ -81,6 +82,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </div>
 
+            <SetupNudgeBanner />
             <PageTipStrip />
             <main className="min-h-screen pb-safe">{children || <Outlet />}</main>
           </div>

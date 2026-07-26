@@ -1,13 +1,13 @@
 import { HelpCircle } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { useGuidanceOptional } from '../GuidanceProvider'
-import { ROUTE_TO_PAGE_TOUR } from '../types'
+import { resolveGuidancePageId } from '../types'
 import { cn } from '../../lib/utils'
 
 export function TourHelpButton({ className }: { className?: string }) {
   const location = useLocation()
   const guidance = useGuidanceOptional()
-  const pageId = ROUTE_TO_PAGE_TOUR[location.pathname]
+  const pageId = resolveGuidancePageId(location.pathname, location.search)
 
   if (!guidance || !pageId) return null
 

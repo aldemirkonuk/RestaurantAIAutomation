@@ -110,9 +110,7 @@ export class ConversationsService {
         }
         if (sent === "unclassified") {
           // Align with client normalizeSentiment: null OR empty string
-          query = query.or(
-            "detected_sentiment.is.null,detected_sentiment.eq.",
-          );
+          query = query.or("detected_sentiment.is.null,detected_sentiment.eq.");
         } else {
           query = query.ilike("detected_sentiment", sent);
         }
@@ -173,8 +171,7 @@ export class ConversationsService {
       const conversations = (data || []).map((row: any) => {
         const order = row.procurement_orders;
         if (!order) return row;
-        const wineName =
-          order.inventory?.wine_name ?? order.wine_name ?? null;
+        const wineName = order.inventory?.wine_name ?? order.wine_name ?? null;
         const { inventory: _inv, ...rest } = order;
         return {
           ...row,

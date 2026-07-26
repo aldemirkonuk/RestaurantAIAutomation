@@ -101,7 +101,8 @@ export class UxOptimizerController {
 
   @Post("proposals/:page")
   @ApiOperation({
-    summary: "Agent proposes SOTA UX improvements for a page (never auto-applied)",
+    summary:
+      "Agent proposes SOTA UX improvements for a page (never auto-applied)",
   })
   @ApiQuery({ name: "restaurantId", required: false })
   async propose(
@@ -139,12 +140,17 @@ export class UxOptimizerController {
   @Post("proposals/:id/review")
   @ApiOperation({
     summary: "Human review of a proposal — approve (gated ship) or reject",
-    description: "Body: { decision: 'approve'|'reject', reviewedBy?, rolloutPct? }.",
+    description:
+      "Body: { decision: 'approve'|'reject', reviewedBy?, rolloutPct? }.",
   })
   async review(
     @Param("id") id: string,
     @Body()
-    body: { decision?: "approve" | "reject"; reviewedBy?: string; rolloutPct?: number },
+    body: {
+      decision?: "approve" | "reject";
+      reviewedBy?: string;
+      rolloutPct?: number;
+    },
   ) {
     try {
       if (body?.decision !== "approve" && body?.decision !== "reject")

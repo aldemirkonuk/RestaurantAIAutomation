@@ -20,7 +20,12 @@ import { MenuImportCard } from '../components/onboarding/MenuImportCard'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
+import { MenuReviewScreen } from '../components/onboarding/MenuReviewScreen'
+import { ThresholdStep } from '../components/onboarding/ThresholdStep'
+import { OptionalTail } from '../components/onboarding/OptionalTail'
+import { StaffWelcome } from '../components/onboarding/StaffWelcome'
 import { useOnboardingProgress } from '../hooks/queries/useOnboardingProgress'
+import { useAuth } from '../contexts/AuthContext'
 import type { MenuImportResult } from '../services/api/menus'
 import { trackGuidance } from '../guidance/analytics'
 import { cn } from '../lib/utils'
@@ -30,20 +35,22 @@ type TabId = 'activate' | 'use'
 
 function SuccessScreen({
   result,
+  restaurantId,
   onContinueGuide,
   onInventory,
 }: {
   result: MenuImportResult
+  restaurantId: string
   onContinueGuide: () => void
   onInventory: () => void
 }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-white">
+    <div className="min-h-screen flex flex-col items-center px-8 py-12 bg-white overflow-y-auto">
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', duration: 0.5 }}
-        className="flex flex-col items-center text-center"
+        className="flex flex-col items-center text-center w-full max-w-lg"
       >
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
           <Check className="w-8 h-8 text-green-600" />
@@ -52,7 +59,8 @@ function SuccessScreen({
           We found {result.itemsExtracted} wine{result.itemsExtracted !== 1 ? 's' : ''}!
         </h1>
         <p className="text-gray-500 text-center max-w-sm mb-8">
-          Your wine list has been uploaded. Next, learn how to use WineOps day to day.
+          Your wine list is uploaded and your inventory is live. Next, learn how to use WineOps
+          day to day.
         </p>
         <div className="flex gap-3">
           <Button variant="outline" onClick={onInventory}>
@@ -64,6 +72,10 @@ function SuccessScreen({
           >
             How to use the app →
           </Button>
+        </div>
+
+        <div className="w-full">
+          <OptionalTail restaurantId={restaurantId} />
         </div>
       </motion.div>
     </div>
@@ -78,6 +90,7 @@ const USE_CARDS = [
     icon: Wine,
     action: 'activate' as const,
     label: 'Activate',
+    ownerOnly: true,
   },
   {
     id: 'inventory',
@@ -86,6 +99,7 @@ const USE_CARDS = [
     icon: Package,
     href: '/inventory',
     label: 'Open',
+    ownerOnly: false,
   },
   {
     id: 'orders',
@@ -94,6 +108,7 @@ const USE_CARDS = [
     icon: ShoppingCart,
     href: '/orders',
     label: 'Open',
+    ownerOnly: false,
   },
   {
     id: 'vendors',
@@ -102,6 +117,7 @@ const USE_CARDS = [
     icon: Truck,
     href: '/providers',
     label: 'Open',
+    ownerOnly: true,
   },
   {
     id: 'team',
@@ -110,15 +126,17 @@ const USE_CARDS = [
     icon: Users,
     href: '/settings?tab=team',
     label: 'Invite',
+    ownerOnly: true,
   },
   {
     id: 'wine-agent',
     title: 'Wine Agent',
     description:
-      'After setup, a small Wine Agent button appears bottom-right for inventory & ordering help. It does not access your email.',
+      'After setup, a small Wine Agent button appears bottom-right and opens Sommelier AI for inventory & ordering help. It does not access your email.',
     icon: Bot,
-    href: '/wineagent',
+    href: '/sommelier',
     label: 'Open',
+    ownerOnly: false,
   },
   {
     id: 'services',
@@ -128,15 +146,21 @@ const USE_CARDS = [
     icon: Shield,
     href: '/settings?tab=services',
     label: 'Manage',
+    ownerOnly: false,
   },
 ]
 
 export default function GetStarted() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeMethod, setActiveMethod] = useState<ImportMethod | null>(null)
+  const [reviewResult, setReviewResult] = useState<MenuImportResult | null>(null)
+  const [pendingResult, setPendingResult] = useState<MenuImportResult | null>(null)
   const [result, setResult] = useState<MenuImportResult | null>(null)
   const { progress, isLoading } = useOnboardingProgress()
+
+  const isStaff = user?.role === 'staff'
 
   const tabParam = searchParams.get('tab')
   const [tab, setTab] = useState<TabId>(
@@ -164,6 +188,15 @@ export default function GetStarted() {
     }
   }, [progress, isLoading, tabParam])
 
+  // Once the threshold is already configured (e.g. a second import), skip
+  // straight through the threshold step instead of showing it again.
+  useEffect(() => {
+    if (pendingResult && !isLoading && progress?.threshold_configured) {
+      setResult(pendingResult)
+      setPendingResult(null)
+    }
+  }, [pendingResult, isLoading, progress?.threshold_configured])
+
   const selectTab = (next: TabId) => {
     setTab(next)
     setSearchParams(
@@ -180,10 +213,52 @@ export default function GetStarted() {
     setActiveMethod((prev) => (prev === method ? null : method))
   }
 
+  // Staff get a read-oriented welcome with no upload/threshold/invite steps —
+  // those are owner/manager actions on the restaurant's shared menu.
+  if (isStaff) {
+    return <StaffWelcome />
+  }
+
+  if (reviewResult) {
+    return (
+      <MenuReviewScreen
+        result={reviewResult}
+        onConfirm={() => {
+          setPendingResult(reviewResult)
+          setReviewResult(null)
+        }}
+        onSkip={() => {
+          setPendingResult(reviewResult)
+          setReviewResult(null)
+        }}
+      />
+    )
+  }
+
+  // Step 3: low-stock threshold, shown once right after a successful import
+  // if it hasn't been configured yet ("activated" = menu + threshold).
+  if (pendingResult && !isLoading && !progress?.threshold_configured) {
+    return (
+      <ThresholdStep
+        onDone={() => {
+          setResult(pendingResult)
+          setPendingResult(null)
+        }}
+      />
+    )
+  }
+
+  if (pendingResult) {
+    // Waiting on the progress fetch / threshold-configured effect above to
+    // decide whether to show ThresholdStep or skip straight to `result`.
+    return null
+  }
+
   if (result) {
     return (
       <SuccessScreen
         result={result}
+        restaurantId={user?.restaurantId ?? ''}
         onContinueGuide={() => {
           setResult(null)
           selectTab('use')
@@ -192,6 +267,8 @@ export default function GetStarted() {
       />
     )
   }
+
+  const visibleUseCards = USE_CARDS.filter((c) => !c.ownerOnly || user?.role !== 'staff')
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -289,7 +366,7 @@ export default function GetStarted() {
                     exit={{ opacity: 0, y: -10 }}
                     className="w-full"
                   >
-                    <MenuScanUpload onSuccess={setResult} />
+                    <MenuScanUpload onSuccess={setReviewResult} />
                   </motion.div>
                 )}
                 {activeMethod === 'csv' && (
@@ -300,7 +377,7 @@ export default function GetStarted() {
                     exit={{ opacity: 0, y: -10 }}
                     className="w-full"
                   >
-                    <MenuCsvUpload onSuccess={setResult} />
+                    <MenuCsvUpload onSuccess={setReviewResult} />
                   </motion.div>
                 )}
                 {activeMethod === 'manual' && (
@@ -311,7 +388,7 @@ export default function GetStarted() {
                     exit={{ opacity: 0, y: -10 }}
                     className="w-full"
                   >
-                    <MenuManualEntry onSuccess={setResult} />
+                    <MenuManualEntry onSuccess={setReviewResult} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -346,7 +423,7 @@ export default function GetStarted() {
               </div>
 
               <div className="space-y-3">
-                {USE_CARDS.map((card) => {
+                {visibleUseCards.map((card) => {
                   const Icon = card.icon
                   return (
                     <div
@@ -391,7 +468,7 @@ export default function GetStarted() {
                 </div>
                 <p className="text-sm text-gray-600 max-w-md mx-auto">
                   After you activate, look for this Wine Agent circle at the bottom-right of
-                  the app. It only opens the Wine Agent page — it is not support chat and
+                  the app. It only opens Sommelier AI — it is not support chat and
                   does not control privacy permissions.
                 </p>
               </div>

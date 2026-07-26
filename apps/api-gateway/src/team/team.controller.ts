@@ -104,38 +104,66 @@ export class TeamController {
 
   // ── Schedule / week ──────────────────────────────────────────────────────
   @Get("week")
-  week(@Req() req: any, @Param("restaurantId") rid: string, @Query("weekStart") ws: string) {
+  week(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Query("weekStart") ws: string,
+  ) {
     return this.schedule.getWeek(this.uid(req), rid, ws);
   }
 
   @Get("my-week")
-  myWeek(@Req() req: any, @Param("restaurantId") rid: string, @Query("weekStart") ws: string) {
+  myWeek(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Query("weekStart") ws: string,
+  ) {
     return this.schedule.getMyWeek(this.uid(req), rid, ws);
   }
 
   @Post("schedules")
-  createSchedule(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: CreateScheduleDto) {
+  createSchedule(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CreateScheduleDto,
+  ) {
     return this.schedule.createSchedule(this.uid(req), rid, dto);
   }
 
   @Post("schedules/copy-week")
-  copyWeek(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: CopyWeekDto) {
+  copyWeek(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CopyWeekDto,
+  ) {
     return this.schedule.copyWeek(this.uid(req), rid, dto);
   }
 
   @Post("schedules/:scheduleId/publish")
-  publish(@Req() req: any, @Param("restaurantId") rid: string, @Param("scheduleId") sid: string) {
+  publish(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("scheduleId") sid: string,
+  ) {
     return this.schedule.publish(this.uid(req), rid, sid);
   }
 
   @Post("schedules/:scheduleId/acknowledge")
-  acknowledge(@Req() req: any, @Param("restaurantId") rid: string, @Param("scheduleId") sid: string) {
+  acknowledge(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("scheduleId") sid: string,
+  ) {
     return this.schedule.acknowledge(this.uid(req), rid, sid);
   }
 
   // ── Shifts ────────────────────────────────────────────────────────────────
   @Post("shifts")
-  createShift(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: CreateShiftDto) {
+  createShift(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CreateShiftDto,
+  ) {
     return this.schedule.createShift(this.uid(req), rid, dto);
   }
 
@@ -150,7 +178,11 @@ export class TeamController {
   }
 
   @Delete("shifts/:shiftId")
-  deleteShift(@Req() req: any, @Param("restaurantId") rid: string, @Param("shiftId") sid: string) {
+  deleteShift(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("shiftId") sid: string,
+  ) {
     return this.schedule.deleteShift(this.uid(req), rid, sid);
   }
 
@@ -191,7 +223,11 @@ export class TeamController {
   }
 
   @Post("certifications")
-  createCert(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: CreateCertDto) {
+  createCert(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CreateCertDto,
+  ) {
     return this.team.createCert(this.uid(req), rid, dto);
   }
 
@@ -206,7 +242,11 @@ export class TeamController {
   }
 
   @Delete("certifications/:certId")
-  deleteCert(@Req() req: any, @Param("restaurantId") rid: string, @Param("certId") certId: string) {
+  deleteCert(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("certId") certId: string,
+  ) {
     return this.team.deleteCert(this.uid(req), rid, certId);
   }
 
@@ -217,7 +257,11 @@ export class TeamController {
   }
 
   @Post("time-off")
-  createTimeOff(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: CreateTimeOffDto) {
+  createTimeOff(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CreateTimeOffDto,
+  ) {
     return this.team.createTimeOff(this.uid(req), rid, dto);
   }
 
@@ -252,7 +296,11 @@ export class TeamController {
   }
 
   @Delete("coverage-templates/:id")
-  deleteCoverageTemplate(@Req() req: any, @Param("restaurantId") rid: string, @Param("id") id: string) {
+  deleteCoverageTemplate(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("id") id: string,
+  ) {
     return this.team.deleteCoverageTemplate(this.uid(req), rid, id);
   }
 
@@ -267,7 +315,11 @@ export class TeamController {
   }
 
   @Post("sales")
-  ingestSales(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: IngestSalesDto) {
+  ingestSales(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: IngestSalesDto,
+  ) {
     return this.performance.ingest(this.uid(req), rid, dto);
   }
 
@@ -282,7 +334,11 @@ export class TeamController {
 
   // ── Broadcast (crew messaging) ───────────────────────────────────────────
   @Post("broadcast")
-  async broadcast(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: BroadcastDto) {
+  async broadcast(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: BroadcastDto,
+  ) {
     const userId = this.uid(req);
     await this.team.assertAccess(userId, rid, "manager");
     const roster = await this.team.listMembers(userId, rid);
@@ -335,7 +391,10 @@ export class TeamController {
     if (phones.length) {
       for (const phone of phones) {
         try {
-          const res = await this.sms.sendSms({ to: phone, message: dto.message });
+          const res = await this.sms.sendSms({
+            to: phone,
+            message: dto.message,
+          });
           if (res?.success) texted += 1;
         } catch {
           /* soft-fail */
@@ -353,7 +412,11 @@ export class TeamController {
   }
 
   @Patch("settings")
-  updateSettings(@Req() req: any, @Param("restaurantId") rid: string, @Body() dto: UpdateTeamSettingsDto) {
+  updateSettings(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: UpdateTeamSettingsDto,
+  ) {
     return this.team.updateSettings(this.uid(req), rid, dto);
   }
 }

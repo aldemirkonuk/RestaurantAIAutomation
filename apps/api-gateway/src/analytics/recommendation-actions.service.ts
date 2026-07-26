@@ -150,8 +150,10 @@ export class RecommendationActionsService {
       row.assigned_at = patch.assignedTo ? new Date().toISOString() : null;
       if (!patch.assignedTo) row.assigned_name = null;
     }
-    if (patch.assignedName !== undefined) row.assigned_name = patch.assignedName;
-    if (snapshot?.observation !== undefined) row.observation = snapshot.observation;
+    if (patch.assignedName !== undefined)
+      row.assigned_name = patch.assignedName;
+    if (snapshot?.observation !== undefined)
+      row.observation = snapshot.observation;
     if (snapshot?.recommendation !== undefined)
       row.recommendation = snapshot.recommendation;
     if (snapshot?.category !== undefined) row.category = snapshot.category;
@@ -212,7 +214,9 @@ export class RecommendationActionsService {
       .filter((r) => {
         // Hide snoozes that have expired from the "snoozed" tab.
         if (status === "snoozed")
-          return r.snoozeUntil ? new Date(r.snoozeUntil).getTime() > now : false;
+          return r.snoozeUntil
+            ? new Date(r.snoozeUntil).getTime() > now
+            : false;
         return true;
       });
   }
@@ -262,7 +266,8 @@ export class RecommendationActionsService {
       restaurant_id: restaurantId,
       updated_at: new Date().toISOString(),
     };
-    if (patch.digestEnabled !== undefined) row.digest_enabled = patch.digestEnabled;
+    if (patch.digestEnabled !== undefined)
+      row.digest_enabled = patch.digestEnabled;
     if (patch.digestHour !== undefined)
       row.digest_hour = Math.min(23, Math.max(0, Math.round(patch.digestHour)));
     if (patch.digestMinUrgency !== undefined) {

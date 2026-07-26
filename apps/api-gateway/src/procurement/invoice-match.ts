@@ -86,7 +86,8 @@ export interface MatchResult {
 const money = (n: number) => `$${n.toFixed(2)}`;
 
 /** Compare two prices as money; avoids float noise like 22.00000000001 !== 22. */
-const priceEquals = (a: number, b: number) => Math.round(a * 100) === Math.round(b * 100);
+const priceEquals = (a: number, b: number) =>
+  Math.round(a * 100) === Math.round(b * 100);
 
 export function computeMatch(input: MatchInput): MatchResult {
   const orderedQty = Math.max(0, input.orderedQty ?? 0);
@@ -95,7 +96,9 @@ export function computeMatch(input: MatchInput): MatchResult {
   const receivedQty = acceptedQty + rejectedQty;
 
   const hasInvoice = input.invoiceQty != null;
-  const invoiceQty = hasInvoice ? Math.max(0, input.invoiceQty as number) : null;
+  const invoiceQty = hasInvoice
+    ? Math.max(0, input.invoiceQty as number)
+    : null;
   const poUnitPrice = input.poUnitPrice ?? null;
   const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
@@ -106,7 +109,8 @@ export function computeMatch(input: MatchInput): MatchResult {
 
   // --- price: exact match, no tolerance band (D-B) --------------------------------------
   const bothPriced = poUnitPrice != null && invoiceUnitPrice != null;
-  const priceVerified = bothPriced && priceEquals(poUnitPrice, invoiceUnitPrice);
+  const priceVerified =
+    bothPriced && priceEquals(poUnitPrice, invoiceUnitPrice);
   const priceMismatch = bothPriced && !priceVerified;
   const requiresOverride = priceMismatch && overrideReason.length === 0;
 
@@ -153,7 +157,10 @@ export function computeMatch(input: MatchInput): MatchResult {
     id: "damage",
     ok: rejectedQty === 0,
     label: "No units rejected",
-    detail: rejectedQty === 0 ? "All units accepted" : `${rejectedQty} rejected on arrival`,
+    detail:
+      rejectedQty === 0
+        ? "All units accepted"
+        : `${rejectedQty} rejected on arrival`,
   });
 
   // --- fulfilment -------------------------------------------------------------------------

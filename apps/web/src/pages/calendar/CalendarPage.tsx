@@ -450,6 +450,7 @@ export default function CalendarPage() {
           {/* New Event CTA */}
           <button
             onClick={() => openCreateModal()}
+            data-tour="calendar-new-event"
             className="hidden sm:flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white rounded-lg transition-colors"
             style={{ backgroundColor: '#901d42' }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7c1d3c')}
@@ -472,7 +473,7 @@ export default function CalendarPage() {
           </div>
 
           {/* View switcher */}
-          <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+          <div className="flex rounded-lg border border-gray-300 overflow-hidden" data-tour="calendar-view-switcher">
             {VIEW_TABS.map((tab) => (
               <button
                 key={tab.key}
@@ -509,6 +510,7 @@ export default function CalendarPage() {
               : '-translate-x-full pointer-events-none'}
           `}
           aria-hidden={!sidebarOpen}
+          data-tour="calendar-sidebar"
         >
           <CalendarSidebar
             currentDate={currentDate}

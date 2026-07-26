@@ -1,6 +1,7 @@
 export { GuidanceProvider, useGuidance, useGuidanceOptional } from './GuidanceProvider'
 export { usePageGuidance } from './usePageGuidance'
 export { PageTipStrip } from './components/PageTipStrip'
+export { SetupNudgeBanner } from './components/SetupNudgeBanner'
 export { LearnPanel } from './components/LearnPanel'
 export { WineAgentFab } from './components/WineAgentFab'
 export { TourHelpButton } from './components/TourHelpButton'

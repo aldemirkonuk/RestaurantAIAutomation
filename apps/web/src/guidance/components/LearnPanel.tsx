@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   X,
@@ -14,7 +14,7 @@ import type { RefObject } from 'react'
 import type { OnboardingProgress } from '../../services/api/menus'
 import { cn } from '../../lib/utils'
 import { useGuidanceOptional } from '../GuidanceProvider'
-import { PAGE_TOUR_IDS, type PageTourId } from '../types'
+import { PAGE_TOUR_IDS, PAGE_TOUR_ROUTES, type PageTourId } from '../types'
 import { TOUR_LABELS } from '../tours/registry'
 import { trackGuidance } from '../analytics'
 
@@ -34,7 +34,28 @@ export function LearnPanel({
   onDismissChecklist,
 }: LearnPanelProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const guidance = useGuidanceOptional()
+
+  // Modal-scoped tours (e.g. `orders-create`) have no independently
+  // navigable route, so they can't be replayed from this generic list.
+  const replayableTourIds = PAGE_TOUR_IDS.filter((id) => id in PAGE_TOUR_ROUTES)
+
+  const startPageTour = (id: PageTourId) => {
+    const route = PAGE_TOUR_ROUTES[id]
+    const isAlreadyThere =
+      !route ||
+      route === location.pathname ||
+      route === `${location.pathname}${location.search}`
+    if (route && !isAlreadyThere) {
+      navigate(route)
+      // Let the target page mount before driver.js looks for its anchors.
+      setTimeout(() => guidance?.startTour(id), 300)
+    } else {
+      guidance?.startTour(id)
+    }
+    onClose()
+  }
 
   const tasks = [
     {
@@ -167,16 +188,13 @@ export function LearnPanel({
             Page tours
           </p>
           <div className="space-y-0.5">
-            {PAGE_TOUR_IDS.map((id: PageTourId) => {
+            {replayableTourIds.map((id: PageTourId) => {
               const status = guidance?.state.pages[id]?.tour
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => {
-                    guidance?.startTour(id)
-                    onClose()
-                  }}
+                  onClick={() => startPageTour(id)}
                   className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-left"
                 >
                   <Play className="w-3.5 h-3.5 text-[#722F37]" />
@@ -209,7 +227,9 @@ export function LearnPanel({
           <button
             type="button"
             onClick={() => {
-              navigate('/wineagent')
+              // /wineagent is still a placeholder (App.tsx) — Sommelier AI
+              // is the real inventory & ordering help surface today.
+              navigate('/sommelier')
               onClose()
             }}
             className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-left text-sm text-gray-700"

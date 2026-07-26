@@ -1,4 +1,7 @@
-# Roadmap: WineOps Backend Kitchen Architecture
+# Roadmap: Mudavym — Autonomous Restaurant Backend
+
+> Product brand: **Mudavym** (evolving from WineOps). Expansion vision: [FUTURES.md](./FUTURES.md).  
+> Active work below remains the agent/kitchen architecture milestones; beverage/bakery/kitchen/guest/Ask-AI expansion sits in Backlog 999.1–999.5.
 
 ## Overview
 
@@ -465,10 +468,52 @@ After Phases 23-25 complete, expand to remaining agents:
 
 ## Backlog
 
-### Phase 999.1: Consumer Food Profiles, Ratings & Restaurant Guest Insights (BACKLOG)
+### Phase 999.1: Guest Profiles, Ratings, Points & Restaurant Guest Insights (BACKLOG)
 
-**Goal:** Let people create profiles independent of restaurant organizations, add social handles and food preferences, and rate dishes and restaurants in a Beli-style consumer experience. Give restaurants consent-based, privacy-safe insights into who visits, what their guests prefer, and which audience segments they attract.
-**Requirements:** TBD — consumer identity/profile model, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation linking, consent controls, privacy safeguards, and aggregated restaurant audience insights.
+**Goal:** Add a second profile type — **guests**, the customers who come to see these restaurants — existing independently of any restaurant organization. Guests add social handles and food/beverage preferences, rate dishes and restaurants Beli-style, follow restaurants, and **earn points for sharing and recommending** (bonus on conversion: the recipient signs up or logs a verified visit). Restaurants get consent-based, privacy-safe insights into who visits, what their guests prefer, and which segments they attract. Guest signal is demand-side input to the autonomous backend (par levels, promotions, menu experiments) — not a standalone social network.
+**Requirements:** TBD — guest identity/profile model distinct from restaurant membership roles, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation/POS linking, **append-only points ledger with derived balance**, share/referral attribution with conversion bonus, provisional→confirmed point states, anti-abuse (self-referral, duplicate-device, rate limits, review quality gate), tiers/badges, opt-in restaurant-funded perks, consent controls, privacy safeguards, and aggregated k-anonymized restaurant audience insights.
+**Design detail:** [FUTURES.md](./FUTURES.md) §7 (profile types, earning rules, integrity rules, MVP cut).
+**UX paths:** `UX_PATHS_CATALOG.md` §W (`NEW-652…NEW-666`) + §AB (`NEW-861…NEW-885`).
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.2: Mudavym — Full Beverage Program (BACKLOG)
+
+**Goal:** Expand beyond wine into the full beverage program under brand **Mudavym**, without diluting the ultimate goal of a full autonomous restaurant backend. Catalog + inventory support `beverage` → subsections (wine with color/type subtypes, beer, cocktail, hard alcohol with spirit subtypes, NA). Every item extracted to finest features + photos at wine depth. Cocktail recipes in inventory detail with linked SKUs and pour specs.
+**Requirements:** TBD — taxonomy schema (`domain`/`subsection`/`subtype`), master product catalog generalization, attribute packs + images per subsection, menu import for full beverage lists, cocktail recipe panel, pour-through gated on inventory lots/ledger trust. Canonical: [FUTURES.md](./FUTURES.md).
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready; after wine inventory trust)
+
+### Phase 999.3: Mudavym — Bakery Food Vertical MVP (BACKLOG)
+
+**Goal:** First food subsection after beverages: `food → bakery`. North star = ingredients + pars, recipes/build sheets, finished goods + waste/spoilage, POS sell-through depletion. Ship a **smaller MVP** (catalog+photos, pars/alerts, manual recipes, manual waste, simple POS finished-good decrement) before full BOM explosion and spoilage intelligence. Proves the food/recipe model before rest-of-kitchen.
+**Requirements:** TBD — bakery attribute packs, recipe/BOM tables, waste events on ledger, Toast category mapping for finished goods, recipe cost roll-up after lots/WAC trust. Canonical: [FUTURES.md](./FUTURES.md) §5.
+**Depends on:** 999.2 beverage taxonomy foundations (shared catalog model) + inventory SOTA Phase 1–2 trust.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.4: Mudavym — Rest of Kitchen Food Categories (BACKLOG)
+
+**Goal:** Extend `food` beyond bakery to remaining kitchen categories (produce, protein, dairy, dry goods, etc.) using the same extraction-depth + recipe patterns proven in bakery. Continues Mudavym’s path to a full autonomous restaurant backend.
+**Requirements:** TBD after 999.3 bakery MVP validation.
+**Depends on:** 999.3 bakery MVP earned.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.5: Ask AI — Action Creation to Ease App Complexity (BACKLOG)
+
+**Goal:** Elevate the **Ask AI** button from analytics Q&A (current Reports `AICommandPalette` mock) into a global **action composer**. Operators state intent in natural language; AI proposes an allowlisted typed action (draft PO, draft vendor email, calendar event, inventory transfer/waste draft, catalog/recipe start, insight→Act, or deep-link nav); human confirms; execution goes through existing backend paths. Purpose: ease growing product complexity as Mudavym expands beyond wine — one entry point instead of hunting every page.
+**Requirements:** TBD — unified Ask AI / Wine Agent action schema; allowlist by role; contextual page entity injection; confirm/edit/discard action cards (reuse `recommendation_actions` / OneTap patterns); no silent stock/money/email mutations; decision-log + idempotency on confirm; replace mock answers with real retrieval + tools. Canonical: [FUTURES.md](./FUTURES.md) §8.
+**UX paths:** `UX_PATHS_CATALOG.md` §AC (`NEW-886…NEW-910`); overlaps `NEW-644…646`, `NEW-688`.
+**Depends on:** Trusted command palette + recommendation/one-tap action plumbing.
 **Plans:** 0 plans
 
 Plans:
@@ -477,3 +522,4 @@ Plans:
 ---
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
 *v1.0 roadmap archived (Phases 1-17, 2026-03-30 to 2026-04-08)*
+*Futures updated: 2026-07-26 — Mudavym brand + beverage/bakery/guest/Ask-AI backlog (see FUTURES.md)*

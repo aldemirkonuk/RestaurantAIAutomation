@@ -1,4 +1,10 @@
-import { IsEmail, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from "class-validator";
 
 export class UpdateLocationDto {
   @IsOptional()

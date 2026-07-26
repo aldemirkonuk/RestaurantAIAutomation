@@ -59,8 +59,12 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
   let config: { get: jest.Mock };
 
   beforeEach(() => {
-    notifications = { persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }) };
-    gmail = { sendLowStockDigest: jest.fn().mockResolvedValue({ success: true }) };
+    notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }),
+    };
+    gmail = {
+      sendLowStockDigest: jest.fn().mockResolvedValue({ success: true }),
+    };
     recipientResolver = {
       resolveRecipients: jest.fn().mockResolvedValue({ emails: ["mgr@x.com"] }),
     };
@@ -83,7 +87,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
 
   it("fires an INSTANT grouped alert on a NEW crossing (ok → low)", async () => {
     const svc = build([]); // no prior state = first time low
-    const { newCrossings } = await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+    const { newCrossings } = await svc.evaluateRestaurant(
+      "r1",
+      [makeRow()],
+      "R1",
+    );
 
     expect(newCrossings).toHaveLength(1);
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
@@ -96,7 +104,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
 
   it("does NOT re-alert a wine that is merely STILL low (low → low)", async () => {
     const svc = build([{ inventory_id: "inv-1", last_alert_level: "low" }]);
-    const { newCrossings } = await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+    const { newCrossings } = await svc.evaluateRestaurant(
+      "r1",
+      [makeRow()],
+      "R1",
+    );
 
     expect(newCrossings).toHaveLength(0);
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
@@ -105,7 +117,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
 
   it("re-alerts on ESCALATION (low → critical)", async () => {
     const svc = build([{ inventory_id: "inv-1", last_alert_level: "low" }]);
-    const row = makeRow({ currentStock: 2, threshold: 8, severity: "critical" });
+    const row = makeRow({
+      currentStock: 2,
+      threshold: 8,
+      severity: "critical",
+    });
     const { newCrossings } = await svc.evaluateRestaurant("r1", [row], "R1");
 
     expect(newCrossings).toHaveLength(1);
@@ -119,7 +135,12 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     const svc = build([]);
     const rows = [
       makeRow({ inventoryId: "inv-1", wineName: "A", severity: "low" }),
-      makeRow({ inventoryId: "inv-2", wineName: "B", severity: "critical", currentStock: 1 }),
+      makeRow({
+        inventoryId: "inv-2",
+        wineName: "B",
+        severity: "critical",
+        currentStock: 1,
+      }),
       makeRow({ inventoryId: "inv-3", wineName: "C", severity: "low" }),
     ];
     const { newCrossings } = await svc.evaluateRestaurant("r1", rows, "R1");
@@ -149,7 +170,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
         },
       ],
     );
-    const { newCrossings } = await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+    const { newCrossings } = await svc.evaluateRestaurant(
+      "r1",
+      [makeRow()],
+      "R1",
+    );
 
     expect(newCrossings).toHaveLength(1); // still tracked for the digest
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled(); // but not fired now
@@ -168,7 +193,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
         },
       ],
     );
-    const row = makeRow({ currentStock: 1, threshold: 8, severity: "critical" });
+    const row = makeRow({
+      currentStock: 1,
+      threshold: 8,
+      severity: "critical",
+    });
     const { newCrossings } = await svc.evaluateRestaurant("r1", [row], "R1");
 
     expect(newCrossings).toHaveLength(1);
@@ -177,7 +206,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
 
   it("skips entirely when low-stock alerts are disabled", async () => {
     const svc = build([], [{ low_stock_enabled: false }]);
-    const { newCrossings } = await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+    const { newCrossings } = await svc.evaluateRestaurant(
+      "r1",
+      [makeRow()],
+      "R1",
+    );
 
     expect(newCrossings).toHaveLength(0);
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
@@ -188,7 +221,11 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     // failed"), so nothing is recorded — the alert must be held, not sent,
     // otherwise the same wine re-fires every 2-minute sweep.
     const svc = build([], null, { upsertError: true });
-    const { newCrossings } = await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+    const { newCrossings } = await svc.evaluateRestaurant(
+      "r1",
+      [makeRow()],
+      "R1",
+    );
 
     expect(newCrossings).toHaveLength(1); // still detected
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled(); // but NOT alerted

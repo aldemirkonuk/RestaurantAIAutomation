@@ -12,6 +12,32 @@ type SubmissionRow = {
   matched_master_id?: string | null;
 };
 
+/** Structural subset shared by CreateWineSubmissionDto and menu-import items. */
+interface SignatureInput {
+  name: string;
+  producer?: string | null;
+  vintage?: string | number | null;
+  country?: string | null;
+  region?: string | null;
+  primaryType?: string | null;
+  grapeVariety?: string | null;
+}
+
+export interface LibraryResolutionInput {
+  name: string;
+  producer?: string | null;
+  vintage?: string | number | null;
+  region?: string | null;
+  grapeVariety?: string | null;
+  country?: string | null;
+}
+
+export interface LibraryResolutionResult {
+  masterWineId: string;
+  matched: boolean;
+  libraryTier: number | null;
+}
+
 @Injectable()
 export class WineSubmissionsService {
   private readonly logger = new Logger(WineSubmissionsService.name);
@@ -28,7 +54,7 @@ export class WineSubmissionsService {
       .toLowerCase();
   }
 
-  private buildSignature(payload: CreateWineSubmissionDto): string {
+  private buildSignature(payload: SignatureInput): string {
     const producer = this.normalizeText(payload.producer);
     const name = this.normalizeText(payload.name);
     const vintage = payload.vintage ?? "NV";
@@ -244,5 +270,114 @@ export class WineSubmissionsService {
     }
 
     return { processed: results.length, results };
+  }
+
+  /**
+   * Synchronous match-or-create against master_wine_library, used by the menu
+   * importer so it can populate menu_items.wine_library_id and
+   * restaurant_inventory.master_wine_id immediately (both are FK targets and
+   * cannot be left null the way the old fire-and-forget submission path did).
+   *
+   * Resolution order mirrors processPendingSubmissions:
+   *   1. Exact signature_hash match → link, no governance change.
+   *   2. normalized_name + normalized_producer match (only when a producer
+   *      is present, to avoid false-positive matches across unrelated wines
+   *      that all share an empty producer) → link, no governance change.
+   *   3. No match → create a Provisional (library_tier=3) row. It is
+   *      immediately usable for this restaurant's inventory, but stays
+   *      outside the canonical (tier 0) library until reviewed via /studio
+   *      or the research/ontology pipeline.
+   */
+  async resolveOrCreateLibraryWine(
+    item: LibraryResolutionInput,
+  ): Promise<LibraryResolutionResult> {
+    const signatureInput: SignatureInput = {
+      name: item.name,
+      producer: item.producer ?? null,
+      vintage: item.vintage ?? null,
+      country: item.country ?? null,
+      region: item.region ?? null,
+      grapeVariety: item.grapeVariety ?? null,
+    };
+    const signature = this.buildSignature(signatureInput);
+    const signatureHash = this.hashSignature(signature);
+    const normalizedName = this.normalizeText(item.name);
+    const normalizedProducer = this.normalizeText(item.producer);
+
+    const { data: exactMatch } = await this.dbService.supabase
+      .from("master_wine_library")
+      .select("id, library_tier")
+      .eq("signature_hash", signatureHash)
+      .maybeSingle();
+
+    if (exactMatch?.id) {
+      return {
+        masterWineId: exactMatch.id,
+        matched: true,
+        libraryTier: exactMatch.library_tier ?? null,
+      };
+    }
+
+    if (normalizedProducer) {
+      const { data: nameProducerMatch } = await this.dbService.supabase
+        .from("master_wine_library")
+        .select("id, library_tier")
+        .eq("normalized_name", normalizedName)
+        .eq("normalized_producer", normalizedProducer)
+        .limit(1)
+        .maybeSingle();
+
+      if (nameProducerMatch?.id) {
+        return {
+          masterWineId: nameProducerMatch.id,
+          matched: true,
+          libraryTier: nameProducerMatch.library_tier ?? null,
+        };
+      }
+    }
+
+    const parsedVintage =
+      typeof item.vintage === "string"
+        ? parseInt(item.vintage, 10) || null
+        : item.vintage ?? null;
+
+    const insertPayload = {
+      wine_id: this.generateWineId(),
+      name: item.name,
+      producer: item.producer || item.name,
+      primary_type: "unknown",
+      country: item.country || "Unknown",
+      region: item.region ?? null,
+      grape_variety: item.grapeVariety ?? null,
+      vintage: parsedVintage,
+      library_tier: 3, // Provisional — usable now, pending governance review
+      source: "menu_import",
+      signature_hash: signatureHash,
+      normalized_name: normalizedName,
+      normalized_producer: normalizedProducer,
+      signature_source: "menu_import",
+    };
+
+    const { data: created, error } = await this.dbService.supabase
+      .from("master_wine_library")
+      .upsert(insertPayload, { onConflict: "signature_hash" })
+      .select("id, library_tier")
+      .single();
+
+    if (error || !created) {
+      this.logger.error("Failed to create provisional library wine", {
+        error: error?.message,
+        name: item.name,
+      });
+      throw new Error(
+        `Failed to resolve library wine "${item.name}": ${error?.message}`,
+      );
+    }
+
+    return {
+      masterWineId: created.id,
+      matched: false,
+      libraryTier: created.library_tier ?? 3,
+    };
   }
 }

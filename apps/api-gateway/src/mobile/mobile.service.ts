@@ -38,13 +38,17 @@ export class MobileService {
       this.conversationsService
         .getPendingConversations(restaurantId)
         .catch((e) => {
-          this.logger.warn(`feed conversations collector failed: ${e?.message}`);
+          this.logger.warn(
+            `feed conversations collector failed: ${e?.message}`,
+          );
           return [];
         }),
       this.notificationsService
         .getUnreadNotifications({ userId, restaurantId, limit: 40 })
         .catch((e) => {
-          this.logger.warn(`feed notifications collector failed: ${e?.message}`);
+          this.logger.warn(
+            `feed notifications collector failed: ${e?.message}`,
+          );
           return [];
         }),
     ]);
@@ -124,7 +128,8 @@ export class MobileService {
             kind: "receipt_verification",
             entityId: notifOrderId ?? n.id,
             title: n.title ?? "Verify delivery",
-            subtitle: n.message ?? "Confirm the physical count against the invoice.",
+            subtitle:
+              n.message ?? "Confirm the physical count against the invoice.",
             wineName: meta.wineName ?? null,
             quantity: meta.quantity ?? null,
             priority: "critical",
@@ -278,7 +283,7 @@ export class MobileService {
       0,
       (Date.now() - new Date(createdAt).getTime()) / 3_600_000,
     );
-    return base + Math.min(ageHours, 48) / 48 * 5;
+    return base + (Math.min(ageHours, 48) / 48) * 5;
   }
 
   private orderSubtitle(

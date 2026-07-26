@@ -303,7 +303,8 @@ export class NotificationsService {
         type: "inventory_low_stock",
         title: `${emoji} ${severity}: ${data.wineName}`,
         message: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
-        priority: data.currentStock <= data.threshold * 0.5 ? "critical" : "high",
+        priority:
+          data.currentStock <= data.threshold * 0.5 ? "critical" : "high",
         actionUrl: "/inventory?filter=low-stock",
         actionLabel: "View Inventory",
         groupKey: `low_stock:${data.wineId}`,
@@ -640,7 +641,9 @@ export class NotificationsService {
         .from("notifications")
         .insert(rows);
       if (error) {
-        this.logger.warn(`persistForRestaurant insert failed: ${error.message}`);
+        this.logger.warn(
+          `persistForRestaurant insert failed: ${error.message}`,
+        );
         return { inserted: 0 };
       }
 

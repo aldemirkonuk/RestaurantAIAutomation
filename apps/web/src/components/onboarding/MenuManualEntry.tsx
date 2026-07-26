@@ -10,7 +10,15 @@ interface WineRow extends WineExtractItem {
 let rowCounter = 0
 
 function emptyRow(): WineRow {
-  return { _id: ++rowCounter, name: '', vintage: '', region: '', by_glass_price: undefined, bottle_price: undefined }
+  return {
+    _id: ++rowCounter,
+    name: '',
+    producer: '',
+    vintage: '',
+    region: '',
+    by_glass_price: undefined,
+    bottle_price: undefined,
+  }
 }
 
 interface MenuManualEntryProps {
@@ -83,6 +91,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[200px]">
                 Wine Name <span className="text-red-400">*</span>
               </th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[160px]">Producer</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[90px]">Vintage</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[140px]">Region</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Glass ($)</th>
@@ -99,6 +108,15 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.name}
                     onChange={(e) => updateRow(row._id, 'name', e.target.value)}
                     placeholder={idx === 0 ? 'e.g. Château Margaux 2018' : 'Wine name'}
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={row.producer ?? ''}
+                    onChange={(e) => updateRow(row._id, 'producer', e.target.value)}
+                    placeholder="Château Margaux"
                     className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
                   />
                 </td>

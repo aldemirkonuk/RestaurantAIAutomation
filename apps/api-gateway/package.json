@@ -38,6 +38,7 @@
     "@nestjs/websockets": "^10.3.0",
     "@sentry/node": "^10.36.0",
     "@supabase/supabase-js": "^2.103.0",
+    "exceljs": "^4.4.0",
     "@types/nodemailer": "^7.0.9",
     "@types/passport-azure-ad": "^4.3.6",
     "amqplib": "^0.10.3",

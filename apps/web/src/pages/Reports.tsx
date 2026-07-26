@@ -820,6 +820,7 @@ export function Reports() {
         )}
 
         {/* Top Control Bar */}
+        <div data-tour="reports-topbar">
         <TopBar
           timeRange={timeRange}
           onTimeRangeChange={setTimeRange}
@@ -832,6 +833,7 @@ export function Reports() {
           showComparison={showComparison}
           onToggleComparison={() => setShowComparison((v) => !v)}
         />
+        </div>
 
         {/* Edit Toolbar (replaces old EditLayoutPanel) */}
         <EditToolbar
@@ -843,6 +845,7 @@ export function Reports() {
         />
 
         {/* Dashboard Canvas — react-grid-layout drag/resize for all chart blocks */}
+        <div data-tour="reports-canvas">
         <DashboardCanvas
           blocks={dashboardBlocks}
           isEditMode={isEditMode}
@@ -857,6 +860,7 @@ export function Reports() {
           totalOrders={metrics.totalOrders}
           totalRevenue={metrics.totalRevenue}
         />
+        </div>
 
         {/* Period Comparison Bar (optional, below canvas) */}
         {showComparison && salesData.length > 0 && (
@@ -949,7 +953,9 @@ export function Reports() {
 
       {/* Floating ⌘K pill — always visible */}
       {!showAIPalette && (
-        <AICommandPill onClick={() => setShowAIPalette(true)} />
+        <div data-tour="reports-ai-pill">
+          <AICommandPill onClick={() => setShowAIPalette(true)} />
+        </div>
       )}
     </div>
   )

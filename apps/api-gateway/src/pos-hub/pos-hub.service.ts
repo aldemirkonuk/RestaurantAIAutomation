@@ -137,11 +137,9 @@ export class PosHubService {
           items,
           raw: check.raw ?? null,
         };
-        const { error } = await client
-          .from("pos_checks")
-          .upsert(row, {
-            onConflict: "restaurant_id,source,external_check_id",
-          });
+        const { error } = await client.from("pos_checks").upsert(row, {
+          onConflict: "restaurant_id,source,external_check_id",
+        });
         if (error) errors.push(`${check.externalCheckId}: ${error.message}`);
         else upserted++;
       } catch (err: any) {
