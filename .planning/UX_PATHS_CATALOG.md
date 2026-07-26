@@ -776,6 +776,27 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## J. Communications (`/communications`) (`NEW-359 … NEW-383`)
 
+> **Shipped 2026-07-21 (Communications batch):** NEW-359 **Scheduled Reports
+> Save now persists** and NEW-360 **Generate actually runs and files into
+> Documents**. The notable find: the UI was wired to `console.log` even though
+> `POST /reports/schedule`, `GET /reports/schedules`, `DELETE
+> /reports/schedules/:id` and `POST /reports/generate` **already existed
+> server-side** — the gap was purely a missing web client. Added
+> `services/api/reports.ts`, wired the call site, and the scheduler now lists
+> its active server-side schedules with a Remove action. Generate shows a toast
+> with an "Open" action deep-linking to Documents (NEW-360 / NEW-466).
+> Two mapping layers were needed and are documented in code: the UI's friendly
+> report types (`comprehensive`/`inventory`/…) → the API's `ReportType` enum,
+> and the UI's five formats → the API's three (`sheets`→csv, `drive`→pdf, since
+> the backend has no such renderers).
+> Deferred: CC/BCC reveal (361), history row replay + resend/forward (362/363),
+> date-range filter (364), template test-send/versioning/preview (365–367),
+> SMS delivery receipts (368), one-off scheduling (369), shared team inbox +
+> thread ownership (370/371), composer slash-commands (372), template
+> right-click/drag-reorder (374/376), translation (379), attachment lightbox
+> (380), retention UI (381), failure notification + retry (382), channel health
+> (383) — each needs endpoints or schema that don't exist yet.
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-359 | `Click` | Scheduled Reports Save persists to backend (not console.log). |

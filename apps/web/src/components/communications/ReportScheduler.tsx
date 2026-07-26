@@ -25,9 +25,21 @@ import { ReportTypeModal } from './ReportTypeModal'
 import { REPORT_TYPES, getDefaultTemplateForReport } from '../../data/reportDefaults'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
 
+interface ScheduledReportSummary {
+  id: string
+  title: string
+  reportType: string
+  frequency: string
+  timeOfDay?: string | null
+  nextRunAt?: string | null
+}
+
 interface ReportSchedulerProps {
   onSchedule?: (config: ReportConfig) => void
   onGenerateNow?: (reportType: string, format: string) => void
+  /** Saved schedules from GET /reports/schedules (NEW-359). */
+  schedules?: ScheduledReportSummary[]
+  onDeleteSchedule?: (id: string) => void
 }
 
 interface ReportConfig {
@@ -107,7 +119,7 @@ const iconMap: Record<string, React.ElementType> = {
   Truck,
 }
 
-export function ReportScheduler({ onSchedule, onGenerateNow }: ReportSchedulerProps) {
+export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onDeleteSchedule }: ReportSchedulerProps) {
   // Auto-detect timezone
   const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const matchedTimezone = TIMEZONES.find(tz => tz.value === detectedTimezone)?.value || 'America/New_York'
@@ -486,6 +498,37 @@ export function ReportScheduler({ onSchedule, onGenerateNow }: ReportSchedulerPr
             <Save className="w-4 h-4 mr-2" />
             Save Preferences
           </Button>
+
+          {/* Saved schedules from the server (NEW-359) */}
+          {schedules.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
+                Active schedules ({schedules.length})
+              </p>
+              <ul className="space-y-1.5">
+                {schedules.map((sch) => (
+                  <li key={sch.id} className="flex items-center gap-2 text-xs">
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-800 truncate block">{sch.title}</span>
+                      <span className="text-gray-400">
+                        {sch.frequency}
+                        {sch.timeOfDay ? ` at ${sch.timeOfDay}` : ''}
+                        {sch.nextRunAt ? ` · next ${new Date(sch.nextRunAt).toLocaleDateString()}` : ''}
+                      </span>
+                    </span>
+                    {onDeleteSchedule && (
+                      <button
+                        onClick={() => onDeleteSchedule(sch.id)}
+                        className="px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 rounded-md"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
 
         {/* Right Column: Preview & Report Types */}

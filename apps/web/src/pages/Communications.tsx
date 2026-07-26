@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Header } from '../components/layout/Header'
 import {
   Mail,
@@ -16,6 +17,15 @@ import { SMSTemplateBuilder } from '../components/documents/SMSTemplateBuilder'
 import { SavedTemplates } from '../components/documents/SavedTemplates'
 import { SavedSMSTemplates, SavedSMSTemplate } from '../components/documents/SavedSMSTemplates'
 import { ReportScheduler } from '../components/communications/ReportScheduler'
+import {
+  scheduleReport,
+  generateReport,
+  listReportSchedules,
+  deleteReportSchedule,
+  type ReportType,
+  type ReportFormat,
+  type ScheduledReport,
+} from '../services/api/reports'
 import {
   useConversations,
   useConversationStats,
@@ -372,8 +382,99 @@ function ProcurementSendHistory({
 
 type ChannelFilter = 'all' | 'email' | 'sms'
 
+/**
+ * The Scheduled Reports UI uses friendlier labels than the API's ReportType
+ * enum; map rather than loosen the API type. Anything unmapped falls back to
+ * the inventory summary, which is the only report guaranteed to have data.
+ */
+const REPORT_TYPE_MAP: Record<string, ReportType> = {
+  comprehensive: 'financial_summary',
+  inventory: 'inventory_summary',
+  financial: 'financial_summary',
+  sales: 'sales_analysis',
+  procurement: 'procurement_history',
+  compliance: 'compliance_report',
+}
+/** The backend renders pdf/excel/csv only — sheets/drive have no server format. */
+const REPORT_FORMAT_MAP: Record<string, ReportFormat> = {
+  pdf: 'pdf', excel: 'excel', csv: 'csv', sheets: 'csv', drive: 'pdf',
+}
+
 export function Communications() {
   const [selectedTab, setSelectedTab] = useState<'templates' | 'history' | 'scheduled-reports' | 'procurement-history'>('templates')
+  // NEW-359/360: the scheduler was wired to console.log even though the
+  // /reports/schedule + /reports/generate endpoints already existed.
+  const [schedules, setSchedules] = useState<ScheduledReport[]>([])
+
+  const refreshSchedules = useCallback(async () => {
+    try {
+      setSchedules(await listReportSchedules())
+    } catch {
+      /* listing is additive — a failure shouldn't blank the tab */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedTab === 'scheduled-reports') void refreshSchedules()
+  }, [selectedTab, refreshSchedules])
+
+  const handleScheduleReport = useCallback(async (config: any) => {
+    try {
+      await scheduleReport({
+        reportType: REPORT_TYPE_MAP[config.reportType] ?? 'inventory_summary',
+        title: `${config.reportType} report`,
+        frequency: String(config.frequency ?? 'WEEKLY').toLowerCase(),
+        // weeklyDays is Monday-indexed (0=Mon); the API expects a single day.
+        dayOfWeek: config.weeklyDays?.length ? ((config.weeklyDays[0] + 1) % 7) : undefined,
+        dayOfMonth: config.monthlyDay ?? undefined,
+        timeOfDay: config.deliveryTime,
+        parameters: {
+          format: config.format,
+          channels: config.channels,
+          timezone: config.timezone,
+          templateId: config.templateId,
+          quietHoursStart: config.quietHoursStart,
+          quietHoursEnd: config.quietHoursEnd,
+        },
+      })
+      toast.success('Report schedule saved')
+      await refreshSchedules()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Could not save the schedule')
+    }
+  }, [refreshSchedules])
+
+  const handleGenerateReportNow = useCallback(async (reportType: string, format: string) => {
+    try {
+      const end = new Date()
+      const start = new Date(end.getTime() - 30 * 86_400_000)
+      const report = await generateReport({
+        reportType: REPORT_TYPE_MAP[reportType] ?? 'inventory_summary',
+        title: `${reportType} report — ${end.toLocaleDateString()}`,
+        periodStart: start.toISOString().slice(0, 10),
+        periodEnd: end.toISOString().slice(0, 10),
+        format: REPORT_FORMAT_MAP[format] ?? 'pdf',
+      })
+      // NEW-360/466: generated reports land in Documents.
+      toast.success('Report generated', {
+        description: 'Filed in Documents & Reports.',
+        action: { label: 'Open', onClick: () => { window.location.href = '/documents-reports' } },
+      })
+      return report
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Could not generate the report')
+    }
+  }, [])
+
+  const handleDeleteSchedule = useCallback(async (id: string) => {
+    try {
+      await deleteReportSchedule(id)
+      toast.success('Schedule removed')
+      await refreshSchedules()
+    } catch {
+      toast.error('Could not remove the schedule')
+    }
+  }, [refreshSchedules])
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [showGmailBuilder, setShowGmailBuilder] = useState(false)
@@ -552,8 +653,10 @@ export function Communications() {
       {selectedTab === 'scheduled-reports' && (
         <div className="p-6">
           <ReportScheduler
-            onSchedule={(config) => { console.log('Report schedule saved:', config) }}
-            onGenerateNow={(reportType, format) => { console.log('Generating report now:', reportType, format) }}
+            onSchedule={handleScheduleReport}
+            onGenerateNow={handleGenerateReportNow}
+            schedules={schedules}
+            onDeleteSchedule={handleDeleteSchedule}
           />
         </div>
       )}
