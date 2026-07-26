@@ -965,6 +965,27 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## M. Documents (`/documents-reports`) (`NEW-449 … NEW-473`)
 
+> **Shipped 2026-07-21 (Documents batch):** NEW-449 **View opens a real preview**
+> — an in-page modal with the document embedded plus download/print/email
+> actions, replacing the placeholder (cards previously offered only Download and
+> Delete) · NEW-450 Email composes with the document's title, period and link
+> pre-filled · NEW-451 Print opens the file in its own tab and triggers the
+> print dialog · NEW-460 right-click a card → View / Download / Email / Print /
+> Copy link / Delete · double-click a card opens the preview · NEW-469 keyboard
+> (`/` search, `⌘A` select all, `Esc` clears selection or closes the preview).
+>
+> **Two deliberate limits, stated in the UI rather than hidden:** the preview
+> iframe can't render a cross-origin file whose host blocks embedding, so the
+> modal footer says so and points at Download/Print; and Print opens a new tab
+> rather than driving a blocked iframe, because a cross-origin `print()` call
+> silently fails.
+> Deferred: rename/move/folders CRUD (453–456), tags (457), full-text search
+> inside contents (458), thumbnails (459), bulk ZIP (461 — needs a zip lib or a
+> server archive endpoint), bulk tag/move/email (462), share links with
+> expiry/password (463), version history (464), OCR search (467), related
+> entities (468), pinned strip (470), retention policy (471) — all need
+> endpoints or storage features that don't exist.
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-449 | `Click` | Per-card View opens a real document preview (PDF/HTML) instead of placeholder. |

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
@@ -21,6 +21,8 @@ import {
   ChevronRight,
   ChevronDown,
   Mail,
+  Eye,
+  Printer,
   MessageSquare,
   Send,
   LayoutGrid,
@@ -544,6 +546,10 @@ export function DocumentsPage() {
   const [selectedReports, setSelectedReports] = useState<Set<string>>(new Set())
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState<'date' | 'type' | 'title'>('date')
+  // §M additions: preview (NEW-449), right-click menu (NEW-460), keyboard (NEW-469).
+  const [previewReport, setPreviewReport] = useState<Report | null>(null)
+  const [docMenu, setDocMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const docSearchRef = useRef<HTMLInputElement>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'folders'>('folders')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['2026', '2026-January']))
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
@@ -729,6 +735,78 @@ export function DocumentsPage() {
     }
   }
 
+  /** NEW-449: open a real preview instead of a placeholder. */
+  const handleView = (report: Report) => {
+    if (report.fileUrl) setPreviewReport(report)
+    else alert(`No file available to preview for ${report.title}`)
+  }
+
+  /** NEW-450: compose an email with the document linked. */
+  const handleEmail = (report: Report) => {
+    const subject = encodeURIComponent(report.title)
+    const body = encodeURIComponent(
+      [
+        `${report.title}`,
+        report.description ? `\n${report.description}` : '',
+        report.period ? `\nPeriod: ${report.period}` : '',
+        report.fileUrl ? `\n\nDocument: ${report.fileUrl}` : '\n\n(No file attached yet.)',
+      ].join(''),
+    )
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
+
+  /**
+   * NEW-451: print. A cross-origin file can't be driven from this page, so the
+   * document is opened in its own tab where the browser's print works — rather
+   * than silently failing on a blocked iframe.
+   */
+  const handlePrint = (report: Report) => {
+    if (!report.fileUrl) {
+      alert(`No file available to print for ${report.title}`)
+      return
+    }
+    const w = window.open(report.fileUrl, '_blank')
+    if (w) {
+      w.addEventListener('load', () => { try { w.print() } catch { /* cross-origin: user prints manually */ } })
+    }
+  }
+
+  const handleCopyLink = (report: Report) => {
+    navigator.clipboard?.writeText(report.fileUrl || `${window.location.origin}/documents-reports?doc=${report.id}`)
+  }
+
+  // ── Keyboard (NEW-469) ────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return
+      const t = e.target as HTMLElement | null
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+      if (previewReport) {
+        if (e.key === 'Escape') setPreviewReport(null)
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        if (typing) return
+        e.preventDefault()
+        setSelectedReports(new Set(sortedReports.map(r => r.id)))
+        return
+      }
+      if (e.metaKey || e.ctrlKey || typing) return
+      if (e.key === '/') { e.preventDefault(); docSearchRef.current?.focus() }
+      else if (e.key === 'Escape' && selectedReports.size) setSelectedReports(new Set())
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedReports, previewReport, selectedReports.size])
+
+  useEffect(() => {
+    if (!docMenu) return
+    const close = () => setDocMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [docMenu])
+
   const handleBatchDelete = () => {
     if (selectedReports.size === 0) return
     if (confirm(`Delete ${selectedReports.size} selected report(s)?`)) {
@@ -867,8 +945,9 @@ export function DocumentsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
+                ref={docSearchRef}
                 type="text"
-                placeholder="Search reports by title, period, or description..."
+                placeholder="Search reports by title, period, or description...    ( / )"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
@@ -1125,6 +1204,8 @@ export function DocumentsPage() {
                     isSelected ? 'border-wine-500 bg-wine-50' : 'border-gray-200 hover:border-gray-300'
                   }`}
                   onClick={() => toggleReportSelection(report.id)}
+                  onDoubleClick={() => handleView(report)}
+                  onContextMenu={(e) => { e.preventDefault(); setDocMenu({ id: report.id, x: e.clientX, y: e.clientY }) }}
                 >
                   <div className="p-5 space-y-4">
                     {/* Header */}
@@ -1185,23 +1266,39 @@ export function DocumentsPage() {
                       </span>
                     </div>
 
-                    {/* Actions */}
+                    {/* Actions (NEW-449/450/451) */}
                     <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDownload(report)
-                        }}
+                        onClick={(e) => { e.stopPropagation(); handleView(report) }}
                         className="flex-1 px-3 py-2 bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
                       >
-                        <Download className="w-4 h-4" />
-                        Download
+                        <Eye className="w-4 h-4" />
+                        View
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete(report.id)
-                        }}
+                        onClick={(e) => { e.stopPropagation(); handleDownload(report) }}
+                        title="Download"
+                        className="p-2 text-gray-400 hover:text-wine-600 hover:bg-wine-50 rounded-lg transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEmail(report) }}
+                        title="Email"
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handlePrint(report) }}
+                        title="Print"
+                        className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(report.id) }}
+                        title="Delete"
                         className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1215,6 +1312,74 @@ export function DocumentsPage() {
         )}
           </div>
         </div>
+
+        {/* Document preview (NEW-449) */}
+        {previewReport && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center px-4"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setPreviewReport(null) }}
+          >
+            <div className="absolute inset-0 bg-gray-900/50" aria-hidden />
+            <div className="relative w-full max-w-4xl h-[80vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden" role="dialog" aria-modal="true">
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-100">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-900 truncate">{previewReport.title}</p>
+                  <p className="text-xs text-gray-400">{previewReport.period} · {formatDate(previewReport.sentAt)}</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => handleDownload(previewReport)} className="p-2 text-gray-400 hover:text-wine-600 hover:bg-wine-50 rounded-lg" title="Download">
+                    <Download className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handlePrint(previewReport)} className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Print">
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleEmail(previewReport)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Email">
+                    <Mail className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setPreviewReport(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg" aria-label="Close">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <iframe
+                src={previewReport.fileUrl ?? ''}
+                title={previewReport.title}
+                className="flex-1 w-full bg-gray-50"
+              />
+              <div className="px-5 py-2 border-t border-gray-100 text-[11px] text-gray-400">
+                If the document doesn't render here, the host blocks embedding — use Download or Print.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Right-click document menu (NEW-460) */}
+        {docMenu && (() => {
+          const report = sortedReports.find(r => r.id === docMenu.id)
+          if (!report) return null
+          const Item = ({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) => (
+            <button
+              onClick={onClick}
+              className={`w-full text-left px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 ${danger ? 'text-rose-600' : 'text-gray-700'}`}
+            >
+              {label}
+            </button>
+          )
+          return (
+            <div
+              className="fixed z-[80] w-48 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+              style={{ top: Math.min(docMenu.y, window.innerHeight - 250), left: Math.min(docMenu.x, window.innerWidth - 210) }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Item label="View" onClick={() => { handleView(report); setDocMenu(null) }} />
+              <Item label="Download" onClick={() => { handleDownload(report); setDocMenu(null) }} />
+              <Item label="Email" onClick={() => { handleEmail(report); setDocMenu(null) }} />
+              <Item label="Print" onClick={() => { handlePrint(report); setDocMenu(null) }} />
+              <Item label="Copy link" onClick={() => { handleCopyLink(report); setDocMenu(null) }} />
+              <Item label="Delete" danger onClick={() => { setDocMenu(null); handleDelete(report.id) }} />
+            </div>
+          )
+        })()}
 
         {/* Stats */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
