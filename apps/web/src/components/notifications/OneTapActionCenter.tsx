@@ -31,7 +31,14 @@ import {
   Sparkles,
   Mail,
   Send,
+  Copy,
+  ExternalLink,
+  Moon,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ContextMenu } from '../ui/ContextMenu'
+import { useContextMenu } from '../../hooks/useContextMenu'
 import { getWineTypeColor, Wine as WineType } from '../../data/wineData'
 import { QuickGmailModal } from '../emails/QuickGmailModal'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
@@ -73,6 +80,59 @@ export function addOneTapAction(action: Omit<ActionItem, 'id' | 'timestamp'>): v
 const ACTIONS_STORAGE_KEY = 'wineops_pending_actions'
 const SHADOW_STOCK_KEY = 'wineops_shadow_stock'
 const PENDING_ORDERS_KEY = 'wineops_orders_history'
+const SNOOZED_STORAGE_KEY = 'wineops_onetap_snoozed_v1'
+
+function loadSnoozedIds(): Record<string, number> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(SNOOZED_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, number>
+    const now = Date.now()
+    const active: Record<string, number> = {}
+    for (const [id, until] of Object.entries(parsed)) {
+      if (typeof until === 'number' && until > now) active[id] = until
+    }
+    if (Object.keys(active).length !== Object.keys(parsed).length) {
+      localStorage.setItem(SNOOZED_STORAGE_KEY, JSON.stringify(active))
+    }
+    return active
+  } catch {
+    return {}
+  }
+}
+
+function snoozeActionUntilTomorrow(actionId: string): void {
+  const tomorrow = new Date()
+  tomorrow.setHours(24, 0, 0, 0)
+  const current = loadSnoozedIds()
+  current[actionId] = tomorrow.getTime()
+  try {
+    localStorage.setItem(SNOOZED_STORAGE_KEY, JSON.stringify(current))
+  } catch {
+    /* ignore */
+  }
+}
+
+function openRouteForAction(action: ActionItem): string {
+  switch (action.type) {
+    case 'low_stock':
+    case 'stock_receipt':
+    case 'inequality':
+      return action.wine?.id ? `/inventory?highlight=${encodeURIComponent(action.wine.id)}` : '/inventory'
+    case 'delivery_confirm':
+    case 'price_change':
+    case 'vintage_sub':
+      return action.details?.orderId
+        ? `/orders?orderId=${encodeURIComponent(action.details.orderId)}`
+        : '/orders'
+    case 'gmail_send':
+    case 'gmail_contextual':
+      return '/emails'
+    default:
+      return '/'
+  }
+}
 
 // Hard cap: never persist more than this many actions.
 const MAX_PERSISTED_ACTIONS = 50
@@ -318,6 +378,8 @@ function getInitialActions(wines: WineType[], lowStockItems: Array<{ wineId?: st
 }
 
 export function OneTapActionCenter() {
+  const navigate = useNavigate()
+  const actionMenu = useContextMenu<ActionItem>()
   const { data: apiWines = [] } = useWines({ limit: 500 })
   const libraryWines = useMemo(() => mapApiWinesToUiWines(apiWines), [apiWines])
   const { lowStockItems = [] } = useInventoryData()
@@ -336,6 +398,7 @@ export function OneTapActionCenter() {
   const [expandedAction, setExpandedAction] = useState<string | null>(null)
   const [processingAction, setProcessingAction] = useState<string | null>(null)
   const [_ordersLoading, setOrdersLoading] = useState(false)
+  const [snoozedIds, setSnoozedIds] = useState<Record<string, number>>(() => loadSnoozedIds())
   
   // Get restaurant ID from auth store
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
@@ -649,7 +712,8 @@ export function OneTapActionCenter() {
 
   // **NEW: Filtered Actions**
   const filteredActions = useMemo(() => {
-    let filtered = actions
+    const now = Date.now()
+    let filtered = actions.filter((a) => !snoozedIds[a.id] || snoozedIds[a.id] <= now)
     
     if (priorityFilter !== 'all') {
       filtered = filtered.filter(a => a.priority === priorityFilter)
@@ -666,7 +730,7 @@ export function OneTapActionCenter() {
       if (priorityDiff !== 0) return priorityDiff
       return b.timestamp.getTime() - a.timestamp.getTime()
     })
-  }, [actions, priorityFilter, typeFilter])
+  }, [actions, priorityFilter, typeFilter, snoozedIds])
 
   // **NEW: Batch Actions**
   const handleBatchApprove = async () => {
@@ -1003,6 +1067,18 @@ export function OneTapActionCenter() {
                 >
                   <div
                     onClick={() => !batchMode && setExpandedAction(isExpanded ? null : action.id)}
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (!batchMode && !isProcessing) {
+                        void handleApprove(action)
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      if (batchMode) return
+                      actionMenu.onContextMenu(e, action)
+                    }}
+                    title={!batchMode ? 'Double-click to approve' : undefined}
                     className={`px-6 py-4 ${batchMode ? 'cursor-default' : 'cursor-pointer'} transition-colors ${
                       isExpanded ? 'bg-gray-50' : batchMode && isSelected ? 'bg-emerald-50' : 'hover:bg-gray-50'
                     }`}
@@ -1422,6 +1498,60 @@ export function OneTapActionCenter() {
           }}
           prefilledRecipient={gmailRecipient}
           prefilledSubject={gmailSubject}
+        />
+      )}
+
+      {actionMenu.open && actionMenu.menu && actionMenu.target && (
+        <ContextMenu
+          x={actionMenu.menu.x}
+          y={actionMenu.menu.y}
+          onClose={actionMenu.close}
+          items={[
+            {
+              id: 'approve',
+              label: 'Approve',
+              icon: Check,
+              onClick: () => {
+                void handleApprove(actionMenu.target!)
+              },
+            },
+            {
+              id: 'reject',
+              label: 'Reject / Dismiss',
+              icon: X,
+              danger: true,
+              onClick: () => {
+                void handleReject(actionMenu.target!)
+              },
+            },
+            {
+              id: 'snooze',
+              label: 'Snooze until tomorrow',
+              icon: Moon,
+              onClick: () => {
+                snoozeActionUntilTomorrow(actionMenu.target!.id)
+                setSnoozedIds(loadSnoozedIds())
+                toast.success('Snoozed until tomorrow')
+              },
+            },
+            {
+              id: 'copy',
+              label: 'Copy summary',
+              icon: Copy,
+              onClick: () => {
+                const t = actionMenu.target!
+                void navigator.clipboard?.writeText(`${t.title} — ${t.subtitle}`)
+                toast.success('Copied')
+              },
+            },
+            {
+              id: 'open',
+              label: 'Open related page',
+              icon: ExternalLink,
+              dividerBefore: true,
+              onClick: () => navigate(openRouteForAction(actionMenu.target!)),
+            },
+          ]}
         />
       )}
     </div>

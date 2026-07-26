@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { Header } from '../components/layout/Header'
@@ -24,36 +24,36 @@ import {
   Users,
   FileText,
   Plus,
-  Zap,
-  Link as LinkIcon,
   Link2,
   ExternalLink,
   Clock,
   Bell,
   Target,
   Search,
+  Copy,
+  Pencil,
+  Trash2,
+  MessageSquare,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
+import { QuickActionsPanel } from '../components/dashboard/QuickActionsPanel'
 import { AddImportantDateModal, ImportantDate } from '../components/dashboard/AddImportantDateModal'
+import { ContextMenu, type ContextMenuItem } from '../components/ui/ContextMenu'
+import { useContextMenu } from '../hooks/useContextMenu'
 import { useRealtimeDispatch, CalendarEventPayload } from '../contexts/RealtimeContext'
 import { storeAIDateContext, importantDateToAIContext } from '../utils/aiDateContext'
 import { formatMoney, formatNumber as fmtNumber } from '../lib/utils'
 import { formatVolume } from '../utils/volumeUtils'
-import { useRestaurantSettingsStore } from '../stores'
+import { useAuthStore, useRestaurantSettingsStore } from '../stores'
 import { useInventoryData } from '../hooks/useInventoryData'
+import {
+  loadManualImportantDates,
+  saveManualImportantDates,
+} from '../data/manualImportantDates'
 import { useDashboardPage } from './dashboard/index'
-
-interface CustomOneTapAction {
-  id: string
-  title: string
-  description: string
-  icon: string
-  actionUrl: string
-  priority: 'low' | 'medium' | 'high'
-  color: string
-  createdAt: string
-}
 
 // Animation variants
 const containerVariants = {
@@ -103,6 +103,7 @@ export function Dashboard() {
   const navigate = useNavigate()
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const { measurementUnit } = useRestaurantSettingsStore()
+  const restaurantId = useAuthStore((s) => s.activeRestaurantId) ?? 'default'
   // Use the extracted dashboard page hook
   const dashboardData = useDashboardPage()
   const {
@@ -137,37 +138,62 @@ export function Dashboard() {
   // Get inventory data for shadow stock reconciliation reminders (still needed for manualImportantDates)
   const { inventory: _inventory } = useInventoryData()
 
-  // Create One-Tap Action Modal State
-  const [showCreateActionModal, setShowCreateActionModal] = useState(false)
-  const [_customActions, setCustomActions] = useState<CustomOneTapAction[]>([])
-  const [newAction, setNewAction] = useState({
-    title: '',
-    description: '',
-    icon: 'Zap',
-    actionUrl: '',
-    priority: 'medium' as 'low' | 'medium' | 'high',
-    color: 'wine'
-  })
+  const kpiMenu = useContextMenu<(typeof stats)[number]>()
+  const calendarMenu = useContextMenu<{ dateStr: string }>()
+  const dateMenu = useContextMenu<{ item: ImportantDate; isManual: boolean }>()
+  const orderMenu = useContextMenu<(typeof recentOrderRows)[number]>()
+  const stockMenu = useContextMenu<(typeof apiLowStock)[number]>()
+  const wineMenu = useContextMenu<{ name: string; wineId?: string; revenue: number; bottles: number }>()
 
   // Important Dates Modal State
   const [showAddDateModal, setShowAddDateModal] = useState(false)
+  const [editingImportantDate, setEditingImportantDate] = useState<ImportantDate | null>(null)
   const [manualImportantDates, setManualImportantDates] = useState<ImportantDate[]>([])
+  const [datesHydrated, setDatesHydrated] = useState(false)
   const { dispatchCalendarEvent } = useRealtimeDispatch()
 
-  // Handle adding a new important date
+  // Load persisted manual important dates
+  useEffect(() => {
+    const stored = loadManualImportantDates(restaurantId)
+    setManualImportantDates(
+      stored.map((d) => {
+        const config = getImportantDateConfig(d.type)
+        return { ...d, icon: config.icon } as ImportantDate
+      }),
+    )
+    setDatesHydrated(true)
+  }, [restaurantId])
+
+  useEffect(() => {
+    if (!datesHydrated) return
+    saveManualImportantDates(restaurantId, manualImportantDates)
+  }, [manualImportantDates, restaurantId, datesHydrated])
+
+  // Handle adding / updating a new important date
   const handleAddImportantDate = (newDate: Omit<ImportantDate, 'id'>) => {
+    if (editingImportantDate) {
+      setManualImportantDates((prev) =>
+        prev.map((d) =>
+          d.id === editingImportantDate.id ? { ...newDate, id: editingImportantDate.id } : d,
+        ),
+      )
+      setEditingImportantDate(null)
+      toast.success('Date updated')
+      return
+    }
+
     const dateWithId: ImportantDate = {
       ...newDate,
       id: Date.now(),
     }
-    setManualImportantDates(prev => [...prev, dateWithId])
+    setManualImportantDates((prev) => [...prev, dateWithId])
 
     // Dispatch to Calendar
     const eventTypeMap: Record<string, CalendarEventPayload['eventType']> = {
-      'event': 'reminder',
-      'birthday': 'reminder',
-      'delivery': 'delivery',
-      'tasting': 'tasting',
+      event: 'reminder',
+      birthday: 'reminder',
+      delivery: 'delivery',
+      tasting: 'tasting',
     }
     const calendarPayload: CalendarEventPayload = {
       type: 'created',
@@ -187,6 +213,10 @@ export function Dashboard() {
     storeAIDateContext(aiContext)
   }
 
+  const removeManualImportantDate = useCallback((id: number) => {
+    setManualImportantDates((prev) => prev.filter((d) => d.id !== id))
+    toast.success('Date removed')
+  }, [])
 
   const handleCopyICalUrl = async () => {
     try {
@@ -204,80 +234,87 @@ export function Dashboard() {
     }
   }
 
-  // Keyboard shortcut for Create Action
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-        e.preventDefault()
-        setShowCreateActionModal(true)
-      }
-      if (e.key === 'Escape') {
-        setShowCreateActionModal(false)
-      }
-    }
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [])
-
   const formatCurrency = (value: number) => formatMoney(value, 'compact')
   const formatNumber = (value: number) => fmtNumber(value)
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-amber-100 text-amber-700'
-      case 'approved': return 'bg-blue-100 text-blue-700'
-      case 'delivered': return 'bg-emerald-100 text-emerald-700'
-      default: return 'bg-gray-100 text-gray-700'
+      case 'pending':
+      case 'pending_approval':
+        return 'bg-amber-100 text-amber-700'
+      case 'approved':
+        return 'bg-blue-100 text-blue-700'
+      case 'delivered':
+        return 'bg-emerald-100 text-emerald-700'
+      default:
+        return 'bg-gray-100 text-gray-700'
     }
   }
 
   const getUrgencyColor = (urgency: string) => {
     switch (urgency) {
-      case 'critical': return 'bg-rose-500'
-      case 'high': return 'bg-amber-500'
-      case 'medium': return 'bg-yellow-400'
-      default: return 'bg-gray-400'
+      case 'critical':
+        return 'bg-rose-500'
+      case 'high':
+        return 'bg-amber-500'
+      case 'medium':
+        return 'bg-yellow-400'
+      default:
+        return 'bg-gray-400'
     }
   }
 
-  // Handle Create One-Tap Action
-  const colorOptions = [
-    { name: 'Wine', value: 'wine', bg: 'bg-wine-600', text: 'text-white' },
-    { name: 'Emerald', value: 'emerald', bg: 'bg-emerald-600', text: 'text-white' },
-    { name: 'Blue', value: 'blue', bg: 'bg-blue-600', text: 'text-white' },
-    { name: 'Amber', value: 'amber', bg: 'bg-amber-600', text: 'text-white' },
-    { name: 'Rose', value: 'rose', bg: 'bg-rose-600', text: 'text-white' },
-    { name: 'Purple', value: 'purple', bg: 'bg-purple-600', text: 'text-white' },
-  ]
-
-  const handleCreateAction = () => {
-    if (!newAction.title || !newAction.actionUrl) {
-      alert('Please fill in all required fields')
-      return
+  const kpiNavigate = (id: ModalType) => {
+    switch (id) {
+      case 'revenue':
+        navigate('/reports')
+        break
+      case 'inventory':
+        navigate('/inventory')
+        break
+      case 'orders':
+        navigate('/orders')
+        break
+      case 'lowStock':
+        navigate('/inventory?filter=low')
+        break
+      default:
+        break
     }
-
-    const action: CustomOneTapAction = {
-      id: `custom_${Date.now()}`,
-      title: newAction.title,
-      description: newAction.description,
-      icon: newAction.icon,
-      actionUrl: newAction.actionUrl,
-      priority: newAction.priority,
-      color: newAction.color,
-      createdAt: new Date().toISOString()
-    }
-
-    setCustomActions(prev => [...prev, action])
-    setShowCreateActionModal(false)
-    setNewAction({
-      title: '',
-      description: '',
-      icon: 'Zap',
-      actionUrl: '',
-      priority: 'medium',
-      color: 'wine'
-    })
   }
+
+  const topPerformingWines = useMemo(() => {
+    const agg = new Map<string, { name: string; wineId?: string; revenue: number; bottles: number }>()
+    for (const order of apiPendingOrders) {
+      const key = order.wineId || order.wineName || 'unknown'
+      const existing = agg.get(key) || {
+        name: order.wineName || order.wineProducer || 'Unknown wine',
+        wineId: order.wineId,
+        revenue: 0,
+        bottles: 0,
+      }
+      existing.revenue += order.totalPrice || 0
+      existing.bottles += order.quantity || 0
+      agg.set(key, existing)
+    }
+    // Also fold calendar day top sellers when revenue data exists
+    for (const day of Object.values(calendarSalesData)) {
+      if (!day.topSeller || day.topSeller === '—' || day.revenue <= 0) continue
+      const key = day.topSeller
+      const existing = agg.get(key) || { name: day.topSeller, revenue: 0, bottles: 0 }
+      existing.revenue += day.revenue / Math.max(day.orders, 1)
+      existing.bottles += Math.max(1, Math.round(day.bottles / Math.max(day.orders, 1)))
+      agg.set(key, existing)
+    }
+    return Array.from(agg.values())
+      .sort((a, b) => b.revenue - a.revenue || b.bottles - a.bottles)
+      .slice(0, 5)
+  }, [apiPendingOrders, calendarSalesData])
+
+  const manualDateIds = useMemo(
+    () => new Set(manualImportantDates.map((d) => d.id)),
+    [manualImportantDates],
+  )
 
   // Calendar helpers
   const getDaysInMonth = (date: Date) => {
@@ -336,6 +373,11 @@ export function Dashboard() {
                 key={stat.label}
                 variants={itemVariants}
                 onClick={() => setActiveModal(stat.id)}
+                onDoubleClick={(e) => {
+                  e.preventDefault()
+                  kpiNavigate(stat.id)
+                }}
+                onContextMenu={(e) => kpiMenu.onContextMenu(e, stat)}
                 className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-lg hover:border-wine-200 transition-all text-left group"
               >
                 <div className="flex items-start justify-between">
@@ -390,49 +432,8 @@ export function Dashboard() {
           </motion.div>
 
           {/* Quick Actions - 1/3 */}
-          <motion.div variants={itemVariants} className="bg-gradient-to-br from-wine-600 to-wine-800 rounded-xl shadow-lg overflow-hidden">
-            <div className="p-5">
-              <h3 className="font-semibold text-white mb-3">Quick Actions</h3>
-              <div className="space-y-2">
-                {[
-                  { label: 'New Order', icon: ShoppingCart, href: '/orders' },
-                  { label: 'Add Wine', icon: Wine, href: '/wines' },
-                  { label: 'Stock Check', icon: Package, href: '/inventory' },
-                  { label: 'Reports', icon: BarChart3, href: '/reports' },
-                ].map((action) => {
-                  const Icon = action.icon
-                  return (
-                    <NavLink
-                      key={action.label}
-                      to={action.href}
-                      className="flex items-center gap-3 px-3 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg transition-all text-white"
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-sm font-medium">{action.label}</span>
-                    </NavLink>
-                  )
-                })}
-                
-                {/* Add to Calendar Button */}
-                <button
-                  onClick={() => alert('Add to Calendar - Opening event creation modal...')}
-                  className="flex items-center gap-3 px-3 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg transition-all text-white w-full"
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span className="text-sm font-medium">Add to Calendar</span>
-                </button>
-                
-                {/* iOS-style Add Quick Action Button */}
-                <button
-                  onClick={() => setShowCreateActionModal(true)}
-                  className="flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-white/30 hover:border-white/50 hover:bg-white/10 rounded-lg transition-all text-white/80 hover:text-white group w-full"
-                  title="Create Quick Action (⌘N)"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm font-medium">Add Quick Action</span>
-                </button>
-              </div>
-            </div>
+          <motion.div variants={itemVariants}>
+            <QuickActionsPanel />
           </motion.div>
         </div>
 
@@ -563,7 +564,13 @@ export function Dashboard() {
                   return (
                     <button
                       key={day}
+                      type="button"
                       onClick={() => handleDayClick(dateStr, dayData)}
+                      onDoubleClick={(e) => {
+                        e.preventDefault()
+                        navigate(`/calendar?date=${dateStr}&view=day`)
+                      }}
+                      onContextMenu={(e) => calendarMenu.onContextMenu(e, { dateStr })}
                       className={`aspect-square p-0.5 rounded-lg cursor-pointer transition-all group ${
                         isToday ? 'ring-2 ring-wine-500 ring-offset-1' : ''
                       } ${hasHighPriority ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
@@ -723,7 +730,8 @@ export function Dashboard() {
               
               {/* Quick Add */}
               <button
-                onClick={() => navigate('/calendar?openModal=true')}
+                type="button"
+                onClick={() => navigate('/calendar?openModal=true&date=today')}
                 className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-wine-400 hover:text-wine-600 transition-colors text-xs font-medium"
               >
                 <Plus className="w-3 h-3" />
@@ -743,8 +751,12 @@ export function Dashboard() {
                 <p className="text-sm text-gray-500">Upcoming events & deadlines</p>
               </div>
             </div>
-            <button 
-              onClick={() => setShowAddDateModal(true)}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingImportantDate(null)
+                setShowAddDateModal(true)
+              }}
               className="flex items-center gap-1.5 text-sm text-wine-600 font-medium hover:text-wine-700 hover:bg-wine-50 px-3 py-1.5 rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -753,23 +765,47 @@ export function Dashboard() {
           </div>
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {importantDatesList.length === 0 ? (
-              <div className="col-span-full p-6 text-center text-sm text-gray-500 bg-gray-50 rounded-xl">
-                No upcoming dates yet.
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingImportantDate(null)
+                  setShowAddDateModal(true)
+                }}
+                className="col-span-full p-6 text-center text-sm text-gray-500 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+              >
+                No upcoming dates yet. Click to add one.
+              </button>
             ) : (
               importantDatesList.map((item) => {
                 const Icon = item.icon
                 const dateObj = new Date(item.date)
                 const isUpcoming = dateObj > new Date()
                 const daysUntil = Math.ceil((dateObj.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                
+                const isManual = manualDateIds.has(item.id)
+
                 return (
                   <div
-                    key={item.id}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                    key={`${item.id}-${item.date}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/calendar?date=${item.date}`)}
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      if (isManual) {
+                        setEditingImportantDate(item)
+                        setShowAddDateModal(true)
+                      } else {
+                        navigate(`/calendar?date=${item.date}&eventId=${item.id}`)
+                      }
+                    }}
+                    onContextMenu={(e) => dateMenu.onContextMenu(e, { item, isManual })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') navigate(`/calendar?date=${item.date}`)
+                    }}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer group"
                   >
                     <div className={`p-2.5 rounded-xl`} style={{
-                      backgroundColor: 
+                      backgroundColor:
                         item.color === 'purple' ? '#f3e8ff' :
                         item.color === 'blue' ? '#dbeafe' :
                         item.color === 'pink' ? '#fce7f3' :
@@ -796,6 +832,9 @@ export function Dashboard() {
                         )}
                       </p>
                     </div>
+                    {isManual && (
+                      <Pencil className="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 shrink-0" />
+                    )}
                   </div>
                 )
               })
@@ -826,7 +865,21 @@ export function Dashboard() {
                 </div>
               ) : (
                 recentOrderRows.map((order) => (
-                  <div key={order.id} className="px-5 py-3 hover:bg-gray-50 transition-colors">
+                  <div
+                    key={order.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/orders?orderId=${encodeURIComponent(order.id)}`)}
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      navigate(`/orders?orderId=${encodeURIComponent(order.id)}&action=thread`)
+                    }}
+                    onContextMenu={(e) => orderMenu.onContextMenu(e, order)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') navigate(`/orders?orderId=${encodeURIComponent(order.id)}`)
+                    }}
+                    className="px-5 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 bg-wine-100 rounded-lg flex items-center justify-center">
@@ -871,8 +924,27 @@ export function Dashboard() {
               )}
               {apiLowStock.slice(0, 5).map((wine) => {
                 const urgency = wine.stockLive <= wine.thresholdMin * 0.5 ? 'critical' : 'high'
+                const inventoryId = wine.id || wine.wineId || ''
                 return (
-                  <div key={wine.id} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div
+                    key={wine.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/inventory?highlight=${encodeURIComponent(inventoryId)}`)}
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      navigate(
+                        `/orders?draft=new&inventoryId=${encodeURIComponent(inventoryId)}&qty=${wine.thresholdMin || 6}`,
+                      )
+                    }}
+                    onContextMenu={(e) => stockMenu.onContextMenu(e, wine)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        navigate(`/inventory?highlight=${encodeURIComponent(inventoryId)}`)
+                      }
+                    }}
+                    className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  >
                     <div className="flex items-start gap-2">
                       <div className={`w-1.5 h-1.5 rounded-full mt-1.5 ${getUrgencyColor(urgency)}`} />
                       <div className="flex-1 min-w-0">
@@ -888,7 +960,7 @@ export function Dashboard() {
                         <div className="mt-1.5 w-full bg-gray-200 rounded-full h-1">
                           <div
                             className={`h-1 rounded-full ${getUrgencyColor(urgency)}`}
-                            style={{ width: `${(wine.stockLive / wine.thresholdMin) * 100}%` }}
+                            style={{ width: `${Math.min(100, (wine.stockLive / Math.max(wine.thresholdMin, 1)) * 100)}%` }}
                           />
                         </div>
                       </div>
@@ -917,9 +989,62 @@ export function Dashboard() {
             </NavLink>
           </div>
           <div className="p-5">
-            <div className="p-6 text-center text-sm text-gray-500 bg-gray-50 rounded-xl">
-              No sales performance data available yet.
-            </div>
+            {topPerformingWines.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => navigate('/reports')}
+                className="w-full p-6 text-center text-sm text-gray-500 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+              >
+                No sales performance data available yet. View reports →
+              </button>
+            ) : (
+              <div className="space-y-2">
+                {topPerformingWines.map((wine, index) => {
+                  const maxRev = topPerformingWines[0]?.revenue || 1
+                  return (
+                    <div
+                      key={`${wine.name}-${index}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/wines?search=${encodeURIComponent(wine.name)}`)}
+                      onDoubleClick={(e) => {
+                        e.preventDefault()
+                        if (wine.wineId) navigate(`/wines?wineId=${encodeURIComponent(wine.wineId)}`)
+                        else navigate(`/wines?search=${encodeURIComponent(wine.name)}`)
+                      }}
+                      onContextMenu={(e) => wineMenu.onContextMenu(e, wine)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          navigate(`/wines?search=${encodeURIComponent(wine.name)}`)
+                        }
+                      }}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-wine-100 text-wine-700 text-xs font-bold flex items-center justify-center shrink-0">
+                        {index + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 text-sm truncate">{wine.name}</p>
+                        <div className="mt-1.5 w-full bg-gray-200 rounded-full h-1">
+                          <div
+                            className="h-1 rounded-full bg-wine-500"
+                            style={{ width: `${Math.min(100, (wine.revenue / maxRev) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {wine.revenue > 0 ? formatCurrency(wine.revenue) : `${wine.bottles} btls`}
+                        </p>
+                        {wine.revenue > 0 && (
+                          <p className="text-[10px] text-gray-500">{wine.bottles} bottles</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>
@@ -1341,173 +1466,286 @@ export function Dashboard() {
           )}
         </AnimatePresence>
 
-        {/* Create One-Tap Action Modal */}
-        <AnimatePresence>
-          {showCreateActionModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-              onClick={() => setShowCreateActionModal(false)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden"
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-wine-50 to-purple-50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-wine-600 rounded-xl">
-                      <Zap className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900">Create Quick Action</h2>
-                      <p className="text-sm text-gray-500">Design a custom quick action for your workflow</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowCreateActionModal(false)}
-                    className="p-2 hover:bg-white/50 rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5 text-gray-500" />
-                  </button>
-                </div>
-
-                {/* Form */}
-                <div className="p-6 space-y-6">
-                  {/* Title */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Action Title <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newAction.title}
-                      onChange={(e) => setNewAction({ ...newAction, title: e.target.value })}
-                      placeholder="e.g., Check Low Stock Wines"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-wine-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Description */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={newAction.description}
-                      onChange={(e) => setNewAction({ ...newAction, description: e.target.value })}
-                      placeholder="Brief description of what this action does"
-                      rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-wine-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Action URL */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Action URL <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={newAction.actionUrl}
-                        onChange={(e) => setNewAction({ ...newAction, actionUrl: e.target.value })}
-                        placeholder="/inventory or https://example.com"
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-wine-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Priority & Color */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Priority
-                      </label>
-                      <select
-                        value={newAction.priority}
-                        onChange={(e) => setNewAction({ ...newAction, priority: e.target.value as any })}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-wine-500"
-                      >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Color Theme
-                      </label>
-                      <div className="flex gap-2 flex-wrap">
-                        {colorOptions.map((color) => (
-                          <button
-                            key={color.value}
-                            onClick={() => setNewAction({ ...newAction, color: color.value })}
-                            className={`w-10 h-10 rounded-lg ${color.bg} ${
-                              newAction.color === color.value ? 'ring-2 ring-offset-2 ring-gray-900' : ''
-                            } transition-all hover:scale-110`}
-                            title={color.name}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Preview */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Preview
-                    </label>
-                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                      <button
-                        className={`${colorOptions.find(c => c.value === newAction.color)?.bg} ${colorOptions.find(c => c.value === newAction.color)?.text} rounded-xl p-4 w-full text-left shadow-lg`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Zap className="w-6 h-6" />
-                          <div className="flex-1">
-                            <h4 className="font-semibold">{newAction.title || 'Action Title'}</h4>
-                            <p className="text-sm opacity-90">{newAction.description || 'Action description'}</p>
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleCreateAction}
-                      disabled={!newAction.title || !newAction.actionUrl}
-                      className="flex-1 px-6 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Create Action
-                    </button>
-                    <button
-                      onClick={() => setShowCreateActionModal(false)}
-                      className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </AnimatePresence>
+
+      {/* Context menus */}
+      {kpiMenu.open && kpiMenu.menu && kpiMenu.target && (
+        <ContextMenu
+          x={kpiMenu.menu.x}
+          y={kpiMenu.menu.y}
+          onClose={kpiMenu.close}
+          items={[
+            {
+              id: 'open',
+              label:
+                kpiMenu.target.id === 'revenue'
+                  ? 'Open Reports'
+                  : kpiMenu.target.id === 'inventory'
+                    ? 'Open Inventory'
+                    : kpiMenu.target.id === 'orders'
+                      ? 'Go to Orders'
+                      : 'Open Inventory (low stock)',
+              icon: ExternalLink,
+              onClick: () => kpiNavigate(kpiMenu.target!.id),
+            },
+            {
+              id: 'details',
+              label: 'View details',
+              icon: Eye,
+              onClick: () => setActiveModal(kpiMenu.target!.id),
+            },
+            {
+              id: 'copy',
+              label: 'Copy value',
+              icon: Copy,
+              onClick: () => {
+                void navigator.clipboard?.writeText(String(kpiMenu.target!.value))
+                toast.success('Copied')
+              },
+            },
+          ] satisfies ContextMenuItem[]}
+        />
+      )}
+
+      {calendarMenu.open && calendarMenu.menu && calendarMenu.target && (
+        <ContextMenu
+          x={calendarMenu.menu.x}
+          y={calendarMenu.menu.y}
+          onClose={calendarMenu.close}
+          items={[
+            {
+              id: 'report',
+              label: 'View daily report',
+              icon: FileText,
+              onClick: () =>
+                handleDayClick(
+                  calendarMenu.target!.dateStr,
+                  calendarSalesData[calendarMenu.target!.dateStr],
+                ),
+            },
+            {
+              id: 'add',
+              label: 'Add event',
+              icon: Plus,
+              onClick: () =>
+                navigate(
+                  `/calendar?openModal=true&date=${calendarMenu.target!.dateStr}`,
+                ),
+            },
+            {
+              id: 'full',
+              label: 'Open in full calendar',
+              icon: ExternalLink,
+              onClick: () =>
+                navigate(`/calendar?date=${calendarMenu.target!.dateStr}&view=day`),
+            },
+            {
+              id: 'copy',
+              label: 'Copy date',
+              icon: Copy,
+              dividerBefore: true,
+              onClick: () => {
+                void navigator.clipboard?.writeText(calendarMenu.target!.dateStr)
+                toast.success('Date copied')
+              },
+            },
+          ]}
+        />
+      )}
+
+      {dateMenu.open && dateMenu.menu && dateMenu.target && (
+        <ContextMenu
+          x={dateMenu.menu.x}
+          y={dateMenu.menu.y}
+          onClose={dateMenu.close}
+          items={[
+            ...(dateMenu.target.isManual
+              ? [
+                  {
+                    id: 'edit',
+                    label: 'Edit',
+                    icon: Pencil,
+                    onClick: () => {
+                      setEditingImportantDate(dateMenu.target!.item)
+                      setShowAddDateModal(true)
+                    },
+                  } satisfies ContextMenuItem,
+                ]
+              : []),
+            {
+              id: 'calendar',
+              label: 'Open in Calendar',
+              icon: Calendar,
+              onClick: () =>
+                navigate(`/calendar?date=${dateMenu.target!.item.date}`),
+            },
+            {
+              id: 'copy',
+              label: 'Copy date',
+              icon: Copy,
+              onClick: () => {
+                const d = new Date(dateMenu.target!.item.date)
+                void navigator.clipboard?.writeText(
+                  d.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  }),
+                )
+                toast.success('Date copied')
+              },
+            },
+            ...(dateMenu.target.isManual
+              ? [
+                  {
+                    id: 'remove',
+                    label: 'Remove',
+                    icon: Trash2,
+                    danger: true,
+                    dividerBefore: true,
+                    onClick: () => removeManualImportantDate(dateMenu.target!.item.id),
+                  } satisfies ContextMenuItem,
+                ]
+              : []),
+          ]}
+        />
+      )}
+
+      {orderMenu.open && orderMenu.menu && orderMenu.target && (
+        <ContextMenu
+          x={orderMenu.menu.x}
+          y={orderMenu.menu.y}
+          onClose={orderMenu.close}
+          items={[
+            {
+              id: 'thread',
+              label: 'Open thread',
+              icon: MessageSquare,
+              onClick: () =>
+                navigate(
+                  `/orders?orderId=${encodeURIComponent(orderMenu.target!.id)}&action=thread`,
+                ),
+            },
+            ...(['pending', 'pending_approval'].includes(orderMenu.target.status)
+              ? [
+                  {
+                    id: 'approve',
+                    label: 'Approve',
+                    icon: CheckCircle,
+                    onClick: () =>
+                      navigate(
+                        `/orders?orderId=${encodeURIComponent(orderMenu.target!.id)}&action=thread`,
+                      ),
+                  } satisfies ContextMenuItem,
+                  {
+                    id: 'reject',
+                    label: 'Reject',
+                    icon: XCircle,
+                    danger: true,
+                    onClick: () =>
+                      navigate(
+                        `/orders?orderId=${encodeURIComponent(orderMenu.target!.id)}`,
+                      ),
+                  } satisfies ContextMenuItem,
+                ]
+              : []),
+            {
+              id: 'all',
+              label: 'View all orders',
+              icon: ShoppingCart,
+              dividerBefore: true,
+              onClick: () => navigate('/orders'),
+            },
+          ]}
+        />
+      )}
+
+      {stockMenu.open && stockMenu.menu && stockMenu.target && (
+        <ContextMenu
+          x={stockMenu.menu.x}
+          y={stockMenu.menu.y}
+          onClose={stockMenu.close}
+          items={[
+            {
+              id: 'po',
+              label: `Draft PO (${stockMenu.target.thresholdMin || 6} btl)`,
+              icon: ShoppingCart,
+              onClick: () =>
+                navigate(
+                  `/orders?draft=new&inventoryId=${encodeURIComponent(stockMenu.target!.id || stockMenu.target!.wineId || '')}&qty=${stockMenu.target!.thresholdMin || 6}`,
+                ),
+            },
+            {
+              id: 'inv',
+              label: 'Open in inventory',
+              icon: Package,
+              onClick: () =>
+                navigate(
+                  `/inventory?highlight=${encodeURIComponent(stockMenu.target!.id || stockMenu.target!.wineId || '')}`,
+                ),
+            },
+            {
+              id: 'copy',
+              label: 'Copy wine name',
+              icon: Copy,
+              onClick: () => {
+                void navigator.clipboard?.writeText(
+                  stockMenu.target!.wineName ||
+                    stockMenu.target!.wineProducer ||
+                    'Unknown wine',
+                )
+                toast.success('Copied')
+              },
+            },
+          ]}
+        />
+      )}
+
+      {wineMenu.open && wineMenu.menu && wineMenu.target && (
+        <ContextMenu
+          x={wineMenu.menu.x}
+          y={wineMenu.menu.y}
+          onClose={wineMenu.close}
+          items={[
+            {
+              id: 'library',
+              label: 'Open in library',
+              icon: Wine,
+              onClick: () =>
+                navigate(
+                  wineMenu.target!.wineId
+                    ? `/wines?wineId=${encodeURIComponent(wineMenu.target!.wineId)}`
+                    : `/wines?search=${encodeURIComponent(wineMenu.target!.name)}`,
+                ),
+            },
+            {
+              id: 'reports',
+              label: 'View in reports',
+              icon: BarChart3,
+              onClick: () => navigate('/reports'),
+            },
+            {
+              id: 'copy',
+              label: 'Copy wine name',
+              icon: Copy,
+              onClick: () => {
+                void navigator.clipboard?.writeText(wineMenu.target!.name)
+                toast.success('Copied')
+              },
+            },
+          ]}
+        />
+      )}
 
       {/* Add Important Date Modal */}
       <AddImportantDateModal
         isOpen={showAddDateModal}
-        onClose={() => setShowAddDateModal(false)}
+        onClose={() => {
+          setShowAddDateModal(false)
+          setEditingImportantDate(null)
+        }}
         onSave={handleAddImportantDate}
+        editingDate={editingImportantDate}
       />
     </div>
   )

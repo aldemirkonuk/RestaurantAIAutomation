@@ -27,6 +27,20 @@ export interface UserPreferences {
   servicePermissions?: Partial<
     Record<'email' | 'web' | 'privacy_analytics' | 'privacy_sharing', boolean>
   >
+  /** Home dashboard Quick Actions (order, hidden builtins, custom shortcuts) */
+  quickActions?: {
+    order: string[]
+    hiddenBuiltin: string[]
+    custom: Array<{
+      id: string
+      kind: 'custom'
+      title: string
+      href: string
+      icon: string
+      color?: string
+      description?: string
+    }>
+  }
   [key: string]: unknown
 }
 
