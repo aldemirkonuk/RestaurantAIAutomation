@@ -90,9 +90,7 @@ class TestBUG01StockWriteViaRpc:
         select_execute = (
             mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute
         )
-        select_execute.return_value = MagicMock(
-            data={"id": "inv-1", "stock_live": 10}
-        )
+        select_execute.return_value = MagicMock(data={"id": "inv-1", "stock_live": 10})
         mock_supabase.rpc.return_value.execute.side_effect = RuntimeError("rpc down")
 
         result = await repo.update_stock("inv-1", 8, "sale")
