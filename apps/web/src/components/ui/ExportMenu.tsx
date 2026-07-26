@@ -1,7 +1,7 @@
 /**
- * Export split-button with a format picker.
- * Groups formats by intent (files, spreadsheets, documents, quick actions) so
- * the list stays scannable as formats are added.
+ * Shared export split-button with a format picker.
+ * Same format set everywhere (CSV, Excel, TSV, PDF, Markdown, HTML, JSON,
+ * clipboard, print) so list pages stay consistent.
  */
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -16,7 +16,6 @@ import {
   Table2,
   Loader2,
 } from 'lucide-react'
-import { Button } from './index'
 import { cn } from '../../lib/utils'
 import type { TableExportFormat } from '../../lib/tableExport'
 
@@ -59,6 +58,9 @@ const GROUPS: { label: string; options: FormatOption[] }[] = [
   },
 ]
 
+export type ExportMenuVariant = 'outline' | 'wine' | 'solid' | 'soft' | 'ghost' | 'dark'
+export type ExportMenuSize = 'default' | 'sm' | 'xs'
+
 interface ExportMenuProps {
   onExport: (format: TableExportFormat) => void | Promise<void>
   /** Row count shown in the menu header so users know the export scope. */
@@ -66,6 +68,35 @@ interface ExportMenuProps {
   label?: string
   disabled?: boolean
   align?: 'left' | 'right'
+  variant?: ExportMenuVariant
+  size?: ExportMenuSize
+  /** Override trigger classes when a page needs a one-off look. */
+  triggerClassName?: string
+  title?: string
+}
+
+const VARIANT_CLASS: Record<ExportMenuVariant, string> = {
+  outline:
+    'border-2 border-wine-300 bg-transparent hover:bg-wine-50 text-wine-700',
+  wine: 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30 border border-transparent',
+  solid:
+    'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/30 border border-transparent',
+  soft:
+    'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-semibold',
+  ghost: 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
+  dark: 'bg-white/10 hover:bg-white/20 text-white border border-transparent',
+}
+
+const SIZE_CLASS: Record<ExportMenuSize, string> = {
+  default: 'h-10 px-4 py-2 text-sm rounded-lg',
+  sm: 'h-9 px-3 text-xs rounded-lg',
+  xs: 'h-7 px-2 text-[10px] rounded-lg font-bold',
+}
+
+const ICON_SIZE: Record<ExportMenuSize, string> = {
+  default: 'w-4 h-4',
+  sm: 'w-3.5 h-3.5',
+  xs: 'w-3 h-3',
 }
 
 export function ExportMenu({
@@ -74,6 +105,10 @@ export function ExportMenu({
   label = 'Export',
   disabled,
   align = 'right',
+  variant = 'outline',
+  size = 'default',
+  triggerClassName,
+  title = 'Export the filtered rows',
 }: ExportMenuProps) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<TableExportFormat | null>(null)
@@ -98,22 +133,32 @@ export function ExportMenu({
     }
   }
 
+  const iconClass = ICON_SIZE[size]
+
   return (
     <div className="relative" ref={containerRef}>
-      <Button
-        variant="outline"
+      <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Export the filtered rows"
+        title={title}
+        className={cn(
+          'inline-flex items-center justify-center whitespace-nowrap font-medium transition-all',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-500 focus-visible:ring-offset-2',
+          'disabled:pointer-events-none disabled:opacity-50 active:scale-95',
+          VARIANT_CLASS[variant],
+          SIZE_CLASS[size],
+          triggerClassName,
+        )}
       >
-        <Download className="w-4 h-4 mr-2" />
+        <Download className={cn(iconClass, 'mr-1.5')} />
         {label}
         <ChevronDown
-          className={cn('w-4 h-4 ml-1.5 transition-transform', open && 'rotate-180')}
+          className={cn(iconClass, 'ml-1.5 transition-transform', open && 'rotate-180')}
         />
-      </Button>
+      </button>
 
       {open && (
         <>

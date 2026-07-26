@@ -378,7 +378,7 @@ export function SeatingDensityPanel({ className = '' }: { className?: string }) 
           <div className="text-sm text-gray-500">
             No seated-check data yet. Seating density needs a POS check feed with table
             attribution and seat counts —{' '}
-            <a href="/settings" className="text-cyan-700 font-medium hover:underline">connect your POS</a>
+            <a href="/settings?tab=pos" className="text-cyan-700 font-medium hover:underline">connect your POS</a>
             {' '}or set seats per table in{' '}
             <a href="/settings" className="text-cyan-700 font-medium hover:underline">table setup</a>.
           </div>

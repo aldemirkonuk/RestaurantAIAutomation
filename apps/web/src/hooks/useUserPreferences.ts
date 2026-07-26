@@ -51,6 +51,11 @@ export interface UserPreferences {
       description?: string
     }>
   }
+  /** Settings → POS — active provider selection */
+  posConfig?: {
+    activeProvider?: string
+    updatedAt?: string
+  }
   [key: string]: unknown
 }
 

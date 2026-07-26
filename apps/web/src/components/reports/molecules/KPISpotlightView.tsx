@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Download, TrendingUp, TrendingDown, Calendar, BarChart3, PieChart, Table2, FileDown } from 'lucide-react'
 import { AreaChart, BarChart, DonutChart } from '@tremor/react'
@@ -168,9 +169,12 @@ function EmptyStateCard({ title, description }: { title: string; description: st
       </div>
       <h4 className="text-base font-medium text-gray-700 mb-1">{title}</h4>
       <p className="text-sm text-gray-500 max-w-xs">{description}</p>
-      <button className="mt-4 px-4 py-2 text-sm font-medium text-wine-600 bg-wine-50 rounded-lg hover:bg-wine-100 transition-colors">
+      <Link
+        to="/settings?tab=pos"
+        className="mt-4 px-4 py-2 text-sm font-medium text-wine-600 bg-wine-50 rounded-lg hover:bg-wine-100 transition-colors"
+      >
         Configure POS
-      </button>
+      </Link>
     </div>
   )
 }

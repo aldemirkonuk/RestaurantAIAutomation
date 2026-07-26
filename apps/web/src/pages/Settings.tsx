@@ -46,6 +46,7 @@ import { TeamGoalsSettings } from '../components/team/TeamGoalsSettings';
 import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
 import { IntegrationsAuth } from '../components/settings/IntegrationsAuth';
+import { PosSettingsSection } from '../components/settings/PosSettingsSection';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
 import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
@@ -76,7 +77,7 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'features', 'calendar'] as const;
+const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'features', 'pos', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
@@ -86,6 +87,7 @@ const SECTION_LABELS: Record<SectionId, string> = {
   locations: 'Locations',
   measurement: 'Measurement',
   features: 'Features',
+  pos: 'POS',
   calendar: 'Calendar',
 };
 
@@ -634,7 +636,7 @@ export default function Settings() {
   const [chainsList, setChainsList] = useState<{ id: string; name: string }[]>([]);
   const [assigningToChain, setAssigningToChain] = useState<{ id: string; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const initialSection =
     tabParam && (SECTION_IDS as readonly string[]).includes(tabParam)
@@ -677,6 +679,10 @@ export default function Settings() {
   }, []);
 
   const scrollToSection = (id: SectionId) => {
+    setActiveSection(id);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', id);
+    setSearchParams(next, { replace: true });
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -1463,6 +1469,9 @@ export default function Settings() {
             );
           })}
         </div>
+
+        {/* ── POS ── */}
+        <PosSettingsSection />
 
         {/* ── Calendar Subscription ── */}
         <div id="calendar" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
