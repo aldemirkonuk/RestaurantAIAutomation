@@ -39,6 +39,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.0.6",
+    "driver.js": "^1.8.0",
     "exceljs": "^4.4.0",
     "framer-motion": "^10.18.0",
     "googleapis": "^170.0.0",

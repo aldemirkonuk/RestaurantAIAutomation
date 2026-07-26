@@ -406,14 +406,14 @@ export function InventoryCommandPage() {
   return (
     <div className="p-6 max-w-[1500px] mx-auto">
       {/* header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-4" data-tour="inventory-filters">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Inventory</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             {stats.total} wines, {stats.liveTotal + stats.shadowTotal} bottles on hand
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap" data-tour="inventory-actions">
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => setView('table')}
@@ -444,7 +444,7 @@ export function InventoryCommandPage() {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5" data-tour="inventory-low-stock">
         <Kpi label="On hand" value={stats.liveTotal + stats.shadowTotal} sub={`${stats.total} wines`} />
         <Kpi label="Live" value={stats.liveTotal} sub="POS-verified" tone="blue" />
         <Kpi label="Shadow" value={stats.shadowTotal} sub="awaiting reconcile" tone="violet" active={activeFlag === 'recon'} onClick={() => setActiveFlag(activeFlag === 'recon' ? null : 'recon')} />

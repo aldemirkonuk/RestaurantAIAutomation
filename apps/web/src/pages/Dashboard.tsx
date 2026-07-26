@@ -328,7 +328,7 @@ export function Dashboard() {
         className="p-6 space-y-6"
       >
         {/* Stats Grid - Clickable Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dashboard-kpis">
           {stats.map((stat) => {
             const Icon = stat.icon
             return (
@@ -853,7 +853,7 @@ export function Dashboard() {
           </motion.div>
 
           {/* Low Stock Alerts */}
-          <motion.div variants={itemVariants} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <motion.div variants={itemVariants} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-tour="dashboard-alerts">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
                 <h3 className="font-semibold text-gray-900">Low Stock Alerts</h3>

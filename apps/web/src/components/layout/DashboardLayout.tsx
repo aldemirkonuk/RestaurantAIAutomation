@@ -1,6 +1,10 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { CommandProvider } from '../command/CommandProvider'
+import { GuidanceProvider } from '../../guidance/GuidanceProvider'
+import { PageTipStrip } from '../../guidance/components/PageTipStrip'
+import { WineAgentFab } from '../../guidance/components/WineAgentFab'
+import { TourHelpButton } from '../../guidance/components/TourHelpButton'
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
@@ -9,23 +13,26 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <CommandProvider>
-      <div className="min-h-screen bg-gray-50">
-        {/* Sidebar */}
-        <Sidebar />
+      <GuidanceProvider>
+        <div className="min-h-screen bg-gray-50">
+          <Sidebar />
 
-        {/* Main Content Area */}
-        <div className="pl-[260px] transition-all duration-300" id="main-content">
-          {/* Content */}
-          <main className="min-h-screen">
-            {children || <Outlet />}
-          </main>
+          <div className="pl-[260px] transition-all duration-300" id="main-content">
+            <div className="sticky top-0 z-10 flex justify-end px-4 pt-2 pointer-events-none">
+              <div className="pointer-events-auto">
+                <TourHelpButton />
+              </div>
+            </div>
+            <PageTipStrip />
+            <main className="min-h-screen">{children || <Outlet />}</main>
+          </div>
+
+          <WineAgentFab />
         </div>
-      </div>
+      </GuidanceProvider>
     </CommandProvider>
   )
 }
 
-// Export individual components for flexibility
 export { Sidebar } from './Sidebar'
 export { Header } from './Header'
-

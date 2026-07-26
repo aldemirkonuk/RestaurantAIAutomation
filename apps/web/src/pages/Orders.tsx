@@ -1406,7 +1406,7 @@ Shadow stock has been moved to Live Stock.`)
     <div className="min-h-screen">
       <Header title="Order Management" subtitle="Review and approve wine procurement orders" />
 
-      <div className="p-6">
+      <div className="p-6" data-tour="orders-list">
         {/* Error Banner */}
         {error && (
           <motion.div
@@ -1499,7 +1499,7 @@ Shadow stock has been moved to Live Stock.`)
               className="bg-wine-600 hover:bg-wine-700 shadow-lg shadow-wine-600/30"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Create Order
+              <span data-tour="orders-create">Create Order</span>
               <span className="ml-2 text-xs opacity-70">⌘N</span>
             </Button>
           </div>

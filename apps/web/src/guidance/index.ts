@@ -1,0 +1,8 @@
+export { GuidanceProvider, useGuidance, useGuidanceOptional } from './GuidanceProvider'
+export { usePageGuidance } from './usePageGuidance'
+export { PageTipStrip } from './components/PageTipStrip'
+export { LearnPanel } from './components/LearnPanel'
+export { WineAgentFab } from './components/WineAgentFab'
+export { TourHelpButton } from './components/TourHelpButton'
+export { trackGuidance } from './analytics'
+export type { GuidanceState, PageTourId } from './types'

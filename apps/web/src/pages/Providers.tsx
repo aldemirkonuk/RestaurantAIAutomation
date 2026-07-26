@@ -501,7 +501,7 @@ export function Providers() {
           : 'Manage your supplier relationships'}
       />
 
-      <div className="p-6">
+      <div className="p-6" data-tour="providers-list">
 
         {/* ── Empty state ── */}
         {providers.length === 0 && !isLoading && (
@@ -519,7 +519,7 @@ export function Providers() {
             {/* ════════════════════════════════════════
                 TOOLBAR  (sketch 008-A: two-row layout)
             ════════════════════════════════════════ */}
-            <div className="space-y-2.5 mb-5">
+            <div className="space-y-2.5 mb-5" data-tour="providers-add">
 
               {/* Row 1: search + CTA */}
               <div className="flex gap-2.5">

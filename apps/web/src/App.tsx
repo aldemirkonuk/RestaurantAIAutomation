@@ -77,6 +77,7 @@ const Calendar = lazyWithRefresh(() => import('./pages/Calendar'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
+const Help = lazyWithRefresh(() => import('./pages/Help'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -175,13 +176,15 @@ function App() {
                   <Route path="/documents-reports" element={<DocumentsPage />} />
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/settings" element={<Settings />} />
-                  <Route path="/help" element={<PlaceholderPage title="Help & Support" />} />
+                  <Route path="/help" element={<Help />} />
                   <Route path="/admin" element={<AdminPanel />} />
                   <Route path="/admin/health" element={<AdminHealth />} />
                   
                   {/* AI Assistants */}
                   <Route path="/sommelier" element={<SommelierAI />} />
                   <Route path="/wine-agent" element={<PlaceholderPage title="Wine Agent" />} />
+                  <Route path="/wineagent" element={<PlaceholderPage title="Wine Agent" />} />
+                  <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}
                   <Route path="/dev-sandbox" element={<DevSandbox />} />

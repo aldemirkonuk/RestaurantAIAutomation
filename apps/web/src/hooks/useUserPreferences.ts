@@ -21,6 +21,12 @@ export interface UserPreferences {
   templateDefaults?: Record<string, { templateId: string; templateName: string }>
   reportsLayout?: unknown
   dashboardBlocks?: unknown
+  /** Interactive guidance tip/tour/FAB state (see apps/web/src/guidance/types.ts) */
+  guidance?: unknown
+  /** Settings → Services & permissions toggles */
+  servicePermissions?: Partial<
+    Record<'email' | 'web' | 'privacy_analytics' | 'privacy_sharing', boolean>
+  >
   [key: string]: unknown
 }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -53,6 +54,7 @@ import {
   isValidPourSize,
 } from '../utils/volumeUtils';
 import { cn } from '../lib/utils';
+import { ServicesPermissions } from '../components/settings/ServicesPermissions';
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -71,10 +73,11 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'email', 'notifications', 'locations', 'measurement', 'features', 'calendar'] as const;
+const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'features', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
+  services: 'Services',
   email: 'Email',
   notifications: 'Notifications',
   locations: 'Locations',
@@ -552,12 +555,29 @@ export default function Settings() {
   const [chainsList, setChainsList] = useState<{ id: string; name: string }[]>([]);
   const [assigningToChain, setAssigningToChain] = useState<{ id: string; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
-  const [activeSection, setActiveSection] = useState<SectionId>('team');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialSection =
+    tabParam && (SECTION_IDS as readonly string[]).includes(tabParam)
+      ? (tabParam as SectionId)
+      : 'team';
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
   const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInviteRow[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
 
   const effectiveRole = activeRole ?? user?.role ?? null;
+
+  // Deep-link: /settings?tab=services|team|...
+  useEffect(() => {
+    if (tabParam && (SECTION_IDS as readonly string[]).includes(tabParam)) {
+      const id = tabParam as SectionId;
+      setActiveSection(id);
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [tabParam]);
 
   // Scrollspy: highlight whichever section's top is nearest the sticky bar
   useEffect(() => {
@@ -855,6 +875,11 @@ export default function Settings() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* ── Services & permissions ── */}
+        <div id="services" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden p-6">
+          <ServicesPermissions />
+        </div>
 
         {/* ── Team ── */}
         <div id="team" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

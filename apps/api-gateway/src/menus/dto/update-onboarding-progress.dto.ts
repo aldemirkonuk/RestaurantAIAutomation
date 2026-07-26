@@ -12,4 +12,8 @@ export class UpdateOnboardingProgressDto {
   @IsBoolean()
   @IsOptional()
   team_member_invited?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  checklist_dismissed?: boolean;
 }

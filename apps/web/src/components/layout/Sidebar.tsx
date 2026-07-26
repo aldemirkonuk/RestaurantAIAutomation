@@ -22,11 +22,13 @@ import {
   MessageSquare,
   Calendar,
   Rocket,
+  BookOpen,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
 import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress'
-import { GettingStartedPanel } from '../onboarding/GettingStartedPanel'
+import { LearnPanel } from '../../guidance/components/LearnPanel'
+import { trackGuidance } from '../../guidance/analytics'
 import { useUnreadCount } from '../../hooks/queries/useNotificationQueries'
 import { usePendingOrdersCount } from '../../hooks/queries/useOrderQueries'
 import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
@@ -65,7 +67,7 @@ const secondaryNavItems: NavItem[] = [
 
 const aiNavItems: NavItem[] = [
   { name: 'Sommelier AI', href: '/sommelier', icon: Sparkles },
-  { name: 'Wine Agent', href: '/wine-agent', icon: Bot },
+  { name: 'Wine Agent', href: '/wineagent', icon: Bot },
 ]
 
 const bottomNavItems: NavItem[] = [
@@ -104,8 +106,12 @@ export function Sidebar() {
     ? [true, progress.menu_uploaded, progress.vendor_added, progress.team_member_invited].filter(
         Boolean,
       ).length
-    : 0
-  const showChecklistItem = progress && !progress.checklist_dismissed && !progress.completed_at
+    : 1
+  // Always show Get started while activation incomplete (fallback if progress fetch fails)
+  const activationComplete = !!(progress?.completed_at)
+  const checklistDismissed = !!progress?.checklist_dismissed
+  const showGetStarted = !activationComplete && !checklistDismissed
+  const showLearn = activationComplete || checklistDismissed
 
   const NavItemComponent = ({ item, collapsed }: { item: NavItem; collapsed: boolean }) => {
     const isActive = location.pathname === item.href
@@ -292,12 +298,15 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Getting Started checklist item */}
-        {showChecklistItem && (
+        {/* Get started — always visible while activation incomplete */}
+        {showGetStarted && (
           <div className="relative mt-4">
             <button
               ref={checklistButtonRef}
-              onClick={() => setShowChecklist(!showChecklist)}
+              onClick={() => {
+                setShowChecklist(!showChecklist)
+                if (!showChecklist) trackGuidance('learn_opened', { mode: 'get-started' })
+              }}
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left',
                 showChecklist
@@ -318,15 +327,19 @@ export function Sidebar() {
                   Get started
                 </span>
               )}
+              {!collapsed && (
+                <span className="text-xs text-gray-400">{completedCount}/4</span>
+              )}
             </button>
 
             <AnimatePresence>
-              {showChecklist && progress && (
-                <GettingStartedPanel
+              {showChecklist && (
+                <LearnPanel
                   progress={progress}
+                  mode="get-started"
                   anchorRef={checklistButtonRef}
                   onClose={() => setShowChecklist(false)}
-                  onDismiss={() => {
+                  onDismissChecklist={() => {
                     update({ checklist_dismissed: true })
                     setShowChecklist(false)
                   }}
@@ -339,6 +352,40 @@ export function Sidebar() {
 
       {/* Bottom Section */}
       <div className="border-t border-gray-100 p-3 space-y-1">
+        {showLearn && (
+          <div className="relative">
+            <button
+              ref={checklistButtonRef}
+              onClick={() => {
+                setShowChecklist(!showChecklist)
+                if (!showChecklist) trackGuidance('learn_opened', { mode: 'learn' })
+              }}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left',
+                showChecklist
+                  ? 'bg-[#722F37]/10 text-[#722F37]'
+                  : 'text-gray-600 hover:bg-gray-100',
+              )}
+            >
+              <BookOpen className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && (
+                <span className="font-medium whitespace-nowrap overflow-hidden">
+                  Learn & Help
+                </span>
+              )}
+            </button>
+            <AnimatePresence>
+              {showChecklist && (
+                <LearnPanel
+                  progress={progress}
+                  mode="learn"
+                  anchorRef={checklistButtonRef}
+                  onClose={() => setShowChecklist(false)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
+        )}
         {bottomNavItems.map((item) => (
           <NavItemComponent key={item.name} item={item} collapsed={collapsed} />
         ))}

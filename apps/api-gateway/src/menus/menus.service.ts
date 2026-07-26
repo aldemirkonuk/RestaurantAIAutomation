@@ -247,6 +247,8 @@ export class MenusService {
     if (dto.vendor_added !== undefined) updates.vendor_added = dto.vendor_added;
     if (dto.team_member_invited !== undefined)
       updates.team_member_invited = dto.team_member_invited;
+    if (dto.checklist_dismissed !== undefined)
+      updates.checklist_dismissed = dto.checklist_dismissed;
 
     // Auto-set completed_at when all three tasks become true
     const current = await this.getOnboardingProgress(userId);
