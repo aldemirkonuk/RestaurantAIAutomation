@@ -12,6 +12,9 @@ import {
 } from '../hooks/queries/usePromotionsQueries'
 import { useNotificationStore } from '../stores'
 import { useAuth } from '../contexts/AuthContext'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
+import { toast } from 'sonner'
 
 type Tab = 'promotions' | 'senders' | 'prospects'
 
@@ -171,26 +174,45 @@ function PromotionsTab() {
     })
   }, [promos, dismissed, query, filter, sort])
 
-  /** NEW-358: export the visible offer set. */
-  const exportCsv = useCallback(() => {
-    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const header = ['Vendor', 'Offer', 'Type', 'Discount', 'Code', 'Min qty', 'Ends', 'Wines'].join(',')
-    const lines = visible.map(p => {
-      const dv = p.discount_value ?? {}
-      const cond = p.conditions ?? {}
-      return [
-        q(p.providers?.name), q(p.name), q(p.promo_type),
-        q(dv.percent != null ? `${dv.percent}%` : dv.amount != null ? dv.amount : dv.free_shipping ? 'free shipping' : ''),
-        q(cond.code), q(cond.min_qty), q(p.end_date?.slice(0, 10)),
-        q((p.applicable_wines ?? []).join('; ')),
-      ].join(',')
-    })
-    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `promotions-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+  /** NEW-358: export the visible offer set in shared formats. */
+  const exportVisible = useCallback(async (format: TableExportFormat) => {
+    const columns: TableExportColumn<(typeof visible)[number]>[] = [
+      { header: 'Vendor', value: (p) => p.providers?.name ?? '' },
+      { header: 'Offer', value: (p) => p.name },
+      { header: 'Type', value: (p) => p.promo_type ?? '' },
+      {
+        header: 'Discount',
+        value: (p) => {
+          const dv = p.discount_value ?? {}
+          if (dv.percent != null) return `${dv.percent}%`
+          if (dv.amount != null) return String(dv.amount)
+          if (dv.free_shipping) return 'free shipping'
+          return ''
+        },
+      },
+      { header: 'Code', value: (p) => p.conditions?.code ?? '' },
+      { header: 'Min qty', value: (p) => p.conditions?.min_qty ?? '' },
+      { header: 'Ends', value: (p) => p.end_date?.slice(0, 10) ?? '' },
+      { header: 'Wines', value: (p) => (p.applicable_wines ?? []).join('; ') },
+    ]
+    try {
+      await exportTable({
+        format,
+        rows: visible,
+        columns,
+        filename: `promotions-${new Date().toISOString().slice(0, 10)}`,
+        title: 'Promotions',
+      })
+      toast.success(
+        format === 'clipboard'
+          ? `Copied ${visible.length} offers`
+          : format === 'print'
+            ? 'Opening print view'
+            : `Exported ${visible.length} offers`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
   }, [visible])
 
   if (isLoading) return <Center><Loader2 className="w-5 h-5 text-wine-300 animate-spin" /></Center>
@@ -232,12 +254,14 @@ function PromotionsTab() {
           <option value="value">Biggest discount</option>
           <option value="vendor">Vendor A–Z</option>
         </select>
-        <button
-          onClick={exportCsv}
-          className="inline-flex items-center gap-1.5 h-8 px-2.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:border-gray-300"
-        >
-          <Download className="w-3.5 h-3.5" /> CSV
-        </button>
+        <ExportMenu
+          variant="soft"
+          size="sm"
+          label="Export"
+          count={visible.length}
+          onExport={exportVisible}
+          title="Export visible promotions"
+        />
       </div>
 
       {visible.length === 0 ? (

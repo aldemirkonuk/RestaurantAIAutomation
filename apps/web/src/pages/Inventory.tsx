@@ -4,7 +4,6 @@ import { Header } from '../components/layout/Header'
 import {
   Search,
   Filter,
-  Download,
   Plus,
   Edit,
   ShoppingCart,
@@ -36,7 +35,9 @@ import { ManualOverrideModal, ManualOverrideData } from '../components/inventory
 import { StorageLocationManager } from '../components/inventory/StorageLocationManager'
 import { MultiLocationCell } from '../components/inventory/MultiLocationCell'
 import { useStorageLocations } from '../hooks/useStorageLocations'
-import { exportInventory, ExportFormat } from '../lib/exportHelpers'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
+import { toast } from 'sonner'
 import { formatVolume } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
 import { useTypedInventorySubscription, InventoryUpdatePayload, useRealtimeDispatch } from '../contexts/RealtimeContext'
@@ -162,9 +163,6 @@ export function Inventory() {
   const [showAddWineModal, setShowAddWineModal] = useState(false)
   const [_showInvoiceScannerModal, _setShowInvoiceScannerModal] = useState(false)
   const [manualOverrideModal, setManualOverrideModal] = useState<InventoryItem | null>(null)
-  const [showExportModal, setShowExportModal] = useState(false)
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('csv')
-  const [includeMetrics, setIncludeMetrics] = useState(false)
   const [showInventoryInsights, setShowInventoryInsights] = useState(true)
   const [showStorageManager, setShowStorageManager] = useState(false)
   const [storageManagerLocationId, setStorageManagerLocationId] = useState<string | null>(null)
@@ -535,63 +533,74 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
     }
   }
 
-  const handleExport = async () => {
-    // Prepare data for export
-    const exportData = [
-      ['Wine Name', 'Producer', 'Type', 'Bottle Size', 'Sale Type', 'Pour Size', 'Live Stock', 'Shadow Stock', 'Total', 'Threshold', 'Status', 'Purchased Price', 'Menu Price', 'Margin %', 'Cost Value', 'Menu Value'],
-      ...displayedInventory.map(item => {
-        const totalStock = (item.liveStock || 0) + (item.shadowStock || 0)
-        const menuPrice = item.menuPrice || getDefaultMenuPrice(item.price)
-        const margin = calculateMargin(item.price, menuPrice)
-        const bottleSizeDisplay = item.bottleSizeMl ? formatVolume(item.bottleSizeMl, measurementUnit) : ''
-        const pourSizeDisplay = item.pourSizeMl ? formatVolume(item.pourSizeMl, measurementUnit) : ''
-        return [
-          item.name,
-          item.producer,
-          item.type,
-          bottleSizeDisplay,
-          item.saleType ?? '',
-          pourSizeDisplay,
-          item.liveStock || 0,
-          item.shadowStock || 0,
-          totalStock,
-          item.threshold,
-          getStockStatus(item).label,
-          item.price.toFixed(2),
-          menuPrice.toFixed(2),
-          margin.toFixed(1),
-          (totalStock * item.price).toFixed(2),
-          (totalStock * menuPrice).toFixed(2)
-        ]
-      }),
+  const handleExport = async (format: TableExportFormat) => {
+    const columns: TableExportColumn<InventoryItem>[] = [
+      { header: 'Wine Name', value: (item) => item.name },
+      { header: 'Producer', value: (item) => item.producer },
+      { header: 'Type', value: (item) => item.type },
+      {
+        header: 'Bottle Size',
+        value: (item) =>
+          item.bottleSizeMl ? formatVolume(item.bottleSizeMl, measurementUnit) : '',
+      },
+      { header: 'Sale Type', value: (item) => item.saleType ?? '' },
+      {
+        header: 'Pour Size',
+        value: (item) =>
+          item.pourSizeMl ? formatVolume(item.pourSizeMl, measurementUnit) : '',
+      },
+      { header: 'Live Stock', value: (item) => item.liveStock || 0 },
+      { header: 'Shadow Stock', value: (item) => item.shadowStock || 0 },
+      {
+        header: 'Total',
+        value: (item) => (item.liveStock || 0) + (item.shadowStock || 0),
+      },
+      { header: 'Threshold', value: (item) => item.threshold },
+      { header: 'Status', value: (item) => getStockStatus(item).label },
+      { header: 'Purchased Price', value: (item) => item.price.toFixed(2) },
+      {
+        header: 'Menu Price',
+        value: (item) => (item.menuPrice || getDefaultMenuPrice(item.price)).toFixed(2),
+      },
+      {
+        header: 'Margin %',
+        value: (item) => {
+          const menuPrice = item.menuPrice || getDefaultMenuPrice(item.price)
+          return calculateMargin(item.price, menuPrice).toFixed(1)
+        },
+      },
+      {
+        header: 'Cost Value',
+        value: (item) =>
+          (((item.liveStock || 0) + (item.shadowStock || 0)) * item.price).toFixed(2),
+      },
+      {
+        header: 'Menu Value',
+        value: (item) => {
+          const menuPrice = item.menuPrice || getDefaultMenuPrice(item.price)
+          return (((item.liveStock || 0) + (item.shadowStock || 0)) * menuPrice).toFixed(2)
+        },
+      },
     ]
 
-    // Calculate metrics if requested
-    let metrics = undefined
-    if (includeMetrics) {
-      const physicalInventorySize = filteredInventory.reduce((sum, item) => sum + ((item.liveStock || 0) + (item.shadowStock || 0)), 0)
-      const totalInventoryValue = filteredInventory.reduce((sum, item) => sum + (((item.liveStock || 0) + (item.shadowStock || 0)) * item.price), 0)
-      const lowStockCount = filteredInventory.filter(item => {
-        const status = getStockStatus(item)
-        return status.label === 'Low' || status.label === 'Critical'
-      }).length
-      const outOfStockCount = filteredInventory.filter(item => {
-        const stock = item.liveStock || 0
-        return stock === 0
-      }).length
-
-      metrics = {
-        physical_inventory_size: physicalInventorySize,
-        total_inventory_value: totalInventoryValue,
-        low_stock_count: lowStockCount,
-        out_of_stock_count: outOfStockCount,
-        total_unique_wines: filteredInventory.length,
-      }
+    try {
+      await exportTable({
+        format,
+        rows: displayedInventory,
+        columns,
+        filename: `inventory-${new Date().toISOString().slice(0, 10)}`,
+        title: 'Inventory',
+      })
+      toast.success(
+        format === 'clipboard'
+          ? `Copied ${displayedInventory.length} items`
+          : format === 'print'
+            ? 'Opening print view'
+            : `Exported ${displayedInventory.length} items`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
     }
-    
-    // Export using the appropriate format
-    await exportInventory(exportFormat, exportData, metrics)
-    setShowExportModal(false)
   }
 
   const handleTransfer = useCallback(
@@ -1162,13 +1171,13 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
               <span className="text-sm font-medium">Filters</span>
             </button>
 
-            <button
-              onClick={() => setShowExportModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm font-medium">Export</span>
-            </button>
+            <ExportMenu
+              variant="soft"
+              label="Export"
+              count={displayedInventory.length}
+              onExport={handleExport}
+              title="Export the filtered inventory"
+            />
 
             <button 
               onClick={() => setShowAddWineModal(true)}
@@ -1795,121 +1804,6 @@ Current stock: ${item.liveStock || 0} live + ${item.shadowStock || 0} shadow = $
           onSave={handleManualOverride}
         />
       )}
-
-      {/* Export Options Modal */}
-      <AnimatePresence>
-        {showExportModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowExportModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-wine-50 to-blue-50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-wine-600 rounded-xl">
-                    <Download className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">Export Inventory</h2>
-                    <p className="text-sm text-gray-500">Choose your export format</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowExportModal(false)}
-                  className="p-2 hover:bg-white/50 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-6">
-                {/* Format Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Export Format</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['csv', 'pdf', 'excel', 'sheets', 'drive'] as ExportFormat[]).map((format) => {
-                      const formatLabels = {
-                        csv: { label: 'CSV', icon: '📄', desc: 'Compatible with Excel' },
-                        pdf: { label: 'PDF', icon: '📑', desc: 'Printable report' },
-                        excel: { label: 'Excel', icon: '📊', desc: 'Native .xlsx file' },
-                        sheets: { label: 'Google Sheets', icon: '📈', desc: 'Cloud spreadsheet' },
-                        drive: { label: 'Google Drive', icon: '☁️', desc: 'Save to Drive' },
-                      }
-                      const config = formatLabels[format]
-                      
-                      return (
-                        <button
-                          key={format}
-                          onClick={() => setExportFormat(format)}
-                          className={`p-3 rounded-lg border-2 transition-all text-left ${
-                            exportFormat === format
-                              ? 'border-wine-600 bg-wine-50'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl">{config.icon}</span>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{config.label}</p>
-                              <p className="text-xs text-gray-500">{config.desc}</p>
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Include Metrics Toggle */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Include Metrics</p>
-                    <p className="text-sm text-gray-500">Add summary statistics to export</p>
-                  </div>
-                  <button
-                    onClick={() => setIncludeMetrics(!includeMetrics)}
-                    className={`relative w-11 h-6 rounded-full transition-colors ${
-                      includeMetrics ? 'bg-wine-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                        includeMetrics ? 'translate-x-5' : ''
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={handleExport}
-                    className="flex-1 px-6 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    Export Now
-                  </button>
-                  <button
-                    onClick={() => setShowExportModal(false)}
-                    className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Storage Location Manager Modal */}
       <StorageLocationManager

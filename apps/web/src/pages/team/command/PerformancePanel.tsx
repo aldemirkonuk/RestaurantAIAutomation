@@ -6,8 +6,10 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { BarChart3, Plus, Upload, Download } from 'lucide-react'
+import { BarChart3, Plus, Upload } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
+import { ExportMenu } from '../../../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 
 export function PerformancePanel({ member }: { member: TeamMember | null }) {
   const qc = useQueryClient()
@@ -21,32 +23,41 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
     enabled: !!member,
   })
 
-  /** NEW-529: export this member's performance series as CSV. */
-  const exportCsv = () => {
+  /** NEW-529: export this member's performance series in shared formats. */
+  const exportSeries = async (format: TableExportFormat) => {
     const series = data?.analytic?.series ?? []
     if (series.length === 0) {
       toast.error('No performance data to export yet')
       return
     }
-    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const header = ['Member', 'Point', 'Value'].join(',')
-    const lines = series.map((v: any, i: number) =>
-      [q(member?.display_name), i + 1, typeof v === 'number' ? v : (v?.value ?? '')].join(','),
-    )
-    const summary = data?.metrics
-      ? [
-          `# Sales per shift,${data.metrics.salesPerShift}`,
-          `# Avg check,${data.metrics.avgCheck}`,
-          `# Wine attach %,${data.metrics.wineAttachPct}`,
-          '',
-        ].join('\n')
-      : ''
-    const blob = new Blob([summary + [header, ...lines].join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `performance-${(member?.display_name ?? 'member').replace(/[^\w]+/g, '-').toLowerCase()}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    const rows = series.map((v: any, i: number) => ({
+      member: member?.display_name ?? '',
+      point: i + 1,
+      value: typeof v === 'number' ? v : (v?.value ?? ''),
+    }))
+    const columns: TableExportColumn<(typeof rows)[number]>[] = [
+      { header: 'Member', value: (r) => r.member },
+      { header: 'Point', value: (r) => r.point },
+      { header: 'Value', value: (r) => r.value },
+    ]
+    try {
+      await exportTable({
+        format,
+        rows,
+        columns,
+        filename: `performance-${(member?.display_name ?? 'member').replace(/[^\w]+/g, '-').toLowerCase()}`,
+        title: `Performance · ${member?.display_name ?? 'member'}`,
+      })
+      toast.success(
+        format === 'clipboard'
+          ? `Copied ${rows.length} points`
+          : format === 'print'
+            ? 'Opening print view'
+            : `Exported ${rows.length} points`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
   }
 
   const save = useMutation({
@@ -152,13 +163,14 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
           >
             <Upload className="w-3 h-3" /> CSV
           </button>
-          <button
-            onClick={exportCsv}
-            className="inline-flex items-center gap-1 h-7 px-2 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 hover:bg-gray-50"
+          <ExportMenu
+            variant="soft"
+            size="xs"
+            label="Export"
+            count={(data?.analytic?.series ?? []).length}
+            onExport={exportSeries}
             title="Export this member's performance series"
-          >
-            <Download className="w-3 h-3" /> Export
-          </button>
+          />
           <button
             onClick={() => setAdding((v) => !v)}
             className="inline-flex items-center gap-1 h-7 px-2 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 hover:bg-gray-50"

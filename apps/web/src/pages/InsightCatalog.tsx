@@ -18,7 +18,6 @@ import { useSearchParams } from "react-router-dom";
 import {
   Boxes,
   Copy,
-  Download,
   Layers,
   Lock,
   Search,
@@ -28,6 +27,9 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Header } from "../components/layout/Header";
 import { Breadcrumbs } from "../components/layout/Breadcrumbs";
+import { ExportMenu } from "../components/ui/ExportMenu";
+import { exportTable, type TableExportColumn, type TableExportFormat } from "../lib/tableExport";
+import { toast as sonnerToast } from "sonner";
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 
@@ -187,27 +189,34 @@ export default function InsightCatalog() {
     toast.success("Type link copied");
   };
 
-  const exportCatalog = (fmt: "json" | "csv") => {
+  const exportCatalog = async (format: TableExportFormat) => {
     if (!catalog) return;
-    let blob: Blob;
-    if (fmt === "json") {
-      blob = new Blob([JSON.stringify(catalog.candidates, null, 2)], {
-        type: "application/json",
+    const columns: TableExportColumn<Candidate>[] = [
+      { header: "key", value: (c) => c.key },
+      { header: "dimension", value: (c) => c.dimension },
+      { header: "measure", value: (c) => c.measure },
+      { header: "comparator", value: (c) => c.comparator },
+      { header: "category", value: (c) => c.category },
+      { header: "requires", value: (c) => c.requires.join("|") },
+    ];
+    try {
+      await exportTable({
+        format,
+        rows: catalog.candidates,
+        columns,
+        filename: "insight-catalog",
+        title: "Insight Catalog",
       });
-    } else {
-      const head = "key,dimension,measure,comparator,category,requires";
-      const lines = catalog.candidates.map(
-        (c) =>
-          `${c.key},${c.dimension},${c.measure},${c.comparator},${c.category},${c.requires.join("|")}`,
+      sonnerToast.success(
+        format === "clipboard"
+          ? `Copied ${catalog.candidates.length} types`
+          : format === "print"
+            ? "Opening print view"
+            : `Exported ${catalog.candidates.length} types`,
       );
-      blob = new Blob([[head, ...lines].join("\n")], { type: "text/csv" });
+    } catch (err) {
+      sonnerToast.error(err instanceof Error ? err.message : "Export failed");
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `insight-catalog.${fmt}`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const categories = Object.keys(catalog?.byCategory ?? {}).sort();
@@ -235,18 +244,15 @@ export default function InsightCatalog() {
             >
               ← Recommendations
             </a>
-            <button
-              onClick={() => exportCatalog("csv")}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
-            >
-              <Download className="w-4 h-4" /> CSV
-            </button>
-            <button
-              onClick={() => exportCatalog("json")}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
-            >
-              <Download className="w-4 h-4" /> JSON
-            </button>
+            <ExportMenu
+              variant="soft"
+              size="sm"
+              label="Export"
+              count={catalog?.candidates.length}
+              disabled={!catalog}
+              onExport={exportCatalog}
+              title="Export insight catalog types"
+            />
           </div>
         </div>
 

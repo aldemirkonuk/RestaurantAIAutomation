@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Search, Plus, Download, MapPin, LayoutGrid, Rows3, ChevronDown, PackageCheck,
+  Search, Plus, MapPin, LayoutGrid, Rows3, ChevronDown, PackageCheck,
   ArrowUp, ArrowDown, Copy, X, FileDown, ChevronRight as ChevronRightIcon,
 } from 'lucide-react'
 import { useInventoryPage, type InventoryItem } from '../index'
@@ -18,8 +18,11 @@ import { getOrders } from '../../../services/api/orders'
 import { AddWineToInventoryModal } from '../../../components/inventory/AddWineToInventoryModal'
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
+import { ExportMenu } from '../../../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
+import { toast } from 'sonner'
 import {
   Kpi, StockGauge, StatusChip, AbcBadge, TypeChip,
   rowFlags, runwayDays, marketDeltaPct, daysSinceCounted, fmtMoney, COUNT_DUE_DAYS, type RowFlag,
@@ -193,27 +196,153 @@ export function InventoryCommandPage() {
   }, [rows])
   const clearSelect = useCallback(() => setSelected(new Set()), [])
 
-  const download = (name: string, content: string) => {
-    const blob = new Blob([content], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = name
-    a.click()
-    URL.revokeObjectURL(a.href)
+  // A senior storage manager's read on a single row: the one thing worth flagging, if any.
+  const countObservation = (item: InventoryItem): string => {
+    const flags = rowFlags(item)
+    const runway = runwayDays(item)
+    const counted = daysSinceCounted(item)
+    const delta = marketDeltaPct(item)
+    const shadow = item.shadowStock ?? 0
+    const notes: string[] = []
+    if (flags.includes('dead')) notes.push(`Dead stock${item.daysSinceSale != null ? ` — no sale ${item.daysSinceSale}d` : ''}, consider clearance/86`)
+    if (runway != null && runway <= 3) notes.push(`Stockout risk — ${Math.round(runway)}d runway`)
+    else if (runway != null && runway <= 5) notes.push(`Reorder soon — ${Math.round(runway)}d runway`)
+    if (flags.includes('recon')) notes.push(`Shadow variance ${shadow} — reconcile after this count`)
+    if (counted == null) notes.push('Never counted')
+    else if (counted > COUNT_DUE_DAYS) notes.push(`Count overdue ${counted}d`)
+    if (delta != null && delta >= 15) notes.push(`Priced ${delta.toFixed(0)}% under market — margin opportunity`)
+    if (delta != null && delta <= -5) notes.push(`Cost ${Math.abs(delta).toFixed(0)}% above market — review supplier`)
+    if ((item.velocityPerDay ?? 0) > 0 && (item.liveStock ?? 0) + shadow > (item.threshold || 0) * 3) notes.push('Overstocked vs. par — tie up cash')
+    return notes.join('; ')
   }
-  const exportSelected = () => {
-    const header = 'Wine,Producer,Type,Live,Shadow,Par,Velocity/day,Runway d,WAC,Value\n'
-    const body = selectedRows.map((i) => {
-      const r = runwayDays(i)
-      return [
-        `"${i.name}"`, `"${i.producer ?? ''}"`, i.type ?? '', i.liveStock ?? 0, i.shadowStock ?? 0,
-        i.threshold, (i.velocityPerDay ?? 0).toFixed(2), r == null ? '' : Math.round(r),
-        i.wac ?? i.price ?? '',
-        ((i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))).toFixed(2),
-      ].join(',')
-    }).join('\n')
-    download(`inventory-selected-${new Date().toISOString().slice(0, 10)}.csv`, header + body)
-  }
+
+  const valuationColumns: TableExportColumn<InventoryItem>[] = useMemo(
+    () => [
+      { header: 'Wine', value: (i) => i.name },
+      { header: 'Producer', value: (i) => i.producer ?? '' },
+      { header: 'Type', value: (i) => i.type ?? '' },
+      { header: 'Live', value: (i) => i.liveStock ?? 0 },
+      { header: 'Shadow', value: (i) => i.shadowStock ?? 0 },
+      { header: 'Par', value: (i) => i.threshold },
+      { header: 'Velocity/day', value: (i) => (i.velocityPerDay ?? 0).toFixed(2) },
+      {
+        header: 'Runway d',
+        value: (i) => {
+          const r = runwayDays(i)
+          return r == null ? '' : Math.round(r)
+        },
+      },
+      { header: 'WAC', value: (i) => i.wac ?? i.price ?? '' },
+      { header: 'Market', value: (i) => i.marketPrice ?? '' },
+      {
+        header: 'Value',
+        value: (i) =>
+          ((i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))).toFixed(2),
+      },
+    ],
+    [],
+  )
+
+  const countSheetColumns: TableExportColumn<InventoryItem>[] = useMemo(
+    () => [
+      {
+        header: 'Location',
+        value: (i) => {
+          const first = (i.locations ?? []).find((l) => l.locationId)
+          if (!first) return 'Unassigned'
+          const loc = locations.find((l) => l.id === first.locationId)
+          return loc?.name ?? 'Unassigned'
+        },
+      },
+      { header: 'Wine', value: (i) => i.name },
+      { header: 'Producer', value: (i) => i.producer ?? '' },
+      { header: 'Vintage', value: (i) => i.vintage ?? '' },
+      { header: 'Type', value: (i) => i.type ?? '' },
+      { header: 'Bottle size', value: (i) => (i.bottleSizeMl ? `${i.bottleSizeMl}ml` : '') },
+      { header: 'System qty (live)', value: (i) => i.liveStock ?? 0 },
+      { header: 'System qty (shadow)', value: (i) => i.shadowStock ?? 0 },
+      { header: 'Par', value: (i) => i.threshold },
+      { header: 'Counted qty', value: () => '' },
+      { header: 'Variance', value: () => '' },
+      {
+        header: 'Days since counted',
+        value: (i) => {
+          const counted = daysSinceCounted(i)
+          return counted == null ? 'never' : counted
+        },
+      },
+      { header: 'Velocity/day', value: (i) => (i.velocityPerDay ?? 0).toFixed(2) },
+      {
+        header: 'Runway d',
+        value: (i) => {
+          const r = runwayDays(i)
+          return r == null ? '' : Math.round(r)
+        },
+      },
+      { header: 'WAC', value: (i) => i.wac ?? i.price ?? '' },
+      {
+        header: 'Value',
+        value: (i) =>
+          ((i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))).toFixed(2),
+      },
+      { header: 'Observation', value: (i) => countObservation(i) },
+    ],
+    // countObservation closes over helpers; recreate when inventory shape changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locations],
+  )
+
+  const runInventoryExport = useCallback(
+    async (
+      format: TableExportFormat,
+      exportRows: InventoryItem[],
+      columns: TableExportColumn<InventoryItem>[],
+      filename: string,
+      title: string,
+    ) => {
+      try {
+        await exportTable({ format, rows: exportRows, columns, filename, title })
+        toast.success(
+          format === 'clipboard'
+            ? `Copied ${exportRows.length} rows`
+            : format === 'print'
+              ? 'Opening print view'
+              : `Exported ${exportRows.length} rows`,
+        )
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [],
+  )
+
+  const exportSelected = (format: TableExportFormat) =>
+    runInventoryExport(
+      format,
+      selectedRows,
+      valuationColumns,
+      `inventory-selected-${new Date().toISOString().slice(0, 10)}`,
+      'Inventory selection',
+    )
+
+  const exportValuation = (format: TableExportFormat) =>
+    runInventoryExport(
+      format,
+      rows,
+      valuationColumns,
+      `inventory-valuation-${new Date().toISOString().slice(0, 10)}`,
+      'Inventory valuation',
+    )
+
+  const exportCountSheet = (format: TableExportFormat) =>
+    runInventoryExport(
+      format,
+      rows,
+      countSheetColumns,
+      `inventory-count-${new Date().toISOString().slice(0, 10)}`,
+      'Inventory count sheet',
+    )
+
   const copySelectedNames = () => {
     navigator.clipboard?.writeText(selectedRows.map((r) => r.name).join('\n'))
   }
@@ -290,112 +419,6 @@ export function InventoryCommandPage() {
     return types.slice(0, 5)
   }, [filteredInventory])
 
-  const exportCsv = () => {
-    const header = 'Wine,Producer,Type,Live,Shadow,Par,Velocity/day,Runway d,WAC,Market,Value\n'
-    const body = rows.map((i) => {
-      const r = runwayDays(i)
-      return [
-        `"${i.name}"`, `"${i.producer ?? ''}"`, i.type ?? '', i.liveStock ?? 0, i.shadowStock ?? 0,
-        i.threshold, (i.velocityPerDay ?? 0).toFixed(2), r == null ? '' : Math.round(r),
-        i.wac ?? i.price ?? '', i.marketPrice ?? '',
-        ((i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))).toFixed(2),
-      ].join(',')
-    }).join('\n')
-    const blob = new Blob([header + body], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `inventory-valuation-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
-
-  // A senior storage manager's read on a single row: the one thing worth flagging, if any.
-  const countObservation = (item: InventoryItem): string => {
-    const flags = rowFlags(item)
-    const runway = runwayDays(item)
-    const counted = daysSinceCounted(item)
-    const delta = marketDeltaPct(item)
-    const shadow = item.shadowStock ?? 0
-    const notes: string[] = []
-    if (flags.includes('dead')) notes.push(`Dead stock${item.daysSinceSale != null ? ` — no sale ${item.daysSinceSale}d` : ''}, consider clearance/86`)
-    if (runway != null && runway <= 3) notes.push(`Stockout risk — ${Math.round(runway)}d runway`)
-    else if (runway != null && runway <= 5) notes.push(`Reorder soon — ${Math.round(runway)}d runway`)
-    if (flags.includes('recon')) notes.push(`Shadow variance ${shadow} — reconcile after this count`)
-    if (counted == null) notes.push('Never counted')
-    else if (counted > COUNT_DUE_DAYS) notes.push(`Count overdue ${counted}d`)
-    if (delta != null && delta >= 15) notes.push(`Priced ${delta.toFixed(0)}% under market — margin opportunity`)
-    if (delta != null && delta <= -5) notes.push(`Cost ${Math.abs(delta).toFixed(0)}% above market — review supplier`)
-    if ((item.velocityPerDay ?? 0) > 0 && (item.liveStock ?? 0) + shadow > (item.threshold || 0) * 3) notes.push('Overstocked vs. par — tie up cash')
-    return notes.join('; ')
-  }
-
-  const exportCountSheet = () => {
-    const csvField = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
-    const today = new Date().toISOString().slice(0, 10)
-
-    const totalBottles = filteredInventory.reduce((s, i) => s + (i.liveStock ?? 0) + (i.shadowStock ?? 0), 0)
-    const belowPar = filteredInventory.filter((i) => rowFlags(i).includes('low')).length
-    const reconcileCount = filteredInventory.filter((i) => rowFlags(i).includes('recon')).length
-    const countDue = filteredInventory.filter((i) => rowFlags(i).includes('count')).length
-    const deadCount = filteredInventory.filter((i) => rowFlags(i).includes('dead')).length
-    const priceSignals = filteredInventory.filter((i) => rowFlags(i).includes('price')).length
-    const stockoutRisk = filteredInventory.filter((i) => { const r = runwayDays(i); return r != null && r <= 5 }).length
-
-    const summary = [
-      `Inventory count sheet — generated ${today}`,
-      `Wines,${filteredInventory.length}`,
-      `Bottles on hand (live+shadow),${totalBottles}`,
-      `Value on hand (cost basis),${fmtMoney(kpis.valueOnHand)}`,
-      `Below par,${belowPar}`,
-      `Awaiting reconcile (shadow > 0),${reconcileCount}`,
-      `Count overdue (>${COUNT_DUE_DAYS}d or never),${countDue}`,
-      `Dead stock,${deadCount}`,
-      `Stockout risk (<=5d runway),${stockoutRisk}`,
-      `Price signals (market vs. cost),${priceSignals}`,
-      '',
-    ].join('\n')
-
-    const header = [
-      'Location', 'Wine', 'Producer', 'Vintage', 'Type', 'Bottle size',
-      'System qty (live)', 'System qty (shadow)', 'Par',
-      'Counted qty', 'Variance',
-      'Days since counted', 'Velocity/day', 'Runway d', 'WAC', 'Value',
-      'Observation',
-    ].map(csvField).join(',') + '\n'
-
-    const body = rows.map((i) => {
-      const loc = locName(i)
-      const r = runwayDays(i)
-      const counted = daysSinceCounted(i)
-      const value = (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-      return [
-        csvField(loc ? loc.name : 'Unassigned'),
-        csvField(i.name),
-        csvField(i.producer ?? ''),
-        csvField(i.vintage ?? ''),
-        csvField(i.type ?? ''),
-        csvField(i.bottleSizeMl ? `${i.bottleSizeMl}ml` : ''),
-        i.liveStock ?? 0,
-        i.shadowStock ?? 0,
-        i.threshold,
-        '', '',
-        counted == null ? 'never' : counted,
-        (i.velocityPerDay ?? 0).toFixed(2),
-        r == null ? '' : Math.round(r),
-        i.wac ?? i.price ?? '',
-        value.toFixed(2),
-        csvField(countObservation(i)),
-      ].join(',')
-    }).join('\n')
-
-    const blob = new Blob([summary + header + body], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `inventory-count-${today}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
-
   const locName = (item: InventoryItem) => {
     const first = (item.locations ?? []).find((l) => l.locationId)
     if (!first) return null
@@ -428,12 +451,22 @@ export function InventoryCommandPage() {
               <LayoutGrid className="w-3.5 h-3.5" /> Cellar Map
             </button>
           </div>
-          <button onClick={exportCountSheet} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
-            <Download className="w-3.5 h-3.5" /> Export count sheet
-          </button>
-          <button onClick={exportCsv} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
-            <Download className="w-3.5 h-3.5" /> Export valuation
-          </button>
+          <ExportMenu
+            variant="soft"
+            size="sm"
+            label="Export count sheet"
+            count={rows.length}
+            onExport={exportCountSheet}
+            title="Export count sheet for physical inventory"
+          />
+          <ExportMenu
+            variant="soft"
+            size="sm"
+            label="Export valuation"
+            count={rows.length}
+            onExport={exportValuation}
+            title="Export inventory valuation"
+          />
           <button onClick={() => setShowStorageManager(true)} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
             <MapPin className="w-3.5 h-3.5" /> Locations
           </button>
@@ -544,9 +577,14 @@ export function InventoryCommandPage() {
             <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-2.5 px-4 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg">
               <span className="text-sm font-semibold">{selected.size} selected</span>
               <div className="flex items-center gap-2">
-                <button onClick={exportSelected} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
-                  <FileDown className="w-3.5 h-3.5" /> Export selected
-                </button>
+                <ExportMenu
+                  variant="dark"
+                  size="sm"
+                  label="Export selected"
+                  count={selected.size}
+                  onExport={exportSelected}
+                  title="Export selected inventory rows"
+                />
                 <button onClick={copySelectedNames} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
                   <Copy className="w-3.5 h-3.5" /> Copy names
                 </button>
@@ -753,10 +791,13 @@ export function InventoryCommandPage() {
             <MenuItem icon={Plus} label={`Draft PO, ${item.threshold} btl`} onClick={() => { navigate(`/orders?draft=new&inventoryId=${menu.id}&qty=${item.threshold}`); setMenu(null) }} />
             <MenuItem icon={Copy} label="Copy name" onClick={() => { navigator.clipboard?.writeText(item.name); setMenu(null) }} />
             <MenuItem icon={FileDown} label="Export this row" onClick={() => {
-              const r = runwayDays(item)
-              const header = 'Wine,Producer,Type,Live,Shadow,Par,Velocity/day,Runway d,WAC,Value\n'
-              const line = [`"${item.name}"`, `"${item.producer ?? ''}"`, item.type ?? '', item.liveStock ?? 0, item.shadowStock ?? 0, item.threshold, (item.velocityPerDay ?? 0).toFixed(2), r == null ? '' : Math.round(r), item.wac ?? item.price ?? '', ((item.wac ?? item.price ?? 0) * ((item.liveStock ?? 0) + (item.shadowStock ?? 0))).toFixed(2)].join(',')
-              download(`${item.name.replace(/[^\w]+/g, '-')}.csv`, header + line)
+              void runInventoryExport(
+                'csv',
+                [item],
+                valuationColumns,
+                item.name.replace(/[^\w]+/g, '-').toLowerCase() || 'inventory-row',
+                item.name,
+              )
               setMenu(null)
             }} />
           </div>

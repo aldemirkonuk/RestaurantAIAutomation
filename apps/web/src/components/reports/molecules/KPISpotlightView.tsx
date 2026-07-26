@@ -8,9 +8,12 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Download, TrendingUp, TrendingDown, Calendar, BarChart3, PieChart, Table2, FileDown } from 'lucide-react'
+import { X, TrendingUp, TrendingDown, Calendar, BarChart3, PieChart, Table2, FileDown } from 'lucide-react'
 import { AreaChart, BarChart, DonutChart } from '@tremor/react'
 import { formatMoney, formatNumber } from '../../../lib/utils'
+import { ExportMenu } from '../../ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
+import { toast } from 'sonner'
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -296,19 +299,31 @@ export function KPISpotlightView({
 
   const isCurrency = kpiKey === 'revenue' || kpiKey === 'avgOrder' || kpiKey === 'inventoryValue' || kpiKey === 'purchaseCost'
 
-  const handleExportCSV = () => {
-    const headers = ['Date', 'Revenue', 'Orders', 'Bottles', 'Avg Order', 'Red', 'White', 'Sparkling', 'Rose', 'Dessert']
-    const rows = salesData.map(d =>
-      [d.date, d.revenue, d.orders, d.bottles, d.avgOrderValue, d.red, d.white, d.sparkling, d.rose, d.dessert].map(v => `"${v}"`)
-    )
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `wineops-${kpiKey}-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+  const handleExport = async (format: TableExportFormat) => {
+    const columns: TableExportColumn<(typeof salesData)[number]>[] = [
+      { header: 'Date', value: (d) => d.date },
+      { header: 'Revenue', value: (d) => d.revenue },
+      { header: 'Orders', value: (d) => d.orders },
+      { header: 'Bottles', value: (d) => d.bottles },
+      { header: 'Avg Order', value: (d) => d.avgOrderValue },
+      { header: 'Red', value: (d) => d.red },
+      { header: 'White', value: (d) => d.white },
+      { header: 'Sparkling', value: (d) => d.sparkling },
+      { header: 'Rose', value: (d) => d.rose },
+      { header: 'Dessert', value: (d) => d.dessert },
+    ]
+    try {
+      await exportTable({
+        format,
+        rows: salesData,
+        columns,
+        filename: `wineops-${kpiKey}-${new Date().toISOString().split('T')[0]}`,
+        title: `KPI · ${kpiKey}`,
+      })
+      toast.success(format === 'clipboard' ? 'Copied KPI data' : format === 'print' ? 'Opening print view' : 'Exported KPI data')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
   }
 
   // ─── Tab Content Renderers ───────────────────────────────────────────
@@ -448,22 +463,15 @@ export function KPISpotlightView({
 
   const renderExport = () => (
     <div className="flex flex-col items-center justify-center py-8 space-y-4">
-      <Download className="w-10 h-10 text-gray-400" />
+      <FileDown className="w-10 h-10 text-gray-400" />
       <p className="text-sm text-gray-600">Export this KPI's data for external analysis</p>
-      <div className="flex gap-3">
-        <button
-          onClick={handleExportCSV}
-          className="px-4 py-2 bg-wine-600 text-white text-sm font-medium rounded-lg hover:bg-wine-700 transition-colors"
-        >
-          Download CSV
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          Print / PDF
-        </button>
-      </div>
+      <ExportMenu
+        variant="wine"
+        label="Export"
+        count={salesData.length}
+        onExport={handleExport}
+        title="Export this KPI's data"
+      />
     </div>
   )
 

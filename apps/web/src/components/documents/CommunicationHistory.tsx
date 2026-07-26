@@ -2,6 +2,9 @@ import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, Mail, ChevronDown, ChevronRight, Calendar, Search, Download, Wine, Building2, Clock, Check, X, MessageSquare } from 'lucide-react'
 import { Card, Button } from '../ui'
+import { ExportMenu } from '../ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../../lib/tableExport'
+import { toast } from 'sonner'
 
 type CommunicationType = 'phone' | 'email'
 type TimeFilter = 'week' | 'month' | 'year' | 'all'
@@ -180,26 +183,34 @@ export function CommunicationHistory() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleExport = () => {
-    const csv = [
-      ['Date', 'Type', 'Wine', 'Provider', 'Outcome', 'Duration', 'Summary'],
-      ...filteredCommunications.map(comm => [
-        comm.timestamp.toLocaleString(),
-        comm.type.toUpperCase(),
-        comm.wineName,
-        comm.providerName,
-        comm.outcome.toUpperCase(),
-        comm.duration ? formatDuration(comm.duration) : 'N/A',
-        comm.summary.replace(/,/g, ';'), // Escape commas
-      ]),
-    ].map(row => row.join(',')).join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `communication-history-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
+  const handleExport = async (format: TableExportFormat) => {
+    const columns: TableExportColumn<Communication>[] = [
+      { header: 'Date', value: (c) => c.timestamp.toLocaleString() },
+      { header: 'Type', value: (c) => c.type.toUpperCase() },
+      { header: 'Wine', value: (c) => c.wineName },
+      { header: 'Provider', value: (c) => c.providerName },
+      { header: 'Outcome', value: (c) => c.outcome.toUpperCase() },
+      { header: 'Duration', value: (c) => (c.duration ? formatDuration(c.duration) : 'N/A') },
+      { header: 'Summary', value: (c) => c.summary },
+    ]
+    try {
+      await exportTable({
+        format,
+        rows: filteredCommunications,
+        columns,
+        filename: `communication-history-${new Date().toISOString().split('T')[0]}`,
+        title: 'Communication History',
+      })
+      toast.success(
+        format === 'clipboard'
+          ? `Copied ${filteredCommunications.length} rows`
+          : format === 'print'
+            ? 'Opening print view'
+            : `Exported ${filteredCommunications.length} rows`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
   }
 
   return (
@@ -212,10 +223,13 @@ export function CommunicationHistory() {
             Archive of all AI-provider conversations via phone and email
           </p>
         </div>
-        <Button onClick={handleExport} variant="outline">
-          <Download className="w-4 h-4 mr-2" />
-          Export CSV
-        </Button>
+        <ExportMenu
+          variant="outline"
+          label="Export"
+          count={filteredCommunications.length}
+          onExport={handleExport}
+          title="Export filtered communication history"
+        />
       </div>
 
       {/* Filters */}

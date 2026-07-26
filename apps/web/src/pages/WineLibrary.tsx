@@ -34,17 +34,17 @@ import {
   Upload,
   Package,
   Trash2,
-  Download,
-  FileSpreadsheet,
-  ChevronDown,
   Copy,
   CheckSquare,
+  ChevronDown,
 } from 'lucide-react'
 import { Wine as WineType, getWineTypeColor } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
 import { useRecommendedProviders } from '../hooks/queries'
 import { useAuth } from '../contexts/AuthContext'
-import { exportWineLibraryToExcel, exportWineLibraryToCSV } from '../utils/wineLibraryExport'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
+import { toast } from 'sonner'
 import { useWineSubscription, WineUpdatePayload } from '../contexts/RealtimeContext'
 import { formatVolume } from '../utils/volumeUtils'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
@@ -421,11 +421,77 @@ Redirecting to Orders page...`)
     clearWineSelection()
   }, [selectedWineObjects, removedWinesArray, favoritesArray, updatePreferences, clearWineSelection])
 
+  const wineExportColumns: TableExportColumn<WineType>[] = useMemo(
+    () => [
+      { header: 'Wine ID', value: (w) => w.id },
+      { header: 'SKU', value: (w) => w.sku ?? '' },
+      { header: 'Wine Name', value: (w) => w.name },
+      { header: 'Producer', value: (w) => w.producer },
+      { header: 'Vintage', value: (w) => w.vintage ?? 'NV' },
+      { header: 'Type', value: (w) => w.type },
+      { header: 'Grape Variety', value: (w) => w.grape },
+      { header: 'Country', value: (w) => w.country },
+      { header: 'Region', value: (w) => w.region },
+      { header: 'Appellation', value: (w) => w.appellation },
+      { header: 'Body', value: (w) => w.body },
+      { header: 'Sweetness', value: (w) => w.sweetness },
+      { header: 'Acidity', value: (w) => w.acidity },
+      { header: 'Alcohol %', value: (w) => w.alcohol },
+      { header: 'Aromas', value: (w) => (w.aromas ?? []).join('; ') },
+      { header: 'Flavors', value: (w) => (w.flavors ?? []).join('; ') },
+      { header: 'Current Stock', value: (w) => w.liveStock ?? 0 },
+      { header: 'Threshold', value: (w) => w.threshold },
+      { header: 'Stock Status', value: (w) => getStockStatus(w).label },
+      { header: 'Price ($)', value: (w) => w.price },
+      { header: 'Provider Name', value: (w) => w.provider?.name ?? '' },
+      { header: 'Provider Phone', value: (w) => w.provider?.phone ?? '' },
+      { header: 'Provider Email', value: (w) => w.provider?.email ?? '' },
+    ],
+    [],
+  )
+
+  const runWineExport = useCallback(
+    async (format: TableExportFormat, rows: WineType[], filename: string, title: string) => {
+      try {
+        await exportTable({ format, rows, columns: wineExportColumns, filename, title })
+        toast.success(
+          format === 'clipboard'
+            ? `Copied ${rows.length} wines`
+            : format === 'print'
+              ? 'Opening print view'
+              : `Exported ${rows.length} wines`,
+        )
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [wineExportColumns],
+  )
+
+  const exportFilteredWines = useCallback(
+    (format: TableExportFormat) =>
+      runWineExport(
+        format,
+        filteredWines,
+        `wine-library-${new Date().toISOString().slice(0, 10)}`,
+        'Wine Library',
+      ),
+    [filteredWines, runWineExport],
+  )
+
   /** Bulk export just the selected rows (NEW-200 bulk bar). */
-  const bulkExportSelected = useCallback(() => {
-    if (selectedWineObjects.length === 0) return
-    exportWineLibraryToCSV(selectedWineObjects, `wine-library-selection-${new Date().toISOString().slice(0, 10)}.csv`)
-  }, [selectedWineObjects])
+  const bulkExportSelected = useCallback(
+    (format: TableExportFormat) => {
+      if (selectedWineObjects.length === 0) return
+      return runWineExport(
+        format,
+        selectedWineObjects,
+        `wine-library-selection-${new Date().toISOString().slice(0, 10)}`,
+        'Wine Library selection',
+      )
+    },
+    [selectedWineObjects, runWineExport],
+  )
 
   // ── Keyboard shortcuts (NEW-208/234) ──────────────────────────────────────
   useEffect(() => {
@@ -443,7 +509,7 @@ Redirecting to Orders page...`)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
         if (typing || modalOpen) return
         e.preventDefault()
-        exportWineLibraryToCSV(filteredWines, `wine-library-${new Date().toISOString().slice(0, 10)}.csv`)
+        void exportFilteredWines('csv')
         return
       }
       if (e.metaKey || e.ctrlKey || typing || modalOpen) return
@@ -455,7 +521,7 @@ Redirecting to Orders page...`)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [filteredWines, selectedWine, reorderModal, showAddModal, showMenuScanner, showAddToInventoryModal, bulkSelectedWines.size, clearWineSelection, setViewMode])
+  }, [filteredWines, selectedWine, reorderModal, showAddModal, showMenuScanner, showAddToInventoryModal, bulkSelectedWines.size, clearWineSelection, setViewMode, exportFilteredWines])
 
   // Close the right-click menu on any outside click.
   useEffect(() => {
@@ -583,39 +649,14 @@ Redirecting to Orders page...`)
               </button>
             </div>
 
-            {/* Export Dropdown */}
-            <div className="relative group">
-              <button 
-                className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/30 transition-all"
-              >
-                <Download className="w-4 h-4" />
-                <span className="text-sm font-medium">Export</span>
-              </button>
-              
-              {/* Export Dropdown Menu */}
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                <button
-                  onClick={() => {
-                    const timestamp = new Date().toISOString().split('T')[0]
-                    exportWineLibraryToExcel(filteredWines, `wine-library-${timestamp}.xlsx`)
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-2"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                  Export to Excel
-                </button>
-                <button
-                  onClick={() => {
-                    const timestamp = new Date().toISOString().split('T')[0]
-                    exportWineLibraryToCSV(filteredWines, `wine-library-${timestamp}.csv`)
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-2"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                  Export to CSV
-                </button>
-              </div>
-            </div>
+            <ExportMenu
+              variant="solid"
+              label="Export"
+              count={filteredWines.length}
+              onExport={exportFilteredWines}
+              triggerClassName="rounded-xl px-4 py-3 h-auto"
+              title="Export the filtered wine library"
+            />
 
             <button 
               onClick={() => setShowAddSelectionModal(true)}
@@ -834,9 +875,14 @@ Redirecting to Orders page...`)
               <button onClick={bulkToggleFavorite} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
                 <Star className="w-3.5 h-3.5" /> Favorite
               </button>
-              <button onClick={bulkExportSelected} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
-                <Download className="w-3.5 h-3.5" /> Export
-              </button>
+              <ExportMenu
+                variant="dark"
+                size="sm"
+                label="Export"
+                count={selectedWineObjects.length}
+                onExport={bulkExportSelected}
+                title="Export selected wines"
+              />
               <button onClick={bulkRemoveFromLibrary} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/80 hover:bg-rose-500 rounded-lg">
                 <Trash2 className="w-3.5 h-3.5" /> Remove
               </button>

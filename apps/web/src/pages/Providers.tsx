@@ -40,6 +40,8 @@ import { EditProviderModal, EditProviderData } from '../components/providers/Edi
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
 import { PageSkeleton, ErrorState } from '../components/ui'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
 import { QuickGmailModal } from '../components/emails/QuickGmailModal'
 import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
@@ -424,23 +426,42 @@ export function Providers() {
     })
   }, [])
 
-  /** NEW-334: export the provider directory (filtered set) as CSV. */
-  const exportProvidersCsv = useCallback(() => {
-    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const header = ['Name', 'Type', 'Portfolio', 'Address', 'Phone', 'Email', 'Website', 'Regions', 'Rating', 'Favorite'].join(',')
-    const lines = filteredProviders.map(p => [
-      q(p.name), q(p.primaryBusinessType), q(p.winePortfolio), q(p.physicalAddress),
-      q(p.phone), q(p.email), q(p.website),
-      q((p.statesOrRegionsServed ?? []).join('; ')),
-      ratings[p.id] || '', favorites.includes(p.id) ? 'yes' : 'no',
-    ].join(','))
-    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `providers-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }, [filteredProviders, ratings, favorites])
+  /** NEW-334: export the provider directory (filtered set) in the shared formats. */
+  const exportProviders = useCallback(
+    async (format: TableExportFormat) => {
+      const columns: TableExportColumn<(typeof filteredProviders)[number]>[] = [
+        { header: 'Name', value: (p) => p.name },
+        { header: 'Type', value: (p) => p.primaryBusinessType ?? '' },
+        { header: 'Portfolio', value: (p) => p.winePortfolio ?? '' },
+        { header: 'Address', value: (p) => p.physicalAddress ?? '' },
+        { header: 'Phone', value: (p) => p.phone ?? '' },
+        { header: 'Email', value: (p) => p.email ?? '' },
+        { header: 'Website', value: (p) => p.website ?? '' },
+        { header: 'Regions', value: (p) => (p.statesOrRegionsServed ?? []).join('; ') },
+        { header: 'Rating', value: (p) => ratings[p.id] || '' },
+        { header: 'Favorite', value: (p) => (favorites.includes(p.id) ? 'yes' : 'no') },
+      ]
+      try {
+        await exportTable({
+          format,
+          rows: filteredProviders,
+          columns,
+          filename: `providers-${new Date().toISOString().slice(0, 10)}`,
+          title: 'Providers',
+        })
+        toast.success(
+          format === 'clipboard'
+            ? `Copied ${filteredProviders.length} providers`
+            : format === 'print'
+              ? 'Opening print view'
+              : `Exported ${filteredProviders.length} providers`,
+        )
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [filteredProviders, ratings, favorites],
+  )
 
   // ── Keyboard shortcuts (NEW-326) ──────────────────────────────────────────
   useEffect(() => {
@@ -611,13 +632,15 @@ export function Providers() {
                   <div className="w-px h-4 bg-gray-200 mx-0.5" />
 
                   {/* Export directory (NEW-334) */}
-                  <button
-                    onClick={exportProvidersCsv}
-                    title="Export the filtered provider directory to CSV"
-                    className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:text-gray-800 transition-all"
-                  >
-                    Export CSV
-                  </button>
+                  <ExportMenu
+                    variant="ghost"
+                    size="sm"
+                    label="Export"
+                    count={filteredProviders.length}
+                    onExport={exportProviders}
+                    title="Export the filtered provider directory"
+                    triggerClassName="rounded-full px-3 py-1.5 h-auto"
+                  />
                 </div>
 
                 {/* View mode toggle */}

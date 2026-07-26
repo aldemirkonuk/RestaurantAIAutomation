@@ -10,10 +10,12 @@ import { toast } from 'sonner'
 import {
   Plus, Copy, Send, Megaphone, ChevronLeft, ChevronRight, UserPlus,
   Users, ClipboardCheck, AlertTriangle, CheckCircle2, Sparkles, SlidersHorizontal,
-  Pencil, Trash2, MessageSquare, Printer, Download,
+  Pencil, Trash2, MessageSquare, Printer,
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog'
+import { ExportMenu } from '../../../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { fetchCalendarEvents } from '../../../services/api/calendar'
 import {
   getWeek, getTeamMembers, getCertifications, copyWeek, publishSchedule, createSchedule,
@@ -203,26 +205,49 @@ export function ManagerShiftDesk() {
     onSuccess: (r: any) => { toast.success(`Copied ${r?.copied ?? 0} shifts from last week`); invalidateWeek() },
     onError: () => toast.error('Could not copy last week'),
   })
-  /** NEW-529: export the visible week as CSV. */
-  const exportWeekCsv = () => {
-    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const header = ['Date', 'Member', 'Position', 'Start', 'End', 'Role', 'Type', 'State', 'Labor cost'].join(',')
-    const lines = [...shifts]
-      .sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))
-      .map((sh) => {
-        const m = sh.member_id ? membersById.get(sh.member_id) : undefined
-        return [
-          q(sh.shift_date), q(m?.display_name), q(m?.position ?? m?.employment_type),
-          q(sh.start_time), q(sh.end_time), q(sh.role), q(sh.shift_type), q(sh.state),
-          sh.labor_cost ?? '',
-        ].join(',')
+  /** NEW-529: export the visible week in shared formats. */
+  const exportWeek = async (format: TableExportFormat) => {
+    const sorted = [...shifts].sort(
+      (a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time),
+    )
+    const columns: TableExportColumn<(typeof shifts)[number]>[] = [
+      { header: 'Date', value: (sh) => sh.shift_date },
+      {
+        header: 'Member',
+        value: (sh) => (sh.member_id ? membersById.get(sh.member_id)?.display_name : '') ?? '',
+      },
+      {
+        header: 'Position',
+        value: (sh) => {
+          const m = sh.member_id ? membersById.get(sh.member_id) : undefined
+          return m?.position ?? m?.employment_type ?? ''
+        },
+      },
+      { header: 'Start', value: (sh) => sh.start_time },
+      { header: 'End', value: (sh) => sh.end_time },
+      { header: 'Role', value: (sh) => sh.role ?? '' },
+      { header: 'Type', value: (sh) => sh.shift_type ?? '' },
+      { header: 'State', value: (sh) => sh.state ?? '' },
+      { header: 'Labor cost', value: (sh) => sh.labor_cost ?? '' },
+    ]
+    try {
+      await exportTable({
+        format,
+        rows: sorted,
+        columns,
+        filename: `schedule-${weekStart}`,
+        title: `Schedule — week of ${weekStart}`,
       })
-    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `schedule-${weekStart}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+      toast.success(
+        format === 'clipboard'
+          ? `Copied ${sorted.length} shifts`
+          : format === 'print'
+            ? 'Opening print view'
+            : `Exported ${sorted.length} shifts`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
   }
 
   /** NEW-538: printable week sheet for the floor (own window so the desk UI isn't printed). */
@@ -419,7 +444,14 @@ export function ManagerShiftDesk() {
         <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew (inbox + push + email/SMS):'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
         <ActionBtn onClick={() => setInviteOpen(true)}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
         <ActionBtn onClick={() => setOpsOpen(true)}><SlidersHorizontal className="w-3.5 h-3.5" /> Ops rules</ActionBtn>
-        <ActionBtn onClick={exportWeekCsv}><Download className="w-3.5 h-3.5" /> Export week</ActionBtn>
+        <ExportMenu
+          variant="soft"
+          size="sm"
+          label="Export week"
+          count={shifts.length}
+          onExport={exportWeek}
+          title="Export this week's schedule"
+        />
         <ActionBtn onClick={printWeek}><Printer className="w-3.5 h-3.5" /> Print sheet</ActionBtn>
         <ActionBtn onClick={() => doPublish.mutate()} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
