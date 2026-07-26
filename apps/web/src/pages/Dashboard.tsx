@@ -138,6 +138,49 @@ export function Dashboard() {
   // Get inventory data for shadow stock reconciliation reminders (still needed for manualImportantDates)
   const { inventory: _inventory } = useInventoryData()
 
+  /**
+   * NEW-038/039: the low-stock modal's Reorder buttons had no handler at all.
+   * They now deep-link into the Orders draft flow the same way the inventory
+   * row expansion does, with a suggested quantity that closes the par gap.
+   */
+  const [reorderPicks, setReorderPicks] = useState<Set<string>>(new Set())
+
+  const suggestedReorderQty = useCallback((wine: { stockLive?: number | null; thresholdMin?: number | null }) => {
+    const min = Number(wine.thresholdMin ?? 0)
+    const have = Number(wine.stockLive ?? 0)
+    // Restock to twice par (a single par-gap order stocks out again immediately).
+    return Math.max(1, Math.ceil(min * 2 - have))
+  }, [])
+
+  const reorderOne = useCallback((wine: { id: string; stockLive?: number | null; thresholdMin?: number | null }) => {
+    const params = new URLSearchParams({
+      draft: 'new',
+      inventoryId: wine.id,
+      qty: String(suggestedReorderQty(wine)),
+      from: 'dashboard',
+    })
+    navigate(`/orders?${params.toString()}`)
+  }, [navigate, suggestedReorderQty])
+
+  const toggleReorderPick = useCallback((id: string) => {
+    setReorderPicks((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  /** NEW-039: one draft order covering every selected low-stock wine. */
+  const reorderSelected = useCallback((wines: Array<{ id: string; stockLive?: number | null; thresholdMin?: number | null }>) => {
+    const picked = wines.filter((w) => reorderPicks.has(w.id))
+    if (picked.length === 0) return
+    const params = new URLSearchParams({ draft: 'new', from: 'dashboard' })
+    params.set('inventoryIds', picked.map((w) => w.id).join(','))
+    params.set('qtys', picked.map((w) => suggestedReorderQty(w)).join(','))
+    navigate(`/orders?${params.toString()}`)
+  }, [reorderPicks, navigate, suggestedReorderQty])
+
   const kpiMenu = useContextMenu<(typeof stats)[number]>()
   const calendarMenu = useContextMenu<{ dateStr: string }>()
   const dateMenu = useContextMenu<{ item: ImportantDate; isManual: boolean }>()
@@ -1110,6 +1153,13 @@ export function Dashboard() {
                         Breakdown data is not available yet.
                       </div>
                     </div>
+                    {/* NEW-037: the modal was a dead end — deep-link to the report */}
+                    <button
+                      onClick={() => { setActiveModal(null); navigate('/reports?focus=revenue') }}
+                      className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors"
+                    >
+                      View full revenue report →
+                    </button>
                   </div>
                 </>
               )}
@@ -1248,8 +1298,15 @@ export function Dashboard() {
                           Critical ({lowStockBuckets.critical.length})
                         </p>
                         {lowStockBuckets.critical.map((wine) => (
-                          <div key={wine.id} className="flex items-center justify-between py-2 pl-4 border-l-2 border-rose-500 mb-2">
-                            <div>
+                          <div key={wine.id} className="flex items-center justify-between gap-2 py-2 pl-4 border-l-2 border-rose-500 mb-2">
+                            <input
+                              type="checkbox"
+                              checked={reorderPicks.has(wine.id)}
+                              onChange={() => toggleReorderPick(wine.id)}
+                              className="w-4 h-4 shrink-0 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                              aria-label={`Select ${wine.wineName ?? 'wine'} for reorder`}
+                            />
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-900">
                                 {wine.wineName || wine.wineProducer || 'Unknown wine'}
                                 <span className="text-gray-400 text-xs font-normal ml-1">
@@ -1258,8 +1315,12 @@ export function Dashboard() {
                               </p>
                               <p className="text-xs text-gray-500">{wine.stockLive} bottles remaining · Min: {wine.thresholdMin}</p>
                             </div>
-                            <button className="px-3 py-1.5 bg-rose-100 text-rose-700 text-xs font-medium rounded-lg hover:bg-rose-200">
-                              Reorder
+                            <button
+                              onClick={() => reorderOne(wine)}
+                              title={`Draft an order for ${suggestedReorderQty(wine)} bottles`}
+                              className="px-3 py-1.5 bg-rose-100 text-rose-700 text-xs font-medium rounded-lg hover:bg-rose-200 shrink-0"
+                            >
+                              Reorder {suggestedReorderQty(wine)}
                             </button>
                           </div>
                         ))}
@@ -1272,8 +1333,15 @@ export function Dashboard() {
                           Warning ({lowStockBuckets.warning.length})
                         </p>
                         {lowStockBuckets.warning.map((wine) => (
-                          <div key={wine.id} className="flex items-center justify-between py-2 pl-4 border-l-2 border-amber-500 mb-2">
-                            <div>
+                          <div key={wine.id} className="flex items-center justify-between gap-2 py-2 pl-4 border-l-2 border-amber-500 mb-2">
+                            <input
+                              type="checkbox"
+                              checked={reorderPicks.has(wine.id)}
+                              onChange={() => toggleReorderPick(wine.id)}
+                              className="w-4 h-4 shrink-0 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                              aria-label={`Select ${wine.wineName ?? 'wine'} for reorder`}
+                            />
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-900">
                                 {wine.wineName || wine.wineProducer || 'Unknown wine'}
                                 <span className="text-gray-400 text-xs font-normal ml-1">
@@ -1282,11 +1350,36 @@ export function Dashboard() {
                               </p>
                               <p className="text-xs text-gray-500">{wine.stockLive} bottles remaining · Min: {wine.thresholdMin}</p>
                             </div>
-                            <button className="px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-200">
-                              Reorder
+                            <button
+                              onClick={() => reorderOne(wine)}
+                              title={`Draft an order for ${suggestedReorderQty(wine)} bottles`}
+                              className="px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-200 shrink-0"
+                            >
+                              Reorder {suggestedReorderQty(wine)}
                             </button>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {/* NEW-039: one draft covering every selected wine */}
+                    {reorderPicks.size > 0 && (
+                      <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-3 bg-gray-900 text-white flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold">{reorderPicks.size} selected</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => reorderSelected([...lowStockBuckets.critical, ...lowStockBuckets.warning])}
+                            className="px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg"
+                          >
+                            Reorder all selected
+                          </button>
+                          <button
+                            onClick={() => setReorderPicks(new Set())}
+                            className="p-1.5 hover:bg-white/20 rounded-lg"
+                            aria-label="Clear selection"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     )}
                     {lowStockBuckets.critical.length === 0 && lowStockBuckets.warning.length === 0 && (

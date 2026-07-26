@@ -317,6 +317,25 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## B. Dashboard (`/`) (`NEW-037 … NEW-063`)
 
+> **Shipped 2026-07-21 (Dashboard batch):** NEW-038 — the low-stock modal's
+> Reorder buttons **had no onClick at all** (both the critical and warning
+> lists); they now deep-link into the Orders draft flow with a suggested
+> quantity that restocks to **twice par**, not just the par gap (a par-gap
+> order stocks out again immediately) · NEW-039 checkboxes on those rows plus a
+> sticky "Reorder all selected" bar that passes every pick in one draft ·
+> NEW-037 the revenue KPI modal was a dead end and now has a "View full revenue
+> report" CTA deep-linking to `/reports?focus=revenue`.
+> Already shipped by earlier work (verified, not re-done): recent-order rows are
+> clickable + double-click to thread + right-click menu (NEW-044/045), Top
+> Performing Wines has a real data source (NEW-049), and the "Add to Calendar"
+> alert stub is gone (NEW-041).
+> Deferred: custom quick-action tiles persisting (042/043 — needs a
+> user-preferences slot), dashboard customize/drag layout (050/051), date-range
+> switcher recomputing KPIs (052), sparklines (053), morning briefing (060),
+> watchlist strip (061), PDF/PNG snapshot (062) — each needs new state or
+> endpoints.
+
+
 *Gaps today: KPI modals are dead-ends, "Add to Calendar" is an alert stub, custom quick actions vanish, low-stock "Reorder" buttons dead, important dates can't be edited, recent-order rows not clickable, Top Wines permanently empty.*
 
 | # | Trigger | Path → Outcome |
