@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -153,6 +154,7 @@ export function Providers() {
     return dates
   }, [rawOrders])
 
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery]               = useState('')
   const [businessTypeFilter, setBusinessTypeFilter] = useState<BusinessTypeFilter>('All')
   const [viewMode, setViewMode]                     = useState<ViewMode>('grid')
@@ -163,6 +165,13 @@ export function Providers() {
   const [showEmailModal, setShowEmailModal]         = useState(false)
   const [emailRecipient, setEmailRecipient]         = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly]   = useState(false)
+  // §H additions: list sorting (NEW-313), rating-band filter (NEW-336),
+  // right-click menu (NEW-310), `/`-focus search (NEW-326).
+  const [sortKey, setSortKey]                       = useState<'default' | 'name' | 'type' | 'rating'>('default')
+  const [sortDir, setSortDir]                       = useState<'asc' | 'desc'>('asc')
+  const [ratingBand, setRatingBand]                 = useState<'all' | '4' | '3' | 'unrated'>('all')
+  const [providerMenu, setProviderMenu]             = useState<{ id: string; x: number; y: number } | null>(null)
+  const searchRef                                   = useRef<HTMLInputElement>(null)
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
 
@@ -367,7 +376,21 @@ export function Providers() {
     if (businessTypeFilter !== 'All') {
       filtered = filtered.filter(p => p.primaryBusinessType === businessTypeFilter)
     }
+    // NEW-336: rating-band filter (4+ / 3+ / unrated).
+    if (ratingBand !== 'all') {
+      filtered = filtered.filter(p => {
+        const r = ratings[p.id] || 0
+        if (ratingBand === 'unrated') return r === 0
+        return r >= Number(ratingBand)
+      })
+    }
+    // NEW-313: explicit column sort in list view; favorites still float first
+    // in the default ordering so the pinned strip stays coherent.
+    const dir = sortDir === 'asc' ? 1 : -1
     return filtered.sort((a, b) => {
+      if (sortKey === 'name') return dir * a.name.localeCompare(b.name)
+      if (sortKey === 'type') return dir * (a.primaryBusinessType || '').localeCompare(b.primaryBusinessType || '')
+      if (sortKey === 'rating') return dir * ((ratings[a.id] || 0) - (ratings[b.id] || 0))
       const aFav = favorites.includes(a.id) ? 1 : 0
       const bFav = favorites.includes(b.id) ? 1 : 0
       if (aFav !== bFav) return bFav - aFav
@@ -375,7 +398,7 @@ export function Providers() {
       if (aR !== bR) return bR - aR
       return a.name.localeCompare(b.name)
     })
-  }, [providers, searchQuery, businessTypeFilter, showFavoritesOnly, favorites, ratings])
+  }, [providers, searchQuery, businessTypeFilter, showFavoritesOnly, favorites, ratings, ratingBand, sortKey, sortDir])
 
   const favoriteProviders = useMemo(() =>
     providers.filter(p => favorites.includes(p.id)),
@@ -390,7 +413,57 @@ export function Providers() {
     setRatings(prev => ({ ...prev, [providerId]: rating }))
   }, [setRatings])
 
-  const clearFilters = () => { setSearchQuery(''); setBusinessTypeFilter('All'); setShowFavoritesOnly(false) }
+  const clearFilters = () => { setSearchQuery(''); setBusinessTypeFilter('All'); setShowFavoritesOnly(false); setRatingBand('all') }
+
+  /** NEW-313: click a list column header to sort; click again to flip direction. */
+  const applyProviderSort = useCallback((key: 'name' | 'type' | 'rating') => {
+    setSortKey(prev => {
+      if (prev === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+      else setSortDir(key === 'rating' ? 'desc' : 'asc')
+      return key
+    })
+  }, [])
+
+  /** NEW-334: export the provider directory (filtered set) as CSV. */
+  const exportProvidersCsv = useCallback(() => {
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['Name', 'Type', 'Portfolio', 'Address', 'Phone', 'Email', 'Website', 'Regions', 'Rating', 'Favorite'].join(',')
+    const lines = filteredProviders.map(p => [
+      q(p.name), q(p.primaryBusinessType), q(p.winePortfolio), q(p.physicalAddress),
+      q(p.phone), q(p.email), q(p.website),
+      q((p.statesOrRegionsServed ?? []).join('; ')),
+      ratings[p.id] || '', favorites.includes(p.id) ? 'yes' : 'no',
+    ].join(','))
+    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `providers-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [filteredProviders, ratings, favorites])
+
+  // ── Keyboard shortcuts (NEW-326) ──────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (selectedProvider || editingProvider || showAddProviderModal || showVendorSearch || showEmailModal) return
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
+      else if (e.key === 'n') { e.preventDefault(); setShowAddProviderModal(true) }
+      else if (e.key === 'f') setShowFavoritesOnly(s => !s)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedProvider, editingProvider, showAddProviderModal, showVendorSearch, showEmailModal])
+
+  // Close the right-click menu on any outside click.
+  useEffect(() => {
+    if (!providerMenu) return
+    const close = () => setProviderMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [providerMenu])
 
   // Only show full-page skeleton on the very first load (no cached data at all).
   // For re-mounts / SPA navigations with stale cache, placeholderData keeps prior
@@ -453,8 +526,9 @@ export function Providers() {
                 <div className="flex-1 relative">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   <input
+                    ref={searchRef}
                     type="text"
-                    placeholder="Search providers, portfolios, regions…"
+                    placeholder="Search providers, portfolios, regions…    ( / )"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500/20 focus:border-wine-400 outline-none transition-all text-sm placeholder:text-gray-400"
@@ -511,6 +585,38 @@ export function Providers() {
                         {favorites.length}
                       </span>
                     )}
+                  </button>
+
+                  <div className="w-px h-4 bg-gray-200 mx-0.5" />
+
+                  {/* Rating-band filter (NEW-336) */}
+                  {([
+                    { key: '4' as const, label: '4★+' },
+                    { key: '3' as const, label: '3★+' },
+                    { key: 'unrated' as const, label: 'Unrated' },
+                  ]).map(band => (
+                    <button
+                      key={band.key}
+                      onClick={() => setRatingBand(ratingBand === band.key ? 'all' : band.key)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                        ratingBand === band.key
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-white text-gray-600 border border-gray-200 hover:border-amber-200 hover:text-amber-600'
+                      }`}
+                    >
+                      {band.label}
+                    </button>
+                  ))}
+
+                  <div className="w-px h-4 bg-gray-200 mx-0.5" />
+
+                  {/* Export directory (NEW-334) */}
+                  <button
+                    onClick={exportProvidersCsv}
+                    title="Export the filtered provider directory to CSV"
+                    className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:text-gray-800 transition-all"
+                  >
+                    Export CSV
                   </button>
                 </div>
 
@@ -577,6 +683,7 @@ export function Providers() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.09)'; (e.currentTarget as HTMLElement).style.borderColor = '#e8c8cc' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(124,29,47,0.06)'; (e.currentTarget as HTMLElement).style.borderColor = '#f0e0e3' }}
                       onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                     >
                       <div className="flex items-start justify-between mb-1.5">
                         <h3 className="font-semibold text-gray-900 text-xs leading-snug line-clamp-2 flex-1 mr-2">{provider.name}</h3>
@@ -666,6 +773,7 @@ export function Providers() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03, type: 'spring', stiffness: 320, damping: 26 }}
                       onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                       className="bg-white rounded-[18px] border p-[18px] cursor-pointer transition-all group"
                       style={{
                         borderColor: isFav ? '#f0e0e3' : '#ebebed',
@@ -773,6 +881,7 @@ export function Providers() {
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: index * 0.015 }}
                       onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                       className={`bg-white rounded-xl border p-3 hover:shadow-md transition-all cursor-pointer group ${
                         isFav ? 'border-[#f0e0e3]' : 'border-gray-100 hover:border-gray-200'
                       }`}
@@ -805,11 +914,32 @@ export function Providers() {
                   <table className="w-full min-w-[700px]">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50/60">
-                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Provider</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-36">Type</th>
+                        {/* NEW-313: sortable columns (name / type / rating) */}
+                        {([
+                          { key: 'name' as const, label: 'Provider', cls: '' },
+                          { key: 'type' as const, label: 'Type', cls: 'w-36' },
+                        ]).map(col => (
+                          <th key={col.key} className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide ${col.cls}`}>
+                            <button
+                              onClick={() => applyProviderSort(col.key)}
+                              className={`flex items-center gap-1 uppercase tracking-wide ${sortKey === col.key ? 'text-wine-700' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                              {col.label}
+                              {sortKey === col.key && <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                            </button>
+                          </th>
+                        ))}
                         <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Portfolio</th>
                         <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-32">Contact</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28">Rating</th>
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide w-28">
+                          <button
+                            onClick={() => applyProviderSort('rating')}
+                            className={`flex items-center gap-1 uppercase tracking-wide ${sortKey === 'rating' ? 'text-wine-700' : 'text-gray-400 hover:text-gray-600'}`}
+                          >
+                            Rating
+                            {sortKey === 'rating' && <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -819,6 +949,7 @@ export function Providers() {
                           <tr
                             key={provider.id}
                             onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                             className="hover:bg-gray-50/40 cursor-pointer transition-colors group"
                           >
                             <td className="px-4 py-3 w-56">
@@ -1063,6 +1194,36 @@ export function Providers() {
           </>
         )}
       </div>
+
+      {/* Right-click provider context menu (NEW-310) */}
+      {providerMenu && (() => {
+        const p = providers.find(x => x.id === providerMenu.id)
+        if (!p) return null
+        const MItem = ({ icon: Icon, label, disabled, onClick }: { icon: any; label: string; disabled?: boolean; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            disabled={disabled}
+            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <Icon className="w-4 h-4 text-gray-400" /> {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-[60] w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(providerMenu.y, window.innerHeight - 280), left: Math.min(providerMenu.x, window.innerWidth - 220) }}
+            onClick={e => e.stopPropagation()}
+          >
+            <MItem icon={Phone} label="Call" disabled={!p.phone} onClick={() => { window.location.href = `tel:${p.phone}`; setProviderMenu(null) }} />
+            <MItem icon={Mail} label="Email" disabled={!p.email} onClick={() => { setEmailRecipient(p.email || ''); setShowEmailModal(true); setProviderMenu(null) }} />
+            <MItem icon={Edit} label="Edit" onClick={() => { setEditingProvider(p); setProviderMenu(null) }} />
+            <MItem icon={Heart} label={favorites.includes(p.id) ? 'Unfavorite' : 'Favorite'} onClick={() => { toggleFavorite(p.id); setProviderMenu(null) }} />
+            {/* NEW-316: View Orders filters the Orders page to this provider */}
+            <MItem icon={Truck} label="View orders" onClick={() => { navigate(`/orders?provider=${encodeURIComponent(p.id)}`); setProviderMenu(null) }} />
+            <MItem icon={Globe} label="Open website" disabled={!p.website} onClick={() => { window.open(p.website, '_blank', 'noopener'); setProviderMenu(null) }} />
+          </div>
+        )
+      })()}
 
       <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
       <EditProviderModal

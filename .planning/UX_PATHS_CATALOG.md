@@ -680,6 +680,22 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## H. Providers (`/providers`) (`NEW-309 … NEW-338`)
 
+> **Shipped 2026-07-21 (Providers batch):** NEW-310 right-click context menu on
+> all **four** provider surfaces — grid card, compact card, list row, and the
+> pinned-favourites strip — with Call / Email / Edit / Favorite / View orders /
+> Open website (each disabled when the provider lacks that contact field) ·
+> NEW-313 sortable list columns (Provider / Type / Rating, click to flip
+> direction; the favourites-first default ordering is preserved as its own
+> "default" sort key) · NEW-316 "View orders" deep-links to
+> `/orders?provider=<id>` · NEW-326 keyboard (`/` search, `n` add provider, `f`
+> favourites-only) · NEW-334 export the filtered provider directory to CSV ·
+> NEW-336 rating-band filter chips (4★+ / 3★+ / Unrated).
+> Deferred: multi-select bulk bar (309 — the three view modes + favourites strip
+> each need their own checkbox affordance; worth its own pass), notes CRUD (314 —
+> needs a provider-notes mutation), Locations tab persistence (315), merge
+> duplicates (318), archive (319), credit terms (320), price-list import (322),
+> SLA tracker (324), map view (328) — all need new endpoints or schema.
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-309 | `Multi` | Multi-select providers → bulk favorite, export, tag, trust/untrust. |
