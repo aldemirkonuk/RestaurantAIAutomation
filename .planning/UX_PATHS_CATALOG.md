@@ -1079,6 +1079,29 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## O. Settings (`/settings`) (`NEW-494 … NEW-518`)
 
+> **Shipped 2026-07-21 (Settings batch):** NEW-495 the email section gains a
+> **Send test email** button. `POST /communications/test/email` existed with no
+> caller; the copy states it goes to the gateway's configured *manager*
+> recipients, not to the sign-off name in the form, so it can't be misread.
+>
+> **Audited as already shipped, deliberately not re-done:** NEW-496 quiet hours
+> and per-channel modes exist in `NotificationsSection`, and NEW-506 invite
+> copy-link + expiry exist in `InviteTeamDialog`. Part 1's description of this
+> section is out of date on both.
+>
+> **Owned by a concurrent workstream, intentionally untouched:** a parallel
+> session is actively building the Profile page, `Settings.tsx` sections and the
+> OAuth/POS integration surfaces — that covers NEW-500 (POS wizard), NEW-511
+> (profile photo), NEW-512 (password + sessions) and NEW-514 (connected apps).
+> Editing those files here would clobber in-flight work.
+> Deferred: unsaved-changes guard (494), flag export/import (497), danger zone
+> (498), API tokens/webhooks (499), billing (501), audit log (502), locale (503),
+> density defaults (504), `⌘S` save (505 — needs the dirty `Settings.tsx`),
+> custom roles (507), receiving-location default (508), pour-cost preview (509),
+> subscriber list (510), 2FA (513), GDPR export (515), impersonation banner
+> (516), shortcut customization (517), landing page (518).
+
+
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
 | NEW-494 | `Click` | Unsaved changes: navigate away prompts confirm; Cmd-click section preserves draft. |
