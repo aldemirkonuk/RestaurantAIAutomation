@@ -515,20 +515,23 @@ Index + update protocol for later phases.
 
 **Empty of factual stack assumptions:** runner versions and file counts were verified in-repo.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should Phase 36 touch `ci.yml` at all if jobs already run tests?**
    - What we know: TFND-05 wording requires unit+integration on push + nightly E2E.
    - What's unclear: whether documentation-only + confirming nightly is enough vs mandatory YAML edits.
    - Recommendation: Minimal YAML comment/job-name clarity + README proof links; avoid behavioral CI changes that risk more red X.
+   - **RESOLVED:** Comment-only annotations on existing `ci.yml` / `e2e-prod.yml` (do not fork). Plan 36-03 adds TFND-05 header comments and a Phase 42 placeholder; no new workflow file, no behavioral CI changes (D-24).
 
 2. **How to score groups that have hardening tests for agents but zero Nest/page tests?**
    - What we know: Inventory will show uneven coverage (e.g. inventory agents well-tested; Nest `inventory-ledger` 0 specs).
    - Recommendation: Score the **group** holistically with evidence list; T1 if any automated happy-path exists in any tier; do not average blindly.
+   - **RESOLVED:** Holistic group T1 scoring as Plan 36-02 specifies — score the group holistically; T1 if any automated happy-path with `runs?=yes` exists in any tier; do not average Nest/page/agent coverage blindly; no T4 in baseline.
 
 3. **Expand `E2E_TABLES` teardown list in Phase 36?**
    - What we know: Convention doc should list the gap; expanding code is closer to Phase 37.
    - Recommendation: Document required teardown registry in `SYNTHETIC-TENANT.md`; code expansion deferred to 37 unless trivial comment-only.
+   - **RESOLVED:** Document the `E2E_TABLES` gap in `SYNTHETIC-TENANT.md` (Plan 36-03); actual teardown-list code expansion deferred to Phase 37.
 
 ## Environment Availability
 
