@@ -59,17 +59,14 @@ def test_ensure_personas_idempotent_on_422_already_registered():
     with patch.dict(os.environ, env, clear=False):
         with patch("scripts.synth.auth_personas.httpx.Client") as client_cls:
             client = MagicMock()
-            client_cls.return_value.__enter__.return_value = client
-            client_cls.return_value.__exit__.return_value = False
+            client_cls.return_value = client
 
             # Sequence: for each persona — create (201), then mirror upsert via rest
             rest_ok = httpx.Response(201, json={})
-            # ensure_personas may also list users on 422 path — keep flexible
             side_effects = []
             for cr in create_responses:
                 side_effects.append(cr)  # admin create
                 side_effects.append(rest_ok)  # public.users upsert
-            client.request.side_effect = side_effects
             client.post.side_effect = side_effects
 
             result = ensure_personas()
@@ -117,14 +114,18 @@ def test_ensure_personas_treats_422_as_ok_and_looks_up_user():
     with patch.dict(os.environ, env, clear=False):
         with patch("scripts.synth.auth_personas.httpx.Client") as client_cls:
             client = MagicMock()
-            client_cls.return_value.__enter__.return_value = client
-            client_cls.return_value.__exit__.return_value = False
+            client_cls.return_value = client
 
-            # Each persona: POST create → 422; GET list users; POST/PUT users mirror
-            posts = [already, already, already]
-            gets = [listed, listed, listed]
-            client.post.side_effect = posts + [rest_ok, rest_ok, rest_ok]
-            client.get.side_effect = gets
+            # Per persona: POST create → 422; GET list; POST users mirror
+            client.post.side_effect = [
+                already,
+                rest_ok,
+                already,
+                rest_ok,
+                already,
+                rest_ok,
+            ]
+            client.get.side_effect = [listed, listed, listed]
 
             result = ensure_personas()
 
