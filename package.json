@@ -35,7 +35,8 @@
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
     "docker:clean": "docker-compose down -v",
-    "logs": "turbo run logs"
+    "logs": "turbo run logs",
+    "db:drift": "supabase migration list --linked"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",
