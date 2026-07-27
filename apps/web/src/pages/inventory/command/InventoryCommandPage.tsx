@@ -428,8 +428,8 @@ export function InventoryCommandPage() {
   return (
     <div className="p-6 max-w-[1500px] mx-auto">
       {/* header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap mb-4" data-tour="inventory-filters">
-        <div>
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+        <div data-tour="inventory-filters">
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Inventory</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             {stats.total} wines, {stats.liveTotal + stats.shadowTotal} bottles on hand
@@ -489,7 +489,7 @@ export function InventoryCommandPage() {
       <ContextualInsights host="inventory" defaultOpen={false} className="mb-3" />
 
       {/* attention rail */}
-      <div className="flex items-center gap-2 flex-wrap mb-3">
+      <div className="flex items-center gap-2 flex-wrap mb-3" data-tour="inventory-attention">
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mr-1">Needs attention</span>
         {(toVerify as any[]).length > 0 && (
           <button

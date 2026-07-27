@@ -402,6 +402,7 @@ If you need immediate assistance, you can:
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="bg-[#171717] flex flex-col h-full border-r border-white/10"
+            data-tour="sommelier-history"
           >
             {/* New Chat Button */}
             <div className="p-3">

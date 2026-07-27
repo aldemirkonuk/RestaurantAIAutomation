@@ -1440,7 +1440,7 @@ Shadow stock has been moved to Live Stock.`)
     <div className="min-h-screen">
       <Header title="Order Management" subtitle="Review and approve wine procurement orders" />
 
-      <div className="p-6" data-tour="orders-list">
+      <div className="p-6">
         {/* Error Banner */}
         {error && (
           <motion.div
@@ -1462,7 +1462,7 @@ Shadow stock has been moved to Live Stock.`)
         <ContextualInsights host="orders" defaultOpen={false} className="mb-6" />
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6" data-tour="orders-toolbar">
           <div className="flex items-center gap-4">
             <h2 className="text-2xl font-bold text-gray-900">Order Management</h2>
             {/* View Mode Toggle */}
@@ -1526,15 +1526,17 @@ Shadow stock has been moved to Live Stock.`)
             <Button
               variant="default"
               onClick={openCreateOrderFlow}
+              data-tour="orders-create"
               className="bg-wine-600 hover:bg-wine-700 shadow-lg shadow-wine-600/30"
             >
               <Plus className="w-4 h-4 mr-2" />
-              <span data-tour="orders-create">Create Order</span>
+              <span>Create Order</span>
               <span className="ml-2 text-xs opacity-70">⌘N</span>
             </Button>
           </div>
         </div>
 
+        <div data-tour="orders-status">
         <OrderSummary
           pendingCount={pendingCount}
           approvedCount={approvedCount}
@@ -1556,6 +1558,7 @@ Shadow stock has been moved to Live Stock.`)
             }
           }}
         />
+        </div>
 
          {/* Bulk Actions Bar */}
          <AnimatePresence>
@@ -1675,7 +1678,7 @@ Shadow stock has been moved to Live Stock.`)
             className="space-y-6"
           >
             {/* Advanced Filters */}
-            <Card variant="glass" padding="md">
+            <Card variant="glass" padding="md" data-tour="orders-filters">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 flex-1">
                   {/* Order Type Filter */}
@@ -1750,7 +1753,7 @@ Shadow stock has been moved to Live Stock.`)
             </Card>
 
             {/* Unified Orders Table */}
-            <div className="space-y-4">
+            <div className="space-y-4" data-tour="orders-list">
               {(() => {
                 // Filter orders based on type and order-type (cancelled already excluded by sortedOrdersWithAutoHide)
                 const filtered = sortedOrdersWithAutoHide.filter(order => {
@@ -2202,7 +2205,7 @@ Shadow stock has been moved to Live Stock.`)
 
         {/* SPLIT VIEW - Original Layout */}
         {viewMode === 'split' && (
-          <>
+          <div data-tour="orders-list">
         {/* Recurring Orders Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -2824,7 +2827,7 @@ Shadow stock has been moved to Live Stock.`)
             </div>
           </Card>
         )}
-        </>
+        </div>
         )}
       </div>
 

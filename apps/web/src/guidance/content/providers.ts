@@ -3,21 +3,35 @@ import type { TourDefinition } from '../tours/registry'
 export const providersTip = {
   pageId: 'providers' as const,
   title: 'Providers',
-  body: 'Add vendors so WineOps can source and communicate for you.',
+  body: 'Search, filter, and open vendor cards — or add a new supplier to unlock ordering.',
 }
 
 export const providersTour: TourDefinition = {
   pageId: 'providers',
   steps: [
     {
+      element: '[data-tour="providers-search"]',
+      title: 'Search providers',
+      description:
+        'Find vendors by name, portfolio, or region. Press / to focus the search field.',
+    },
+    {
+      element: '[data-tour="providers-filters"]',
+      title: 'Filter the directory',
+      description:
+        'Slice by distributor type, favorites, or rating, then switch Grid / Compact / List.',
+    },
+    {
       element: '[data-tour="providers-list"]',
-      title: 'Your vendors',
-      description: 'Each card is a supplier you order from.',
+      title: 'Your vendor cards',
+      description:
+        'Open a card for contacts and ratings. Use Call / Email chips for quick outreach.',
     },
     {
       element: '[data-tour="providers-add"]',
       title: 'Add a vendor',
-      description: 'Search or create your first provider to unlock ordering.',
+      description:
+        'Browse the catalogue or add a custom supplier so WineOps can source and message for you.',
     },
   ],
 }

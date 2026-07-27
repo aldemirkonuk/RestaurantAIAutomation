@@ -8,6 +8,7 @@ import { PageTipStrip } from '../../guidance/components/PageTipStrip'
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
 import { WineAgentFab } from '../../guidance/components/WineAgentFab'
 import { TourHelpButton } from '../../guidance/components/TourHelpButton'
+import { GuidanceLiveRegion } from '../../guidance/announce'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
 import { BrandMark } from '../brand/BrandMark'
@@ -88,6 +89,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
             <SetupNudgeBanner />
             <PageTipStrip />
+            <GuidanceLiveRegion />
             <main className="min-h-screen pb-safe">{children || <Outlet />}</main>
           </div>
 

@@ -522,7 +522,7 @@ export function Providers() {
           : 'Manage your supplier relationships'}
       />
 
-      <div className="p-6" data-tour="providers-list">
+      <div className="p-6">
 
         {/* ── Empty state ── */}
         {providers.length === 0 && !isLoading && (
@@ -540,11 +540,11 @@ export function Providers() {
             {/* ════════════════════════════════════════
                 TOOLBAR  (sketch 008-A: two-row layout)
             ════════════════════════════════════════ */}
-            <div className="space-y-2.5 mb-5" data-tour="providers-add">
+            <div className="space-y-2.5 mb-5">
 
               {/* Row 1: search + CTA */}
               <div className="flex gap-2.5">
-                <div className="flex-1 relative">
+                <div className="flex-1 relative" data-tour="providers-search">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   <input
                     ref={searchRef}
@@ -565,6 +565,7 @@ export function Providers() {
                 </div>
                 <button
                   onClick={() => setShowVendorSearch(true)}
+                  data-tour="providers-add"
                   className="px-4 py-2.5 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 active:scale-[0.98] shadow-sm shadow-wine-600/30 transition-all flex items-center gap-1.5 whitespace-nowrap text-sm"
                 >
                   <Plus className="w-4 h-4" />
@@ -573,7 +574,7 @@ export function Providers() {
               </div>
 
               {/* Row 2: filter chips + view toggle */}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3" data-tour="providers-filters">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(['All', 'Distributor', 'Importer', 'Wholesaler'] as BusinessTypeFilter[]).map(type => (
                     <button
@@ -786,7 +787,7 @@ export function Providers() {
                 Action-first cards, dot badges, red hearts
             ════════════════════════════════════════ */}
             {filteredProviders.length > 0 && viewMode === 'grid' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-tour="providers-list">
                 {filteredProviders.map((provider, index) => {
                   const isFav = favorites.includes(provider.id)
                   return (
@@ -894,7 +895,7 @@ export function Providers() {
 
             {/* ── Compact view ── */}
             {filteredProviders.length > 0 && viewMode === 'compact' && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2" data-tour="providers-list">
                 {filteredProviders.map((provider, index) => {
                   const isFav = favorites.includes(provider.id)
                   return (
@@ -932,7 +933,7 @@ export function Providers() {
 
             {/* ── List view ── */}
             {filteredProviders.length > 0 && viewMode === 'list' && (
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden" data-tour="providers-list">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[700px]">
                     <thead>

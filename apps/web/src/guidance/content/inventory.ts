@@ -3,7 +3,7 @@ import type { TourDefinition } from '../tours/registry'
 export const inventoryTip = {
   pageId: 'inventory' as const,
   title: 'Inventory Command',
-  body: 'See stock, alerts, and reorder points — the main surface for cellar ops.',
+  body: 'Read cellar health, clear the attention queue, then act from the toolbar.',
 }
 
 export const inventoryTour: TourDefinition = {
@@ -11,18 +11,27 @@ export const inventoryTour: TourDefinition = {
   steps: [
     {
       element: '[data-tour="inventory-filters"]',
-      title: 'Find bottles fast',
-      description: 'Filter by style, location, or low stock before service.',
+      title: 'Inventory overview',
+      description:
+        'See total wines and bottles on hand before you dig into filters or the table.',
     },
     {
       element: '[data-tour="inventory-low-stock"]',
-      title: 'Low-stock signals',
-      description: 'Items under reorder point appear here so nothing runs dry mid-shift.',
+      title: 'Health signals',
+      description:
+        'Tap Below par or Runway alerts to spotlight stockouts before service.',
+    },
+    {
+      element: '[data-tour="inventory-attention"]',
+      title: 'Needs attention',
+      description:
+        'Match invoices and jump filters for reconcile / low / critical work without leaving the page.',
     },
     {
       element: '[data-tour="inventory-actions"]',
       title: 'Take action',
-      description: 'Adjust counts or start an order without leaving the page.',
+      description:
+        'Switch Table vs Cellar Map, export count sheets, manage locations, or add a wine.',
     },
   ],
 }

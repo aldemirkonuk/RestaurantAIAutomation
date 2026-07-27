@@ -17,13 +17,15 @@ export function TourHelpButton({ className }: { className?: string }) {
       onClick={() => guidance.startTour(pageId)}
       aria-label="Replay page tour"
       title="Replay page tour"
+      data-guidance="tour-help"
       className={cn(
-        'inline-flex items-center justify-center w-8 h-8 rounded-lg',
+        'inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg',
         'text-gray-500 hover:text-[#B8323A] hover:bg-[#B8323A]/10 transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8323A] focus-visible:ring-offset-2',
         className,
       )}
     >
-      <HelpCircle className="w-4 h-4" />
+      <HelpCircle className="w-4 h-4" aria-hidden="true" />
     </button>
   )
 }

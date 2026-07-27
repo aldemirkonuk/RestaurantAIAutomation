@@ -82,7 +82,7 @@ export function ServicesPermissions() {
 
   return (
     <div className="space-y-6" data-guidance="services-permissions">
-      <div>
+      <div data-tour="services-intro">
         <h2 className="text-lg font-semibold text-gray-900">Services & permissions</h2>
         <p className="text-sm text-gray-500 mt-1 max-w-2xl">
           Control what WineOps can access. These settings are optional and separate from
@@ -103,10 +103,19 @@ export function ServicesPermissions() {
         {SERVICES.map((svc) => {
           const enabled = !!local[svc.id]
           const Icon = svc.icon
+          const tourAttr =
+            svc.id === 'email'
+              ? 'services-email'
+              : svc.id === 'web'
+                ? 'services-web'
+                : svc.id === 'privacy_analytics'
+                  ? 'services-privacy'
+                  : undefined
           return (
             <li
               key={svc.id}
               className="flex flex-col sm:flex-row sm:items-center gap-3 p-4"
+              data-tour={tourAttr}
             >
               <div className="flex items-start gap-3 flex-1 min-w-0">
                 <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0">

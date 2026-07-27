@@ -836,6 +836,7 @@ export function Reports() {
         </div>
 
         {/* Edit Toolbar (replaces old EditLayoutPanel) */}
+        <div data-tour="reports-edit-layout">
         <EditToolbar
           isEditMode={isEditMode}
           onToggleEditMode={() => setIsEditMode(!isEditMode)}
@@ -843,6 +844,7 @@ export function Reports() {
           onApplyPreset={handleApplyPreset}
           onReset={handleResetBlocks}
         />
+        </div>
 
         {/* Dashboard Canvas — react-grid-layout drag/resize for all chart blocks */}
         <div data-tour="reports-canvas">

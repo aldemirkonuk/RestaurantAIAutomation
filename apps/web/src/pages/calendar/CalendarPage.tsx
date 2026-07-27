@@ -452,9 +452,9 @@ export default function CalendarPage() {
             onClick={() => openCreateModal()}
             data-tour="calendar-new-event"
             className="hidden sm:flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white rounded-lg transition-colors"
-            style={{ backgroundColor: '#B8323A' }}
+            style={{ backgroundColor: '#9E4249' }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7c1d3c')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#B8323A')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#9E4249')}
           >
             <Plus className="w-4 h-4" />
             New Event
@@ -510,7 +510,7 @@ export default function CalendarPage() {
               : '-translate-x-full pointer-events-none'}
           `}
           aria-hidden={!sidebarOpen}
-          data-tour="calendar-sidebar"
+          data-tour={sidebarOpen ? 'calendar-sidebar' : undefined}
         >
           <CalendarSidebar
             currentDate={currentDate}
@@ -556,6 +556,7 @@ export default function CalendarPage() {
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.15 }}
                 className="h-full"
+                data-tour="calendar-grid"
               >
                 {viewMode === 'month' && (
                   <CalendarMonth
@@ -607,7 +608,7 @@ export default function CalendarPage() {
       <button
         onClick={() => openCreateModal()}
         className="sm:hidden fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white"
-        style={{ backgroundColor: '#B8323A' }}
+        style={{ backgroundColor: '#9E4249' }}
         aria-label="New event"
       >
         <Plus className="w-6 h-6" />
