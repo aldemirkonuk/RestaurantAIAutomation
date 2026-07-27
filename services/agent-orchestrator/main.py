@@ -158,3 +158,8 @@ app.include_router(health_router)
 from api.procurement_routes import router as procurement_router  # noqa: E402
 
 app.include_router(procurement_router)
+
+# Synth factory admin routes (Phase 37) — thin X-Admin-Key wrappers; dry-run default
+from api.synth_routes import router as synth_router  # noqa: E402
+
+app.include_router(synth_router)
