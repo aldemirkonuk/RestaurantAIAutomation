@@ -17,6 +17,8 @@ v2.0 transforms 24 Level 0-1 agents into Level 4 (Resilient) production agents. 
 
 Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete. Hybrid extraction pipeline (Claude Vision + Gemini Flash + YOLO 2-class + Haiku enrichment), web verification, ontology, critic scores, temporal intelligence, research agent, dev onboarding UI, E2E testing, storage locations. Phase directories archived to `.planning/archive/v1.0-phases/`.
 
+**Camera/OCR target stack (2026-07-27):** live preview = RF-DETR (boxes only) → shutter = PaddleOCR or DeepSeek-OCR on GPU → field parse = Gemini (eval Qwen2.5-VL / RolmOCR later). No full OCR on every live frame. See `SCANNING_PIPELINE_SETUP.md` and `.planning/PROJECT.md`.
+
 ## v2.0 Phases
 
 - [x] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers) (completed 2026-04-10)

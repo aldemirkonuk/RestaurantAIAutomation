@@ -50,19 +50,47 @@ Access at http://localhost:8080
 
 ## Architecture Overview
 
+### Live camera capture stack (target — 2026-07-27)
+
+Canonical stack for `/get-started` scan / in-app menu camera. **Boxes live; OCR only on shutter.**
+
+```
+Live preview (camera frames)
+  └─ RF-DETR          → region / line boxes only (~2–5 fps)
+                         NO full OCR per frame
+
+Shutter / uploaded photo
+  └─ PaddleOCR        → text + layout (Apache 2.0; production default)
+     or DeepSeek-OCR  → GPU path when available (MIT)
+
+Field parse
+  └─ Gemini (now)     → producer / vintage / region / price / etc.
+  └─ evaluate later   → Qwen2.5-VL / RolmOCR as open VLM alternatives
+```
+
+| Stage | Tool | Role | Do not |
+|---|---|---|---|
+| Live preview | **RF-DETR** | Draw detection boxes in the camera modal | Run full OCR every frame |
+| On capture | **PaddleOCR** (or **DeepSeek-OCR** on GPU) | Extract text/layout from the shuttered image | Stream OCR over live video |
+| Field parse | **Gemini** (keep for now) | Structure wine fields from OCR/text+image | Replace prematurely without eval |
+| Field parse (eval) | Qwen2.5-VL / RolmOCR | Open VLM candidates for later A/B | Assume they beat Gemini on messy menus yet |
+
+**Current code note:** live preview may still use Ultralytics YOLO until RF-DETR is wired; invoice/PDF path may still use Surya. New work should converge on the target stack above.
+
 ### FREE Path (95% of data)
 
 ```
 HTML Menu → Playwright DOM → Local Parser → Structured Wines ($0)
 Digital PDF → PyPDF2 → Local Parser → Structured Wines ($0)
 Scanned PDF → Surya OCR → Local Parser → Structured Wines ($0)
+  (target: migrate scanned-PDF OCR toward PaddleOCR where practical)
 ```
 
 ### PAID Path (5% of data)
 
 ```
 Complex Text → Gemini TEXT → Structured Wines (~$0.0001/page)
-Photo Upload → Gemini Vision → Structured Wines (~$0.001/photo)
+Photo Upload → PaddleOCR (or DeepSeek-OCR) → Gemini field parse (~$0.001/photo)
 ```
 
 **Projected costs:**
@@ -155,7 +183,7 @@ curl -X POST http://localhost:8000/api/v1/scan/extract/photo \
   }"
 ```
 
-Response includes `"cost": 0.001` (Gemini Vision charge).
+Response includes field-parse cost when Gemini is used after PaddleOCR / DeepSeek-OCR (~`$0.001`/photo typical).
 
 ---
 
@@ -505,7 +533,7 @@ The pipeline is designed to minimize API costs:
 | Scenario | Method | Cost |
 |----------|--------|------|
 | 10,000 restaurant websites crawled | HTML DOM + PyPDF2 + Surya | **$0.05** |
-| 1,000 user photo uploads | Gemini Vision | **$1.00** |
+| 1,000 user photo uploads | PaddleOCR / DeepSeek-OCR + Gemini fields | **$1.00** |
 | 100 complex menus (parser fails) | Gemini TEXT fallback | **$0.01** |
 
 **Total for 10K menus + 1K photos: ~$1.06**
@@ -706,11 +734,13 @@ Based on the FREE-first architecture:
 
 ### GPU Acceleration (Optional)
 
-For faster Surya OCR on scanned PDFs:
+For capture OCR and scanned PDFs:
 
 ```bash
 # In .env
-SCAN_SURYA_DEVICE=cuda
+SCAN_SURYA_DEVICE=cuda          # legacy PDF path (Surya)
+# Target stack: prefer PaddleOCR GPU, or DeepSeek-OCR when GPU is available
+# Live preview stays RF-DETR boxes-only — do not enable full OCR on the live stream
 
 # Requires CUDA-capable GPU
 ```
@@ -746,6 +776,8 @@ You now have:
 
 ✅ **FREE extraction** for 95% of data (HTML, PDF, OCR)  
 ✅ **VLM fallback** for photos and complex cases  
+✅ **Live camera target stack** — RF-DETR (boxes) → PaddleOCR / DeepSeek-OCR (shutter) → Gemini fields  
+✅ **Hard rule** — no full OCR on every live frame  
 ✅ **Quality gates** to filter non-wine menus  
 ✅ **3-signal scoring** with human review (10-20% sample)  
 ✅ **Active learning** that improves parser accuracy over time  

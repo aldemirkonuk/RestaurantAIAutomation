@@ -898,7 +898,7 @@ WEEKS 5-6: PHASE 2B
 WEEKS 7-8: PHASE 3A
 ├─ Mobile App Development ⭐ MUST
 ├─ Customizable Dashboard ⭐ PRIORITY
-└─ Computer Vision (YOLOv8 + OCR)
+└─ Computer Vision (RF-DETR live + PaddleOCR on shutter + Gemini fields)
 
 WEEKS 9-10: PHASE 3B
 ├─ Storage Location Tracking
@@ -1025,7 +1025,7 @@ WEEK 15+: SOMMELIER AI PROJECT
 - [ ] Mobile App (Native) ⭐ MUST
 - [ ] Customizable Dashboard ⭐ PRIORITY
 - [ ] Storage Location Tracking
-- [ ] Computer Vision (YOLOv8 + OCR)
+- [ ] Computer Vision (RF-DETR live + PaddleOCR on shutter + Gemini fields)
 - [ ] Google Sheets Sync (two-way)
 
 ### Future Later

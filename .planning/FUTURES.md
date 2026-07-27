@@ -257,6 +257,18 @@ Out of MVP / gated harder: mass deletes, changing billing, granting permissions,
 | `.planning/ROADMAP.md` Backlog | Promoteable 999.x phases when ready to schedule |
 | `md/PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` | Catalog extensibility notes aligned to taxonomy |
 | `.planning/UX_PATHS_CATALOG.md` §W + §AB + §AC | Guest paths + Ask AI action-creation paths |
+| `SCANNING_PIPELINE_SETUP.md` | Live camera + OCR stack target (RF-DETR → PaddleOCR → Gemini) |
+
+### Live camera / OCR stack (wine quality bar — technical)
+
+Locked target for menu/camera capture (product docs + implementation should converge here):
+
+1. **Live preview:** RF-DETR — boxes only (~2–5 fps)
+2. **On capture:** PaddleOCR (or DeepSeek-OCR on GPU)
+3. **Field parse:** Gemini for now; evaluate Qwen2.5-VL / RolmOCR later
+4. **Hard rule:** never run full OCR every live frame — boxes live; OCR on shutter
+
+Details: [SCANNING_PIPELINE_SETUP.md](../SCANNING_PIPELINE_SETUP.md#live-camera-capture-stack-target--2026-07-27), [PROJECT.md](./PROJECT.md) Key Decisions.
 
 ---
 
@@ -272,4 +284,4 @@ Out of MVP / gated harder: mass deletes, changing billing, granting permissions,
 
 ---
 
-*Last updated: 2026-07-26 — Mudavym futures locked (brand, sequence A, bakery MVP, taxonomy, guest points, Ask AI actions)*
+*Last updated: 2026-07-27 — live camera/OCR stack target linked (RF-DETR → PaddleOCR → Gemini)*

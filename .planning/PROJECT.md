@@ -112,6 +112,8 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 
 **v1.0 completed (2026-04-08):** 17 phases, 73 plans, 96% completion. Hybrid extraction pipeline (Claude Vision + Gemini Flash + YOLO 2-class + Haiku enrichment) fully operational with web verification, ontology validation, critic scores, temporal intelligence, research agent, and dev onboarding UI.
 
+**Live camera capture stack (target, locked 2026-07-27):** RF-DETR for live preview boxes → PaddleOCR (or DeepSeek-OCR on GPU) on shutter → Gemini for field parse (evaluate Qwen2.5-VL / RolmOCR later). Never run full OCR every live frame — boxes live; OCR on shutter. See [SCANNING_PIPELINE_SETUP.md](../SCANNING_PIPELINE_SETUP.md#live-camera-capture-stack-target--2026-07-27).
+
 **v2.0 motivation:** 24 agents exist but all are Level 0-1 (prototype quality). BaseAgent already provides Level 3 infrastructure (circuit breaker, retry, backpressure, metrics, health checks, graceful shutdown). Gap to Level 4 is 6 additions to BaseAgent + per-agent bug fixes and hardening.
 
 **Agent system architecture:**
@@ -161,8 +163,12 @@ v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extracti
 |----------|-----------|---------|
 | Claude Vision: extraction brain | Categorically solves abbreviation/layout failures | ✓ Validated |
 | Gemini Flash: crawling brain | 10x cheaper than Claude Vision for bulk crawling | ✓ Validated |
-| YOLO 2-class: UX preview only | Sufficient for box drawing | ✓ Good |
+| YOLO 2-class: UX preview only | Sufficient for box drawing | ✓ Good (v1.0); superseded as *target* by RF-DETR below |
 | Claude Haiku: enrichment | $0.01/wine background enrichment | ✓ Validated |
+| Live preview: RF-DETR | SOTA open real-time detector (Apache 2.0 N–L); boxes only | Locked 2026-07-27 — target stack |
+| On capture: PaddleOCR (DeepSeek-OCR on GPU) | Production OCR default; GPU alt for heavy pages | Locked 2026-07-27 — target stack |
+| Field parse: Gemini now; eval Qwen2.5-VL / RolmOCR | Gemini still best on messy menus; open VLMs later | Locked 2026-07-27 — target stack |
+| No full OCR on live frames | Too slow/expensive; shutter-only OCR | Locked 2026-07-27 — target stack |
 
 ---
-*Last updated: 2026-07-26 — Mudavym brand + futures vision linked; v2.0 milestone unchanged*
+*Last updated: 2026-07-27 — live camera capture stack target (RF-DETR → PaddleOCR → Gemini)*

@@ -508,7 +508,8 @@ export function CameraCapture({
                 <div>
                   <p className="font-medium text-gray-900 text-sm">AI Detection Pipeline</p>
                   <p className="text-xs text-gray-600 mt-1">
-                    YOLOv8 (13-class) + Multi-language OCR + Gemini Pro (25 fields) + Master Library matching.
+                    Live: RF-DETR boxes only → Capture: PaddleOCR (or DeepSeek-OCR on GPU) →
+                    Fields: Gemini (Qwen2.5-VL / RolmOCR under evaluation). OCR runs on shutter, not every frame.
                   </p>
                 </div>
               </div>

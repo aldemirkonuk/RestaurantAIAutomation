@@ -22,9 +22,9 @@ interface MenuScannerFlowProps {
 }
 
 const PROCESSING_STEPS = [
-  { label: 'YOLOv8 region detection (13 classes)', delay: 0 },
-  { label: 'Multi-language OCR extraction', delay: 150 },
-  { label: 'Gemini Pro field parsing (25 fields)', delay: 300 },
+  { label: 'RF-DETR region detection (live boxes)', delay: 0 },
+  { label: 'PaddleOCR text + layout (on shutter)', delay: 150 },
+  { label: 'Gemini field parsing (wine schema)', delay: 300 },
   { label: 'Master Wine Library matching', delay: 450 },
 ]
 
@@ -53,7 +53,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
 
     try {
       // Step 1: YOLO detection
-      setProcessingStepText('Running YOLOv8 detection (13-class)...')
+      setProcessingStepText('Detecting regions (RF-DETR target stack)...')
       
       const result = await scanMenuImage(imageBase64, restaurantId)
       
@@ -133,7 +133,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
                   </h2>
                   <p className="text-sm text-gray-500">
                     {step === 'capture' && 'Capture or upload your wine menu for AI analysis'}
-                    {step === 'processing' && 'Running 4-layer AI detection pipeline'}
+                    {step === 'processing' && 'Running capture pipeline (OCR on shutter, not live frames)'}
                     {step === 'results' && 'Review and confirm detected wines'}
                     {step === 'done' && `${addedCount} wines added to your inventory`}
                   </p>
