@@ -5,7 +5,6 @@ import {
   ForbiddenException,
   Get,
   Header,
-  HttpCode,
   HttpException,
   HttpStatus,
   Param,

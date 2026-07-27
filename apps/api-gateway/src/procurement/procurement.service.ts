@@ -20,11 +20,6 @@ import { InboundAddressService } from "../common/orchestrator/inbound-address.se
 import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
-import {
-  StockType,
-  TransactionSource,
-  TransactionType,
-} from "../inventory-ledger/dto/inventory-ledger.dto";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -1555,7 +1550,6 @@ export class ProcurementService {
 
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
     const providerEmail = (conv as any).providers?.contact_email ?? null;
-    const providerName = (conv as any).providers?.name ?? "Provider";
     const rawOrder = (conv as any).procurement_orders;
     const wineName =
       rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? "Wine Order";
