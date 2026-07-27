@@ -70,7 +70,7 @@ Each task was committed atomically:
 1. **Task 1: Build EXISTING-TEST-INVENTORY.md for all runners** - `01f6ecf` (docs)
 2. **Task 2: Initialize TESTING-SCORECARD.md baseline** - `824aeb8` (docs)
 
-**Plan metadata:** _(see final docs commit after this SUMMARY)_
+**Plan metadata:** `ec21319` (docs: complete plan)
 
 ## Files Created/Modified
 
