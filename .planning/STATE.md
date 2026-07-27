@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
-status: Ready to execute
-last_updated: "2026-07-27T19:39:05.033Z"
+status: Executing Phase 36
+last_updated: "2026-07-27T20:02:09.643Z"
 progress:
   total_phases: 31
   completed_phases: 12
   total_plans: 84
-  completed_plans: 76
-  percent: 90
+  completed_plans: 77
+  percent: 92
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus (2026-07-27):** **Testing Campaign (Phases 36–43)** locked via 3-round user Q&A — testing-first foundation before Waves 2-6. Synthetic restaurant generator (real web menus, ≥5 archetypes) + SimPOS provider in pos-hub + accelerated day-simulator with web control panel + ground-truth ledger. Breadth-first scored coverage (T0–T4 rubric) across 11 functionality groups; analytics/insights exactness is the #1 eval priority (Phase 41 asserts every KPI/report/answer against the sim oracle). Requirements TFND/SYNTH/SIMPOS/BRD/TRUTH/EVAL-AI/JRNY (41 total) in REQUIREMENTS.md; phases in ROADMAP.md. **Phase 36 planned (3 plans, audit PASSED). Next: `/gsd-execute-phase 36`.**
+**Current focus (2026-07-27):** **Testing Campaign (Phases 36–43)** — Phase 36 Plan 01 complete (RUBRIC.md + FUNCTIONALITY-REGISTRY.md). Next: execute 36-02 (inventory + scorecard). Requirements TFND/SYNTH/SIMPOS/BRD/TRUTH/EVAL-AI/JRNY in REQUIREMENTS.md.
 **Earlier focus:** Session 2026-07-08 (evening) — **Prospects attribution → SOTA multi-tenant plan (Phases 0–3)** on `main`. Plan of record: `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` (dedicated-domain inbound, transport-derived attribution, full per-tenant RLS target). **Shipped & live** (commit `a21a6c5`, migration `20260708150000` applied): Phase 0 hardening — triage bucket for ambiguous cold email (no cross-tenant leak, no silent drop), gmail_message_id idempotency, promote-dedup + `UNIQUE(restaurant_id, lower(contact_email))`, provenance/attachments/undo/confirm/empty-state UX. **Built, code-complete, dormant pending infra** (Phases 1–3): `restaurant_inbound_addresses` table (`20260708160000`) + `InboundAddressService` (opaque `r-<token>@INBOUND_EMAIL_DOMAIN`), provider-agnostic `InboundEmailController` webhook (`POST /api/v1/webhooks/inbound-email`, secret-gated, Postmark+generic) that derives restaurant_id from the recipient and publishes `email.inbound.received` (dual-run w/ Gmail); bridge cutover consumes `restaurant_id` + scopes provider lookup by tenant; outbound Reply-To = restaurant inbound address. All config-gated on `INBOUND_EMAIL_DOMAIN`/`INBOUND_WEBHOOK_SECRET` — no-op until you provision a domain + inbound-parse provider (Postmark recommended) + DNS. **Phase 4 (per-tenant RLS + nightly isolation assertion)** and **Phase 5 (multi-location chip filter on Prospects)** SHIPPED (migration `20260708170000` applied; 6 RLS policies live; `tenant_isolation_report()` baseline 0 violations across 9 restaurants). Phase 4 note: reads stay on the service-role client — full authed-client RLS enforcement needs Supabase Auth adoption (separate effort); policies are defense-in-depth today. Verified: api-gateway + web tsc clean, no lints. **CI cleanup deferred** (pre-existing ruff/black/eslint-config debt + Security-Scan permission bug — unrelated to this work).
 **Earlier focus (2026-07-08 afternoon):** inbound-email-intelligence polish batch (post-PR-#29): non-price provenance in the deal modal; A17 stale-send cancel; A7 regenerate-with-attachments; richer + durable 9am promo digest; P6 Inbound Triage Card; D1 Prospects lane. Migrations `20260708140000` (D1), `20260708150000` (P0), `20260708160000` (P1) all applied live to `exzueerziesmczwlhomd`.
 **Earlier focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0.
@@ -28,7 +28,9 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 ## Current Position
 
-**Last completed:** Phase 24 Plan 05 — ProviderConversationAgent Level 4 hardening. Idempotency guard, DLQ, commitment language guardrail (8 regex patterns, AI-SPEC §6), D-19 context injection (_get_db_context_for_prompt: 4 table queries), close_relationship tone instruction, manager learning loop, Langfuse @observe() on generate_draft(). 2026-05-13.
+Phase: 36 (Testing Foundation & Functionality Registry) — EXECUTING
+Plan: 2 of 3
+**Last completed:** Phase 36 Plan 01 — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group Nest/web/agent/DB map; contested surfaces; `/sim` reserved). 2026-07-27.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30
 **Phases deferred:** 23 (Gmail Integration) — `[ ]` in ROADMAP, plans 23-03 + 23-06 remain (Railway OAuth2 credential gate)
 

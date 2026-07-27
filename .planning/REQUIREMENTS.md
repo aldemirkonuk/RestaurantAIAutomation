@@ -343,6 +343,85 @@
 - [ ] **TEST-PROD-11**: Nightly cron at `0 2 * * *` UTC triggers `e2e-prod.yml` (observability-only mode). Production deploys trigger the same workflow via Vercel deploy hook → GitHub Actions `workflow_dispatch` (blocking mode: failure → Sentry `deploy-gate: true` tag + PR comment if `pr_number` input is provided).
 - [ ] **TEST-PROD-12**: All test writes use `restaurant_id: "e2e-test-restaurant"` (permanent anchor). Records created with deterministic `e2e-*` IDs and Supabase upserts for idempotency. Session teardown deletes all rows matching `restaurant_id = 'e2e-test-restaurant' AND id LIKE 'e2e-%'` (except the anchor record itself). Teardown failures reported to Sentry with tag `e2e-orphan: true` — teardown errors NEVER raise exceptions or fail tests.
 
+## Testing Campaign Requirements (Phases 36–43)
+
+**Defined:** 2026-07-27 — locked via 3 rounds of user Q&A. Testing-first foundation before Waves 2-6.
+
+### Testing Foundation (Phase 36)
+
+- [x] **TFND-01**: `.planning/testing/FUNCTIONALITY-REGISTRY.md` maps every api-gateway module, web page, orchestrator agent, and database domain to exactly one of 11 functionality groups
+- [x] **TFND-02**: T0–T4 coverage rubric defined (T0 untested → T4 ground-truth/golden-set verified), mirroring the agent Level system
+- [ ] **TFND-03**: Existing-test inventory: every spec/pytest/Playwright file catalogued (group, runs?, passes?) — kept as-is, built around
+- [ ] **TFND-04**: `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score + evidence per group
+- [ ] **TFND-05**: GitHub Actions: unit + integration on push, E2E nightly (extends Phase 25 e2e-prod.yml patterns)
+- [ ] **TFND-06**: Synthetic tenant isolation: `sim-*` restaurant_id convention, RLS-safe seeding, idempotent teardown
+
+### Synthetic Restaurant Engine (Phase 37)
+
+- [ ] **SYNTH-01**: Parameterized generator: cuisine, size, wine-program depth, sales volume, price tier, ordering rhythm → full restaurant profile
+- [ ] **SYNTH-02**: Menus sourced from real web menus (reuse v1.0 crawler/extraction) — real SKU diversity across archetypes
+- [ ] **SYNTH-03**: Generated restaurant seeded into cloud Supabase: org, restaurant, team (owner/manager/staff), menu, opening inventory
+- [ ] **SYNTH-04**: Ground-truth ledger records every generated fact in queryable form — the oracle for analytics assertions
+- [ ] **SYNTH-05**: ≥ 5 distinct archetypes live (fine dining, bistro, high-volume bar, cafe, Turkish restaurant clone)
+
+### SimPOS Provider & Simulator (Phase 38)
+
+- [ ] **SIMPOS-01**: SimPOS registered in pos-hub provider registry, emitting canonical checks through the standard ingestion pipeline
+- [ ] **SIMPOS-02**: Simulator emits realistic order streams from restaurant profile distributions across simulated days
+- [ ] **SIMPOS-03**: Accelerated controllable clock: configurable speed, pause, step, jump-to-day
+- [ ] **SIMPOS-04**: Control panel: pick restaurant → view menu → click items → order fires through pos-hub
+- [ ] **SIMPOS-05**: Control panel: start/stop/speed + chaos injection (burst, void, refund, duplicate, malformed)
+- [ ] **SIMPOS-06**: Deployed on Railway; events reach deployed api-gateway like a real POS
+- [ ] **SIMPOS-07**: Every emitted event mirrored to the ground-truth ledger
+
+### Breadth Passes (Phases 39–40)
+
+- [ ] **BRD-01**: Identity & Access ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-02**: Catalog & Extraction ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-03**: Inventory Operations ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-04**: POS & Sales Ingestion ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-05**: Procurement & Vendors ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-06**: Communications & Email Intelligence ≥ T2 — automated suites (LLM mocked) + manual checklist
+- [ ] **BRD-07**: Calendar & Scheduling ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-08**: Notifications & Alerts ≥ T2 — automated suites + manual checklist
+
+### Analytics & Insights Truth Suite (Phase 41)
+
+- [ ] **TRUTH-01**: Every dashboard KPI matches the ground-truth oracle exactly for sim tenants after N simulated days
+- [ ] **TRUTH-02**: Reports (inventory, sales, PDF exports) match oracle line-by-line
+- [ ] **TRUTH-03**: Analytic-answer question bank (≥ 25 questions) verified numerically exact against oracle
+- [ ] **TRUTH-04**: Drift detection: full simulated month incl. chaos → `stock_live` == oracle stock (zero silent leakage)
+- [ ] **TRUTH-05**: Failures emit expected-vs-actual diffs as CI artifacts; Analytics group reaches T4
+
+### AI Eval Suites (Phase 42)
+
+- [ ] **EVAL-AI-01**: Wine extraction golden set (≥ 30 labeled menus) scored per field; thresholds set from baseline
+- [ ] **EVAL-AI-02**: Email intelligence golden set scored on classification + promo extraction accuracy
+- [ ] **EVAL-AI-03**: Agent decision evals (procurement suggestions, threshold alerts) scored against sim scenarios with known answers
+- [ ] **EVAL-AI-04**: Analytic-answer eval bank shares the eval harness (unified scoring + history)
+- [ ] **EVAL-AI-05**: Weekly CI eval runs with cost caps + score history; regressions flag the scorecard
+
+### E2E Journeys & Final Scorecard (Phase 43)
+
+- [ ] **JRNY-01**: Playwright journeys green on cloud stack: onboard → menu import → inventory → sim sale → alert → report + all-pages nav smoke
+- [ ] **JRNY-02**: Scanner flows harnessed + manual checklist executed by user
+- [ ] **JRNY-03**: Admin/health surfaces verified against live chaos injection
+- [ ] **JRNY-04**: User manual pathway passes (web, scanner, admin) captured with structured feedback + triage
+- [ ] **JRNY-05**: Final scorecard: all 11 groups ≥ T2, Analytics T4; sub-T2 gaps promoted to backlog
+
+**Coverage (Testing Campaign):**
+- Foundation (Phase 36): 6 — TFND-01..06
+- Synthetic engine (Phase 37): 5 — SYNTH-01..05
+- SimPOS + simulator (Phase 38): 7 — SIMPOS-01..07
+- Breadth passes (Phases 39–40): 8 — BRD-01..08
+- Truth suite (Phase 41): 5 — TRUTH-01..05
+- AI evals (Phase 42): 5 — EVAL-AI-01..05
+- Journeys + scorecard (Phase 43): 5 — JRNY-01..05
+- Campaign total: 41 requirements mapped to 8 phases
+- Unmapped: 0 ✓
+
+---
+
 **Coverage (v2.0):**
 - Infrastructure (Phase 18): 14 requirements — INFRA-01..08, INFRA-DB-01..06
 - Bug fixes (Phase 19): 12 requirements — BUG-01..12
@@ -355,4 +434,4 @@
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-05-01 — Phase 25 TEST-PROD-01..12 added (12 new requirements)*
+*Last updated: 2026-07-27 — Testing Campaign TFND/SYNTH/SIMPOS/BRD/TRUTH/EVAL-AI/JRNY added (41 new requirements, Phases 36–43)*

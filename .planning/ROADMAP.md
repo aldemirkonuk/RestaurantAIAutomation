@@ -497,11 +497,11 @@ Plans:
   4. `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score per group, evidence links
   5. GitHub Actions: unit + integration suites run on push; nightly E2E workflow scheduled (reuses Phase 25 e2e-prod.yml patterns)
   6. Synthetic tenant convention locked: `sim-*` restaurant_id prefix, RLS-safe seeding, idempotent teardown (extends Phase 25 `e2e-test-restaurant` pattern)
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map; contested surfaces; Phase 38 reserved `/sim`; full Nest/agent/route verify)
+- [x] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map; contested surfaces; Phase 38 reserved `/sim`; full Nest/agent/route verify)
 
 **Wave 2** *(depends on 36-01 — registry/inventory reconcile)*
 - [ ] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline (locked slugs; provisional T1?; UX Gaps; CI/E2E honesty)
