@@ -519,7 +519,17 @@ Plans:
   3. Generated restaurant fully seeded into cloud Supabase: organization, restaurant, team members (owner/manager/staff), menu, wine inventory with opening stock
   4. Ground-truth ledger records every generated fact (opening stock, menu prices, team roster) in queryable form (`sim_ground_truth` tables or equivalent)
   5. ≥ 5 distinct archetypes generated and live: e.g. wine-heavy fine dining, casual bistro, high-volume bar, tiny cafe, Turkish restaurant clone
-**Plans**: TBD (created by `/gsd-plan-phase 37`)
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+- [ ] 37-01-PLAN.md — Snapshots + archetype recipes + opening stock + Wave 0 Nyquist scaffolds (SYNTH-01/02/05)
+
+**Wave 2** *(depends on 37-01)*
+- [ ] 37-02-PLAN.md — Atomic seed + sim_ground_truth* oracle + Auth personas (SYNTH-03/04)
+
+**Wave 3** *(depends on 37-01 + 37-02)*
+- [ ] 37-03-PLAN.md — Teardown write-set gate + CLI/API dry-run/--apply + role isolation (D-11..D-17)
 
 ### Phase 38: SimPOS Provider & Operations Simulator
 **Goal**: The fake POS connection the user asked for. A SimPOS provider speaks the pos-hub canonical check contract, an accelerated simulator plays out restaurant days, and a web control panel lets the user fire any order by clicking menu items. The system under test cannot tell it's fake.
