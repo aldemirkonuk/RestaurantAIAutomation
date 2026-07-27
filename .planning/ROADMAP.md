@@ -501,11 +501,13 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map)
-- [ ] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline
+- [ ] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map; contested surfaces; Phase 38 reserved `/sim`; full Nest/agent/route verify)
 
-**Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 36-03-PLAN.md — SYNTHETIC-TENANT.md + CI annotations (ci.yml / e2e-prod.yml) + README index
+**Wave 2** *(depends on 36-01 — registry/inventory reconcile)*
+- [ ] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline (locked slugs; provisional T1?; UX Gaps; CI/E2E honesty)
+
+**Wave 3** *(depends on 36-01 + 36-02)*
+- [ ] 36-03-PLAN.md — SYNTHETIC-TENANT.md + CI annotations + operator README + checklists/ naming stub
 
 ### Phase 37: Synthetic Restaurant Engine
 **Goal**: A parameterized factory that can produce any restaurant profile on demand — with real-world menus copied from the web — and seed it into the cloud stack with a queryable ground-truth ledger. This is the oracle everything else asserts against.
