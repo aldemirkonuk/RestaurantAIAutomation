@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
-status: Ready to execute
-last_updated: "2026-07-27T20:05:33.110Z"
+status: Phase complete — ready for verification
+last_updated: "2026-07-27T20:08:30.777Z"
 progress:
   total_phases: 31
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 84
-  completed_plans: 78
-  percent: 93
+  completed_plans: 79
+  percent: 94
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus (2026-07-27):** **Testing Campaign (Phases 36–43)** — Phase 36 Plan 02 complete (EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md). Next: execute 36-03 (synthetic tenant + CI annotations + README). Requirements TFND/SYNTH/SIMPOS/BRD/TRUTH/EVAL-AI/JRNY in REQUIREMENTS.md.
+**Current focus (2026-07-27):** **Testing Campaign (Phases 36–43)** — Phase 36 Plan 03 complete (SYNTHETIC-TENANT.md + CI annotations + operator README). Phase 36 ready for verification. Next: Phase 37 Synthetic Restaurant Engine (after verify). Requirements TFND/SYNTH/SIMPOS/BRD/TRUTH/EVAL-AI/JRNY in REQUIREMENTS.md.
 **Earlier focus:** Session 2026-07-08 (evening) — **Prospects attribution → SOTA multi-tenant plan (Phases 0–3)** on `main`. Plan of record: `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` (dedicated-domain inbound, transport-derived attribution, full per-tenant RLS target). **Shipped & live** (commit `a21a6c5`, migration `20260708150000` applied): Phase 0 hardening — triage bucket for ambiguous cold email (no cross-tenant leak, no silent drop), gmail_message_id idempotency, promote-dedup + `UNIQUE(restaurant_id, lower(contact_email))`, provenance/attachments/undo/confirm/empty-state UX. **Built, code-complete, dormant pending infra** (Phases 1–3): `restaurant_inbound_addresses` table (`20260708160000`) + `InboundAddressService` (opaque `r-<token>@INBOUND_EMAIL_DOMAIN`), provider-agnostic `InboundEmailController` webhook (`POST /api/v1/webhooks/inbound-email`, secret-gated, Postmark+generic) that derives restaurant_id from the recipient and publishes `email.inbound.received` (dual-run w/ Gmail); bridge cutover consumes `restaurant_id` + scopes provider lookup by tenant; outbound Reply-To = restaurant inbound address. All config-gated on `INBOUND_EMAIL_DOMAIN`/`INBOUND_WEBHOOK_SECRET` — no-op until you provision a domain + inbound-parse provider (Postmark recommended) + DNS. **Phase 4 (per-tenant RLS + nightly isolation assertion)** and **Phase 5 (multi-location chip filter on Prospects)** SHIPPED (migration `20260708170000` applied; 6 RLS policies live; `tenant_isolation_report()` baseline 0 violations across 9 restaurants). Phase 4 note: reads stay on the service-role client — full authed-client RLS enforcement needs Supabase Auth adoption (separate effort); policies are defense-in-depth today. Verified: api-gateway + web tsc clean, no lints. **CI cleanup deferred** (pre-existing ruff/black/eslint-config debt + Security-Scan permission bug — unrelated to this work).
 **Earlier focus (2026-07-08 afternoon):** inbound-email-intelligence polish batch (post-PR-#29): non-price provenance in the deal modal; A17 stale-send cancel; A7 regenerate-with-attachments; richer + durable 9am promo digest; P6 Inbound Triage Card; D1 Prospects lane. Migrations `20260708140000` (D1), `20260708150000` (P0), `20260708160000` (P1) all applied live to `exzueerziesmczwlhomd`.
 **Earlier focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0.
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 ## Current Position
 
-Phase: 36 (Testing Foundation & Functionality Registry) — EXECUTING
-Plan: 3 of 3
-**Last completed:** Phase 36 Plan 02 — EXISTING-TEST-INVENTORY.md (142 rows) + TESTING-SCORECARD.md baseline (T1?/T0; UX Gaps; CI/E2E honesty). 2026-07-27.
+Phase: 36 (Testing Foundation & Functionality Registry) — READY FOR VERIFICATION
+Plan: 3 of 3 (all plans executed)
+**Last completed:** Phase 36 Plan 03 — SYNTHETIC-TENANT.md (sim-* / TFND-06) + comment-only TFND-05 CI annotations + operator README + checklists naming stub. 2026-07-27.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30
 **Phases deferred:** 23 (Gmail Integration) — `[ ]` in ROADMAP, plans 23-03 + 23-06 remain (Railway OAuth2 credential gate)
 
@@ -563,6 +563,9 @@ The 20-02-SUMMARY.md had a false `[x] append_event` checkbox; corrected on 2026-
 | 2026-04-12 | connect_robust patched at core.message_bus module path | Direct aio_pika import path missed the already-imported reference; module-level patch is the correct approach. |
 | 2026-04-12 | No rate limit on Toast webhook (T-21-02-02 accepted) | Toast sends ≤100 webhooks/hour per restaurant. MVP scope. Rate limiting deferred to Phase 22. |
 | 2026-04-12 | ngrok live-test script prints "set"/"NOT SET" only | Secret availability check uses ternary to string literal — actual TOAST_WEBHOOK_SECRET value never printed or logged. |
+| 2026-07-27 | Embedded verbatim 8-table E2E_TABLES + Table D gap; Phase 37 must expand teardown before multi-archetype seed | C2 premortem — incomplete teardown orphans production rows |
+| 2026-07-27 | TFND-05 = schedule-present / capability-unverified; secrets present? no as of 2026-07-27; not green CI | C1/H5 honesty — cron ≠ healthy nightly |
+| 2026-07-27 | ci.yml / e2e-prod.yml edits are comments only — cron 0 2 * * * unchanged; no testing-campaign.yml | D-24 no second E2E paradigm; T-36-03-05 |
 
 ---
 

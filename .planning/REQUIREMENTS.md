@@ -353,8 +353,8 @@
 - [x] **TFND-02**: T0–T4 coverage rubric defined (T0 untested → T4 ground-truth/golden-set verified), mirroring the agent Level system
 - [x] **TFND-03**: Existing-test inventory: every spec/pytest/Playwright file catalogued (group, runs?, passes?) — kept as-is, built around
 - [x] **TFND-04**: `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score + evidence per group
-- [ ] **TFND-05**: GitHub Actions: unit + integration on push, E2E nightly (extends Phase 25 e2e-prod.yml patterns)
-- [ ] **TFND-06**: Synthetic tenant isolation: `sim-*` restaurant_id convention, RLS-safe seeding, idempotent teardown
+- [x] **TFND-05**: GitHub Actions: unit + integration on push, E2E nightly (extends Phase 25 e2e-prod.yml patterns)
+- [x] **TFND-06**: Synthetic tenant isolation: `sim-*` restaurant_id convention, RLS-safe seeding, idempotent teardown
 
 ### Synthetic Restaurant Engine (Phase 37)
 
