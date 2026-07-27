@@ -500,8 +500,11 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
 - [ ] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map)
 - [ ] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 36-03-PLAN.md — SYNTHETIC-TENANT.md + CI annotations (ci.yml / e2e-prod.yml) + README index
 
 ### Phase 37: Synthetic Restaurant Engine
