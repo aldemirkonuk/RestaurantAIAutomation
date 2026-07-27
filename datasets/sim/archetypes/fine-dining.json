@@ -1,0 +1,36 @@
+{
+  "archetype_id": "fine-dining",
+  "display_name": "Fine Dining",
+  "snapshot": "datasets/sim/menus/fine-dining.json",
+  "defaults": {
+    "cuisine": "steakhouse-american",
+    "size": "large",
+    "wine_program_depth": "deep",
+    "sales_volume": "medium",
+    "price_tier": "premium",
+    "ordering_rhythm": "weekly"
+  },
+  "opening_stock": {
+    "default_bottles": 8,
+    "min_bottles": 2,
+    "max_bottles": 24,
+    "by_price_tier": {
+      "entry": 12,
+      "mid": 8,
+      "premium": 4
+    },
+    "by_primary_type": {
+      "sparkling": 10,
+      "red": 8,
+      "white": 8,
+      "rose": 6
+    },
+    "threshold_min": 3
+  },
+  "restaurant": {
+    "name": "Sim Fine Dining",
+    "timezone": "America/Chicago",
+    "city": "Chicago",
+    "country": "USA"
+  }
+}
