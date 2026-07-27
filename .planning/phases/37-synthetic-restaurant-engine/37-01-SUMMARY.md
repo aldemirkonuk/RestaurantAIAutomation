@@ -80,7 +80,7 @@ Each task was committed atomically:
 2. **Task 2: Archetype recipes + opening stock + profile overrides** - `f49c851` (feat)
 3. **Task 3: Frozen menu snapshots + replay/refresh split** - `51e7a94` (feat)
 
-**Plan metadata:** (pending docs commit)
+**Plan metadata:** `c3613ad` (docs: complete plan)
 
 ## Files Created/Modified
 

@@ -520,10 +520,11 @@ Plans:
   4. Ground-truth ledger records every generated fact (opening stock, menu prices, team roster) in queryable form (`sim_ground_truth` tables or equivalent)
   5. ≥ 5 distinct archetypes generated and live: e.g. wine-heavy fine dining, casual bistro, high-volume bar, tiny cafe, Turkish restaurant clone
 **Plans**: 3 plans
+**Progress**: 1/3 plans executed (In Progress)
 
 Plans:
 **Wave 1**
-- [ ] 37-01-PLAN.md — Snapshots + archetype recipes + opening stock + Wave 0 Nyquist scaffolds (SYNTH-01/02/05)
+- [x] 37-01-PLAN.md — Snapshots + archetype recipes + opening stock + Wave 0 Nyquist scaffolds (SYNTH-01/02/05)
 
 **Wave 2** *(depends on 37-01)*
 - [ ] 37-02-PLAN.md — Atomic seed + sim_ground_truth* oracle + Auth personas (SYNTH-03/04)
@@ -641,7 +642,7 @@ After Phases 23-25 complete, expand to remaining agents:
 **Requirements:** TBD — guest identity/profile model distinct from restaurant membership roles, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation/POS linking, **append-only points ledger with derived balance**, share/referral attribution with conversion bonus, provisional→confirmed point states, anti-abuse (self-referral, duplicate-device, rate limits, review quality gate), tiers/badges, opt-in restaurant-funded perks, consent controls, privacy safeguards, and aggregated k-anonymized restaurant audience insights.
 **Design detail:** [FUTURES.md](./FUTURES.md) §7 (profile types, earning rules, integrity rules, MVP cut).
 **UX paths:** `UX_PATHS_CATALOG.md` §W (`NEW-652…NEW-666`) + §AB (`NEW-861…NEW-885`).
-**Plans:** 3/3 plans complete
+**Plans:** TBD
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)

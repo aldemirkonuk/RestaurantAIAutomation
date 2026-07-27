@@ -358,11 +358,11 @@
 
 ### Synthetic Restaurant Engine (Phase 37)
 
-- [ ] **SYNTH-01**: Parameterized generator: cuisine, size, wine-program depth, sales volume, price tier, ordering rhythm → full restaurant profile
-- [ ] **SYNTH-02**: Menus sourced from real web menus (reuse v1.0 crawler/extraction) — real SKU diversity across archetypes
+- [x] **SYNTH-01**: Parameterized generator: cuisine, size, wine-program depth, sales volume, price tier, ordering rhythm → full restaurant profile
+- [x] **SYNTH-02**: Menus sourced from real web menus (reuse v1.0 crawler/extraction) — real SKU diversity across archetypes
 - [ ] **SYNTH-03**: Generated restaurant seeded into cloud Supabase: org, restaurant, team (owner/manager/staff), menu, opening inventory
 - [ ] **SYNTH-04**: Ground-truth ledger records every generated fact in queryable form — the oracle for analytics assertions
-- [ ] **SYNTH-05**: ≥ 5 distinct archetypes live (fine dining, bistro, high-volume bar, cafe, Turkish restaurant clone)
+- [x] **SYNTH-05**: ≥ 5 distinct archetypes live (fine dining, bistro, high-volume bar, cafe, Turkish restaurant clone)
 
 ### SimPOS Provider & Simulator (Phase 38)
 
