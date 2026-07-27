@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, AlertCircle, RefreshCw } from 'lucide-react'
+import { AlertCircle, RefreshCw } from 'lucide-react'
+import { BrandMark } from '../components/brand/BrandMark'
 import { toast } from 'sonner'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
@@ -132,9 +133,7 @@ export function InviteLanding() {
         className="w-full max-w-md bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8"
       >
         <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 bg-wine-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <Wine className="w-7 h-7 text-white" />
-          </div>
+          <BrandMark size={56} className="shadow-lg" />
         </div>
 
         {!isAuthenticated ? (

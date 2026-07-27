@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
+import { BrandMark } from '../brand/BrandMark'
 import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress'
 import { LearnPanel } from '../../guidance/components/LearnPanel'
 import { trackGuidance } from '../../guidance/analytics'
@@ -217,9 +218,7 @@ export function Sidebar() {
           className="flex items-center gap-3"
           aria-label="WineOps AI home"
         >
-          <div className="w-10 h-10 bg-gradient-to-br from-wine-500 to-wine-700 rounded-xl flex items-center justify-center shadow-lg">
-            <Wine className="w-6 h-6 text-white" aria-hidden="true" />
-          </div>
+          <BrandMark size={40} alt="" className="shadow-lg" />
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.div
@@ -345,14 +344,14 @@ export function Sidebar() {
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left',
                 showChecklist
-                  ? 'bg-[#722F37]/10 text-[#722F37]'
+                  ? 'bg-wine-600/10 text-wine-600'
                   : 'text-gray-600 hover:bg-gray-100',
               )}
             >
               <div className="relative">
                 <Rocket className="w-5 h-5 flex-shrink-0" />
                 {completedCount < 4 && (
-                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#722F37] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-wine-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
                     {completedCount}
                   </span>
                 )}
@@ -398,7 +397,7 @@ export function Sidebar() {
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left',
                 showChecklist
-                  ? 'bg-[#722F37]/10 text-[#722F37]'
+                  ? 'bg-wine-600/10 text-wine-600'
                   : 'text-gray-600 hover:bg-gray-100',
               )}
             >

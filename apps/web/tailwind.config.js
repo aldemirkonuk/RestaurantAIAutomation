@@ -18,19 +18,19 @@ export default {
     },
     extend: {
       colors: {
-        // Wine color palette (primary brand)
+        // Wine color palette — locked to app icon burgundy (#722F37)
         wine: {
-          50: '#fdf2f4',
-          100: '#fce7eb',
-          200: '#f9d0d9',
-          300: '#f4a9ba',
-          400: '#ed7896',
-          500: '#e14d75',
-          600: '#cd2d5b',
-          700: '#ac204a',
-          800: '#901d42',
-          900: '#7c1d3c',
-          950: '#450a1e',
+          50: '#F9F2F3',
+          100: '#F3E6E8',
+          200: '#E6CDD1',
+          300: '#D1A8AE',
+          400: '#B07078',
+          500: '#8B3A44',
+          600: '#722F37',
+          700: '#5E272E',
+          800: '#4D2026',
+          900: '#3A181D',
+          950: '#2C1216',
         },
         // Clean Stripe/Toast-inspired palette
         surface: {
@@ -55,19 +55,19 @@ export default {
           900: '#111827',
           950: '#0D1117',
         },
-        // Primary brand color (elegant burgundy/wine)
+        // Primary brand color — same scale as `wine` (icon #722F37)
         brand: {
-          50: '#FDF2F4',
-          100: '#FCE7EB',
-          200: '#F9D0D9',
-          300: '#F4A9BA',
-          400: '#ED7896',
-          500: '#E14D75',
-          600: '#CD2D5B',
-          700: '#AC204A',
-          800: '#901D42',
-          900: '#7C1D3C',
-          950: '#450A1E',
+          50: '#F9F2F3',
+          100: '#F3E6E8',
+          200: '#E6CDD1',
+          300: '#D1A8AE',
+          400: '#B07078',
+          500: '#8B3A44',
+          600: '#722F37',
+          700: '#5E272E',
+          800: '#4D2026',
+          900: '#3A181D',
+          950: '#2C1216',
         },
         // Success green (Toast-style)
         success: {

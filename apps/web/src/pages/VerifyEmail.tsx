@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { BrandMark } from '../components/brand/BrandMark'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
@@ -115,8 +116,8 @@ export function VerifyEmail() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-wine-600 rounded-2xl mb-4 shadow-lg">
-            <Wine className="w-8 h-8 text-white" />
+          <div className="inline-flex mb-4">
+            <BrandMark size={64} className="shadow-lg" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Check Your Email</h1>
           <p className="text-gray-500 mt-2">

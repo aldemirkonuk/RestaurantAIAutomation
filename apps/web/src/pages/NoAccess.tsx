@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Wine, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
+import { BrandMark } from '../components/brand/BrandMark'
 import { useAuth } from '../contexts/AuthContext'
 
 export function NoAccess() {
@@ -14,9 +15,7 @@ export function NoAccess() {
         className="w-full max-w-md bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8 text-center"
       >
         <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 bg-wine-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <Wine className="w-7 h-7 text-white" />
-          </div>
+          <BrandMark size={56} className="shadow-lg" />
         </div>
         <h1 className="text-lg font-semibold text-gray-900">No restaurant access</h1>
         <p className="text-sm text-gray-500 mt-3">

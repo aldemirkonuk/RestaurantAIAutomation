@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
-import { Wine, Mail, Lock, AlertCircle, Sparkles } from 'lucide-react'
+import { Mail, Lock, AlertCircle, Sparkles } from 'lucide-react'
+import { BrandMark } from '../components/brand/BrandMark'
 import { motion } from 'framer-motion'
 
 export function Login() {
@@ -48,9 +49,9 @@ export function Login() {
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1, type: 'spring' }}
-            className="inline-flex items-center justify-center w-16 h-16 bg-wine-600 rounded-2xl mb-4 shadow-lg"
+            className="inline-flex mb-4"
           >
-            <Wine className="w-8 h-8 text-white" />
+            <BrandMark size={64} className="shadow-lg" />
           </motion.div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">WineOps AI</h1>
           <p className="text-gray-600">Sign in to manage your wine inventory</p>

@@ -14,7 +14,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Wine } from 'lucide-react'
+import { BrandMark } from '../components/brand/BrandMark'
 import { Button } from '../components/ui'
 import { useOnboardingProgress } from '../hooks/queries/useOnboardingProgress'
 
@@ -38,9 +38,7 @@ export function Onboarding() {
       animate={{ opacity: 1, y: 0 }}
         className="text-center max-w-sm"
     >
-        <div className="w-16 h-16 bg-gradient-to-br from-wine-500 to-wine-700 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
-          <Wine className="w-8 h-8 text-white" />
-        </div>
+        <BrandMark size={64} className="mx-auto mb-6 shadow-lg" />
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Setup has moved</h1>
         <p className="text-gray-500 mb-6 leading-relaxed">
           Your setup checklist is now on the dashboard. To connect your POS system, visit{' '}

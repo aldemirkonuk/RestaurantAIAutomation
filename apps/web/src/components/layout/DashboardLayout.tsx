@@ -10,6 +10,7 @@ import { WineAgentFab } from '../../guidance/components/WineAgentFab'
 import { TourHelpButton } from '../../guidance/components/TourHelpButton'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
+import { BrandMark } from '../brand/BrandMark'
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
@@ -71,7 +72,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <span className="text-sm font-bold text-gray-900">WineOps AI</span>
+              <div className="flex items-center gap-2">
+                <BrandMark size={24} alt="" />
+                <span className="text-sm font-bold text-gray-900">WineOps AI</span>
+              </div>
               <TourHelpButton />
             </div>
 

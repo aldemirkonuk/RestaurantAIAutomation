@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
+import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { Button } from '../components/ui'
@@ -209,7 +210,7 @@ export function Register() {
           type="button"
           onClick={() => setPath('create')}
           className="bg-wine-600 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-wine-700"
-          style={{ boxShadow: '0 8px 24px rgba(205,45,91,0.3)' }}
+          style={{ boxShadow: '0 8px 24px rgba(114,47,55,0.3)' }}
         >
           <div className="w-[50px] h-[50px] rounded-[13px] bg-white/20 flex items-center justify-center mb-[18px]">
             <Wine className="w-[22px] h-[22px] text-white" />
@@ -239,7 +240,7 @@ export function Register() {
           type="button"
           onClick={() => setPath('create')}
           className="relative bg-wine-600 rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all"
-          style={{ boxShadow: '0 8px 24px rgba(205,45,91,0.3)' }}
+          style={{ boxShadow: '0 8px 24px rgba(114,47,55,0.3)' }}
         >
           <span
             className="inline-flex items-center gap-[5px] bg-white/20 text-white text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3"
@@ -318,7 +319,7 @@ export function Register() {
       <div className="flex items-start mb-7">
         {/* Step 1 — active */}
         <div className="flex flex-col items-center gap-1">
-          <div className="w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(205,45,91,0.3)]">
+          <div className="w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(114,47,55,0.3)]">
             1
           </div>
           <span className="text-[0.68rem] font-semibold text-wine-600">Code</span>
@@ -361,7 +362,7 @@ export function Register() {
                 ? 'border-green-500 focus:border-green-500 shadow-[0_0_0_3px_rgba(5,150,105,0.08)]'
                 : invitePreview?.valid === false
                   ? 'border-red-400 focus:border-red-400 shadow-[0_0_0_3px_rgba(220,38,38,0.08)]'
-                  : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(205,45,91,0.08)]',
+                  : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(114,47,55,0.08)]',
             ].join(' ')}
             placeholder="········"
             maxLength={8}
@@ -975,7 +976,7 @@ export function Register() {
                       className={[
                         'w-5 h-5 rounded-full flex items-center justify-center text-[0.62rem] font-bold flex-shrink-0 transition-all',
                         isDone ? 'bg-green-500 text-white' : '',
-                        isActive ? 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(205,45,91,0.35)]' : '',
+                        isActive ? 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(114,47,55,0.35)]' : '',
                         !isDone && !isActive ? 'bg-gray-100 text-gray-400 border border-gray-200' : '',
                       ].join(' ')}
                     >
@@ -1295,9 +1296,9 @@ export function Register() {
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1, type: 'spring' }}
-            className="inline-flex items-center justify-center w-16 h-16 bg-wine-600 rounded-2xl mb-4 shadow-lg"
+            className="inline-flex mb-4"
           >
-            <Wine className="w-8 h-8 text-white" />
+            <BrandMark size={64} className="shadow-lg" />
           </motion.div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Join WineOps AI</h1>
           <p className="text-gray-600">Transform your restaurant's wine operations</p>

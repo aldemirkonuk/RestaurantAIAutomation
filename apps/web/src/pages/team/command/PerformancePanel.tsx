@@ -242,7 +242,7 @@ function Sparkline({ analytic }: { analytic: NonNullable<import('../../../servic
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
       <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
       <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
-      <path d={path} fill="none" stroke="#cd2d5b" strokeWidth={2} />
+      <path d={path} fill="none" stroke="#722F37" strokeWidth={2} />
     </svg>
   )
 }
