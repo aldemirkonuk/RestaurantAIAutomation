@@ -37,6 +37,7 @@ import {
   Play,
   AlertCircle,
   Loader2,
+  Camera,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -3487,7 +3488,21 @@ Shadow stock has been moved to Live Stock.`)
               <MItem icon={ShoppingCart} label="Mark as ordered" onClick={() => { handleMarkAsOrdered(order.order_id); setOrderMenu(null) }} />
             )}
             {order.status === 'ordered' && (
-              <MItem icon={Truck} label="Mark as delivered" onClick={() => { handleMarkAsDelivered(order.order_id); setOrderMenu(null) }} />
+              <>
+                {/*
+                  The door flow, for the person actually standing at the truck.
+                  Separate from "Mark as delivered" on purpose: that closes the
+                  order from a desk on the assumption everything arrived, while
+                  this records a case count and leaves the delivery open for the
+                  bottle count that catches a short case.
+                */}
+                <MItem
+                  icon={Camera}
+                  label="Receive at the door"
+                  onClick={() => { window.location.assign(`/receiving/${order.order_id}/door`); setOrderMenu(null) }}
+                />
+                <MItem icon={Truck} label="Mark as delivered" onClick={() => { handleMarkAsDelivered(order.order_id); setOrderMenu(null) }} />
+              </>
             )}
             <MItem icon={MessageSquare} label="Open thread" onClick={() => { openThread(order); setOrderMenu(null) }} />
             <MItem icon={Copy} label="Copy order ID" onClick={() => { navigator.clipboard?.writeText(order.order_id); setOrderMenu(null) }} />

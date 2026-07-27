@@ -57,6 +57,7 @@ import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
+const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 
 // Heavy pages (lazy loaded)
 const Reports = lazyWithRefresh(() => import('./pages/Reports'))
@@ -148,6 +149,21 @@ function App() {
                   element={
                     <ProtectedRoute requiredStudioRole={['developer', 'review_admin']}>
                       <StudioCertify />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/*
+                  Door receiving — deliberately outside DashboardLayout.
+                  It is full-screen and one-handed, used at a loading dock by
+                  someone who is not navigating the app. Sidebar, tips and the
+                  agent FAB would all be taps in the way of a driver waiting.
+                */}
+                <Route
+                  path="/receiving/:orderId/door"
+                  element={
+                    <ProtectedRoute>
+                      <DoorReceipt />
                     </ProtectedRoute>
                   }
                 />
