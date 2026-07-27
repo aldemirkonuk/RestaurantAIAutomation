@@ -1,0 +1,48 @@
+{
+  "pack_version": "1.0.0",
+  "updated_at": "2026-07-27T20:57:28Z",
+  "menus": {
+    "bistro": {
+      "file": "datasets/sim/menus/bistro.json",
+      "sha256": "28d5614c2e8cad8f1528fa59c15e5dde23b5b80367db626a6a481784154b1ec7"
+    },
+    "cafe": {
+      "file": "datasets/sim/menus/cafe.json",
+      "sha256": "4881cd653c2df7f7e9e30b3c9eb89d97629764e72de100c76c1f13838677a3c1"
+    },
+    "fine-dining": {
+      "file": "datasets/sim/menus/fine-dining.json",
+      "sha256": "00ab4ded8db4822e65b42807b1be05820c310907852d02b0a54e9049e51484f7"
+    },
+    "high-volume-bar": {
+      "file": "datasets/sim/menus/high-volume-bar.json",
+      "sha256": "50fc646b4516be5215747edca74fe234a668692f39274ce6f3c4fab8b139a6ed"
+    },
+    "turkish-clone": {
+      "file": "datasets/sim/menus/turkish-clone.json",
+      "sha256": "9fe899f0ad435bf2929998a0e96517f7f291c8468b2f893279fec737cdc3883f"
+    }
+  },
+  "archetypes": {
+    "bistro": {
+      "file": "datasets/sim/archetypes/bistro.json",
+      "snapshot": "datasets/sim/menus/bistro.json"
+    },
+    "cafe": {
+      "file": "datasets/sim/archetypes/cafe.json",
+      "snapshot": "datasets/sim/menus/cafe.json"
+    },
+    "fine-dining": {
+      "file": "datasets/sim/archetypes/fine-dining.json",
+      "snapshot": "datasets/sim/menus/fine-dining.json"
+    },
+    "high-volume-bar": {
+      "file": "datasets/sim/archetypes/high-volume-bar.json",
+      "snapshot": "datasets/sim/menus/high-volume-bar.json"
+    },
+    "turkish-clone": {
+      "file": "datasets/sim/archetypes/turkish-clone.json",
+      "snapshot": "datasets/sim/menus/turkish-clone.json"
+    }
+  }
+}
