@@ -1,5 +1,13 @@
 name: CI
 
+# TFND-05 (Phase 36 Testing Campaign):
+# test-typescript  → unit + integration (Jest api-gateway + Vitest web via turbo/pnpm test)
+# test-python      → unit + integration (pytest tests/; markers in pytest.ini not filtered today)
+# test-e2e         → local Playwright smoke (NOT cloud prod E2E)
+# Cloud nightly E2E remains .github/workflows/e2e-prod.yml (schedule: 0 2 * * *)
+# Do NOT treat TFND-05 as green CI — Black debt on studio_routes.py may keep main red
+# STATUS: schedule-present / capability-unverified until one wave XML lands
+
 on:
   push:
     branches: [main, develop]
@@ -100,7 +108,7 @@ jobs:
             packages/*/dist
           retention-days: 7
 
-  # Test TypeScript/React code
+  # Test TypeScript/React code — unit + integration on push (TFND-05)
   test-typescript:
     name: Test TypeScript
     runs-on: ubuntu-latest
@@ -153,7 +161,7 @@ jobs:
       - name: Run Playwright tests
         run: pnpm --filter @wineops/web test:e2e
 
-  # Test Python code
+  # Test Python code — unit + integration on push (TFND-05)
   test-python:
     name: Test Python
     runs-on: ubuntu-latest
