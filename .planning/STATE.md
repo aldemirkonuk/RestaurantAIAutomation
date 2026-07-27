@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
-status: Phase complete — ready for verification
-last_updated: "2026-07-27T20:08:30.777Z"
+status: Ready to plan
+last_updated: "2026-07-27T20:11:21.392Z"
 progress:
   total_phases: 31
   completed_phases: 13
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 ## Current Position
 
-Phase: 36 (Testing Foundation & Functionality Registry) — READY FOR VERIFICATION
-Plan: 3 of 3 (all plans executed)
+Phase: 37
+Plan: Not started
 **Last completed:** Phase 36 Plan 03 — SYNTHETIC-TENANT.md (sim-* / TFND-06) + comment-only TFND-05 CI annotations + operator README + checklists naming stub. 2026-07-27.
 **Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30
 **Phases deferred:** 23 (Gmail Integration) — `[ ]` in ROADMAP, plans 23-03 + 23-06 remain (Railway OAuth2 credential gate)
