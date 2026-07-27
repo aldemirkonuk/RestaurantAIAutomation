@@ -43,9 +43,9 @@ export function WineAgentFab() {
       data-guidance="wine-agent-fab"
       className={cn(
         'fixed z-[40] right-5 w-12 h-12 rounded-full',
-        'bg-[#B8323A] text-white shadow-lg shadow-[#B8323A]/25',
+        'bg-[#9E4249] text-white shadow-lg shadow-[#9E4249]/25',
         'flex items-center justify-center',
-        'hover:bg-[#D1454C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8323A] focus-visible:ring-offset-2',
+        'hover:bg-[#B85055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9E4249] focus-visible:ring-offset-2',
         'transition-all duration-200',
         offsetForTip ? 'bottom-24' : 'bottom-5',
         'mb-[env(safe-area-inset-bottom)]',

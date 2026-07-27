@@ -82,7 +82,7 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
               </code>
               <button
                 onClick={() => copy(vendorEmail, 'Vendor email')}
-                className="text-xs text-[#B8323A] hover:text-[#D1454C] font-medium flex items-center gap-1"
+                className="text-xs text-[#9E4249] hover:text-[#B85055] font-medium flex items-center gap-1"
               >
                 <Copy className="w-3 h-3" /> Copy
               </button>
@@ -113,7 +113,7 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
               </code>
               <button
                 onClick={() => copy(icalUrl, 'Calendar feed URL')}
-                className="text-xs text-[#B8323A] hover:text-[#D1454C] font-medium flex items-center gap-1"
+                className="text-xs text-[#9E4249] hover:text-[#B85055] font-medium flex items-center gap-1"
               >
                 <Copy className="w-3 h-3" /> Copy
               </button>
@@ -130,7 +130,7 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
         <OptionalRow icon={<MonitorSmartphone className="w-4 h-4 text-gray-500" />} title="Connect your POS">
           <button
             onClick={() => navigate('/settings?tab=pos')}
-            className="text-xs text-[#B8323A] hover:text-[#D1454C] font-medium"
+            className="text-xs text-[#9E4249] hover:text-[#B85055] font-medium"
           >
             Browse POS integrations →
           </button>
@@ -139,7 +139,7 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
         <OptionalRow icon={<UserPlus className="w-4 h-4 text-gray-500" />} title="Invite your team">
           <button
             onClick={() => setInviteOpen(true)}
-            className="text-xs text-[#B8323A] hover:text-[#D1454C] font-medium"
+            className="text-xs text-[#9E4249] hover:text-[#B85055] font-medium"
           >
             Send an invite →
           </button>

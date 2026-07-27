@@ -32,6 +32,17 @@
         }
       }
     },
+    "/api/v1/health/providers": {
+      "get": {
+        "operationId": "HealthProxyController_getProviderHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/metrics": {
       "get": {
         "operationId": "MetricsProxyController_getMetrics",
@@ -283,6 +294,135 @@
       "get": {
         "operationId": "AuthController_getProfile",
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "patch": {
+        "operationId": "AuthController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "AuthController_deleteAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me/password": {
+      "post": {
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me/linked-providers": {
+      "get": {
+        "operationId": "AuthController_getLinkedProviders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me/link/{provider}": {
+      "post": {
+        "operationId": "AuthController_linkProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "AuthController_unlinkProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me/leave-restaurant": {
+      "post": {
+        "operationId": "AuthController_leaveRestaurant",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveRestaurantDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -1171,6 +1311,1527 @@
         },
         "tags": [
           "dashboard"
+        ]
+      }
+    },
+    "/api/v1/analytics/metrics": {
+      "get": {
+        "operationId": "AnalyticsController_getMetrics",
+        "summary": "List available analytics metrics (formula library)",
+        "description": "Returns the metric registry — every computable metric with its formula, theorem lineage, personas, and satisfied catalogue feature ids. Filterable by persona or domain.",
+        "parameters": [
+          {
+            "name": "domain",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "persona",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "manager",
+                "trader",
+                "private_equity",
+                "economist",
+                "statistician",
+                "operations"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metric registry"
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/financial/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getFinancial",
+        "summary": "Financial & capital-efficiency summary",
+        "description": "COGS %, gross margin, prime cost, inventory turnover, DIO, GMROI, and dead-stock capital lock.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "labor",
+            "required": false,
+            "in": "query",
+            "description": "Labor $ for prime-cost calc (optional)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/inventory-science/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getInventoryScience",
+        "summary": "Inventory-science replenishment analytics",
+        "description": "Per-SKU EOQ, dynamic safety stock, reorder point, stockout probability, days-of-cover, and ABC-XYZ classification.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceLevel",
+            "required": false,
+            "in": "query",
+            "description": "Cycle service level 0-1 (default 0.95)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "leadTimeDays",
+            "required": false,
+            "in": "query",
+            "description": "Average vendor lead time in days (default 7)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/risk/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getRisk",
+        "summary": "Risk & concentration profile",
+        "description": "Vendor concentration (HHI), revenue concentration (Gini), and demand risk (VaR/CVaR, Sharpe, Sortino, max drawdown).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/forecast/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getForecast",
+        "summary": "Demand forecast",
+        "description": "Holt-Winters (weekly-seasonal) demand projection with Holt/SES fallback and backtest accuracy (MAE/RMSE/MAPE/MASE).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "masterWineId",
+            "required": false,
+            "in": "query",
+            "description": "Forecast a single wine (omit for aggregate)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "horizon",
+            "required": false,
+            "in": "query",
+            "description": "Days to forecast (default 14)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/insight-catalog": {
+      "get": {
+        "operationId": "AnalyticsController_getInsightCatalog",
+        "summary": "Insight candidate-type catalog summary",
+        "description": "Total candidate types (dimension × measure × comparator) and per-category counts. Each type multiplies by live entities at runtime.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/insight-catalog/types": {
+      "get": {
+        "operationId": "AnalyticsController_getInsightCatalogTypes",
+        "summary": "Full enumerated insight catalog (Browse All 375 Types)",
+        "description": "Every dimension × measure × comparator candidate type with category and data requirements. Pass restaurantId to also receive which requirements this restaurant satisfies (computable vs blocked).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/insights/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getInsights",
+        "summary": "Plain-language insight feed",
+        "description": "Stored top insights (instant). Pass refresh=true to recompute now; categories=a,b to filter.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "refresh",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categories",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/insight-prefs/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getInsightPrefs",
+        "summary": "Per-category insight refresh preferences",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/insight-prefs/{restaurantId}/{category}": {
+      "put": {
+        "operationId": "AnalyticsController_setInsightPref",
+        "summary": "Set refresh cadence for an insight category",
+        "description": "Body: { cadence: hourly|daily|weekly|manual, hourOfDay?, enabled? }",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/tables/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_listTables",
+        "summary": "List floor tables (geometry facts)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      },
+      "post": {
+        "operationId": "AnalyticsController_upsertTable",
+        "summary": "Create/update a floor table",
+        "description": "Body: { label, seats, zone?, is_outdoor?, distance_to_kitchen_m?, distance_to_bar_m?, distance_to_pool_m?, x_pos?, y_pos? }. Upserts on (restaurant, label).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/venue/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getVenue",
+        "summary": "Venue feature profile (pool, outside bar, outdoor...)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      },
+      "put": {
+        "operationId": "AnalyticsController_setVenue",
+        "summary": "Set venue feature profile",
+        "description": "Body: { features: { has_pool: true, has_outside_bar: false, ... } }",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/table-performance/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getTablePerformance",
+        "summary": "Per-table metrics + geometry correlations + learned driver weights",
+        "description": "Avg check, revenue/seat, wine attach, tip% per table; Pearson + seats-controlled partial correlations vs kitchen/bar/pool distance; ridge-learned attribute weights.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sinceDays",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/waiters/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getWaiters",
+        "summary": "Waiter performance — raw and table-adjusted",
+        "description": "Per-server revenue, avg check, wine attach, tip%; peer ranks; ridge fixed-effects 'adjusted plus-minus' controlling for table assignments.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sinceDays",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/basket/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getBasket",
+        "summary": "Item-pair affinity (market basket)",
+        "description": "Support/confidence/lift/χ² for item pairs on the same check — wine-wine now, food-wine when POS items land.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/hot-tables/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getHotTables",
+        "summary": "Live table surge watchlist",
+        "description": "Open checks whose $/min pace is ≥2σ (robust) above that table's history — tables to focus on right now.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/goals/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_listGoals",
+        "summary": "List goals (status=active|all|achieved|missed|archived)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      },
+      "post": {
+        "operationId": "AnalyticsController_createGoal",
+        "summary": "Create a metric-linked goal",
+        "description": "Body: { name, metricKey (wine_revenue|bottles_sold|purchase_spend|checks|avg_check|wine_attach_rate), targetValue, deadline?, period?, direction? }",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/goals/{restaurantId}/{goalId}/progress": {
+      "get": {
+        "operationId": "AnalyticsController_getGoalProgress",
+        "summary": "Goal progress with AI assistance",
+        "description": "Current value, pace vs linear schedule, Holt projection to deadline, and suggested actions pulled from the insight feed.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "goalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/goals/{restaurantId}/{goalId}/status": {
+      "put": {
+        "operationId": "AnalyticsController_updateGoalStatus",
+        "summary": "Update goal status (active|achieved|missed|archived)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "goalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/consultants/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getConsultants",
+        "summary": "Consultant toggle state + available personas",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/consultants/{restaurantId}/toggle": {
+      "put": {
+        "operationId": "AnalyticsController_toggleConsultants",
+        "summary": "Enable/disable consultant agents",
+        "description": "Body: { enabled: boolean }. Default is disabled.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/consult/{restaurantId}": {
+      "post": {
+        "operationId": "AnalyticsController_consult",
+        "summary": "Run a consultant persona over the analytics evidence pack",
+        "description": "Body: { persona: finance|economics|statistics|physics }. Returns weighted claims + simple resolutions, every claim citing evidence paths. Gated by the toggle (default off).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/menu-engineering/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getMenuEngineering",
+        "summary": "Menu engineering quadrants",
+        "description": "Stars / Plowhorses / Puzzles / Dogs from margin (unit_price − WAC) × velocity, with a concrete action per quadrant.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/vendor-scorecard/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getVendorScorecard",
+        "summary": "Vendor scorecard",
+        "description": "Per-vendor lead-time distribution (mean/median/p90/σ), on-time rate, unit-price trend, spend share + HHI.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/seasonality/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getSeasonality",
+        "summary": "Seasonality profile",
+        "description": "Weekday demand profile, weekly seasonal factors (classical decomposition), 28-day trend, per-category best/worst days.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/cashflow/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getCashflow",
+        "summary": "Cashflow & spend pacing",
+        "description": "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/wine/{restaurantId}/{masterWineId}": {
+      "get": {
+        "operationId": "AnalyticsController_getWine360",
+        "summary": "Wine-360 (combination)",
+        "description": "One wine, every lens: demand profile, days of cover, stockout probability, reorder point, forecast, rank, margin.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "masterWineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/overview/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getOverview",
+        "summary": "Full overview (combination of all endpoints)",
+        "description": "Financial + risk + inventory + menu engineering + seasonality + cashflow + insights + goals in one parallel call (API-bus pattern).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/recommendations/{restaurantId}": {
+      "get": {
+        "operationId": "AnalyticsController_getRecommendations",
+        "summary": "Actionable recommendations (active feed)",
+        "description": "Deterministic rule engine translating computed numbers into actions — each item carries the observation, the action, the rationale, the rule key, an urgency, and the manager's stored disposition (pinned/acted/feedback). Dismissed/snoozed/done cards are filtered out unless includeHidden=true.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeHidden",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/recommendations/{restaurantId}/action": {
+      "post": {
+        "operationId": "AnalyticsController_setRecommendationAction",
+        "summary": "Set a recommendation's disposition (NEW-284…NEW-298)",
+        "description": "Body: { ruleKey, status?, reason?, snoozeUntil?, pinned?, acted?, feedback?, snapshot? }. Upserts the manager's action on a card so it survives recompute. Reused by the Reports insight panel with ruleKey 'insight:<candidate_key>'.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/recommendations/{restaurantId}/bulk-action": {
+      "post": {
+        "operationId": "AnalyticsController_bulkRecommendationAction",
+        "summary": "Bulk-set disposition on many cards (NEW-293)",
+        "description": "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, pinned? }.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/recommendations/{restaurantId}/actions": {
+      "get": {
+        "operationId": "AnalyticsController_listRecommendationActions",
+        "summary": "Cards in a given disposition (snoozed/dismissed/done tabs)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "dismissed",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/recommendations/{restaurantId}/history": {
+      "get": {
+        "operationId": "AnalyticsController_recommendationHistory",
+        "summary": "Acted/dismissed/completed history (NEW-302)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/recommendations/{restaurantId}/digest": {
+      "get": {
+        "operationId": "AnalyticsController_getRecommendationDigest",
+        "summary": "Daily recommendation digest preferences (NEW-303)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      },
+      "put": {
+        "operationId": "AnalyticsController_setRecommendationDigest",
+        "summary": "Set daily recommendation digest preferences (NEW-303)",
+        "description": "Body: { digestEnabled?, digestHour?, digestMinUrgency?, recipientEmail? }. Persists the manager's toggle; the scheduled send is feature-flagged in the analytics scheduler.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/health": {
+      "get": {
+        "operationId": "AnalyticsController_healthCheck",
+        "summary": "Analytics service health check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/ux/signals": {
+      "post": {
+        "operationId": "UxOptimizerController_ingest",
+        "summary": "Ingest a UX friction signal",
+        "description": "Authenticated. restaurant_id is derived from the token, so a client cannot attribute friction to another tenant.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestSignalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/overrides": {
+      "get": {
+        "operationId": "UxOptimizerController_overrides",
+        "summary": "Active (gated) runtime UX overrides for a page",
+        "description": "Returns [] unless UX_OPTIMIZER_ENABLED=true. Overrides are rollout-bucketed by a stable per-user key so a change reaches only its approved percentage of users — and the same human sees the same UI in every tab.",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/summary/{page}": {
+      "get": {
+        "operationId": "UxOptimizerController_summary",
+        "summary": "Aggregated friction summary for a page",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sinceHours",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/proposals/{page}": {
+      "post": {
+        "operationId": "UxOptimizerController_propose",
+        "summary": "Agent proposes SOTA UX improvements for a page (never auto-applied)",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/proposals": {
+      "get": {
+        "operationId": "UxOptimizerController_listProposals",
+        "summary": "Review queue of proposed UX changes",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/proposals/{id}/review": {
+      "post": {
+        "operationId": "UxOptimizerController_review",
+        "summary": "Human review of a proposal — approve (gated ship) or reject",
+        "description": "The reviewer is the authenticated user. It is deliberately NOT a body field: an audit trail the caller writes about itself is not an audit trail.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewProposalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/proposals/{id}/rollback": {
+      "post": {
+        "operationId": "UxOptimizerController_rollback",
+        "summary": "Roll back a live UX change",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackProposalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ux/learnings": {
+      "get": {
+        "operationId": "UxOptimizerController_learnings",
+        "summary": "Append-only self-learning ledger",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ux-optimizer"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pos-hub/providers": {
+      "get": {
+        "operationId": "PosHubController_getProviders",
+        "summary": "POS provider registry",
+        "description": "All supported/planned providers across tiers (cloud, enterprise, partner-gated, Türkiye) with adapter status and capabilities.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/status/{restaurantId}": {
+      "get": {
+        "operationId": "PosHubController_getStatus",
+        "summary": "Ingestion status by source (30-day window)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "Restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/webhook/{provider}/{restaurantId}": {
+      "post": {
+        "operationId": "PosHubController_webhook",
+        "summary": "Ingest a POS webhook payload",
+        "description": "Normalizes the provider payload into canonical checks and upserts pos_checks (idempotent on external check id). Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today.",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/import/{restaurantId}": {
+      "post": {
+        "operationId": "PosHubController_importChecks",
+        "summary": "Batch-import historical checks",
+        "description": "Body: array of CanonicalCheck (or {checks: [...]}) — the csv_import path for nightly exports and backfills.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/mappings/{restaurantId}": {
+      "get": {
+        "operationId": "PosHubController_listMappings",
+        "summary": "List POS item → wine mappings",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      },
+      "post": {
+        "operationId": "PosHubController_upsertMapping",
+        "summary": "Create/update a POS item mapping",
+        "description": "Body: { source?, external_item_id?, item_name?, is_wine, master_wine_id?, inventory_id?, category? }. source '*' applies across providers.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
         ]
       }
     },
@@ -2134,6 +3795,26 @@
     "/api/v1/notifications/{id}/read": {
       "patch": {
         "operationId": "NotificationsController_markAsRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/unread": {
+      "patch": {
+        "operationId": "NotificationsController_markAsUnread",
         "parameters": [
           {
             "name": "id",
@@ -4430,6 +6111,396 @@
         },
         "tags": [
           "recurring-orders"
+        ]
+      }
+    },
+    "/api/v1/procurement/documents": {
+      "post": {
+        "operationId": "DocumentsController_upload",
+        "summary": "Upload or photograph a vendor document",
+        "description": "Accepts base64 content for a PDF, image or EDI file. Classifies it (invoice / packing slip / credit memo), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadDocumentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-documents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "DocumentsController_list",
+        "summary": "List vendor documents, newest first",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "docType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": false,
+            "in": "query",
+            "description": "Only documents linked to this order. Resolved through procurement_document_links, which is many-to-many because one distributor invoice routinely covers several POs.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-documents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/documents/{id}": {
+      "get": {
+        "operationId": "DocumentsController_detail",
+        "summary": "One document with its lines and linked orders",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-documents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/documents/{id}/match": {
+      "post": {
+        "operationId": "DocumentsController_match",
+        "summary": "Pair this document's lines with the lines that were ordered",
+        "description": "Writes only unambiguous matches (exact vendor SKU, no substitution). Everything else comes back under `suggested` for one-tap confirmation and is NOT persisted — a wrong link writes one wine's invoice price onto another wine's cost lot, which looks fine and surfaces months later as margin drift on two products. Lines a human already paired are left alone, so re-running never reverts a correction.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-documents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/documents/{id}/lines/{lineId}/link": {
+      "post": {
+        "operationId": "DocumentsController_linkLine",
+        "summary": "Confirm a suggested line pairing",
+        "description": "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-documents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/documents/{id}/verify": {
+      "post": {
+        "operationId": "DocumentsController_verify",
+        "summary": "Confirm the extraction is faithful to the paper document",
+        "description": "Records who checked it and when. This asserts only that the transcription is right — it does not accept the charges, apply anything to stock, or settle a discrepancy.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-documents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/receiving/orders/{id}/door": {
+      "post": {
+        "operationId": "ReceivingController_door",
+        "summary": "Record a delivery at the door (case count) and book the stock",
+        "description": "Books the counted quantity to live stock immediately — the wine is physically on the shelf and staff must be able to pour it. No unit cost is written: nobody has seen an invoice yet, so the lot stays cost_provenance='estimated' until verifyReceipt corrects it to landed cost. The order is left PARTIALLY_RECEIVED, never completed, so the bottle count that catches a short case is still expected.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoorReceiptDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-receiving"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/receiving/queue": {
+      "get": {
+        "operationId": "ReceivingController_queue",
+        "summary": "Deliveries that need a decision, worst money first",
+        "description": "Only discrepancies — a delivery that matched is not a task, and listing it would bury the four that cost something under forty that did not. Sorted by dollars at risk rather than by date, because the reason to open this list is to recover money. Claims provable from the vendor's own packing slip are marked; those are the ones worth starting with.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-receiving"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/receiving/unverified": {
+      "get": {
+        "operationId": "ReceivingController_unverified",
+        "summary": "Deliveries counted by case and not yet counted by bottle",
+        "description": "The safety net for booking stock at the door. The approximate hour after a truck arrives is fine; the delivery nobody ever went back to is how a short case becomes unexplained shrinkage two months later — at which point it is indistinguishable from theft and can no longer be claimed from the vendor. Sorted oldest first, with a severity tier that escalates with age.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-receiving"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/credits": {
+      "get": {
+        "operationId": "CreditsController_list",
+        "summary": "Open claims, oldest first — the manager's chase list",
+        "parameters": [
+          {
+            "name": "state",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-credits"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/credits/stats": {
+      "get": {
+        "operationId": "CreditsController_stats",
+        "summary": "Recovery figures",
+        "description": "`recovered` counts only claims settled by a credit memo, using the amount the vendor allowed. `outstanding` and `promised` are explicitly not recovery. `rejected` is reported alongside so the figure has a denominator — a recovery number with nothing to divide it by flatters.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-credits"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/procurement/credits/{id}/transition": {
+      "post": {
+        "operationId": "CreditsController_transition",
+        "summary": "Move a claim through the ledger",
+        "description": "Refuses transitions that would let unverifiable money be reported as recovered. `credited` requires both the amount allowed and the credit memo, and is terminal — a reopenable settled claim would let the same money count twice across periods.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionCreditDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "procurement-credits"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -7095,6 +9166,14 @@
             }
           },
           {
+            "name": "orderNumber",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "channel",
             "required": false,
             "in": "query",
@@ -7104,6 +9183,14 @@
           },
           {
             "name": "direction",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sentiment",
             "required": false,
             "in": "query",
             "schema": {
@@ -7714,6 +9801,24 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "get": {
+        "operationId": "OrganizationsController_getLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -8976,6 +11081,65 @@
         ]
       }
     },
+    "/api/v1/menus/items": {
+      "post": {
+        "operationId": "MenusController_addMenuItem",
+        "summary": "Add one wine to a menu during the review step",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMenuItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "menus"
+        ]
+      }
+    },
+    "/api/v1/menus/items/{id}": {
+      "patch": {
+        "operationId": "MenusController_reviewMenuItem",
+        "summary": "Apply a manager correction to one menu item field",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMenuItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "menus"
+        ]
+      }
+    },
     "/api/v1/onboarding/progress": {
       "get": {
         "operationId": "OnboardingController_getProgress",
@@ -9004,6 +11168,46 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/api/v1/onboarding/threshold": {
+      "patch": {
+        "operationId": "OnboardingController_setThreshold",
+        "summary": "Set the restaurant's default low-stock threshold (get-started step 3)",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetThresholdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/api/v1/onboarding/vendor-email": {
+      "get": {
+        "operationId": "OnboardingController_getVendorEmail",
+        "summary": "Get (provisioning if needed) this restaurant's inbound vendor email address",
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -9405,6 +11609,22 @@
       }
     },
     "schemas": {
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LinkProviderDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LeaveRestaurantDto": {
+        "type": "object",
+        "properties": {}
+      },
       "RegisterRestaurantDto": {
         "type": "object",
         "properties": {}
@@ -10104,6 +12324,76 @@
           "byStatus",
           "byLocation"
         ]
+      },
+      "IngestSignalDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "string",
+            "description": "Page key the signal belongs to"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "rage_click",
+              "dead_click",
+              "abandon",
+              "slow_tti",
+              "task_success",
+              "task_fail",
+              "error",
+              "nav"
+            ]
+          },
+          "targetKey": {
+            "type": "string",
+            "description": "Stable element key (data-ux-key). Never a DOM id — see elementKey() in apps/web/src/lib/uxSignals.ts."
+          },
+          "value": {
+            "type": "number",
+            "description": "Numeric payload, e.g. TTI in ms"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "Opaque per-user bucketing id"
+          },
+          "meta": {
+            "type": "object",
+            "description": "Small free-form context bag. Must not carry user content."
+          }
+        },
+        "required": [
+          "page",
+          "event"
+        ]
+      },
+      "ReviewProposalDto": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "rolloutPct": {
+            "type": "number",
+            "description": "Percentage of buckets the approved override reaches (0-100)"
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "RollbackProposalDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why this change is being reverted"
+          }
+        }
       },
       "OneTapActionResponseDto": {
         "type": "object",
@@ -12319,6 +14609,18 @@
             "type": "number",
             "description": "Unit price the vendor invoice bills."
           },
+          "shippedQuantity": {
+            "type": "number",
+            "description": "Quantity the vendor's own packing slip / ASN says shipped. When this disagrees with the invoice, the overbill is proven by the vendor's own paperwork and the claim needs no argument."
+          },
+          "freeGoodsQuantity": {
+            "type": "number",
+            "description": "Units supplied free under an agreed deal (11 for the price of 10). Netted out of quantity comparisons so a negotiated bonus stops reading as an overage."
+          },
+          "allocatedCharges": {
+            "type": "number",
+            "description": "Freight, fuel surcharge and split-case fees apportioned to this line. Folded into landed cost — freight is a cost component, not a price variance."
+          },
           "acceptedQuantity": {
             "type": "number",
             "description": "Units accepted into stock."
@@ -12358,6 +14660,117 @@
             }
           }
         }
+      },
+      "UploadDocumentDto": {
+        "type": "object",
+        "properties": {
+          "contentBase64": {
+            "type": "string",
+            "description": "Base64-encoded file bytes (PDF, image, or EDI text). Roughly 10MB decoded is the practical ceiling."
+          },
+          "filename": {
+            "type": "string",
+            "description": "Original filename, used to route EDI files"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "Content type; magic bytes win if it disagrees"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "upload",
+              "photo",
+              "manual"
+            ],
+            "default": "upload"
+          },
+          "providerId": {
+            "type": "string",
+            "description": "Distributor this document came from"
+          },
+          "orderId": {
+            "type": "string",
+            "description": "Order to attach it to. Omit to let the document's own PO number find one — an exact match only, since a wrong link produces a confident, wrong discrepancy."
+          }
+        },
+        "required": [
+          "contentBase64"
+        ]
+      },
+      "DoorReceiptDto": {
+        "type": "object",
+        "properties": {
+          "countedQty": {
+            "type": "number",
+            "description": "What was counted at the door, in countedUom"
+          },
+          "countedUom": {
+            "type": "string",
+            "description": "Unit actually counted. Defaults to case — nobody opens fourteen shrink-wrapped cases on a sidewalk.",
+            "default": "case"
+          },
+          "packSize": {
+            "type": "number",
+            "description": "Bottles per case, when the receiver knows it"
+          },
+          "rejectedQty": {
+            "type": "number",
+            "description": "Units visibly damaged and refused"
+          },
+          "damagePhotoPath": {
+            "type": "string",
+            "description": "Storage path of a damage photo. A receiver cannot tell corked from broken from wrong-SKU, so we take the picture and let a manager classify it."
+          },
+          "documentId": {
+            "type": "string",
+            "description": "Document photographed at the door — usually a packing slip, not an invoice"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Client-generated key, stable across offline retries. The same tap must never book stock twice."
+          },
+          "clientCapturedAt": {
+            "type": "string",
+            "description": "When the tap happened, if it synced later"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "countedQty"
+        ]
+      },
+      "TransitionCreditDto": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "enum": [
+              "open",
+              "requested",
+              "promised",
+              "credited",
+              "rejected",
+              "written_off"
+            ]
+          },
+          "creditedAmount": {
+            "type": "number",
+            "description": "What the vendor actually allowed. Required to mark a claim credited — partial settlement is the norm, and recording the amount we asked for instead would overstate recovery by exactly the disputed part."
+          },
+          "creditDocumentId": {
+            "type": "string",
+            "description": "The credit memo that settles this claim. Required to mark it credited — without the document it is a promise, and a promise counted as recovery is a number a bookkeeper will disprove."
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "to"
+        ]
       },
       "GenerateReportDto": {
         "type": "object",
@@ -14053,7 +16466,19 @@
         "type": "object",
         "properties": {}
       },
+      "AddMenuItemDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ReviewMenuItemDto": {
+        "type": "object",
+        "properties": {}
+      },
       "UpdateOnboardingProgressDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SetThresholdDto": {
         "type": "object",
         "properties": {}
       },

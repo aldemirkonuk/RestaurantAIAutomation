@@ -136,9 +136,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: Request & { user: any }) {
     const user = await this.authService.getProfileForUser(req.user.userId);
+    // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
+    const restaurantId =
+      req.user.restaurantId ?? user.restaurantId ?? null;
     return {
       success: true,
-      user,
+      user: { ...user, restaurantId },
     };
   }
 

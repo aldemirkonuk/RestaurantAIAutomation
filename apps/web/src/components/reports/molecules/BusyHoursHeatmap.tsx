@@ -33,7 +33,7 @@ function cellColor(value: number, max: number): string {
   if (t < 0.6) return '#F9CDCD'
   if (t < 0.75) return '#F2A3A5'
   if (t < 0.9) return '#E56B70'
-  return '#B8323A'
+  return '#9E4249'
 }
 
 interface Props {
@@ -78,7 +78,7 @@ export function BusyHoursHeatmap({ totalOrders, className = '' }: Props) {
       {/* Legend */}
       <div className="flex items-center gap-1 justify-end pt-0.5">
         <span className="text-[9px] text-gray-400">Low</span>
-        {['#FEF5F5', '#FDE8E8', '#F9CDCD', '#F2A3A5', '#E56B70', '#B8323A'].map((c) => (
+        {['#FDF7F6', '#FAEDEC', '#F3D4D2', '#E5A9A8', '#D07072', '#9E4249'].map((c) => (
           <div key={c} className="w-3 h-2 rounded-[1px]" style={{ backgroundColor: c }} />
         ))}
         <span className="text-[9px] text-gray-400">High</span>

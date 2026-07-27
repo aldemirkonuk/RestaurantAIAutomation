@@ -1310,7 +1310,7 @@ export class AuthService {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
       .select(
-        "user_id, email, name, phone, role, password_hash, oauth_provider",
+        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id",
       )
       .eq("user_id", userId)
       .single();
@@ -1327,6 +1327,7 @@ export class AuthService {
       name: user.name,
       phone: user.phone ?? null,
       role: user.role,
+      restaurantId: user.restaurant_id ?? null,
       hasPassword: !!user.password_hash,
       linkedProviders,
     };

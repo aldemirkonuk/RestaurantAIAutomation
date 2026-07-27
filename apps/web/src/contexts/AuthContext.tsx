@@ -190,13 +190,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Extract studio roles from the JWT itself (app_metadata.roles) — avoids cross-service call
         const token = localStorage.getItem('accessToken')
         let studioRoles: ('developer' | 'certified_contributor' | 'review_admin')[] = []
+        let jwtRestaurantId: string | undefined
         if (token) {
           try {
             const payload = JSON.parse(atob(token.split('.')[1]))
             studioRoles = payload?.app_metadata?.roles ?? []
+            if (payload?.restaurantId && isUuid(payload.restaurantId)) {
+              jwtRestaurantId = payload.restaurantId
+            }
           } catch { /* malformed token — no studio roles */ }
         }
-        setUser({ ...response.data.user, studioRoles })
+        setUser({
+          ...response.data.user,
+          studioRoles,
+          restaurantId: response.data.user.restaurantId || jwtRestaurantId || '',
+        })
       } catch (err) {
         console.error('Failed to load user:', err)
         // Clear invalid tokens
@@ -213,7 +221,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Centralized branch fetch — reused by initial load and refreshBranches()
   // IMPORTANT: preserves activeRestaurantId via the validSaved check below.
   // Do NOT reset activeRestaurantId on refresh — the validSaved check handles it correctly.
-  const fetchAndSetBranches = useCallback(async (userId: string) => {
+  const fetchAndSetBranches = useCallback(async (fallbackRestaurantId?: string) => {
+    const resolveJwtRestaurantId = (): string | null => {
+      try {
+        const token = localStorage.getItem('accessToken')
+        if (!token) return null
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        const rid = payload?.restaurantId as string | undefined
+        return rid && isUuid(rid) ? rid : null
+      } catch {
+        return null
+      }
+    }
+
     try {
       const response = await api.get('/api/v1/organizations/branches')
       const branches: RestaurantBranch[] = response.data
@@ -237,9 +257,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn('Failed to fetch branches, falling back to single restaurant:', err)
     }
 
-    // Fallback: pre-org user or API error — use userId's restaurant directly
+    // Fallback: org-less / legacy user — NEVER use userId as restaurantId
+    const savedId = localStorage.getItem('activeRestaurantId')
+    const candidate =
+      (fallbackRestaurantId && isUuid(fallbackRestaurantId) ? fallbackRestaurantId : null) ||
+      resolveJwtRestaurantId() ||
+      (savedId && isUuid(savedId) ? savedId : null)
+
+    if (!candidate) {
+      console.warn('No restaurant context available for branch fallback')
+      return
+    }
+
     const fallbackBranch: RestaurantBranch = {
-      id: userId,
+      id: candidate,
       name: 'My Restaurant',
       city: null,
       chain_id: null,
@@ -247,11 +278,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setAvailableRestaurants([fallbackBranch])
     localStorage.setItem('availableRestaurants', JSON.stringify([fallbackBranch]))
-    setActiveRestaurantIdState(userId)
-    localStorage.setItem('activeRestaurantId', userId)
-    api.defaults.headers.common['X-Restaurant-Id'] = userId
-    // Keep Zustand store in sync (fallback path)
-    useAuthStore.getState().setActiveRestaurantId(userId)
+    setActiveRestaurantIdState(candidate)
+    localStorage.setItem('activeRestaurantId', candidate)
+    api.defaults.headers.common['X-Restaurant-Id'] = candidate
+    useAuthStore.getState().setActiveRestaurantId(candidate)
   }, [])
 
   useEffect(() => {
@@ -290,7 +320,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {
     if (!user?.userId) return
-    await fetchAndSetBranches(user.userId)
+    await fetchAndSetBranches(user.restaurantId)
   }, [user, fetchAndSetBranches])
 
   // Sync restaurant context when user changes

@@ -27,8 +27,8 @@ const getStockStatus = (wine: Wine) => {
   const threshold = wine.threshold
   const ratio = stock / threshold
 
-  if (stock === 0) return { status: 'out', label: 'Out of Stock', color: 'rose', priority: 4 }
-  if (ratio <= 0.25) return { status: 'critical', label: 'Critical', color: 'rose', priority: 3 }
+  if (stock === 0) return { status: 'out', label: 'Out of Stock', color: 'wine', priority: 4 }
+  if (ratio <= 0.25) return { status: 'critical', label: 'Critical', color: 'wine', priority: 3 }
   if (ratio <= 0.5) return { status: 'low', label: 'Low Stock', color: 'amber', priority: 2 }
   if (ratio <= 1) return { status: 'warning', label: 'Below Min', color: 'yellow', priority: 1 }
   return { status: 'healthy', label: 'In Stock', color: 'emerald', priority: 0 }

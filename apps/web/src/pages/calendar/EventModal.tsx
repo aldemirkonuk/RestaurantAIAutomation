@@ -80,7 +80,7 @@ interface EventModalProps {
 // ─────────────────────────────── Constants ────────────────────────────────────
 
 const COLOR_PALETTE = [
-  '#B8323A', // wine-600 / app icon
+  '#9E4249', // wine-600 / app icon
   '#3B82F6', // blue
   '#10B981', // green
   '#F59E0B', // amber
@@ -122,7 +122,7 @@ const STATUS_CONFIG = {
 } as const
 
 const LABEL_COLORS: Record<EventLabel['type'], { bg: string; strip: string }> = {
-  provider_meeting: { bg: '#fdf4f5', strip: '#B8323A' },
+  provider_meeting: { bg: '#fdf4f5', strip: '#9E4249' },
   call:             { bg: '#f0fdf4', strip: '#10B981' },
   tasting:          { bg: '#f5f3ff', strip: '#8B5CF6' },
   delivery:         { bg: '#fefce8', strip: '#F59E0B' },
@@ -859,7 +859,7 @@ export function EventModal({
                       </button>
                       <button type="button" onClick={saveEditType} disabled={!editName.trim()}
                         className="px-3 py-1.5 text-[12px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1"
-                        style={{ backgroundColor: '#B8323A' }}>
+                        style={{ backgroundColor: '#9E4249' }}>
                         <Check className="w-3 h-3" /> Save
                       </button>
                     </div>
@@ -951,7 +951,7 @@ export function EventModal({
                   onClick={saveCustomType}
                   disabled={!newTypeName.trim()}
                   className="px-3 py-1.5 text-[12px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1"
-                  style={{ backgroundColor: '#B8323A' }}
+                  style={{ backgroundColor: '#9E4249' }}
                 >
                   <Check className="w-3 h-3" /> Save
                 </button>
@@ -1423,9 +1423,9 @@ export function EventModal({
           <button
             type="submit"
             className="px-4 py-2 text-[13px] font-semibold text-white rounded-lg transition-colors"
-            style={{ backgroundColor: '#B8323A' }}
+            style={{ backgroundColor: '#9E4249' }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7c1d3c')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#B8323A')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#9E4249')}
           >
             {existingEvent ? 'Save Changes' : 'Create Event'}
           </button>
@@ -1495,7 +1495,7 @@ function ToggleSwitch({ label, checked, onChange }: { label: string; checked: bo
 function ProviderCard({ provider, onClear }: { provider: Provider; onClear?: () => void }) {
   return (
     <div className="flex items-stretch rounded-xl border border-gray-200 overflow-hidden bg-white">
-      <div className="w-1 shrink-0" style={{ backgroundColor: '#B8323A' }} />
+      <div className="w-1 shrink-0" style={{ backgroundColor: '#9E4249' }} />
       <div className="w-11 flex items-center justify-center bg-wine-50 shrink-0">
         <div className="w-8 h-8 rounded-full bg-wine-100 flex items-center justify-center text-wine-800 text-[11px] font-bold">
           {provider.name.slice(0, 2).toUpperCase()}

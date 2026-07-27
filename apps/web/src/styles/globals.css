@@ -21,8 +21,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 25 12% 10%;
 
-    /* Primary brand — triad red #B8323A */
-    --primary: 356 57% 46%;
+    /* Primary brand — #9E4249 */
+    --primary: 355 41% 44%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary (warm muted) */
@@ -38,13 +38,13 @@
     --accent-foreground: 25 12% 10%;
 
     /* Destructive/Error — same red family */
-    --destructive: 356 57% 46%;
+    --destructive: 355 41% 44%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders & Inputs */
     --border: 30 12% 88%;
     --input: 30 12% 88%;
-    --ring: 356 57% 46%;
+    --ring: 355 41% 44%;
 
     /* Border radius - generous curves */
     --radius: 0.75rem;
@@ -63,7 +63,7 @@
     --popover: 0 0% 6%;
     --popover-foreground: 210 40% 96%;
 
-    --primary: 356 57% 52%;
+    --primary: 355 41% 50%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 0 0% 12%;

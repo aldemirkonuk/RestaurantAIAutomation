@@ -24,7 +24,7 @@ export function NoAccess() {
           <button
             type="button"
             onClick={() => void logout()}
-            className="inline-flex items-center justify-center gap-2 w-full bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(184,50,58,0.55)]"
+            className="inline-flex items-center justify-center gap-2 w-full bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)]"
           >
             <LogOut className="w-4 h-4" strokeWidth={1.75} />
             Sign out

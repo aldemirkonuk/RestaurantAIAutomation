@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Lightbulb,
   Target,
@@ -100,6 +101,7 @@ export function EngineInsightsPanel({
 }) {
   const { user } = useAuth();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const restaurantId = user?.restaurantId;
   const [insights, setInsights] = useState<EngineInsight[]>([]);
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
@@ -118,6 +120,29 @@ export function EngineInsightsPanel({
     targetValue: "",
     deadline: "",
   });
+
+  // Deep-link support for Quick Actions: /reports?focus=insights scrolls here,
+  // /reports?openGoal=true additionally opens the "Add Goal" form.
+  useEffect(() => {
+    const focus = searchParams.get("focus");
+    const openGoal = searchParams.get("openGoal") === "true";
+    if (!focus && !openGoal) return;
+
+    if (openGoal) setShowGoalForm(true);
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() => {
+      document
+        .getElementById("engine-insights")
+        ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    });
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus");
+    next.delete("openGoal");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const base = `${API_URL}/api/v1/analytics`;
 

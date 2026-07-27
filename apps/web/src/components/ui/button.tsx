@@ -13,7 +13,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       default:
-        'bg-wine-600 text-white hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(184,50,58,0.55)]',
+        'bg-wine-600 text-white hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)]',
       destructive: 'bg-rose-600 text-white hover:bg-rose-700',
       outline: 'border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300',
       secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',

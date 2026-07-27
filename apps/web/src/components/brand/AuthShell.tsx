@@ -30,7 +30,7 @@ export function AuthShell({
       {/* Atmosphere — burgundy, not pink */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(184,50,58,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(184,50,58,0.07),transparent_45%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(158,66,73,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(158,66,73,0.07),transparent_45%)]"
       />
       <div
         aria-hidden
@@ -52,7 +52,7 @@ export function AuthShell({
           >
             <BrandMark
               size={markSize}
-              className="shadow-[0_12px_40px_-12px_rgba(184,50,58,0.55)]"
+              className="shadow-[0_12px_40px_-12px_rgba(158,66,73,0.55)]"
             />
           </motion.div>
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">{title}</h1>
@@ -77,7 +77,7 @@ export function AuthCard({ children, className }: AuthCardProps) {
     <div
       className={cn(
         'rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8',
-        'shadow-[0_24px_64px_-24px_rgba(184,50,58,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]',
+        'shadow-[0_24px_64px_-24px_rgba(158,66,73,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]',
         className,
       )}
     >

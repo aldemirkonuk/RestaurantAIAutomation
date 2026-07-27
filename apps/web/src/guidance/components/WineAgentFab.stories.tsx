@@ -8,7 +8,7 @@ function FabPreview() {
         type="button"
         aria-label="Wine Agent — inventory & ordering help"
         title="Wine Agent — inventory & ordering help"
-        className="absolute right-5 bottom-5 w-12 h-12 rounded-full bg-[#B8323A] text-white shadow-lg flex items-center justify-center"
+        className="absolute right-5 bottom-5 w-12 h-12 rounded-full bg-[#9E4249] text-white shadow-lg flex items-center justify-center"
       >
         <Bot className="w-5 h-5" />
       </button>

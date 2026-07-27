@@ -55,8 +55,8 @@ const getStockStatus = (wine: WineType) => {
   const threshold = wine.threshold
   const ratio = stock / threshold
 
-  if (stock === 0) return { status: 'out', label: 'Out of Stock', color: 'rose', priority: 4 }
-  if (ratio <= 0.25) return { status: 'critical', label: 'Critical', color: 'rose', priority: 3 }
+  if (stock === 0) return { status: 'out', label: 'Out of Stock', color: 'wine', priority: 4 }
+  if (ratio <= 0.25) return { status: 'critical', label: 'Critical', color: 'wine', priority: 3 }
   if (ratio <= 0.5) return { status: 'low', label: 'Low Stock', color: 'amber', priority: 2 }
   if (ratio <= 1) return { status: 'warning', label: 'Below Min', color: 'yellow', priority: 1 }
   return { status: 'healthy', label: 'In Stock', color: 'emerald', priority: 0 }
@@ -547,7 +547,7 @@ Redirecting to Orders page...`)
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-gradient-to-r from-red-600 to-rose-600 rounded-xl shadow-lg"
+            className="mb-6 p-4 bg-gradient-to-r from-wine-600 to-wine-800 rounded-xl shadow-lg"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -883,7 +883,7 @@ Redirecting to Orders page...`)
                 onExport={bulkExportSelected}
                 title="Export selected wines"
               />
-              <button onClick={bulkRemoveFromLibrary} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/80 hover:bg-rose-500 rounded-lg">
+              <button onClick={bulkRemoveFromLibrary} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-wine-600/90 hover:bg-wine-600 rounded-lg">
                 <Trash2 className="w-3.5 h-3.5" /> Remove
               </button>
               <button onClick={clearWineSelection} className="p-1.5 hover:bg-white/20 rounded-lg" aria-label="Clear selection">
@@ -1068,10 +1068,10 @@ Redirecting to Orders page...`)
                         </td>
                         <td className="px-4 py-3 w-[140px]">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                            status.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-                            status.color === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
-                            status.color === 'amber' ? 'bg-amber-100 text-amber-700' :
-                            'bg-rose-100 text-rose-700'
+                            status.color === 'emerald' ? 'bg-success-100 text-success-700' :
+                            status.color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                            status.color === 'amber' ? 'bg-warning-100 text-warning-800' :
+                            'bg-wine-100 text-wine-700'
                           }`}>
                             {status.label}
                           </span>
@@ -1080,7 +1080,7 @@ Redirecting to Orders page...`)
                           <div className="flex items-center gap-2">
                             <button
                               onClick={(e) => handleAddToInventory(wine, e)}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-blue-100 text-blue-700 hover:bg-blue-200"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-blue-50 text-blue-700 hover:bg-blue-100"
                               title="Add to Inventory"
                             >
                               <Package className="w-4 h-4 flex-shrink-0" />
@@ -1091,9 +1091,8 @@ Redirecting to Orders page...`)
                               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                                 status.status === 'healthy'
                                   ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                  : status.status === 'critical' || status.status === 'out'
-                                    ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-lg shadow-rose-600/30 animate-pulse'
-                                    : 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30'
+                                  : 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30' +
+                                    (status.status === 'critical' || status.status === 'out' ? ' animate-pulse' : '')
                               }`}
                             >
                               <ShoppingCart className="w-4 h-4 flex-shrink-0" />
@@ -1102,7 +1101,7 @@ Redirecting to Orders page...`)
                             </button>
                             <button
                               onClick={(e) => handleRemoveFromLibrary(wine, e)}
-                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              className="p-2 text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
                               title="Remove from Library"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1192,8 +1191,8 @@ Redirecting to Orders page...`)
                     {/* Status Badge */}
                     {status.status !== 'healthy' && (
                       <span className={`absolute bottom-3 left-3 px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
-                        status.color === 'rose' ? 'bg-rose-500 text-white' :
-                        status.color === 'amber' ? 'bg-amber-500 text-white' :
+                        status.color === 'wine' ? 'bg-wine-600 text-white' :
+                        status.color === 'amber' ? 'bg-warning-500 text-white' :
                         'bg-yellow-400 text-yellow-900'
                       }`}>
                         <AlertTriangle className="w-3 h-3" />
@@ -1216,7 +1215,7 @@ Redirecting to Orders page...`)
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => handleAddToInventory(wine, e)}
-                          className="p-2.5 rounded-xl transition-all bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          className="p-2.5 rounded-xl transition-all bg-blue-50 text-blue-700 hover:bg-blue-100"
                           title="Add to Inventory"
                         >
                           <Package className="w-5 h-5" />
@@ -1226,9 +1225,8 @@ Redirecting to Orders page...`)
                           className={`p-2.5 rounded-xl transition-all ${
                             status.status === 'healthy'
                               ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                              : status.status === 'critical' || status.status === 'out'
-                                ? 'bg-rose-600 text-white hover:bg-rose-700 animate-pulse'
-                                : 'bg-wine-600 text-white hover:bg-wine-700'
+                              : 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30' +
+                                (status.status === 'critical' || status.status === 'out' ? ' animate-pulse' : '')
                           }`}
                         >
                           <ShoppingCart className="w-5 h-5" />
@@ -1344,8 +1342,8 @@ Redirecting to Orders page...`)
                           <p className="text-xs text-gray-500">Stock / Threshold</p>
                           <p className={`text-sm font-medium ${
                             (selectedWine.liveStock || 0) <= selectedWine.threshold
-                              ? 'text-rose-600'
-                              : 'text-emerald-600'
+                              ? 'text-wine-600'
+                              : 'text-success-600'
                           }`}>
                             {selectedWine.liveStock ?? 'N/A'} / {selectedWine.threshold}
                           </p>
@@ -1442,7 +1440,7 @@ Redirecting to Orders page...`)
                           setSelectedWine(null)
                           handleRemoveFromLibrary(wine)
                         }}
-                        className="w-full px-4 py-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                        className="w-full px-4 py-2 text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium"
                       >
                         <Trash2 className="w-4 h-4" />
                         Remove from Library
@@ -1502,8 +1500,8 @@ Redirecting to Orders page...`)
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`text-sm font-medium ${
                           (reorderModal.wine.liveStock || 0) <= reorderModal.wine.threshold
-                            ? 'text-rose-600'
-                            : 'text-emerald-600'
+                            ? 'text-wine-600'
+                            : 'text-success-600'
                         }`}>
                           {reorderModal.wine.liveStock} in stock
                         </span>

@@ -8,6 +8,9 @@ import {
   Truck,
   Users,
   Bell,
+  Target,
+  Lightbulb,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -17,6 +20,9 @@ export type BuiltinQuickActionKey =
   | 'stock_check'
   | 'reports'
   | 'add_calendar'
+  | 'set_goal'
+  | 'see_insights'
+  | 'recommendations'
 
 export interface BuiltinQuickActionDef {
   key: BuiltinQuickActionKey
@@ -75,6 +81,24 @@ export const BUILTIN_QUICK_ACTIONS: BuiltinQuickActionDef[] = [
     href: '/calendar?openModal=true&date=today',
     icon: Calendar,
   },
+  {
+    key: 'set_goal',
+    label: 'Set a Goal',
+    href: '/reports?openGoal=true',
+    icon: Target,
+  },
+  {
+    key: 'see_insights',
+    label: 'See Insights',
+    href: '/reports?focus=insights',
+    icon: Lightbulb,
+  },
+  {
+    key: 'recommendations',
+    label: 'Recommendations',
+    href: '/recommendations',
+    icon: Sparkles,
+  },
 ]
 
 export const QUICK_ACTION_ICON_MAP: Record<string, LucideIcon> = {
@@ -87,6 +111,9 @@ export const QUICK_ACTION_ICON_MAP: Record<string, LucideIcon> = {
   Users,
   Bell,
   Zap,
+  Target,
+  Lightbulb,
+  Sparkles,
 }
 
 export const QUICK_ACTION_ICON_OPTIONS = Object.keys(QUICK_ACTION_ICON_MAP)
@@ -108,9 +135,20 @@ export function loadQuickActionsState(): QuickActionsState {
     if (!raw) return createDefaultQuickActionsState()
     const parsed = JSON.parse(raw) as Partial<QuickActionsState>
     const base = createDefaultQuickActionsState()
+    const hiddenBuiltin = Array.isArray(parsed.hiddenBuiltin) ? parsed.hiddenBuiltin : []
+    let order = Array.isArray(parsed.order) && parsed.order.length > 0 ? [...parsed.order] : [...base.order]
+
+    // Migration: append any newly-introduced builtin actions (e.g. Set a Goal,
+    // See Insights) that predate this saved state, so upgrades surface them
+    // without wiping the user's existing order/customizations.
+    for (const id of base.order) {
+      const key = id.replace('builtin:', '') as BuiltinQuickActionKey
+      if (!order.includes(id) && !hiddenBuiltin.includes(key)) order.push(id)
+    }
+
     return {
-      order: Array.isArray(parsed.order) && parsed.order.length > 0 ? parsed.order : base.order,
-      hiddenBuiltin: Array.isArray(parsed.hiddenBuiltin) ? parsed.hiddenBuiltin : [],
+      order,
+      hiddenBuiltin,
       custom: Array.isArray(parsed.custom) ? parsed.custom : [],
     }
   } catch {

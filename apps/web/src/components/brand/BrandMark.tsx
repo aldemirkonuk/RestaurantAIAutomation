@@ -9,7 +9,7 @@ interface BrandMarkProps {
 }
 
 /**
- * Canonical WineOps mark — triad red (#B8323A) + white line-art glass.
+ * Canonical WineOps mark — brand red (#9E4249) + white line-art glass.
  * Inline SVG so chrome never depends on a failed /logo.png load.
  */
 export function BrandMark({ size = 32, className, alt = 'WineOps' }: BrandMarkProps) {
@@ -23,7 +23,7 @@ export function BrandMark({ size = 32, className, alt = 'WineOps' }: BrandMarkPr
       aria-hidden={alt ? undefined : true}
       className={cn('flex-shrink-0 select-none', className)}
     >
-      <circle cx="32" cy="32" r="32" fill="#B8323A" />
+      <circle cx="32" cy="32" r="32" fill="#9E4249" />
       {/* Bowl */}
       <path
         d="M22 18h20c0 7.5-4.2 14-10 16.5C26.2 32 22 25.5 22 18Z"
