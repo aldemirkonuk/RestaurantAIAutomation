@@ -555,11 +555,36 @@ export class NotificationsService {
     this.websocketGateway.server
       .to(`user:${data.userId}`)
       .emit("notification:new", {
-        type: data.type,
-        title: data.title,
-        body: data.message,
-        data: data.metadata,
+        event: "NewNotification",
+        data: {
+          id: row.id,
+          title: data.title,
+          message: data.message,
+          type: data.type,
+          action_url: data.actionUrl,
+          priority: data.priority ?? "medium",
+          metadata: data.metadata ?? {},
+        },
+        timestamp: new Date().toISOString(),
       });
+    // Also fan out to the restaurant room (covers other open sessions)
+    if (data.restaurantId) {
+      this.websocketGateway.server
+        .to(`restaurant:${data.restaurantId}`)
+        .emit("notification:new", {
+          event: "NewNotification",
+          data: {
+            id: row.id,
+            title: data.title,
+            message: data.message,
+            type: data.type,
+            action_url: data.actionUrl,
+            priority: data.priority ?? "medium",
+            metadata: data.metadata ?? {},
+          },
+          timestamp: new Date().toISOString(),
+        });
+    }
 
     return this.mapNotificationRow(row);
   }
@@ -651,12 +676,16 @@ export class NotificationsService {
         this.websocketGateway.server
           .to(`restaurant:${restaurantId}`)
           .emit("notification:new", {
-            type: payload.type,
-            title: payload.title,
-            message: payload.message,
-            body: payload.message,
-            action_url: payload.actionUrl,
-            data: payload.metadata,
+            event: "NewNotification",
+            data: {
+              title: payload.title,
+              message: payload.message,
+              type: payload.type,
+              action_url: payload.actionUrl,
+              priority: payload.priority ?? "medium",
+              metadata: payload.metadata ?? {},
+            },
+            timestamp: now,
           });
       }
 
