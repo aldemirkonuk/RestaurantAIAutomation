@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
-status: verifying
-last_updated: "2026-07-27T21:12:50.321Z"
+status: ready_to_plan
+last_updated: "2026-07-28T00:25:00Z"
 progress:
   total_phases: 31
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 87
-  completed_plans: 82
-  percent: 94
+  completed_plans: 85
+  percent: 48
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus (2026-07-27):** **Testing Campaign** — Phase 37 **ready for verification** (Synthetic Restaurant Engine): Plans 01–03 complete (snapshots/recipes, atomic seed/oracle/personas, teardown gate + CLI/API + role isolation). Dry-run generate all 5 archetypes green. **Next: verify Phase 37** then Phase 38 SimPOS. Requirements SYNTH-01..05 done.
+**Current focus (2026-07-28):** **Testing Campaign** — Phase 37 **VERIFIED passed (12/12)** (Synthetic Restaurant Engine): cloud migration + 5 `sim-*` tenants + oracle ledger live on `exzueerziesmczwlhomd`; schema align `1fe72bc`; 54/54 unit tests. **Next: plan/execute Phase 38 SimPOS.** Requirements SYNTH-01..05 satisfied.
 **Earlier focus:** Session 2026-07-08 (evening) — **Prospects attribution → SOTA multi-tenant plan (Phases 0–3)** on `main`. Plan of record: `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` (dedicated-domain inbound, transport-derived attribution, full per-tenant RLS target). **Shipped & live** (commit `a21a6c5`, migration `20260708150000` applied): Phase 0 hardening — triage bucket for ambiguous cold email (no cross-tenant leak, no silent drop), gmail_message_id idempotency, promote-dedup + `UNIQUE(restaurant_id, lower(contact_email))`, provenance/attachments/undo/confirm/empty-state UX. **Built, code-complete, dormant pending infra** (Phases 1–3): `restaurant_inbound_addresses` table (`20260708160000`) + `InboundAddressService` (opaque `r-<token>@INBOUND_EMAIL_DOMAIN`), provider-agnostic `InboundEmailController` webhook (`POST /api/v1/webhooks/inbound-email`, secret-gated, Postmark+generic) that derives restaurant_id from the recipient and publishes `email.inbound.received` (dual-run w/ Gmail); bridge cutover consumes `restaurant_id` + scopes provider lookup by tenant; outbound Reply-To = restaurant inbound address. All config-gated on `INBOUND_EMAIL_DOMAIN`/`INBOUND_WEBHOOK_SECRET` — no-op until you provision a domain + inbound-parse provider (Postmark recommended) + DNS. **Phase 4 (per-tenant RLS + nightly isolation assertion)** and **Phase 5 (multi-location chip filter on Prospects)** SHIPPED (migration `20260708170000` applied; 6 RLS policies live; `tenant_isolation_report()` baseline 0 violations across 9 restaurants). Phase 4 note: reads stay on the service-role client — full authed-client RLS enforcement needs Supabase Auth adoption (separate effort); policies are defense-in-depth today. Verified: api-gateway + web tsc clean, no lints. **CI cleanup deferred** (pre-existing ruff/black/eslint-config debt + Security-Scan permission bug — unrelated to this work).
 **Earlier focus (2026-07-08 afternoon):** inbound-email-intelligence polish batch (post-PR-#29): non-price provenance in the deal modal; A17 stale-send cancel; A7 regenerate-with-attachments; richer + durable 9am promo digest; P6 Inbound Triage Card; D1 Prospects lane. Migrations `20260708140000` (D1), `20260708150000` (P0), `20260708160000` (P1) all applied live to `exzueerziesmczwlhomd`.
 **Earlier focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0.
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 ## Current Position
 
-Phase: 37 (synthetic-restaurant-engine) — READY FOR VERIFICATION
-Plan: 3 of 3
-**Status:** Phase complete — ready for verification
-**Last completed:** Phase 37 Plan 03 — teardown write-set gate + CLI/API dry-run/--apply + role isolation; 54 unit synth tests green; dry-run all 5 archetypes. 2026-07-27.
-**Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30
+Phase: 38 (simpos-provider-operations-simulator) — READY TO PLAN
+Plan: Not started
+**Status:** Ready to plan
+**Last completed:** Phase 37 — Synthetic Restaurant Engine verified passed (12/12). Cloud: migration `20260727230000`, 5 sim tenants + oracle (1404 facts), commit `1fe72bc`. 2026-07-28.
+**Phases complete (v2.0):** 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30, 36, 37
 **Phases deferred:** 23 (Gmail Integration) — `[ ]` in ROADMAP, plans 23-03 + 23-06 remain (Railway OAuth2 credential gate)
 
 **Phase 34 planned:** Order Communications Hub & Procurement Integrity — 4 plans (2 waves) ready to execute (2026-05-18). Wave 1: integrity removals + backend endpoints. Wave 2: ActiveConversationsPanel + Communications history tab.
 
-**Next phase:** Phase 38 — SimPOS Provider & Operations Simulator (after Phase 37 verification)
+**Next phase:** Phase 38 — SimPOS Provider & Operations Simulator
 
 ### Phase 27 — COMPLETE (2026-05-11)
 

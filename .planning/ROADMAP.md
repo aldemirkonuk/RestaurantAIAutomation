@@ -478,7 +478,7 @@ Plans:
 11. Platform & Agent Infrastructure — BaseAgent guarantees, sagas, DLQ, idempotency, health, observability, admin
 
 - [x] **Phase 36: Testing Foundation & Functionality Registry** — Functionality registry (11 groups, every module/page/agent mapped), T0–T4 scoring rubric, existing-test inventory, TESTING-SCORECARD.md baseline, CI skeleton, synthetic-tenant isolation convention (completed 2026-07-27)
-- [x] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle) (completed 2026-07-27)
+- [x] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle) (completed 2026-07-27; verified 2026-07-28 — 12/12)
 - [ ] **Phase 38: SimPOS Provider & Operations Simulator** — SimPOS adapter in pos-hub registry; accelerated day-by-day simulator; web control panel (fire orders by clicking menu items, sim controls, chaos injection); deployed on Railway
 - [ ] **Phase 39: Breadth Pass A — Core Operations** — Score groups 1–4 (Identity, Catalog & Extraction, Inventory, POS Ingestion) to ≥ T2 with automated suites + manual checklists
 - [ ] **Phase 40: Breadth Pass B — Business Loops** — Score groups 5–7 + 9 (Procurement, Communications, Calendar, Notifications) to ≥ T2 with automated suites + manual checklists
@@ -521,6 +521,7 @@ Plans:
   5. ≥ 5 distinct archetypes generated and live: e.g. wine-heavy fine dining, casual bistro, high-volume bar, tiny cafe, Turkish restaurant clone
 **Plans**: 3 plans
 **Progress**: 3/3 plans executed (Complete)
+**Verification**: passed 2026-07-28 — 12/12 must-haves; cloud seed + oracle live (`exzueerziesmczwlhomd`)
 
 Plans:
 **Wave 1**
