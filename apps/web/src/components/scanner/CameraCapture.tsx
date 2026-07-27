@@ -29,9 +29,15 @@ interface CameraCaptureProps {
   onCapture: (imageBase64: string) => void
   onFileUpload: (imageBase64: string) => void
   enableLiveDetection?: boolean
+  useCameraModal?: boolean
 }
 
-export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = true }: CameraCaptureProps) {
+export function CameraCapture({
+  onCapture,
+  onFileUpload,
+  enableLiveDetection = true,
+  useCameraModal = false,
+}: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -48,6 +54,8 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment')
   const [isCapturing, setIsCapturing] = useState(false)
   const [wsConnected, setWsConnected] = useState(false)
+  const [cameraModalOpen, setCameraModalOpen] = useState(false)
+  const [isStartingCamera, setIsStartingCamera] = useState(false)
 
   // Cleanup on unmount
   useEffect(() => {
@@ -212,6 +220,7 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
 
   // Start camera
   const startCamera = async () => {
+    setIsStartingCamera(true)
     setCameraError(null)
     setBoundingBoxes([])
 
@@ -238,6 +247,8 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
     } catch (error) {
       console.error('Camera access error:', error)
       setCameraError('Unable to access camera. Please grant camera permissions or try uploading an image instead.')
+    } finally {
+      setIsStartingCamera(false)
     }
   }
 
@@ -251,6 +262,18 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
     setIsCameraActive(false)
     setBoundingBoxes([])
     disconnectWs()
+  }
+
+  const openCameraModal = async () => {
+    if (useCameraModal) {
+      setCameraModalOpen(true)
+    }
+    await startCamera()
+  }
+
+  const closeCameraModal = () => {
+    stopCamera()
+    setCameraModalOpen(false)
   }
 
   // Switch camera (front/back)
@@ -312,6 +335,131 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
     reader.readAsDataURL(file)
   }
 
+  const cameraLiveView = (
+    <div className="flex-1 flex flex-col">
+      {/* Camera status bar */}
+      <div className="px-4 pt-4">
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-xs sm:text-sm font-medium text-emerald-800">
+              Camera ON
+            </p>
+          </div>
+          <button
+            onClick={useCameraModal ? closeCameraModal : stopCamera}
+            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs sm:text-sm font-medium text-red-700 border border-red-200 hover:bg-red-50 transition-colors"
+            title="Turn camera off"
+          >
+            <CameraOff className="w-4 h-4" />
+            Turn Off
+          </button>
+        </div>
+      </div>
+
+      {/* Video container */}
+      <div className="flex-1 relative bg-black rounded-xl overflow-hidden mx-4 mt-3">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full h-full object-contain"
+        />
+        {/* YOLO bounding box overlay */}
+        <canvas
+          ref={overlayCanvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none"
+        />
+
+        {/* Live detection indicator */}
+        <AnimatePresence>
+          {isLiveDetectionOn && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full"
+            >
+              <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="text-xs text-white font-medium">
+                {wsConnected ? `YOLO Live (${boundingBoxes.length} detected)` : 'Connecting...'}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Capture flash animation */}
+        <AnimatePresence>
+          {isCapturing && (
+            <motion.div
+              initial={{ opacity: 1 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="absolute inset-0 bg-white z-10"
+            />
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Camera controls */}
+      <div className="px-4 py-4">
+        <div className="flex items-center justify-between">
+          {/* Left controls */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleLiveDetection}
+              className={`p-2.5 rounded-xl transition-all ${
+                isLiveDetectionOn
+                  ? 'bg-indigo-100 text-indigo-600'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+              title={isLiveDetectionOn ? 'Disable live detection' : 'Enable live detection'}
+            >
+              {isLiveDetectionOn ? <Zap className="w-5 h-5" /> : <ZapOff className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={switchCamera}
+              className="p-2.5 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all"
+              title="Switch camera"
+            >
+              <SwitchCamera className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Center: capture button */}
+          <button
+            onClick={captureFrame}
+            className="w-16 h-16 bg-white border-4 border-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-50 transition-all shadow-lg active:scale-95"
+            title="Capture frame for full analysis"
+          >
+            <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center">
+              <Camera className="w-6 h-6 text-white" />
+            </div>
+          </button>
+
+          {/* Right controls */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all"
+              title="Upload image instead"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
+            <button
+              onClick={useCameraModal ? closeCameraModal : stopCamera}
+              className="p-2.5 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-all"
+              title="Stop camera"
+            >
+              <CameraOff className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="flex flex-col h-full">
       <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
@@ -332,7 +480,7 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
 
             <div className="flex flex-col gap-3">
               <button
-                onClick={startCamera}
+                onClick={openCameraModal}
                 className="w-full px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
               >
                 <Camera className="w-5 h-5" />
@@ -367,111 +515,56 @@ export function CameraCapture({ onCapture, onFileUpload, enableLiveDetection = t
             </div>
           </div>
         </div>
-      ) : (
-        /* Camera active - show video with overlay */
-        <div className="flex-1 flex flex-col">
-          {/* Video container */}
-          <div className="flex-1 relative bg-black rounded-xl overflow-hidden mx-4 mt-4">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-contain"
-            />
-            {/* YOLO bounding box overlay */}
-            <canvas
-              ref={overlayCanvasRef}
-              className="absolute inset-0 w-full h-full pointer-events-none"
-            />
-
-            {/* Live detection indicator */}
-            <AnimatePresence>
-              {isLiveDetectionOn && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full"
-                >
-                  <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
-                  <span className="text-xs text-white font-medium">
-                    {wsConnected ? `YOLO Live (${boundingBoxes.length} detected)` : 'Connecting...'}
-                  </span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Capture flash animation */}
-            <AnimatePresence>
-              {isCapturing && (
-                <motion.div
-                  initial={{ opacity: 1 }}
-                  animate={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="absolute inset-0 bg-white z-10"
-                />
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Camera controls */}
-          <div className="px-4 py-4">
-            <div className="flex items-center justify-between">
-              {/* Left controls */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={toggleLiveDetection}
-                  className={`p-2.5 rounded-xl transition-all ${
-                    isLiveDetectionOn
-                      ? 'bg-indigo-100 text-indigo-600'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                  title={isLiveDetectionOn ? 'Disable live detection' : 'Enable live detection'}
-                >
-                  {isLiveDetectionOn ? <Zap className="w-5 h-5" /> : <ZapOff className="w-5 h-5" />}
-                </button>
-                <button
-                  onClick={switchCamera}
-                  className="p-2.5 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all"
-                  title="Switch camera"
-                >
-                  <SwitchCamera className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Center: capture button */}
-              <button
-                onClick={captureFrame}
-                className="w-16 h-16 bg-white border-4 border-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-50 transition-all shadow-lg active:scale-95"
-                title="Capture frame for full analysis"
-              >
-                <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center">
-                  <Camera className="w-6 h-6 text-white" />
-                </div>
-              </button>
-
-              {/* Right controls */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-2.5 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all"
-                  title="Upload image instead"
-                >
-                  <ImageIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={stopCamera}
-                  className="p-2.5 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-all"
-                  title="Stop camera"
-                >
-                  <CameraOff className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      ) : useCameraModal ? null : (
+        cameraLiveView
       )}
+
+      {/* Dedicated camera modal (web dialog + mobile sheet). */}
+      <AnimatePresence>
+        {useCameraModal && cameraModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center"
+            onClick={closeCameraModal}
+          >
+            <motion.div
+              initial={{ y: 30, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 30, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full sm:max-w-4xl sm:h-[88vh] h-[92vh] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Camera Capture</p>
+                  <p className="text-xs text-gray-500">
+                    {isCameraActive ? 'Camera is active' : 'Preparing camera...'}
+                  </p>
+                </div>
+                <button
+                  onClick={closeCameraModal}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+              {isCameraActive ? (
+                cameraLiveView
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600 p-6">
+                  <div className="w-10 h-10 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+                  <p className="text-sm font-medium">
+                    {isStartingCamera ? 'Starting camera...' : 'Waiting for camera permission...'}
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

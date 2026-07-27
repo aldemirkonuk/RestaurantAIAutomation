@@ -53,6 +53,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
           onCapture={handleImage}
           onFileUpload={handleImage}
           enableLiveDetection={false}
+          useCameraModal={true}
         />
       </div>
       <p className="mt-3 text-xs text-center text-gray-400">
