@@ -36,72 +36,129 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
--- 1. Purchase orders become multi-line
+-- 1. Purchase order lines — adopting a table that already existed
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS procurement_order_lines (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-- procurement_order_items is present in production, holds 0 rows, is referenced
+-- by NO application code, and appears in NO migration file — it was created
+-- out-of-band. This block captures it into source control so a fresh database
+-- matches production; IF NOT EXISTS makes it a no-op where it already stands.
+--
+-- We adopt it rather than adding a parallel procurement_order_lines. Two tables
+-- for one concept is the dual-bookkeeping failure that already had to be
+-- unwound in inventory, and this one is better than what was about to replace
+-- it: bottles_per_unit/total_bottles are the unit-of-measure normalisation the
+-- match needs, and received_sku/sku_match/vintage_match/received_vintage model
+-- substitution — the case where a '22 Sancerre is delivered as a '23. That is a
+-- DIFFERENT item with its own cost lot, not a price variance, and it is the
+-- clearest thing that separates beverage software from generic food-cost tools.
+CREATE TABLE IF NOT EXISTS procurement_order_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id UUID NOT NULL REFERENCES procurement_orders(id) ON DELETE CASCADE,
-    restaurant_id UUID NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
-    line_no INTEGER NOT NULL,
-
     inventory_id UUID REFERENCES restaurant_inventory(id),
-    vendor_sku VARCHAR(120),
-    description VARCHAR(500),
+    master_wine_id UUID REFERENCES master_wine_library(id),
 
-    -- Ordered quantity in the unit it was ORDERED in, plus the bottle-equivalent.
-    -- Keeping both is the whole point: ordering 2 cases and being invoiced 24
-    -- bottles is a match, not a 22-unit overage, and collapsing to one number
-    -- loses the ability to say so.
-    qty NUMERIC(12,3) NOT NULL,
-    uom VARCHAR(20) NOT NULL DEFAULT 'bottle',
-    pack_size INTEGER NOT NULL DEFAULT 1,
-    qty_bottles NUMERIC(12,3) NOT NULL,
+    sku VARCHAR(100),
+    vendor_sku VARCHAR(100),
+    upc VARCHAR(50),
+    wine_name VARCHAR(255) NOT NULL,
+    producer VARCHAR(255),
+    vintage INTEGER,
 
-    unit_price DECIMAL(12,4),
-    line_total DECIMAL(12,2),
+    quantity INTEGER NOT NULL,
+    unit_type VARCHAR(20) DEFAULT 'bottles',
+    bottles_per_unit INTEGER DEFAULT 1,
+    -- Bottle-equivalent, enforced by the database rather than by whichever
+    -- caller remembers to multiply. This is toBottles() in DDL form, and it is
+    -- why 2 cases and 24 bottles compare equal instead of reporting a 22-unit
+    -- overage — the most common false alarm in beverage receiving.
+    total_bottles INTEGER GENERATED ALWAYS AS (quantity * bottles_per_unit) STORED,
 
+    quoted_unit_price NUMERIC,
+    negotiated_unit_price NUMERIC,
+    final_unit_price NUMERIC,
+    line_total NUMERIC,
+
+    quantity_received INTEGER,
+    quantity_accepted INTEGER,
+    quantity_rejected INTEGER,
+    rejection_reason TEXT,
+
+    received_sku VARCHAR(100),
+    sku_match BOOLEAN,
+    vintage_match BOOLEAN,
+    received_vintage INTEGER,
+
+    notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-
-    CONSTRAINT procurement_order_lines_uom_check
-        CHECK (uom IN ('bottle','case','keg','pack','split_case','each','liter')),
-    CONSTRAINT procurement_order_lines_pack_size_check CHECK (pack_size >= 1),
-    CONSTRAINT procurement_order_lines_qty_check CHECK (qty >= 0),
-    UNIQUE (order_id, line_no)
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_pol_order ON procurement_order_lines(order_id);
-CREATE INDEX IF NOT EXISTS idx_pol_restaurant ON procurement_order_lines(restaurant_id);
-CREATE INDEX IF NOT EXISTS idx_pol_inventory ON procurement_order_lines(inventory_id);
+-- Tenancy scoped directly on the row rather than reached through a join to the
+-- parent order. Every tenant-scoped query that has to remember a join is a
+-- tenant leak waiting to be written; the ux_overrides leak fixed this week was
+-- exactly that shape.
+ALTER TABLE procurement_order_items
+    ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+ALTER TABLE procurement_order_items
+    ADD COLUMN IF NOT EXISTS line_no INTEGER;
+-- Agreed free goods, so an 11-for-10 nets out instead of reading as an overage.
+ALTER TABLE procurement_order_items
+    ADD COLUMN IF NOT EXISTS free_goods_qty NUMERIC(12,3) NOT NULL DEFAULT 0;
+
+UPDATE procurement_order_items i
+SET restaurant_id = o.restaurant_id
+FROM procurement_orders o
+WHERE i.order_id = o.id AND i.restaurant_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_poi_order ON procurement_order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_poi_restaurant ON procurement_order_items(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_poi_inventory ON procurement_order_items(inventory_id);
+CREATE INDEX IF NOT EXISTS idx_poi_vendor_sku ON procurement_order_items(restaurant_id, vendor_sku);
 
 -- Backfill: every existing single-wine order becomes a one-line order, so the
 -- new match path has something to read for orders placed before this migration.
-INSERT INTO procurement_order_lines (
-    order_id, restaurant_id, line_no, inventory_id, description,
-    qty, uom, pack_size, qty_bottles, unit_price, line_total
+--
+-- Written against the LIVE schema, which has drifted from
+-- 20260208024921_new-migration.sql: there is no procurement_orders.wine_name
+-- (the name lives on restaurant_inventory), prices are quoted/negotiated/final
+-- rather than target/negotiated_per_bottle, and `bottles_total` + `unit_type`
+-- already carry the bottle-equivalent this table needs.
+-- total_bottles is omitted deliberately: it is GENERATED ALWAYS and Postgres
+-- rejects an explicit value for it.
+INSERT INTO procurement_order_items (
+    order_id, restaurant_id, line_no, inventory_id, wine_name,
+    quantity, unit_type, bottles_per_unit,
+    quoted_unit_price, negotiated_unit_price, final_unit_price, line_total
 )
 SELECT
     o.id,
     o.restaurant_id,
     1,
     o.inventory_id,
-    o.wine_name,
+    COALESCE(inv.wine_name, 'Unknown item'),
     o.quantity,
-    'bottle',
-    1,
-    o.quantity,
-    COALESCE(o.negotiated_price_per_bottle, o.target_price_per_bottle),
-    COALESCE(o.final_confirmed_cost, o.total_estimated_cost)
+    COALESCE(o.unit_type, 'bottles'),
+    -- Recover pack size from the two numbers already stored: 24 bottles across
+    -- 2 cases is a pack of 12. Anything that does not divide cleanly falls back
+    -- to 1, because a guessed pack size produces confident, wrong cost maths.
+    GREATEST(1, COALESCE(ROUND(o.bottles_total::numeric / NULLIF(o.quantity, 0)), 1))::int,
+    o.quoted_price,
+    o.negotiated_price,
+    COALESCE(o.final_price, o.negotiated_price, o.quoted_price),
+    COALESCE(o.total_cost, o.final_confirmed_cost, o.total_estimated_cost)
 FROM procurement_orders o
-WHERE o.restaurant_id IS NOT NULL
-  AND o.quantity IS NOT NULL
+LEFT JOIN restaurant_inventory inv ON inv.id = o.inventory_id
+WHERE o.quantity IS NOT NULL
   AND NOT EXISTS (
-      SELECT 1 FROM procurement_order_lines l WHERE l.order_id = o.id
+      SELECT 1 FROM procurement_order_items l WHERE l.order_id = o.id
   );
 
 -- ---------------------------------------------------------------------------
 -- 2. Vendor documents — one table, every type, every arrival channel
 -- ---------------------------------------------------------------------------
+-- User columns are plain UUIDs with no FK, matching how procurement_orders
+-- already treats approved_by / received_by / match_verified_by. (public.users
+-- is keyed on user_id, not id — a REFERENCES users(id) here fails outright.)
 CREATE TABLE IF NOT EXISTS procurement_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     restaurant_id UUID NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
@@ -155,7 +212,7 @@ CREATE TABLE IF NOT EXISTS procurement_documents (
     ties_out BOOLEAN,
 
     status VARCHAR(20) NOT NULL DEFAULT 'received',
-    verified_by UUID REFERENCES users(id),
+    verified_by UUID,
     verified_at TIMESTAMPTZ,
     -- Where the document came in from, for provenance: message id, filename, etc.
     source_ref VARCHAR(500),
@@ -233,7 +290,7 @@ CREATE TABLE IF NOT EXISTS procurement_document_lines (
     -- Link to what was ordered. NULL is legitimate and common: invoices carry
     -- lines nobody ordered. A low-confidence guess is never written here —
     -- a wrong link silently corrupts cost basis for months.
-    order_line_id UUID REFERENCES procurement_order_lines(id) ON DELETE SET NULL,
+    order_line_id UUID REFERENCES procurement_order_items(id) ON DELETE SET NULL,
     match_confidence NUMERIC(4,3),
     match_method VARCHAR(30),
 
@@ -263,7 +320,7 @@ CREATE TABLE IF NOT EXISTS procurement_document_links (
     document_id UUID NOT NULL REFERENCES procurement_documents(id) ON DELETE CASCADE,
     order_id UUID NOT NULL REFERENCES procurement_orders(id) ON DELETE CASCADE,
     restaurant_id UUID NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
-    linked_by UUID REFERENCES users(id),
+    linked_by UUID,
     link_method VARCHAR(30) NOT NULL DEFAULT 'manual',
     confidence NUMERIC(4,3),
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -302,7 +359,7 @@ CREATE TABLE IF NOT EXISTS procurement_receipt_events (
     -- the word "damage".
     damage_photo_path TEXT,
 
-    received_by UUID REFERENCES users(id),
+    received_by UUID,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     -- Set when the event was captured offline and synced later.
     client_captured_at TIMESTAMPTZ,
@@ -328,8 +385,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_pre_idempotency
 -- ---------------------------------------------------------------------------
 -- 6. updated_at triggers, matching the rest of the schema
 -- ---------------------------------------------------------------------------
-DROP TRIGGER IF EXISTS trg_pol_updated_at ON procurement_order_lines;
-CREATE TRIGGER trg_pol_updated_at BEFORE UPDATE ON procurement_order_lines
+DROP TRIGGER IF EXISTS trg_poi_updated_at ON procurement_order_items;
+CREATE TRIGGER trg_poi_updated_at BEFORE UPDATE ON procurement_order_items
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 DROP TRIGGER IF EXISTS trg_pd_updated_at ON procurement_documents;

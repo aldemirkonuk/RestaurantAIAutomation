@@ -91,6 +91,67 @@ export const RECEIPT_STAGES = [
 export type ReceiptStage = (typeof RECEIPT_STAGES)[number];
 
 /**
+ * Coerce a free-text unit into the canonical vocabulary.
+ *
+ * Necessary because the schema is not self-consistent and cannot cheaply be made
+ * so: `procurement_order_items.unit_type` has NO check constraint and defaults to
+ * the PLURAL `'bottles'`, while `procurement_orders.unit_type` stores the
+ * singular `'bottle'` and `procurement_document_lines.uom` has a CHECK that only
+ * accepts singulars. Extracted and EDI documents add their own spellings (`BT`,
+ * `CS`, `EA` are the common X12 codes). Every quantity comparison funnels through
+ * here so one stray plural cannot silently become an unrecognised unit and skip
+ * bottle normalisation — which would resurface the split-case false alarm the
+ * whole mechanism exists to prevent.
+ *
+ * Unrecognised input returns null rather than guessing `bottle`: a wrong unit
+ * produces confident, wrong quantity maths, and silence is worse than a refusal.
+ */
+export function normalizeUom(raw?: string | null): Uom | null {
+  if (!raw) return null;
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  switch (s) {
+    case "bottle":
+    case "bottles":
+    case "btl":
+    case "bt":
+      return "bottle";
+    case "case":
+    case "cases":
+    case "cs":
+    case "ca":
+      return "case";
+    case "keg":
+    case "kegs":
+      return "keg";
+    case "pack":
+    case "packs":
+    case "pk":
+      return "pack";
+    case "splitcase":
+    case "splitcases":
+    case "split":
+      return "split_case";
+    case "each":
+    case "ea":
+    case "unit":
+    case "units":
+      return "each";
+    case "liter":
+    case "liters":
+    case "litre":
+    case "litres":
+    case "l":
+    case "lt":
+      return "liter";
+    default:
+      return null;
+  }
+}
+
+/**
  * Bottle-equivalent for a quantity expressed in some other unit.
  *
  * This exists because the single most common beverage receiving discrepancy is

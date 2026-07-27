@@ -1,4 +1,38 @@
-import { comparableUnits, toBottles, Uom } from "./document-types";
+import {
+  comparableUnits,
+  normalizeUom,
+  toBottles,
+  Uom,
+} from "./document-types";
+
+describe("normalizeUom", () => {
+  it("reconciles the schema's own inconsistency", () => {
+    // procurement_order_items.unit_type defaults to the PLURAL 'bottles' with no
+    // CHECK; procurement_orders stores the singular; document lines CHECK for
+    // singulars only. All three must land on the same unit.
+    expect(normalizeUom("bottles")).toBe("bottle");
+    expect(normalizeUom("bottle")).toBe("bottle");
+    expect(normalizeUom("BOTTLES")).toBe("bottle");
+  });
+
+  it("accepts the common X12 unit codes", () => {
+    expect(normalizeUom("CS")).toBe("case");
+    expect(normalizeUom("BT")).toBe("bottle");
+    expect(normalizeUom("EA")).toBe("each");
+  });
+
+  it("tolerates spacing and punctuation from extracted documents", () => {
+    expect(normalizeUom(" Split Case ")).toBe("split_case");
+    expect(normalizeUom("split-case")).toBe("split_case");
+  });
+
+  it("returns null rather than guessing on an unknown unit", () => {
+    // Guessing 'bottle' here would produce confident, wrong quantity maths.
+    expect(normalizeUom("magnum")).toBeNull();
+    expect(normalizeUom("")).toBeNull();
+    expect(normalizeUom(null)).toBeNull();
+  });
+});
 
 /**
  * Unit-of-measure normalisation.
