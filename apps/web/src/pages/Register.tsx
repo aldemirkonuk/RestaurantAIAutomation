@@ -1284,24 +1284,28 @@ export function Register() {
   const isRestaurantForm = path === 'create' && pathBStep === 2
 
   return (
-    <div className="min-h-screen flex items-start justify-center bg-gradient-to-br from-gray-50 via-wine-50/30 to-gray-50 px-4 py-12">
+    <div className="relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF8F7]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(114,47,55,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(114,47,55,0.07),transparent_45%)]"
+      />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className={isRestaurantForm ? 'w-full max-w-4xl' : 'w-full max-w-2xl'}
+        className={isRestaurantForm ? 'relative w-full max-w-4xl' : 'relative w-full max-w-2xl'}
       >
         <div className="text-center mb-8">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1, type: 'spring' }}
-            className="inline-flex mb-4"
+            className="inline-flex mb-5"
           >
-            <BrandMark size={64} className="shadow-lg" />
+            <BrandMark size={72} className="shadow-[0_12px_40px_-12px_rgba(114,47,55,0.55)]" />
           </motion.div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Join WineOps AI</h1>
-          <p className="text-gray-600">Transform your restaurant's wine operations</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">Join WineOps AI</h1>
+          <p className="text-[15px] text-gray-500">Transform your restaurant&apos;s wine operations</p>
         </div>
 
         <AnimatePresence mode="wait" initial={false}>
@@ -1312,13 +1316,16 @@ export function Register() {
             </div>
           ) : (
             /* All other steps: standard glass card */
-            <div key={stepKey} className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8 overflow-hidden">
+            <div
+              key={stepKey}
+              className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(114,47,55,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
+            >
               {content}
             </div>
           )}
         </AnimatePresence>
 
-        <p className="text-center text-sm text-gray-500 mt-8">© 2026 WineOps AI. All rights reserved.</p>
+        <p className="text-center text-xs text-gray-400 mt-8">© 2026 WineOps AI. All rights reserved.</p>
       </motion.div>
     </div>
   )

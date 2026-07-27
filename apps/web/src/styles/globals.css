@@ -21,8 +21,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Primary brand — app icon burgundy #722F37 */
-    --primary: 353 42% 32%;
+    /* Primary brand — lighter reddish burgundy #96404E */
+    --primary: 350 45% 42%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary (subtle gray) */
@@ -44,7 +44,7 @@
     /* Borders & Inputs */
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 353 42% 32%;
+    --ring: 350 45% 42%;
 
     /* Border radius - generous curves */
     --radius: 0.75rem;
@@ -63,7 +63,7 @@
     --popover: 0 0% 6%;
     --popover-foreground: 210 40% 96%;
 
-    --primary: 353 42% 38%;
+    --primary: 350 45% 48%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 0 0% 12%;

@@ -9,19 +9,48 @@ interface BrandMarkProps {
 }
 
 /**
- * Canonical WineOps app mark — burgundy circle + white line-art wine glass
- * (see /public/logo.png, /icon-192.png). Prefer this over Lucide `Wine` for
- * product chrome so the UI matches the PWA / home-screen icon.
+ * Canonical WineOps mark — burgundy circle (#722F37) + white line-art glass.
+ * Inline SVG so chrome never depends on a failed /logo.png load.
  */
 export function BrandMark({ size = 32, className, alt = 'WineOps' }: BrandMarkProps) {
   return (
-    <img
-      src="/logo.png"
+    <svg
       width={size}
       height={size}
-      alt={alt}
-      draggable={false}
-      className={cn('rounded-full object-contain flex-shrink-0 select-none', className)}
-    />
+      viewBox="0 0 64 64"
+      role={alt ? 'img' : 'presentation'}
+      aria-label={alt || undefined}
+      aria-hidden={alt ? undefined : true}
+      className={cn('flex-shrink-0 select-none', className)}
+    >
+      <circle cx="32" cy="32" r="32" fill="#722F37" />
+      {/* Bowl */}
+      <path
+        d="M22 18h20c0 7.5-4.2 14-10 16.5C26.2 32 22 25.5 22 18Z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.25"
+        strokeLinejoin="round"
+      />
+      {/* Wine fill suggestion */}
+      <path
+        d="M24.5 26.5c1.2 5.2 4.2 9.2 7.5 10.8 3.3-1.6 6.3-5.6 7.5-10.8"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.55"
+      />
+      {/* Stem */}
+      <path d="M32 34.5V46" fill="none" stroke="#fff" strokeWidth="2.25" strokeLinecap="round" />
+      {/* Base */}
+      <path
+        d="M23 50.5c3.2 2.2 6.5 3.2 9 3.2s5.8-1 9-3.2"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.25"
+        strokeLinecap="round"
+      />
+    </svg>
   )
 }

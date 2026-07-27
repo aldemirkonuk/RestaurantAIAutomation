@@ -99,14 +99,42 @@ export class DocumentsController {
   @ApiOperation({ summary: "List vendor documents, newest first" })
   @ApiQuery({ name: "status", required: false })
   @ApiQuery({ name: "docType", required: false })
+  @ApiQuery({
+    name: "orderId",
+    required: false,
+    description:
+      "Only documents linked to this order. Resolved through procurement_document_links, which is many-to-many because one distributor invoice routinely covers several POs.",
+  })
   @ApiQuery({ name: "limit", required: false })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
     @Query("docType") docType?: string,
+    @Query("orderId") orderId?: string,
     @Query("limit") limit?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
+
+    let documentIds: string[] | null = null;
+    if (orderId) {
+      const { data: links, error: linkErr } = await this.db
+        .getClient()
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", user.restaurantId)
+        .eq("order_id", orderId);
+      if (linkErr)
+        throw new HttpException(
+          linkErr.message,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      documentIds = (links ?? []).map((l) => l.document_id);
+      // No links means no documents, not "all documents". Falling through to an
+      // unfiltered query here would hand the receiving screen every invoice the
+      // restaurant has ever received and let it pre-fill from the wrong one.
+      if (!documentIds.length) return { items: [] };
+    }
+
     let q = this.db
       .getClient()
       .from("procurement_documents")
@@ -116,6 +144,7 @@ export class DocumentsController {
       .limit(n);
     if (status) q = q.eq("status", status);
     if (docType) q = q.eq("doc_type", docType);
+    if (documentIds) q = q.in("id", documentIds);
 
     const { data, error } = await q;
     if (error)
@@ -152,6 +181,56 @@ export class DocumentsController {
     ]);
 
     return { document: doc, lines: lines ?? [], links: links ?? [] };
+  }
+
+  @Post(":id/match")
+  @ApiOperation({
+    summary: "Pair this document's lines with the lines that were ordered",
+    description:
+      "Writes only unambiguous matches (exact vendor SKU, no substitution). Everything else comes back under `suggested` for one-tap confirmation and is NOT persisted — a wrong link writes one wine's invoice price onto another wine's cost lot, which looks fine and surfaces months later as margin drift on two products. Lines a human already paired are left alone, so re-running never reverts a correction.",
+  })
+  async match(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    try {
+      return await this.intake.matchDocumentLines(id, user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to match lines",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(":id/lines/:lineId/link")
+  @ApiOperation({
+    summary: "Confirm a suggested line pairing",
+    description:
+      "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong.",
+  })
+  async linkLine(
+    @Param("id") documentId: string,
+    @Param("lineId") lineId: string,
+    @Body() body: { orderLineId?: string | null },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .update({
+        order_line_id: body?.orderLineId ?? null,
+        // A person confirmed it, so confidence is not a model's estimate any more.
+        match_confidence: body?.orderLineId ? 1 : null,
+        match_method: body?.orderLineId ? "manual" : null,
+      })
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", user.restaurantId)
+      .select("id, order_line_id, match_method")
+      .maybeSingle();
+
+    if (error)
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    if (!data) throw new HttpException("Line not found", HttpStatus.NOT_FOUND);
+    return data;
   }
 
   @Post(":id/verify")

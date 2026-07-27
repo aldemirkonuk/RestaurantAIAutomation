@@ -169,8 +169,19 @@ export async function verifyOrderReceipt(
   orderId: string,
   body: {
     adjustments?: Array<{ inventoryId: string; delta: number; reason?: string }>;
+    /** Omit when no invoice is in hand — the server reads absence as unknown, not agreement. */
     invoiceQuantity?: number;
     invoiceUnitPrice?: number;
+    /**
+     * From the vendor's own packing slip / EDI 856. When this disagrees with the
+     * invoice quantity, the overbill is proven by their paperwork and the resulting
+     * claim needs no argument.
+     */
+    shippedQuantity?: number;
+    /** Agreed free bottles, so a negotiated 11-for-10 stops reading as an overage. */
+    freeGoodsQuantity?: number;
+    /** Freight and fees from the invoice header, folded into landed cost. */
+    allocatedCharges?: number;
     acceptedQuantity?: number;
     rejectedQuantity?: number;
     rejectedReason?: string;

@@ -16,6 +16,7 @@ import { DocumentIntakeService } from "./documents/document-intake.service";
 import { DocumentExtractorService } from "./documents/document-extractor.service";
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
+import { CreditsController } from "./documents/credits.controller";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ReceivingService } from "./receiving.service";
     RecurringOrdersController,
     DocumentsController,
     ReceivingController,
+    CreditsController,
   ],
   providers: [
     ProcurementService,

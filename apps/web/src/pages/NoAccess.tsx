@@ -1,24 +1,15 @@
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { LogOut } from 'lucide-react'
-import { BrandMark } from '../components/brand/BrandMark'
+import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
 
 export function NoAccess() {
   const { user, logout } = useAuth()
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-wine-50/30 to-gray-50 px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8 text-center"
-      >
-        <div className="flex justify-center mb-6">
-          <BrandMark size={56} className="shadow-lg" />
-        </div>
-        <h1 className="text-lg font-semibold text-gray-900">No restaurant access</h1>
-        <p className="text-sm text-gray-500 mt-3">
+    <AuthShell title="No restaurant access" subtitle="You need an invite to join a workspace.">
+      <AuthCard className="text-center">
+        <p className="text-sm text-gray-500">
           {user?.email ? (
             <>
               You&apos;re signed in as <span className="font-medium text-gray-700">{user.email}</span>, but
@@ -33,9 +24,9 @@ export function NoAccess() {
           <button
             type="button"
             onClick={() => void logout()}
-            className="inline-flex items-center justify-center gap-2 w-full bg-wine-600 text-white rounded-xl py-3 text-sm font-medium hover:bg-wine-700"
+            className="inline-flex items-center justify-center gap-2 w-full bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(114,47,55,0.55)]"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-4 h-4" strokeWidth={1.75} />
             Sign out
           </button>
           <Link
@@ -45,7 +36,7 @@ export function NoAccess() {
             Back to sign in
           </Link>
         </div>
-      </motion.div>
-    </div>
+      </AuthCard>
+    </AuthShell>
   )
 }

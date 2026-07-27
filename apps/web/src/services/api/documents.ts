@@ -1,0 +1,124 @@
+/**
+ * Vendor documents API.
+ *
+ * The receiving screen reads these to pre-fill what the vendor billed and what
+ * their packing slip says shipped, so a manager confirms numbers instead of
+ * transcribing them.
+ */
+
+import { apiClient } from './client'
+
+export interface ProcurementDocument {
+  id: string
+  doc_type:
+    | 'invoice'
+    | 'packing_slip'
+    | 'delivery_receipt'
+    | 'credit_memo'
+    | 'purchase_order'
+    | 'statement'
+    | 'unknown'
+  source_channel: string
+  doc_number: string | null
+  doc_date: string | null
+  status: 'received' | 'extracting' | 'needs_review' | 'verified' | 'rejected' | 'superseded'
+  total: number | null
+  freight: number | null
+  fuel_surcharge: number | null
+  split_case_fee: number | null
+  delivery_fee: number | null
+  tax: number | null
+  other_charges: number | null
+  ties_out: boolean | null
+  tie_out_delta: number | null
+  extraction_confidence: number | null
+  notes: string | null
+  created_at: string
+}
+
+export interface ProcurementDocumentLine {
+  id: string
+  line_no: number
+  vendor_sku: string | null
+  description: string | null
+  vintage: number | null
+  qty: number
+  uom: string
+  pack_size: number
+  qty_bottles: number
+  free_goods_qty: number
+  unit_price: number | null
+  line_total: number | null
+  allowance: number | null
+  order_line_id: string | null
+}
+
+export const documentsApi = {
+  /** Documents linked to one order. Empty when none are attached yet. */
+  async forOrder(orderId: string): Promise<ProcurementDocument[]> {
+    const { data } = await apiClient.get('/procurement/documents', {
+      params: { orderId, limit: 50 },
+    })
+    return data.items ?? []
+  },
+
+  async detail(id: string): Promise<{
+    document: ProcurementDocument
+    lines: ProcurementDocumentLine[]
+  }> {
+    const { data } = await apiClient.get(`/procurement/documents/${id}`)
+    return data
+  },
+
+  /** Confirm the extraction is a faithful transcription of the paper document. */
+  async verify(id: string): Promise<void> {
+    await apiClient.post(`/procurement/documents/${id}/verify`, {})
+  },
+}
+
+/**
+ * Pick the document to trust for each role.
+ *
+ * Newest wins, and a human-verified document beats an unverified one regardless
+ * of age — a manager who has checked a transcription against the paper has said
+ * something stronger than "this arrived more recently".
+ */
+export function pickDocuments(docs: ProcurementDocument[]) {
+  const usable = docs.filter((d) => d.status !== 'rejected' && d.status !== 'superseded')
+  const best = (type: ProcurementDocument['doc_type']) =>
+    usable
+      .filter((d) => d.doc_type === type)
+      .sort((a, b) => {
+        const av = a.status === 'verified' ? 1 : 0
+        const bv = b.status === 'verified' ? 1 : 0
+        if (av !== bv) return bv - av
+        return b.created_at.localeCompare(a.created_at)
+      })[0] ?? null
+
+  return {
+    invoice: best('invoice'),
+    packingSlip: best('packing_slip'),
+    creditMemo: best('credit_memo'),
+  }
+}
+
+/**
+ * Charges to fold into landed cost.
+ *
+ * Freight, fuel surcharge and split-case fees are cost components, not price
+ * variances — treating them as a price deviation makes every delivery from a
+ * house that charges freight look like a vendor error. Tax is excluded on
+ * purpose: it is not part of the cost of the goods.
+ */
+export function allocatedChargesFor(doc: ProcurementDocument | null): number {
+  if (!doc) return 0
+  return (
+    (doc.freight ?? 0) +
+    (doc.fuel_surcharge ?? 0) +
+    (doc.split_case_fee ?? 0) +
+    (doc.delivery_fee ?? 0) +
+    (doc.other_charges ?? 0)
+  )
+}
+
+export default documentsApi

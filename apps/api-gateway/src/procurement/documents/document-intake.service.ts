@@ -5,6 +5,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
 import { ParsedDocument } from "./parsed-document";
+import { matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 
 /**
@@ -308,7 +309,125 @@ export class DocumentIntakeService {
       );
     else await this.autoLink(documentId, input.restaurantId, parsed);
 
+    // Pair lines against what was ordered. Only unambiguous matches are written;
+    // everything else waits for a person. Best-effort — a document is still
+    // useful unmatched, and failing intake over line pairing would lose it.
+    try {
+      await this.matchDocumentLines(documentId, input.restaurantId);
+    } catch (err: any) {
+      this.logger.warn(
+        `line matching failed for document ${documentId}: ${err?.message}`,
+      );
+    }
+
     return documentId;
+  }
+
+  /**
+   * Pair a document's lines with the lines that were ordered.
+   *
+   * Writes `order_line_id` ONLY above the auto threshold — an exact vendor SKU
+   * with no substitution. Everything else comes back as a suggestion for one-tap
+   * confirmation and is deliberately not persisted: a wrong link writes one
+   * wine's invoice price onto another wine's cost lot, nothing looks broken, and
+   * it surfaces months later as unexplained margin drift on two products at once.
+   *
+   * Re-runnable, and a line a human already paired is left alone — so someone who
+   * fixes a mis-paired line and re-runs does not get their correction reverted.
+   */
+  async matchDocumentLines(
+    documentId: string,
+    restaurantId: string,
+  ): Promise<MatchLinesResult> {
+    const empty: MatchLinesResult = {
+      applied: [],
+      suggested: [],
+      unmatchedDocumentLineIds: [],
+      unmatchedOrderLineIds: [],
+    };
+
+    const [{ data: docLines }, { data: links }] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .select(
+          "id, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price, order_line_id",
+        )
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId),
+      this.db
+        .getClient()
+        .from("procurement_document_links")
+        .select("order_id")
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId),
+    ]);
+
+    const orderIds = (links ?? []).map((l) => l.order_id);
+    if (!docLines?.length || !orderIds.length) return empty;
+
+    const { data: orderLines } = await this.db
+      .getClient()
+      .from("procurement_order_items")
+      .select(
+        "id, vendor_sku, wine_name, vintage, total_bottles, final_unit_price",
+      )
+      .eq("restaurant_id", restaurantId)
+      .in("order_id", orderIds);
+    if (!orderLines?.length) return empty;
+
+    const openDocLines = docLines.filter((l) => !l.order_line_id);
+    const takenOrderLines = new Set(
+      docLines.map((l) => l.order_line_id).filter(Boolean) as string[],
+    );
+
+    const result = matchLines(
+      openDocLines.map((l) => ({
+        id: l.id,
+        vendorSku: l.vendor_sku,
+        description: l.description,
+        vintage: l.vintage,
+        formatMl: l.format_ml,
+        qtyBottles: Number(l.qty_bottles ?? 0),
+        unitPrice: l.unit_price == null ? null : Number(l.unit_price),
+      })),
+      orderLines
+        .filter((o) => !takenOrderLines.has(o.id))
+        .map((o) => ({
+          id: o.id,
+          vendorSku: o.vendor_sku,
+          description: o.wine_name,
+          vintage: o.vintage,
+          formatMl: null,
+          qtyBottles: Number(o.total_bottles ?? 0),
+          unitPrice:
+            o.final_unit_price == null ? null : Number(o.final_unit_price),
+        })),
+    );
+
+    for (const m of result.applied) {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({
+          order_line_id: m.orderLineId,
+          match_confidence: m.confidence,
+          match_method: m.method,
+        })
+        .eq("id", m.documentLineId)
+        .eq("restaurant_id", restaurantId);
+      if (error)
+        this.logger.warn(
+          `failed to link document line ${m.documentLineId}: ${error.message}`,
+        );
+    }
+
+    if (result.applied.length || result.suggested.length)
+      this.logger.log(
+        `document ${documentId}: ${result.applied.length} lines paired, ${result.suggested.length} awaiting confirmation`,
+      );
+
+    return result;
   }
 
   /**
