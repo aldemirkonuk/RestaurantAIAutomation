@@ -337,16 +337,31 @@ That narrowness is an advantage in a YC conversation, not a weakness. Do not san
 
 | Track | Deliverable | Status |
 |---|---|---|
-| **A** | ux-optimizer secured *and* made genuinely live. Guarded, tenant-scoped, validated, mounted, tagged, evaluated nightly. Human approval still required for every override. | ✅ **done** |
-| **B0** | Invoice as a first-class multi-line document: header (freight, surcharge, split-case fee, deposits, tax, subtotal, total) that ties out, plus lines. Original file stored. | next |
-| **B0b** | Close the cost-basis loop — verified landed cost writes back to the lot; no invoice means `unmatched`, never an inferred agreement. | |
-| **B0c** | UOM normalization + `free_goods_qty`, so split cases and agreed deals stop alarming. | |
-| **B1** | Extraction endpoint — proposal only, arithmetic self-check, never writes. | |
-| **B2** | Line matching, ranked; never auto-assigns a low-confidence line. | |
-| **B3** | Two-stage mobile receiving: door (photo + case count, <30s, one hand, offline) then bench (bottle count). | |
-| **B4** | Vendor credit ledger with real state and aging. Drafted credit request is downstream of it. | |
+| **A** | ux-optimizer secured *and* made genuinely live. Guarded, tenant-scoped, validated, mounted, tagged, evaluated nightly. Human approval still required for every override. | ✅ |
+| **B0** | Documents as first-class objects with headers that tie out, plus lines. Originals stored. Adopted the pre-existing `procurement_order_items` rather than duplicating it. | ✅ |
+| **B0a** | Four-way match — ordered / shipped / received / billed. `overbilled_vs_ship` outranks everything but a missing invoice. | ✅ |
+| **B0b** | Cost-basis loop closed — verified landed cost writes back to the lot; no invoice means `unmatched`, never an inferred agreement. | ✅ |
+| **B0c** | UOM normalization + free goods, so split cases and agreed deals stop alarming. | ✅ |
+| **B1** | Extraction — proposal only, arithmetic self-check, never writes. Four intake channels into one model. | ✅ |
+| **B1a** | X12 810 / 856 / 812 parsers. No VAN. | ✅ |
+| **B2** | Ranked line matching with substitution detection; never auto-assigns a doubtful line. | ✅ |
+| **B3** | Two-stage receiving — door (photo + case count, <30s, one hand, offline) then bench. | ✅ |
+| **B4** | Vendor credit ledger with real state and aging. Claimed is not recovered. | ✅ |
 | ~~C~~ | ~~POS simulator + adapters~~ | **cut** |
-| **D** | Three role views + the metrics that actually matter (cost drift caught, straight-through rate, days-to-close). | |
+| **D** | Three role views: staff / manager / owner. | ✅ |
+
+**Everything above is connected**, which was not automatic — three modules were
+built with no callers and had to be wired afterwards. The lesson is recorded
+because it recurred: a module with tests and no caller looks finished and is not,
+and this repo already had four such features before this work started
+(ux-optimizer, `InvoiceScannerModal`, `landedCost`, `invoice_scans`).
+
+**Still not done, and deliberately so:** the operator's higher-value metrics —
+cost drift caught, straight-through rate, days-to-close — are computable from
+what now exists but are not built. They are worth more than dollars-recovered and
+should come next. `procurement_order_items` line matching is wired but no screen
+yet shows the *suggestions* for one-tap confirmation; they are returned by
+`POST /procurement/documents/:id/match` and nothing renders them.
 
 **Gate before Track D:** at least one of the owner's real invoices extracted and matched
 end-to-end without hand-editing more than two fields. If that gate fails, the extractor is not
