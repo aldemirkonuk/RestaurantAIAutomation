@@ -70,7 +70,7 @@ Each task was committed atomically:
 1. **Task 1: Write standalone T0–T4 RUBRIC.md** - `302e404` (docs)
 2. **Task 2: Write FUNCTIONALITY-REGISTRY.md with full surface map** - `098ea2f` (docs)
 
-**Plan metadata:** _(final docs commit after this SUMMARY)_
+**Plan metadata:** `845a2e7` (docs: complete plan)
 
 ## Files Created/Modified
 
