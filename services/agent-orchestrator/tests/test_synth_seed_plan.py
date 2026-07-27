@@ -47,10 +47,12 @@ def test_build_seed_plan_dry_run_covers_synth03_surfaces():
     assert tables["user_restaurant_access"]["row_count"] == 3
     assert tables["restaurant_menus"]["row_count"] == 1
     assert tables["menu_items"]["row_count"] >= 1
-    assert tables["restaurant_inventory"]["row_count"] == tables["menu_items"]["row_count"]
-    # Library ALWAYS planned (W6 lock)
-    assert tables["master_wine_library"]["row_count"] == tables["menu_items"]["row_count"]
-    assert tables["master_wine_library_submissions"]["row_count"] >= 1
+    # Inventory/library are unique-by-signature_hash; menu_items keep 1:1 snapshot lines
+    assert tables["restaurant_inventory"]["row_count"] >= 1
+    assert tables["restaurant_inventory"]["row_count"] <= tables["menu_items"]["row_count"]
+    # Library ALWAYS planned (W6 lock) — one provisional wine per unique signature
+    assert tables["master_wine_library"]["row_count"] == tables["restaurant_inventory"]["row_count"]
+    assert tables["master_wine_library_submissions"]["row_count"] == tables["master_wine_library"]["row_count"]
     assert tables["sim_ground_truth_runs"]["row_count"] == 1
     assert tables["sim_ground_truth_facts"]["row_count"] >= 6
 

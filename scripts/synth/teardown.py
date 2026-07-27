@@ -203,7 +203,7 @@ def _handler_master_wine_library(
         client.table("master_wine_library").delete().in_("id", list(wine_ids)).execute()
     try:
         client.table("master_wine_library").delete().eq(
-            "enrichment_source", "sim"
+            "source", "sim"
         ).execute()
     except Exception:  # noqa: BLE001 — column may differ; wine_ids path is primary
         pass

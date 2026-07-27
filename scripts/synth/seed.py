@@ -125,47 +125,72 @@ def build_seed_plan(
     menu_items: list[dict[str, Any]] = []
     inventory: list[dict[str, Any]] = []
     opening_map: dict[str, dict[str, Any]] = {}
+    seen_wine_sigs: set[str] = set()
 
-    for item in items:
+    for idx, item in enumerate(items):
         sig = item["signature_hash"]
         wine_id = sim_wine_id(sig)
         stock_live = compute_opening_stock(
             item, opening_cfg, restaurant_price_tier=price_tier
         )
-        wine_row = {
-            "id": wine_id,
-            "name": item.get("wine_name"),
-            "producer": item.get("producer"),
-            "vintage": item.get("vintage"),
-            "region": item.get("region"),
-            "country": item.get("country"),
-            "grape_variety": item.get("grape_variety"),
-            "wine_type": item.get("primary_type"),
-            "signature_hash": sig,
-            "source": "sim",
-            "enrichment_source": "sim",
-            "data_enrichment": {"source": "sim", "archetype_id": archetype_id},
-        }
-        wines.append(wine_row)
-        submissions.append(
-            {
-                "id": sim_submission_id(archetype_id, sig),
-                "restaurant_id": restaurant_id,
-                "signature_hash": sig,
-                "status": "accepted",
-                "matched_master_id": wine_id,
-                "payload": {
-                    "source": "sim",
-                    "wine_name": item.get("wine_name"),
+        if sig not in seen_wine_sigs:
+            seen_wine_sigs.add(sig)
+            wines.append(
+                {
+                    "id": wine_id,
+                    # Live schema requires wine_id (varchar(20)) in addition to uuid id
+                    "wine_id": f"sim{sig.replace('-', '')[:17]}",
+                    "name": item.get("wine_name"),
                     "producer": item.get("producer"),
-                    "bottle_price": item.get("bottle_price"),
-                    "by_glass_price": item.get("by_glass_price"),
-                },
+                    "vintage": item.get("vintage"),
+                    "region": item.get("region"),
+                    "country": item.get("country"),
+                    "grape_variety": item.get("grape_variety"),
+                    # Live schema: primary_type + source (not wine_type / enrichment_source)
+                    "primary_type": item.get("primary_type") or "unknown",
+                    "signature_hash": sig,
+                    "source": "sim",
+                    "data_enrichment": {"source": "sim", "archetype_id": archetype_id},
+                }
+            )
+            submissions.append(
+                {
+                    "id": sim_submission_id(archetype_id, sig),
+                    "restaurant_id": restaurant_id,
+                    "signature_hash": sig,
+                    "status": "accepted",
+                    "matched_master_id": wine_id,
+                    "payload": {
+                        "source": "sim",
+                        "wine_name": item.get("wine_name"),
+                        "producer": item.get("producer"),
+                        "bottle_price": item.get("bottle_price"),
+                        "by_glass_price": item.get("by_glass_price"),
+                    },
+                }
+            )
+            inventory.append(
+                {
+                    "id": sim_inventory_id(archetype_id, sig),
+                    "restaurant_id": restaurant_id,
+                    "master_wine_id": wine_id,
+                    "wine_name": item.get("wine_name"),
+                    "stock_live": stock_live,
+                    "threshold_min": threshold_min,
+                    "custom_price": item.get("bottle_price"),
+                    "is_active": True,
+                }
+            )
+            opening_map[sig] = {
+                "stock_live": stock_live,
+                "threshold_min": threshold_min,
+                "wine_name": item.get("wine_name"),
+                "master_wine_id": wine_id,
             }
-        )
+        # Menu rows stay 1:1 with snapshot lines; disambiguate duplicate hashes by index
         menu_items.append(
             {
-                "id": sim_menu_item_id(archetype_id, sig),
+                "id": sim_menu_item_id(archetype_id, f"{sig}:{idx}"),
                 "menu_id": menu_id,
                 "restaurant_id": restaurant_id,
                 "name": item.get("wine_name"),
@@ -181,23 +206,6 @@ def build_seed_plan(
                 "status": "approved",
             }
         )
-        inv_row = {
-            "id": sim_inventory_id(archetype_id, sig),
-            "restaurant_id": restaurant_id,
-            "master_wine_id": wine_id,
-            "wine_name": item.get("wine_name"),
-            "stock_live": stock_live,
-            "threshold_min": threshold_min,
-            "custom_price": item.get("bottle_price"),
-            "is_active": True,
-        }
-        inventory.append(inv_row)
-        opening_map[sig] = {
-            "stock_live": stock_live,
-            "threshold_min": threshold_min,
-            "wine_name": item.get("wine_name"),
-            "master_wine_id": wine_id,
-        }
 
     run_id = sim_run_id(archetype_id)
     run_row = build_run_row(
@@ -380,16 +388,17 @@ def execute_atomic_seed(payload: Mapping[str, Any], conn: Any) -> dict[str, Any]
 
         for user in payload.get("users") or []:
             cur.execute(
-                "INSERT INTO users (user_id, email, name, role, auth_provider) "
+                "INSERT INTO users (user_id, email, name, role, email_verified) "
                 "VALUES (%s,%s,%s,%s,%s) "
                 "ON CONFLICT (user_id) DO UPDATE SET "
-                "email=EXCLUDED.email, name=EXCLUDED.name, role=EXCLUDED.role",
+                "email=EXCLUDED.email, name=EXCLUDED.name, role=EXCLUDED.role, "
+                "email_verified=EXCLUDED.email_verified",
                 (
                     user["user_id"],
                     user.get("email"),
                     user.get("name"),
                     user.get("role"),
-                    "email",
+                    True,
                 ),
             )
 
@@ -423,24 +432,27 @@ def execute_atomic_seed(payload: Mapping[str, Any], conn: Any) -> dict[str, Any]
                 vintage_i = None
             cur.execute(
                 "INSERT INTO master_wine_library "
-                "(id, name, producer, vintage, region, country, grape_variety, "
-                "wine_type, signature_hash, enrichment_source) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "(id, wine_id, name, producer, vintage, region, country, grape_variety, "
+                "primary_type, signature_hash, source, data_enrichment) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb) "
                 "ON CONFLICT (id) DO UPDATE SET "
                 "name=EXCLUDED.name, producer=EXCLUDED.producer, "
                 "signature_hash=EXCLUDED.signature_hash, "
-                "enrichment_source=EXCLUDED.enrichment_source",
+                "source=EXCLUDED.source, primary_type=EXCLUDED.primary_type, "
+                "data_enrichment=EXCLUDED.data_enrichment",
                 (
                     wine["id"],
+                    wine.get("wine_id") or f"sim-{wine['id'][:8]}",
                     wine.get("name"),
                     wine.get("producer"),
                     vintage_i,
                     wine.get("region"),
                     wine.get("country"),
                     wine.get("grape_variety"),
-                    wine.get("wine_type"),
+                    wine.get("primary_type") or "unknown",
                     wine.get("signature_hash"),
-                    wine.get("enrichment_source") or "sim",
+                    wine.get("source") or "sim",
+                    json.dumps(wine.get("data_enrichment") or {"source": "sim"}),
                 ),
             )
 
@@ -606,7 +618,9 @@ def _call_seed_rpc_http(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
     resp = httpx.post(url, json={"payload": dict(payload)}, headers=headers, timeout=120.0)
     if resp.status_code >= 400:
-        raise RuntimeError(f"seed_sim_restaurant RPC failed status={resp.status_code}")
+        raise RuntimeError(
+            f"seed_sim_restaurant RPC failed status={resp.status_code} body={resp.text[:500]}"
+        )
     data = resp.json()
     if isinstance(data, dict):
         return data

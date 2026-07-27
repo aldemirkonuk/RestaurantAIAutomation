@@ -152,17 +152,19 @@ def _upsert_public_user(
         **headers,
         "Prefer": "resolution=merge-duplicates,return=minimal",
     }
+    # Live public.users has no auth_provider column — mirror Auth id only.
     payload = {
         "user_id": user_id,
         "email": email,
         "name": f"Sim {role.title()}",
         "role": role,
-        "auth_provider": "email",
+        "email_verified": True,
     }
     resp = client.post(url, json=payload, headers=rest_headers, timeout=30.0)
     if resp.status_code not in (200, 201, 204):
         raise RuntimeError(
-            f"Failed to upsert public.users mirror for role={role} status={resp.status_code}"
+            f"Failed to upsert public.users mirror for role={role} "
+            f"status={resp.status_code} body={resp.text[:300]}"
         )
 
 

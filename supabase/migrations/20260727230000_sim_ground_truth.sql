@@ -122,21 +122,22 @@ BEGIN
     default_threshold_min = EXCLUDED.default_threshold_min,
     is_active = EXCLUDED.is_active;
 
-  -- public.users mirrors
+  -- public.users mirrors (live schema: no auth_provider)
   FOR v_user IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'users', '[]'::jsonb))
   LOOP
-    INSERT INTO users (user_id, email, name, role, auth_provider)
+    INSERT INTO users (user_id, email, name, role, email_verified)
     VALUES (
       (v_user->>'user_id')::uuid,
       v_user->>'email',
       v_user->>'name',
       v_user->>'role',
-      'email'
+      true
     )
     ON CONFLICT (user_id) DO UPDATE SET
       email = EXCLUDED.email,
       name = EXCLUDED.name,
-      role = EXCLUDED.role;
+      role = EXCLUDED.role,
+      email_verified = EXCLUDED.email_verified;
   END LOOP;
 
   FOR v_member IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'organization_members', '[]'::jsonb))
@@ -164,7 +165,7 @@ BEGIN
       is_active = EXCLUDED.is_active;
   END LOOP;
 
-  -- provisional master wines (source/enrichment_source = sim)
+  -- provisional master wines (source = sim; live schema uses primary_type not wine_type)
   FOR v_wine IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'master_wine_library', '[]'::jsonb))
   LOOP
     BEGIN
@@ -173,26 +174,33 @@ BEGIN
       v_vintage := NULL;
     END;
     INSERT INTO master_wine_library (
-      id, name, producer, vintage, region, country, grape_variety,
-      wine_type, signature_hash, enrichment_source
+      id, wine_id, name, producer, vintage, region, country, grape_variety,
+      primary_type, signature_hash, source, data_enrichment
     )
     VALUES (
       (v_wine->>'id')::uuid,
+      COALESCE(
+        NULLIF(v_wine->>'wine_id', ''),
+        'sim' || left(replace(COALESCE(v_wine->>'signature_hash', v_wine->>'id'), '-', ''), 17)
+      ),
       v_wine->>'name',
       v_wine->>'producer',
       v_vintage,
       v_wine->>'region',
       v_wine->>'country',
       v_wine->>'grape_variety',
-      v_wine->>'wine_type',
+      COALESCE(v_wine->>'primary_type', v_wine->>'wine_type', 'unknown'),
       v_wine->>'signature_hash',
-      COALESCE(v_wine->>'enrichment_source', 'sim')
+      COALESCE(v_wine->>'source', 'sim'),
+      COALESCE(v_wine->'data_enrichment', jsonb_build_object('source', 'sim'))
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       producer = EXCLUDED.producer,
       signature_hash = EXCLUDED.signature_hash,
-      enrichment_source = EXCLUDED.enrichment_source;
+      source = EXCLUDED.source,
+      primary_type = EXCLUDED.primary_type,
+      data_enrichment = EXCLUDED.data_enrichment;
   END LOOP;
 
   FOR v_sub IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'master_wine_library_submissions', '[]'::jsonb))

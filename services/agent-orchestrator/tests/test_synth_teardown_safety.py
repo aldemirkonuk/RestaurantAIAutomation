@@ -105,7 +105,7 @@ def test_library_handler_is_sim_filtered_never_wholesale():
     client = MagicMock()
     chain = client.table.return_value.delete.return_value
     chain.in_.return_value.execute.return_value = MagicMock(data=[])
-    # Also allow .eq("enrichment_source","sim") style chains
+    # Also allow .eq("source","sim") style chains
     chain.eq.return_value.execute.return_value = MagicMock(data=[])
 
     wine_ids = ["cccccccc-cccc-cccc-cccc-cccccccccccc"]
