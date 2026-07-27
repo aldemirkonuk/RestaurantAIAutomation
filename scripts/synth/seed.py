@@ -1,7 +1,7 @@
 """Dry-run seed plans + atomic apply via seed_sim_restaurant RPC (SYNTH-03/04).
 
 Default path is dry-run (``apply=False``). Cloud mutations require ``apply=True``.
-CLI ``--apply`` multi-archetype gate lands in 37-03 — not here.
+``apply=True`` always runs write-set ↔ teardown coverage gate (D-11/D-12).
 """
 
 from __future__ import annotations
@@ -642,11 +642,20 @@ def apply_seed(
 
     Prefer ``seed_sim_restaurant`` RPC; ``DATABASE_URL`` + ``execute_atomic_seed``
     is secondary. ``rpc_caller`` is injectable for unit tests.
+
+    Cloud ``apply=True`` always requires write-set ↔ teardown coverage (D-11).
     """
     import os
 
+    from scripts.synth.teardown import refuse_multi_archetype_apply_unless_ready
+
     if not apply:
         return build_seed_plan(archetype_id, overrides=overrides)
+
+    refuse_multi_archetype_apply_unless_ready(
+        archetypes=[archetype_id],
+        apply=True,
+    )
 
     personas = ensure_personas()
     roster = [

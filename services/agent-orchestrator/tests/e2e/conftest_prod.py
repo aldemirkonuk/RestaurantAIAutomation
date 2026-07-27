@@ -286,6 +286,22 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
             extra={"orphaned_records": failed_deletes},
         )
 
+    # Step 4: Shared sim teardown (Phase 37 D-13) — same registry as pnpm synth:teardown.
+    # NEVER deletes e2e-test-restaurant; NEVER deletes SIM_* Auth users.
+    # Does NOT fork a second table list — imports scripts.synth.teardown.
+    try:
+        from scripts.synth.teardown import teardown_sim
+
+        teardown_sim(client=prod_supabase, apply=True)
+    except Exception as exc:  # noqa: BLE001 — absolute never-raise
+        if _sentry_dsn:
+            sentry_sdk.capture_message(
+                f"Sim teardown via conftest_prod failed: {exc}",
+                level="warning",
+                tags={"sim-orphan": "true"},
+                extra={"error": str(exc)},
+            )
+
 
 # ---------------------------------------------------------------------------
 # Retry utilities (RESEARCH.md Pattern 3)

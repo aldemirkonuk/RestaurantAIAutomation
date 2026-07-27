@@ -1,19 +1,21 @@
 # Synthetic Tenant Isolation Convention (TFND-06)
 
-**Status:** Convention locked in Phase 36. Generator + teardown **code** expansion is implemented in **Phase 37** — this document does not ship seed/teardown scripts.
+**Status:** Convention locked in Phase 36. Generator + teardown **code** expansion is implemented in **Phase 37** (`scripts/synth/teardown.py`, write-set gate, CLI/API).
 
 **Extends (do not fork):**
 
-- `services/agent-orchestrator/tests/e2e/conftest_prod.py` — JWT (`prod_jwt`), service-role client, `E2E_TABLES` teardown, Sentry orphans
+- `services/agent-orchestrator/tests/e2e/conftest_prod.py` — JWT (`prod_jwt`), service-role client, `E2E_TABLES` teardown, Sentry orphans; **also calls shared `teardown_sim`**
 - `services/agent-orchestrator/scripts/setup_e2e_anchor.py` — permanent anchor upsert
+- `scripts/synth/teardown.py` — Phase 37 shared FK-safe sim teardown (imported by CLI + conftest)
+- `scripts/synth/write_set.py` — `SYNTH_WRITE_SET == TEARDOWN_TABLES` + handler coverage gate
 
 ---
 
 ## Purpose
 
-Lock the `sim-*` synthetic restaurant isolation model (D-18..D-21) so later Testing Campaign phases (37+) implement generators and expanded teardown against a single documented contract.
+Lock the `sim-*` synthetic restaurant isolation model (D-18..D-21) so Testing Campaign phases (37+) implement generators and expanded teardown against a single documented contract.
 
-Phase 36 delivers **documentation only**. Do not treat this file as permission to invent a second production E2E harness.
+Phase 36 delivered **documentation**. Phase 37 implements seed/teardown expansion — this document remains the hard-gate contract (never weaken never-delete-e2e).
 
 ---
 
@@ -30,20 +32,34 @@ Phase 36 delivers **documentation only**. Do not treat this file as permission t
 
 ---
 
+## ID strategy (Phase 37 implemented)
+
+Live cloud `restaurants.id` is **UUID**. Phase 37 uses:
+
+| Field | Strategy |
+|-------|----------|
+| `restaurants.id` | Deterministic **UUID5** (`sim.restaurant.{archetype}`) |
+| `restaurants.slug` | `sim-{archetype}` — teardown filter: `slug LIKE 'sim-%'` |
+| Provisional wines | UUID5 `sim.wine.*` + `enrichment_source=sim` (sim-filtered library teardown only) |
+
+Do **not** use string PKs like `sim-bistro` in `restaurants.id`. Conceptual `sim-*` id text in older notes maps to **slug** + UUID5.
+
+---
+
 ## ID prefixes
 
 ```text
-SIM_ID_PREFIX  = "sim-"   # restaurants.id / restaurant_id
-SIM_ROW_PREFIX = "sim-"   # deterministic row ids (parallel to e2e-%)
+SIM_ID_PREFIX  = "sim-"   # restaurants.slug (and conceptual restaurant_id prefix)
+SIM_ROW_PREFIX = "sim-"   # deterministic row namespaces (uuid5 sim.*)
 E2E_ANCHOR     = "e2e-test-restaurant"  # NEVER deleted; coexistence OK
 ```
 
 Rules:
 
-- Every synthetic tenant restaurant id matches `sim-*` (e.g. `sim-bistro-001`).
-- Deterministic child rows use `sim-` prefixes (parallel to Phase 25 `e2e-%` tags).
+- Every synthetic tenant restaurant **slug** matches `sim-*` (e.g. `sim-bistro`).
+- Deterministic child rows use uuid5 under `sim.*` namespaces.
 - **Never** reuse production restaurant UUIDs for sim tenants.
-- Conceptual teardown sweep: `DELETE WHERE restaurant_id LIKE 'sim-%' AND id LIKE 'sim-%'` (and/or per-restaurant after a run).
+- Teardown resolves IDs via `SELECT id FROM restaurants WHERE slug LIKE 'sim-%'` then deletes children by those UUIDs.
 
 ---
 
@@ -51,7 +67,7 @@ Rules:
 
 Before any JWT / user-path assertion against a sim tenant, **all** of the following must be true:
 
-- [ ] `restaurants` row with `id` matching `sim-*`
+- [ ] `restaurants` row with slug matching `sim-*` (UUID5 id)
 - [ ] `user_restaurant_access` (URA) membership row linking Auth user ↔ sim restaurant
 - [ ] Auth user used for `prod_jwt`-style password grant (`POST /auth/v1/token?grant_type=password`)
 - [ ] Service-role allowed for **seed/teardown only** (never for claiming user-path RLS proof)
@@ -64,18 +80,21 @@ Service-role seed/teardown runs only from CI secrets / server scripts — **neve
 
 ---
 
-## Idempotent teardown (D-20) + gap vs registry
+## Idempotent teardown (D-20) + Phase 37 expansion
 
 ### Contract
 
 - Idempotent: re-running teardown is safe; missing rows are not failures.
 - Failures → Sentry tag `sim-orphan` / `e2e-orphan` — **NEVER raise** in teardown.
 - Never delete `e2e-test-restaurant` anchor.
+- Never delete SIM_* Auth users (durable fixtures).
+- Never wholesale-wipe `master_wine_library` — sim-filtered only (`enrichment_source=sim` / uuid5 `sim.wine.*`).
 - Extend (do not replace) the registry + tag-based sweep pattern in `conftest_prod.py`.
+- Shared module: `scripts/synth/teardown.py` (`teardown_sim`, `TEARDOWN_HANDLERS`, `DELETE_ORDER`).
 
-### Current `E2E_TABLES` (verbatim from `conftest_prod.py:251-260`)
+### Current `E2E_TABLES` (verbatim from `conftest_prod.py` e2e sweep)
 
-These eight tables are the **only** tables in the current production E2E tag-based sweep today:
+These eight tables remain the **e2e-% tag-based** sweep (Phase 25):
 
 ```python
 E2E_TABLES = [
@@ -90,28 +109,19 @@ E2E_TABLES = [
 ]
 ```
 
-Phase 25 sweep filter (anchor): `restaurant_id = 'e2e-test-restaurant' AND id LIKE 'e2e-%'`.  
-Sim extension (conceptual): `restaurant_id LIKE 'sim-%' AND id LIKE 'sim-%'` on the same (and later expanded) table list.
+Phase 25 sweep filter (anchor): `restaurant_id = 'e2e-test-restaurant' AND id LIKE 'e2e-%'`.
+
+### Phase 37 `SYNTH_WRITE_SET` / shared teardown
+
+Generator write-set equals teardown tables **and** handlers (D-11/D-12). See `scripts/synth/write_set.py` + `scripts/synth/teardown.py`. Hard gate: refuse multi-archetype `--apply` until `assert_teardown_coverage()` is green (verified by `test_synth_write_set_gate.py`).
+
+FK-safe order includes `restaurant_menus` (never shorthand `menus`) and sim-filtered `master_wine_library*`.
 
 ### Gap vs FUNCTIONALITY-REGISTRY Table D (C2)
 
-Registry Table D domain buckets beyond these 8 tables are **out of current teardown**. Phase 37 **must** expand teardown table registry **before** first multi-archetype seed.
+Registry Table D domain buckets beyond the generator write-set remain **out of sim teardown** until a later phase widens the seed surface. Phase 37 closes the **generator write-set** gap (orgs, restaurants, URA, menus, inventory, oracle, provisional library) — not every registry domain.
 
-| Registry Table D domain | Example tables (from registry) | Teardown coverage |
-|-------------------------|--------------------------------|-------------------|
-| Identity / tenancy | `users`, `user_roles`, `user_restaurant_access`, … | none (seed/teardown of auth+URA is separate checklist; not in `E2E_TABLES`) |
-| Catalog / wine / studio | `master_wine_library`, `menu_items`, … | partial (`master_wine_library_submissions` only) |
-| Inventory | `restaurant_inventory`, `inventory_*`, … | partial (`inventory_stock` only) |
-| POS / sales | `sales_events`, `toast_item_mappings`, … | partial (`pos_webhook_logs` only) |
-| Procurement / vendors | `providers`, `procurement_*`, `rfq_requests`, … | none |
-| Communications | `email_prospects`, `restaurant_inbound_addresses`, … | partial (`order_interactions` only) |
-| Calendar | `calendar_*`, `events`, … | partial (`calendar_events` only) |
-| Analytics / reports | `generated_reports`, `analytics_cache`, … | none |
-| Notifications | `notifications`, `push_subscriptions`, … | partial (`notification_deliveries`, `notification_logs`) |
-| AI assistants | `sommelier_conversations`, … | none |
-| Platform | `idempotency_keys`, `outbox`, `saga_state`, … | partial (`system_audit_log` only) |
-
-**Phase 37 hard gate:** Phase 37 must expand teardown before multi-archetype seed. Incomplete coverage → orphan risk in production; do not widen seed surface until the table registry catches up.
+**Phase 37 hard gate (satisfied when write-set tests green):** expand teardown before multi-archetype seed. Incomplete coverage → orphan risk; do not widen seed surface until the table registry catches up.
 
 ---
 
