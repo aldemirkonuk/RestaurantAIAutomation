@@ -1,8 +1,8 @@
 # Phase 37: Synthetic Restaurant Engine - Pattern Map
 
 **Mapped:** 2026-07-27
-**Files analyzed:** 18
-**Analogs found:** 17 / 18
+**Files analyzed:** 19
+**Analogs found:** 18 / 19
 
 ## File Classification
 
@@ -16,7 +16,8 @@
 | `scripts/synth/snapshots.py` | service | file-I/O | `web_crawler._persist_crawled_wines` + `e2e_crawl_harness.py` | exact |
 | `scripts/synth/ids.py` | utility | transform | `scripts/seed_database.py` uuid5 constants | exact |
 | `scripts/synth/auth_personas.py` | service | request-response | `setup_e2e_anchor.py` Auth Admin | exact |
-| `scripts/synth/seed.py` | service | CRUD / batch | Nest `menus.service` columns + `seed_database.py` upserts — **TX via psycopg2/RPC (not PostgREST)** | role-match |
+| `scripts/synth/oracle.py` | utility | transform | RESEARCH Ground-truth schema payloads + `seed_sim_restaurant` SECURITY DEFINER migration | role-match |
+| `scripts/synth/seed.py` | service | CRUD / batch | Nest `menus.service` columns + `seed_database.py` upserts — **TX via RPC `seed_sim_restaurant` (not PostgREST)** | role-match |
 | `scripts/synth/write_set.py` | utility | transform | `conftest_prod.py` `E2E_TABLES` registry | exact |
 | `scripts/synth/teardown.py` | service | batch | `conftest_prod.py` `teardown_e2e_records` | exact |
 | `tests/e2e/conftest_prod.py` (extend) | middleware | event-driven | self — import shared `teardown.py` | exact |
@@ -302,12 +303,23 @@ E2E_TABLES = [
 ```
 
 **Phase 37 adaptations:**
-1. Single shared module: `SYNTH_WRITE_SET == TEARDOWN_TABLES` (D-11/D-12).
+1. Single shared module: `SYNTH_WRITE_SET == TEARDOWN_TABLES` (D-11/D-12) — always includes `master_wine_library` + `master_wine_library_submissions`.
 2. Resolve IDs via `restaurants.slug LIKE 'sim-%'` (not `restaurant_id = 'e2e-test-restaurant'`).
 3. Tag Sentry `sim-orphan` (not only `e2e-orphan`).
 4. Hard-exclude e2e anchor slug/id forever.
-5. Never delete Auth users for SIM_* personas.
+5. Never delete Auth users for SIM_* personas (`users` handler = NO-OP).
 6. Import from `conftest_prod` session teardown OR have conftest call `teardown_sim()` — one list only (D-13).
+7. FK-safe DELETE_ORDER must include `restaurant_menus` (not shorthand `menus`) and sim-filtered library deletes after menu_items / before URA:
+   `sim_ground_truth_facts → sim_ground_truth_runs → restaurant_inventory → menu_items → restaurant_menus → master_wine_library_submissions → master_wine_library (source=sim / uuid5 sim.wine.* only) → user_restaurant_access → restaurants → organization_members → organizations`
+8. `test_synth_teardown_safety` asserts TEARDOWN_HANDLERS cover every SYNTH_WRITE_SET table.
+
+---
+
+### `scripts/synth/oracle.py` (utility, transform)
+
+**Analog:** RESEARCH Ground-truth schema (D-08/D-09) + migration SECURITY DEFINER seed RPC
+
+**Copy for Phase 37:** Build `sim_ground_truth_runs` row + `sim_ground_truth_facts` payloads (`profile`, `roster`, `sku`, `menu_price`, `opening_stock`, `menu_quality_meta`). Never include passwords in roster. Consumed by `seed_sim_restaurant` payload inside the atomic TX.
 
 ---
 

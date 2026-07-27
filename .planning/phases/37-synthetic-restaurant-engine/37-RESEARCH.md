@@ -284,12 +284,13 @@ SYNTH_WRITE_SET = [
   "restaurant_menus",
   "menu_items",
   "restaurant_inventory",
-  "master_wine_library",  # only if generator inserts provisional wines
-  "master_wine_library_submissions",  # only if written
+  "master_wine_library",  # always in write-set; seed inserts provisional sim wines
+  "master_wine_library_submissions",  # always in write-set when seed writes submissions
   "sim_ground_truth_facts",
   "sim_ground_truth_runs",
 ]
 assert set(SYNTH_WRITE_SET) == set(TEARDOWN_TABLES)
+# Teardown for library tables: sim-filtered only (source=sim / uuid5 sim.wine.*) — never wholesale wipe
 ```
 
 ### Anti-Patterns to Avoid
@@ -542,36 +543,35 @@ ALTER TABLE sim_ground_truth_facts ENABLE ROW LEVEL SECURITY;
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
 | A1 | v1 ships 5 named recipes only (no parameter-skin variants) | Discretion | Extra plan tasks if user wants skins in v1 |
-| A2 | Avli Taverna is acceptable Turkish clone source (labeled menus exist; public URL refresh needed) | Mapping | Need alternate Turkish menu URL from user |
-| A3 | `DATABASE_URL` / direct Postgres available in ops for transactional seed (else SQL RPC migration required) | Atomic seed | Must ship `seed_sim_restaurant()` RPC instead of psycopg2 |
+| A2 | Avli Taverna is Turkish clone source | Mapping | **RESOLVED** — locked Avli |
+| A3 | Prefer `seed_sim_restaurant` RPC for atomic seed | Atomic seed | **RESOLVED** — RPC primary; DSN secondary |
 | A4 | Priced ratio &lt; 0.9 ⇒ `menu_quality=partial` threshold | Pitfall 4 | Adjust threshold after first refresh |
-| A5 | Provisional `master_wine_library` inserts are in write-set when generator creates unmatched wines | Write-set | Orphans in library if teardown omits them |
+| A5 | Provisional `master_wine_library` always in write-set; teardown sim-filtered | Write-set | **RESOLVED** — 37-03 handlers required |
 
-**If A3 is wrong:** Planner should prefer a Supabase migration defining `seed_sim_restaurant(jsonb)` SECURITY DEFINER executed via service role RPC — still one TX.
+**If A3 were wrong (historical):** Prefer SECURITY DEFINER `seed_sim_restaurant` — now the locked primary path.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Transactional transport: psycopg2 DSN vs RPC?**
-   - What we know: Service-role PostgREST is non-transactional across tables; D-10 requires atomicity.
-   - What's unclear: Whether CI/ops always have `DATABASE_URL` for cloud.
-   - Recommendation: Prefer RPC migration if DSN not guaranteed; probe env in Wave 0.
+1. **Transactional transport: psycopg2 DSN vs RPC?** — **RESOLVED**
+   - **Lock:** Prefer `seed_sim_restaurant(payload jsonb)` SECURITY DEFINER RPC as the primary fail-closed atomic TX for live seed + oracle (D-10). Do **not** use multi-call PostgREST as the apply path.
+   - Optional `DATABASE_URL` / psycopg2 path is secondary only (same payload builder); never DSN-only as the sole plan.
+   - Plans: 37-02 Task 1/3.
 
-2. **Turkish clone final URL?**
-   - What we know: Avli labels exist; not in `e2e_restaurants.json`.
-   - What's unclear: Preferred live website URL for refresh crawl.
-   - Recommendation: Default Avli; user can override in discuss if needed.
+2. **Turkish clone final URL?** — **RESOLVED**
+   - **Lock:** Turkish archetype = **Avli Taverna Lincoln Park** (RESEARCH default mapping). Bootstrap from Avli PDF/images / refresh crawl; `menu_quality=partial` OK (D-03).
+   - Plans: 37-01 Task 3.
 
-3. **Should generator insert into `master_wine_library` or only link existing?**
-   - What we know: Nest menus.service resolves/creates provisional wines.
-   - What's unclear: How aggressive sim should be about library pollution.
-   - Recommendation: Create provisional wines with deterministic wine_ids / signatures; include in write-set + teardown OR mark with metadata `source=sim` and delete on teardown.
+3. **Should generator insert into `master_wine_library` or only link existing?** — **RESOLVED**
+   - **Lock:** Generator **does** insert provisional wines with deterministic UUID5 ids (`sim.wine.*`) and/or metadata `source=sim`.
+   - `master_wine_library` + `master_wine_library_submissions` are **always** members of `SYNTH_WRITE_SET` / `TEARDOWN_TABLES` (not "if used").
+   - Teardown deletes **sim-filtered only** (provisional/sim-tagged / UUID5 under `sim.wine.*`) — **never** wipe the shared library wholesale.
+   - Plans: 37-01 write_set; 37-02 seed; 37-03 teardown Task 1.
 
-4. **Phase 25 `e2e-test-restaurant` anchor absent from live restaurants list**
-   - What we know: Recent restaurants are UUID slugs; no e2e row returned in sample [VERIFIED].
-   - What's unclear: Whether anchor lives elsewhere or was never applied.
-   - Recommendation: Teardown still hard-codes never-delete guards; do not block Phase 37 on anchor presence.
+4. **Phase 25 `e2e-test-restaurant` anchor absent from live restaurants list** — **RESOLVED**
+   - **Lock:** Teardown **always** hard-guards never-delete for `e2e-test-restaurant` (slug/id), whether or not the row is present in cloud. Do not block Phase 37 on anchor presence.
+   - Plans: 37-03 Task 1.
 
 ---
 
@@ -693,7 +693,7 @@ ALTER TABLE sim_ground_truth_facts ENABLE ROW LEVEL SECURITY;
 - ROADMAP Phase 41 success criteria — drives oracle fact richness
 
 ### Tertiary (LOW confidence)
-- Avli as final Turkish URL (labels exist; live crawl URL not verified this session) — see A2
+- Avli as Turkish clone URL — **RESOLVED** (locked Avli; see Open Questions)
 
 ---
 
@@ -732,7 +732,7 @@ ALTER TABLE sim_ground_truth_facts ENABLE ROW LEVEL SECURITY;
 | Pitfalls | HIGH | Premortem C2 + schema drift confirmed |
 
 ### Open Questions
-- DSN vs seed RPC for transactions; final Turkish crawl URL; master_wine_library teardown policy
+All four prior open questions are **RESOLVED** (see `## Open Questions (RESOLVED)`): RPC preferred; Avli Turkish; sim-filtered library teardown always in write-set; e2e anchor always hard-guarded.
 
 ### Ready for Planning
 Research complete. Planner can now create PLAN.md files.
