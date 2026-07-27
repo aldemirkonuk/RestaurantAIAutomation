@@ -163,7 +163,12 @@ def _cmd_teardown(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    # pnpm/npm often forward a literal "--" separator into argv
+    if argv is None:
+        raw = [a for a in sys.argv[1:] if a != "--"]
+    else:
+        raw = [a for a in argv if a != "--"]
+    args = parser.parse_args(raw)
     if args.command == "refresh":
         return _cmd_refresh(args)
     if args.command == "generate":
