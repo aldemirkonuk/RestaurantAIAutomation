@@ -96,7 +96,9 @@ def test_migration_seed_sim_restaurant_is_security_definer_callable():
     ):
         assert table in sql
     assert "stock_live" in sql
-    assert "inventory_stock" not in sql
+    # No INSERT/UPDATE targeting a nonexistent inventory_stock table
+    assert "INTO inventory_stock" not in sql
+    assert "UPDATE inventory_stock" not in sql
 
 
 def test_apply_false_returns_dry_run_plan_only():

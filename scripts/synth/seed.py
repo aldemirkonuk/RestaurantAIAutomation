@@ -10,7 +10,7 @@ import hashlib
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping  # Any used by execute_atomic_seed conn
 
 from scripts.synth.auth_personas import PERSONA_ROLES, ensure_personas
 from scripts.synth.ids import SIM_NS, sim_org_id, sim_restaurant_id, sim_slug
@@ -332,6 +332,305 @@ def build_rpc_payload(plan: Mapping[str, Any]) -> dict[str, Any]:
     return dict(plan["payload"])
 
 
+def execute_atomic_seed(payload: Mapping[str, Any], conn: Any) -> dict[str, Any]:
+    """Fail-closed single-TX writer (secondary DATABASE_URL / unit-test path).
+
+    Writes live SYNTH_WRITE_SET rows then oracle. Any exception → ROLLBACK.
+    Prefer ``seed_sim_restaurant`` SECURITY DEFINER RPC in production (primary).
+    """
+    restaurant = payload["restaurant"]
+    slug = str(restaurant.get("slug") or "")
+    if not slug.startswith("sim-"):
+        raise ValueError(f"refusing non-sim slug: {slug!r}")
+    restaurant_id = restaurant["id"]
+
+    cur = conn.cursor()
+    try:
+        org = payload["organization"]
+        cur.execute(
+            "INSERT INTO organizations (id, name) VALUES (%s, %s) "
+            "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name",
+            (org["id"], org["name"]),
+        )
+
+        cur.execute(
+            "INSERT INTO restaurants "
+            "(id, organization_id, name, slug, timezone, city, country, "
+            "cuisine_type, default_threshold_min, is_active) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (id) DO UPDATE SET "
+            "organization_id=EXCLUDED.organization_id, name=EXCLUDED.name, "
+            "slug=EXCLUDED.slug, timezone=EXCLUDED.timezone, city=EXCLUDED.city, "
+            "country=EXCLUDED.country, cuisine_type=EXCLUDED.cuisine_type, "
+            "default_threshold_min=EXCLUDED.default_threshold_min, "
+            "is_active=EXCLUDED.is_active",
+            (
+                restaurant_id,
+                restaurant.get("organization_id"),
+                restaurant.get("name"),
+                slug,
+                restaurant.get("timezone"),
+                restaurant.get("city"),
+                restaurant.get("country"),
+                restaurant.get("cuisine_type"),
+                restaurant.get("default_threshold_min"),
+                restaurant.get("is_active", True),
+            ),
+        )
+
+        for user in payload.get("users") or []:
+            cur.execute(
+                "INSERT INTO users (user_id, email, name, role, auth_provider) "
+                "VALUES (%s,%s,%s,%s,%s) "
+                "ON CONFLICT (user_id) DO UPDATE SET "
+                "email=EXCLUDED.email, name=EXCLUDED.name, role=EXCLUDED.role",
+                (
+                    user["user_id"],
+                    user.get("email"),
+                    user.get("name"),
+                    user.get("role"),
+                    "email",
+                ),
+            )
+
+        for member in payload.get("organization_members") or []:
+            cur.execute(
+                "INSERT INTO organization_members "
+                "(organization_id, user_id, role) VALUES (%s,%s,%s) "
+                "ON CONFLICT (organization_id, user_id) DO UPDATE SET role=EXCLUDED.role",
+                (member["organization_id"], member["user_id"], member["role"]),
+            )
+
+        for ura in payload.get("user_restaurant_access") or []:
+            cur.execute(
+                "INSERT INTO user_restaurant_access "
+                "(user_id, restaurant_id, role, is_active) VALUES (%s,%s,%s,%s) "
+                "ON CONFLICT (user_id, restaurant_id) DO UPDATE SET "
+                "role=EXCLUDED.role, is_active=EXCLUDED.is_active",
+                (
+                    ura["user_id"],
+                    ura["restaurant_id"],
+                    ura["role"],
+                    ura.get("is_active", True),
+                ),
+            )
+
+        for wine in payload.get("master_wine_library") or []:
+            vintage = wine.get("vintage")
+            try:
+                vintage_i = int(vintage) if vintage is not None else None
+            except (TypeError, ValueError):
+                vintage_i = None
+            cur.execute(
+                "INSERT INTO master_wine_library "
+                "(id, name, producer, vintage, region, country, grape_variety, "
+                "wine_type, signature_hash, enrichment_source) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "name=EXCLUDED.name, producer=EXCLUDED.producer, "
+                "signature_hash=EXCLUDED.signature_hash, "
+                "enrichment_source=EXCLUDED.enrichment_source",
+                (
+                    wine["id"],
+                    wine.get("name"),
+                    wine.get("producer"),
+                    vintage_i,
+                    wine.get("region"),
+                    wine.get("country"),
+                    wine.get("grape_variety"),
+                    wine.get("wine_type"),
+                    wine.get("signature_hash"),
+                    wine.get("enrichment_source") or "sim",
+                ),
+            )
+
+        for sub in payload.get("master_wine_library_submissions") or []:
+            cur.execute(
+                "INSERT INTO master_wine_library_submissions "
+                "(id, restaurant_id, signature_hash, status, matched_master_id, payload) "
+                "VALUES (%s,%s,%s,%s,%s,%s::jsonb) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "status=EXCLUDED.status, matched_master_id=EXCLUDED.matched_master_id, "
+                "payload=EXCLUDED.payload",
+                (
+                    sub["id"],
+                    sub.get("restaurant_id"),
+                    sub.get("signature_hash"),
+                    sub.get("status") or "accepted",
+                    sub.get("matched_master_id"),
+                    json.dumps(sub.get("payload") or {}),
+                ),
+            )
+
+        menu = payload["restaurant_menu"]
+        cur.execute(
+            "INSERT INTO restaurant_menus "
+            "(id, restaurant_id, name, menu_type, status, season) "
+            "VALUES (%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (id) DO UPDATE SET "
+            "name=EXCLUDED.name, menu_type=EXCLUDED.menu_type, status=EXCLUDED.status",
+            (
+                menu["id"],
+                menu["restaurant_id"],
+                menu.get("name") or "Wine List",
+                menu.get("menu_type") or "beverage",
+                menu.get("status") or "active",
+                menu.get("season") or "year_round",
+            ),
+        )
+
+        # Replace menu/inventory for idempotent re-seed
+        cur.execute(
+            "DELETE FROM menu_items WHERE restaurant_id = %s",
+            (restaurant_id,),
+        )
+        cur.execute(
+            "DELETE FROM restaurant_inventory WHERE restaurant_id = %s",
+            (restaurant_id,),
+        )
+
+        for item in payload.get("menu_items") or []:
+            cur.execute(
+                "INSERT INTO menu_items "
+                "(id, menu_id, restaurant_id, name, producer, vintage, region, "
+                "country, grape_variety, bottle_price, by_glass_price, "
+                "wine_library_id, source, status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    item["id"],
+                    item["menu_id"],
+                    item["restaurant_id"],
+                    item.get("name"),
+                    item.get("producer"),
+                    item.get("vintage"),
+                    item.get("region"),
+                    item.get("country"),
+                    item.get("grape_variety"),
+                    item.get("bottle_price"),
+                    item.get("by_glass_price"),
+                    item.get("wine_library_id"),
+                    item.get("source") or "manual",
+                    item.get("status") or "approved",
+                ),
+            )
+
+        for inv in payload.get("restaurant_inventory") or []:
+            cur.execute(
+                "INSERT INTO restaurant_inventory "
+                "(id, restaurant_id, master_wine_id, wine_name, stock_live, "
+                "threshold_min, is_active) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    inv["id"],
+                    inv["restaurant_id"],
+                    inv.get("master_wine_id"),
+                    inv.get("wine_name"),
+                    inv["stock_live"],
+                    inv.get("threshold_min"),
+                    inv.get("is_active", True),
+                ),
+            )
+
+        # Oracle last — failure rolls back live rows (D-10)
+        cur.execute(
+            "DELETE FROM sim_ground_truth_facts WHERE restaurant_id = %s",
+            (restaurant_id,),
+        )
+        cur.execute(
+            "DELETE FROM sim_ground_truth_runs WHERE restaurant_id = %s",
+            (restaurant_id,),
+        )
+
+        run = payload["oracle_run"]
+        cur.execute(
+            "INSERT INTO sim_ground_truth_runs "
+            "(id, restaurant_id, archetype_id, seed_version, menu_quality, "
+            "snapshot_path, snapshot_sha256, params, sku_count, priced_sku_count) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+            (
+                run["id"],
+                run["restaurant_id"],
+                run["archetype_id"],
+                run["seed_version"],
+                run["menu_quality"],
+                run["snapshot_path"],
+                run["snapshot_sha256"],
+                json.dumps(run.get("params") or {}),
+                run["sku_count"],
+                run["priced_sku_count"],
+            ),
+        )
+
+        for fact in payload.get("oracle_facts") or []:
+            cur.execute(
+                "INSERT INTO sim_ground_truth_facts "
+                "(id, run_id, restaurant_id, fact_type, sku_key, entity_ref, payload) "
+                "VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb)",
+                (
+                    fact["id"],
+                    fact["run_id"],
+                    fact["restaurant_id"],
+                    fact["fact_type"],
+                    fact.get("sku_key"),
+                    json.dumps(fact.get("entity_ref") or {}),
+                    json.dumps(fact.get("payload") or {}),
+                ),
+            )
+
+        conn.commit()
+        return {"ok": True, "restaurant_id": restaurant_id, "slug": slug}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        close = getattr(cur, "close", None)
+        if callable(close):
+            close()
+
+
+def _call_seed_rpc_http(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Primary apply path: PostgREST RPC → seed_sim_restaurant(payload)."""
+    import os
+
+    import httpx
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required for RPC apply")
+    url = f"{supabase_url.rstrip('/')}/rest/v1/rpc/seed_sim_restaurant"
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+    resp = httpx.post(url, json={"payload": dict(payload)}, headers=headers, timeout=120.0)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"seed_sim_restaurant RPC failed status={resp.status_code}")
+    data = resp.json()
+    if isinstance(data, dict):
+        return data
+    return {"ok": True, "result": data}
+
+
+def _call_seed_via_database_url(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Secondary apply path when DATABASE_URL is set (same payload builder)."""
+    import os
+
+    dsn = os.environ.get("DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("DATABASE_URL not set")
+    try:
+        import psycopg2  # type: ignore
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("psycopg2 required for DATABASE_URL seed path") from exc
+    conn = psycopg2.connect(dsn)
+    try:
+        return execute_atomic_seed(payload, conn)
+    finally:
+        conn.close()
+
+
 def apply_seed(
     archetype_id: str,
     *,
@@ -339,11 +638,13 @@ def apply_seed(
     overrides: dict[str, Any] | None = None,
     rpc_caller=None,
 ) -> dict[str, Any]:
-    """Dry-run by default. When ``apply=True``, ensure personas then call RPC.
+    """Dry-run by default. When ``apply=True``, ensure personas then RPC/TX.
 
-    ``rpc_caller`` is injectable for unit tests: ``callable(payload) -> dict``.
-    Full RPC body lands in Task 3 / migration; this stub raises until wired.
+    Prefer ``seed_sim_restaurant`` RPC; ``DATABASE_URL`` + ``execute_atomic_seed``
+    is secondary. ``rpc_caller`` is injectable for unit tests.
     """
+    import os
+
     if not apply:
         return build_seed_plan(archetype_id, overrides=overrides)
 
@@ -367,10 +668,15 @@ def apply_seed(
         plan["rpc_result"] = result
         return plan
 
-    # Prefer supabase.rpc; optional DATABASE_URL path is secondary (Task 3).
-    raise RuntimeError(
-        "apply_seed(apply=True) requires rpc_caller or Task-3 seed_sim_restaurant wiring"
-    )
+    try:
+        result = _call_seed_rpc_http(payload)
+    except Exception:
+        if os.environ.get("DATABASE_URL"):
+            result = _call_seed_via_database_url(payload)
+        else:
+            raise
+    plan["rpc_result"] = result
+    return plan
 
 
 __all__ = [
@@ -378,5 +684,6 @@ __all__ = [
     "build_rpc_payload",
     "build_seed_plan",
     "compute_opening_stock",
+    "execute_atomic_seed",
     "sim_wine_id",
 ]
