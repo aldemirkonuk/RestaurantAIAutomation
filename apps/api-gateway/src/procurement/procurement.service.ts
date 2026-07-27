@@ -30,7 +30,8 @@ import {
   UpdateOrderDto,
   VerifyReceiptDto,
 } from "./dto/procurement.dto";
-import { computeMatch, isDiscrepancy } from "./invoice-match";
+import { computeMatch, isDiscrepancy, MatchResult } from "./invoice-match";
+import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 
 interface ProcurementOrderRow {
@@ -1089,6 +1090,58 @@ export class ProcurementService {
    * outbox retries — can never double-count.
    */
   /**
+   * Open a vendor credit claim from a match verdict.
+   *
+   * The claim is opened, never sent. Contacting a distributor stays a human act
+   * behind the existing draft-then-approve flow, in line with every other
+   * outbound path in this codebase.
+   *
+   * Deliberately silent about what it declines to claim: draftClaimFromMatch
+   * returns null for `partial` and `unmatched` (paperwork still in flight, not a
+   * vendor error) and for any discrepancy whose amount cannot be computed. A $0
+   * claim in a distributor's inbox costs more credibility than it recovers.
+   */
+  private async openCreditClaim(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    match: MatchResult,
+  ): Promise<void> {
+    try {
+      const claim = draftClaimFromMatch(match);
+      if (!claim) return;
+
+      const { error } = await this.databaseService.supabase
+        .from("procurement_credits")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          reason: claim.reason,
+          summary: claim.summary,
+          claimed_amount: claim.claimedAmount,
+          // True only when the vendor's own packing slip proves the overbill.
+          // Worth knowing which claims are winnable before spending a call.
+          self_evidenced: claim.selfEvidenced,
+          state: "open",
+          opened_by: userId,
+          // Snapshot: the order can be corrected later, and the claim must still
+          // be able to say what it was based on when it was raised.
+          evidence: match as unknown as Record<string, unknown>,
+        });
+
+      // 23505 = a claim for this line and reason is already open. Re-running the
+      // match must not manufacture a second claim for money already being
+      // chased — that would double-count recovery and embarrass the restaurant.
+      if (error && error.code !== "23505")
+        this.logger.warn(
+          `openCreditClaim failed for order ${orderId}: ${error.message}`,
+        );
+    } catch (err: any) {
+      this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
+    }
+  }
+
+  /**
    * @param unitCost What the bottle VERIFIABLY cost, from the invoice — landed,
    *   including allocated freight and fees. Passing it is the difference between
    *   a match that means something and a match that is decoration: without it
@@ -1275,6 +1328,11 @@ export class ProcurementService {
         match_verified_by: userId,
       });
     }
+
+    // Raise a vendor credit claim when the match found money owed back.
+    // Best-effort: a failure here must not strand a delivery that has already
+    // been counted, and the claim can be raised again from the discrepancy queue.
+    if (match) await this.openCreditClaim(restaurantId, orderId, userId, match);
 
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
