@@ -85,7 +85,7 @@ function buildHtmlDocument(title: string, headers: string[], matrix: string[][])
   h1 { font-size: 18px; margin: 0 0 4px; }
   p.meta { color: #6b7280; font-size: 12px; margin: 0 0 20px; }
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th { background: #722F37; color: #fff; text-align: left; padding: 8px; }
+  th { background: #B8323A; color: #fff; text-align: left; padding: 8px; }
   td { border-bottom: 1px solid #e5e7eb; padding: 8px; }
   tr:nth-child(even) td { background: #fafafa; }
 </style>
@@ -227,7 +227,7 @@ export async function exportTable<T>({
         body: matrix,
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [114, 47, 55], textColor: 255 },
+        headStyles: { fillColor: [184, 50, 58], textColor: 255 },
         alternateRowStyles: { fillColor: [250, 250, 250] },
       })
 

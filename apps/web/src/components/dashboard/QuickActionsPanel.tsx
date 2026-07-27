@@ -190,7 +190,7 @@ export function QuickActionsPanel() {
 
   return (
     <>
-      <div className="bg-gradient-to-br from-wine-600 to-wine-800 rounded-xl shadow-lg overflow-hidden h-full">
+      <div className="bg-gradient-to-br from-wine-500 to-wine-700 rounded-xl shadow-lg overflow-hidden h-full">
         <div
           className="p-5"
           onContextMenu={(e) => {

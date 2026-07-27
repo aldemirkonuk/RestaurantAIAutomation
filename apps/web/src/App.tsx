@@ -58,6 +58,7 @@ import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 // Onboarding pages (lazy loaded)
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
+const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
 
 // Heavy pages (lazy loaded)
 const Reports = lazyWithRefresh(() => import('./pages/Reports'))
@@ -180,6 +181,8 @@ function App() {
                   <Route path="/inventory" element={<InventoryCommandPage />} />
                   <Route path="/inventory-legacy" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
+                  {/* One event, three renderings, chosen by role — see ReceivingHome. */}
+                  <Route path="/receiving" element={<ReceivingHome />} />
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/recommendations" element={<Recommendations />} />

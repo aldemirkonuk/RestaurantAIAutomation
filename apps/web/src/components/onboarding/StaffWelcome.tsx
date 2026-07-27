@@ -52,10 +52,10 @@ export function StaffWelcome() {
             return (
               <div
                 key={card.id}
-                className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-[#722F37]/30 transition-colors bg-white"
+                className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-[#B8323A]/30 transition-colors bg-white"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#722F37]/10 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-5 h-5 text-[#722F37]" />
+                <div className="w-10 h-10 rounded-xl bg-[#B8323A]/10 flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-5 h-5 text-[#B8323A]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 text-sm">{card.title}</p>

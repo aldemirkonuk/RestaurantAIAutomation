@@ -108,7 +108,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.name}
                     onChange={(e) => updateRow(row._id, 'name', e.target.value)}
                     placeholder={idx === 0 ? 'e.g. Château Margaux 2018' : 'Wine name'}
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#B8323A] focus:outline-none focus:ring-2 focus:ring-[#B8323A]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -117,7 +117,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.producer ?? ''}
                     onChange={(e) => updateRow(row._id, 'producer', e.target.value)}
                     placeholder="Château Margaux"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#B8323A] focus:outline-none focus:ring-2 focus:ring-[#B8323A]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -126,7 +126,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.vintage ?? ''}
                     onChange={(e) => updateRow(row._id, 'vintage', e.target.value)}
                     placeholder="2018"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#B8323A] focus:outline-none focus:ring-2 focus:ring-[#B8323A]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -135,7 +135,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.region ?? ''}
                     onChange={(e) => updateRow(row._id, 'region', e.target.value)}
                     placeholder="Bordeaux, France"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#B8323A] focus:outline-none focus:ring-2 focus:ring-[#B8323A]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -146,7 +146,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.by_glass_price ?? ''}
                     onChange={(e) => updateRow(row._id, 'by_glass_price', e.target.value)}
                     placeholder="14.00"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#B8323A] focus:outline-none focus:ring-2 focus:ring-[#B8323A]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -157,7 +157,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                     value={row.bottle_price ?? ''}
                     onChange={(e) => updateRow(row._id, 'bottle_price', e.target.value)}
                     placeholder="68.00"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#722F37] focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 text-sm transition-colors"
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#B8323A] focus:outline-none focus:ring-2 focus:ring-[#B8323A]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -178,7 +178,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
       <div className="flex items-center justify-between gap-3">
         <button
           onClick={addRow}
-          className="flex items-center gap-1.5 text-sm text-[#722F37] hover:text-[#8B3A44] font-medium transition-colors"
+          className="flex items-center gap-1.5 text-sm text-[#B8323A] hover:text-[#D1454C] font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add another wine
@@ -187,7 +187,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
         <Button
           onClick={handleImport}
           disabled={loading || validRows.length === 0}
-          className="bg-[#722F37] hover:bg-[#8B3A44] text-white"
+          className="bg-[#B8323A] hover:bg-[#D1454C] text-white"
         >
           {loading ? (
             <span className="flex items-center gap-2">

@@ -289,6 +289,89 @@ export class ReceivingService {
   }
 
   /**
+   * The manager's queue: deliveries that need a decision, worst money first.
+   *
+   * Only discrepancies. A delivery that matched is not a task, and listing it
+   * would bury the four that cost something under forty that did not — which is
+   * how a queue stops being read.
+   *
+   * Sorted by dollars at risk rather than by date, because the reason to look at
+   * this list is to recover money and the largest claim is the one worth the
+   * phone call. Self-evidenced claims are marked: those are provable from the
+   * vendor's own paperwork and are the ones worth starting with.
+   */
+  async managerQueue(restaurantId: string) {
+    const [{ data: orders }, { data: credits }, unverified] = await Promise.all(
+      [
+        this.db
+          .getClient()
+          .from("procurement_orders")
+          .select(
+            "id, order_number, match_status, discrepancy_notes, backorder_quantity, invoice_quantity, quantity, match_verified_at, provider_id",
+          )
+          .eq("restaurant_id", restaurantId)
+          .not("match_status", "is", null)
+          .neq("match_status", "matched")
+          .order("match_verified_at", { ascending: false })
+          .limit(100),
+        this.db
+          .getClient()
+          .from("procurement_credits")
+          .select(
+            "id, order_id, reason, summary, claimed_amount, state, self_evidenced, opened_at",
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("state", ["open", "requested", "promised"])
+          .limit(200),
+        this.listUnverified(restaurantId),
+      ],
+    );
+
+    const creditsByOrder = new Map<string, any[]>();
+    for (const c of credits ?? []) {
+      if (!c.order_id) continue;
+      creditsByOrder.set(c.order_id, [
+        ...(creditsByOrder.get(c.order_id) ?? []),
+        c,
+      ]);
+    }
+
+    const items = (orders ?? []).map((o) => {
+      const linked = creditsByOrder.get(o.id) ?? [];
+      const atRisk = linked.reduce(
+        (n, c) => n + Number(c.claimed_amount ?? 0),
+        0,
+      );
+      return {
+        orderId: o.id,
+        orderNumber: o.order_number,
+        verdict: o.match_status,
+        summary: o.discrepancy_notes,
+        backorderQty: o.backorder_quantity ?? 0,
+        verifiedAt: o.match_verified_at,
+        dollarsAtRisk: Math.round(atRisk * 100) / 100,
+        selfEvidenced: linked.some((c) => c.self_evidenced),
+        openClaims: linked.length,
+      };
+    });
+
+    items.sort(
+      (a, b) =>
+        b.dollarsAtRisk - a.dollarsAtRisk ||
+        // Provable claims outrank equally-valued unprovable ones — same money,
+        // far better odds.
+        Number(b.selfEvidenced) - Number(a.selfEvidenced),
+    );
+
+    return {
+      items,
+      unverified,
+      totalAtRisk:
+        Math.round(items.reduce((n, i) => n + i.dollarsAtRisk, 0) * 100) / 100,
+    };
+  }
+
+  /**
    * Bottles per case.
    *
    * Falls back through what the order knows and finally to 1 — never to 12.

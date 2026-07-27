@@ -49,11 +49,11 @@ export function SetupNudgeBanner() {
       role="region"
       aria-label="Finish setup"
       data-guidance="setup-nudge-banner"
-      className="mx-3 sm:mx-4 mt-3 rounded-xl border border-[#722F37]/20 bg-[#722F37]/[0.04] px-3 sm:px-4 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between"
+      className="mx-3 sm:mx-4 mt-3 rounded-xl border border-[#B8323A]/20 bg-[#B8323A]/[0.04] px-3 sm:px-4 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex items-start gap-2.5 min-w-0">
-        <div className="w-8 h-8 rounded-lg bg-[#722F37]/10 flex items-center justify-center flex-shrink-0">
-          <Rocket className="w-4 h-4 text-[#722F37]" />
+        <div className="w-8 h-8 rounded-lg bg-[#B8323A]/10 flex items-center justify-center flex-shrink-0">
+          <Rocket className="w-4 h-4 text-[#B8323A]" />
         </div>
         <div className="min-w-0 pr-2">
           <p className="text-sm font-semibold text-gray-900">Finish setting up WineOps</p>
@@ -66,7 +66,7 @@ export function SetupNudgeBanner() {
         <button
           type="button"
           onClick={() => navigate('/get-started')}
-          className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg bg-[#722F37] text-white hover:bg-[#8B3A44] transition-colors"
+          className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg bg-[#B8323A] text-white hover:bg-[#D1454C] transition-colors"
         >
           Finish setup
         </button>

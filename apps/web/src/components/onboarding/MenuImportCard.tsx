@@ -23,7 +23,7 @@ export function MenuImportCard({
       className={cn(
         'flex flex-col items-start p-6 rounded-2xl border-2 text-left transition-all duration-200 w-full',
         active
-          ? 'border-[#722F37] bg-[#722F37]/5 shadow-md'
+          ? 'border-[#B8323A] bg-[#B8323A]/5 shadow-md'
           : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm',
         dimmed && 'opacity-40'
       )}
@@ -31,7 +31,7 @@ export function MenuImportCard({
       <div
         className={cn(
           'w-10 h-10 rounded-xl flex items-center justify-center mb-4',
-          active ? 'bg-[#722F37] text-white' : 'bg-gray-100 text-gray-600'
+          active ? 'bg-[#B8323A] text-white' : 'bg-gray-100 text-gray-600'
         )}
       >
         {icon}

@@ -69,7 +69,7 @@ const DOC_TYPES: DocTypeOption[] = [
 ]
 
 const LABEL_COLORS: Record<EventLabel['type'], { strip: string; bg: string }> = {
-  provider_meeting: { strip: '#722F37', bg: '#fdf4f5' },
+  provider_meeting: { strip: '#B8323A', bg: '#fdf4f5' },
   call:             { strip: '#10B981', bg: '#f0fdf4' },
   tasting:          { strip: '#8B5CF6', bg: '#f5f3ff' },
   delivery:         { strip: '#F59E0B', bg: '#fefce8' },
@@ -120,7 +120,7 @@ export function MeetingMemoPrompt({
         >
           {/* Banner */}
           <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-3 bg-wine-50">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#722F37' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#B8323A' }}>
               <FileText className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
             </div>
             <div className="flex-1 min-w-0">
@@ -245,9 +245,9 @@ export function MeetingMemoPrompt({
                 onClick={handleSave}
                 disabled={!notes.trim()}
                 className="px-4 py-2 text-[13px] font-semibold text-white rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ backgroundColor: '#722F37' }}
+                style={{ backgroundColor: '#B8323A' }}
                 onMouseEnter={e => !e.currentTarget.disabled && (e.currentTarget.style.backgroundColor = '#7c1d3c')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#722F37')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#B8323A')}
               >
                 Save note
               </button>

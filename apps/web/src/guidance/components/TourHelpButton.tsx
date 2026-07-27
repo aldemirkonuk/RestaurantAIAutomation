@@ -19,7 +19,7 @@ export function TourHelpButton({ className }: { className?: string }) {
       title="Replay page tour"
       className={cn(
         'inline-flex items-center justify-center w-8 h-8 rounded-lg',
-        'text-gray-500 hover:text-[#722F37] hover:bg-[#722F37]/10 transition-colors',
+        'text-gray-500 hover:text-[#B8323A] hover:bg-[#B8323A]/10 transition-colors',
         className,
       )}
     >
