@@ -14,6 +14,7 @@
 | `.planning/testing/TESTING-SCORECARD.md` | config | transform | `36-RESEARCH.md` scorecard row template + ROADMAP Phase 36 SC #4 | exact |
 | `.planning/testing/SYNTHETIC-TENANT.md` | config | CRUD | `services/agent-orchestrator/tests/e2e/conftest_prod.py` + `scripts/setup_e2e_anchor.py` | exact |
 | `.planning/testing/README.md` | config | request-response | `36-RESEARCH.md` “Proposed `.planning/testing/` Artifact Shapes” + sketches README index style | role-match |
+| `.planning/testing/checklists/README.md` | config | request-response | ROADMAP Phase 39 checklist promise + operator IA stub (`g{N}-{slug}-manual.md`) | role-match |
 | `.github/workflows/ci.yml` | config | request-response | `.github/workflows/ci.yml` itself (annotate in place) | exact |
 | `.github/workflows/e2e-prod.yml` | config | event-driven | `.github/workflows/e2e-prod.yml` + `25-07-PLAN.md` workflow contract | exact |
 | `scripts/testing/check-inventory-coverage.sh` (optional) | utility | batch | `scripts/health-check.sh` + `services/agent-orchestrator/scripts/cascading_report.py` | partial |

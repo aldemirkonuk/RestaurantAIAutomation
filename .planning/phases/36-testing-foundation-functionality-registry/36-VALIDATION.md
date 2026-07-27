@@ -39,12 +39,12 @@ created: 2026-07-27
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 36-01-01 | 01 | 1 | TFND-02 | — | N/A | doc | `rg 'T0|T1|T2|T3|T4' .planning/testing/RUBRIC.md` | ❌ W0 | ⬜ pending |
-| 36-01-02 | 01 | 1 | TFND-01 | — | N/A | doc | `test -f .planning/testing/FUNCTIONALITY-REGISTRY.md` | ❌ W0 | ⬜ pending |
-| 36-02-01 | 02 | 1 | TFND-03 | — | N/A | inventory | Diff find vs inventory paths | ❌ W0 | ⬜ pending |
-| 36-02-02 | 02 | 1 | TFND-04 | — | N/A | doc | `rg -c` 11 group rows in TESTING-SCORECARD.md | ❌ W0 | ⬜ pending |
-| 36-03-01 | 03 | 2 | TFND-06 | T-36-01..04 | sim-* isolation; no JWT in logs | doc | `rg 'sim-\*' .planning/testing/SYNTHETIC-TENANT.md` | ❌ W0 | ⬜ pending |
-| 36-03-02 | 03 | 2 | TFND-05 | T-36-05 | secrets stay in GH secrets | workflow | `rg 'cron:|pnpm run test|pytest' .github/workflows/{ci,e2e-prod}.yml` | ✅ | ⬜ pending |
+| 36-01-01 | 01 | 1 | TFND-02 | — | N/A | doc | `rg 'T0|T1|T2|T3|T4|promote' .planning/testing/RUBRIC.md` | ❌ W0 | ⬜ pending |
+| 36-01-02 | 01 | 1 | TFND-01 | — | N/A | doc | `rg -n 'manual_pass|Phase 38|/sim|Contested' .planning/testing/FUNCTIONALITY-REGISTRY.md` | ❌ W0 | ⬜ pending |
+| 36-02-01 | 02 | 2 | TFND-03 | — | N/A | inventory | Diff find vs inventory + locked `N-shortname` slugs + Vitest floor | ❌ W0 | ⬜ pending |
+| 36-02-02 | 02 | 2 | TFND-04 | — | N/A | doc | `rg -n 'T1\\?|CI green unverified|capability-unverified' .planning/testing/TESTING-SCORECARD.md` | ❌ W0 | ⬜ pending |
+| 36-03-01 | 03 | 3 | TFND-06 | T-36-01..04 | sim-* isolation; no JWT in logs | doc | `rg -n 'E2E_TABLES|sim-\\*|URA|user_restaurant_access' .planning/testing/SYNTHETIC-TENANT.md` | ❌ W0 | ⬜ pending |
+| 36-03-02 | 03 | 3 | TFND-05 | T-36-05 | secrets stay in GH secrets | workflow+doc | `rg -n 'capability-unverified|Operator quickstart|g\\{N\\}' .planning/testing/README.md .planning/testing/checklists/README.md .github/workflows/{ci,e2e-prod}.yml` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -57,9 +57,10 @@ created: 2026-07-27
 - [ ] `.planning/testing/EXISTING-TEST-INVENTORY.md` — TFND-03
 - [ ] `.planning/testing/TESTING-SCORECARD.md` — TFND-04
 - [ ] `.planning/testing/SYNTHETIC-TENANT.md` — TFND-06
-- [ ] `.planning/testing/README.md` — index
+- [ ] `.planning/testing/README.md` — operator-quickstart-first index
+- [ ] `.planning/testing/checklists/README.md` — naming stub `g{N}-{slug}-manual.md`
 - [ ] Optional: `scripts/testing/check-inventory-coverage.sh`
-- [ ] Optional: CI comment annotations for TFND-05 clarity (workflows already exist)
+- [ ] Optional: CI comment annotations for TFND-05 clarity (workflows already exist; mark capability-unverified)
 
 *Wave 0 = create the documentation/CI annotation artifacts themselves — this phase's deliverables ARE the Wave 0 gaps.*
 

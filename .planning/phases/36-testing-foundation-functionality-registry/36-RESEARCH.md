@@ -516,13 +516,13 @@ Aligned with Plans 36-01..03:
 | A4 | Phase 36 should not fix Black or e2e-prod secrets/install | Pitfalls / CI | If success criteria reinterpreted as “green CI”, scope explodes |
 | A5 | Empty secret values in `gh` logs mean secrets unset/unavailable to the workflow (not redacted blanks) | CI Gap | If secrets are set but masked oddly, diagnosis differs — still do not claim nightly green |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should Phase 36 touch `ci.yml` at all if jobs already run tests?**
    - **RESOLVED:** Comment-only annotations (Plan 36-03); no behavioral CI changes (D-24).
 
 2. **How to score groups with agent tests but zero Nest/page tests?**
-   - **RESOLVED:** Holistic group scoring (Plan 36-02) — T1 if any automated happy-path with `runs?=yes` in any tier; no T4 in baseline.
+   - **RESOLVED:** Holistic group scoring (Plan 36-02) — baseline may be `T1` only when `runs?=yes` **and** loadable smoke is documented, otherwise **`T1?` provisional** with Gaps text `CI green unverified`. Exclude `stale-suspect` from T1-eligible evidence. No promote-past-T1 in later phases until `passes?=yes` or explicit waiver. No T4 in Phase 36 baseline. (Aligned with post-premortem Plan 36-02 C3.)
 
 3. **Expand `E2E_TABLES` teardown list in Phase 36?**
    - **RESOLVED:** Document gap in `SYNTHETIC-TENANT.md` (Plan 36-03); code expansion deferred to Phase 37.
@@ -531,7 +531,7 @@ Aligned with Plans 36-01..03:
    - What we know: Nightly schedule exists; recent runs fail before Wave A; several secrets appear empty in env dump.
    - What's unclear: Whether secrets were never configured vs rotated/lost.
    - Recommendation: **Do not expand Phase 36.** Document in README/scorecard honesty; optional ops follow-up outside TFND. Plans remain correct.
-   - **RESOLVED (scope):** Out of Phase 36; honesty note required. **OPEN (ops):** Who restores `E2E_TEST_*` / `VERCEL_PRODUCTION_URL` / `RABBITMQ_URL` secrets — human ops, not this phase.
+   - **RESOLVED (scope):** Out of Phase 36; honesty note required (`schedule-present / capability-unverified` + secrets yes/no). **OPEN (ops):** Who restores `E2E_TEST_*` / `VERCEL_PRODUCTION_URL` / `RABBITMQ_URL` secrets — human ops, not this phase.
 
 ## Environment Availability
 
