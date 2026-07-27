@@ -14,6 +14,8 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { DocumentsController } from "./documents/documents.controller";
 import { DocumentIntakeService } from "./documents/document-intake.service";
 import { DocumentExtractorService } from "./documents/document-extractor.service";
+import { ReceivingController } from "./receiving.controller";
+import { ReceivingService } from "./receiving.service";
 
 @Module({
   imports: [
@@ -30,12 +32,14 @@ import { DocumentExtractorService } from "./documents/document-extractor.service
     ProcurementController,
     RecurringOrdersController,
     DocumentsController,
+    ReceivingController,
   ],
   providers: [
     ProcurementService,
     RecurringOrdersService,
     DocumentIntakeService,
     DocumentExtractorService,
+    ReceivingService,
   ],
   // Exported for callers that already depend on procurement. The inbound-email
   // path deliberately does NOT call it directly — ProcurementModule imports
