@@ -478,7 +478,7 @@ Plans:
 11. Platform & Agent Infrastructure — BaseAgent guarantees, sagas, DLQ, idempotency, health, observability, admin
 
 - [x] **Phase 36: Testing Foundation & Functionality Registry** — Functionality registry (11 groups, every module/page/agent mapped), T0–T4 scoring rubric, existing-test inventory, TESTING-SCORECARD.md baseline, CI skeleton, synthetic-tenant isolation convention (completed 2026-07-27)
-- [ ] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle)
+- [x] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle) (completed 2026-07-27)
 - [ ] **Phase 38: SimPOS Provider & Operations Simulator** — SimPOS adapter in pos-hub registry; accelerated day-by-day simulator; web control panel (fire orders by clicking menu items, sim controls, chaos injection); deployed on Railway
 - [ ] **Phase 39: Breadth Pass A — Core Operations** — Score groups 1–4 (Identity, Catalog & Extraction, Inventory, POS Ingestion) to ≥ T2 with automated suites + manual checklists
 - [ ] **Phase 40: Breadth Pass B — Business Loops** — Score groups 5–7 + 9 (Procurement, Communications, Calendar, Notifications) to ≥ T2 with automated suites + manual checklists
@@ -520,7 +520,7 @@ Plans:
   4. Ground-truth ledger records every generated fact (opening stock, menu prices, team roster) in queryable form (`sim_ground_truth` tables or equivalent)
   5. ≥ 5 distinct archetypes generated and live: e.g. wine-heavy fine dining, casual bistro, high-volume bar, tiny cafe, Turkish restaurant clone
 **Plans**: 3 plans
-**Progress**: 2/3 plans executed (In Progress)
+**Progress**: 3/3 plans executed (Complete)
 
 Plans:
 **Wave 1**
@@ -530,7 +530,7 @@ Plans:
 - [x] 37-02-PLAN.md — Atomic seed + sim_ground_truth* oracle + Auth personas (SYNTH-03/04)
 
 **Wave 3** *(depends on 37-01 + 37-02)*
-- [ ] 37-03-PLAN.md — Teardown write-set gate + CLI/API dry-run/--apply + role isolation (D-11..D-17)
+- [x] 37-03-PLAN.md — Teardown write-set gate + CLI/API dry-run/--apply + role isolation (D-11..D-17)
 
 ### Phase 38: SimPOS Provider & Operations Simulator
 **Goal**: The fake POS connection the user asked for. A SimPOS provider speaks the pos-hub canonical check contract, an accelerated simulator plays out restaurant days, and a web control panel lets the user fire any order by clicking menu items. The system under test cannot tell it's fake.
@@ -642,7 +642,7 @@ After Phases 23-25 complete, expand to remaining agents:
 **Requirements:** TBD — guest identity/profile model distinct from restaurant membership roles, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation/POS linking, **append-only points ledger with derived balance**, share/referral attribution with conversion bonus, provisional→confirmed point states, anti-abuse (self-referral, duplicate-device, rate limits, review quality gate), tiers/badges, opt-in restaurant-funded perks, consent controls, privacy safeguards, and aggregated k-anonymized restaurant audience insights.
 **Design detail:** [FUTURES.md](./FUTURES.md) §7 (profile types, earning rules, integrity rules, MVP cut).
 **UX paths:** `UX_PATHS_CATALOG.md` §W (`NEW-652…NEW-666`) + §AB (`NEW-861…NEW-885`).
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)

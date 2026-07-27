@@ -160,5 +160,6 @@ None beyond plan `<threat_model>` (admin X-Admin-Key routes already registered; 
 
 - FOUND: `.planning/phases/37-synthetic-restaurant-engine/37-03-SUMMARY.md`
 - FOUND: `scripts/synth/teardown.py`, `scripts/synth/cli.py`, `api/synth_routes.py`
-- FOUND commits: `ecc7fe1`, `2dd6d99`, `df33c5d`, `58b99fd`, `e3dc0e7`, `693c40e`
+- FOUND commits: `ecc7fe1`, `2dd6d99`, `df33c5d`, `58b99fd`, `e3dc0e7`, `693c40e`, `0a2aca4`
 - FOUND: 54/54 `test_synth_*.py` green; dry-run 5 archetypes
+- FOUND: STATE.md position + ROADMAP Progress 3/3 Complete
