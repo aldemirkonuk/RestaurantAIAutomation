@@ -497,14 +497,14 @@ Plans:
   4. `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score per group, evidence links
   5. GitHub Actions: unit + integration suites run on push; nightly E2E workflow scheduled (reuses Phase 25 e2e-prod.yml patterns)
   6. Synthetic tenant convention locked: `sim-*` restaurant_id prefix, RLS-safe seeding, idempotent teardown (extends Phase 25 `e2e-test-restaurant` pattern)
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 **Wave 1**
 - [x] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map; contested surfaces; Phase 38 reserved `/sim`; full Nest/agent/route verify)
 
 **Wave 2** *(depends on 36-01 — registry/inventory reconcile)*
-- [ ] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline (locked slugs; provisional T1?; UX Gaps; CI/E2E honesty)
+- [x] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline (locked slugs; provisional T1?; UX Gaps; CI/E2E honesty)
 
 **Wave 3** *(depends on 36-01 + 36-02)*
 - [ ] 36-03-PLAN.md — SYNTHETIC-TENANT.md + CI annotations + operator README + checklists/ naming stub
@@ -631,7 +631,7 @@ After Phases 23-25 complete, expand to remaining agents:
 **Requirements:** TBD — guest identity/profile model distinct from restaurant membership roles, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation/POS linking, **append-only points ledger with derived balance**, share/referral attribution with conversion bonus, provisional→confirmed point states, anti-abuse (self-referral, duplicate-device, rate limits, review quality gate), tiers/badges, opt-in restaurant-funded perks, consent controls, privacy safeguards, and aggregated k-anonymized restaurant audience insights.
 **Design detail:** [FUTURES.md](./FUTURES.md) §7 (profile types, earning rules, integrity rules, MVP cut).
 **UX paths:** `UX_PATHS_CATALOG.md` §W (`NEW-652…NEW-666`) + §AB (`NEW-861…NEW-885`).
-**Plans:** 0 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
