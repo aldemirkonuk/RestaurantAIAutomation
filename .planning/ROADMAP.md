@@ -444,7 +444,157 @@ Plans:
 
 ---
 
+## Testing Campaign: Synthetic World & Full-System Verification (Phases 36–43)
+
+**Locked 2026-07-27 (3 rounds of user Q&A).** Testing-first foundation: this campaign runs BEFORE Waves 2-6 agent hardening. The synthetic world + test suites become the substrate all future hardening builds on.
+
+**Core idea:** Build a parameterized **synthetic restaurant generator** (menus copied from real web menus — different SKUs, styles, volumes) + a **SimPOS provider** plugged into the existing pos-hub generic abstraction + a **day-by-day accelerated operations simulator** with a web control panel (click menu items to fire orders, start/stop sim, inject chaos). Because the simulator knows ground truth (every order, every stock movement), **analytics and insights can be asserted exactly** — the user's #1 eval priority.
+
+**Locked decisions:**
+- Scope: everything (web, api-gateway, orchestrator, database; mobile deferred)
+- Grouping: 11 broad functionality groups crossing app boundaries (registry in Phase 36)
+- Test types: unit + integration + E2E + structured manual checklists
+- Existing tests: keep and build around (inventory them, don't rework)
+- Depth: breadth-first — every group reaches a scored bar, then deepen
+- Pass bar: **T0–T4 maturity score per functionality group** (mirrors agent Level system)
+- Data: user creates synthetic data; system needs the fake POS connection (SimPOS via pos-hub)
+- AI: real eval suites — golden datasets, scored outputs; priorities: **analytics/insights answers first**, then wine extraction, agent decisions, email intel
+- Environment: cloud stack (Vercel + Railway + Supabase Cloud); SimPOS deployed on Railway
+- Simulated time: accelerated + controllable (pause/step/jump-to-day)
+- CI: GitHub Actions — unit/integration on push, E2E nightly, evals weekly
+- Execution: agent-led; user does manual pathway passes (web all pages, scanner flows, admin) with prepared checklists
+
+**Functionality groups (registry seed — finalized in Phase 36):**
+1. Identity & Access — auth, registration, verification, invites, memberships/roles, orgs/chains/locations, profile, settings
+2. Catalog & Extraction — wine library, submissions, menu import (scan/CSV/manual), extraction pipeline, enrichment, ontology, studio
+3. Inventory Operations — stock, ledger, storage locations, counts/corrections, ghost inventory, shrinkage
+4. POS & Sales Ingestion — pos-hub adapters, webhooks, checks, wine detection, sale→stock pipeline
+5. Procurement & Vendors — providers, vendor catalogue, order lifecycle, RFQ, recurring orders, invoice matching
+6. Communications & Email Intelligence — Gmail, triage, promos, provider conversations, drafts, digests, prospects
+7. Calendar & Scheduling — events, recurrence, iCal, reminders, event-driven procurement signals
+8. Analytics, Reports & Insights — dashboard KPIs, reports, insight catalog, analytic answers, exports
+9. Notifications & Alerts — notification agent, SMS/email/push channels, websocket, one-tap actions, rate limits
+10. AI Assistants & Recommendations — sommelier, recommendations, Ask AI palette
+11. Platform & Agent Infrastructure — BaseAgent guarantees, sagas, DLQ, idempotency, health, observability, admin
+
+- [ ] **Phase 36: Testing Foundation & Functionality Registry** — Functionality registry (11 groups, every module/page/agent mapped), T0–T4 scoring rubric, existing-test inventory, TESTING-SCORECARD.md baseline, CI skeleton, synthetic-tenant isolation convention
+- [ ] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle)
+- [ ] **Phase 38: SimPOS Provider & Operations Simulator** — SimPOS adapter in pos-hub registry; accelerated day-by-day simulator; web control panel (fire orders by clicking menu items, sim controls, chaos injection); deployed on Railway
+- [ ] **Phase 39: Breadth Pass A — Core Operations** — Score groups 1–4 (Identity, Catalog & Extraction, Inventory, POS Ingestion) to ≥ T2 with automated suites + manual checklists
+- [ ] **Phase 40: Breadth Pass B — Business Loops** — Score groups 5–7 + 9 (Procurement, Communications, Calendar, Notifications) to ≥ T2 with automated suites + manual checklists
+- [ ] **Phase 41: Analytics & Insights Truth Suite** — Assert every dashboard KPI, report, and analytic answer EXACTLY against the simulator's ground-truth ledger (top eval priority)
+- [ ] **Phase 42: AI Eval Suites** — Golden datasets + scored runs: wine extraction, email intelligence, agent decisions, analytic answers; weekly CI evals with cost caps
+- [ ] **Phase 43: E2E Journeys, Manual Pathways & Final Scorecard** — Playwright journeys on cloud stack, scanner + admin verification, user manual pathway passes, final scorecard with all 11 groups ≥ T2, gap backlog
+
+### Phase 36: Testing Foundation & Functionality Registry
+**Goal**: Create the shared skeleton every later testing phase writes into: what the functionality groups are, how coverage is scored, what tests already exist, and where results live. After this phase, "how tested is X?" has a single canonical answer.
+**Depends on**: Nothing (first testing-campaign phase)
+**Requirements**: TFND-01..06
+**Success Criteria** (what must be TRUE):
+  1. `.planning/testing/FUNCTIONALITY-REGISTRY.md` exists: 11 groups, every api-gateway module, web page, orchestrator agent, and database domain mapped to exactly one group
+  2. T0–T4 rubric defined: T0 untested · T1 smoke (happy path runs) · T2 contract (happy + key errors + assertions on outputs) · T3 resilient (idempotency/concurrency/failure modes) · T4 ground-truth verified (asserted against simulator oracle or golden dataset)
+  3. Existing-test inventory complete: every spec/pytest/Playwright file catalogued (group, runs?, passes?) — kept as-is, not reworked
+  4. `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score per group, evidence links
+  5. GitHub Actions: unit + integration suites run on push; nightly E2E workflow scheduled (reuses Phase 25 e2e-prod.yml patterns)
+  6. Synthetic tenant convention locked: `sim-*` restaurant_id prefix, RLS-safe seeding, idempotent teardown (extends Phase 25 `e2e-test-restaurant` pattern)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map)
+- [ ] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline
+- [ ] 36-03-PLAN.md — SYNTHETIC-TENANT.md + CI annotations (ci.yml / e2e-prod.yml) + README index
+
+### Phase 37: Synthetic Restaurant Engine
+**Goal**: A parameterized factory that can produce any restaurant profile on demand — with real-world menus copied from the web — and seed it into the cloud stack with a queryable ground-truth ledger. This is the oracle everything else asserts against.
+**Depends on**: Phase 36 (tenant convention, registry)
+**Requirements**: SYNTH-01..05
+**Success Criteria** (what must be TRUE):
+  1. Generator produces a restaurant from parameters: cuisine, size, wine-program depth, sales volume, price tier, ordering rhythm
+  2. Menus sourced from real web menus (reusing the v1.0 crawler/extraction pipeline) normalized into menu_items + wine list — real SKU diversity, not lorem ipsum
+  3. Generated restaurant fully seeded into cloud Supabase: organization, restaurant, team members (owner/manager/staff), menu, wine inventory with opening stock
+  4. Ground-truth ledger records every generated fact (opening stock, menu prices, team roster) in queryable form (`sim_ground_truth` tables or equivalent)
+  5. ≥ 5 distinct archetypes generated and live: e.g. wine-heavy fine dining, casual bistro, high-volume bar, tiny cafe, Turkish restaurant clone
+**Plans**: TBD (created by `/gsd-plan-phase 37`)
+
+### Phase 38: SimPOS Provider & Operations Simulator
+**Goal**: The fake POS connection the user asked for. A SimPOS provider speaks the pos-hub canonical check contract, an accelerated simulator plays out restaurant days, and a web control panel lets the user fire any order by clicking menu items. The system under test cannot tell it's fake.
+**Depends on**: Phase 37 (restaurants + menus to sell from)
+**Requirements**: SIMPOS-01..07
+**Success Criteria** (what must be TRUE):
+  1. SimPOS registered in `pos-provider.registry` as a first-class provider emitting canonical checks through the standard ingestion pipeline
+  2. Simulator emits realistic order streams from each restaurant's profile distributions (item popularity, daypart rhythm, ticket size) across simulated days
+  3. Simulated clock is accelerated + controllable: configurable speed (e.g. 1 day/minute), pause, step, jump-to-day
+  4. Control panel (web): pick a restaurant → see its menu → click items → order fires through pos-hub within seconds
+  5. Control panel: start/stop/speed controls + chaos injection (order burst, void, refund, duplicate webhook, malformed payload)
+  6. Deployed on Railway; events reach the deployed api-gateway exactly like a real POS integration
+  7. Every emitted event mirrored to the ground-truth ledger (sales oracle for Phase 41)
+**Plans**: TBD (created by `/gsd-plan-phase 38`)
+
+### Phase 39: Breadth Pass A — Core Operations
+**Goal**: Groups 1–4 (Identity & Access, Catalog & Extraction, Inventory Operations, POS & Sales Ingestion) each reach ≥ T2 on the scorecard: automated smoke + contract suites running in CI, driven by synthetic restaurants, plus a manual pathway checklist per group for the user.
+**Depends on**: Phase 38 (synthetic world live)
+**Requirements**: BRD-01..04
+**Success Criteria** (what must be TRUE):
+  1. Identity & Access ≥ T2: register/join/invite/role-switch/multi-location suites green against cloud stack with sim tenants
+  2. Catalog & Extraction ≥ T2: menu import (all 3 methods), library CRUD, submission pipeline suites green
+  3. Inventory Operations ≥ T2: stock movements, ledger integrity, locations, corrections suites green
+  4. POS & Sales Ingestion ≥ T2: SimPOS checks → canonical ingestion → wine detection → stock decrement suites green (incl. duplicate/malformed rejection)
+  5. Scorecard updated with evidence; manual checklists for all 4 groups delivered to `.planning/testing/checklists/`
+**Plans**: TBD (created by `/gsd-plan-phase 39`)
+
+### Phase 40: Breadth Pass B — Business Loops
+**Goal**: Groups 5–7 + 9 (Procurement & Vendors, Communications & Email Intelligence, Calendar & Scheduling, Notifications & Alerts) each reach ≥ T2, same bar as Phase 39.
+**Depends on**: Phase 38 (synthetic world live); can run parallel to Phase 39
+**Requirements**: BRD-05..08
+**Success Criteria** (what must be TRUE):
+  1. Procurement & Vendors ≥ T2: vendor catalogue, order lifecycle (create → approve → deliver), guard rails, recurring orders suites green
+  2. Communications & Email Intelligence ≥ T2: triage routing, promo extraction, draft approval loop, thread linking suites green (LLM calls mocked at contract level here — real evals in Phase 42)
+  3. Calendar & Scheduling ≥ T2: event CRUD, recurrence, iCal feed, reminder scheduling suites green
+  4. Notifications & Alerts ≥ T2: threshold breach → routed notification, rate limits, delivery tracking, one-tap actions suites green
+  5. Scorecard updated; manual checklists for all 4 groups delivered
+**Plans**: TBD (created by `/gsd-plan-phase 40`)
+
+### Phase 41: Analytics & Insights Truth Suite
+**Goal**: The user's #1 priority. Because the simulator knows exactly what happened (every sale, every stock movement, every price), every number the product shows can be asserted EXACTLY. Dashboard KPIs, reports, and analytic answers get compared against the ground-truth oracle — no more "looks plausible."
+**Depends on**: Phase 38 (ground-truth ledger populated by simulated days)
+**Requirements**: TRUTH-01..05
+**Success Criteria** (what must be TRUE):
+  1. After N simulated days, every dashboard KPI (revenue, top sellers, stock on hand, velocity) matches the oracle exactly for sim tenants
+  2. Reports (inventory, sales, PDF exports) match oracle values line-by-line
+  3. Analytic-answer question bank (≥ 25 simple questions: "top seller this week?", "bottles of X left?", "revenue vs last week?") verified against oracle — answers must be numerically exact
+  4. Drift detection: after a full simulated month incl. chaos events, `stock_live` == oracle stock (no silent leakage anywhere in the pipeline)
+  5. Failures emit expected-vs-actual diffs as CI artifacts; Analytics group reaches T4 on the scorecard
+**Plans**: TBD (created by `/gsd-plan-phase 41`)
+
+### Phase 42: AI Eval Suites
+**Goal**: Real evals for the AI components — golden datasets, scored outputs, real API calls on a budget. Mocked-plumbing tests live in Phases 39–40; this phase measures whether the AI is actually good.
+**Depends on**: Phase 37 (synthetic menus double as labeled extraction ground truth)
+**Requirements**: EVAL-AI-01..05
+**Success Criteria** (what must be TRUE):
+  1. Wine extraction golden set: ≥ 30 menus (synthetic + real) with labeled per-field truth; extraction scored per field (name, vintage, price, region, producer); thresholds set from baseline run
+  2. Email intelligence golden set: labeled inbound emails scored on classification (OPERATIONAL/PROMO/NOISE) + promo field extraction accuracy
+  3. Agent decision evals: procurement suggestions and threshold alerts scored against sim scenarios with known-correct answers
+  4. Analytic-answer eval bank from Phase 41 wired into the same eval harness (shared scoring + history)
+  5. Evals run weekly in CI with per-run cost caps and score history tracked; regressions flag on the scorecard; groups 10 + AI parts of 2/6 scored
+**Plans**: TBD (created by `/gsd-plan-phase 42`)
+
+### Phase 43: E2E Journeys, Manual Pathways & Final Scorecard
+**Goal**: Close the loop. Full user journeys run in a real browser against the cloud stack, the user walks the manual pathways with prepared checklists, and the campaign ends with a complete scorecard + prioritized gap backlog.
+**Depends on**: Phases 39–42
+**Requirements**: JRNY-01..05
+**Success Criteria** (what must be TRUE):
+  1. Playwright journeys green against cloud stack: onboard → import menu → see inventory → sim sale → alert → view report; plus login/nav smoke across all web pages
+  2. Scanner flows verified: camera capture path harnessed + manual checklist executed by user
+  3. Admin/health surfaces verified: agent cards, metrics, DLQ visibility against a live chaos injection
+  4. User manual pathway passes complete (web all pages, scanner, admin) with structured feedback captured and triaged into fixes/backlog
+  5. Final TESTING-SCORECARD.md: all 11 groups ≥ T2, Analytics at T4; every sub-T2 gap promoted to a backlog item; campaign retrospective written
+**Plans**: TBD (created by `/gsd-plan-phase 43`)
+
+---
+
 ## Future: Waves 2-6
+
+**Sequencing note (2026-07-27):** Waves 2-6 hardening resumes AFTER the Testing Campaign (Phases 36–43) — the synthetic world + scored suites are the foundation the remaining agent hardening builds on.
 
 After Phases 23-25 complete, expand to remaining agents:
 
@@ -525,3 +675,4 @@ Plans:
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
 *v1.0 roadmap archived (Phases 1-17, 2026-03-30 to 2026-04-08)*
 *Futures updated: 2026-07-26 — Mudavym brand + beverage/bakery/guest/Ask-AI backlog (see FUTURES.md)*
+*Testing Campaign added: 2026-07-27 — Phases 36–43 (synthetic restaurants, SimPOS simulator, scored breadth passes, analytics truth suite, AI evals)*
