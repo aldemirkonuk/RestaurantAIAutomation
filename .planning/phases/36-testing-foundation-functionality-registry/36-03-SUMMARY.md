@@ -73,7 +73,7 @@ Each task was committed atomically:
 1. **Task 1: Write SYNTHETIC-TENANT.md convention** - `c79e947` (docs)
 2. **Task 2: Annotate CI workflows + write operator README + checklists stub** - `283c7dd` (docs)
 
-**Plan metadata:** _(filled in final docs commit)_
+**Plan metadata:** `da0bbe8` (docs: complete plan)
 
 ## Files Created/Modified
 
