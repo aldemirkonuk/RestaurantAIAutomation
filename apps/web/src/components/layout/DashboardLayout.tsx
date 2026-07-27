@@ -9,7 +9,24 @@ import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
 import { WineAgentFab } from '../../guidance/components/WineAgentFab'
 import { TourHelpButton } from '../../guidance/components/TourHelpButton'
 import { useUIStore } from '../../stores/uiStore'
+import { useUxOverrides } from '../../hooks/useUxOverrides'
 import { cn } from '../../lib/utils'
+
+/**
+ * Route path -> stable page key for UX telemetry.
+ *
+ * Ids are stripped so `/orders/3f9c…` and `/orders/7ab2…` aggregate as one page
+ * rather than fragmenting into thousands of single-signal buckets — and so no
+ * record identifier is carried into the signals table.
+ */
+function pageKey(pathname: string): string {
+  const cleaned = pathname
+    .split('/')
+    .filter(Boolean)
+    .filter((seg) => !/^[0-9a-f]{8}-|^\d+$/i.test(seg))
+    .join('/')
+  return cleaned || 'dashboard'
+}
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
@@ -20,6 +37,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
+
+  // Observes friction and serves approved overrides. No-op unless
+  // VITE_UX_OPTIMIZER is on AND the server's kill switch is on AND a human has
+  // approved something for this page.
+  useUxOverrides(pageKey(location.pathname))
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -46,6 +68,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <button
               type="button"
               aria-label="Close navigation"
+              data-ux-key="nav:backdrop"
               className="fixed inset-0 z-[45] bg-black/40 md:hidden"
               onClick={() => setSidebarOpen(false)}
             />
@@ -66,6 +89,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <button
                 type="button"
                 aria-label="Open navigation"
+                data-ux-key="nav:open"
                 onClick={() => setSidebarOpen(true)}
                 className="inline-flex items-center justify-center w-11 h-11 rounded-xl text-gray-700 hover:bg-gray-100"
               >

@@ -1,23 +1,25 @@
 /**
  * useUxOverrides — reads the self-learning UX agent's approved, gated overrides
- * for a page and exposes them to components.
+ * for a page and exposes them to components. Also mounts the friction detectors
+ * for that page, so this hook is both halves of the client loop.
  *
  * A component asks for its `target_key`; if a human-approved override is live
- * AND this session falls inside its rollout bucket AND the feature is enabled
+ * AND this user falls inside its rollout bucket AND the feature is enabled
  * server-side, it receives the patch. Otherwise it renders exactly as today.
  * This is the ONLY channel through which the agent can influence the live UI,
  * and it is entirely opt-in + reversible.
+ *
+ * Mounted once in DashboardLayout. It previously existed but was imported by no
+ * file, which meant the detectors never ran — so the feature was not merely
+ * switched off, it was unreachable, and flipping VITE_UX_OPTIMIZER would have
+ * collected nothing.
  */
 
 import { useEffect, useState } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import {
-  uxSessionId,
-  attachFrictionDetectors,
-  reportTti,
-} from "../lib/uxSignals";
+import { attachFrictionDetectors, reportTti } from "../lib/uxSignals";
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
+const ENABLED = import.meta.env.VITE_UX_OPTIMIZER === "true";
 
 export interface UxOverride {
   targetKey: string;
@@ -27,32 +29,37 @@ export interface UxOverride {
 }
 
 export function useUxOverrides(page: string) {
-  const { user } = useAuth();
-  const restaurantId = user?.restaurantId;
   const [overrides, setOverrides] = useState<Record<string, UxOverride>>({});
 
   useEffect(() => {
+    if (!ENABLED) return;
     let cancelled = false;
-    const params = new URLSearchParams({ page, sessionId: uxSessionId() });
-    if (restaurantId) params.set("restaurantId", restaurantId);
-    fetch(`${API_URL}/api/v1/ux/overrides?${params.toString()}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
-        if (cancelled || !body?.enabled) return;
-        const map: Record<string, UxOverride> = {};
-        for (const o of body.overrides ?? []) map[o.targetKey] = o;
-        setOverrides(map);
-      })
-      .catch(() => {});
 
-    // Wire friction detectors for this page (no-op unless VITE_UX_OPTIMIZER).
-    reportTti(page, restaurantId);
-    const detach = attachFrictionDetectors(page, restaurantId);
+    // restaurantId is deliberately not sent — the server takes it from the JWT.
+    // A client that can name the tenant it is asking about is a client that can
+    // name someone else's.
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      fetch(`${API_URL}/api/v1/ux/overrides?page=${encodeURIComponent(page)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (cancelled || !body?.enabled) return;
+          const map: Record<string, UxOverride> = {};
+          for (const o of body.overrides ?? []) map[o.targetKey] = o;
+          setOverrides(map);
+        })
+        .catch(() => {});
+    }
+
+    reportTti(page);
+    const detach = attachFrictionDetectors(page);
     return () => {
       cancelled = true;
       detach();
     };
-  }, [page, restaurantId]);
+  }, [page]);
 
   /** Read one override's patch by target key; undefined when none is live. */
   const override = (targetKey: string): Record<string, unknown> | undefined =>

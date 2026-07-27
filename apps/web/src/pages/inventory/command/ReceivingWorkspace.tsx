@@ -41,14 +41,18 @@ function Stepper({
   onChange,
   disabled,
   tone = 'default',
+  uxKey,
 }: {
   value: number
   onChange: (n: number) => void
   disabled?: boolean
   tone?: 'default' | 'warn'
+  /** Stable agent-facing name. Steppers are where miscounts happen, so which one is being fought with matters. */
+  uxKey?: string
 }) {
   return (
     <div
+      data-ux-key={uxKey}
       className={cn(
         'inline-flex items-center border rounded-lg overflow-hidden bg-white',
         tone === 'warn' && value > 0 ? 'border-amber-300' : 'border-gray-200',
@@ -240,10 +244,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               />
             </div>
             <div className="flex justify-center">
-              <Stepper value={acceptedQty} onChange={setAcceptedQty} disabled={readOnly} />
+              <Stepper value={acceptedQty} onChange={setAcceptedQty} disabled={readOnly} uxKey="receiving:accepted-qty" />
             </div>
             <div className="flex justify-center">
-              <Stepper value={rejectedQty} onChange={setRejectedQty} disabled={readOnly} tone="warn" />
+              <Stepper value={rejectedQty} onChange={setRejectedQty} disabled={readOnly} tone="warn" uxKey="receiving:rejected-qty" />
             </div>
             <div
               className={cn(
@@ -444,6 +448,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           <div className="flex gap-2">
             <button
               onClick={onClose}
+              data-ux-key="receiving:defer"
               className="h-9 px-4 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100"
             >
               {readOnly ? 'Close' : 'Later'}
@@ -451,6 +456,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
             {!readOnly && (
               <button
                 onClick={() => verify.mutate()}
+                data-ux-key="receiving:verify"
                 disabled={verify.isPending || blocked}
                 title={blocked ? 'Give a reason for the price difference first' : undefined}
                 className="h-9 px-5 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"

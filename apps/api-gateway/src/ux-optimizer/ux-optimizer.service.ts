@@ -1,6 +1,15 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
+
+/** Most signals read into one friction summary. See summarize() for why it is ordered. */
+const SIGNAL_SAMPLE_CAP = 5000;
 
 /**
  * UxOptimizerService — the in-product, self-learning UX agent.
@@ -12,19 +21,24 @@ import { DatabaseService } from "../database/database.service";
  *        improvements. It never edits the live site on its own.
  *
  * GUARDRAILS (mirroring the procurement "never auto-send" ethos):
- *   • AUTO_APPLY is a hard-coded false — proposals require human approval.
+ *   • reviewProposal() is the ONLY code path that can put a change in front of a
+ *     user, it is reachable only through an authenticated route, and it stamps
+ *     the JWT's user id as the reviewer. There is no code path — flagged,
+ *     configured, or otherwise — by which the agent approves its own proposal.
+ *     (This replaces a former `AUTO_APPLY = false` constant that was referenced
+ *     in no conditional and therefore guarded nothing. A guardrail that is not
+ *     on the path it claims to guard is worse than none: it gets believed.)
  *   • Approved changes ship behind a rollout percentage + a global kill switch
  *     (UX_OPTIMIZER_ENABLED). Nothing reaches 100% of users implicitly.
  *   • Every override is reversible; every outcome is written to ux_learnings.
+ *   • Every read and write is scoped to the caller's restaurant_id, taken from
+ *     the token rather than the request.
  *   • The agent may only target `target_key`s the web already knows how to
  *     render — it proposes copy/defaults/surfacing, not arbitrary DOM edits.
  */
 @Injectable()
 export class UxOptimizerService {
   private readonly logger = new Logger(UxOptimizerService.name);
-
-  /** Non-negotiable: the agent NEVER applies its own proposals. */
-  private static readonly AUTO_APPLY = false as const;
 
   private static readonly ANTHROPIC_URL =
     "https://api.anthropic.com/v1/messages";
@@ -69,7 +83,7 @@ export class UxOptimizerService {
   // 1. Observe — friction telemetry
   // ==========================================================================
   async ingestSignal(input: {
-    restaurantId?: string | null;
+    restaurantId: string;
     page: string;
     event: string;
     targetKey?: string | null;
@@ -83,7 +97,7 @@ export class UxOptimizerService {
       .getClient()
       .from("ux_signals")
       .insert({
-        restaurant_id: input.restaurantId ?? null,
+        restaurant_id: input.restaurantId,
         page: input.page,
         event: input.event,
         target_key: input.targetKey ?? null,
@@ -98,7 +112,7 @@ export class UxOptimizerService {
   /** Aggregate friction for a page over a trailing window. */
   async summarize(
     page: string,
-    restaurantId?: string,
+    restaurantId: string,
     sinceHours = 168,
   ): Promise<{
     page: string;
@@ -107,21 +121,30 @@ export class UxOptimizerService {
     byEvent: Record<string, number>;
     hotspots: Array<{ targetKey: string; event: string; count: number }>;
     avgSlowTtiMs: number | null;
+    /** True when the window held more signals than the cap — counts are a floor, not a total. */
+    sampleTruncated: boolean;
   }> {
     const sinceIso = new Date(
       Date.now() - sinceHours * 3600 * 1000,
     ).toISOString();
-    let q = this.dbService
+    // .order() before .limit() is load-bearing, not tidiness. This summary is
+    // handed to the LLM labelled "authoritative"; without an explicit sort the
+    // 5000-row cap returns whatever Postgres happened to scan, so once the table
+    // outgrows the cap the agent reasons over an arbitrary slice while believing
+    // it has the window. Newest-first at least makes the sample recent and its
+    // bias nameable.
+    const { data, error } = await this.dbService
       .getClient()
       .from("ux_signals")
       .select("event, target_key, value")
       .eq("page", page)
+      .eq("restaurant_id", restaurantId)
       .gte("created_at", sinceIso)
-      .limit(5000);
-    if (restaurantId) q = q.eq("restaurant_id", restaurantId);
-    const { data, error } = await q;
+      .order("created_at", { ascending: false })
+      .limit(SIGNAL_SAMPLE_CAP);
     if (error) throw new Error(error.message);
     const rows = data || [];
+    const sampleTruncated = rows.length >= SIGNAL_SAMPLE_CAP;
 
     const byEvent: Record<string, number> = {};
     const hotspotMap = new Map<string, number>();
@@ -153,6 +176,7 @@ export class UxOptimizerService {
       byEvent,
       hotspots,
       avgSlowTtiMs: ttiN ? Math.round(ttiSum / ttiN) : null,
+      sampleTruncated,
     };
   }
 
@@ -161,7 +185,7 @@ export class UxOptimizerService {
   // ==========================================================================
   async generateProposals(
     page: string,
-    restaurantId?: string,
+    restaurantId: string,
   ): Promise<{
     enabled: boolean;
     source: "llm" | "heuristic";
@@ -200,7 +224,7 @@ export class UxOptimizerService {
         .getClient()
         .from("ux_proposals")
         .insert({
-          restaurant_id: restaurantId ?? null,
+          restaurant_id: restaurantId,
           page,
           kind: p.kind,
           target_key: p.targetKey,
@@ -349,11 +373,12 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
   // ==========================================================================
   // 3. Human review — approve (gated rollout) / reject / rollback
   // ==========================================================================
-  async listProposals(status?: string, page?: string) {
+  async listProposals(restaurantId: string, status?: string, page?: string) {
     let q = this.dbService
       .getClient()
       .from("ux_proposals")
       .select("*")
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(100);
     if (status) q = q.eq("status", status);
@@ -363,10 +388,17 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     return data || [];
   }
 
+  /**
+   * The only path by which anything the agent wrote can reach a user's screen.
+   * `reviewedBy` is the authenticated user id supplied by the controller, never
+   * a caller-chosen string — an audit trail the caller writes about itself is
+   * not an audit trail.
+   */
   async reviewProposal(
     proposalId: string,
     decision: "approve" | "reject",
-    reviewedBy?: string,
+    reviewedBy: string,
+    restaurantId: string,
     rolloutPct?: number,
   ) {
     const { data: proposal, error } = await this.dbService
@@ -374,9 +406,10 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .from("ux_proposals")
       .select("*")
       .eq("id", proposalId)
-      .single();
-    if (error || !proposal)
-      throw new Error(error?.message || "Proposal not found");
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!proposal) throw new NotFoundException("Proposal not found");
+    this.assertOwned(proposal.restaurant_id, restaurantId);
 
     if (decision === "reject") {
       await this.dbService
@@ -384,7 +417,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
         .from("ux_proposals")
         .update({
           status: "rejected",
-          reviewed_by: reviewedBy ?? null,
+          reviewed_by: reviewedBy,
           reviewed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -430,7 +463,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .from("ux_proposals")
       .update({
         status: "live",
-        reviewed_by: reviewedBy ?? null,
+        reviewed_by: reviewedBy,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -447,13 +480,15 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     return { status: "live", rolloutPct: rollout };
   }
 
-  async rollback(proposalId: string, reason?: string) {
+  async rollback(proposalId: string, restaurantId: string, reason?: string) {
     const { data: proposal } = await this.dbService
       .getClient()
       .from("ux_proposals")
       .select("*")
       .eq("id", proposalId)
       .maybeSingle();
+    if (!proposal) throw new NotFoundException("Proposal not found");
+    this.assertOwned(proposal.restaurant_id, restaurantId);
     await this.dbService
       .getClient()
       .from("ux_overrides")
@@ -464,18 +499,31 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .from("ux_proposals")
       .update({ status: "rolled_back", updated_at: new Date().toISOString() })
       .eq("id", proposalId);
-    if (proposal)
-      await this.appendLearning({
-        restaurantId: proposal.restaurant_id,
-        page: proposal.page,
-        targetKey: proposal.target_key,
-        proposalId,
-        hypothesis: proposal.title,
-        outcome: "regressed",
-        verdict: "revert",
-        note: reason || "Rolled back.",
-      });
+    await this.appendLearning({
+      restaurantId: proposal.restaurant_id,
+      page: proposal.page,
+      targetKey: proposal.target_key,
+      proposalId,
+      hypothesis: proposal.title,
+      outcome: "regressed",
+      verdict: "revert",
+      note: reason || "Rolled back.",
+    });
     return { status: "rolled_back" };
+  }
+
+  /**
+   * Rows in these tables always carry a restaurant_id. A null one means the row
+   * predates tenancy or was written by a bug — refuse it rather than treating
+   * "belongs to nobody" as "belongs to everybody", which is exactly how the
+   * previous override filter leaked across tenants.
+   */
+  private assertOwned(
+    rowRestaurantId: string | null,
+    callerRestaurantId: string,
+  ) {
+    if (!rowRestaurantId || rowRestaurantId !== callerRestaurantId)
+      throw new ForbiddenException("Not yours");
   }
 
   // ==========================================================================
@@ -483,25 +531,24 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
   // ==========================================================================
   async getActiveOverrides(
     page: string,
-    restaurantId?: string,
-    sessionId?: string,
+    restaurantId: string,
+    userId: string,
   ): Promise<{ enabled: boolean; overrides: any[] }> {
     if (!this.enabled()) return { enabled: false, overrides: [] };
+    // Tenancy is enforced in the query, not in a post-filter. The previous
+    // version fetched every tenant's overrides and then filtered in JS with
+    // `o.restaurant_id == null || !restaurantId || ...` — so an absent
+    // restaurantId made the second clause true and returned all of them.
     const { data, error } = await this.dbService
       .getClient()
       .from("ux_overrides")
       .select("*")
       .eq("page", page)
-      .eq("enabled", true);
+      .eq("enabled", true)
+      .eq("restaurant_id", restaurantId);
     if (error) throw new Error(error.message);
-    const bucket = this.sessionBucket(sessionId);
+    const bucket = this.rolloutBucket(userId);
     const overrides = (data || [])
-      .filter(
-        (o) =>
-          o.restaurant_id == null ||
-          !restaurantId ||
-          o.restaurant_id === restaurantId,
-      )
       .filter((o) => bucket < (o.rollout_pct ?? 0))
       .map((o) => ({
         targetKey: o.target_key,
@@ -512,12 +559,20 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     return { enabled: true, overrides };
   }
 
-  /** Stable 0..99 bucket per session for deterministic gradual rollout. */
-  private sessionBucket(sessionId?: string): number {
-    if (!sessionId) return Math.floor(Math.random() * 100);
+  /**
+   * Stable 0..99 bucket, keyed on the USER rather than a browser session.
+   * Session-keyed bucketing put the same human in different buckets in
+   * different tabs — the UI would visibly disagree with itself, and any
+   * measurement taken across those sessions would be comparing a person to
+   * themselves. There is deliberately no random fallback: an unidentifiable
+   * caller gets bucket 100, which is outside every rollout percentage, so the
+   * failure mode is "sees the product as built" rather than "sees a coin flip".
+   */
+  private rolloutBucket(userId?: string): number {
+    if (!userId) return 100;
     let h = 0;
-    for (let i = 0; i < sessionId.length; i++)
-      h = (h * 31 + sessionId.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < userId.length; i++)
+      h = (h * 31 + userId.charCodeAt(i)) >>> 0;
     return h % 100;
   }
 
@@ -559,11 +614,12 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     return { ok: !error };
   }
 
-  async listLearnings(page?: string, limit = 100) {
+  async listLearnings(restaurantId: string, page?: string, limit = 100) {
     let q = this.dbService
       .getClient()
       .from("ux_learnings")
       .select("*")
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (page) q = q.eq("page", page);
@@ -588,22 +644,53 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     const now = summarizeWindowBounds();
     const [before, after] = await Promise.all([
       this.countEvents(
+        ov.restaurant_id,
         ov.page,
         ov.target_key,
         metric,
         now.prevStart,
         now.midpoint,
       ),
-      this.countEvents(ov.page, ov.target_key, metric, now.midpoint, now.end),
+      this.countEvents(
+        ov.restaurant_id,
+        ov.page,
+        ov.target_key,
+        metric,
+        now.midpoint,
+        now.end,
+      ),
     ]);
-    const liftPct = before === 0 ? 0 : ((after - before) / before) * 100;
-    const outcome =
-      liftPct < -10 ? "improved" : liftPct > 10 ? "regressed" : "neutral";
-    const verdict = outcome === "regressed" ? "revert" : "keep";
+
+    // A zero baseline is not evidence of "no change" — it is absence of
+    // evidence, and the two must not collapse to the same verdict. Previously
+    // before === 0 scored 0% lift and read as "neutral" -> keep, so a change
+    // that introduced brand-new friction where there had been none was recorded
+    // as harmless. Say "unknown" and leave it alone instead.
+    const measurable = before > 0 || after > 0;
+    const liftPct = before === 0 ? null : ((after - before) / before) * 100;
+    const outcome = !measurable
+      ? "no_data"
+      : liftPct == null
+        ? "new_friction"
+        : liftPct < -10
+          ? "improved"
+          : liftPct > 10
+            ? "regressed"
+            : "neutral";
+    // Only revert on a measured regression. New friction is flagged for a human
+    // rather than auto-reverted: at this sample size one noisy day would
+    // otherwise be enough to pull a change nobody complained about.
+    const verdict =
+      outcome === "regressed"
+        ? "revert"
+        : outcome === "new_friction"
+          ? "review"
+          : "keep";
     if (verdict === "revert" && ov.proposal_id)
       await this.rollback(
         ov.proposal_id,
-        `Auto-revert: ${metric} +${liftPct.toFixed(0)}%`,
+        ov.restaurant_id,
+        `Auto-revert: ${metric} +${(liftPct ?? 0).toFixed(0)}%`,
       );
     await this.appendLearning({
       restaurantId: ov.restaurant_id,
@@ -615,13 +702,43 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       metric,
       baseline: before,
       observed: after,
-      liftPct,
+      liftPct: liftPct ?? undefined,
       verdict,
     });
     return { outcome, liftPct, verdict };
   }
 
+  /**
+   * The caller evaluateOverride never had. Without this the measure-and-learn
+   * half of the loop was unreachable code: overrides shipped and were never
+   * scored, so ux_learnings only ever recorded that a human clicked approve.
+   * Runs nightly, off-peak, and only when the feature is switched on.
+   */
+  @Cron("17 4 * * *", { name: "ux-optimizer-evaluate" })
+  async evaluateLiveOverrides(): Promise<void> {
+    if (!this.enabled()) return;
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("ux_overrides")
+      .select("id")
+      .eq("enabled", true);
+    if (error) {
+      this.logger.warn(
+        `evaluate sweep failed to list overrides: ${error.message}`,
+      );
+      return;
+    }
+    for (const ov of data || []) {
+      try {
+        await this.evaluateOverride(ov.id);
+      } catch (err: any) {
+        this.logger.warn(`evaluateOverride(${ov.id}) failed: ${err?.message}`);
+      }
+    }
+  }
+
   private async countEvents(
+    restaurantId: string,
     page: string,
     targetKey: string,
     event: string,
@@ -632,6 +749,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .getClient()
       .from("ux_signals")
       .select("*", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
       .eq("page", page)
       .eq("target_key", targetKey)
       .eq("event", event)
