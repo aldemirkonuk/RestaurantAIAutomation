@@ -6,6 +6,49 @@
 
 ---
 
+## REVISION 3 — the document flow
+
+The match was modelling two documents. A delivery has four, plus a fifth that
+closes the loop:
+
+| Document | X12 | Proves | Was |
+|---|---|---|---|
+| Purchase order | 850 | what we ordered | ✅ single-line only |
+| **Packing slip / ASN** | **856** | what the distributor says **shipped** | ❌ absent |
+| Delivery receipt / POD | — | what a human signed for at the door | ❌ absent |
+| Invoice | 810 | what we are billed | ⚠️ hand-typed, inferred from the PO |
+| **Credit memo** | **812** | what they **agreed to pay back** | ❌ absent |
+
+**Why the packing slip changes the product, not just the schema.** Every other
+discrepancy is our word against theirs and gets argued on the phone. When their
+ship notice says 22 and their invoice says 24, *their own two documents
+disagree* — there is nothing left to dispute. `overbilled_vs_ship` is the
+highest-confidence claim this system can make, and it now outranks every verdict
+except a missing invoice. It also splits a failure that used to be one bucket:
+short-vs-slip is goods lost between warehouse and door (a carrier problem),
+over-vs-slip is a billing problem. Different remedies, different counterparties.
+
+**Why the credit memo is the real metric.** Until an 812 lands on a later
+invoice, "dollars recovered" means *"we asked."* Verified recovery requires
+watching the credit arrive, which requires modelling the document it arrives on.
+
+**EDI, honestly.** The Southern Glazer's EDI programmes are *vendor-side* —
+suppliers selling **to** the distributor through Ariba. That is the opposite
+direction from what a restaurant needs. Restaurant-side EDI does exist —
+MarginEdge brokers it and the largest distributors offer operator feeds — but it
+is requested per distributor and is a big-house privilege. So: parse X12
+(810/856/812, read 850/855), accept it however it arrives, and **build no VAN or
+AS2 transport.** The connectivity is a commercial problem, not a technical one,
+and it is the same trap shape as the 22 "planned" POS adapters.
+
+**Four intake channels, one document model.** Email (a per-restaurant invoice
+address — what MarginEdge's intake actually runs on, and this repo already has
+gmail-watch, inbound-address, `conversation_attachments` and a
+`vendor-attachments` bucket), photo at the door, web upload, and SFTP/EDI drop.
+Downstream code never learns which channel a document arrived on.
+
+---
+
 ## REVISION 2 — what two expert reviews changed
 
 Two independent reviews were run against this plan and the code: an operator

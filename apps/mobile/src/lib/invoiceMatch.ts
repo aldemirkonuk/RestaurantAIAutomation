@@ -16,6 +16,21 @@
  */
 import { color } from "@/design/tokens";
 
+/**
+ * ⚠️ STALE — DO NOT USE WITHOUT UPDATING FIRST.
+ *
+ * This is a third copy of the match rules and it has ZERO importers. It still
+ * implements the old three-way match and is missing: the packing-slip document
+ * (`shippedQty`, `overbilled_vs_ship`, `short_shipped`), free-goods netting,
+ * allocated freight in landed cost, `creditAmount`, and `selfEvidenced`. It also
+ * still contains the free-goods bug where an agreed 11-for-10 reports an overage.
+ *
+ * The authority is apps/api-gateway/src/procurement/invoice-match.ts; the web
+ * mirror at apps/web/src/lib/invoiceMatch.ts is kept in sync with it. Bring this
+ * file up to both when mobile receiving is built (Track B3), or delete it — a
+ * silently divergent copy of the logic that decides vendor disputes is worse
+ * than no copy.
+ */
 export type MatchVerdict =
   | "matched"
   | "price_variance"

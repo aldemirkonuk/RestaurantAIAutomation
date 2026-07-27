@@ -59,9 +59,11 @@ describe('invoiceMatch (web mirror)', () => {
   it('has a style for every verdict it can produce', () => {
     const verdicts = [
       'matched',
+      'overbilled_vs_ship',
       'price_variance',
       'qty_over',
       'qty_short',
+      'short_shipped',
       'rejected',
       'partial',
       'unmatched',
@@ -90,10 +92,18 @@ describe('invoiceMatch parity with the API engine', () => {
     ['short AND damaged', { ...base, acceptedQty: 20, rejectedQty: 1 }],
     ['over delivery', { ...base, acceptedQty: 26 }],
     ['partial, bill agrees', { ...base, invoiceQty: 20, acceptedQty: 20 }],
-    ['free goods 11-for-10', { orderedQty: 10, poUnitPrice: 22, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 11 }],
+    ['free goods 11-for-10, undeclared', { orderedQty: 10, poUnitPrice: 22, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 11 }],
+    ['free goods 11-for-10, declared', { orderedQty: 10, poUnitPrice: 22, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 11, freeGoodsQty: 1 }],
     ['no invoice yet', { ...base, invoiceQty: null, invoiceUnitPrice: null }],
     ['unpriced order', { ...base, poUnitPrice: null, invoiceUnitPrice: null }],
     ['negative input', { ...base, acceptedQty: -5, rejectedQty: -2 }],
+    // Packing slip cases — the fourth document.
+    ['overbilled vs their own slip', { ...base, shippedQty: 22, invoiceQty: 24, acceptedQty: 22 }],
+    ['overbilled AND overpriced', { ...base, shippedQty: 22, invoiceQty: 24, invoiceUnitPrice: 26, acceptedQty: 22 }],
+    ['lost in transit', { ...base, shippedQty: 24, acceptedQty: 22 }],
+    ['slip agrees with everything', { ...base, shippedQty: 24 }],
+    ['slip present, no invoice', { ...base, shippedQty: 24, invoiceQty: null, invoiceUnitPrice: null }],
+    ['allocated freight', { ...base, allocatedCharges: 48 }],
   ]
 
   it.each(cases)('agrees with the backend: %s', (_label, input) => {
@@ -106,6 +116,8 @@ describe('invoiceMatch parity with the API engine', () => {
     expect(web.requiresOverride).toBe(api.requiresOverride)
     expect(web.priceVerified).toBe(api.priceVerified)
     expect(web.creditDue).toBe(api.creditDue)
+    expect(web.creditAmount).toBe(api.creditAmount)
+    expect(web.selfEvidenced).toBe(api.selfEvidenced)
     expect(web.effectiveUnitCost).toBe(api.effectiveUnitCost)
   })
 })

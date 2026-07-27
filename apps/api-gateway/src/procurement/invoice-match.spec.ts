@@ -1,11 +1,22 @@
-import { computeMatch, isDiscrepancy, MatchInput } from "./invoice-match";
+import {
+  computeMatch,
+  isClaimable,
+  isDiscrepancy,
+  MatchInput,
+} from "./invoice-match";
 
 /**
- * Three-way match (PO <-> Invoice <-> Receipt) verdict rules.
+ * Four-way match (PO <-> Packing slip <-> Receipt <-> Invoice) verdict rules.
  *
- * One case per row of the edge-case catalog in the plan. The load-bearing one is
- * "damaged units" vs "short ship": both leave 22 bottles in stock out of 24 billed, but they
- * are different vendor failures and must not collapse into the same verdict.
+ * One case per row of the edge-case catalog in the plan. Two load-bearing ones:
+ *  - "damaged units" vs "short ship": both leave 22 bottles in stock out of 24
+ *    billed, but they are different vendor failures and must not collapse.
+ *  - "overbilled vs ship": the vendor's own two documents disagreeing. It is the
+ *    only discrepancy that needs no argument, so it outranks everything else.
+ *
+ * A check's `ok` is TRI-state. `null` means the document needed to evaluate it
+ * never arrived, and that is not the same as passing — inferring agreement from
+ * a missing document is how a price gets marked verified that nobody ever read.
  */
 
 // A clean 24-bottle order at the agreed $22, fully delivered and accepted.
@@ -27,7 +38,8 @@ describe("computeMatch", () => {
       const r = computeMatch(base);
 
       expect(r.verdict).toBe("matched");
-      expect(r.checks.every((c) => c.ok)).toBe(true);
+      // No packing slip here, so the two ship checks are null (unknown), not false.
+      expect(r.checks.every((c) => c.ok !== false)).toBe(true);
       expect(r.ledgerDelta).toBe(0);
       expect(r.backorderQty).toBe(0);
       expect(r.priceVerified).toBe(true);
@@ -159,18 +171,111 @@ describe("computeMatch", () => {
   });
 
   describe("free goods", () => {
+    const elevenForTen: MatchInput = {
+      orderedQty: 10,
+      poUnitPrice: 22,
+      invoiceQty: 10,
+      invoiceUnitPrice: 22,
+      acceptedQty: 11,
+      freeGoodsQty: 1,
+    };
+
     it("blends the unit cost across the bottles actually in hand (11 for the price of 10)", () => {
-      const r = computeMatch({
-        orderedQty: 10,
-        poUnitPrice: 22,
-        invoiceQty: 10,
-        invoiceUnitPrice: 22,
-        acceptedQty: 11,
-      });
+      const r = computeMatch(elevenForTen);
 
       expect(r.effectiveUnitCost).toBeCloseTo(20); // 10 x $22 / 11 bottles
-      expect(r.verdict).toBe("qty_over");
       expect(r.ledgerDelta).toBe(1);
+    });
+
+    it("treats a declared deal as a clean match, not an overage", () => {
+      const r = computeMatch(elevenForTen);
+
+      // The previous version reported qty_over here and fired a CRITICAL alert
+      // on an ordinary negotiated bonus. A manager alarmed about good news
+      // stops reading alarms, which costs far more than the bottle.
+      expect(r.verdict).toBe("matched");
+      expect(r.creditDue).toBe(false);
+      expect(isDiscrepancy(r.verdict)).toBe(false);
+    });
+
+    it("still reports an overage when the extra bottle was NOT declared free", () => {
+      const r = computeMatch({ ...elevenForTen, freeGoodsQty: 0 });
+
+      // An undeclared extra is an anomaly until a human says it was a deal.
+      expect(r.verdict).toBe("qty_over");
+    });
+  });
+
+  describe("packing slip — the vendor's own two documents disagreeing", () => {
+    it("reports overbilled_vs_ship and marks it self-evidenced", () => {
+      // Their slip says 22 left the warehouse; their invoice bills 24.
+      const r = computeMatch({
+        ...base,
+        shippedQty: 22,
+        invoiceQty: 24,
+        acceptedQty: 22,
+      });
+
+      expect(r.verdict).toBe("overbilled_vs_ship");
+      expect(r.selfEvidenced).toBe(true);
+      expect(r.creditDue).toBe(true);
+      expect(r.creditAmount).toBe(44); // 2 bottles x $22
+      expect(check(r, "bill_vs_ship").ok).toBe(false);
+      expect(isClaimable(r.verdict)).toBe(true);
+    });
+
+    it("outranks a price variance — the provable claim leads", () => {
+      const r = computeMatch({
+        ...base,
+        shippedQty: 22,
+        invoiceQty: 24,
+        invoiceUnitPrice: 26, // also overpriced
+        acceptedQty: 22,
+      });
+
+      expect(r.verdict).toBe("overbilled_vs_ship");
+      expect(r.requiresOverride).toBe(true); // still true, just not the headline
+    });
+
+    it("separates goods lost in transit from goods never shipped", () => {
+      // Slip and invoice agree at 24; only 22 made it to the door.
+      const r = computeMatch({ ...base, shippedQty: 24, acceptedQty: 22 });
+
+      expect(r.verdict).toBe("qty_short");
+      expect(check(r, "bill_vs_ship").ok).toBe(true); // vendor's paperwork is consistent
+      expect(check(r, "physical_vs_ship").ok).toBe(false); // it went missing en route
+      expect(r.selfEvidenced).toBe(false);
+    });
+
+    it("reports unknown, never agreement, when no packing slip arrived", () => {
+      const r = computeMatch(base);
+
+      expect(check(r, "bill_vs_ship").ok).toBeNull();
+      expect(check(r, "physical_vs_ship").ok).toBeNull();
+      expect(r.verdict).toBe("matched");
+    });
+  });
+
+  describe("landed cost", () => {
+    it("folds allocated freight into what the bottle actually cost", () => {
+      const r = computeMatch({ ...base, allocatedCharges: 48 });
+
+      // (24 x $22 + $48) / 24 = $24. Freight is a cost component, not a price
+      // variance, so it moves the cost basis rather than raising an alarm.
+      expect(r.effectiveUnitCost).toBeCloseTo(24);
+      expect(r.verdict).toBe("matched");
+      expect(r.priceVerified).toBe(true);
+    });
+  });
+
+  describe("claimability", () => {
+    it("does not raise a claim on an unfinished delivery", () => {
+      // `partial` and `unmatched` are states of paperwork still in flight, not
+      // vendor errors. Claiming on them puts a restaurant in front of its
+      // distributor asking for money over an invoice that has not arrived.
+      expect(isClaimable("partial")).toBe(false);
+      expect(isClaimable("unmatched")).toBe(false);
+      expect(isClaimable("matched")).toBe(false);
     });
   });
 
@@ -218,7 +323,8 @@ describe("computeMatch", () => {
 
       expect(r.requiresOverride).toBe(false);
       expect(r.priceVerified).toBe(false);
-      expect(check(r, "price").ok).toBe(true);
+      // Unknown, not passed: there was nothing to compare.
+      expect(check(r, "price").ok).toBeNull();
       expect(r.verdict).toBe("matched");
     });
   });

@@ -1093,11 +1093,21 @@ export class ProcurementService {
    * The idempotency key is per (order, inventory) so a replayed request — the mobile
    * outbox retries — can never double-count.
    */
+  /**
+   * @param unitCost What the bottle VERIFIABLY cost, from the invoice — landed,
+   *   including allocated freight and fees. Passing it is the difference between
+   *   a match that means something and a match that is decoration: without it
+   *   apply_stock_movement writes cost_provenance='estimated' and the lot keeps
+   *   the price we hoped for at ordering time, so catching a $2 overcharge
+   *   changes a badge on a screen and leaves inventory valuation, WAC, pour cost
+   *   and COGS all still quoting the old number.
+   */
   private async applyReceiptAdjustment(
     orderId: string,
     inventoryId: string,
     delta: number,
     reason: string,
+    unitCost?: number | null,
   ): Promise<void> {
     const { error } = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
@@ -1108,6 +1118,7 @@ export class ProcurementService {
         p_transaction_type: "adjustment",
         p_source: "receiving",
         p_reason: reason,
+        p_unit_cost: unitCost ?? null,
         p_order_id: orderId,
         p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
       },
@@ -1174,20 +1185,28 @@ export class ProcurementService {
       (orderRow as any).quoted_price ??
       null;
 
+    // Silence is NOT agreement. An unstated invoice used to be inferred from the
+    // PO, which had two consequences: physical_vs_bill compared a number to
+    // itself and always passed, and price_verified=true was written for a
+    // delivery where nobody had looked at a document. That is a manufactured
+    // audit assertion in a column a customer will lean on in a vendor dispute.
+    // Absent now means absent, and the verdict comes back `unmatched`.
     const match = hasMatchFields
       ? computeMatch({
           orderedQty,
           poUnitPrice,
-          // An unstated invoice is taken to agree with the PO — the WineOps invoice is
-          // rendered from our own data, so silence means "no deviation", not "unknown".
-          invoiceQty: body.invoiceQuantity ?? stockedQty,
-          invoiceUnitPrice: body.invoiceUnitPrice ?? poUnitPrice,
+          shippedQty: body.shippedQuantity ?? null,
+          invoiceQty: body.invoiceQuantity ?? null,
+          invoiceUnitPrice: body.invoiceUnitPrice ?? null,
           acceptedQty: body.acceptedQuantity ?? stockedQty,
           rejectedQty: body.rejectedQuantity ?? 0,
+          freeGoodsQty: body.freeGoodsQuantity ?? 0,
+          allocatedCharges: body.allocatedCharges ?? 0,
           priceOverrideReason: body.priceOverrideReason ?? null,
           stockedQty,
         })
       : null;
+    const hasInvoice = body.invoiceQuantity != null;
 
     // A price that differs from the agreed one is never accepted silently (D-B).
     if (match?.requiresOverride) {
@@ -1203,6 +1222,9 @@ export class ProcurementService {
         (orderRow as any).inventory_id,
         match.ledgerDelta,
         `receipt verification for order ${orderId}: ${match.summary}`,
+        // Verified landed cost, so the corrected lot carries what the bottle
+        // really cost rather than what we expected it to.
+        match.effectiveUnitCost,
       );
     }
 
@@ -1220,8 +1242,14 @@ export class ProcurementService {
 
     // Accepting less than was ordered keeps the order open, so the outstanding bottles stay
     // visible as a backorder instead of stranding phantom shadow stock (D17).
+    // An order also stays open when no invoice has arrived. Many distributors
+    // bill weekly in arrears — the paper at the door is a packing slip with no
+    // prices — so closing on the goods alone would mark the delivery finished
+    // before anyone could check what was charged for it, and reconciling late
+    // is exactly where the recoverable money lives.
+    const awaitingInvoice = match?.verdict === "unmatched";
     const status =
-      match && match.backorderQty > 0
+      match && (match.backorderQty > 0 || awaitingInvoice)
         ? ProcurementOrderStatus.PARTIALLY_RECEIVED
         : ProcurementOrderStatus.COMPLETED;
 
@@ -1238,11 +1266,14 @@ export class ProcurementService {
         accepted_quantity: acceptedQty,
         rejected_quantity: rejectedQty,
         rejected_reason: body.rejectedReason ?? null,
-        invoice_quantity: body.invoiceQuantity ?? stockedQty,
-        invoice_unit_price: body.invoiceUnitPrice ?? poUnitPrice,
+        invoice_quantity: body.invoiceQuantity ?? null,
+        invoice_unit_price: body.invoiceUnitPrice ?? null,
         backorder_quantity: match.backorderQty,
         match_status: match.verdict,
-        price_verified: match.priceVerified,
+        // NULL, not false, when there was no invoice to verify against: "we
+        // checked and it did not match" and "nobody has checked" are different
+        // facts, and only one of them is an accusation.
+        price_verified: hasInvoice ? match.priceVerified : null,
         price_override_reason: body.priceOverrideReason ?? null,
         discrepancy_notes: isDiscrepancy(match.verdict) ? match.summary : null,
         match_verified_at: new Date().toISOString(),
