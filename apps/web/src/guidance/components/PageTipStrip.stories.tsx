@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
 
 function TipStripPreview() {
   return (
@@ -38,16 +37,15 @@ function TipStripPreview() {
   )
 }
 
+// Router comes from the global decorator in .storybook/preview.tsx.
 const meta: Meta = {
   title: 'Guidance/PageTipStrip',
   component: TipStripPreview,
   decorators: [
     (Story) => (
-      <MemoryRouter>
-        <div className="min-h-[200px] bg-gray-50 p-4">
-          <Story />
-        </div>
-      </MemoryRouter>
+      <div className="min-h-[200px] bg-gray-50 p-4">
+        <Story />
+      </div>
     ),
   ],
 }
