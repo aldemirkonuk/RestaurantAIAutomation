@@ -30,6 +30,7 @@ import { OrganizationsModule } from "./organizations/organizations.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
 import { TeamModule } from "./team/team.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
+import { DistributorDiscoveryModule } from "./distributor-discovery/distributor-discovery.module";
 import { MenusModule } from "./menus/menus.module";
 import { MobileModule } from "./mobile/mobile.module";
 import { PushModule } from "./push/push.module";
@@ -92,6 +93,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
+    DistributorDiscoveryModule, // Territory-gated distributor map search (geo + portfolio facets)
     MenusModule, // Menu import (scan/CSV/manual) + onboarding progress
     UserPreferencesModule, // User preference storage (JSONB)
     RestaurantTemplatesModule, // Communication templates CRUD

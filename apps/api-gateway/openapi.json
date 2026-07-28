@@ -9142,14 +9142,6 @@
         "summary": "List conversations with pagination and filters",
         "parameters": [
           {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "providerId",
             "required": false,
             "in": "query",
@@ -9167,6 +9159,14 @@
           },
           {
             "name": "orderNumber",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "threadKey",
             "required": false,
             "in": "query",
             "schema": {
@@ -9284,6 +9284,12 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "schema": {}
           }
         ],
         "responses": {
@@ -9293,6 +9299,152 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/conversations/threads": {
+      "get": {
+        "operationId": "ConversationsController_listConversationThreads",
+        "summary": "List conversations paginated by thread",
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderNumber",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "threadKey",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sentiment",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "quarter",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9317,6 +9469,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9357,6 +9514,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9381,6 +9543,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9405,6 +9572,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9412,16 +9584,7 @@
       "get": {
         "operationId": "ConversationsController_getStats",
         "summary": "Get aggregated conversation statistics",
-        "parameters": [
-          {
-            "name": "restaurantId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -9429,6 +9592,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9443,6 +9611,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9466,6 +9639,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9489,6 +9667,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9512,6 +9695,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -9535,6 +9723,11 @@
         },
         "tags": [
           "Conversations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -11053,6 +11246,254 @@
         },
         "tags": [
           "vendor-catalogue"
+        ]
+      }
+    },
+    "/api/v1/distributors/search": {
+      "get": {
+        "operationId": "DistributorDiscoveryController_search",
+        "summary": "Search distributors by territory, distance and portfolio",
+        "description": "Returns distributors legally able to serve the caller's restaurant, nearest first. Distance is measured to the nearest known vendor location and falls back to the registered head office, flagged by distance_is_hq.",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Free-text match on name or wine specialties",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "territoryOnly",
+            "required": false,
+            "in": "query",
+            "description": "Only vendors legally able to serve this restaurant. Defaults to true; set false to also return out-of-territory vendors (flagged may_serve=false).",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "lat",
+            "required": false,
+            "in": "query",
+            "description": "Search origin latitude. Defaults to the restaurant's own location.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "required": false,
+            "in": "query",
+            "description": "Search origin longitude.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "radiusM",
+            "required": false,
+            "in": "query",
+            "description": "Max distance in metres from the origin.",
+            "schema": {
+              "maximum": 5000000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "minLng",
+            "required": false,
+            "in": "query",
+            "description": "Viewport south-west longitude.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "minLat",
+            "required": false,
+            "in": "query",
+            "description": "Viewport south-west latitude.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxLng",
+            "required": false,
+            "in": "query",
+            "description": "Viewport north-east longitude.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxLat",
+            "required": false,
+            "in": "query",
+            "description": "Viewport north-east latitude.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "Vendor types to include. Repeat the param for several.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "distributor",
+                  "importer",
+                  "wholesaler",
+                  "winery_direct",
+                  "broker",
+                  "other"
+                ]
+              }
+            }
+          },
+          {
+            "name": "facet",
+            "required": false,
+            "in": "query",
+            "description": "Portfolio facets as `kind:slug` (e.g. `region:burgundy`). Repeat the param for several. Values of the same kind are OR'd; different kinds are AND'd.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "distance",
+              "enum": [
+                "distance",
+                "name"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated distributor results"
+          },
+          "400": {
+            "description": "Invalid filter parameters"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "distributors"
+        ]
+      }
+    },
+    "/api/v1/distributors/facets": {
+      "get": {
+        "operationId": "DistributorDiscoveryController_facets",
+        "summary": "Portfolio facet counts for the filter rail",
+        "description": "Counts are computed against the same territory gate as /search, so a facet chip never promises results the search will not return.",
+        "parameters": [
+          {
+            "name": "territoryOnly",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "distributor",
+                  "importer",
+                  "wholesaler",
+                  "winery_direct",
+                  "broker",
+                  "other"
+                ]
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facet counts grouped by kind"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "distributors"
+        ]
+      }
+    },
+    "/api/v1/distributors/{id}": {
+      "get": {
+        "operationId": "DistributorDiscoveryController_findById",
+        "summary": "Distributor detail with locations, territories and portfolio",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Distributor detail"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Distributor not found"
+          }
+        },
+        "tags": [
+          "distributors"
         ]
       }
     },

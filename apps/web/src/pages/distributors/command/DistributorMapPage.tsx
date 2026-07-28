@@ -1,0 +1,259 @@
+import { useCallback, useEffect, useRef } from 'react'
+import { Search, X, SlidersHorizontal, Loader2, Compass, EyeOff } from 'lucide-react'
+import { useDistributorsPage, RADIUS_STOPS, RADIUS_MAX_INDEX } from '../useDistributorsPage'
+import { DistributorMap } from './DistributorMap'
+import { DistributorDrawer } from './DistributorDrawer'
+import { DistributorCard, FacetChip, TYPE_LABEL } from './bits'
+import { RangeSlider } from '../../../components/ui/RangeSlider'
+import { ThemedSelect } from '../../../components/ui/ThemedSelect'
+import type { DistributorType } from '../../../services/api/distributors'
+import { cn } from '../../../lib/utils'
+
+const TYPES: DistributorType[] = [
+  'distributor',
+  'importer',
+  'wholesaler',
+  'winery_direct',
+  'broker',
+]
+
+export default function DistributorMapPage() {
+  const s = useDistributorsPage()
+  const searchRef = useRef<HTMLInputElement | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  // "/" focuses search, Escape clears selection — mirrors the inventory page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      const typing =
+        el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      if (e.key === '/' && !typing) {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
+      if (e.key === 'Escape' && !typing) s.setSelectedId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [s])
+
+  // Selecting a marker scrolls its card into view — the other half of the
+  // marker/card link that makes the two panes feel like one surface.
+  useEffect(() => {
+    if (!s.selectedId) return
+    const node = listRef.current?.querySelector(`[data-distributor-id="${s.selectedId}"]`)
+    node?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [s.selectedId])
+
+  const handleSearchArea = useCallback(
+    (b: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => s.setBbox(b),
+    [s],
+  )
+
+  const regionFacets = s.facetGroups.region ?? []
+  const varietalFacets = s.facetGroups.varietal ?? []
+
+  return (
+    <div className="mx-auto max-w-[1500px] p-6">
+      {/* Header */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Find distributors</h1>
+          <p className="mt-0.5 text-sm text-gray-500">
+            Wine distributors that can legally supply your restaurant, nearest first.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {s.isFetching && <Loader2 className="h-4 w-4 animate-spin text-gray-300" />}
+          <ThemedSelect
+            value={s.sort}
+            aria-label="Sort distributors"
+            onChange={(v) => s.setSort(v as 'distance' | 'name')}
+            options={[
+              { value: 'distance', label: 'Nearest first' },
+              { value: 'name', label: 'Name A–Z' },
+            ]}
+          />
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="mb-3 flex flex-wrap items-center gap-2" data-tour="distributor-toolbar">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            ref={searchRef}
+            value={s.rawQuery}
+            onChange={(e) => s.setRawQuery(e.target.value)}
+            placeholder="Search distributors or portfolio…   /"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-wine-300 focus:ring-2 focus:ring-wine-100"
+          />
+          {s.rawQuery && (
+            <button
+              type="button"
+              onClick={() => s.setRawQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-gray-100"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => s.setTerritoryOnly(!s.territoryOnly)}
+          aria-pressed={s.territoryOnly}
+          title="Only show distributors licensed to sell to your restaurant"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition',
+            s.territoryOnly
+              ? 'border-wine-600 bg-wine-600 text-white'
+              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
+          )}
+        >
+          <Compass className="h-3.5 w-3.5" />
+          Can supply me
+        </button>
+
+        <div className="w-44">
+          <RangeSlider
+            label="Within"
+            min={0}
+            max={RADIUS_MAX_INDEX}
+            value={s.radiusIndex}
+            onChange={s.setRadiusIndex}
+            maxLabel="Any distance"
+            format={(i) => `${RADIUS_STOPS[i]} km`}
+          />
+        </div>
+
+        {s.filterCount > 0 && (
+          <button
+            type="button"
+            onClick={s.clearFilters}
+            className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-500 transition hover:bg-gray-50"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Clear {s.filterCount}
+          </button>
+        )}
+      </div>
+
+      {/* Facet rail */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+          Type
+        </span>
+        {TYPES.map((t) => (
+          <FacetChip
+            key={t}
+            label={TYPE_LABEL[t]}
+            active={s.types.includes(t)}
+            onClick={() => s.toggleType(t)}
+          />
+        ))}
+
+        {regionFacets.length > 0 && (
+          <>
+            <span className="ml-3 mr-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              Region
+            </span>
+            {regionFacets.slice(0, 8).map((f) => (
+              <FacetChip
+                key={f.slug}
+                label={f.value}
+                count={f.vendors}
+                active={s.facets.includes(`region:${f.slug}`)}
+                onClick={() => s.toggleFacet('region', f.slug)}
+              />
+            ))}
+          </>
+        )}
+
+        {varietalFacets.length > 0 && (
+          <>
+            <span className="ml-3 mr-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              Varietal
+            </span>
+            {varietalFacets.slice(0, 8).map((f) => (
+              <FacetChip
+                key={f.slug}
+                label={f.value}
+                count={f.vendors}
+                active={s.facets.includes(`varietal:${f.slug}`)}
+                onClick={() => s.toggleFacet('varietal', f.slug)}
+              />
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Results + map */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(360px,420px)_1fr]">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs font-semibold text-gray-500">
+              {s.isLoading ? 'Searching…' : `${s.total} distributor${s.total === 1 ? '' : 's'}`}
+            </p>
+            {s.hiddenByTerritory > 0 && (
+              <button
+                type="button"
+                onClick={() => s.setTerritoryOnly(false)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 transition hover:text-gray-600"
+                title="These cannot legally sell to your restaurant"
+              >
+                <EyeOff className="h-3 w-3" />
+                {s.hiddenByTerritory} can&apos;t supply you
+              </button>
+            )}
+          </div>
+
+          <div
+            ref={listRef}
+            className="flex max-h-[calc(100vh-320px)] min-h-[320px] flex-col gap-2 overflow-y-auto pr-1"
+          >
+            {s.isLoading &&
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-24 animate-pulse rounded-xl border border-gray-100 bg-gray-50" />
+              ))}
+
+            {!s.isLoading && s.distributors.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                <p className="text-sm font-medium text-gray-600">No distributors match these filters</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Try widening the distance or turning off &ldquo;Can supply me&rdquo;.
+                </p>
+              </div>
+            )}
+
+            {s.distributors.map((d) => (
+              <DistributorCard
+                key={d.id}
+                d={d}
+                active={d.id === s.hoveredId || d.id === s.selectedId}
+                onHover={s.setHoveredId}
+                onOpen={s.setSelectedId}
+              />
+            ))}
+          </div>
+        </div>
+
+        <DistributorMap
+          className="h-[calc(100vh-300px)] min-h-[420px] lg:sticky lg:top-4"
+          distributors={s.distributors}
+          origin={s.origin}
+          originLabel={s.origin?.label}
+          hoveredId={s.hoveredId}
+          selectedId={s.selectedId}
+          onHover={s.setHoveredId}
+          onSelect={s.setSelectedId}
+          onSearchArea={handleSearchArea}
+        />
+      </div>
+
+      <DistributorDrawer distributorId={s.selectedId} onClose={() => s.setSelectedId(null)} />
+    </div>
+  )
+}
