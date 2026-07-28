@@ -9,9 +9,14 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from "@nestjs/common";
 import { ConversationsService } from "./conversations.service";
-import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from "@nestjs/swagger";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+
+type AuthUser = { userId: string; restaurantId: string };
 
 interface ApproveConversationDto {
   approved: boolean;
@@ -31,6 +36,11 @@ interface RejectConversationDto {
 }
 
 @ApiTags("Conversations")
+@ApiBearerAuth()
+// Every route here reads or mutates vendor communications, and approve/reject send
+// real email. The controller previously carried no guard at all, so the whole surface
+// was reachable unauthenticated via the service-role key (which bypasses RLS).
+@UseGuards(JwtAuthGuard)
 @Controller("conversations")
 export class ConversationsController {
   private readonly logger = new Logger(ConversationsController.name);
@@ -48,6 +58,7 @@ export class ConversationsController {
   @ApiQuery({ name: "providerId", required: false })
   @ApiQuery({ name: "orderId", required: false })
   @ApiQuery({ name: "orderNumber", required: false })
+  @ApiQuery({ name: "threadKey", required: false })
   @ApiQuery({ name: "channel", required: false })
   @ApiQuery({ name: "direction", required: false })
   @ApiQuery({ name: "sentiment", required: false })
@@ -63,10 +74,11 @@ export class ConversationsController {
   @ApiQuery({ name: "sortBy", required: false })
   @ApiQuery({ name: "sortOrder", required: false })
   async listConversations(
-    @Query("restaurantId") restaurantId?: string,
+    @CurrentUser() user: AuthUser,
     @Query("providerId") providerId?: string,
     @Query("orderId") orderId?: string,
     @Query("orderNumber") orderNumber?: string,
+    @Query("threadKey") threadKey?: string,
     @Query("channel") channel?: string,
     @Query("direction") direction?: string,
     @Query("sentiment") sentiment?: string,
@@ -84,10 +96,13 @@ export class ConversationsController {
   ) {
     try {
       return await this.conversationsService.listConversations({
-        restaurantId,
+        // Always the caller's own tenant. Previously this came from a query param, so
+        // omitting it returned every restaurant's conversations in one response.
+        restaurantId: user.restaurantId,
         providerId,
         orderId,
         orderNumber,
+        threadKey,
         channel,
         direction,
         sentiment,
@@ -120,13 +135,90 @@ export class ConversationsController {
   }
 
   /**
+   * List conversations paginated by thread, so a thread is never split across pages.
+   */
+  @Get("threads")
+  @ApiOperation({ summary: "List conversations paginated by thread" })
+  @ApiQuery({ name: "providerId", required: false })
+  @ApiQuery({ name: "orderNumber", required: false })
+  @ApiQuery({ name: "threadKey", required: false })
+  @ApiQuery({ name: "channel", required: false })
+  @ApiQuery({ name: "direction", required: false })
+  @ApiQuery({ name: "sentiment", required: false })
+  @ApiQuery({ name: "status", required: false })
+  @ApiQuery({ name: "search", required: false })
+  @ApiQuery({ name: "dateFrom", required: false })
+  @ApiQuery({ name: "dateTo", required: false })
+  @ApiQuery({ name: "quarter", required: false })
+  @ApiQuery({ name: "year", required: false })
+  @ApiQuery({ name: "month", required: false })
+  @ApiQuery({ name: "page", required: false })
+  @ApiQuery({ name: "limit", required: false })
+  async listConversationThreads(
+    @CurrentUser() user: AuthUser,
+    @Query("providerId") providerId?: string,
+    @Query("orderNumber") orderNumber?: string,
+    @Query("threadKey") threadKey?: string,
+    @Query("channel") channel?: string,
+    @Query("direction") direction?: string,
+    @Query("sentiment") sentiment?: string,
+    @Query("status") status?: string,
+    @Query("search") search?: string,
+    @Query("dateFrom") dateFrom?: string,
+    @Query("dateTo") dateTo?: string,
+    @Query("quarter") quarter?: string,
+    @Query("year") year?: string,
+    @Query("month") month?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    try {
+      return await this.conversationsService.listConversationThreads({
+        restaurantId: user.restaurantId,
+        providerId,
+        orderNumber,
+        threadKey,
+        channel,
+        direction,
+        sentiment,
+        status,
+        search,
+        dateFrom,
+        dateTo,
+        quarter,
+        year,
+        month,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        sortBy: "created_at",
+        sortOrder: "desc",
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to list conversation threads: ${error.message}`,
+        error.stack,
+      );
+      throw new HttpException(
+        "Failed to list conversation threads",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * Get a full conversation thread by threadId
    */
   @Get("thread/:threadId")
   @ApiOperation({ summary: "Get all messages in a conversation thread" })
-  async getThread(@Param("threadId") threadId: string) {
+  async getThread(
+    @CurrentUser() user: AuthUser,
+    @Param("threadId") threadId: string,
+  ) {
     try {
-      return await this.conversationsService.getThread(threadId);
+      return await this.conversationsService.getThread(
+        threadId,
+        user.restaurantId,
+      );
     } catch (error) {
       this.logger.error(`Failed to get thread: ${error.message}`, error.stack);
       throw new HttpException(
@@ -210,9 +302,9 @@ export class ConversationsController {
    */
   @Get("stats/overview")
   @ApiOperation({ summary: "Get aggregated conversation statistics" })
-  async getStats(@Query("restaurantId") restaurantId?: string) {
+  async getStats(@CurrentUser() user: AuthUser) {
     try {
-      return await this.conversationsService.getStats(restaurantId);
+      return await this.conversationsService.getStats(user.restaurantId);
     } catch (error) {
       this.logger.error(`Failed to get stats: ${error.message}`);
       throw new HttpException(

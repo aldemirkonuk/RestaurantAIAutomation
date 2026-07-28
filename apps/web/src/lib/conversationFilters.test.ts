@@ -5,9 +5,8 @@ import {
   sentimentBadgeClass,
   sentimentLabel,
   normalizeDirection,
-  normalizeOrderKey,
-  orderBucketLabel,
-  orderBucketBadgeClass,
+  threadBadgeLabel,
+  threadBadgeClass,
   filtersToSearchParams,
   searchParamsToFilters,
   hasActiveConversationFilters,
@@ -79,27 +78,18 @@ describe('normalizeDirection', () => {
   })
 })
 
-describe('normalizeOrderKey', () => {
-  it.each([
-    ['order-uuid-1', 'order-uuid-1'],
-    [null, 'unassigned'],
-    [undefined, 'unassigned'],
-    ['', 'unassigned'],
-    ['   ', 'unassigned'],
-  ] as const)('maps %j → %j', (input, expected) => {
-    expect(normalizeOrderKey(input)).toBe(expected)
-  })
-})
-
-describe('orderBucket labels', () => {
-  it('labels Unassigned with amber badge', () => {
-    expect(orderBucketLabel(null, 'unassigned')).toBe('Unassigned')
-    expect(orderBucketBadgeClass('unassigned')).toContain('amber')
+describe('thread badges', () => {
+  it('labels an order-less thread truthfully, with amber badge', () => {
+    // Not "Unassigned" — the thread is a real negotiation that has not produced a
+    // purchase order yet, which is the normal state for an inquiry.
+    expect(threadBadgeLabel(null)).toBe('No order yet')
+    expect(threadBadgeLabel('   ')).toBe('No order yet')
+    expect(threadBadgeClass(null)).toContain('amber')
   })
 
-  it('labels real orders with order number and mono badge', () => {
-    expect(orderBucketLabel('WO-1234', 'abc')).toBe('WO-1234')
-    expect(orderBucketBadgeClass('abc')).toContain('font-mono')
+  it('labels linked threads with the order number and a mono badge', () => {
+    expect(threadBadgeLabel('WO-1234')).toBe('WO-1234')
+    expect(threadBadgeClass('WO-1234')).toContain('font-mono')
   })
 })
 

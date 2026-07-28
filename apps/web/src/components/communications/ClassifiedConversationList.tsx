@@ -16,7 +16,7 @@ import {
   User,
 } from 'lucide-react'
 import {
-  useConversations,
+  useConversationThreads,
   useConversationThread,
   useConversationStats,
   useRegenerateSummary,
@@ -38,19 +38,20 @@ import {
   normalizeSentiment,
   sentimentBadgeClass,
   sentimentLabel,
-  orderBucketLabel,
-  orderBucketBadgeClass,
+  threadBadgeLabel,
+  threadBadgeClass,
   toApiDateRange,
   type ConversationFilterState,
 } from '../../lib/conversationFilters'
 import {
   conversationOrderNumber,
+  conversationThreadKey,
   conversationWineName,
-  groupConversationsByDistributorAndOrder,
-  groupConversationsByOrder,
+  groupConversationsByDistributorAndThread,
+  groupConversationsByThread,
   providerInitials,
   type DistributorGroup,
-  type OrderGroup,
+  type ThreadGroup,
 } from '../../lib/conversationGrouping'
 
 export type ClassifiedConversationListProps = {
@@ -218,18 +219,18 @@ function MessageRow({
                   </div>
                 )}
 
-                {conv.thread_id && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onViewThread(conv.thread_id!)
-                    }}
-                    className="text-sm text-wine-600 hover:text-wine-700 font-medium flex items-center gap-1"
-                  >
-                    View full thread <ExternalLink className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                {/* Gated on the derived thread key, not the legacy thread_id column,
+                    which is null on every stored row — so this never used to render. */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onViewThread(conversationThreadKey(conv))
+                  }}
+                  className="text-sm text-wine-600 hover:text-wine-700 font-medium flex items-center gap-1"
+                >
+                  View full thread <ExternalLink className="w-3.5 h-3.5" />
+                </button>
 
                 <div className="flex items-center gap-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
                   <span className="flex items-center gap-1">
@@ -257,7 +258,7 @@ function MessageRow({
   )
 }
 
-function OrderGroupBlock({
+function ThreadBlock({
   group,
   hideVendor,
   expandedId,
@@ -265,15 +266,14 @@ function OrderGroupBlock({
   onViewThread,
   defaultOpen = true,
 }: {
-  group: OrderGroup
+  group: ThreadGroup
   hideVendor: boolean
   expandedId: string | null
   onToggleMessage: (id: string) => void
-  onViewThread: (threadId: string) => void
+  onViewThread: (threadKey: string) => void
   defaultOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
-  const label = orderBucketLabel(group.orderNumber, group.key)
 
   return (
     <div className="border-t border-gray-100 first:border-t-0">
@@ -286,16 +286,15 @@ function OrderGroupBlock({
           className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`}
         />
         <span
-          className={`px-2 py-0.5 text-xs font-medium rounded ${orderBucketBadgeClass(group.key)}`}
+          className={`px-2 py-0.5 text-xs font-medium rounded flex-shrink-0 ${threadBadgeClass(group.orderNumber)}`}
         >
-          {label}
+          {threadBadgeLabel(group.orderNumber)}
         </span>
-        {group.wineName && !group.isUnassigned && (
-          <span className="text-sm text-gray-700 truncate">{group.wineName}</span>
-        )}
+        <span className="text-sm text-gray-700 truncate">{group.title}</span>
         <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
           {group.messages.length}{' '}
           {group.messages.length === 1 ? 'message' : 'messages'}
+          {group.lastAt && ` · ${new Date(group.lastAt).toLocaleDateString()}`}
         </span>
       </button>
 
@@ -336,7 +335,7 @@ function DistributorAccordion({
   group: DistributorGroup
   expandedId: string | null
   onToggleMessage: (id: string) => void
-  onViewThread: (threadId: string) => void
+  onViewThread: (threadKey: string) => void
   defaultOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -354,10 +353,10 @@ function DistributorAccordion({
         <ProviderChip name={group.providerName} />
         <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
           {group.messageCount}{' '}
-          {group.messageCount === 1 ? 'conversation' : 'conversations'}
+          {group.messageCount === 1 ? 'message' : 'messages'}
           {' · '}
-          {group.orders.length}{' '}
-          {group.orders.length === 1 ? 'order' : 'orders'}
+          {group.threads.length}{' '}
+          {group.threads.length === 1 ? 'thread' : 'threads'}
         </span>
       </button>
 
@@ -369,10 +368,10 @@ function DistributorAccordion({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden bg-white"
           >
-            {group.orders.map((order) => (
-              <OrderGroupBlock
-                key={order.key}
-                group={order}
+            {group.threads.map((thread) => (
+              <ThreadBlock
+                key={thread.key}
+                group={thread}
                 hideVendor
                 expandedId={expandedId}
                 onToggleMessage={onToggleMessage}
@@ -421,13 +420,15 @@ export function ClassifiedConversationList({
     providerId: effectiveProviderId || undefined,
     orderNumber: filters.orderNumber || undefined,
     page: filters.page,
+    // Threads, not messages, are the unit of pagination — so 20 here means 20
+    // conversations and a thread is never split across the pager.
     limit: 20,
     sortBy: 'created_at',
     sortOrder: 'desc',
   }
 
   const { data: conversationsData, isLoading, error } =
-    useConversations(apiFilters)
+    useConversationThreads(apiFilters)
   const { data: statsData } = useConversationStats(
     activeRestaurantId || undefined,
   )
@@ -453,11 +454,11 @@ export function ClassifiedConversationList({
   )
 
   const distributorGroups = useMemo(
-    () => groupConversationsByDistributorAndOrder(conversations),
+    () => groupConversationsByDistributorAndThread(conversations),
     [conversations],
   )
-  const orderGroups = useMemo(
-    () => groupConversationsByOrder(conversations),
+  const threadGroups = useMemo(
+    () => groupConversationsByThread(conversations),
     [conversations],
   )
 
@@ -728,7 +729,11 @@ export function ClassifiedConversationList({
                 Communication History
               </h3>
               <p className="text-sm text-gray-500">
-                {total} conversations {isLoading && '(loading...)'}
+                {/* `total` counts threads now, not messages — the pager moves by
+                    conversation, so the two must agree. */}
+                {total} {total === 1 ? 'conversation' : 'conversations'}
+                {conversations.length > 0 && ` · ${conversations.length} messages`}
+                {isLoading && ' (loading...)'}
               </p>
               {collapseDistributorLevel && headerProviderName && (
                 <div className="mt-2">
@@ -769,10 +774,10 @@ export function ClassifiedConversationList({
             </div>
           ) : collapseDistributorLevel ? (
             <div>
-              {orderGroups.map((order) => (
-                <OrderGroupBlock
-                  key={order.key}
-                  group={order}
+              {threadGroups.map((thread) => (
+                <ThreadBlock
+                  key={thread.key}
+                  group={thread}
                   hideVendor
                   expandedId={expandedId}
                   onToggleMessage={(id) => setExpandedId(id || null)}
