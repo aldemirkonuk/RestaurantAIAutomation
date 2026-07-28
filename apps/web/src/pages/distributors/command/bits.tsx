@@ -3,7 +3,15 @@
  * Chip styling follows the inline-span convention from
  * pages/inventory/command/bits.tsx rather than introducing a shared chip.
  */
-import { Building2, Globe2, MapPin, ShieldCheck, Warehouse } from 'lucide-react'
+import {
+  BadgeCheck,
+  Building2,
+  FileCheck2,
+  Globe2,
+  MapPin,
+  ShieldCheck,
+  Warehouse,
+} from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type { Distributor, DistributorType } from '../../../services/api/distributors'
 
@@ -111,6 +119,40 @@ export function DistanceLabel({ d }: { d: Distributor }) {
   )
 }
 
+/**
+ * Verification tier, shown rather than hidden.
+ *
+ * Curated rows are human-vetted; registry rows come straight from an official
+ * permit database and may be stale, may be a holding company, or may not sell
+ * wine at all. Labelling that is what lets unverified data be useful — silently
+ * mixing it with vetted data would make the whole list less trustworthy.
+ */
+export function TierBadge({ tier }: { tier: string }) {
+  if (tier === 'curated') {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-px text-[10px] font-semibold text-blue-700"
+        title="Details checked by hand"
+      >
+        <BadgeCheck className="h-2.5 w-2.5" />
+        Verified
+      </span>
+    )
+  }
+  if (tier === 'registry') {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 rounded-full bg-gray-100 px-1.5 py-px text-[10px] font-semibold text-gray-500"
+        title="From an official permit registry — holds a licence, but details are unverified"
+      >
+        <FileCheck2 className="h-2.5 w-2.5" />
+        Licensed
+      </span>
+    )
+  }
+  return null
+}
+
 export function DistributorCard({
   d,
   active,
@@ -144,6 +186,7 @@ export function DistributorCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate text-sm font-semibold text-gray-900">{d.name}</span>
             <TypeChip type={d.type} />
+            <TierBadge tier={d.listing_tier} />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <TerritoryBadge servesVia={d.serves_via} mayServe={d.may_serve} />

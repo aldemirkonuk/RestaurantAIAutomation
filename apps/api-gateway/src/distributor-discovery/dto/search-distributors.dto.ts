@@ -24,6 +24,8 @@ export const DISTRIBUTOR_TYPES = [
   "other",
 ] as const;
 
+export const LISTING_TIERS = ["curated", "registry", "user_submitted"] as const;
+
 export const FACET_KINDS = [
   "region",
   "country",
@@ -150,6 +152,19 @@ export class SearchDistributorsDto {
   @Transform(toArray)
   facet?: string[];
 
+  @ApiPropertyOptional({
+    description:
+      "Verification tiers to include. Omit for all. `curated` is human-vetted; " +
+      "`registry` comes straight from an official permit database and is unverified.",
+    enum: LISTING_TIERS,
+    isArray: true,
+  })
+  @IsArray()
+  @IsIn(LISTING_TIERS as unknown as string[], { each: true })
+  @IsOptional()
+  @Transform(toArray)
+  tier?: string[];
+
   @ApiPropertyOptional({ enum: ["distance", "name"], default: "distance" })
   @IsIn(["distance", "name"])
   @IsOptional()
@@ -184,4 +199,11 @@ export class DistributorFacetsDto {
   @IsOptional()
   @Transform(toArray)
   type?: string[];
+
+  @ApiPropertyOptional({ enum: LISTING_TIERS, isArray: true })
+  @IsArray()
+  @IsIn(LISTING_TIERS as unknown as string[], { each: true })
+  @IsOptional()
+  @Transform(toArray)
+  tier?: string[];
 }

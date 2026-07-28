@@ -30,6 +30,8 @@ function makeDistributor(over: Partial<Distributor> = {}): Distributor {
     nearest_location_kind: 'warehouse',
     may_serve: true,
     serves_via: 'NY',
+    listing_tier: 'curated',
+    data_confidence: 1,
     verified_at: null,
     ...over,
   }

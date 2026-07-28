@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDistributorFacets, useDistributorSearch } from '../../hooks/queries/useDistributorQueries'
-import type { DistributorSearchParams, DistributorType } from '../../services/api/distributors'
+import type {
+  DistributorSearchParams,
+  DistributorType,
+  ListingTier,
+} from '../../services/api/distributors'
 
 /** Radius slider stops, in km. The top stop means "no distance limit". */
 export const RADIUS_STOPS = [10, 25, 50, 100, 250, 500, 1000, 0] as const
@@ -25,6 +29,7 @@ export function useDistributorsPage() {
   const [territoryOnly, setTerritoryOnly] = useState(true)
   const [radiusIndex, setRadiusIndex] = useState(RADIUS_MAX_INDEX)
   const [types, setTypes] = useState<DistributorType[]>([])
+  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [facets, setFacets] = useState<string[]>([])
   const [sort, setSort] = useState<'distance' | 'name'>('distance')
   const [bbox, setBbox] = useState<Bbox | null>(null)
@@ -46,12 +51,13 @@ export function useDistributorsPage() {
       territoryOnly,
       radiusM,
       type: types.length ? types : undefined,
+      tier: verifiedOnly ? (['curated'] as const satisfies readonly ListingTier[]).slice() : undefined,
       facet: facets.length ? facets : undefined,
       sort,
       limit: 100,
       ...(bbox ?? {}),
     }),
-    [query, territoryOnly, radiusM, types, facets, sort, bbox],
+    [query, territoryOnly, radiusM, types, verifiedOnly, facets, sort, bbox],
   )
 
   const search = useDistributorSearch(params)
@@ -77,10 +83,16 @@ export function useDistributorsPage() {
     setRadiusIndex(RADIUS_MAX_INDEX)
     setBbox(null)
     setTerritoryOnly(true)
+    setVerifiedOnly(false)
   }, [])
 
   const filterCount =
-    types.length + facets.length + (query ? 1 : 0) + (radiusM ? 1 : 0) + (bbox ? 1 : 0)
+    types.length +
+    facets.length +
+    (query ? 1 : 0) +
+    (radiusM ? 1 : 0) +
+    (bbox ? 1 : 0) +
+    (verifiedOnly ? 1 : 0)
 
   // How many results the territory gate is currently hiding — surfaced so the
   // gate is visible rather than a silent filter.
@@ -108,6 +120,8 @@ export function useDistributorsPage() {
     radiusM,
     types,
     toggleType,
+    verifiedOnly,
+    setVerifiedOnly,
     facets,
     toggleFacet,
     sort,

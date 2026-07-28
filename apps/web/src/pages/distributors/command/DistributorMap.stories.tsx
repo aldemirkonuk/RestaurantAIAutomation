@@ -40,6 +40,8 @@ const distributors: Distributor[] = raw.map(([name, type, city, state, lat, lng,
   nearest_location_kind: name === 'Empire Merchants' ? 'warehouse' : null,
   may_serve: true,
   serves_via: via,
+  listing_tier: 'curated',
+  data_confidence: 1,
   verified_at: null,
 }))
 

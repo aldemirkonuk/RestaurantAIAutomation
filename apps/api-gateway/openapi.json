@@ -11158,6 +11158,16 @@
         "summary": "Search vendor catalogue",
         "parameters": [
           {
+            "name": "includeRegistry",
+            "required": false,
+            "in": "query",
+            "description": "Include unverified rows ingested from official permit registries. Defaults to false so this endpoint returns only human-curated vendors.",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
             "name": "q",
             "required": false,
             "in": "query",
@@ -11371,6 +11381,23 @@
             }
           },
           {
+            "name": "tier",
+            "required": false,
+            "in": "query",
+            "description": "Verification tiers to include. Omit for all. `curated` is human-vetted; `registry` comes straight from an official permit database and is unverified.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "curated",
+                  "registry",
+                  "user_submitted"
+                ]
+              }
+            }
+          },
+          {
             "name": "sort",
             "required": false,
             "in": "query",
@@ -11449,6 +11476,22 @@
                   "winery_direct",
                   "broker",
                   "other"
+                ]
+              }
+            }
+          },
+          {
+            "name": "tier",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "curated",
+                  "registry",
+                  "user_submitted"
                 ]
               }
             }

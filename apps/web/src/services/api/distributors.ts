@@ -34,8 +34,13 @@ export interface Distributor {
   may_serve: boolean
   /** Admin area whose licence permits service, or 'nationwide'. */
   serves_via: string | null
+  /** curated = human-vetted; registry = unverified permit-database row. */
+  listing_tier: ListingTier
+  data_confidence: number | null
   verified_at: string | null
 }
+
+export type ListingTier = 'curated' | 'registry' | 'user_submitted'
 
 export interface DistributorSearchResponse {
   data: Distributor[]
@@ -105,6 +110,8 @@ export interface DistributorSearchParams {
   maxLng?: number
   maxLat?: number
   type?: DistributorType[]
+  /** Verification tiers to include; omit for all. */
+  tier?: ListingTier[]
   /** `kind:slug` pairs, e.g. `region:burgundy`. */
   facet?: string[]
   sort?: 'distance' | 'name'

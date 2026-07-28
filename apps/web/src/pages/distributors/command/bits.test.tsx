@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DistanceLabel, DistributorCard, TerritoryBadge, formatDistance } from './bits'
+import { DistanceLabel, DistributorCard, TerritoryBadge, TierBadge, formatDistance } from './bits'
 import type { Distributor } from '../../../services/api/distributors'
 
 function makeDistributor(over: Partial<Distributor> = {}): Distributor {
@@ -21,6 +21,8 @@ function makeDistributor(over: Partial<Distributor> = {}): Distributor {
     nearest_location_kind: 'warehouse',
     may_serve: true,
     serves_via: 'NY',
+    listing_tier: 'curated',
+    data_confidence: 1,
     verified_at: null,
     ...over,
   }
@@ -76,6 +78,26 @@ describe('TerritoryBadge', () => {
   it('states clearly when a vendor cannot serve you', () => {
     render(<TerritoryBadge servesVia={null} mayServe={false} />)
     expect(screen.getByText('Cannot serve you')).toBeInTheDocument()
+  })
+})
+
+describe('TierBadge', () => {
+  it('marks hand-checked rows as verified', () => {
+    render(<TierBadge tier="curated" />)
+    expect(screen.getByText('Verified')).toBeInTheDocument()
+  })
+
+  it('labels registry rows as licensed but unverified', () => {
+    // Registry rows hold a real permit but their details are unchecked, so they
+    // must read differently from curated ones rather than blending in.
+    render(<TierBadge tier="registry" />)
+    expect(screen.getByText('Licensed')).toBeInTheDocument()
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument()
+  })
+
+  it('renders nothing for an unrecognised tier', () => {
+    const { container } = render(<TierBadge tier="user_submitted" />)
+    expect(container).toBeEmptyDOMElement()
   })
 })
 

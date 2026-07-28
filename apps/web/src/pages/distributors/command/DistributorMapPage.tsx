@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Search, X, SlidersHorizontal, Loader2, Compass, EyeOff } from 'lucide-react'
+import { Search, X, SlidersHorizontal, Loader2, Compass, EyeOff, BadgeCheck } from 'lucide-react'
 import { useDistributorsPage, RADIUS_STOPS, RADIUS_MAX_INDEX } from '../useDistributorsPage'
 import { DistributorMap } from './DistributorMap'
 import { DistributorDrawer } from './DistributorDrawer'
@@ -115,6 +115,22 @@ export default function DistributorMapPage() {
         >
           <Compass className="h-3.5 w-3.5" />
           Can supply me
+        </button>
+
+        <button
+          type="button"
+          onClick={() => s.setVerifiedOnly(!s.verifiedOnly)}
+          aria-pressed={s.verifiedOnly}
+          title="Only show distributors whose details have been checked by hand"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition',
+            s.verifiedOnly
+              ? 'border-blue-600 bg-blue-600 text-white'
+              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
+          )}
+        >
+          <BadgeCheck className="h-3.5 w-3.5" />
+          Verified only
         </button>
 
         <div className="w-44">

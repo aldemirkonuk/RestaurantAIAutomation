@@ -89,6 +89,24 @@ describe("DistributorDiscoveryService", () => {
       });
     });
 
+    it("passes no tier filter by default, so every tier is searched", async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      const svc = new DistributorDiscoveryService(makeDb({ rpc }));
+
+      await svc.search(RESTAURANT_ID, {});
+
+      expect(rpc.mock.calls[0][1].p_tiers).toBeNull();
+    });
+
+    it("restricts to curated rows when the caller asks for verified only", async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      const svc = new DistributorDiscoveryService(makeDb({ rpc }));
+
+      await svc.search(RESTAURANT_ID, { tier: ["curated"] });
+
+      expect(rpc.mock.calls[0][1].p_tiers).toEqual(["curated"]);
+    });
+
     it("drops a partial viewport rather than half-applying it", async () => {
       const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
       const svc = new DistributorDiscoveryService(makeDb({ rpc }));

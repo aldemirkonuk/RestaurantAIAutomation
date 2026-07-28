@@ -30,6 +30,9 @@ export interface DistributorRow {
   may_serve: boolean;
   /** Admin area whose licence permits service, or 'nationwide'. */
   serves_via: string | null;
+  /** curated = human-vetted; registry = unverified permit-database row. */
+  listing_tier: string;
+  data_confidence: number | null;
   verified_at: string | null;
 }
 
@@ -93,6 +96,7 @@ export class DistributorDiscoveryService {
         p_sort: dto.sort ?? "distance",
         p_limit: limit,
         p_offset: offset,
+        p_tiers: dto.tier ?? null,
       });
 
     if (error) {
@@ -137,6 +141,7 @@ export class DistributorDiscoveryService {
         p_restaurant_id: restaurantId,
         p_territory_only: dto.territoryOnly ?? true,
         p_types: dto.type ?? null,
+        p_tiers: dto.tier ?? null,
       });
 
     if (error) {

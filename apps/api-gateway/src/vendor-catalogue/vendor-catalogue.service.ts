@@ -45,6 +45,15 @@ export class VendorCatalogueService {
       .eq("is_active", true)
       .eq("country", country);
 
+    // Curated-only by default. vendor_catalogue also holds registry rows
+    // ingested from official permit databases (tens of thousands of them), and
+    // this endpoint backs the add-provider modal, where an operator expects a
+    // short list of vetted suppliers rather than raw federal records. Callers
+    // that genuinely want the long tail opt in explicitly.
+    if (!dto.includeRegistry) {
+      query = query.eq("listing_tier", "curated");
+    }
+
     if (q) {
       query = query.or(`name.ilike.%${q}%,wine_specialties.ilike.%${q}%`);
     }
