@@ -65,7 +65,6 @@ const Reports = lazyWithRefresh(() => import('./pages/Reports'))
 const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
 const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
-const Distributors = lazyWithRefresh(() => import('./pages/distributors'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
 const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
@@ -189,7 +188,12 @@ function App() {
                   <Route path="/recommendations" element={<Recommendations />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
                   <Route path="/providers" element={<Providers />} />
-                  <Route path="/distributors" element={<Distributors />} />
+                  {/* Discovery moved into Providers as a tab; keep the old path
+                      working so existing links and bookmarks land in the right place. */}
+                  <Route
+                    path="/distributors"
+                    element={<Navigate to="/providers?tab=discover" replace />}
+                  />
                   <Route path="/promotions" element={<Promotions />} />
                   <Route path="/team" element={<TeamCommandPage />} />
                   <Route path="/calendar" element={<CalendarModular />} />

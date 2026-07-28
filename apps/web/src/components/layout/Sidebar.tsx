@@ -16,7 +16,6 @@ import {
   Bell,
   HelpCircle,
   Truck,
-  Compass,
   Tag,
   Shield,
   Sparkles,
@@ -56,8 +55,9 @@ const mainNavItems: NavItem[] = [
   { name: 'Inventory', href: '/inventory', icon: Package },
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Wine Library', href: '/wines', icon: Wine },
+  // Distributor discovery is a tab inside Providers (/providers?tab=discover)
+  // rather than its own nav item — same subject, and the sidebar is already full.
   { name: 'Providers', href: '/providers', icon: Truck },
-  { name: 'Find Distributors', href: '/distributors', icon: Compass },
   { name: 'Promotions', href: '/promotions', icon: Tag },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
 ]

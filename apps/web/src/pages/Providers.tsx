@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -13,6 +13,7 @@ import {
   X,
   Trash2,
   Truck,
+  Compass,
   Plus,
   Star,
   ExternalLink,
@@ -138,6 +139,65 @@ function EmptyProvidersState({ onBrowseCatalogue, onAddCustom }: EmptyProvidersS
   )
 }
 
+type ProvidersTab = 'mine' | 'discover'
+
+// Loaded on demand — the map surface pulls in a tile renderer that the roster view
+// has no use for, so it should not be in the Providers bundle.
+const DistributorMapPage = lazy(
+  () => import('./distributors/command/DistributorMapPage'),
+)
+
+/**
+ * Segmented control between the vendor roster and distributor discovery.
+ * Matches the tab pattern already used on Documents & Reports.
+ */
+function ProvidersTabs({
+  tab,
+  onChange,
+  count,
+}: {
+  tab: ProvidersTab
+  onChange: (t: ProvidersTab) => void
+  count: number | null
+}) {
+  const item = (value: ProvidersTab, label: string, badge?: string) => (
+    <button
+      key={value}
+      type="button"
+      onClick={() => onChange(value)}
+      aria-current={tab === value ? 'page' : undefined}
+      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm ${
+        tab === value
+          ? 'bg-wine-600 text-white shadow-sm'
+          : 'text-gray-600 hover:bg-gray-100'
+      }`}
+    >
+      {value === 'mine' ? (
+        <Truck className="w-4 h-4" />
+      ) : (
+        <Compass className="w-4 h-4" />
+      )}
+      {label}
+      {badge && (
+        <span
+          className={`px-1.5 py-0.5 text-xs rounded-full ${
+            tab === value ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+
+  return (
+    <div className="flex bg-white rounded-xl border border-gray-200 p-1 w-fit">
+      {item('mine', 'My Providers', count != null ? String(count) : undefined)}
+      {item('discover', 'Find Distributors')}
+    </div>
+  )
+}
+
 export function Providers() {
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
   const { preferences, updatePreferences } = useUserPreferences()
@@ -157,6 +217,26 @@ export function Providers() {
   }, [rawOrders])
 
   const navigate = useNavigate()
+  // Discovery lives here rather than in the sidebar: "who I buy from" and "who could
+  // I buy from" are two views of one subject. Kept in the URL so it is linkable and
+  // so the old /distributors route can redirect straight into it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab: ProvidersTab =
+    searchParams.get('tab') === 'discover' ? 'discover' : 'mine'
+  const setTab = useCallback(
+    (next: ProvidersTab) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev)
+          if (next === 'discover') p.set('tab', 'discover')
+          else p.delete('tab')
+          return p
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
   const [searchQuery, setSearchQuery]               = useState('')
   const [businessTypeFilter, setBusinessTypeFilter] = useState<BusinessTypeFilter>('All')
   const [viewMode, setViewMode]                     = useState<ViewMode>('grid')
@@ -486,6 +566,33 @@ export function Providers() {
     return () => window.removeEventListener('click', close)
   }, [providerMenu])
 
+  // Discovery deliberately sits above the provider-list loading and error gates:
+  // having no providers yet — or a roster that failed to load — is exactly when you
+  // want to go find some. Making it wait on that data would be backwards.
+  if (tab === 'discover') {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Wine Providers"
+          subtitle="Find distributors that can legally supply your restaurant, nearest first"
+        />
+        <div className="px-6 pt-6">
+          <ProvidersTabs
+            tab={tab}
+            onChange={setTab}
+            count={providers.length || null}
+          />
+        </div>
+        {/* The map page keeps its own "Find distributors" heading, which reads as the
+            section title under the page title rather than a competing one. Left alone
+            deliberately so this tab needs no changes inside the distributor surface. */}
+        <Suspense fallback={<div className="px-6 pt-6"><PageSkeleton /></div>}>
+          <DistributorMapPage />
+        </Suspense>
+      </div>
+    )
+  }
+
   // Only show full-page skeleton on the very first load (no cached data at all).
   // For re-mounts / SPA navigations with stale cache, placeholderData keeps prior
   // results visible while the background refetch runs, so isLoading stays false.
@@ -523,6 +630,14 @@ export function Providers() {
       />
 
       <div className="p-6">
+
+        <div className="mb-5">
+          <ProvidersTabs
+            tab={tab}
+            onChange={setTab}
+            count={providers.length || null}
+          />
+        </div>
 
         {/* ── Empty state ── */}
         {providers.length === 0 && !isLoading && (
