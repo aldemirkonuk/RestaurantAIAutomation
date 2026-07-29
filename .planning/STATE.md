@@ -1,15 +1,22 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Phases
+milestone: v3.0
+milestone_name: Carry-Forward & Debt Consolidation
 status: ready_to_plan
-last_updated: "2026-07-28T00:25:00Z"
+last_updated: "2026-07-28T21:00:00Z"
 progress:
-  total_phases: 31
-  completed_phases: 15
-  total_plans: 87
-  completed_plans: 85
-  percent: 48
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
+previous_milestone:
+  id: v2.0
+  closed: "2026-07-28"
+  status: gaps_found
+  result: "8 SATISFIED / 10 PARTIAL / 1 UNSATISFIED / 9 NOT_STARTED of 26 phases"
+  archived_to: ".planning/archive/v2.0-phases/ (18 dirs), .planning/archive/v2.0-quick/ (10)"
+  audit: ".planning/archive/v2.0-MILESTONE-AUDIT.md"
 ---
 
 # Project State: WineOps Backend Kitchen Architecture
@@ -19,7 +26,8 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** The system is so reliable that an average agent performs flawlessly because the infrastructure carries it — like a Michelin-star kitchen where systems, not genius, produce consistent excellence.
-**Current focus (2026-07-28):** **Testing Campaign** — Phase 37 **VERIFIED passed (12/12)** (Synthetic Restaurant Engine): cloud migration + 5 `sim-*` tenants + oracle ledger live on `exzueerziesmczwlhomd`; schema align `1fe72bc`; 54/54 unit tests. **Next: plan/execute Phase 38 SimPOS.** Requirements SYNTH-01..05 satisfied.
+**Current focus (2026-07-28):** **v3.0 Phase 44 — v2.0 Carry-Forward & Debt Consolidation.** v2.0 closed 2026-07-28 with `gaps_found` and its 70 commits merged to `main` (`647283a`). All documented-but-incomplete work is consolidated into **one phase with 15 subphases across 4 tracks** — see `.planning/v3.0-TECH-DEBT.md`. **Phase 23 (Gmail OAuth2) is DROPPED** (blocked on the Railway credential gate since May; superseded by the already-code-complete provider-agnostic inbound webhook). **Three defects found during the debt compile appear in no prior planning doc and are the priority:** `one-tap-actions` has no auth guard and trusts a URL path parameter (44.1a); wine-library duplicate-add mutates an in-memory store then dispatches a realtime success event for a write the database never received (44.1b); five agents are registered in the orchestrator with handlers that only log, so health checks and dashboards report them working (44.2a). All three are the same failure mode — reachable code that does nothing — which the v2.0 audit named once and which recurred five more times. **Next: plan Track A (44.1–44.2).** Track C carries the unstarted Testing Campaign (was Phases 38–43); 44.11 AI Eval Suites depends only on the satisfied Phase 37 and is plannable in parallel with 44.7 SimPOS.
+**Earlier focus (v2.0 close):** **Testing Campaign** — Phase 37 **VERIFIED passed (12/12)** (Synthetic Restaurant Engine): cloud migration + 5 `sim-*` tenants + oracle ledger live on `exzueerziesmczwlhomd`; schema align `1fe72bc`; 54/54 unit tests. **Next: plan/execute Phase 38 SimPOS.** Requirements SYNTH-01..05 satisfied.
 **Earlier focus:** Session 2026-07-08 (evening) — **Prospects attribution → SOTA multi-tenant plan (Phases 0–3)** on `main`. Plan of record: `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` (dedicated-domain inbound, transport-derived attribution, full per-tenant RLS target). **Shipped & live** (commit `a21a6c5`, migration `20260708150000` applied): Phase 0 hardening — triage bucket for ambiguous cold email (no cross-tenant leak, no silent drop), gmail_message_id idempotency, promote-dedup + `UNIQUE(restaurant_id, lower(contact_email))`, provenance/attachments/undo/confirm/empty-state UX. **Built, code-complete, dormant pending infra** (Phases 1–3): `restaurant_inbound_addresses` table (`20260708160000`) + `InboundAddressService` (opaque `r-<token>@INBOUND_EMAIL_DOMAIN`), provider-agnostic `InboundEmailController` webhook (`POST /api/v1/webhooks/inbound-email`, secret-gated, Postmark+generic) that derives restaurant_id from the recipient and publishes `email.inbound.received` (dual-run w/ Gmail); bridge cutover consumes `restaurant_id` + scopes provider lookup by tenant; outbound Reply-To = restaurant inbound address. All config-gated on `INBOUND_EMAIL_DOMAIN`/`INBOUND_WEBHOOK_SECRET` — no-op until you provision a domain + inbound-parse provider (Postmark recommended) + DNS. **Phase 4 (per-tenant RLS + nightly isolation assertion)** and **Phase 5 (multi-location chip filter on Prospects)** SHIPPED (migration `20260708170000` applied; 6 RLS policies live; `tenant_isolation_report()` baseline 0 violations across 9 restaurants). Phase 4 note: reads stay on the service-role client — full authed-client RLS enforcement needs Supabase Auth adoption (separate effort); policies are defense-in-depth today. Verified: api-gateway + web tsc clean, no lints. **CI cleanup deferred** (pre-existing ruff/black/eslint-config debt + Security-Scan permission bug — unrelated to this work).
 **Earlier focus (2026-07-08 afternoon):** inbound-email-intelligence polish batch (post-PR-#29): non-price provenance in the deal modal; A17 stale-send cancel; A7 regenerate-with-attachments; richer + durable 9am promo digest; P6 Inbound Triage Card; D1 Prospects lane. Migrations `20260708140000` (D1), `20260708150000` (P0), `20260708160000` (P1) all applied live to `exzueerziesmczwlhomd`.
 **Earlier focus:** Session 2026-05-18 — AI Draft Panel polish + CommsThreadDrawer. All NULL bugs fixed in DraftEmailApprovalPanel (Session 1, commits 16f21f5–011f18f). Session 2 adds per-order email thread tracking: new GET /procurement/orders/:id/conversations endpoint, CommsThreadDrawer component, Comms pill on every expanded order card. Commit 4a723a0.

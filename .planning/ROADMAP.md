@@ -142,7 +142,7 @@ Plans:
 - [x] 22-04-PLAN.md — NestJS api-gateway health proxy controller + OrchestratorModule update (Wave 1)
 - [x] 22-05-PLAN.md — AdminHealth.tsx + App.tsx route + vercel.json + Railway/Vercel deployment checkpoint (Wave 2)
 
-- [ ] **Phase 23: Gmail Integration & Calendar Reminder Emails** *(DEFERRED — revisit later)* — Wire Gmail OAuth2 (api-gateway `GmailService`) with `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` on Railway. Fix orchestrator SMTP path (`GMAIL_USER/PASSWORD` app-password). Activate calendar reminder emails: CalendarAgent sends reminders at T-7, T-1, T-0 via `email_client.py`. Confirm `scheduled-tasks.service.ts` weekly/daily email reports work end-to-end. Test email pipeline with real credentials. **Status:** Plans 01, 02, 04 complete. Blocked at plan 23-03 (Railway OAuth2 credential gate). Plans 23-03 + 23-06 remain.
+- ~~**Phase 23: Gmail Integration & Calendar Reminder Emails**~~ — **DROPPED 2026-07-28.** Blocked at plan 23-03 on the Railway OAuth2 credential gate since May; plans 01/02/04 shipped, 03 + 06 abandoned. Superseded by the provider-agnostic inbound-email webhook (`PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` Phases 1–3), which is already code-complete and needs only a domain + inbound-parse provider + DNS rather than Gmail OAuth2. Outbound email keeps its working SMTP app-password fallback. **Note:** registering the inbound consumer agents is still required and is tracked as Phase 44.1c — that work was never dependent on Gmail credentials.
 - [x] **Phase 24: Provider Communication Pipeline + Email Intelligence** *(COMPLETE — 2026-05-13)* — `EmailIntelAgent` (Gemini Flash classification → PROMO/OPERATIONAL/NOISE routing → Haiku extraction → urgency scoring + calendar linking + cross-vendor price + Redis digest accumulation). `ProviderConversationAgent` Level 4 (idempotency, DLQ, commitment language guardrail, D-19 context injection, audit trail, manager learning loop). DB schema: `vendor_promotions` Phase 24 columns, `negotiation_facts`, `conversation_embeddings`, digest toggles. Gmail Watch expanded to INBOX+SENT.
   - [x] 24-01-PLAN.md — DB schema foundations + RabbitMQ exchange fix (Wave 1)
   - [x] 24-02-PLAN.md — Gmail Watch SENT expansion + direction detection (Wave 1)
@@ -479,12 +479,9 @@ Plans:
 
 - [x] **Phase 36: Testing Foundation & Functionality Registry** — Functionality registry (11 groups, every module/page/agent mapped), T0–T4 scoring rubric, existing-test inventory, TESTING-SCORECARD.md baseline, CI skeleton, synthetic-tenant isolation convention (completed 2026-07-27)
 - [x] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle) (completed 2026-07-27; verified 2026-07-28 — 12/12)
-- [ ] **Phase 38: SimPOS Provider & Operations Simulator** — SimPOS adapter in pos-hub registry; accelerated day-by-day simulator; web control panel (fire orders by clicking menu items, sim controls, chaos injection); deployed on Railway
-- [ ] **Phase 39: Breadth Pass A — Core Operations** — Score groups 1–4 (Identity, Catalog & Extraction, Inventory, POS Ingestion) to ≥ T2 with automated suites + manual checklists
-- [ ] **Phase 40: Breadth Pass B — Business Loops** — Score groups 5–7 + 9 (Procurement, Communications, Calendar, Notifications) to ≥ T2 with automated suites + manual checklists
-- [ ] **Phase 41: Analytics & Insights Truth Suite** — Assert every dashboard KPI, report, and analytic answer EXACTLY against the simulator's ground-truth ledger (top eval priority)
-- [ ] **Phase 42: AI Eval Suites** — Golden datasets + scored runs: wine extraction, email intelligence, agent decisions, analytic answers; weekly CI evals with cost caps
-- [ ] **Phase 43: E2E Journeys, Manual Pathways & Final Scorecard** — Playwright journeys on cloud stack, scanner + admin verification, user manual pathway passes, final scorecard with all 11 groups ≥ T2, gap backlog
+> **Phases 38–43 carried into v3.0 as Phase 44 subphases 44.7–44.12** (milestone
+> closed 2026-07-28 with `gaps_found`; zero code existed for any of them). See the
+> "## v3.0 Phases" section below and `.planning/v3.0-TECH-DEBT.md`.
 
 ### Phase 36: Testing Foundation & Functionality Registry
 **Goal**: Create the shared skeleton every later testing phase writes into: what the functionality groups are, how coverage is scored, what tests already exist, and where results live. After this phase, "how tested is X?" has a single canonical answer.
@@ -689,7 +686,66 @@ Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ---
+
+## v3.0 Phases
+
+**Milestone opened:** 2026-07-28, immediately after closing v2.0 with `gaps_found`
+(8 SATISFIED · 10 PARTIAL · 1 UNSATISFIED · 9 NOT_STARTED of 26 phases).
+
+v3.0 opens with a single consolidation phase. Everything v2.0 left behind — live
+defects, hollow features, schema drift, tracking debt, and the unstarted Testing
+Campaign — is folded into **Phase 44** as subphases so the carry-forward is one
+tracked unit rather than nine orphaned phase numbers.
+
+Full detail, evidence and file references: `.planning/v3.0-TECH-DEBT.md`.
+
+### Phase 44: v2.0 Carry-Forward & Debt Consolidation
+**Goal**: Close every documented-but-incomplete item from v2.0, then finish the
+Testing Campaign. After this phase, "is X done?" has one answer and the registry
+stops claiming work that does not happen.
+**Depends on**: Nothing (v2.0 is closed and archived)
+
+**Track A — live defects (do first; each currently misreports success)**
+- [ ] 44.1a — Close the `one-tap-actions` auth hole: no `@UseGuards` on the controller, `restaurantId` from the URL path, `userId` hardcoded `"system"` *(new finding)*
+- [ ] 44.1b — Fix silent stock loss on wine-library duplicate-add: in-memory `inventoryData.ts` store dispatches a realtime event for a write the DB never received *(new finding)*
+- [ ] 44.1c — Revive inbound email consumption: `EmailIntelAgent`/`EmailParsingAgent` unregistered in the orchestrator + routing key `email.inbound.raw` has zero publishers
+- [ ] 44.1d — Resolve the `notifications` `status` vs `is_read` mismatch (one shape does not match the live schema)
+- [ ] 44.2a — Implement or unregister five registered-but-empty agents: ghost_inventory, auto_pilot, negotiation_playbook, shrinkage_detective, compliance *(new finding)*
+- [ ] 44.2b — Settle the `ReportingAgent` / `stock.events` contradiction (subscribe it, or correct Phase 21's criterion)
+
+**Track B — foundations**
+- [ ] 44.3a — Capture 13 ghost tables into migrations (live in DB, in no migration; blocks building a fresh environment)
+- [ ] 44.3b — Make `approveDraft` atomic (order status + shadow stock + calendar event share no transaction)
+- [ ] 44.3c — `pos_webhook_logs.restaurant_id`; `scheduled_reminders` never written
+- [ ] 44.4 — Verification & tracking reconciliation (missing VERIFICATION for 18/19/20/22/28/35; stale VALIDATION on 25/36; **Phase 33 drift**; **Phase 27/30 UAT contradictions**; ~100 orphaned REQ-IDs)
+- [ ] 44.5 — Delete dead code (InvoiceScannerModal, mobile `invoiceMatch.ts`, `Reports.v1.backup.tsx`, `inventoryData.ts`)
+- [ ] 44.6 — Replace auth-context placeholders (`MGR_001` override ledger; three unimplemented one-tap action bodies)
+
+**Track C — unbuilt v2.0 scope, carried forward**
+- [ ] 44.7 — SimPOS Provider & Operations Simulator *(was Phase 38 — **critical path** for 44.8–44.10)*
+- [ ] 44.8 — Breadth Pass A, Core Operations *(was 39; depends on 44.7)*
+- [ ] 44.9 — Breadth Pass B, Business Loops *(was 40; depends on 44.7)*
+- [ ] 44.10 — Analytics & Insights Truth Suite *(was 41; **stated #1 eval priority**; depends on 44.7)*
+- [ ] 44.11 — AI Eval Suites *(was 42; depends only on Phase 37 which is SATISFIED — **plannable in parallel**)*
+- [ ] 44.12 — E2E Journeys, Manual Pathways & Final Scorecard *(was 43; depends on 44.8–44.11)*
+- [ ] 44.13 — Autonomous Vendor Discovery + Event-Driven Procurement Signals *(was 29, 31; clean boundaries confirmed)*
+
+**Track D — unbuilt plans found outside the phase system**
+- [ ] 44.14 — Triage five unbuilt plans: `ANALYTICS_FEATURE_CATALOG` (947 lines, not built), `INBOUND_EMAIL_INTELLIGENCE_PLAN` (476, plan only), `INVENTORY_SOTA_PLAN` (Phase 0 pending), `PROSPECTS_ATTRIBUTION_ARCHITECTURE` (Phases 1–3 code-complete but **dormant** — gates 44.1c's real value), `SYNTHETIC_DATA_AND_DOCS_PLAN` (in progress, **uncommitted**)
+- [ ] 44.15 — Re-verify `UX_PATHS_CATALOG` **before** working it: 16 dead-button clusters + 9 partial, but the catalog is **stale** (it claims Recommendations actions are unbuilt; they shipped in migration `20260720120000`)
+
+**Success criteria**
+1. No unauthenticated route reaches a write, and no controller derives tenancy from a URL path.
+2. No stock mutation exists that dispatches a success event without a database write.
+3. The orchestrator registry contains no agent whose handler only logs.
+4. A fresh environment can be built from migrations alone.
+5. Every phase marked complete has a VERIFICATION artifact, and no UAT file contradicts the ROADMAP.
+6. All 11 functionality groups score ≥ T2 with the analytics truth suite asserting against the oracle ledger.
+
+---
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
 *v1.0 roadmap archived (Phases 1-17, 2026-03-30 to 2026-04-08)*
 *Futures updated: 2026-07-26 — Mudavym brand + beverage/bakery/guest/Ask-AI backlog (see FUTURES.md)*
 *Testing Campaign added: 2026-07-27 — Phases 36–43 (synthetic restaurants, SimPOS simulator, scored breadth passes, analytics truth suite, AI evals)*
+*v2.0 closed: 2026-07-28 — gaps_found; phases 18-37 archived to .planning/archive/v2.0-phases/; Phase 23 dropped; carry-forward consolidated into Phase 44*
+*v3.0 opened: 2026-07-28 — Phase 44 (v2.0 Carry-Forward & Debt Consolidation), 15 subphases across 4 tracks*
