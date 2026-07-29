@@ -100,15 +100,29 @@ export class OneTapActionsService {
   }
 
   /**
-   * Get a single action by ID
+   * Get a single action by ID, scoped to the caller's restaurant.
+   *
+   * restaurantId is a REQUIRED filter in the query, not a check applied after the
+   * row is fetched. This method used to take only an actionId and read
+   * restaurant_id off the result purely to address the WebSocket broadcast, which
+   * meant anyone holding a UUID could read another restaurant's action — and
+   * every mutating method below routed its authorisation through here.
+   *
+   * A row belonging to another tenant returns 404 rather than 403: telling a
+   * caller "that exists but is not yours" confirms the UUID is real, which is
+   * information they should not get from an id they should not have.
    */
-  async getAction(actionId: string): Promise<OneTapActionResponseDto> {
+  async getAction(
+    actionId: string,
+    restaurantId: string,
+  ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
 
     const { data, error } = await client
       .from("one_tap_actions")
       .select("*")
       .eq("id", actionId)
+      .eq("restaurant_id", restaurantId)
       .is("deleted_at", null)
       .single();
 
@@ -170,12 +184,13 @@ export class OneTapActionsService {
    */
   async updateAction(
     actionId: string,
+    restaurantId: string,
     dto: UpdateOneTapActionDto,
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
 
-    // First get the action to get restaurant_id
-    const existing = await this.getAction(actionId);
+    // Throws 404 unless the action belongs to this restaurant.
+    const existing = await this.getAction(actionId, restaurantId);
 
     const updateData: any = {};
     if (dto.title !== undefined) updateData.title = dto.title;
@@ -191,6 +206,7 @@ export class OneTapActionsService {
       .from("one_tap_actions")
       .update(updateData)
       .eq("id", actionId)
+      .eq("restaurant_id", restaurantId)
       .select()
       .single();
 
@@ -213,13 +229,14 @@ export class OneTapActionsService {
    */
   async executeAction(
     actionId: string,
+    restaurantId: string,
     userId: string,
     dto: ExecuteActionDto,
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
 
-    // First get the action to get restaurant_id
-    const existing = await this.getAction(actionId);
+    // Throws 404 unless the action belongs to this restaurant.
+    const existing = await this.getAction(actionId, restaurantId);
 
     const { data, error } = await client
       .from("one_tap_actions")
@@ -230,6 +247,7 @@ export class OneTapActionsService {
         execution_result: dto.result || {},
       })
       .eq("id", actionId)
+      .eq("restaurant_id", restaurantId)
       .select()
       .single();
 
@@ -257,11 +275,14 @@ export class OneTapActionsService {
   /**
    * Cancel an action
    */
-  async cancelAction(actionId: string): Promise<OneTapActionResponseDto> {
+  async cancelAction(
+    actionId: string,
+    restaurantId: string,
+  ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
 
-    // First get the action to get restaurant_id
-    const existing = await this.getAction(actionId);
+    // Throws 404 unless the action belongs to this restaurant.
+    const existing = await this.getAction(actionId, restaurantId);
 
     const { data, error } = await client
       .from("one_tap_actions")
@@ -269,6 +290,7 @@ export class OneTapActionsService {
         status: OneTapActionStatus.CANCELLED,
       })
       .eq("id", actionId)
+      .eq("restaurant_id", restaurantId)
       .select()
       .single();
 
@@ -293,18 +315,22 @@ export class OneTapActionsService {
   /**
    * Delete an action (soft delete)
    */
-  async deleteAction(actionId: string): Promise<void> {
+  async deleteAction(actionId: string, restaurantId: string): Promise<void> {
     const client = this.dbService.getClient();
 
-    // First get the action to get restaurant_id
-    const existing = await this.getAction(actionId);
+    // Throws 404 unless the action belongs to this restaurant.
+    const existing = await this.getAction(actionId, restaurantId);
 
     const { error } = await client
       .from("one_tap_actions")
       .update({
         deleted_at: new Date().toISOString(),
       })
-      .eq("id", actionId);
+      .eq("id", actionId)
+      // Scoped as well as pre-checked. The getAction() call above already proves
+      // ownership, but a delete that could touch any row given the right id is
+      // one refactor away from doing so.
+      .eq("restaurant_id", restaurantId);
 
     if (error) {
       this.logger.error(`Failed to delete action: ${error.message}`);
@@ -411,9 +437,21 @@ export class OneTapActionsService {
     event: string,
     data: any,
   ): void {
-    this.websocketGateway.server
-      .to(`restaurant:${restaurantId}`)
-      .emit("one_tap_action", { event, data });
+    // Every caller of this runs AFTER its database write has committed, so a
+    // broadcast failure must not propagate: it would return an error for an
+    // operation that actually succeeded, and the client would retry a completed
+    // execute. `server` is undefined until the gateway finishes initialising,
+    // which previously threw "Cannot read properties of null (reading 'to')" from
+    // inside a successful mutation.
+    try {
+      this.websocketGateway.server
+        ?.to(`restaurant:${restaurantId}`)
+        ?.emit("one_tap_action", { event, data });
+    } catch (err: any) {
+      this.logger.warn(
+        `one-tap broadcast failed for ${event} (write already committed): ${err?.message}`,
+      );
+    }
   }
 
   /**
