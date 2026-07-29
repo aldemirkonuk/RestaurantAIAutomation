@@ -10,11 +10,14 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
+import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
   MapToastItemDto,
   BulkMapToastItemsDto,
+  BulkCreateInventoryItemsDto,
+  BulkInventoryLineDto,
 } from "./dto/inventory.dto";
 
 const ML_PER_OZ = 29.5735;
@@ -35,6 +38,12 @@ export class InventoryService {
     @Optional()
     @Inject(forwardRef(() => LowStockAlertsService))
     private readonly lowStockAlerts?: LowStockAlertsService,
+    // Optional so the existing unit specs can construct the service with only a
+    // DatabaseService. Nest always injects it in the real app (InventoryModule
+    // imports WinesModule); only the wineDraft path needs it.
+    @Optional()
+    @Inject(WineSubmissionsService)
+    private readonly wineSubmissions?: WineSubmissionsService,
   ) {}
 
   private mapInventoryItem(
@@ -382,6 +391,28 @@ export class InventoryService {
   }
 
   /**
+   * Decides what cost and provenance a new lot carries.
+   *
+   * A free sample is a deliberate $0, not a missing price — recording it as
+   * unit_cost 0 with provenance 'invoice' (the RPC's historical inference) would
+   * pull weighted-average cost toward zero and understate COGS, while recording it
+   * as NULL would be indistinguishable from "nobody typed the price in".
+   */
+  private resolveLotCost(dto: {
+    costPerBottle?: number | null;
+    costProvenance?: string;
+  }): { unitCost: number | null; provenance: string | null } {
+    if (dto.costProvenance === "sample") {
+      return { unitCost: 0, provenance: "sample" };
+    }
+    const unitCost = dto.costPerBottle ?? null;
+    return {
+      provenance: dto.costProvenance ?? (unitCost !== null ? "manual" : null),
+      unitCost,
+    };
+  }
+
+  /**
    * Create a new inventory item
    */
   async createInventoryItem(restaurantId: string, dto: CreateInventoryItemDto) {
@@ -436,6 +467,7 @@ export class InventoryService {
         }
 
         if (dto.stockLive && dto.stockLive > 0) {
+          const { unitCost, provenance } = this.resolveLotCost(dto);
           await client.rpc("apply_stock_movement", {
             p_inventory_id: existing.id,
             p_stock_state: "live",
@@ -443,8 +475,9 @@ export class InventoryService {
             p_transaction_type: "initial",
             p_source: "manual",
             p_reason: "stock on re-activation",
-            p_unit_cost: (dto as any).costPerBottle ?? null,
+            p_unit_cost: unitCost,
             p_location_id: dto.storageLocationId ?? null,
+            p_cost_provenance: provenance,
           });
         }
 
@@ -520,6 +553,7 @@ export class InventoryService {
 
     // Initial stock enters as a lot via the RPC so lots are authoritative from creation.
     if (dto.stockLive && dto.stockLive > 0) {
+      const { unitCost, provenance } = this.resolveLotCost(dto);
       const { error: rpcErr } = await client.rpc("apply_stock_movement", {
         p_inventory_id: data.id,
         p_stock_state: "live",
@@ -527,8 +561,9 @@ export class InventoryService {
         p_transaction_type: "initial",
         p_source: "manual",
         p_reason: "initial stock on add-to-inventory",
-        p_unit_cost: (dto as any).costPerBottle ?? null,
+        p_unit_cost: unitCost,
         p_location_id: dto.storageLocationId ?? null,
+        p_cost_provenance: provenance,
       });
       if (rpcErr) {
         this.logger.warn(
@@ -553,6 +588,273 @@ export class InventoryService {
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
     return this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+  }
+
+  /**
+   * Receive many wines in one call — menu scan, delivery, or sample drop.
+   *
+   * Differs from createInventoryItem in three ways that matter for a real receipt:
+   *   1. A wine already in inventory is not a conflict. Receiving a case of
+   *      something you already carry appends stock to the existing item, which is
+   *      what actually happened in the cellar.
+   *   2. A line may arrive as a `wineDraft` instead of a `wineId`; it is resolved
+   *      against the Master Library (exact signature → name+producer → create
+   *      Provisional tier 3), so scanning a menu no longer dead-ends on wines the
+   *      shared library has never seen.
+   *   3. One bad line does not abort the batch. Every line returns its own result
+   *      keyed by original index, so the caller can show exactly what failed and
+   *      let the manager retry just those rows.
+   */
+  async bulkCreateInventoryItems(
+    restaurantId: string,
+    dto: BulkCreateInventoryItemsDto,
+  ) {
+    const source = dto.source || "bulk_receive";
+    const results: Array<Record<string, any>> = [];
+
+    for (let index = 0; index < dto.items.length; index++) {
+      const line = dto.items[index];
+      const wineName =
+        line.wineDraft?.name || (line.wineId ? `wine ${line.wineId}` : "unknown");
+
+      try {
+        const resolved = await this.resolveBulkLineWine(line);
+        const outcome = await this.receiveBulkLine(
+          restaurantId,
+          line,
+          resolved.masterWineId,
+          source,
+          dto.reason,
+        );
+
+        results.push({
+          index,
+          status: outcome.status,
+          inventoryId: outcome.inventoryId,
+          masterWineId: resolved.masterWineId,
+          wineName: resolved.wineName || wineName,
+          libraryMatched: resolved.matched,
+          libraryTier: resolved.libraryTier,
+        });
+      } catch (error: any) {
+        const message =
+          error instanceof HttpException
+            ? ((error.getResponse() as any)?.message ?? error.message)
+            : error?.message || "Failed to receive line";
+        this.logger.warn({
+          message: "Bulk receive line failed",
+          restaurantId,
+          index,
+          wineName,
+          error: message,
+        });
+        results.push({ index, status: "failed", wineName, error: message });
+      }
+    }
+
+    const tally = (status: string) =>
+      results.filter((r) => r.status === status).length;
+
+    const summary = {
+      created: tally("created"),
+      stockAdded: tally("stock_added"),
+      reactivated: tally("reactivated"),
+      failed: tally("failed"),
+      results,
+    };
+
+    this.logger.log({
+      message: "Bulk receive complete",
+      restaurantId,
+      source,
+      lines: dto.items.length,
+      ...summary,
+      results: undefined,
+    });
+
+    return summary;
+  }
+
+  /** Resolves a bulk line to a master wine ID, creating a Provisional row if needed. */
+  private async resolveBulkLineWine(line: BulkInventoryLineDto): Promise<{
+    masterWineId: string;
+    wineName: string | null;
+    matched: boolean;
+    libraryTier: number | null;
+  }> {
+    const client = this.dbService.getClient();
+
+    if (line.wineId) {
+      const { data: mw } = await client
+        .from("master_wine_library")
+        .select("id, name, library_tier")
+        .eq("id", line.wineId)
+        .maybeSingle();
+
+      if (!mw?.id) {
+        throw new HttpException(
+          `Wine ${line.wineId} is not in the master library`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      return {
+        masterWineId: mw.id,
+        wineName: mw.name ?? null,
+        matched: true,
+        libraryTier: mw.library_tier ?? null,
+      };
+    }
+
+    if (!line.wineDraft?.name) {
+      throw new HttpException(
+        "Each line needs either wineId or wineDraft.name",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (!this.wineSubmissions) {
+      throw new HttpException(
+        "Library resolution is unavailable — send a wineId instead of a wineDraft",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine({
+      name: line.wineDraft.name,
+      producer: line.wineDraft.producer ?? null,
+      vintage: line.wineDraft.vintage ?? null,
+      country: line.wineDraft.country ?? null,
+      region: line.wineDraft.region ?? null,
+      grapeVariety: line.wineDraft.grapeVariety ?? null,
+    });
+
+    return {
+      masterWineId: resolution.masterWineId,
+      wineName: line.wineDraft.name,
+      matched: resolution.matched,
+      libraryTier: resolution.libraryTier,
+    };
+  }
+
+  /**
+   * Applies one resolved line: creates the inventory row, revives a soft-deleted
+   * one, or tops up an active one, then books the bottles as a lot.
+   */
+  private async receiveBulkLine(
+    restaurantId: string,
+    line: BulkInventoryLineDto,
+    masterWineId: string,
+    source: string,
+    reason?: string,
+  ): Promise<{ status: string; inventoryId: string }> {
+    const client = this.dbService.getClient();
+    const qty = line.stockLive ?? 0;
+
+    const { data: existing } = await client
+      .from("restaurant_inventory")
+      .select("id, is_active")
+      .eq("restaurant_id", restaurantId)
+      .eq("master_wine_id", masterWineId)
+      .maybeSingle();
+
+    let inventoryId: string;
+    let status: string;
+
+    if (existing?.id) {
+      const patch: Record<string, any> = {};
+      if (!existing.is_active) patch.is_active = true;
+      if (line.providerId) patch.provider_id = line.providerId;
+      if (line.storageLocationId !== undefined)
+        patch.storage_location_id = line.storageLocationId;
+      if (line.thresholdMin !== undefined) patch.threshold_min = line.thresholdMin;
+      if (line.thresholdMax !== undefined) patch.threshold_max = line.thresholdMax;
+
+      if (Object.keys(patch).length > 0) {
+        const { error: updateError } = await client
+          .from("restaurant_inventory")
+          .update(patch)
+          .eq("id", existing.id);
+        if (updateError) {
+          throw new HttpException(updateError.message, HttpStatus.BAD_REQUEST);
+        }
+      }
+
+      inventoryId = existing.id;
+      status = existing.is_active ? "stock_added" : "reactivated";
+    } else {
+      const insertData: Record<string, any> = {
+        restaurant_id: restaurantId,
+        master_wine_id: masterWineId,
+        provider_id: line.providerId || null,
+        stock_live: 0, // lots are the source of truth; booked via the RPC below
+        threshold_min: line.thresholdMin ?? 6,
+        threshold_max: line.thresholdMax ?? 24,
+        is_active: true,
+      };
+      if (line.bottleSizeMl !== undefined)
+        insertData.bottle_size_ml = line.bottleSizeMl;
+      if (line.saleType !== undefined) insertData.sale_type = line.saleType;
+      if (line.pourSizeMl !== undefined)
+        insertData.pour_size_ml = line.pourSizeMl;
+      if (line.menuPriceGlass !== undefined)
+        insertData.menu_price_glass = line.menuPriceGlass;
+      if (line.storageLocationId !== undefined)
+        insertData.storage_location_id = line.storageLocationId;
+
+      const { data: mw } = await client
+        .from("master_wine_library")
+        .select("name")
+        .eq("id", masterWineId)
+        .maybeSingle();
+      insertData.wine_name = mw?.name ?? null;
+
+      const { data: created, error: insertError } = await client
+        .from("restaurant_inventory")
+        .insert(insertData)
+        .select("id")
+        .single();
+
+      if (insertError || !created?.id) {
+        throw new HttpException(
+          insertError?.message || "Failed to create inventory item",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      inventoryId = created.id;
+      status = "created";
+    }
+
+    if (qty > 0) {
+      // A sample is a real, deliberate $0 — pass the provenance explicitly so the
+      // lot counts as stock without dragging weighted-average cost toward zero.
+      const isSample = line.costProvenance === "sample";
+      const unitCost = isSample ? 0 : (line.costPerBottle ?? null);
+
+      const { error: rpcError } = await client.rpc("apply_stock_movement", {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: qty,
+        // Live enum inventory_transaction_type has no 'restock' — topping up an
+        // existing item is a 'purchase'; a brand new row is 'initial'.
+        p_transaction_type: status === "created" ? "initial" : "purchase",
+        p_source: source === "menu_scan" ? "import" : "manual",
+        p_reason: reason || `bulk receive (${source})`,
+        p_unit_cost: unitCost,
+        p_location_id: line.storageLocationId ?? null,
+        p_cost_provenance:
+          line.costProvenance ?? (unitCost !== null ? "manual" : null),
+      });
+
+      if (rpcError) {
+        throw new HttpException(
+          `Stock movement failed: ${rpcError.message}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
+    return { status, inventoryId };
   }
 
   async getInventorySummary(restaurantId: string) {

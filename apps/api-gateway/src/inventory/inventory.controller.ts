@@ -19,6 +19,8 @@ import {
   UpdateInventoryItemDto,
   MapToastItemDto,
   BulkMapToastItemsDto,
+  BulkCreateInventoryItemsDto,
+  BulkCreateInventoryResultDto,
   InventoryItemResponseDto,
   InventorySummaryResponseDto,
   UnmappedToastItemResponseDto,
@@ -66,6 +68,35 @@ export class InventoryController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to create inventory item",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(":restaurantId/items/bulk")
+  @ApiOperation({
+    summary: "Receive many wines at once (menu scan, delivery, sample drop)",
+    description:
+      "Per-line results keyed by request index; one failed line never aborts the batch. A wine already in inventory has its stock topped up instead of returning 409, and a line carrying wineDraft is resolved against the Master Library (creating a Provisional entry when nothing matches).",
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Batch processed — inspect per-line results",
+    type: BulkCreateInventoryResultDto,
+  })
+  async bulkCreateInventoryItems(
+    @Param("restaurantId") restaurantId: string,
+    @Body() dto: BulkCreateInventoryItemsDto,
+  ) {
+    try {
+      return await this.inventoryService.bulkCreateInventoryItems(
+        restaurantId,
+        dto,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to receive inventory batch",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

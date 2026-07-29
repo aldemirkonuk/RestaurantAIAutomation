@@ -8,7 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Search, Plus, MapPin, LayoutGrid, Rows3, ChevronDown, PackageCheck,
-  ArrowUp, ArrowDown, Copy, X, FileDown, ChevronRight as ChevronRightIcon,
+  ArrowUp, ArrowDown, Copy, X, FileDown, ChevronRight as ChevronRightIcon, Trash2,
 } from 'lucide-react'
 import { useInventoryPage, type InventoryItem } from '../index'
 import { ContextualInsights } from '../../../components/insights/ContextualInsights'
@@ -17,6 +17,11 @@ import { useCreateInventoryItem } from '../../../hooks/queries'
 import { getOrders } from '../../../services/api/orders'
 import { AddWineToInventoryModal } from '../../../components/inventory/AddWineToInventoryModal'
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager'
+import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal'
+import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace'
+import { AddWineSelectionModal } from '../../../components/wines/AddWineSelectionModal'
+import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow'
+import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
@@ -85,14 +90,20 @@ export function InventoryCommandPage() {
   const [activeFlag, setActiveFlag] = useState<RowFlag | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showAddWine, setShowAddWine] = useState(false)
+  const [showAddWineSelection, setShowAddWineSelection] = useState(false)
+  const [showMenuScanner, setShowMenuScanner] = useState(false)
+  const [showManualReceipt, setShowManualReceipt] = useState(false)
   const [showStorageManager, setShowStorageManager] = useState(false)
   const [verifyOrder, setVerifyOrder] = useState<any | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const [showAllLocations, setShowAllLocations] = useState(false)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [removeTargets, setRemoveTargets] = useState<InventoryItem[] | null>(null)
 
-  const anyModalOpen = showAddWine || showStorageManager || !!verifyOrder
+  const anyModalOpen =
+    showAddWine || showAddWineSelection || showMenuScanner || showManualReceipt ||
+    showStorageManager || !!verifyOrder || !!removeTargets
 
   // Deliveries still owed a three-way match. PARTIALLY_RECEIVED belongs here too: those orders
   // were matched once and left open for a backorder, so they still need a human when the rest
@@ -469,7 +480,7 @@ export function InventoryCommandPage() {
           <button onClick={() => setShowStorageManager(true)} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
             <MapPin className="w-3.5 h-3.5" /> Locations
           </button>
-          <button onClick={() => setShowAddWine(true)} className="flex items-center gap-1.5 h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white rounded-lg text-xs font-bold shadow-sm">
+          <button onClick={() => setShowAddWineSelection(true)} className="flex items-center gap-1.5 h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white rounded-lg text-xs font-bold shadow-sm">
             <Plus className="w-3.5 h-3.5" /> Add wine
           </button>
         </div>
@@ -573,7 +584,7 @@ export function InventoryCommandPage() {
         <>
           {/* Bulk action bar (NEW-064/068) */}
           {selected.size > 0 && (
-            <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-2.5 px-4 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg">
+            <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-2.5 px-4 py-2.5 bg-wine-900 text-white rounded-xl shadow-lg">
               <span className="text-sm font-semibold">{selected.size} selected</span>
               <div className="flex items-center gap-2">
                 <ExportMenu
@@ -586,6 +597,12 @@ export function InventoryCommandPage() {
                 />
                 <button onClick={copySelectedNames} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg">
                   <Copy className="w-3.5 h-3.5" /> Copy names
+                </button>
+                <button
+                  onClick={() => setRemoveTargets(selectedRows)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 rounded-lg"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Remove selected
                 </button>
                 <button onClick={clearSelect} className="p-1.5 hover:bg-white/20 rounded-lg" aria-label="Clear selection">
                   <X className="w-4 h-4" />
@@ -731,6 +748,39 @@ export function InventoryCommandPage() {
       )}
 
       {/* ── MODALS ── */}
+      <AddWineSelectionModal
+        isOpen={showAddWineSelection}
+        onClose={() => setShowAddWineSelection(false)}
+        onSelectSingle={() => setShowAddWine(true)}
+        onSelectMenu={() => setShowMenuScanner(true)}
+        onSelectReceipt={() => setShowManualReceipt(true)}
+        title="Add Wine to Inventory"
+        subtitle="One label, a whole menu, or a delivery with many lines"
+      />
+
+      {/* The flow writes the batch itself (it owns the per-row quantities), so this
+          only reports the outcome and refreshes — it must not submit again. */}
+      <MenuScannerFlow
+        isOpen={showMenuScanner}
+        onClose={() => setShowMenuScanner(false)}
+        onWinesAdded={(_wines, result) => {
+          if (!result) return
+          toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`, {
+            description:
+              result.provisional.length > 0
+                ? `${result.provisional.map((r) => r.wineName).join(', ')} — added to the Master Wine Library as provisional entries.`
+                : undefined,
+          })
+          void refetchInventory()
+        }}
+      />
+
+      <ManualReceiptWorkspace
+        isOpen={showManualReceipt}
+        onClose={() => setShowManualReceipt(false)}
+        onSaved={() => void refetchInventory()}
+      />
+
       <AddWineToInventoryModal
         isOpen={showAddWine}
         onClose={() => setShowAddWine(false)}
@@ -744,8 +794,20 @@ export function InventoryCommandPage() {
             saleType: volumeFields?.saleType,
             pourSizeMl: volumeFields?.pourSizeMl,
             menuPriceGlass: volumeFields?.menuPriceGlass,
+            // A sample is a deliberate $0, so it is sent as $0 with an explicit
+            // 'sample' provenance rather than omitted. Omitting the cost would land
+            // as provenance 'estimated' — indistinguishable from "nobody typed the
+            // price in". The WAC rollup excludes sample lots by name.
+            ...(volumeFields?.isSample
+              ? { costPerBottle: 0, costProvenance: 'sample' as const }
+              : { costPerBottle: volumeFields?.costPerBottle }),
           } as any)
           setShowAddWine(false)
+          toast.success(
+            volumeFields?.isSample
+              ? `${wine.name} added as a free sample — excluded from cost basis`
+              : `${wine.name} added to inventory`,
+          )
           void refetchInventory()
         }}
       />
@@ -799,9 +861,28 @@ export function InventoryCommandPage() {
               )
               setMenu(null)
             }} />
+            <div className="h-px bg-gray-100 my-1" />
+            <button
+              onClick={() => { setRemoveTargets([item]); setMenu(null) }}
+              className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" /> Remove from inventory
+            </button>
           </div>
         )
       })()}
+
+      {removeTargets && (
+        <RemoveFromInventoryModal
+          isOpen
+          items={removeTargets}
+          onClose={() => setRemoveTargets(null)}
+          onRemoved={() => {
+            clearSelect()
+            void refetchInventory()
+          }}
+        />
+      )}
     </div>
   )
 }

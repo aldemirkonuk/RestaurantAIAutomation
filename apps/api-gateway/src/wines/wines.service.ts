@@ -17,6 +17,7 @@ interface WineRow {
   producer: string;
   vintage: number | null;
   price_reference: number | null;
+  retail_price_avg?: number | null;
   primary_type: string | null;
   grape_variety: string | null;
   country: string | null;
@@ -56,6 +57,10 @@ export class WinesService {
       producer: row.producer,
       vintage: row.vintage ?? undefined,
       price: row.price_reference ?? 0,
+      // Same field the inventory read model surfaces as marketPrice, so a library
+      // row and an inventory row agree on what "market" means. Null until the
+      // price-enrichment pipeline populates it.
+      retailPriceAvg: row.retail_price_avg ?? undefined,
       category: row.primary_type ?? undefined,
       region: row.region ?? undefined,
       country: row.country ?? undefined,
@@ -466,7 +471,7 @@ export class WinesService {
     const { data, error } = await client
       .from("master_wine_library")
       .select(
-        "id, wine_id, name, producer, vintage, price_reference, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
+        "id, wine_id, name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
       )
       .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
       .limit(query.limit || 10);

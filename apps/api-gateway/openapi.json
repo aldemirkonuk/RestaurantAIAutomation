@@ -2835,20 +2835,12 @@
         ]
       }
     },
-    "/api/v1/one-tap-actions/{restaurantId}": {
+    "/api/v1/one-tap-actions": {
       "get": {
         "operationId": "OneTapActionsController_getActions",
-        "summary": "Get all one-tap actions for a restaurant",
+        "summary": "Get one-tap actions for the caller's restaurant",
+        "description": "restaurantId is taken from the token. The query parameter is accepted only for client compatibility and 403s if it names another tenant.",
         "parameters": [
-          {
-            "name": "restaurantId",
-            "required": true,
-            "in": "path",
-            "description": "Restaurant UUID",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "status",
             "required": false,
@@ -2861,6 +2853,14 @@
                 "cancelled",
                 "expired"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "schema": {
               "type": "string"
             }
           }
@@ -2879,22 +2879,18 @@
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       },
       "post": {
         "operationId": "OneTapActionsController_createAction",
-        "summary": "Create a new one-tap action",
-        "parameters": [
-          {
-            "name": "restaurantId",
-            "required": true,
-            "in": "path",
-            "description": "Restaurant UUID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "summary": "Create a one-tap action for the caller's restaurant",
+        "description": "The creator is the authenticated user. It was previously the literal string \"system\", which is not an author.",
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -2919,24 +2915,19 @@
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
-    "/api/v1/one-tap-actions/{restaurantId}/pending": {
+    "/api/v1/one-tap-actions/pending": {
       "get": {
         "operationId": "OneTapActionsController_getPendingActions",
-        "summary": "Get pending one-tap actions for a restaurant",
-        "parameters": [
-          {
-            "name": "restaurantId",
-            "required": true,
-            "in": "path",
-            "description": "Restaurant UUID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "summary": "Get pending one-tap actions for the caller's restaurant",
+        "parameters": [],
         "responses": {
           "200": {
             "description": "",
@@ -2954,10 +2945,15 @@
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
-    "/api/v1/one-tap-actions/action/{actionId}": {
+    "/api/v1/one-tap-actions/{actionId}": {
       "get": {
         "operationId": "OneTapActionsController_getAction",
         "summary": "Get a single one-tap action",
@@ -2983,12 +2979,20 @@
               }
             }
           },
+          "403": {
+            "description": "Action belongs to another restaurant"
+          },
           "404": {
             "description": "Action not found"
           }
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       },
       "put": {
@@ -3025,18 +3029,20 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "Action not found"
           }
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       },
       "delete": {
         "operationId": "OneTapActionsController_deleteAction",
-        "summary": "Delete a one-tap action",
+        "summary": "Delete a one-tap action (soft delete)",
         "parameters": [
           {
             "name": "actionId",
@@ -3051,26 +3057,37 @@
         "responses": {
           "200": {
             "description": "Action deleted"
-          },
-          "404": {
-            "description": "Action not found"
           }
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
-    "/api/v1/one-tap-actions/action/{actionId}/execute": {
+    "/api/v1/one-tap-actions/{actionId}/execute": {
       "post": {
         "operationId": "OneTapActionsController_executeAction",
         "summary": "Execute a one-tap action",
+        "description": "Path shape matches what the web client sends. The executor is the authenticated user, which is the whole point of an action log.",
         "parameters": [
           {
             "name": "actionId",
             "required": true,
             "in": "path",
             "description": "Action UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -3096,17 +3113,19 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "Action not found"
           }
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
-    "/api/v1/one-tap-actions/action/{actionId}/cancel": {
+    "/api/v1/one-tap-actions/{actionId}/cancel": {
       "post": {
         "operationId": "OneTapActionsController_cancelAction",
         "summary": "Cancel a one-tap action",
@@ -3131,13 +3150,15 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "Action not found"
           }
         },
         "tags": [
           "one-tap-actions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -4080,6 +4101,48 @@
         ]
       }
     },
+    "/api/v1/inventory/{restaurantId}/items/bulk": {
+      "post": {
+        "operationId": "InventoryController_bulkCreateInventoryItems",
+        "summary": "Receive many wines at once (menu scan, delivery, sample drop)",
+        "description": "Per-line results keyed by request index; one failed line never aborts the batch. A wine already in inventory has its stock topped up instead of returning 409, and a line carrying wineDraft is resolved against the Master Library (creating a Provisional entry when nothing matches).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCreateInventoryItemsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Batch processed — inspect per-line results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkCreateInventoryResultDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
     "/api/v1/inventory/{restaurantId}/low-stock": {
       "get": {
         "operationId": "InventoryController_getLowStockItems",
@@ -4527,6 +4590,188 @@
         },
         "tags": [
           "inventory"
+        ]
+      }
+    },
+    "/api/v1/wines": {
+      "get": {
+        "operationId": "WinesController_searchWines",
+        "summary": "Search wines in master wine library",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Returns wine list"
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/meta/categories": {
+      "get": {
+        "operationId": "WinesController_getCategories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/meta/regions": {
+      "get": {
+        "operationId": "WinesController_getRegions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/meta/countries": {
+      "get": {
+        "operationId": "WinesController_getCountries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/suggestions": {
+      "get": {
+        "operationId": "WinesController_getSuggestions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/{wineId}/similar": {
+      "get": {
+        "operationId": "WinesController_getSimilar",
+        "parameters": [
+          {
+            "name": "wineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/{wineId}": {
+      "get": {
+        "operationId": "WinesController_getById",
+        "parameters": [
+          {
+            "name": "wineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/submissions": {
+      "post": {
+        "operationId": "WinesController_submitWine",
+        "summary": "Submit a wine to master library staging",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWineSubmissionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/submissions/list": {
+      "get": {
+        "operationId": "WinesController_listSubmissions",
+        "summary": "List master wine submissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
+        ]
+      }
+    },
+    "/api/v1/wines/submissions/process": {
+      "post": {
+        "operationId": "WinesController_processSubmissions",
+        "summary": "Process pending submissions (dedup worker)",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessSubmissionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "wines"
         ]
       }
     },
@@ -7998,188 +8243,6 @@
         },
         "tags": [
           "provider-intelligence"
-        ]
-      }
-    },
-    "/api/v1/wines": {
-      "get": {
-        "operationId": "WinesController_searchWines",
-        "summary": "Search wines in master wine library",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Returns wine list"
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/meta/categories": {
-      "get": {
-        "operationId": "WinesController_getCategories",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/meta/regions": {
-      "get": {
-        "operationId": "WinesController_getRegions",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/meta/countries": {
-      "get": {
-        "operationId": "WinesController_getCountries",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/suggestions": {
-      "get": {
-        "operationId": "WinesController_getSuggestions",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/{wineId}/similar": {
-      "get": {
-        "operationId": "WinesController_getSimilar",
-        "parameters": [
-          {
-            "name": "wineId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/{wineId}": {
-      "get": {
-        "operationId": "WinesController_getById",
-        "parameters": [
-          {
-            "name": "wineId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/submissions": {
-      "post": {
-        "operationId": "WinesController_submitWine",
-        "summary": "Submit a wine to master library staging",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateWineSubmissionDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/submissions/list": {
-      "get": {
-        "operationId": "WinesController_listSubmissions",
-        "summary": "List master wine submissions",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
-        ]
-      }
-    },
-    "/api/v1/wines/submissions/process": {
-      "post": {
-        "operationId": "WinesController_processSubmissions",
-        "summary": "Process pending submissions (dedup worker)",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProcessSubmissionsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "wines"
         ]
       }
     },
@@ -13886,6 +13949,16 @@
             "type": "number",
             "description": "Cost per bottle in dollars"
           },
+          "costProvenance": {
+            "type": "string",
+            "description": "How the cost was established. 'sample' records a deliberate zero cost (free sample / consignment): the bottles count as stock but are excluded from weighted-average cost.",
+            "enum": [
+              "invoice",
+              "manual",
+              "estimated",
+              "sample"
+            ]
+          },
           "storageLocationId": {
             "type": "string",
             "description": "Storage location ID"
@@ -14046,6 +14119,211 @@
           "isActive",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "WineDraftDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Wine name as printed on the menu or invoice"
+          },
+          "producer": {
+            "type": "string",
+            "description": "Producer / winery"
+          },
+          "vintage": {
+            "type": "object",
+            "description": "Vintage year; null for non-vintage"
+          },
+          "country": {
+            "type": "string",
+            "description": "Country of origin"
+          },
+          "region": {
+            "type": "string",
+            "description": "Region"
+          },
+          "grapeVariety": {
+            "type": "string",
+            "description": "Grape variety"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "BulkInventoryLineDto": {
+        "type": "object",
+        "properties": {
+          "wineId": {
+            "type": "string",
+            "description": "Master library wine ID"
+          },
+          "wineDraft": {
+            "description": "Wine identity to resolve-or-create when wineId is unknown",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineDraftDto"
+              }
+            ]
+          },
+          "stockLive": {
+            "type": "number",
+            "description": "Bottles received on this line"
+          },
+          "costPerBottle": {
+            "type": "object",
+            "description": "Cost per bottle in dollars"
+          },
+          "costProvenance": {
+            "type": "string",
+            "description": "Cost provenance; 'sample' for deliberate zero cost",
+            "enum": [
+              "invoice",
+              "manual",
+              "estimated",
+              "sample"
+            ]
+          },
+          "storageLocationId": {
+            "type": "object",
+            "description": "Storage location ID"
+          },
+          "providerId": {
+            "type": "object",
+            "description": "Provider ID"
+          },
+          "thresholdMin": {
+            "type": "number",
+            "description": "Minimum threshold for alerts"
+          },
+          "thresholdMax": {
+            "type": "number",
+            "description": "Maximum threshold (par level)"
+          },
+          "bottleSizeMl": {
+            "type": "number",
+            "description": "Bottle size in ml (override)"
+          },
+          "saleType": {
+            "type": "string",
+            "description": "Sale type: bottle, glass, or both"
+          },
+          "pourSizeMl": {
+            "type": "number",
+            "description": "Pour size in ml"
+          },
+          "menuPriceGlass": {
+            "type": "number",
+            "description": "Menu price per glass"
+          }
+        }
+      },
+      "BulkCreateInventoryItemsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Lines to receive",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkInventoryLineDto"
+            }
+          },
+          "source": {
+            "type": "string",
+            "description": "Where the batch came from, for the audit trail",
+            "example": "menu_scan"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable reason for the ledger"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "BulkInventoryLineResultDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "number",
+            "description": "Index of this line in the request array"
+          },
+          "status": {
+            "type": "string",
+            "description": "created = new inventory row; stock_added = quantity appended to an item already carried; reactivated = soft-deleted item revived; failed = see error",
+            "enum": [
+              "created",
+              "stock_added",
+              "reactivated",
+              "failed"
+            ]
+          },
+          "inventoryId": {
+            "type": "string",
+            "description": "Resulting inventory item ID"
+          },
+          "masterWineId": {
+            "type": "string",
+            "description": "Resolved master library wine ID"
+          },
+          "wineName": {
+            "type": "string",
+            "description": "Wine name, for display in the result summary"
+          },
+          "libraryMatched": {
+            "type": "boolean",
+            "description": "false when no library match existed, so a Provisional (tier 3) entry was created"
+          },
+          "libraryTier": {
+            "type": "object",
+            "description": "Library governance tier of the wine"
+          },
+          "error": {
+            "type": "string",
+            "description": "Why this line failed"
+          }
+        },
+        "required": [
+          "index",
+          "status",
+          "wineName"
+        ]
+      },
+      "BulkCreateInventoryResultDto": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "number",
+            "description": "Lines that created a new inventory item"
+          },
+          "stockAdded": {
+            "type": "number",
+            "description": "Lines that topped up an existing item"
+          },
+          "reactivated": {
+            "type": "number",
+            "description": "Lines that revived a soft-deleted item"
+          },
+          "failed": {
+            "type": "number",
+            "description": "Lines that failed"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkInventoryLineResultDto"
+            }
+          }
+        },
+        "required": [
+          "created",
+          "stockAdded",
+          "reactivated",
+          "failed",
+          "results"
         ]
       },
       "InventorySummaryResponseDto": {
@@ -14222,6 +14500,14 @@
             "description": "Glasses per bottle override"
           }
         }
+      },
+      "CreateWineSubmissionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ProcessSubmissionsDto": {
+        "type": "object",
+        "properties": {}
       },
       "CreateInventoryTransactionDto": {
         "type": "object",
@@ -15930,14 +16216,6 @@
         "required": [
           "wineName"
         ]
-      },
-      "CreateWineSubmissionDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "ProcessSubmissionsDto": {
-        "type": "object",
-        "properties": {}
       },
       "AssignWineToLocationDto": {
         "type": "object",

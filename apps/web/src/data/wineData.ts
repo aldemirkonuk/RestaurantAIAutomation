@@ -13,6 +13,8 @@ export interface Wine {
   producer: string
   vintage: number | null
   price: number
+  /** Average market/retail price for the bottle; undefined when no price data exists yet. */
+  marketPrice?: number
   menuPrice?: number
   menuPriceGlass?: number
   type: 'red' | 'white' | 'sparkling' | 'rose' | 'dessert'

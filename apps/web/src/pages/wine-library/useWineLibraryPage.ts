@@ -4,7 +4,7 @@ import { useWines, useInventory, useProviders } from '../../hooks/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
 
-export type SortField = 'name' | 'price' | 'vintage' | 'stock' | 'type' | 'country' | 'status' | 'format'
+export type SortField = 'name' | 'price' | 'market' | 'vintage' | 'type' | 'country' | 'format'
 export type SortOrder = 'asc' | 'desc'
 export type ViewMode = 'grid' | 'list'
 
@@ -229,13 +229,15 @@ export function useWineLibraryPage() {
           aVal = a.price
           bVal = b.price
           break
+        case 'market':
+          // Wines with no market price sort last in either direction rather than
+          // clustering at $0, which would read as "cheapest".
+          aVal = a.marketPrice ?? Number.NEGATIVE_INFINITY
+          bVal = b.marketPrice ?? Number.NEGATIVE_INFINITY
+          break
         case 'vintage':
           aVal = a.vintage || 0
           bVal = b.vintage || 0
-          break
-        case 'stock':
-          aVal = a.liveStock || 0
-          bVal = b.liveStock || 0
           break
         case 'type': {
           const typeOrder = ['red', 'white', 'rose', 'sparkling']
@@ -254,10 +256,6 @@ export function useWineLibraryPage() {
         case 'country':
           aVal = a.country
           bVal = b.country
-          break
-        case 'status':
-          aVal = getStockStatus(a).priority
-          bVal = getStockStatus(b).priority
           break
         case 'format':
           aVal = a.bottleSizeMl ?? 750

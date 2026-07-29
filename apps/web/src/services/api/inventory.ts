@@ -12,6 +12,8 @@ import type {
   UpdateInventoryItemRequest,
   ToastMappingRequest,
   BulkMappingResult,
+  BulkCreateInventoryRequest,
+  BulkCreateInventoryResult,
 } from './types';
 
 const INVENTORY_PATH = '/inventory';
@@ -77,6 +79,30 @@ export async function createInventoryItem(
 
   const response = await apiClient.post<InventoryItem>(
     `${INVENTORY_PATH}/${id}/items`,
+    data
+  );
+  return response.data;
+}
+
+/**
+ * Create many inventory items in one call.
+ *
+ * Unlike `createInventoryItem`, a line whose wine is already in inventory is not
+ * a 409 — the quantity is appended to the existing item, which is what receiving
+ * a case of something you already carry actually means. Lines carrying a
+ * `wineDraft` instead of a `wineId` are resolved against the Master Library
+ * server-side (exact signature, then name+producer) and get a provisional row
+ * when nothing matches. Per-line failures never abort the batch.
+ */
+export async function bulkCreateInventoryItems(
+  data: BulkCreateInventoryRequest,
+  restaurantId?: string
+): Promise<BulkCreateInventoryResult> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const response = await apiClient.post<BulkCreateInventoryResult>(
+    `${INVENTORY_PATH}/${id}/items/bulk`,
     data
   );
   return response.data;

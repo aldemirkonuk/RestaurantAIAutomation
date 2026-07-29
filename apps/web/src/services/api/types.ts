@@ -110,6 +110,7 @@ export interface CreateInventoryItemRequest {
   providerId?: string;
   stockLive: number;
   costPerBottle?: number;
+  costProvenance?: CostProvenance;
   storageLocationId?: string;
   notes?: string;
   thresholdMin?: number;
@@ -120,6 +121,70 @@ export interface CreateInventoryItemRequest {
   pourSizeMl?: number;
   menuPriceGlass?: number;
   glassesPerBottleOverride?: number;
+}
+
+/**
+ * How a lot's unit cost was established. `sample` means deliberately zero-cost
+ * (free sample / consignment) — counted as stock, excluded from WAC.
+ */
+export type CostProvenance = 'invoice' | 'manual' | 'estimated' | 'sample';
+
+/** Identity for a wine that may not exist in the Master Library yet. */
+export interface WineDraft {
+  name: string;
+  producer?: string;
+  vintage?: number | null;
+  country?: string;
+  region?: string;
+  grapeVariety?: string;
+}
+
+/**
+ * One row of a bulk receipt. Supply `wineId` for a known Master Library wine,
+ * or `wineDraft` to have the server resolve-or-create a provisional library row.
+ */
+export interface BulkInventoryLine {
+  wineId?: string;
+  wineDraft?: WineDraft;
+  stockLive?: number;
+  costPerBottle?: number | null;
+  costProvenance?: CostProvenance;
+  storageLocationId?: string | null;
+  providerId?: string | null;
+  thresholdMin?: number;
+  thresholdMax?: number;
+  bottleSizeMl?: number;
+  saleType?: SaleType;
+  pourSizeMl?: number;
+  menuPriceGlass?: number;
+}
+
+export interface BulkCreateInventoryRequest {
+  items: BulkInventoryLine[];
+  /** Free-text provenance for the audit trail, e.g. 'menu_scan' or 'manual_receipt'. */
+  source?: string;
+  reason?: string;
+}
+
+export interface BulkInventoryLineResult {
+  index: number;
+  /** `stock_added` = the wine was already in inventory, so the quantity was appended to it. */
+  status: 'created' | 'stock_added' | 'reactivated' | 'failed';
+  inventoryId?: string;
+  masterWineId?: string;
+  wineName: string;
+  /** false = no library match, so a provisional (tier 3) row was created. */
+  libraryMatched?: boolean;
+  libraryTier?: number | null;
+  error?: string;
+}
+
+export interface BulkCreateInventoryResult {
+  created: number;
+  stockAdded: number;
+  reactivated: number;
+  failed: number;
+  results: BulkInventoryLineResult[];
 }
 
 export interface ToastMappingRequest {
@@ -233,6 +298,13 @@ export interface Wine {
   producer: string;
   vintage?: number;
   price: number;
+  /**
+   * Average retail/market price from the master library — the same field the
+   * inventory read model surfaces as `marketPrice`, so a library row and an
+   * inventory row agree on what "market" means. Undefined until the price
+   * enrichment pipeline populates `master_wine_library.retail_price_avg`.
+   */
+  retailPriceAvg?: number;
   bottleSizeMl: number;
   bottleSizeOz: number;
   category?: string;

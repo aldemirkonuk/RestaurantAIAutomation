@@ -20,6 +20,9 @@ export function mapApiWineToUiWine(wine: ApiWine): UiWine {
     producer: wine.producer || 'Unknown Producer',
     vintage: wine.vintage ?? null,
     price: Number.isFinite(wine.price) ? wine.price : 0,
+    marketPrice: Number.isFinite(wine.retailPriceAvg as number)
+      ? (wine.retailPriceAvg as number)
+      : undefined,
     type: coerceWineType(wine.category),
     grape: wine.grapeVariety || 'Unknown',
     country: wine.country || 'Unknown',
