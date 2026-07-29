@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Invoice {{ d.invoice_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Tri-State: printed on the driver's handheld thermal roll and handed over at
+     the door. Narrow, condensed, monospace, no vintage anywhere. Free goods are
+     not marked at all — the quantity simply runs above the PO with no
+     explanation, which is the input that makes a naive engine cry qty_over on a
+     good deal.
+
+     Thermal paper fades from the edges and curls. The gradient here is the
+     printing; degrade.py adds the curl and the crease on top. */
+  body { font-family: "Courier New", Courier, monospace; font-size: 8pt; color: #1a1a1a; }
+  .sheet { width: 4.1in; min-height: 11in; padding: 0.34in 0.26in; position: relative;
+           background: #fafaf7;
+           background-image: linear-gradient(90deg,
+             rgba(0,0,0,.05) 0%, transparent 7%, transparent 93%, rgba(0,0,0,.05) 100%); }
+
+  .synthetic-band { font-size: 5.2pt; letter-spacing: .08em; padding: 3px 0; }
+  .watermark { font-size: 30pt; }
+
+  header { margin-top: 12px; text-align: center; }
+  .co { font-size: 10.5pt; font-weight: 700; letter-spacing: .06em; }
+  .co-addr { font-size: 6.6pt; margin-top: 3px; line-height: 1.4; }
+  .sep { border-top: 1px dashed #444; margin: 7px 0; }
+  .sep-solid { border-top: 2px solid #1a1a1a; margin: 7px 0; }
+
+  .kv { font-size: 7pt; line-height: 1.65; }
+  .kv .k { display: inline-block; min-width: 74px; }
+
+  .doc-title { text-align: center; font-size: 9pt; font-weight: 700;
+               letter-spacing: .3em; margin: 8px 0 4px; }
+
+  table.lines { width: 100%; }
+  table.lines th { font-size: 5.9pt; text-align: left; padding: 2px 1px;
+                   border-bottom: 1px solid #1a1a1a; letter-spacing: .04em; }
+  table.lines td { padding: 2.5px 1px; font-size: 7pt; vertical-align: top;
+                   border-bottom: 1px dotted #bbb; }
+  .desc { font-size: 6.9pt; letter-spacing: -.02em; }
+
+  .tot { width: 100%; font-size: 7.4pt; margin-top: 6px; }
+  .tot td { padding: 2px 1px; }
+  .tot tr.grand td { font-size: 9.5pt; font-weight: 700; border-top: 2px solid #1a1a1a;
+                     border-bottom: 2px solid #1a1a1a; padding: 4px 1px; }
+
+  .sig-area { margin-top: 16px; font-size: 6.6pt; }
+  .sig-line { border-bottom: 1px solid #1a1a1a; height: 26px; margin: 4px 0 3px; }
+  .fine { font-size: 5.9pt; line-height: 1.45; margin-top: 10px; }
+  .barcode { margin-top: 12px; text-align: center;
+             font-family: "Libre Barcode 39", monospace; }
+  /* Faux barcode: alternating rules. A real one would need an external font,
+     and every artifact here must stay self-contained. */
+  .bars { display: flex; justify-content: center; gap: 1px; height: 30px; align-items: stretch; }
+  .bars i { display: block; background: #1a1a1a; }
+  .barcode-num { font-size: 6.4pt; letter-spacing: .28em; margin-top: 3px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div class="co">{{ d.house.name | upper }}</div>
+    <div class="co-addr">
+      {{ d.house.address }}<br>
+      {{ d.house.city_state_zip }}<br>
+      {{ d.house.phone }}
+      {% if d.house.license_no %}<br>LIC {{ d.house.license_no }}{% endif %}
+    </div>
+  </header>
+
+  <div class="sep-solid"></div>
+  <div class="doc-title">INVOICE</div>
+  <div class="sep"></div>
+
+  <div class="kv">
+    <div><span class="k">INVOICE</span>{{ d.invoice_number }}</div>
+    <div><span class="k">DATE</span>{{ d.invoice_date | fmtdate(d.house.date_format) }}</div>
+    <div><span class="k">PO</span>{{ d.po_number }}</div>
+    <div><span class="k">TERMS</span>{{ d.terms }}</div>
+    <div><span class="k">DRIVER</span>{{ d.driver_name | upper }}</div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="kv">
+    <div><span class="k">SOLD TO</span>{{ d.restaurant_name | upper }}</div>
+    <div><span class="k"></span>{{ d.restaurant_address | upper }}</div>
+    <div><span class="k"></span>{{ d.restaurant_city_state_zip | upper }}</div>
+    <div><span class="k">LIC</span>{{ d.restaurant_license_no }}</div>
+  </div>
+
+  <div class="sep"></div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:46px">ITEM</th>
+        <th>DESC</th>
+        <th style="width:20px" class="ctr">UM</th>
+        <th style="width:22px" class="num">QT</th>
+        <th style="width:40px" class="num">EXT</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in billed_lines %}
+      <tr>
+        <td>{{ l.vendor_sku }}</td>
+        {# No vintage column and none in the text — the same wine across two
+           years is indistinguishable on this document. That is the substitution
+           case line-matcher.ts has to catch without help from the paper. #}
+        <td class="desc">{{ l.wine_name | upper_if(true) | truncate_at(d.house.description_max_chars) }}</td>
+        <td class="ctr">{{ "CS" if l.invoice_loose_bottles == 0 else "BT" }}</td>
+        <td class="num">{{ l.invoice_full_cases if l.invoice_loose_bottles == 0 else l.outcome.invoice_qty }}</td>
+        <td class="num">{{ l.extension() | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="tot">
+    <tr><td>MERCHANDISE</td><td class="num">{{ d.subtotal() | money }}</td></tr>
+    {% if d.freight() %}<tr><td>FREIGHT</td><td class="num">{{ d.freight() | money }}</td></tr>{% endif %}
+    {% if d.fuel_surcharge() %}<tr><td>FUEL</td><td class="num">{{ d.fuel_surcharge() | money }}</td></tr>{% endif %}
+    {% if d.deposits() %}<tr><td>DEPOSIT</td><td class="num">{{ d.deposits() | money }}</td></tr>{% endif %}
+    <tr class="grand"><td>TOTAL</td><td class="num">{{ d.total() | money }}</td></tr>
+  </table>
+
+  <div class="sig-area">
+    RECEIVED THE ABOVE IN GOOD CONDITION:
+    <div class="sig-line"></div>
+    {{ d.signed_by | upper }} &nbsp; {{ d.delivery_date | fmtdate(d.house.date_format) }}
+  </div>
+
+  <div class="fine">
+    SHORTAGE/BREAKAGE MUST BE NOTED ON THIS RECEIPT AT TIME OF DELIVERY.
+    SIGNATURE ACKNOWLEDGES COUNT. NO CLAIMS AFTER DRIVER DEPARTS.
+    A/R {{ d.house.ar_phone }}
+  </div>
+
+  <div class="barcode">
+    <div class="bars">
+      {% for w in barcode_bars %}<i style="width:{{ w }}px"></i>{% endfor %}
+    </div>
+    <div class="barcode-num">{{ d.invoice_number }}</div>
+  </div>
+</div>
+</body>
+</html>

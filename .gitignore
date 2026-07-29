@@ -53,6 +53,10 @@ supabase/.temp/
 External_Wine_Datasets/
 datasets/annotation_images/
 datasets/annotation_inbox/
+# Generated document packs (scripts.docgen). Every artifact is reproducible
+# from its seed via `python3 -m scripts.docgen generate`, so the bytes are
+# derived data, not source. The generator and its templates ARE tracked.
+datasets/sim/documents/
 datasets/wine_menus/images/
 datasets/wine_menus/runs/
 datasets/wine_menus/labels/*.cache

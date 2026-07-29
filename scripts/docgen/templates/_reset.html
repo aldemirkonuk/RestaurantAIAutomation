@@ -1,0 +1,43 @@
+{# Shared page chrome for every house template.
+
+   Included inside <head>. Carries only what is genuinely common: the page box,
+   a reset, and the non-negotiable synthetic marking. Everything that gives a
+   house its character stays in that house's own <style> block — the whole
+   value of the set is that they do not look alike.
+
+   Jinja resolves this include before Chrome ever sees the file, so the output
+   is a single self-contained HTML document with no external requests. #}
+<style>
+  @page { size: {{ page_size | default("Letter") }}; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { -webkit-font-smoothing: antialiased; color: #111; }
+  table { border-collapse: collapse; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ctr { text-align: center; }
+
+  /* Provenance marking. Not configurable: decision D3 / §4.4 of
+     .planning/SYNTHETIC_DATA_AND_DOCS_PLAN.md. These are test fixtures and
+     must never be mistakable for a genuine commercial document. */
+  .synthetic-band {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+    background: #b45309; color: #fff;
+    font: 700 6.6pt/1 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: .14em; text-transform: uppercase;
+    text-align: center; padding: 4px 0;
+  }
+  .watermark {
+    position: absolute; top: 46%; left: 50%; z-index: 0;
+    transform: translate(-50%, -50%) rotate(-28deg);
+    font: 800 58pt/1 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: rgba(180, 83, 9, 0.07); letter-spacing: .1em;
+    pointer-events: none; white-space: nowrap;
+  }
+  .sheet > *:not(.watermark):not(.synthetic-band) { position: relative; z-index: 1; }
+
+  /* Long invoices run to a second sheet. Repeat the header row so a page-2
+     photograph is parseable on its own, and never split a line across pages. */
+  table.lines { page-break-inside: auto; }
+  table.lines tr { page-break-inside: avoid; }
+  table.lines thead { display: table-header-group; }
+</style>

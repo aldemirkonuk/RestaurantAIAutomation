@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Invoice {{ d.invoice_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Vine Quarter: a boutique importer's letterhead, typeset properly and then
+     written on in pen. Lowest volume, highest extraction difficulty — the
+     allocation note and the back-order promise are handwritten in the margin,
+     which is where a surprising amount of real beverage information lives. No
+     packing slip, no vendor SKU, no columns worth the name. */
+  body { font-family: "Hoefler Text", "Iowan Old Style", Georgia, serif;
+         font-size: 9pt; color: #241f1c; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.62in 0.7in; position: relative;
+           background: #fefdfa; }
+
+  header { margin-top: 16px; text-align: center; padding-bottom: 14px;
+           border-bottom: 0.75px solid #241f1c; }
+  .co { font-size: 19pt; letter-spacing: .04em; font-weight: 400; }
+  .co-sub { font-size: 7.6pt; letter-spacing: .26em; text-transform: uppercase;
+            margin-top: 7px; color: #6b6058; }
+  .co-addr { font-size: 7.8pt; margin-top: 9px; color: #6b6058; letter-spacing: .02em; }
+
+  .doc-line { display: flex; justify-content: space-between; align-items: baseline;
+              margin: 20px 0 4px; }
+  .doc-title { font-size: 10.5pt; letter-spacing: .34em; text-transform: uppercase; }
+  .doc-num { font-size: 9pt; color: #6b6058; }
+
+  .meta { display: flex; gap: 46px; font-size: 8.4pt; line-height: 1.75;
+          margin: 14px 0 20px; }
+  .meta .k { color: #8b7f76; font-size: 7.4pt; letter-spacing: .1em;
+             text-transform: uppercase; display: block; }
+
+  table.lines { width: 100%; margin-top: 6px; }
+  table.lines th { font-size: 7.2pt; letter-spacing: .14em; text-transform: uppercase;
+                   color: #8b7f76; text-align: left; font-weight: 400;
+                   padding: 0 4px 6px; border-bottom: 0.75px solid #241f1c; }
+  table.lines td { padding: 9px 4px; font-size: 9pt; vertical-align: baseline;
+                   border-bottom: 0.5px solid #e4ded6; }
+  .wine { font-size: 9.4pt; }
+  .wine em { font-style: italic; color: #6b6058; font-size: 8.4pt; }
+  .appellation { font-size: 8pt; color: #6b6058; font-style: italic; }
+
+  .totals { margin: 18px 0 0 auto; width: 2.9in; font-size: 9pt; }
+  .totals td { padding: 4px 6px; }
+  .totals tr.grand td { border-top: 0.75px solid #241f1c; font-size: 11pt;
+                        padding-top: 9px; letter-spacing: .02em; }
+
+  .closing { margin-top: 30px; font-size: 8.6pt; line-height: 1.75; max-width: 4.6in; }
+  .sign-off { margin-top: 22px; font-size: 8.6pt; }
+
+  /* Pen. Rotated, off-baseline, in a hand — the part OCR reliably loses. */
+  .hand {
+    font-family: "Snell Roundhand", "Brush Script MT", "Segoe Script", cursive;
+    color: #1d3b7a; font-size: 12pt; line-height: 1.35;
+  }
+  .margin-note { position: absolute; right: 0.34in; top: 4.6in; width: 1.9in;
+                 transform: rotate(-6deg); }
+  .margin-note .arrow { font-size: 15pt; }
+  .hand-underline { position: absolute; left: 0.66in; top: 5.42in; width: 3.1in;
+                    height: 12px; border-bottom: 2px solid #1d3b7a;
+                    transform: rotate(-1.1deg); opacity: .78; }
+  .hand-sig { font-family: "Snell Roundhand", "Brush Script MT", cursive;
+              color: #1d3b7a; font-size: 17pt; transform: rotate(-3deg);
+              display: inline-block; margin-top: 4px; }
+  .stamp { position: absolute; right: 0.75in; bottom: 1.5in;
+           border: 2.5px solid #9a2c2c; color: #9a2c2c; opacity: .62;
+           transform: rotate(-11deg); padding: 5px 13px; font-size: 9.5pt;
+           letter-spacing: .18em; font-family: Georgia, serif; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div class="co">{{ d.house.name }}</div>
+    <div class="co-sub">{{ d.house.tagline }}</div>
+    <div class="co-addr">
+      {{ d.house.address }} &nbsp;·&nbsp; {{ d.house.city_state_zip }} &nbsp;·&nbsp; {{ d.house.phone }}
+    </div>
+  </header>
+
+  <div class="doc-line">
+    <div class="doc-title">Invoice</div>
+    <div class="doc-num">{{ d.invoice_number }} &nbsp;·&nbsp; {{ d.invoice_date | fmtdate(d.house.date_format) }}</div>
+  </div>
+
+  <div class="meta">
+    <div>
+      <span class="k">Billed to</span>
+      {{ d.restaurant_name }}<br>
+      {{ d.restaurant_address }}<br>
+      {{ d.restaurant_city_state_zip }}<br>
+      Licence {{ d.restaurant_license_no }}
+    </div>
+    <div>
+      <span class="k">Order</span>
+      {{ d.po_number }}<br>
+      Delivered {{ d.delivery_date | fmtdate(d.house.date_format) }}<br>
+      By hand, {{ d.driver_name }}
+    </div>
+    <div>
+      <span class="k">Terms</span>
+      {{ d.terms }}<br>
+      {% if d.invoice_due_date %}Due {{ d.invoice_due_date | fmtdate(d.house.date_format) }}{% endif %}
+    </div>
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th>Wine</th>
+        <th style="width:82px" class="num">Bottles</th>
+        <th style="width:82px" class="num">Per bottle</th>
+        <th style="width:88px" class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in billed_lines %}
+      <tr>
+        <td class="wine">
+          {% if l.producer %}{{ l.producer }}, {% endif %}{{ l.wine_name }}{% if l.invoiced_vintage %} {{ l.invoiced_vintage }}{% endif %}
+          {% if l.region or l.grape_variety %}
+          <div class="appellation">
+            {{ l.region }}{% if l.region and l.grape_variety %} · {% endif %}{{ l.grape_variety }}
+            {%- if l.bottle_size != "750ml" %} · {{ l.bottle_size }}{% endif %}
+          </div>
+          {% endif %}
+          {% if l.outcome.free_goods_qty %}<em>({{ l.outcome.free_goods_qty }} gratis, as discussed)</em>{% endif %}
+        </td>
+        <td class="num">{{ l.outcome.invoice_qty | qty }}</td>
+        <td class="num">{{ l.outcome.invoice_unit_price | money }}</td>
+        <td class="num">{{ l.extension() | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Wine</td><td class="num">{{ d.subtotal() | money }}</td></tr>
+    {% if d.freight() %}<tr><td>Delivery</td><td class="num">{{ d.freight() | money }}</td></tr>{% endif %}
+    <tr class="grand"><td>Total</td><td class="num">${{ d.total() | money }}</td></tr>
+  </table>
+
+  {# The information that only exists in pen. #}
+  <div class="margin-note hand">
+    <div class="arrow">↖</div>
+    only 6 released to<br>us this year —<br>rest to follow<br>in Sept.
+  </div>
+  <div class="hand-underline"></div>
+
+  <div class="closing">
+    Thank you, as always. Everything here is from the current release; where a
+    vintage differs from your order it is noted above and the price is unchanged.
+    Please tell us the same day if anything arrives in poor condition — we will
+    replace it rather than credit it wherever we still have stock.
+  </div>
+
+  <div class="sign-off">
+    With thanks,<br>
+    <span class="hand-sig">M. Okonjo</span><br>
+    {{ d.house.name }} &nbsp;·&nbsp; {{ d.house.ar_email }}
+  </div>
+
+  {% if d.terms == "COD" %}<div class="stamp">PAID ON DELIVERY</div>{% endif %}
+</div>
+</body>
+</html>
