@@ -154,31 +154,54 @@ export function Sidebar() {
         onMouseEnter={() => setHoveredItem(item.name)}
         onMouseLeave={() => setHoveredItem(null)}
         className={cn(
-          'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl min-h-[44px]',
+          'group relative flex items-center rounded-lg transition-colors',
+          collapsed
+            ? 'mx-auto h-10 w-10 justify-center'
+            : 'min-h-[38px] gap-2.5 px-2.5 py-2',
           isParentActive
-            ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            ? 'border border-wine-100 bg-wine-50 text-wine-700'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
         )}
-        aria-label={item.name}
+        aria-label={
+          badgeLabel ? `${item.name}, ${badgeCount} pending` : item.name
+        }
         aria-current={isActive ? 'page' : undefined}
       >
-        <Icon className={cn('w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110', isActive && 'text-white')} aria-hidden="true" />
-        
+        <span className="relative flex shrink-0 items-center justify-center">
+          <Icon
+            className={cn(
+              'transition-colors',
+              collapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4',
+              isParentActive ? 'text-wine-600' : 'text-gray-400 group-hover:text-gray-700',
+            )}
+            aria-hidden="true"
+          />
+
+          {/* Collapsed: dot only — numbers without labels read as "2 2 2" in the rail */}
+          {collapsed && badgeLabel && (
+            <span
+              className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-wine-500 ring-2 ring-white"
+              aria-hidden
+            />
+          )}
+        </span>
+
         {!collapsed && (
-          <span className="font-medium whitespace-nowrap overflow-hidden">
+          <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
             {item.name}
           </span>
         )}
 
-        {/* Badge */}
-        {badgeLabel && (
+        {/* Expanded: numeric badge */}
+        {!collapsed && badgeLabel && (
           <span
             className={cn(
-              'absolute flex items-center justify-center text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5',
-              collapsed ? 'top-0 right-0' : 'right-3',
-              isActive ? 'bg-white text-wine-600' : 'bg-wine-100 text-wine-600'
+              'absolute right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
+              isParentActive
+                ? 'border border-wine-100 bg-white text-wine-600'
+                : 'bg-wine-100 text-wine-600',
             )}
-            aria-label={`${badgeCount} unread`}
+            aria-hidden
           >
             {badgeLabel}
           </span>
@@ -186,7 +209,7 @@ export function Sidebar() {
 
         {/* Tooltip for collapsed state */}
         {collapsed && hoveredItem === item.name && (
-          <div className="absolute left-full ml-3 px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg shadow-xl z-50 whitespace-nowrap">
+          <div className="absolute left-full ml-3 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white shadow-xl z-50">
             {item.name}
             {badgeLabel && (
               <span className="ml-2 px-1.5 py-0.5 bg-wine-500 rounded-full text-xs">
@@ -202,25 +225,34 @@ export function Sidebar() {
   return (
     <motion.aside
       initial={false}
-      animate={{ width: effectiveCollapsed ? 80 : 260 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      animate={{ width: effectiveCollapsed ? 72 : 260 }}
+      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'fixed left-0 top-0 h-screen bg-white border-r border-gray-200 flex flex-col shadow-sm',
         'z-50 md:z-40',
-        'safe-area-pad transition-transform duration-300 ease-in-out',
+        'safe-area-pad transition-transform duration-200 ease-smooth',
         // Mobile drawer: off-canvas unless open
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
       )}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-100">
+      <div
+        className={cn(
+          'flex h-14 items-center border-b border-gray-100',
+          effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-4',
+        )}
+      >
         <NavLink
           to="/"
           onClick={closeMobileNav}
-          className="flex items-center gap-3"
+          className={cn('flex items-center', effectiveCollapsed ? 'justify-center' : 'gap-3')}
           aria-label="WineOps AI home"
         >
-          <BrandMark size={40} alt="" className="shadow-lg" />
+          <BrandMark
+            size={effectiveCollapsed ? 28 : 32}
+            alt=""
+            className="shadow-sm"
+          />
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.div
@@ -238,7 +270,12 @@ export function Sidebar() {
       </div>
 
       {/* Main Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
+      <nav
+        className={cn(
+          'flex-1 overflow-y-auto py-3',
+          effectiveCollapsed ? 'px-1.5' : 'px-3',
+        )}
+      >
         {/* Primary Section */}
         <div className="space-y-1">
           {!effectiveCollapsed && (
@@ -259,8 +296,10 @@ export function Sidebar() {
                         to={child.href}
                         onClick={closeMobileNav}
                         className={cn(
-                          'block text-sm px-3 py-2 rounded-lg transition-all min-h-[44px]',
-                          childActive ? 'bg-wine-50 text-wine-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                          'block min-h-[36px] rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                          childActive
+                            ? 'bg-wine-50 text-wine-700 font-medium'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800',
                         )}
                       >
                         {child.name}
@@ -274,7 +313,7 @@ export function Sidebar() {
         </div>
 
         {/* Secondary Section */}
-        <div className="mt-8 space-y-1">
+        <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
           {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               Workspace
@@ -293,8 +332,10 @@ export function Sidebar() {
                         to={child.href}
                         onClick={closeMobileNav}
                         className={cn(
-                          'block text-sm px-3 py-2 rounded-lg transition-all min-h-[44px]',
-                          childActive ? 'bg-wine-50 text-wine-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                          'block min-h-[36px] rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                          childActive
+                            ? 'bg-wine-50 text-wine-700 font-medium'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800',
                         )}
                       >
                         {child.name}
@@ -308,7 +349,7 @@ export function Sidebar() {
         </div>
 
         {/* AI Section */}
-        <div className="mt-8 space-y-1">
+        <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
           {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               AI Assistants
@@ -321,7 +362,7 @@ export function Sidebar() {
 
         {/* Admin Section (if admin/owner) */}
         {user?.role === 'owner' && (
-          <div className="mt-8 space-y-1">
+          <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
             {!effectiveCollapsed && (
               <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Admin
@@ -344,14 +385,17 @@ export function Sidebar() {
                 if (!showChecklist) trackGuidance('learn_opened', { mode: 'get-started' })
               }}
               className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left',
+                'group flex items-center rounded-lg transition-colors text-left',
+                effectiveCollapsed
+                  ? 'mx-auto h-10 w-10 justify-center'
+                  : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
                 showChecklist
-                  ? 'bg-wine-600/10 text-wine-600'
-                  : 'text-gray-600 hover:bg-gray-100',
+                  ? 'bg-wine-50 text-wine-700 border border-wine-100'
+                  : 'text-gray-600 hover:bg-gray-50',
               )}
             >
-              <div className="relative">
-                <Rocket className="w-5 h-5 flex-shrink-0" />
+              <div className="relative flex shrink-0 items-center justify-center">
+                <Rocket className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
                 {completedCount < 4 && (
                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-wine-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
                     {completedCount}
@@ -359,12 +403,12 @@ export function Sidebar() {
                 )}
               </div>
               {!effectiveCollapsed && (
-                <span className="font-medium text-sm whitespace-nowrap overflow-hidden flex-1">
+                <span className="flex-1 overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
                   Get started
                 </span>
               )}
               {!effectiveCollapsed && (
-                <span className="text-xs text-gray-400">{completedCount}/4</span>
+                <span className="text-[11px] text-gray-400">{completedCount}/4</span>
               )}
             </button>
 
@@ -387,7 +431,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom Section */}
-      <div className="border-t border-gray-100 p-3 space-y-1">
+      <div className={cn('border-t border-gray-100 space-y-1', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
         {showLearn && (
           <div className="relative">
             <button
@@ -398,15 +442,18 @@ export function Sidebar() {
                 if (!showChecklist) trackGuidance('learn_opened', { mode: 'learn' })
               }}
               className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left',
+                'flex items-center rounded-lg transition-colors text-left',
+                effectiveCollapsed
+                  ? 'mx-auto h-10 w-10 justify-center'
+                  : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
                 showChecklist
-                  ? 'bg-wine-600/10 text-wine-600'
-                  : 'text-gray-600 hover:bg-gray-100',
+                  ? 'bg-wine-50 text-wine-700 border border-wine-100'
+                  : 'text-gray-600 hover:bg-gray-50',
               )}
             >
-              <BookOpen className="w-5 h-5 flex-shrink-0" />
+              <BookOpen className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
               {!effectiveCollapsed && (
-                <span className="font-medium whitespace-nowrap overflow-hidden">
+                <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
                   Learn & Help
                 </span>
               )}
@@ -430,16 +477,21 @@ export function Sidebar() {
         {/* Logout */}
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+          className={cn(
+            'rounded-lg text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 flex items-center',
+            effectiveCollapsed
+              ? 'mx-auto h-10 w-10 justify-center'
+              : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
+          )}
         >
-          <LogOut className="w-5 h-5 flex-shrink-0" />
+          <LogOut className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.span
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
-                className="font-medium whitespace-nowrap overflow-hidden"
+                className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]"
               >
                 Log Out
               </motion.span>
@@ -449,14 +501,19 @@ export function Sidebar() {
       </div>
 
       {/* User Profile */}
-      <div className="border-t border-gray-100 p-3">
+      <div className={cn('border-t border-gray-100', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
         <div
           className={cn(
-            'flex items-center gap-3 p-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer',
-            effectiveCollapsed && 'justify-center'
+            'flex items-center rounded-xl bg-gray-50 transition-colors cursor-pointer hover:bg-gray-100',
+            effectiveCollapsed ? 'justify-center p-1.5' : 'gap-3 p-2',
           )}
         >
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wine-400 to-wine-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+          <div
+            className={cn(
+              'flex items-center justify-center rounded-full bg-gradient-to-br from-wine-400 to-wine-600 font-semibold text-white shadow-md',
+              effectiveCollapsed ? 'h-8 w-8 text-xs' : 'h-9 w-9 text-sm',
+            )}
+          >
             {user?.name?.charAt(0) || 'U'}
           </div>
           <AnimatePresence>

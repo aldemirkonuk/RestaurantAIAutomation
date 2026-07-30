@@ -36,7 +36,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => window.removeEventListener('keydown', onKey)
   }, [setSidebarOpen])
 
-  const desktopPad = sidebarCollapsed ? 'md:pl-20' : 'md:pl-[260px]'
+  const desktopPad = sidebarCollapsed ? 'md:pl-[72px]' : 'md:pl-[260px]'
 
   return (
     <CommandProvider>
