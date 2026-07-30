@@ -349,6 +349,49 @@ def test_food_names_never_read_as_wine():
 
 
 # ---------------------------------------------------------------------------
+# Leakage: everything written must be removable
+# ---------------------------------------------------------------------------
+
+
+def test_pos_checks_is_teardown_covered():
+    """Simulated service must be removable, or it is permanent contamination.
+
+    `--apply` posts through the hub, which upserts `pos_checks`. Those rows never
+    pass through seed.py, so the write-set entry is easy to omit — and omitting it
+    means simulated covers blend into a tenant's real analytics with nothing
+    flagging it. Phase 37's gate is the mechanism; this asserts we are inside it.
+    """
+    from scripts.synth.teardown import (
+        DELETE_ORDER,
+        TEARDOWN_HANDLERS,
+        assert_teardown_coverage,
+    )
+    from scripts.synth.write_set import SYNTH_WRITE_SET
+
+    assert "pos_checks" in SYNTH_WRITE_SET
+    assert "pos_checks" in DELETE_ORDER
+    assert "pos_checks" in TEARDOWN_HANDLERS
+    # The equality gate must still hold with the addition.
+    assert_teardown_coverage()
+
+
+def test_pos_checks_is_deleted_before_restaurants():
+    """FK order: a row referencing restaurant_id must go first."""
+    from scripts.synth.teardown import DELETE_ORDER
+
+    assert DELETE_ORDER.index("pos_checks") < DELETE_ORDER.index("restaurants")
+
+
+def test_apply_refuses_without_a_restaurant():
+    """Posting simulated service into an unspecified tenant is the worst case."""
+    from scripts.simulate.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--archetype", "bistro", "--days", "1", "--apply"])
+    assert "--restaurant" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
 # The depletion oracle
 # ---------------------------------------------------------------------------
 

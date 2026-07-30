@@ -32,6 +32,12 @@ SYNTH_WRITE_SET: list[str] = [
     "master_wine_library_submissions",  # always — sim submissions
     "sim_ground_truth_facts",
     "sim_ground_truth_runs",
+    # Written INDIRECTLY: `scripts.simulate --apply` posts through
+    # POST /pos-hub/webhook/generic_webhook/:restaurantId, and the hub upserts
+    # pos_checks. The rows never pass through seed.py, which is exactly why this
+    # entry is easy to forget and why forgetting it is leakage — simulated service
+    # would survive teardown and blend into a tenant's analytics forever.
+    "pos_checks",
 ]
 
 TEARDOWN_TABLES: list[str] = list(SYNTH_WRITE_SET)
