@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
 from core.base_agent import BaseAgent
+from core.notifications import notify_restaurant
 from models.email_intel import EmailClassification, PromoDetails
 from services.model_clients import (
     get_gemini_client,
@@ -682,28 +683,25 @@ class EmailIntelAgent(BaseAgent):
         """PROVINT-04: Notify manager about email from unknown sender (add to providers?)."""
         sender_name = message_payload.get("from_name", sender_email)
         subject = message_payload.get("subject", "(no subject)")
-        try:
-            self.database.supabase.table("notifications").insert(
-                {
-                    "restaurant_id": restaurant_id,
-                    "type": "unknown_sender",
-                    "title": f"Email from unknown contact: {sender_name}",
-                    "message": (
-                        f"Received email from {sender_name} <{sender_email}> "
-                        f"(subject: {subject[:80]}) — this address is not in your providers list. "
-                        "Would you like to add them as a provider?"
-                    ),
-                    "status": "unread",  # VERIFIED: notifications uses status='unread'
-                    "metadata": {
-                        "sender_email": sender_email,
-                        "sender_name": sender_name,
-                        "subject": subject,
-                        "action": "add_to_providers",
-                    },
-                }
-            ).execute()
-        except Exception as exc:
-            self.logger.error(
-                "unknown_sender_notify failed",
-                extra={"error": str(exc), "sender": sender_email},
-            )
+        # Routed through core.notifications. This insert previously omitted
+        # recipient_id, notification_type and channels — all NOT NULL with no
+        # default — so PROVINT-04 never notified anyone: every unknown sender was
+        # logged as an error and dropped.
+        await notify_restaurant(
+            self.database,
+            self.logger,
+            restaurant_id,
+            "unknown_sender",
+            f"Email from unknown contact: {sender_name}",
+            (
+                f"Received email from {sender_name} <{sender_email}> "
+                f"(subject: {subject[:80]}) — this address is not in your providers list. "
+                "Would you like to add them as a provider?"
+            ),
+            metadata={
+                "sender_email": sender_email,
+                "sender_name": sender_name,
+                "subject": subject,
+                "action": "add_to_providers",
+            },
+        )

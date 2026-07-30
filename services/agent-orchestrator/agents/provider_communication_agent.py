@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
 from core.base_agent import BaseAgent
+from core.notifications import notify_restaurant
 from services.constraint_engine import get_constraint_engine
 from services.fuzzy_matcher import (
     get_fuzzy_matcher,
@@ -876,26 +877,28 @@ class ProviderCommunicationAgent(BaseAgent):
         """
         if not restaurant_id:
             return
-        try:
-            user_id = self._get_manager_user_id(restaurant_id)
-            insert_payload: Dict[str, Any] = {
-                "restaurant_id": restaurant_id,
-                "type": notification_type,
-                "title": title,
-                "message": message,
-                "priority": priority,
-                "action_url": action_url,
-                "status": "unread",  # VERIFIED: notifications uses status='unread'
-            }
-            if user_id:
-                insert_payload["user_id"] = user_id
-            if metadata:
-                insert_payload["metadata"] = metadata
-            self.database.supabase.table("notifications").insert(
-                insert_payload
-            ).execute()
-        except Exception as exc:
-            self.logger.warning(f"Notification insert failed (non-critical): {exc}")
+
+        # Routed through core.notifications so both runtimes write the same shape.
+        # This insert previously omitted recipient_id, notification_type and
+        # channels — all NOT NULL with no default on the live table — so EVERY
+        # notification died on a 23502 violation inside the except below. The
+        # warning said "non-critical"; it was in fact total.
+        inserted = await notify_restaurant(
+            self.database,
+            self.logger,
+            restaurant_id,
+            notification_type,
+            title,
+            message,
+            priority=priority,
+            action_url=action_url,
+            metadata=metadata,
+        )
+        if not inserted:
+            self.logger.warning(
+                "provider notification not delivered",
+                extra={"restaurant_id": restaurant_id, "type": notification_type},
+            )
 
     # =========================================================================
     # DYNAMIC PROFILE EXTRACTION (D-32-10 / PROVINT-03)
