@@ -80,6 +80,23 @@ def cmd_run(args: argparse.Namespace) -> int:
             "unspecified tenant is exactly the leakage this refuses to risk."
         )
 
+    if config.apply:
+        # Refuse to write anything we cannot take back. Posting through the hub
+        # upserts `pos_checks`, and rows that teardown does not cover survive
+        # forever and blend simulated service into a tenant's real analytics.
+        # scripts/synth owns the gate; borrowing it here keeps one source of truth
+        # rather than a second, drifting opinion about what is removable.
+        from scripts.synth.teardown import assert_teardown_coverage
+        from scripts.synth.write_set import SYNTH_WRITE_SET
+
+        assert_teardown_coverage()
+        if "pos_checks" not in SYNTH_WRITE_SET:
+            raise SystemExit(
+                "Refusing --apply: 'pos_checks' is not in scripts/synth SYNTH_WRITE_SET, "
+                "so simulated service could not be torn down. Add it to the write-set, "
+                "DELETE_ORDER and TEARDOWN_HANDLERS first."
+            )
+
     bridge = Bridge(config)
     start = date.today() - timedelta(days=args.days)
     sold_out: set[str] = set()

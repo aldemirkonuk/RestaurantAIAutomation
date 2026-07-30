@@ -32,6 +32,9 @@ E2E_ANCHOR_GUARD = "e2e-test-restaurant"
 
 # FK-safe delete order (plan interfaces). ``users`` is NO-OP — not listed.
 DELETE_ORDER: list[str] = [
+    # Nothing references pos_checks, so it goes first. Written indirectly by
+    # `scripts.simulate --apply` via the POS hub ingress rather than by seed.py.
+    "pos_checks",
     "sim_ground_truth_facts",
     "sim_ground_truth_runs",
     "restaurant_inventory",
@@ -250,6 +253,7 @@ def _handler_organizations(
 
 
 TEARDOWN_HANDLERS: dict[str, Callable[..., None]] = {
+    "pos_checks": _handler_by_restaurant("pos_checks"),
     "sim_ground_truth_facts": _handler_by_restaurant("sim_ground_truth_facts"),
     "sim_ground_truth_runs": _handler_by_restaurant("sim_ground_truth_runs"),
     "restaurant_inventory": _handler_by_restaurant("restaurant_inventory"),
