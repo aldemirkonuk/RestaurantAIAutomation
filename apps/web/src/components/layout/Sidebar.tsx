@@ -218,6 +218,101 @@ function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
   )
 }
 
+interface SidebarNavItemProps {
+  item: NavItem
+  collapsed: boolean
+  pathname: string
+  isActive: boolean
+  badgeCount: number
+  onNavigate: () => void
+  onHover: (anchor: HTMLElement) => void
+  onHoverEnd: () => void
+  onKeyboardFocus: (anchor: HTMLElement) => void
+}
+
+/** Stable module component — must not be declared inside Sidebar or tooltip state remounts links mid-click. */
+function SidebarNavItem({
+  item,
+  collapsed,
+  pathname,
+  isActive,
+  badgeCount,
+  onNavigate,
+  onHover,
+  onHoverEnd,
+  onKeyboardFocus,
+}: SidebarNavItemProps) {
+  const Icon = item.icon
+  const badgeLabel = badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null
+  const isParentActive =
+    isActive ||
+    (item.children && item.children.some((child) => pathname.startsWith(child.href)))
+
+  return (
+    <NavLink
+      to={item.href}
+      onClick={onNavigate}
+      onMouseEnter={(e) => onHover(e.currentTarget)}
+      onMouseLeave={onHoverEnd}
+      onFocus={(e) => {
+        // Mouse clicks also focus the link; showing the tooltip there remounted
+        // the old inline NavItem and swallowed the first click in collapsed mode.
+        if (e.currentTarget.matches(':focus-visible')) onKeyboardFocus(e.currentTarget)
+      }}
+      onBlur={onHoverEnd}
+      className={cn(
+        'group relative flex items-center rounded-lg transition-colors',
+        collapsed
+          ? 'mx-auto h-10 w-10 justify-center'
+          : 'min-h-[38px] gap-2.5 px-2.5 py-2',
+        isParentActive
+          ? 'border border-wine-100 bg-wine-50 text-wine-700'
+          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+      )}
+      aria-label={badgeLabel ? `${item.name}, ${badgeCount} pending` : item.name}
+      aria-current={isActive ? 'page' : undefined}
+    >
+      <span className="relative flex shrink-0 items-center justify-center">
+        <Icon
+          className={cn(
+            'transition-colors',
+            collapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4',
+            isParentActive ? 'text-wine-600' : 'text-gray-400 group-hover:text-gray-700',
+          )}
+          aria-hidden="true"
+        />
+
+        {collapsed && badgeLabel && (
+          <span
+            className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-wine-500 ring-2 ring-white"
+            aria-hidden
+          />
+        )}
+      </span>
+
+      {!collapsed && (
+        <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
+          {item.name}
+        </span>
+      )}
+
+      {!collapsed && badgeLabel && (
+        <span
+          className={cn(
+            'absolute right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
+            isParentActive
+              ? 'border border-wine-100 bg-white text-wine-600'
+              : 'bg-wine-100 text-wine-600',
+          )}
+          aria-hidden
+        >
+          {badgeLabel}
+        </span>
+      )}
+    </NavLink>
+  )
+}
+
 export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUIStore((s) => s.setSidebarCollapsed)
@@ -313,79 +408,23 @@ export function Sidebar() {
   const showGetStarted = !activationComplete && !checklistDismissed
   const showLearn = activationComplete || checklistDismissed
 
-  const NavItemComponent = ({ item, collapsed }: { item: NavItem; collapsed: boolean }) => {
-    const isActive = location.pathname === item.href
-    const Icon = item.icon
+  const renderNavItem = (item: NavItem) => {
     const badgeCount = item.badge ?? badgeByHref[item.href] ?? 0
-    const badgeLabel = badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null
-
-    const isParentActive =
-      isActive ||
-      (item.children && item.children.some((child) => location.pathname.startsWith(child.href)))
-
     return (
-      <NavLink
-        to={item.href}
-        onClick={closeMobileNav}
-        onMouseEnter={(e) => openTooltip(e.currentTarget, item, badgeLabel)}
-        onMouseLeave={closeTooltip}
-        onFocus={(e) => openTooltip(e.currentTarget, item, badgeLabel, true)}
-        onBlur={closeTooltip}
-        className={cn(
-          'group relative flex items-center rounded-lg transition-colors',
-          collapsed
-            ? 'mx-auto h-10 w-10 justify-center'
-            : 'min-h-[38px] gap-2.5 px-2.5 py-2',
-          isParentActive
-            ? 'border border-wine-100 bg-wine-50 text-wine-700'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-        )}
-        aria-label={
-          badgeLabel ? `${item.name}, ${badgeCount} pending` : item.name
+      <SidebarNavItem
+        key={item.name}
+        item={item}
+        collapsed={effectiveCollapsed}
+        pathname={location.pathname}
+        isActive={location.pathname === item.href}
+        badgeCount={badgeCount}
+        onNavigate={closeMobileNav}
+        onHover={(anchor) => openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null)}
+        onHoverEnd={closeTooltip}
+        onKeyboardFocus={(anchor) =>
+          openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null, true)
         }
-        aria-current={isActive ? 'page' : undefined}
-      >
-        <span className="relative flex shrink-0 items-center justify-center">
-          <Icon
-            className={cn(
-              'transition-colors',
-              collapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4',
-              isParentActive ? 'text-wine-600' : 'text-gray-400 group-hover:text-gray-700',
-            )}
-            aria-hidden="true"
-          />
-
-          {/* Collapsed: dot only — numbers without labels read as "2 2 2" in the rail */}
-          {collapsed && badgeLabel && (
-            <span
-              className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-wine-500 ring-2 ring-white"
-              aria-hidden
-            />
-          )}
-        </span>
-
-        {!collapsed && (
-          <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
-            {item.name}
-          </span>
-        )}
-
-        {/* Expanded: numeric badge */}
-        {!collapsed && badgeLabel && (
-          <span
-            className={cn(
-              'absolute right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
-              isParentActive
-                ? 'border border-wine-100 bg-white text-wine-600'
-                : 'bg-wine-100 text-wine-600',
-            )}
-            aria-hidden
-          >
-            {badgeLabel}
-          </span>
-        )}
-
-      </NavLink>
+      />
     )
   }
 
@@ -452,7 +491,7 @@ export function Sidebar() {
           )}
           {mainNavItems.map((item) => (
             <div key={item.name} className="space-y-1">
-              <NavItemComponent item={item} collapsed={effectiveCollapsed} />
+              {renderNavItem(item)}
               {!effectiveCollapsed && item.children && (
                 <div className="ml-9 space-y-1">
                   {item.children.map((child) => {
@@ -488,7 +527,7 @@ export function Sidebar() {
           )}
           {secondaryNavItems.map((item) => (
             <div key={item.name} className="space-y-1">
-              <NavItemComponent item={item} collapsed={effectiveCollapsed} />
+              {renderNavItem(item)}
               {!effectiveCollapsed && item.children && (
                 <div className="ml-9 space-y-1">
                   {item.children.map((child) => {
@@ -523,7 +562,7 @@ export function Sidebar() {
             </p>
           )}
           {aiNavItems.map((item) => (
-            <NavItemComponent key={item.name} item={item} collapsed={effectiveCollapsed} />
+            <div key={item.name}>{renderNavItem(item)}</div>
           ))}
         </div>
 
@@ -535,15 +574,12 @@ export function Sidebar() {
                 Admin
               </p>
             )}
-            <NavItemComponent
-              item={{
-                name: 'Admin Panel',
-                href: '/admin',
-                icon: Shield,
-                description: 'Tenant administration, users, and system controls.',
-              }}
-              collapsed={effectiveCollapsed}
-            />
+            {renderNavItem({
+              name: 'Admin Panel',
+              href: '/admin',
+              icon: Shield,
+              description: 'Tenant administration, users, and system controls.',
+            })}
           </div>
         )}
 
@@ -642,9 +678,7 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
         )}
-        {bottomNavItems.map((item) => (
-          <NavItemComponent key={item.name} item={item} collapsed={effectiveCollapsed} />
-        ))}
+        {bottomNavItems.map((item) => renderNavItem(item))}
 
         {/* Logout */}
         <button
