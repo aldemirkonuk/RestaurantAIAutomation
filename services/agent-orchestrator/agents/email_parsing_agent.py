@@ -65,12 +65,25 @@ class EmailParsingAgent(BaseAgent):
             ("email.events", "email.inbound.received"),
         ]
 
-    async def process_message(self, routing_key: str, payload: Dict[str, Any]) -> None:
-        """Main message handler"""
-        if routing_key == "email.inbound.received":
-            await self._process_inbound_email(payload)
-        else:
-            self.logger.warning(f"Unknown routing key: {routing_key}")
+    async def process_message(self, message: Dict[str, Any]) -> None:
+        """
+        Main message handler.
+
+        Takes a single `message` argument to match BaseAgent's abstract signature.
+        It previously declared (self, routing_key, payload), while BaseAgent
+        dispatches `await self.process_message(message)` with one argument — so
+        this agent would have raised TypeError on its very first message. It never
+        did, only because it was also missing from the orchestrator's registry:
+        two defects hiding each other.
+
+        Only one routing key is subscribed, so the payload IS the message.
+        """
+        payload = message
+
+        # Our own upstream classifier re-publishes OPERATIONAL mail to this same
+        # key with this flag set. Parsing it here is correct and intended — the
+        # flag exists to stop EmailIntelAgent reprocessing it, not this agent.
+        await self._process_inbound_email(payload)
 
     # ── Core Processing ──────────────────────────────────────────────
 

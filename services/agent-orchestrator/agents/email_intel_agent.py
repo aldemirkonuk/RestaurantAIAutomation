@@ -7,7 +7,7 @@ computes urgency scores (D-16), links to calendar events (D-17), queries cross-v
 prices (D-18), and accumulates items in Redis digest keys.
 
 Architecture (D-01):
-- Subscribes to email.events / email.inbound.raw  (receives ALL Gmail before EmailParsingAgent)
+- Subscribes to email.events / email.inbound.received (the key producers actually emit)
 - OPERATIONAL → re-publishes to email.inbound.received with __intel_bypass: True
 - PROMO       → Haiku extract + urgency + calendar + price + vendor_promotions INSERT + Redis digest
 - NOISE       → silent discard
@@ -43,7 +43,7 @@ class EmailIntelAgent(BaseAgent):
     """
     Email intelligence triage agent.
 
-    Subscribes to email.inbound.raw and classifies every inbound Gmail message
+    Subscribes to email.inbound.received and classifies every inbound message
     as OPERATIONAL, PROMO, or NOISE using Gemini Flash, then routes accordingly.
     """
 
@@ -66,13 +66,25 @@ class EmailIntelAgent(BaseAgent):
         return self._settings
 
     def get_subscribed_routing_keys(self) -> List[Tuple[str, str]]:
-        """Subscribe to email.inbound.raw — receives ALL Gmail messages before EmailParsingAgent."""
-        return [("email.events", "email.inbound.raw")]
+        """
+        Subscribe to email.inbound.received — the key that actually has publishers.
+
+        This used to be email.inbound.raw, which NOTHING publishes: the three real
+        producers (the provider-agnostic inbound webhook, the Gmail bridge, and the
+        communications controller) all emit email.inbound.received. So this agent
+        sat on a dead queue and no inbound email was ever classified, independently
+        of whether it was registered.
+
+        EmailParsingAgent listens on the same key, and this agent re-publishes
+        OPERATIONAL mail back to it — see the __intel_bypass guard in
+        process_message(), which stops that re-publish from returning here.
+        """
+        return [("email.events", "email.inbound.received")]
 
     async def initialize(self) -> None:
         # Create haiku_semaphore inside running event loop (AI-SPEC §3 pitfall 4)
         self.haiku_semaphore = get_haiku_semaphore()
-        self.logger.info("EmailIntelAgent initialized — listening on email.inbound.raw")
+        self.logger.info("EmailIntelAgent initialized — listening on email.inbound.received")
 
     # =========================================================================
     # MESSAGE ENTRY POINT
@@ -81,6 +93,20 @@ class EmailIntelAgent(BaseAgent):
     async def process_message(self, message: Dict[str, Any]) -> None:
         """Main entry point. Receives full message dict from BaseAgent queue."""
         payload = message
+
+        # Our own re-publish coming back. _triage_inbound() forwards OPERATIONAL
+        # mail to email.inbound.received for EmailParsingAgent, and we now listen
+        # on that key too — so without this guard the message would be classified,
+        # re-published, received, classified again, forever. The flag was already
+        # being SET at the re-publish site and read nowhere, which meant the loop
+        # was armed the moment this agent subscribed to the same key.
+        if payload.get("__intel_bypass"):
+            self.logger.debug(
+                "skipping own re-publish",
+                extra={"gmail_message_id": payload.get("gmail_message_id")},
+            )
+            return
+
         message_id = payload.get("gmail_message_id") or payload.get("id", "")
         idempotency_key = f"email_intel:{message_id}"
 
@@ -105,7 +131,7 @@ class EmailIntelAgent(BaseAgent):
                 error=str(e),
                 retry_count=0,
                 original_exchange="email.events",
-                original_routing_key="email.inbound.raw",
+                original_routing_key="email.inbound.received",
             )
             raise
 

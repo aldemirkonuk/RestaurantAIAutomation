@@ -46,6 +46,10 @@ from agents.auto_pilot_agent import AutoPilotAgent
 from agents.compliance_agent import ComplianceAgent
 from agents.shrinkage_detective_agent import ShrinkageDetectiveAgent
 
+# Phase 24 Agents — inbound email intelligence
+from agents.email_intel_agent import EmailIntelAgent
+from agents.email_parsing_agent import EmailParsingAgent
+
 # Phase 32 Agents
 from agents.provider_communication_agent import ProviderCommunicationAgent
 
@@ -189,6 +193,17 @@ class AgentOrchestrator:
             "auto_pilot_agent": AutoPilotAgent,
             "compliance_agent": ComplianceAgent,
             "shrinkage_detective_agent": ShrinkageDetectiveAgent,
+            # Phase 24 agents — inbound email intelligence.
+            #
+            # Both were fully implemented and absent from this registry, so nothing
+            # consumed inbound vendor email at all. Registering them was necessary
+            # but not sufficient: EmailIntelAgent subscribed to email.inbound.raw,
+            # which has zero publishers, and EmailParsingAgent's process_message
+            # took two arguments where BaseAgent passes one. Three defects, each of
+            # which alone would have made the pipeline dead, and the missing
+            # registration hid the other two.
+            "email_intel_agent": EmailIntelAgent,
+            "email_parsing_agent": EmailParsingAgent,
             # Phase 32 agents
             "provider_communication_agent": ProviderCommunicationAgent,
         }
