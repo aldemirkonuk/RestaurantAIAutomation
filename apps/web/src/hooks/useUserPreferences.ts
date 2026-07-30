@@ -33,7 +33,10 @@ export interface UserPreferences {
     parComplianceTargetPct?: number
     trainingCompletionTargetPct?: number
   }
-  /** Settings → Features → Integrations auth (Excel / Drive) */
+  /**
+   * @deprecated Superseded by integration_oauth_connections server-side. Kept so
+   * previously stored preference blobs still parse; nothing reads it.
+   */
   integrationsAuth?: Partial<
     Record<'excel' | 'google_drive', { connected: boolean; account?: string }>
   >

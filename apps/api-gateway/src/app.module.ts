@@ -21,6 +21,7 @@ import { InventoryLedgerModule } from "./inventory-ledger/inventory-ledger.modul
 import { ProvidersModule } from "./providers/providers.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
 import { WinesModule } from "./wines/wines.module";
 import { StorageLocationsModule } from "./storage-locations/storage-locations.module";
 import { ConversationsModule } from "./conversations/conversations.module";
@@ -89,6 +90,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     CommunicationsModule, // Gmail, SMS, and scheduled communications
     ConversationsModule, // Procurement conversation history, threads, summaries
     SettingsModule, // Restaurant settings and feature flags
+    IntegrationsModule, // Third-party OAuth grants (Drive, Excel) + scope disclosure
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance

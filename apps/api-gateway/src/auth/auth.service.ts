@@ -399,6 +399,19 @@ export class AuthService {
         throw new UnauthorizedException("Invalid Google token audience");
       }
 
+      // Accounts are matched by email, so an unverified address would let
+      // anyone who can put a string in a Google profile claim someone else's
+      // WineOps account. tokeninfo returns this as the string "true".
+      if (String(data.email_verified) !== "true") {
+        throw new UnauthorizedException(
+          "Your Google email address is not verified",
+        );
+      }
+
+      if (!data.email) {
+        throw new UnauthorizedException("Google token missing email");
+      }
+
       return {
         sub: data.sub,
         email: data.email,
@@ -1256,11 +1269,23 @@ export class AuthService {
       .single();
 
     if (!user) {
-      // Try to assign to default restaurant so the JWT has a valid restaurantId.
-      // If DEFAULT_RESTAURANT_ID is not set, the user will need to complete onboarding.
       const defaultRestaurantId = this.configService.get<string>(
         "DEFAULT_RESTAURANT_ID",
       );
+
+      // Without a restaurant to join, signing up here would mint an account
+      // that can authenticate but belongs to no tenant — it lands on /no-access
+      // with no way forward, and quietly consumes the email address so the
+      // proper registration flow later reports it as taken. Registration is
+      // where a restaurant gets created or an invite gets redeemed.
+      if (!defaultRestaurantId) {
+        this.logger.warn(
+          `Rejected ${provider} sign-in for unknown email; no account exists`,
+        );
+        throw new UnauthorizedException(
+          "No WineOps account uses that address. Create an account or use your invite code first.",
+        );
+      }
 
       const insertData: Record<string, any> = {
         email,
@@ -1268,11 +1293,8 @@ export class AuthService {
         oauth_provider: provider,
         oauth_id: providerId,
         role: "manager",
+        restaurant_id: defaultRestaurantId,
       };
-
-      if (defaultRestaurantId) {
-        insertData.restaurant_id = defaultRestaurantId;
-      }
 
       const { data: newUser, error } = await this.databaseService.supabase
         .from("users")

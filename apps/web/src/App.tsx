@@ -81,6 +81,8 @@ const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => 
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 const Help = lazyWithRefresh(() => import('./pages/Help'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
+const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
+const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -123,6 +125,9 @@ function App() {
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/invite/:code" element={<InviteLanding />} />
                 <Route path="/no-access" element={<NoAccess />} />
+                {/* Public: linked from the auth screens and the consent page, so
+                    it must be readable before you have an account. */}
+                <Route path="/privacy" element={<Privacy />} />
                 <Route path="/get-started" element={<GetStarted />} />
                 <Route path="/onboarding" element={<Onboarding />} />
 
@@ -165,6 +170,21 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <DoorReceipt />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/*
+                  Third-party authorization consent — outside DashboardLayout on
+                  purpose. It is a decision point on the way to an external
+                  provider, so sidebar navigation and page tips would only offer
+                  ways to wander off mid-grant.
+                */}
+                <Route
+                  path="/authorize/:integrationId"
+                  element={
+                    <ProtectedRoute>
+                      <AuthorizeIntegration />
                     </ProtectedRoute>
                   }
                 />
