@@ -392,6 +392,7 @@ export function Sidebar() {
           <div className="relative">
             <button
               ref={checklistButtonRef}
+              data-guidance="learn-help"
               onClick={() => {
                 setShowChecklist(!showChecklist)
                 if (!showChecklist) trackGuidance('learn_opened', { mode: 'learn' })

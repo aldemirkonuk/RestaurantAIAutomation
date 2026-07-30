@@ -7,7 +7,6 @@ import { GuidanceProvider } from '../../guidance/GuidanceProvider'
 import { PageTipStrip } from '../../guidance/components/PageTipStrip'
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
 import { WineAgentFab } from '../../guidance/components/WineAgentFab'
-import { TourHelpButton } from '../../guidance/components/TourHelpButton'
 import { GuidanceLiveRegion } from '../../guidance/announce'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
@@ -77,14 +76,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <BrandMark size={24} alt="" />
                 <span className="text-sm font-bold text-gray-900">WineOps AI</span>
               </div>
-              <TourHelpButton />
-            </div>
-
-            {/* Desktop tour help */}
-            <div className="hidden md:flex sticky top-0 z-10 justify-end px-4 pt-2 pointer-events-none">
-              <div className="pointer-events-auto">
-                <TourHelpButton />
-              </div>
+              <div className="w-11 h-11 shrink-0" aria-hidden />
             </div>
 
             <SetupNudgeBanner />

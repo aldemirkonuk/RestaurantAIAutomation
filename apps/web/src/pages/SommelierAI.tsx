@@ -518,7 +518,7 @@ If you need immediate assistance, you can:
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-          
+
           <div className="relative" data-tour="sommelier-persona">
             <button
               onClick={(e) => { e.stopPropagation(); setModelMenuOpen((o) => !o) }}
@@ -555,6 +555,7 @@ If you need immediate assistance, you can:
               </div>
             )}
           </div>
+
         </div>
 
         {/* Messages Area */}

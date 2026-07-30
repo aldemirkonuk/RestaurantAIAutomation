@@ -15,16 +15,16 @@ export function announceGuidance(message: string) {
   })
 }
 
+/** Park keyboard focus on a stable guidance entry point after tours end. */
 export function focusTourHelpButton() {
   if (typeof document === 'undefined') return
-  const candidates = document.querySelectorAll<HTMLElement>(
-    '[data-guidance="tour-help"]',
-  )
-  for (const el of candidates) {
-    // Skip display:none (mobile vs desktop chrome).
-    if (el.offsetParent === null && el.getClientRects().length === 0) continue
-    el.focus()
-    return
+  const selectors = ['[data-guidance="tour-help"]', '[data-guidance="learn-help"]']
+  for (const selector of selectors) {
+    const el = document.querySelector<HTMLElement>(selector)
+    if (el) {
+      el.focus()
+      return
+    }
   }
 }
 
