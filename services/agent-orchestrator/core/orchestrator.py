@@ -10,6 +10,7 @@ Refactored with:
 """
 
 import asyncio
+import os
 from typing import Dict, Any, Optional, Type
 from datetime import datetime
 
@@ -93,8 +94,28 @@ class AgentOrchestrator:
 
     @staticmethod
     def _build_feature_flags(settings: Settings) -> Dict[str, bool]:
-        """Extract feature flags from settings for the registry."""
-        flags = {}
+        """
+        Extract feature flags from settings for the registry.
+
+        Two kinds of key end up here:
+
+          FEATURE_*                 named flags declared on an AgentSpec
+          AGENT_<NAME>_ENABLED      the per-agent gate AgentTier.OPTIONAL requires
+
+        The second kind used to be missing entirely. AgentRegistry.is_enabled()
+        looks up `AGENT_{name.upper()}_ENABLED` for every OPTIONAL agent and
+        defaults it to False, so with those keys absent the OPTIONAL tier was
+        unreachable: setting AGENT_GHOST_INVENTORY_AGENT_ENABLED=true in the
+        environment did nothing at all, silently, because nothing read it. The
+        tier was documented as "disabled unless feature flag is set" while there
+        was no flag it would honour.
+
+        Reading them from os.environ here makes the documented switch real. The
+        five OPTIONAL agents are still off by default — they are unimplemented
+        stubs (see agents/planned) and BaseAgent now refuses to start one, so a
+        flag alone will not silently give you an agent that does nothing.
+        """
+        flags: Dict[str, bool] = {}
         if hasattr(settings, "features"):
             features = settings.features
             flags["FEATURE_VISUAL_VERIFICATION"] = getattr(
@@ -106,6 +127,11 @@ class AgentOrchestrator:
                 if hasattr(features, "menu_analyzer_enabled")
                 else False
             )
+
+        for key, value in os.environ.items():
+            if key.startswith("AGENT_") and key.endswith("_ENABLED"):
+                flags[key] = value.strip().lower() in ("1", "true", "yes", "on")
+
         return flags
 
     async def initialize(self) -> None:
@@ -169,7 +195,18 @@ class AgentOrchestrator:
 
         # Register with the new registry (includes tier and dependency info)
         self.registry.register_from_defaults(self.agent_classes)
-        logger.info(f"Registered {self.registry.registered_count} agent classes")
+        # Registered is not the same as running, and reporting only the former
+        # overstates the system. Five of these are OPTIONAL, unimplemented stubs
+        # that get no proxy and never subscribe — a count of 20 read as 20 working
+        # agents, which is how "registered" came to be mistaken for "live".
+        enabled = [n for n in self.agent_classes if self.registry.is_enabled(n)]
+        disabled = [n for n in self.agent_classes if n not in enabled]
+        logger.info(
+            f"Registered {self.registry.registered_count} agent classes; "
+            f"{len(enabled)} enabled, {len(disabled)} gated off"
+        )
+        if disabled:
+            logger.info(f"Gated off (no proxy, no subscriptions): {', '.join(sorted(disabled))}")
 
     def _create_lazy_proxies(self) -> None:
         """Create lazy proxies for all registered agents (no instantiation)."""
@@ -177,6 +214,20 @@ class AgentOrchestrator:
             if not self.registry.is_enabled(agent_name):
                 logger.info(
                     f"Agent {agent_name} disabled by feature flag - skipping proxy"
+                )
+                continue
+
+            # Refuse to run a stub even when its flag is on. Now that
+            # AGENT_<NAME>_ENABLED is actually read (it previously was not), a
+            # well-meaning operator can switch one of these on and get an agent
+            # that subscribes to real events and silently discards them — which
+            # looks healthy from every dashboard. Failing loudly at boot is the
+            # only version of this that cannot be mistaken for working.
+            if getattr(agent_class, "IS_STUB", False):
+                logger.error(
+                    f"Agent {agent_name} is enabled but is an unimplemented stub — "
+                    f"refusing to start it. Implement process_message() or leave "
+                    f"AGENT_{agent_name.upper()}_ENABLED unset."
                 )
                 continue
 
