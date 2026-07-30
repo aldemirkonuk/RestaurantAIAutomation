@@ -139,6 +139,7 @@ export function Login() {
           </div>
 
           <GoogleSignInButton
+            enableOneTap
             disabled={loading}
             onSuccess={() => navigate(from, { replace: true })}
             onError={setError}

@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { getGoogleClientId, loadGoogleIdentityScript } from '../../lib/googleIdentity'
+import {
+  getGoogleClientId,
+  loadGoogleIdentityScript,
+  type GooglePromptNotification,
+} from '../../lib/googleIdentity'
 
 interface GoogleSignInButtonProps {
   /** Called after the session is established, so the caller can redirect. */
   onSuccess: () => void
   onError?: (message: string) => void
   disabled?: boolean
+  /** Show Google One Tap (saved accounts) on mount — only on login/register. */
+  enableOneTap?: boolean
 }
 
-/** Official multicolor Google "G" — same mark Anthropic / Google use on auth screens. */
+/** Official multicolor Google "G". */
 function GoogleGlyph({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
@@ -34,12 +40,19 @@ function GoogleGlyph({ className }: { className?: string }) {
 }
 
 /**
- * Google sign-in — Anthropic-style: white surface, gray border, dark label,
- * official Google G. GSI stays hidden; this button opens the account chooser.
+ * Google sign-in — Anthropic-style button + optional One Tap for saved accounts.
+ * The white Google popup (accounts.google.com) is hosted by Google; we cannot
+ * restyle it. One Tap shows saved accounts on the WineOps page when available.
  */
-export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignInButtonProps) {
+export function GoogleSignInButton({
+  onSuccess,
+  onError,
+  disabled,
+  enableOneTap = false,
+}: GoogleSignInButtonProps) {
   const { loginWithGoogle } = useAuth()
   const gsiHostRef = useRef<HTMLDivElement>(null)
+  const oneTapShownRef = useRef(false)
   const [ready, setReady] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
@@ -63,6 +76,16 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
     }
   }, [])
 
+  const showOneTap = useCallback(() => {
+    if (!window.google?.accounts?.id || oneTapShownRef.current) return
+    oneTapShownRef.current = true
+    window.google.accounts.id.prompt((notification: GooglePromptNotification) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        oneTapShownRef.current = false
+      }
+    })
+  }, [])
+
   useEffect(() => {
     if (!clientId) {
       setUnavailable(true)
@@ -76,6 +99,11 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
         window.google.accounts.id.initialize({
           client_id: clientId,
           callback: (response) => void handleCredential(response.credential),
+          auto_select: false,
+          cancel_on_tap_outside: true,
+          context: 'signin',
+          itp_support: true,
+          use_fedcm_for_prompt: true,
         })
         window.google.accounts.id.renderButton(gsiHostRef.current, {
           type: 'standard',
@@ -86,13 +114,15 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
           width: 360,
         })
         setReady(true)
+        if (enableOneTap) showOneTap()
       })
       .catch(() => setUnavailable(true))
 
     return () => {
       cancelled = true
+      window.google?.accounts?.id?.cancel()
     }
-  }, [clientId, handleCredential])
+  }, [clientId, handleCredential, enableOneTap, showOneTap])
 
   const openGoogleChooser = () => {
     const gsiButton = gsiHostRef.current?.querySelector<HTMLElement>(
