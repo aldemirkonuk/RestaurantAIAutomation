@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, Iterable
 
@@ -311,6 +311,20 @@ def build_delivery(
         unit_cost = _wholesale(list_price)
 
         outcome = scen.build(ordered, unit_cost)
+
+        # A house that issues no packing slip cannot state a shipped quantity.
+        #
+        # Most scenarios set `shipped_qty = ordered` unconditionally because they
+        # are written against the canonical four-document case. Left alone, a
+        # Cellarbrook or Vine Quarter delivery would carry a ship figure for a
+        # document nobody ever sent — which is precisely the "silence recorded as
+        # agreement" defect this whole system exists to prevent, reintroduced one
+        # layer down in the generator. The scenarios that genuinely need a slip
+        # are filtered out for these houses upstream in `_pick_scenarios`, so
+        # clearing it here cannot change any intended verdict.
+        if not house.sends_packing_slip:
+            outcome = replace(outcome, shipped_qty=None)
+
         vintage = wine.get("vintage")
 
         invoiced_vintage = vintage

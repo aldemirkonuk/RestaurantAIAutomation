@@ -23,6 +23,12 @@ from typing import Any, Sequence
 
 import cv2
 
+from scripts.docgen.backtest import (
+    PROFILES as BACKTEST_PROFILES,
+    build_fixture,
+    check_fixture,
+    write_fixture,
+)
 from scripts.docgen.compose import build_delivery, render_context
 from scripts.docgen.degrade import (
     IllegibleSampleError,
@@ -324,6 +330,39 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    """Regenerate the TS-side fixture, or verify the committed one is current."""
+    if args.check:
+        problems = check_fixture()
+        if problems:
+            print("Fixture is STALE:")
+            for p in problems:
+                print(f"  - {p}")
+            return 1
+        fixture = build_fixture()
+        print(
+            f"Fixture current: {fixture['row_count']} rows, "
+            f"{len(fixture['verdicts_covered'])}/9 verdicts, "
+            f"{fixture['known_failing_count']} known-failing. "
+            f"hash={fixture['content_hash'][:12]}"
+        )
+        return 0
+
+    path = write_fixture()
+    fixture = build_fixture()
+    print(
+        f"Wrote {path.relative_to(REPO_ROOT)}\n"
+        f"  {fixture['row_count']} rows across {len(SCENARIOS)} scenarios "
+        f"x {len(BACKTEST_PROFILES)} profiles\n"
+        f"  verdicts covered: {len(fixture['verdicts_covered'])}/9\n"
+        f"  known-failing rows: {fixture['known_failing_count']}\n"
+        f"  content hash: {fixture['content_hash'][:12]}\n"
+        f"Run the assertions with: "
+        f"cd apps/api-gateway && ./node_modules/.bin/jest invoice-match.backtest"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="scripts.docgen",
@@ -352,6 +391,17 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("verify", help="Re-check an existing pack")
     v.add_argument("--out", default=str(DEFAULT_OUT))
     v.set_defaults(func=cmd_verify)
+
+    b = sub.add_parser(
+        "backtest",
+        help="Regenerate the scenario fixture the TypeScript engine is tested against",
+    )
+    b.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify the committed fixture is current instead of rewriting it (CI mode)",
+    )
+    b.set_defaults(func=cmd_backtest)
     return p
 
 

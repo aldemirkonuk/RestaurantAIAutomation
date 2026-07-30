@@ -19,10 +19,19 @@ The variation that actually breaks beverage-invoice parsing is not visual noise
   credits      a negative line on a later invoice referencing nothing
 
 Each of those is a real way real distributors differ, and each is a distinct way
-`document-extractor.service.ts` can be wrong while looking confident. The houses
-below are chosen so every combination that changes the *meaning* of a quantity
-appears at least twice across the set — once where it is easy to read and once
-where it is not.
+`document-extractor.service.ts` can be wrong while looking confident.
+
+Coverage, stated honestly
+------------------------
+Every encoding value below is used by at least one house, so none of it is dead
+configuration. It is NOT true that every value appears twice: with six houses and
+dimensions carrying up to four values, two-of-each would require at least eight
+houses. An earlier version of this docstring claimed otherwise and was wrong.
+
+The ones that appear only once are recorded in `SINGLETON_ENCODINGS` and asserted
+there, as a ratchet: a fix that special-cases a singleton house looks like a
+general fix and is not one, so the set must shrink (by adding houses) and must
+never silently grow. `coverage_report()` prints the current distribution.
 """
 
 from __future__ import annotations
@@ -362,12 +371,32 @@ def list_houses() -> list[str]:
     return sorted(HOUSES)
 
 
+#: Encoding values currently carried by exactly one house, per dimension.
+#:
+#: A ratchet, not an aspiration. `scripts/test_docgen.py` asserts this matches
+#: reality exactly, so:
+#:   * making an already-thin encoding thinner fails the test
+#:   * adding a 7th/8th house that doubles one of these requires deleting it here,
+#:     which is the visible sign of progress
+#: `medium` is excluded deliberately — each physical medium is meant to be
+#: distinct, so singletons there are the design, not a gap.
+SINGLETON_ENCODINGS: dict[str, frozenset[str]] = {
+    "uom_style": frozenset({"separate_pack_column", "bottles_only"}),
+    "free_goods_style": frozenset({"zero_price_line", "absent"}),
+    "vintage_style": frozenset({"omitted"}),
+    "charge_style": frozenset({"buried_in_price", "per_line_allocated"}),
+}
+
+#: Dimensions whose singletons matter for overfitting. `medium` is not one.
+RATCHETED_DIMENSIONS: tuple[str, ...] = tuple(SINGLETON_ENCODINGS)
+
+
 def coverage_report() -> dict[str, dict[str, int]]:
     """Count how many houses exercise each encoding.
 
-    Used by the docgen test to enforce the design rule stated in this module's
-    docstring: every encoding that changes the *meaning* of a quantity must
-    appear at least twice, so a fix that overfits to one house is caught.
+    Consumed by `scripts/test_docgen.py`, which asserts two things against it:
+    every value is used at least once (nothing here is dead configuration), and
+    the set of single-house values equals `SINGLETON_ENCODINGS` exactly.
     """
     dims = {
         "uom_style": {},
