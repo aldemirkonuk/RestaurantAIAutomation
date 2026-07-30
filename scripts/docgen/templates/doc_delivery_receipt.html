@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Delivery Receipt {{ d.delivery_receipt_number }} — {{ d.house.name }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Delivery receipt / proof of delivery.
+     ------------------------------------------------------------------
+     This is the document that decides claims, and it is the one most likely not
+     to exist. Texas Rule 35.1(d) and Virginia both require the retailer to sign
+     the distributor's invoice at delivery — and that signed copy LEAVES with the
+     driver. Named distribution people say it plainly: mark discrepancies with
+     your signature at the door, because if it was not written down, a warehouse
+     investigation follows and if physical inventory cannot confirm the claim
+     "there is not much we can do."
+
+     So this is deliberately OUR copy, not a reproduction of theirs. The exception
+     block is the point of the page and sits above the line detail, because a
+     receipt whose exceptions are buried on page two is a receipt nobody fills in
+     while holding a hand truck.
+
+     No prices. Same reason as the packing slip, plus one more: the person signing
+     this is floor staff, and line cost is not floor-staff information. */
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+         font-size: 8.6pt; color: #1a1a1a; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.45in 0.55in; position: relative; }
+
+  header { margin-top: 14px; display: flex; justify-content: space-between;
+           align-items: flex-start; border-bottom: 2.5px solid #1a1a1a; padding-bottom: 10px; }
+  .title { font-size: 16pt; font-weight: 700; letter-spacing: -.015em; }
+  .subtitle { font-size: 7pt; letter-spacing: .15em; text-transform: uppercase;
+              color: #666; margin-top: 3px; }
+  .our-copy { border: 2px solid #1a1a1a; padding: 4px 9px; font-size: 7pt;
+              font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+  table.meta { width: 100%; margin-top: 11px; font-size: 7.8pt; }
+  table.meta td { padding: 3px 6px; border-bottom: 1px solid #ddd; }
+  table.meta td.k { color: #666; font-size: 6.6pt; text-transform: uppercase;
+                    letter-spacing: .07em; white-space: nowrap; width: 88px; }
+
+  /* The block that wins disputes. Above the detail, not below it. */
+  .exceptions { margin: 14px 0 12px; border: 2.5px solid #9a2c2c; border-radius: 4px;
+                overflow: hidden; }
+  .exceptions.none { border-color: #2f6b45; }
+  .exc-head { background: #9a2c2c; color: #fff; padding: 6px 11px; font-size: 7.4pt;
+              font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .exceptions.none .exc-head { background: #2f6b45; }
+  .exc-body { padding: 10px 11px; }
+  .exc-row { display: flex; justify-content: space-between; gap: 12px;
+             padding: 5px 0; border-bottom: 1px dotted #ccc; font-size: 8pt; }
+  .exc-row:last-child { border-bottom: none; }
+  .exc-what { font-weight: 600; color: #9a2c2c; white-space: nowrap; }
+  .exc-clean { font-size: 8pt; color: #2f6b45; }
+  .exc-instruction { font-size: 6.8pt; color: #666; margin-top: 8px; line-height: 1.5;
+                     font-style: italic; }
+
+  table.lines { width: 100%; margin-top: 4px; }
+  table.lines th { background: #f0f0ee; padding: 4px; font-size: 6.3pt;
+                   text-transform: uppercase; letter-spacing: .06em; text-align: left;
+                   border-bottom: 1.5px solid #1a1a1a; white-space: nowrap; }
+  table.lines td { padding: 4px; border-bottom: 1px solid #eee; font-size: 7.9pt;
+                   vertical-align: top; }
+  .off { color: #9a2c2c; font-weight: 700; }
+  .unknown { color: #999; }
+  .rej { display: inline-block; background: #9a2c2c; color: #fff; font-size: 6pt;
+         font-weight: 700; padding: 1px 4px; letter-spacing: .04em; }
+
+  .sig-block { margin-top: 20px; border-top: 2.5px solid #1a1a1a; padding-top: 13px; }
+  .sig-grid { display: flex; gap: 30px; }
+  .sig-cell { flex: 1; }
+  .sig-line { border-bottom: 1.5px solid #1a1a1a; height: 30px; margin-bottom: 4px; }
+  .sig-cap { font-size: 6.8pt; color: #666; letter-spacing: .05em; }
+  .sig-filled { font-size: 10pt; padding-bottom: 4px; }
+  .attest { margin-top: 13px; font-size: 6.8pt; line-height: 1.55; color: #333;
+            background: #f7f7f5; padding: 9px 11px; border-radius: 4px; }
+  .attest b { color: #1a1a1a; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div>
+      <div class="title">Delivery Receipt</div>
+      <div class="subtitle">Retained by {{ d.restaurant_name }} · proof of delivery</div>
+    </div>
+    <div class="our-copy">Our copy</div>
+  </header>
+
+  <table class="meta">
+    <tr>
+      <td class="k">Receipt No.</td><td>{{ d.delivery_receipt_number }}</td>
+      <td class="k">Delivered</td><td>{{ d.delivery_date | fmtdate("%d %b %Y") }}</td>
+    </tr>
+    <tr>
+      <td class="k">Vendor</td><td>{{ d.house.name }}</td>
+      <td class="k">Driver</td><td>{{ d.driver_name }}</td>
+    </tr>
+    <tr>
+      <td class="k">Our PO</td><td>{{ d.po_number }}</td>
+      <td class="k">Their slip</td>
+      <td>{% if d.has_packing_slip() %}{{ d.packing_slip_number }}{% else %}<span class="unknown">none issued</span>{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="k">Vendor AR</td><td>{{ d.house.ar_phone }}</td>
+      <td class="k">Their licence</td>
+      <td>{% if d.house.license_no %}{{ d.house.license_no }}{% else %}<span class="unknown">not stated</span>{% endif %}</td>
+    </tr>
+  </table>
+
+  {% set exceptions = d.exception_lines() %}
+  <div class="exceptions {{ 'none' if not exceptions }}">
+    <div class="exc-head">
+      {% if exceptions %}
+        Exceptions noted at delivery — {{ exceptions | length }} line{{ "s" if exceptions | length != 1 }}
+      {% else %}
+        No exceptions — everything on the slip arrived intact
+      {% endif %}
+    </div>
+    <div class="exc-body">
+      {% if exceptions %}
+        {% for l in exceptions %}
+        <div class="exc-row">
+          <span>{{ l.line_no }}. {{ l.wine_name | truncate_at(40) }}</span>
+          <span class="exc-what">
+            {% if l.outcome.rejected_qty %}
+              {{ l.outcome.rejected_qty }} refused — {{ l.outcome.rejection_reason or "damaged" }}
+            {% else %}
+              slip {{ l.outcome.shipped_qty }}, counted {{ l.outcome.accepted_qty + l.outcome.rejected_qty }}
+            {% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="exc-clean">
+          Counted against
+          {% if d.has_packing_slip() %}the packing slip{% else %}the purchase order{% endif %},
+          {{ d.lines | length }} lines, no shortage and nothing refused.
+        </div>
+      {% endif %}
+      <div class="exc-instruction">
+        Anything not written here, in the driver's presence, cannot be verified
+        later against the vendor's warehouse count. Write it down before signing.
+      </div>
+    </div>
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:22px">#</th>
+        <th>Wine</th>
+        <th style="width:38px" class="ctr">Vint</th>
+        <th style="width:46px" class="num">On slip</th>
+        <th style="width:46px" class="num">Counted</th>
+        <th style="width:46px" class="num">Accepted</th>
+        <th style="width:60px" class="ctr">Refused</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in d.lines %}
+      {% set received = l.outcome.accepted_qty + l.outcome.rejected_qty %}
+      <tr>
+        <td class="num">{{ l.line_no }}</td>
+        <td>
+          {{ l.wine_name | truncate_at(46) }}
+          {% if l.producer %}<div style="font-size:7pt;color:#666">{{ l.producer }}</div>{% endif %}
+        </td>
+        <td class="ctr">{{ l.invoiced_vintage | dash }}</td>
+        <td class="num">
+          {% if l.outcome.shipped_qty is none %}<span class="unknown">—</span>
+          {% else %}{{ l.outcome.shipped_qty }}{% endif %}
+        </td>
+        <td class="num {{ 'off' if l.outcome.shipped_qty is not none and received != l.outcome.shipped_qty }}">{{ received }}</td>
+        <td class="num">{{ l.outcome.accepted_qty }}</td>
+        <td class="ctr">
+          {% if l.outcome.rejected_qty %}<span class="rej">{{ l.outcome.rejected_qty }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="sig-block">
+    <div class="sig-grid">
+      <div class="sig-cell">
+        <div class="sig-line sig-filled">{{ d.signed_by }}</div>
+        <div class="sig-cap">Received by — signature</div>
+      </div>
+      <div class="sig-cell">
+        <div class="sig-line sig-filled">{{ d.delivery_date | fmtdate("%d %b %Y") }}</div>
+        <div class="sig-cap">Date &amp; time counted</div>
+      </div>
+      <div class="sig-cell">
+        <div class="sig-line sig-filled">{{ d.driver_name }}</div>
+        <div class="sig-cap">Driver — signature</div>
+      </div>
+    </div>
+
+    <div class="attest">
+      <b>What this signature means.</b> It acknowledges the quantities in the
+      "Counted" column above and the exceptions recorded, and nothing else. It is
+      <b>not</b> agreement to any price — no prices appear on this document — and it
+      is not acceptance of an invoice that has not yet arrived.
+      {% if not d.has_packing_slip() %}
+      {{ d.house.name }} issued no packing slip for this delivery, so the "On slip"
+      column is unknown rather than agreed, and the count was taken against the
+      purchase order.
+      {% endif %}
+    </div>
+  </div>
+</div>
+</body>
+</html>

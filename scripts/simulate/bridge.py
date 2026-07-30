@@ -19,6 +19,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -27,11 +29,22 @@ from typing import Any
 from scripts.simulate.payloads import canonical_check, toast_webhook
 from scripts.simulate.service import Check
 
+#: The NestJS gateway mounts every controller under a global prefix
+#: (`app.setGlobalPrefix("api/v1")` in apps/api-gateway/src/main.ts:36). The
+#: controller decorators say `@Controller("pos-hub")`, so reading them alone gives
+#: a path that 404s. Found by posting for real — no dry run could have caught it,
+#: which is the argument for exercising --apply at least once.
+API_PREFIX = "/api/v1"
+
 #: Ingress A — analytics. Idempotent on (restaurant_id, source, external_check_id).
-ANALYTICS_PATH = "/pos-hub/webhook/generic_webhook/{restaurant_id}"
+ANALYTICS_PATH = API_PREFIX + "/pos-hub/webhook/generic_webhook/{restaurant_id}"
 
 #: Ingress B — stock movement. Only "toast" is registered in _get_providers().
+#: FastAPI sets this prefix on the router itself, so it is already complete.
 STOCK_PATH = "/api/v1/pos/webhook/toast"
+
+#: pos_item_mappings upsert, one row per request.
+MAPPINGS_PATH = API_PREFIX + "/pos-hub/mappings/{restaurant_id}"
 
 
 def sign_toast(secret: str, body: bytes) -> str:
@@ -50,6 +63,8 @@ class IngressResult:
     posted: int = 0
     failed: int = 0
     skipped: int = 0
+    #: 429s absorbed by retrying. Non-zero is fine; it means pacing worked.
+    throttled: int = 0
     errors: list[str] = field(default_factory=list)
     #: Set on dry runs so the caller can show a payload without sending it.
     sample_payload: dict[str, Any] | None = None
@@ -94,34 +109,65 @@ class Bridge:
         self.stock = IngressResult(
             ingress="stock", url=self.config.stock_base + STOCK_PATH
         )
+        self.mappings: IngressResult | None = None
         self._unsigned_warned = False
 
     # -- transport ---------------------------------------------------------
 
     def _post(
-        self, url: str, body: bytes, headers: dict[str, str], result: IngressResult
+        self,
+        url: str,
+        body: bytes,
+        headers: dict[str, str],
+        result: IngressResult,
+        *,
+        retries: int = 2,
     ) -> None:
-        request = urllib.request.Request(url, data=body, method="POST")
-        request.add_header("Content-Type", "application/json")
-        for key, value in headers.items():
-            request.add_header(key, value)
-        try:
-            with urllib.request.urlopen(request, timeout=self.config.timeout) as resp:
-                if 200 <= resp.status < 300:
-                    result.posted += 1
-                else:
-                    result.note_error(f"HTTP {resp.status}")
-        except urllib.error.HTTPError as exc:
-            detail = ""
+        """POST once, retrying only on 429.
+
+        The gateway's limits differ sharply by tier
+        (`common/rate-limit/rate-limit.guard.ts:27`): webhooks get 1000/60s, but
+        everything else — including the pos_item_mappings upsert — gets 100/60s.
+        Seeding 145 mapping rows therefore 429s partway through, and the rows that
+        fail are silently the ones never mapped, so wine detection quietly stays
+        broken for exactly those wines. Retrying with the server's own retryAfter
+        is the honest fix; dropping them is not.
+
+        Nothing else is retried. A 4xx from a malformed payload would be a bug to
+        surface, not a transient to paper over.
+        """
+        for attempt in range(retries + 1):
+            request = urllib.request.Request(url, data=body, method="POST")
+            request.add_header("Content-Type", "application/json")
+            for key, value in headers.items():
+                request.add_header(key, value)
             try:
-                detail = exc.read().decode("utf-8", "replace")[:200]
-            except Exception:
-                pass
-            result.note_error(f"HTTP {exc.code} {detail}".strip())
-        except urllib.error.URLError as exc:
-            result.note_error(f"unreachable: {exc.reason}")
-        except Exception as exc:  # noqa: BLE001 — report, never abort the run
-            result.note_error(f"{type(exc).__name__}: {exc}")
+                with urllib.request.urlopen(
+                    request, timeout=self.config.timeout
+                ) as resp:
+                    if 200 <= resp.status < 300:
+                        result.posted += 1
+                    else:
+                        result.note_error(f"HTTP {resp.status}")
+                    return
+            except urllib.error.HTTPError as exc:
+                detail = ""
+                try:
+                    detail = exc.read().decode("utf-8", "replace")[:200]
+                except Exception:
+                    pass
+                if exc.code == 429 and attempt < retries:
+                    result.throttled += 1
+                    time.sleep(_retry_after_seconds(exc, detail))
+                    continue
+                result.note_error(f"HTTP {exc.code} {detail}".strip())
+                return
+            except urllib.error.URLError as exc:
+                result.note_error(f"unreachable: {exc.reason}")
+                return
+            except Exception as exc:  # noqa: BLE001 — report, never abort the run
+                result.note_error(f"{type(exc).__name__}: {exc}")
+                return
 
     # -- per ingress -------------------------------------------------------
 
@@ -164,6 +210,34 @@ class Bridge:
             return
         self._post(result.url, body, headers, result)
 
+    def seed_mappings(self, rows: list[dict[str, Any]]) -> IngressResult:
+        """Upsert pos_item_mappings before any check is posted.
+
+        Must happen first. `PosHubService.ingest` resolves wine per check at
+        ingest time, so a mapping that arrives after a check does not
+        retroactively reclassify it — the row is already written with
+        `is_wine: false` and only a re-post would fix it. Ordering here is the
+        difference between a run that measures the pipeline and a run that
+        measures the keyword list.
+        """
+        from scripts.simulate.mappings import to_upsert_body
+
+        result = IngressResult(
+            ingress="mappings",
+            url=self.config.analytics_base
+            + MAPPINGS_PATH.format(restaurant_id=self.config.restaurant_id),
+        )
+        for row in rows:
+            body = to_upsert_body(row)
+            if result.sample_payload is None:
+                result.sample_payload = body
+            if not self.config.apply:
+                result.skipped += 1
+                continue
+            self._post(result.url, _encode(body), {}, result)
+        self.mappings = result
+        return result
+
     def send(self, check: Check) -> None:
         """One logical event, both encodings.
 
@@ -176,12 +250,32 @@ class Bridge:
     # -- reporting ---------------------------------------------------------
 
     def summary(self) -> dict[str, Any]:
-        return {
+        summary = {
             "applied": self.config.apply,
             "ingress": self.config.ingress,
             "analytics": _result_dict(self.analytics),
             "stock": _result_dict(self.stock),
         }
+        if self.mappings is not None:
+            summary["mappings"] = _result_dict(self.mappings)
+        return summary
+
+
+def _retry_after_seconds(exc: Any, detail: str, *, default: float = 5.0) -> float:
+    """Honour the server's own backoff hint.
+
+    The guard returns `retryAfter` in the JSON body and may also set the standard
+    header. Capped so a misconfigured window cannot stall a run for an hour.
+    """
+    header = getattr(exc, "headers", None)
+    raw = header.get("Retry-After") if header else None
+    if not raw:
+        match = re.search(r'"retryAfter"\s*:\s*(\d+)', detail or "")
+        raw = match.group(1) if match else None
+    try:
+        return max(0.5, min(float(raw), 90.0))
+    except (TypeError, ValueError):
+        return default
 
 
 def _encode(payload: dict[str, Any]) -> bytes:
@@ -200,5 +294,6 @@ def _result_dict(result: IngressResult) -> dict[str, Any]:
         "posted": result.posted,
         "failed": result.failed,
         "skipped": result.skipped,
+        "throttled": result.throttled,
         "errors": result.errors,
     }

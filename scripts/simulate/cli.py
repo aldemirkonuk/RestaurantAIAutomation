@@ -22,6 +22,7 @@ from typing import Any, Sequence
 
 from scripts.simulate.bridge import Bridge, BridgeConfig
 from scripts.simulate.detection import detection_report
+from scripts.simulate.mappings import build_mappings
 from scripts.simulate.payloads import idempotency_key
 from scripts.simulate.service import (
     WineList,
@@ -98,6 +99,22 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
 
     bridge = Bridge(config)
+
+    if args.seed_mappings:
+        # Before any check. resolveWine runs at ingest time, so a mapping that
+        # lands after a check does not reclassify it retroactively.
+        rows = build_mappings(wine_list)
+        result = bridge.seed_mappings(rows)
+        print(
+            f"pos_item_mappings: {len(rows)} rows "
+            f"({sum(1 for r in rows if r['is_wine'])} wine, "
+            f"{sum(1 for r in rows if not r['is_wine'])} food) -> "
+            f"{'posted ' + str(result.posted) if config.apply else 'dry run'}"
+            + (f", {result.failed} failed" if result.failed else "")
+        )
+        for err in result.errors[:3]:
+            print(f"  {err}")
+
     start = date.today() - timedelta(days=args.days)
     sold_out: set[str] = set()
     total_checks = 0
@@ -182,6 +199,24 @@ def cmd_wines(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mappings(args: argparse.Namespace) -> int:
+    """Show the mapping rows that would be seeded, and what they buy."""
+    wine_list = WineList.from_snapshot(_load_wines(args.archetype))
+    rows = build_mappings(wine_list)
+    wine_rows = [r for r in rows if r["is_wine"]]
+    print(f"archetype {args.archetype}: {len(rows)} mapping rows")
+    print(f"  wine: {len(wine_rows)}  (bottle + by-the-glass presentations)")
+    print(f"  food: {len(rows) - len(wine_rows)}  (explicit is_wine=false locks)")
+    print("\nsample:")
+    for row in rows[:6]:
+        print(f"  {'WINE' if row['is_wine'] else 'food'}  {row['item_name'][:52]:52s} {row['category']}")
+    print(
+        "\nWithout these the keyword fallback resolves ~35% of wine names "
+        "(python3 -m scripts.simulate wines)."
+    )
+    return 0
+
+
 def cmd_oracle(args: argparse.Namespace) -> int:
     """Print the depletion the run SHOULD produce, for asserting against."""
     wine_list = WineList.from_snapshot(_load_wines(args.archetype))
@@ -242,12 +277,25 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--toast-secret", default=None, help="Defaults to $TOAST_WEBHOOK_SECRET")
     r.add_argument("--ingress", choices=("both", "analytics", "stock"), default="both")
     r.add_argument("--apply", action="store_true", help="Actually post (default: dry run)")
+    r.add_argument(
+        "--seed-mappings",
+        action="store_true",
+        help=(
+            "Upsert pos_item_mappings from the menu snapshot first. Without this the "
+            "hub falls back to a keyword scan that resolves only ~35%% of real wine "
+            "names, so most wine sales land as food."
+        ),
+    )
     r.add_argument("--verbose", action="store_true")
     r.set_defaults(func=cmd_run)
 
     w = sub.add_parser("wines", help="Wine-detection hit rate for generated item names")
     common(w)
     w.set_defaults(func=cmd_wines)
+
+    m = sub.add_parser("mappings", help="Preview the pos_item_mappings rows")
+    common(m)
+    m.set_defaults(func=cmd_mappings)
 
     o = sub.add_parser("oracle", help="Expected depletion in bottle-equivalents")
     common(o)

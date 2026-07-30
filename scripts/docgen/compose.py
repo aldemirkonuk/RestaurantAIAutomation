@@ -198,6 +198,60 @@ class Delivery:
             2,
         )
 
+    # ---- the other three documents ---------------------------------------
+
+    @property
+    def packing_slip_number(self) -> str:
+        """The 856's own identifier, distinct from the invoice's.
+
+        Distributors number ship notices separately from invoices, and a credit
+        claim that quotes the wrong one gets bounced — so the two must never be
+        the same string.
+        """
+        return f"PS-{self.invoice_number}"
+
+    @property
+    def delivery_receipt_number(self) -> str:
+        return f"POD-{self.delivery_id.upper()}"
+
+    @property
+    def credit_memo_number(self) -> str:
+        return f"CM-{self.invoice_number}"
+
+    def claimable_lines(self) -> list[Line]:
+        """Lines a credit memo could cover.
+
+        Only what the vendor owes money for. A price variance is a discrepancy
+        worth a conversation but not a credit, and a short-ship the vendor billed
+        honestly is a carrier problem — putting either on a credit memo would be
+        claiming money nobody agreed was owed.
+        """
+        return [l for l in self.lines if l.outcome.expected_credit_due]
+
+    def credit_total(self) -> float:
+        return self.dollars_at_risk()
+
+    def rejected_lines(self) -> list[Line]:
+        return [l for l in self.lines if l.outcome.rejected_qty > 0]
+
+    def exception_lines(self) -> list[Line]:
+        """Lines a receiver would have had to write something about at the door.
+
+        Anything where the physical count diverges from what was shipped, plus
+        anything refused. This is the set that must be marked ON the receipt while
+        the driver is still there — an unmarked discrepancy is the one that cannot
+        be claimed later.
+        """
+        out: list[Line] = []
+        for line in self.lines:
+            o = line.outcome
+            received = o.accepted_qty + o.rejected_qty
+            if o.rejected_qty > 0:
+                out.append(line)
+            elif o.shipped_qty is not None and received != o.shipped_qty:
+                out.append(line)
+        return out
+
     def dollars_at_risk(self) -> float:
         """Sum of credit-worthy discrepancies, at the billed price."""
         at_risk = 0.0
