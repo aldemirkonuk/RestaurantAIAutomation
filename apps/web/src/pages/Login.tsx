@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
-import { Mail, Lock, AlertCircle, Sparkles } from 'lucide-react'
+import { Mail, Lock, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 
 const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
@@ -131,26 +132,17 @@ export function Login() {
             )}
           </Button>
 
-          <button
-            type="button"
-            onClick={async () => {
-              setError(null)
-              setLoading(true)
-              try {
-                await login('demo@gmail.com', 'demo123')
-                navigate(from, { replace: true })
-              } catch (err: any) {
-                setError(err.message || 'Demo login failed. Run seed script first.')
-              } finally {
-                setLoading(false)
-              }
-            }}
+          <div className="flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-wine-100" />
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-400">or</span>
+            <span className="h-px flex-1 bg-wine-100" />
+          </div>
+
+          <GoogleSignInButton
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-wine-700 hover:text-wine-800 hover:bg-wine-50 rounded-xl transition-colors border border-wine-200/80 disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4 text-wine-500" strokeWidth={1.75} />
-            Try Demo (demo@gmail.com)
-          </button>
+            onSuccess={() => navigate(from, { replace: true })}
+            onError={setError}
+          />
         </form>
 
         <div className="mt-6 text-center">

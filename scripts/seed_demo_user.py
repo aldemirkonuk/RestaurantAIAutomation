@@ -100,7 +100,7 @@ try:
     print("🎯 Next Steps:")
     print("   1. Restart the API Gateway server (if running)")
     print("   2. Go to http://localhost:3000/login")
-    print("   3. Click 'Try Demo' button")
+    print("   3. Sign in with the credentials above")
     print()
     
 except Exception as e:

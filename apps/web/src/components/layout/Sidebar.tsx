@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -40,6 +41,8 @@ interface NavItem {
   name: string
   href: string
   icon: React.ElementType
+  /** Shown in the hover tooltip so users know where a link goes before clicking. */
+  description: string
   badge?: number
   children?: { name: string; href: string }[]
 }
@@ -51,42 +54,176 @@ const DocumentsReportsIcon = (props: React.SVGProps<SVGSVGElement>) => (
 )
 
 const mainNavItems: NavItem[] = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Inventory', href: '/inventory', icon: Package },
-  { name: 'Orders', href: '/orders', icon: ShoppingCart },
-  { name: 'Wine Library', href: '/wines', icon: Wine },
+  {
+    name: 'Dashboard',
+    href: '/',
+    icon: LayoutDashboard,
+    description: "Today's KPIs, alerts, and the actions worth doing first.",
+  },
+  {
+    name: 'Inventory',
+    href: '/inventory',
+    icon: Package,
+    description: 'Live and shadow stock, par levels, counts, and the cellar map.',
+  },
+  {
+    name: 'Orders',
+    href: '/orders',
+    icon: ShoppingCart,
+    description: 'Draft, approve, and track purchase orders through delivery.',
+  },
+  {
+    name: 'Wine Library',
+    href: '/wines',
+    icon: Wine,
+    description: 'Your full wine catalog with pricing and tasting details.',
+  },
   // Distributor discovery is a tab inside Providers (/providers?tab=discover)
   // rather than its own nav item — same subject, and the sidebar is already full.
-  { name: 'Providers', href: '/providers', icon: Truck },
-  { name: 'Promotions', href: '/promotions', icon: Tag },
-  { name: 'Reports', href: '/reports', icon: BarChart3 },
+  {
+    name: 'Providers',
+    href: '/providers',
+    icon: Truck,
+    description: 'Suppliers, contacts, and distributor discovery.',
+  },
+  {
+    name: 'Promotions',
+    href: '/promotions',
+    icon: Tag,
+    description: 'Vendor offers pulled from email, plus trusted senders.',
+  },
+  {
+    name: 'Reports',
+    href: '/reports',
+    icon: BarChart3,
+    description: 'Sales, margin, and inventory performance over time.',
+  },
 ]
 
 const secondaryNavItems: NavItem[] = [
-  { name: 'Calendar', href: '/calendar', icon: Calendar },
-  { name: 'Team', href: '/team', icon: Users },
-  { name: 'Communications', href: '/communications', icon: MessageSquare },
-  { name: 'Documents & Reports', href: '/documents-reports', icon: DocumentsReportsIcon },
-  { name: 'Notifications', href: '/notifications', icon: Bell },
+  {
+    name: 'Calendar',
+    href: '/calendar',
+    icon: Calendar,
+    description: 'Deliveries, tastings, and vendor meetings.',
+  },
+  {
+    name: 'Team',
+    href: '/team',
+    icon: Users,
+    description: 'Staff, roles, shifts, and performance.',
+  },
+  {
+    name: 'Communications',
+    href: '/communications',
+    icon: MessageSquare,
+    description: 'Vendor email threads, classified and ready to reply.',
+  },
+  {
+    name: 'Documents & Reports',
+    href: '/documents-reports',
+    icon: DocumentsReportsIcon,
+    description: 'Invoices, receipts, and generated report history.',
+  },
+  {
+    name: 'Notifications',
+    href: '/notifications',
+    icon: Bell,
+    description: 'Alerts that need a decision, oldest first.',
+  },
 ]
 
 const aiNavItems: NavItem[] = [
-  { name: 'Sommelier AI', href: '/sommelier', icon: Sparkles },
-  { name: 'Wine Agent', href: '/wineagent', icon: Bot },
+  {
+    name: 'Sommelier AI',
+    href: '/sommelier',
+    icon: Sparkles,
+    description: 'Ask about pairings, pricing, and what to reorder.',
+  },
+  {
+    name: 'Wine Agent',
+    href: '/wineagent',
+    icon: Bot,
+    description: 'Hands-off agent for routine inventory and ordering work.',
+  },
 ]
 
 const bottomNavItems: NavItem[] = [
-  { name: 'Profile', href: '/profile', icon: User },
-  { name: 'Settings', href: '/settings', icon: Settings },
-  { name: 'Help & Support', href: '/help', icon: HelpCircle },
+  {
+    name: 'Profile',
+    href: '/profile',
+    icon: User,
+    description: 'Your account, security, and linked sign-in providers.',
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
+    description: 'Restaurant setup, features, permissions, and integrations.',
+  },
+  {
+    name: 'Help & Support',
+    href: '/help',
+    icon: HelpCircle,
+    description: 'Guides, page tours, and how to reach us.',
+  },
 ]
+
+interface NavTooltipState {
+  title: string
+  description: string
+  badgeLabel: string | null
+  /** Viewport coords of the anchor's right edge / vertical centre. */
+  x: number
+  y: number
+}
+
+const TOOLTIP_HALF_HEIGHT = 34
+
+/**
+ * Hover/focus hint describing where a nav link goes.
+ *
+ * Portalled to the body with fixed positioning because the nav rail scrolls
+ * (`overflow-y-auto`), which clips anything positioned outside it.
+ *
+ * aria-hidden: the link's own aria-label already carries this, so announcing
+ * it twice would be noise.
+ */
+function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
+  const top = Math.min(
+    Math.max(y, TOOLTIP_HALF_HEIGHT + 8),
+    window.innerHeight - TOOLTIP_HALF_HEIGHT - 8,
+  )
+
+  return createPortal(
+    <motion.div
+      aria-hidden
+      initial={{ opacity: 0, x: -4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+      style={{ top, left: x + 8 }}
+      className="pointer-events-none fixed z-[60] w-56 -translate-y-1/2 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg"
+    >
+      <div className="flex items-center gap-1.5">
+        <p className="text-[13px] font-semibold text-gray-900">{title}</p>
+        {badgeLabel && (
+          <span className="rounded-full bg-wine-100 px-1.5 text-[10px] font-semibold text-wine-700">
+            {badgeLabel}
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">{description}</p>
+    </motion.div>,
+    document.body,
+  )
+}
 
 export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUIStore((s) => s.setSidebarCollapsed)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  const [navTooltip, setNavTooltip] = useState<NavTooltipState | null>(null)
   const [showChecklist, setShowChecklist] = useState(false)
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const location = useLocation()
@@ -104,7 +241,46 @@ export function Sidebar() {
   }, [])
   const effectiveCollapsed = isMobile ? false : collapsed
 
+  // Short delay so tooltips don't strobe while the cursor travels down the rail.
+  // Keyboard focus skips the delay — it's a deliberate landing, not a fly-over.
+  const tooltipTimer = useRef<number | null>(null)
+  const clearTooltipTimer = () => {
+    if (tooltipTimer.current !== null) {
+      window.clearTimeout(tooltipTimer.current)
+      tooltipTimer.current = null
+    }
+  }
+  const openTooltip = (
+    anchor: HTMLElement,
+    item: Pick<NavItem, 'name' | 'description'>,
+    badgeLabel: string | null,
+    immediate = false,
+  ) => {
+    clearTooltipTimer()
+    if (isMobile) return
+
+    const show = () => {
+      const rect = anchor.getBoundingClientRect()
+      setNavTooltip({
+        title: item.name,
+        description: item.description,
+        badgeLabel,
+        x: rect.right,
+        y: rect.top + rect.height / 2,
+      })
+    }
+
+    if (immediate) show()
+    else tooltipTimer.current = window.setTimeout(show, 320)
+  }
+  const closeTooltip = () => {
+    clearTooltipTimer()
+    setNavTooltip(null)
+  }
+  useEffect(() => clearTooltipTimer, [])
+
   const closeMobileNav = () => {
+    closeTooltip()
     if (isMobile) setSidebarOpen(false)
   }
 
@@ -151,8 +327,10 @@ export function Sidebar() {
       <NavLink
         to={item.href}
         onClick={closeMobileNav}
-        onMouseEnter={() => setHoveredItem(item.name)}
-        onMouseLeave={() => setHoveredItem(null)}
+        onMouseEnter={(e) => openTooltip(e.currentTarget, item, badgeLabel)}
+        onMouseLeave={closeTooltip}
+        onFocus={(e) => openTooltip(e.currentTarget, item, badgeLabel, true)}
+        onBlur={closeTooltip}
         className={cn(
           'group relative flex items-center rounded-lg transition-colors',
           collapsed
@@ -207,17 +385,6 @@ export function Sidebar() {
           </span>
         )}
 
-        {/* Tooltip for collapsed state */}
-        {collapsed && hoveredItem === item.name && (
-          <div className="absolute left-full ml-3 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white shadow-xl z-50">
-            {item.name}
-            {badgeLabel && (
-              <span className="ml-2 px-1.5 py-0.5 bg-wine-500 rounded-full text-xs">
-                {badgeLabel}
-              </span>
-            )}
-          </div>
-        )}
       </NavLink>
     )
   }
@@ -369,7 +536,12 @@ export function Sidebar() {
               </p>
             )}
             <NavItemComponent
-              item={{ name: 'Admin Panel', href: '/admin', icon: Shield }}
+              item={{
+                name: 'Admin Panel',
+                href: '/admin',
+                icon: Shield,
+                description: 'Tenant administration, users, and system controls.',
+              }}
               collapsed={effectiveCollapsed}
             />
           </div>
@@ -537,7 +709,10 @@ export function Sidebar() {
       {/* Collapse Toggle — desktop only */}
       <button
         type="button"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={() => {
+          closeTooltip()
+          setCollapsed(!collapsed)
+        }}
         className="hidden md:flex absolute -right-3 top-20 w-6 h-6 bg-white border border-gray-200 rounded-full items-center justify-center shadow-md hover:shadow-lg hover:bg-gray-50 transition-all z-50"
       >
         {effectiveCollapsed ? (
@@ -546,6 +721,8 @@ export function Sidebar() {
           <ChevronLeft className="w-4 h-4 text-gray-600" />
         )}
       </button>
+
+      {navTooltip && <NavTooltip {...navTooltip} />}
     </motion.aside>
   )
 }
