@@ -9,35 +9,33 @@ interface GoogleSignInButtonProps {
   disabled?: boolean
 }
 
+/** Official multicolor Google "G" — same mark Anthropic / Google use on auth screens. */
 function GoogleGlyph({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
       <path
         fill="#EA4335"
-        d="M12 10.2v3.6h5.1c-.2 1.2-1.5 3.5-5.1 3.5-3.1 0-5.6-2.5-5.6-5.6S8.9 6.1 12 6.1c1.7 0 2.9.7 3.6 1.4l2.4-2.4C16.6 3.7 14.5 2.7 12 2.7 6.9 2.7 2.7 6.9 2.7 12S6.9 21.3 12 21.3c5.5 0 9.1-3.9 9.1-9.3 0-.6-.1-1.1-.2-1.6H12z"
+        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
       />
       <path
-        fill="#34A853"
-        d="M3.9 7.4l3 2.2C7.7 7.4 9.7 6.1 12 6.1c1.7 0 2.9.7 3.6 1.4l2.4-2.4C16.6 3.7 14.5 2.7 12 2.7 8.3 2.7 5.1 4.8 3.9 7.4z"
-      />
-      <path
-        fill="#4A90E2"
-        d="M12 21.3c2.4 0 4.5-.8 6-2.2l-2.9-2.2c-.8.5-1.8.9-3.1.9-3.1 0-5.7-2.1-6.6-4.9l-3 2.3C4.1 18.7 7.7 21.3 12 21.3z"
+        fill="#4285F4"
+        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
       />
       <path
         fill="#FBBC05"
-        d="M5.4 12c0-.7.1-1.4.3-2l-3-2.3C2.2 9 2 10.5 2 12s.2 3 .7 4.3l3-2.3c-.2-.6-.3-1.3-.3-2z"
+        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
       />
     </svg>
   )
 }
 
 /**
- * Google sign-in for the login/register screens.
- *
- * Uses Google Identity Services to obtain an ID token, then exchanges it via
- * AuthContext.loginWithGoogle. Renders a WineOps-styled AuthCard button; the
- * official GSI button stays hidden and is only used to open Google's chooser.
+ * Google sign-in — Anthropic-style: white surface, gray border, dark label,
+ * official Google G. GSI stays hidden; this button opens the account chooser.
  */
 export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignInButtonProps) {
   const { loginWithGoogle } = useAuth()
@@ -83,8 +81,8 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
           type: 'standard',
           theme: 'outline',
           size: 'large',
-          text: 'continue_with',
-          shape: 'pill',
+          text: 'signin_with',
+          shape: 'rectangular',
           width: 360,
         })
         setReady(true)
@@ -112,8 +110,7 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
   }
 
   return (
-    <div className="space-y-2">
-      {/* Official GSI control — kept off-screen; our branded button triggers it. */}
+    <div>
       <div
         ref={gsiHostRef}
         aria-hidden
@@ -124,23 +121,23 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
         type="button"
         disabled={disabled || signingIn || !ready}
         onClick={openGoogleChooser}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-wine-200/80 py-2.5 text-sm font-medium text-wine-700 transition-colors hover:bg-wine-50 hover:text-wine-800 disabled:opacity-50"
+        className="flex h-11 w-full items-center justify-center gap-3 rounded-lg border border-[#DADCE0] bg-white px-4 text-[15px] font-medium text-[#3C4043] shadow-none transition-colors hover:bg-[#F8F9FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-1 active:bg-[#F1F3F4] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {signingIn ? (
           <>
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-wine-600/80 border-t-transparent" />
-            Signing in with Google…
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+            Signing in…
           </>
         ) : (
           <>
-            <GoogleGlyph className="h-4 w-4" />
-            Continue with Google
+            <GoogleGlyph className="h-5 w-5 shrink-0" />
+            Sign in with Google
           </>
         )}
       </button>
 
       {!ready && !signingIn && (
-        <p className="text-center text-xs text-gray-400">Loading Google sign-in…</p>
+        <p className="mt-2 text-center text-xs text-gray-400">Loading Google sign-in…</p>
       )}
     </div>
   )
