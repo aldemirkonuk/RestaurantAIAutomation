@@ -2,7 +2,46 @@
 
 **Date:** 2026-07-29
 **Relates to:** `YC_WEDGE_PLAN.md` (reopens the cut Track C, on different grounds), Phase 37 (synthetic restaurant engine, satisfied)
-**Status:** in progress
+**Status:** shipped — see §6 for what was built, what was found, and what is not done
+
+---
+
+## 6. Outcome
+
+**Shipped.** `scripts/docgen/` (6 houses, 14 verdict-keyed scenarios, 8 degradation
+profiles, ground truth, CLI), `scripts/simulate/` (demand model, dual-ingress
+bridge with real HMAC signing, depletion oracle), the WineOps normalized document,
+sketch 052, and a cross-language backtest harness. 96 pytest + 41 jest green.
+
+**Four defects found by building it, three of them in code that predates this work:**
+
+| # | Defect | Where | State |
+|---|---|---|---|
+| 1 | Agreed free goods arriving with a packing slip return `short_shipped` — `physical_vs_ship` compares a billing quantity against a physical count | `invoice-match.ts:231` | filed; asserted as known-failing in the fixture so a fix turns the suite red on purpose |
+| 2 | Wine detection catches 35% of real wine names — `WINE_WORDS` is varietal-oriented and misses Old World appellation labelling entirely | `pos-hub.service.ts:25` | filed with the measurement and three options |
+| 3 | Ten of fourteen scenarios stated a shipped quantity for houses that issue no packing slip — "silence recorded as agreement", one layer down | `compose.py` | fixed |
+| 4 | `pos_checks` was outside the Phase 37 write-set, so simulated service was unremovable | `synth/write_set.py` | fixed |
+
+**Two things I got wrong and corrected:** the legibility guard first counted dark
+pixels, which shadow inflates — it reported 1039% retention while text was being
+destroyed, and was replaced with stroke density. And `houses.py` claimed every
+meaning-changing encoding appeared at least twice, which is arithmetically
+impossible with six houses; the thin encodings are now enumerated and ratcheted.
+
+**Not done, deliberately:**
+
+- **The loop is not closed end to end.** Both ingresses are implemented and
+  dry-runnable; neither has been posted to live, because that needs a seeded sim
+  tenant plus RabbitMQ, Redis and the Python orchestrator running. Until then, the
+  claim "depletion triggers a reorder" is untested — the payload shapes are
+  verified against the receiving code by reading it, not by observing a decrement.
+- **Packing slips, delivery receipts and credit memos are modelled but not
+  rendered.** Only the invoice has house templates. The document spine and the
+  truth file already carry all five.
+- **The 35% detection gap blocks a meaningful analytics run** on a fresh tenant.
+  Seed `pos_item_mappings` first, or 65% of simulated wine sales land as food.
+- **`--apply` has never been exercised.** The teardown gate it depends on is
+  tested; the posting path is not.
 
 ---
 
