@@ -363,11 +363,11 @@ Plans:
 **Research:** 33-RESEARCH.md — complete (2026-05-14)
 **Plans:** 5 plans
 Plans:
-- [ ] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
-- [ ] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
-- [ ] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
-- [ ] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
-- [ ] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
+- [x] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
+- [x] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
+- [x] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
+- [x] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
+- [x] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
 
 ---
 
