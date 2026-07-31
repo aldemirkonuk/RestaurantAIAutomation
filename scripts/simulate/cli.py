@@ -153,11 +153,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_wines(args: argparse.Namespace) -> int:
-    """Report whether generated item names actually resolve as wine.
+    """Report whether generated items actually resolve as wine.
 
-    The hub's fallback is a keyword heuristic. If our generated names miss it, the
-    stock path sees no wine and the whole run proves nothing — so the hit rate is
-    a precondition, not a curiosity.
+    The hub's fallback is the POS category, then a keyword scan of the name. If our
+    generated items miss it, the stock path sees no wine and the whole run proves
+    nothing — so the hit rate is a precondition, not a curiosity.
+
+    Both rates are printed. The first is what the system does. The second withholds
+    the category to measure the name backstop alone, which is what a POS that sends
+    no category leaves us with — and it is the rate that appellation-labelled Old
+    World lists fail.
     """
     wine_list = WineList.from_snapshot(_load_wines(args.archetype))
     report = detection_report(
@@ -171,13 +176,24 @@ def cmd_wines(args: argparse.Namespace) -> int:
         f"{args.days} days"
     )
     print(
-        f"  keyword-heuristic hit rate: {report['hit_rate']:.1%} "
+        f"  category + name hit rate:   {report['hit_rate']:.1%} "
         f"({report['hits']}/{report['wine_items']})"
+    )
+    print(
+        f"  name backstop alone:        {report['name_hit_rate']:.1%} "
+        f"({report['name_hits']}/{report['wine_items']})"
     )
     print(f"  false positives on food:    {report['food_false_positives']}")
     if report["misses"]:
         print("  sample misses (would need a pos_item_mappings row):")
         for name in report["misses"][:12]:
+            print(f"    - {name}")
+    if report["name_misses"]:
+        print(
+            f"  {report['distinct_name_misses']} distinct names the backstop alone "
+            "misses; sample:"
+        )
+        for name in report["name_misses"][:12]:
             print(f"    - {name}")
     return 0
 

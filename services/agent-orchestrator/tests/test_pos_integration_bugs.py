@@ -7,7 +7,7 @@ import inspect
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from agents.pos_integration_agent import POSIntegrationAgent
+from agents.pos_integration_agent import POSIntegrationAgent, WINE_WORDS
 
 
 def _make_agent(config=None):
@@ -19,29 +19,9 @@ def _make_agent(config=None):
     agent.mock_mode = False
     agent.toast_webhook_secret = "test-secret-key"
     agent.toast_environment = "sandbox"
-    agent.wine_category_keywords = [
-        "wine",
-        "vino",
-        "red wine",
-        "white wine",
-        "sparkling",
-        "champagne",
-        "cabernet",
-        "chardonnay",
-        "pinot",
-        "merlot",
-        "sauvignon",
-        "riesling",
-        "zinfandel",
-        "syrah",
-        "bordeaux",
-        "burgundy",
-        "prosecco",
-        "cava",
-        "rosé",
-        "rose",
-        "dessert wine",
-    ]
+    # The production lists, not a local copy of them. A shorter stand-in list here
+    # would let these tests pass against a detector the real agent does not run.
+    agent.wine_category_keywords = list(WINE_WORDS)
     agent.wine_menu_categories = [
         "Wine",
         "Wines",
@@ -156,10 +136,76 @@ class TestBUG04WineDetection:
         assert agent.is_wine_item("Caymus", selection=None) is False
 
     def test_non_wine_category_returns_false(self):
-        """Item in 'Beverages' category -> False even if it had wine-adjacent words."""
+        """Sparkling Water is not wine, whatever category it arrives under.
+
+        'Beverages' is deliberately NOT a non-wine category (real POS menus file
+        the wine list under it), so this falls through to the name scan — and the
+        name scan holds no 'sparkling' token precisely so that water cannot read as
+        sparkling wine.
+        """
         agent = _make_agent()
         selection = {"menuGroup": {"category": "Beverages"}}
         assert agent.is_wine_item("Sparkling Water", selection=selection) is False
+
+    def test_recognised_non_wine_category_stops_the_name_scan(self):
+        """A positively non-wine family is a verdict, not a fall-through."""
+        agent = _make_agent()
+        for category in ("Beer & Cider", "Coffee", "Pasta", "Desserts"):
+            selection = {"menuGroup": {"name": category}}
+            assert (
+                agent.is_wine_item("Barolo Braised Short Rib", selection=selection)
+                is False
+            ), category
+
+    def test_unrecognised_category_does_not_veto_a_wine_name(self):
+        """The undercount this reconciliation exists to fix.
+
+        A category we have never seen used to be treated as authoritative, so a
+        Chardonnay filed under 'Beverages' was recorded as food and every wine
+        analytic downstream missed it. Silently.
+        """
+        agent = _make_agent()
+        for category in ("Beverages", "Drinks", "Bar", "House Favourites"):
+            selection = {"menuGroup": {"name": category}}
+            assert (
+                agent.is_wine_item("Estate Chardonnay 2021", selection=selection)
+                is True
+            ), category
+
+    def test_category_read_from_menu_group_name_not_only_category(self):
+        """Toast payloads in this repo populate menuGroup.name.
+
+        Reading only menuGroup.category left the category signal dead against the
+        payloads handle_order_completed actually receives, so every item fell
+        through to the keyword scan.
+        """
+        agent = _make_agent()
+        assert (
+            agent.is_wine_item("Caymus", selection={"menuGroup": {"name": "Wine"}})
+            is True
+        )
+        assert (
+            agent.is_wine_item(
+                "Caymus", selection={"menuGroup": {"name": "Wine by the Glass"}}
+            )
+            is True
+        )
+
+    def test_old_world_appellations_resolve_on_the_name_alone(self):
+        """The measured gap: a grape list cannot reach appellation labelling."""
+        for name in (
+            "Edmondo Sarti Barbaresco",
+            "Pace Arneis Roero",
+            "Dettori Vermentino",
+            "Moschioni Friulano",
+            "Tenuta Orestiadi Nero d'Avola",
+            "Billecart-Salmon Blanc de Blancs",
+            "Gran Passaia Super Tuscan",
+            "Domaine Lucien Crochet Sancerre",
+            "Assyrtiko (Santorini)",
+            "House White",
+        ):
+            assert _make_agent().is_wine_item(name) is True, name
 
     def test_keyword_fallback_for_uncategorized(self):
         """No category on selection, but 'chardonnay' in name -> keyword fallback True."""

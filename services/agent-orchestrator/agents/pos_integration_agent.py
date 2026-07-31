@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from uuid import uuid4
@@ -28,6 +29,396 @@ from config.settings import get_settings
 
 logger = None  # Will be set by BaseAgent
 settings = get_settings()
+
+
+# ---------------------------------------------------------------------------
+# Wine identification
+# ---------------------------------------------------------------------------
+# Mirrors apps/api-gateway/src/pos-hub/pos-hub.service.ts token for token, in the
+# same order. That file carries the reasoning: why the category is consulted
+# before the name, why an UNRECOGNISED category falls through to the name scan
+# instead of vetoing it, and why certain good grapes ('pecorino', 'bianco') are
+# deliberately absent because they are more often food.
+#
+# The two ingresses used to disagree about how wine is identified: the NestJS hub
+# scanned names only, this agent scanned category-then-keywords off a shorter
+# list. They now run the same rule off the same tokens, and
+# scripts/test_simulate.py fails if the copies drift apart.
+WINE_CATEGORY_WORDS = (
+    "wine",
+    "wines",
+    "vino",
+    "vini",
+    "vin",
+    "vins",
+    "vinho",
+    "vinhos",
+    "weine",
+    "şarap",
+    "sarap",
+    "şaraplar",
+    "saraplar",
+)
+
+WINE_STYLE_CATEGORY_WORDS = (
+    "champagne",
+    "sparkling",
+    "bubbles",
+    "bubbly",
+    "prosecco",
+    "cava",
+    "rosé",
+    "rose",
+    "rosato",
+    "by the glass",
+    "by the bottle",
+    "btg",
+    "cellar",
+    "sommelier",
+    "somm",
+)
+
+NON_WINE_CATEGORY_WORDS = (
+    "beer",
+    "beers",
+    "draft",
+    "draught",
+    "cider",
+    "seltzer",
+    "kombucha",
+    "cocktail",
+    "cocktails",
+    "mocktail",
+    "spirit",
+    "spirits",
+    "liquor",
+    "whiskey",
+    "whisky",
+    "bourbon",
+    "vodka",
+    "gin",
+    "tequila",
+    "mezcal",
+    "rum",
+    "sake",
+    "water",
+    "soda",
+    "juice",
+    "coffee",
+    "espresso",
+    "tea",
+    "food",
+    "kitchen",
+    "appetizer",
+    "appetizers",
+    "starter",
+    "starters",
+    "snack",
+    "snacks",
+    "salad",
+    "salads",
+    "soup",
+    "soups",
+    "pasta",
+    "pizza",
+    "entree",
+    "entrée",
+    "entrees",
+    "main",
+    "mains",
+    "side",
+    "sides",
+    "dessert",
+    "desserts",
+    "bread",
+    "charcuterie",
+    "cheese",
+    "sushi",
+    "raw bar",
+    "breakfast",
+    "brunch",
+    "lunch",
+    "kids",
+    "retail",
+    "merch",
+)
+
+WINE_WORDS = (
+    "wine",
+    "vino",
+    "vinho",
+    "vin santo",
+    "şarap",
+    "sarap",
+    "rosé",
+    "rose",
+    "rosato",
+    "rosado",
+    "red blend",
+    "white blend",
+    "meritage",
+    "cuvee",
+    "cuvée",
+    "house red",
+    "house white",
+    "cru",
+    "reserva",
+    "riserva",
+    "port",
+    "sherry",
+    "madeira",
+    "winery",
+    "vineyard",
+    "weingut",
+    "domaine",
+    "chateau",
+    "château",
+    "tenuta",
+    "quinta",
+    "vignoble",
+    "champagne",
+    "prosecco",
+    "cava",
+    "brut",
+    "blanc de",
+    "cremant",
+    "crémant",
+    "franciacorta",
+    "lambrusco",
+    "sekt",
+    "chardonnay",
+    "sauvignon",
+    "riesling",
+    "pinot",
+    "merlot",
+    "cabernet",
+    "syrah",
+    "sirah",
+    "shiraz",
+    "malbec",
+    "tempranillo",
+    "nebbiolo",
+    "sangiovese",
+    "grenache",
+    "garnacha",
+    "zinfandel",
+    "viognier",
+    "chenin",
+    "gamay",
+    "semillon",
+    "sémillon",
+    "mourvedre",
+    "mourvèdre",
+    "monastrell",
+    "cinsault",
+    "carignan",
+    "marsanne",
+    "roussanne",
+    "petit verdot",
+    "gewurztraminer",
+    "gewürztraminer",
+    "moscato",
+    "muscat",
+    "carmenere",
+    "carménère",
+    "pinotage",
+    "tannat",
+    "torrontes",
+    "torrontés",
+    "chianti",
+    "barolo",
+    "barbaresco",
+    "montalcino",
+    "brunello",
+    "montepulciano",
+    "vernaccia",
+    "valpolicella",
+    "ripasso",
+    "amarone",
+    "soave",
+    "gavi",
+    "roero",
+    "etna",
+    "taurasi",
+    "orvieto",
+    "frascati",
+    "bolgheri",
+    "morellino",
+    "cannonau",
+    "cerasuolo",
+    "super tuscan",
+    "barbera",
+    "dolcetto",
+    "arneis",
+    "vermentino",
+    "verdicchio",
+    "falanghina",
+    "fiano",
+    "greco",
+    "grechetto",
+    "grillo",
+    "ribolla",
+    "vitovska",
+    "rossese",
+    "malvasia",
+    "trebbiano",
+    "garganega",
+    "cortese",
+    "corvina",
+    "nerello",
+    "mascalese",
+    "aglianico",
+    "avola",
+    "timorasso",
+    "bellone",
+    "friulano",
+    "teroldego",
+    "lagrein",
+    "sagrantino",
+    "negroamaro",
+    "primitivo",
+    "bordeaux",
+    "burgundy",
+    "bourgogne",
+    "chablis",
+    "sancerre",
+    "vouvray",
+    "chinon",
+    "muscadet",
+    "pouilly",
+    "gigondas",
+    "cotes du",
+    "côtes du",
+    "chateauneuf",
+    "châteauneuf",
+    "beaujolais",
+    "macon",
+    "mâcon",
+    "sauternes",
+    "medoc",
+    "médoc",
+    "pauillac",
+    "margaux",
+    "montrachet",
+    "echezeaux",
+    "échezeaux",
+    "corton",
+    "romanee",
+    "romanée",
+    "bonnezeaux",
+    "rioja",
+    "priorat",
+    "ribera",
+    "rueda",
+    "bierzo",
+    "mencia",
+    "mencía",
+    "albarino",
+    "albariño",
+    "alvarinho",
+    "verdejo",
+    "godello",
+    "txakoli",
+    "txakolina",
+    "tinto",
+    "tinta",
+    "tintillo",
+    "douro",
+    "dao",
+    "dão",
+    "alentejo",
+    "touriga",
+    "gruner",
+    "grüner",
+    "veltliner",
+    "blaufrankisch",
+    "blaufränkisch",
+    "zweigelt",
+    "spatlese",
+    "spätlese",
+    "kabinett",
+    "trocken",
+    "assyrtiko",
+    "xinomavro",
+    "agiorgitiko",
+    "agioritiko",
+    "malagousia",
+    "moschofilero",
+    "moscofilero",
+    "monemvasia",
+    "monemvasios",
+    "kidonitsa",
+    "savatiano",
+    "retsina",
+    "santorini",
+    "nemea",
+    "okuzgozu",
+    "öküzgözü",
+    "bogazkere",
+    "boğazkere",
+    "kalecik",
+    "narince",
+    "calkarasi",
+    "çalkarası",
+)
+
+
+def _bounded_matcher(words) -> "re.Pattern[str]":
+    """One alternation per list, compiled once.
+
+    Word boundaries rather than bare substrings: that is what lets short tokens
+    live on the list safely — 'cava' no longer fires on Cavatelli, and 'rose' no
+    longer fires on Rosemary. Python's `\\w` is unicode-aware, which the
+    TypeScript side spells out as `[\\p{L}\\p{N}_]` so the two agree.
+    """
+    return re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(w) for w in words) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+
+
+_WINE_CATEGORY_RE = _bounded_matcher(WINE_CATEGORY_WORDS)
+_WINE_STYLE_CATEGORY_RE = _bounded_matcher(WINE_STYLE_CATEGORY_WORDS)
+_NON_WINE_CATEGORY_RE = _bounded_matcher(NON_WINE_CATEGORY_WORDS)
+_WINE_WORD_RE = _bounded_matcher(WINE_WORDS)
+
+
+def selection_category(selection: Optional[Dict[str, Any]]) -> str:
+    """The category a Toast selection carries, from whichever key holds it.
+
+    Toast payloads in this repo populate `menuGroup.name` (see the fixtures in
+    tests/test_pos_integration_hardening.py and scripts/simulate/payloads.py);
+    some carry `menuGroup.category` as well. Reading only `category` — as this
+    agent did — meant the category signal was silently dead against the payloads
+    the handler actually receives, and every item fell through to the keyword scan.
+    """
+    menu_group = (selection or {}).get("menuGroup") or {}
+    return str(menu_group.get("category") or menu_group.get("name") or "").strip()
+
+
+def classify_wine_category(
+    category: str, wine_categories: Optional[List[str]] = None
+) -> str:
+    """'wine' | 'not_wine' | 'unknown' — signal 1."""
+    value = (category or "").strip()
+    if not value:
+        return "unknown"
+    # An exactly configured category name stays authoritative.
+    if wine_categories and value in wine_categories:
+        return "wine"
+    if _WINE_CATEGORY_RE.search(value):
+        return "wine"
+    if _NON_WINE_CATEGORY_RE.search(value):
+        return "not_wine"
+    if _WINE_STYLE_CATEGORY_RE.search(value):
+        return "wine"
+    return "unknown"
+
+
+def looks_like_wine_name(name: str, words: Optional[List[str]] = None) -> bool:
+    """Signal 2 — the name backstop."""
+    matcher = _WINE_WORD_RE if words is None else _bounded_matcher(words)
+    return bool(matcher.search(name or ""))
 
 
 class POSIntegrationAgent(BaseAgent):
@@ -60,32 +451,17 @@ class POSIntegrationAgent(BaseAgent):
         self.toast_environment = config.get("toast_environment", "sandbox")
         self.mock_mode = config.get("mock_mode", True)
 
-        # Wine detection keywords
-        self.wine_category_keywords = [
-            "wine",
-            "vino",
-            "red wine",
-            "white wine",
-            "sparkling",
-            "champagne",
-            "cabernet",
-            "chardonnay",
-            "pinot",
-            "merlot",
-            "sauvignon",
-            "riesling",
-            "zinfandel",
-            "syrah",
-            "bordeaux",
-            "burgundy",
-            "prosecco",
-            "cava",
-            "rosé",
-            "rose",
-            "dessert wine",
-        ]
+        # Wine name keywords. Now the shared list rather than a shorter local one
+        # that resolved New World varietal labelling and missed roughly two thirds
+        # of an Old World appellation-labelled list. Note that 'sparkling' is NOT
+        # on it: as a NAME token it fires on Sparkling Water, and a food item
+        # resolving as wine inflates depletion for wine that was never poured. It
+        # is a category token instead, where it is safe.
+        self.wine_category_keywords = list(WINE_WORDS)
 
-        # Toast menu category names that indicate wine — category-first detection (BUG-04)
+        # Toast menu category names that indicate wine — category-first detection
+        # (BUG-04). Exact names, kept for tenants configured against them; the
+        # shared token lists handle the general case.
         self.wine_menu_categories = [
             "Wine",
             "Wines",
@@ -385,9 +761,16 @@ class POSIntegrationAgent(BaseAgent):
                 # Check if this is a wine item (BUG-04: pass full selection for category check)
                 is_wine = self.is_wine_item(item_name, selection=selection)
 
-                # HARD-02: Log wine detection decision for auditability
-                category = (selection.get("menuGroup") or {}).get("name", "")
-                confidence = 0.9 if category in self.wine_menu_categories else 0.7
+                # HARD-02: Log wine detection decision for auditability. Resolved
+                # the same way is_wine_item resolves it, so the logged category and
+                # confidence describe the decision that was actually made rather
+                # than a second, differing opinion about it.
+                category = selection_category(selection)
+                decided_by_category = (
+                    classify_wine_category(category, self.wine_menu_categories)
+                    != "unknown"
+                )
+                confidence = 0.9 if decided_by_category else 0.7
                 await self.log_decision(
                     "wine_detection",
                     inputs={
@@ -396,7 +779,11 @@ class POSIntegrationAgent(BaseAgent):
                         "order_guid": order_guid,
                     },
                     output={"is_wine": is_wine},
-                    reasoning="Category match took priority; keyword fallback applied if no category",
+                    reasoning=(
+                        "Category decided it"
+                        if decided_by_category
+                        else "Category absent or unrecognised; name keyword scan decided it"
+                    ),
                     confidence=confidence,
                     restaurant_id=webhook_data.get("restaurant_id"),
                 )
@@ -612,35 +999,40 @@ class POSIntegrationAgent(BaseAgent):
         """
         Check if an item is a wine product.
 
-        Strategy (BUG-04 fix):
-        1. If a Toast selection dict is provided, check menuGroup.category first.
-           Toast categorises wines correctly for named wines (Caymus, Opus One, etc.)
-           that contain no wine keywords in their name.
-        2. Fall back to keyword scan for uncategorised items or when selection is None.
+        Strategy (BUG-04 fix, reconciled with PosHubService.resolveWine):
+        1. If a Toast selection dict is provided, check its menu category first.
+           Toast categorises wines correctly for named wines (Caymus, Opus One,
+           etc.) that contain no wine keywords in their name. Read from
+           menuGroup.category OR menuGroup.name — reading only the former meant
+           the whole signal was dead against the payloads this handler receives.
+        2. Fall back to a keyword scan of the name for uncategorised items or when
+           selection is None.
+
+        A category we do not recognise is NOT treated as a verdict. It falls
+        through to step 2, because real POS menus file wine under headings we will
+        not have seen ('Beverages' being the common one), and calling those 'not
+        wine' undercounts every wine analytic downstream. Only a category that is
+        positively a non-wine family (beer, coffee, pasta, water) stops the scan.
 
         Args:
             item_name: Name of the menu item
-            selection: Full Toast selection dict (optional). If provided, uses
-                       menuGroup.category for detection.
+            selection: Full Toast selection dict (optional). If provided, its
+                       menu category is consulted first.
 
         Returns:
             True if item is a wine, False otherwise
         """
         # Step 1: Category-based detection (accurate for brand-name wines)
         if selection:
-            category = (selection.get("menuGroup") or {}).get("category", "")
-            if category:
-                # When Toast supplies a non-empty category, treat it as authoritative.
-                # A non-wine category (e.g. "Beverages") means definitively not wine;
-                # a wine category (e.g. "Red Wine") means definitively wine.
-                return category in self.wine_menu_categories
+            verdict = classify_wine_category(
+                selection_category(selection), self.wine_menu_categories
+            )
+            if verdict != "unknown":
+                return verdict == "wine"
 
-        # Step 2: Keyword fallback — only reached when category is empty/absent,
-        # meaning Toast did not categorise the item (catches uncategorised wines).
-        item_name_lower = item_name.lower()
-        return any(
-            keyword in item_name_lower for keyword in self.wine_category_keywords
-        )
+        # Step 2: Keyword fallback — reached when the category is empty, absent, or
+        # unrecognised (catches uncategorised wines).
+        return looks_like_wine_name(item_name, self.wine_category_keywords)
 
     # =========================================================================
     # HARD-02: Toast Polling Saga — handles incomplete webhooks with empty items

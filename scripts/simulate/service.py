@@ -160,8 +160,13 @@ class WineList:
     def from_snapshot(cls, items: list[dict[str, Any]]) -> "WineList":
         btg = [w for w in items if w.get("by_glass_price")]
         bottles = [w for w in items if w.get("bottle_price")]
-        if not bottles:
-            raise ValueError("Menu snapshot has no wines with a bottle price")
+        if not btg and not bottles:
+            raise ValueError("Menu snapshot has no priced wines")
+        # A by-the-glass-only snapshot is a real list, not a broken one — the
+        # fine-dining archetype was crawled from a by-the-glass page, and used to
+        # raise here. Such a list pours glasses only; the alternative, reusing the
+        # glass pool as bottles, would sell bottles at a glass price and put a
+        # wrong number in the depletion oracle.
         return cls(btg=btg or bottles, bottles=bottles)
 
 
@@ -242,8 +247,9 @@ def generate_service(
             )
 
         # Wine. Larger parties tip toward bottles; pairs drink by the glass.
+        # A glass-only list has no bottle pool to draw from.
         bottle_bias = 0.22 + 0.11 * party
-        if rng.random() < min(0.85, bottle_bias):
+        if available_bottles and rng.random() < min(0.85, bottle_bias):
             n_bottles = 1 if party <= 4 else rng.choice((1, 1, 2))
             for _ in range(n_bottles):
                 items.append(
