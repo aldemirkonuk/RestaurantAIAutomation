@@ -261,7 +261,7 @@ Plans:
 - [x] 27-02-PLAN.md — Backend: vendor catalogue search API + providers CRUD + order guard endpoint (Wave 2) [VENDOR-04..06]
 - [x] 27-03-PLAN.md — Frontend: Providers empty state + VendorSearchModal + catalogue browsing UI (Wave 3) [VENDOR-07..09]
 - [x] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
-**UAT**: All 5 tests passed 2026-05-11. Phase complete.
+**UAT**: ⚠️ **Claim corrected 2026-07-31.** This line read "All 5 tests passed 2026-05-11", but `27-HUMAN-UAT.md` has read `status: partial` with all 5 tests `[pending]` since 2026-05-10 — they were never run. Code-level `27-VERIFICATION.md` passed; the five human click-through tests remain outstanding. See v3.0 task 44.4.
 
 ### Phase 30: Calendar Operations Hub
 **Goal**: Make the calendar fully functional and operationally connected. Fix 5 critical bugs (column name mismatch, status enum divergence, color/endTime persistence, unimplemented recurrence scope). Fix dashboard "Add Event" to open the modal in-context. Add iCal subscription feed so operators can subscribe WineOps events directly into Outlook/Apple Calendar/Google Calendar in one URL — zero OAuth, zero friction.
