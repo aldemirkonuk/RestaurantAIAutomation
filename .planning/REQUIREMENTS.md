@@ -267,34 +267,34 @@
 - [x] **INFRA-02**: BaseAgent provides `log_decision()` method — persists agent decisions to `decision_log` table with agent_name, decision_type, inputs, reasoning, output, confidence, correlation_id, restaurant_id.
 - [x] **INFRA-03**: Structured JSON logging — all agent logs emitted as JSON with timestamp, level, logger, message, agent_name, correlation_id. `JSONFormatter` class in utils/logger.py.
 - [x] **INFRA-04**: Distributed tracing — correlation_id extracted from incoming messages, propagated to all outgoing publishes. `self._current_correlation_id` set before every `process_message` call.
-- [ ] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
-- [ ] **INFRA-06**: Saga state helpers — `start_saga(saga_type, context, deadline_minutes)`, `advance_saga(saga_id, step, compensation)`, `complete_saga(saga_id)`, `compensate_saga(saga_id, error)`. Backed by `saga_state` PG table.
-- [ ] **INFRA-07**: Transactional outbox table — `outbox` table (event_type, exchange, routing_key, payload, published boolean). Background publisher worker polls unpublished rows and dispatches to RabbitMQ.
-- [ ] **INFRA-08**: Event store table — append-only `event_store` table (aggregate_type, aggregate_id, event_type, payload, sequence_number, correlation_id). Unique constraint on (aggregate_type, aggregate_id, sequence_number).
+- [x] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
+- [x] **INFRA-06**: Saga state helpers — `start_saga(saga_type, context, deadline_minutes)`, `advance_saga(saga_id, step, compensation)`, `complete_saga(saga_id)`, `compensate_saga(saga_id, error)`. Backed by `saga_state` PG table.
+- [x] **INFRA-07**: Transactional outbox table — `outbox` table (event_type, exchange, routing_key, payload, published boolean). Background publisher worker polls unpublished rows and dispatches to RabbitMQ.
+- [x] **INFRA-08**: Event store table — append-only `event_store` table (aggregate_type, aggregate_id, event_type, payload, sequence_number, correlation_id). Unique constraint on (aggregate_type, aggregate_id, sequence_number).
 
 ### Infrastructure — Database Tables (Phase 18)
 
-- [ ] **INFRA-DB-01**: `idempotency_keys` table created via Supabase migration — message_id (PK), agent_name, processed_at, result (JSONB), expires_at (default NOW + 24h). Index on expires_at for cleanup.
-- [ ] **INFRA-DB-02**: `decision_log` table created — id (UUID PK), agent_name, decision_type, inputs (JSONB), reasoning (JSONB), output (JSONB), confidence (FLOAT), correlation_id, restaurant_id (FK), created_at. Indexes on (agent_name, created_at DESC) and (correlation_id).
-- [ ] **INFRA-DB-03**: `outbox` table created — id (BIGSERIAL PK), event_type, exchange, routing_key, payload (JSONB), published (BOOLEAN default FALSE), created_at, published_at. Partial index on (published, created_at) WHERE published = FALSE.
-- [ ] **INFRA-DB-04**: `saga_state` table created — saga_id (UUID PK), saga_type, current_step, status (default 'IN_PROGRESS'), context (JSONB), compensations (JSONB array), started_at, updated_at, deadline_at, error. Index on (status, saga_type).
-- [ ] **INFRA-DB-05**: `event_store` table created — event_id (UUID PK), aggregate_type, aggregate_id (UUID), event_type, payload (JSONB), sequence_number (BIGINT), correlation_id, created_at. Unique on (aggregate_type, aggregate_id, sequence_number). Index on (aggregate_type, aggregate_id, sequence_number).
-- [ ] **INFRA-DB-06**: `dead_letter_queue` table created — id (BIGSERIAL PK), agent_name, original_exchange, original_routing_key, message (JSONB), error, retry_count (INT), created_at, resolved_at, resolved_by.
+- [x] **INFRA-DB-01**: `idempotency_keys` table created via Supabase migration — message_id (PK), agent_name, processed_at, result (JSONB), expires_at (default NOW + 24h). Index on expires_at for cleanup.
+- [x] **INFRA-DB-02**: `decision_log` table created — id (UUID PK), agent_name, decision_type, inputs (JSONB), reasoning (JSONB), output (JSONB), confidence (FLOAT), correlation_id, restaurant_id (FK), created_at. Indexes on (agent_name, created_at DESC) and (correlation_id).
+- [x] **INFRA-DB-03**: `outbox` table created — id (BIGSERIAL PK), event_type, exchange, routing_key, payload (JSONB), published (BOOLEAN default FALSE), created_at, published_at. Partial index on (published, created_at) WHERE published = FALSE.
+- [x] **INFRA-DB-04**: `saga_state` table created — saga_id (UUID PK), saga_type, current_step, status (default 'IN_PROGRESS'), context (JSONB), compensations (JSONB array), started_at, updated_at, deadline_at, error. Index on (status, saga_type).
+- [x] **INFRA-DB-05**: `event_store` table created — event_id (UUID PK), aggregate_type, aggregate_id (UUID), event_type, payload (JSONB), sequence_number (BIGINT), correlation_id, created_at. Unique on (aggregate_type, aggregate_id, sequence_number). Index on (aggregate_type, aggregate_id, sequence_number).
+- [x] **INFRA-DB-06**: `dead_letter_queue` table created — id (BIGSERIAL PK), agent_name, original_exchange, original_routing_key, message (JSONB), error, retry_count (INT), created_at, resolved_at, resolved_by.
 
 ### Bug Fixes — Wave 1 Agents (Phase 19)
 
-- [ ] **BUG-01**: InventoryEngine race condition fixed — `update_inventory_stock` uses optimistic locking with `WHERE version = expected_version` and `SET version = version + 1`. Retry on conflict.
-- [ ] **BUG-02**: InventoryEngine dead code removed — `update_queue` and `batch_size` deleted from __init__.
-- [ ] **BUG-03**: POSIntegrationAgent `hmac.new` replaced with `hmac.HMAC` (deprecated API fix).
-- [ ] **BUG-04**: POSIntegrationAgent wine detection upgraded — Toast menu category matching replaces keyword-only detection. Fallback to keyword for uncategorized items.
-- [ ] **BUG-05**: POSIntegrationAgent signature verification fixed — uses raw payload bytes, not re-serialized `json.dumps(webhook_data)`.
-- [ ] **BUG-06**: POSIntegrationAgent refund logic separated from void logic — refunds handle partial amounts and credit tracking.
-- [ ] **BUG-07**: NotificationAgent rate limit counters persisted in Redis — `INCR wineops:ratelimit:{restaurant_id}:{channel}:hour` with TTL 3600. Survives restarts.
-- [ ] **BUG-08**: NotificationAgent batch processor task reference stored — `self._batch_task = asyncio.create_task(...)` and monitored in health check.
-- [ ] **BUG-09**: ReportingAgent `self.db` → `self.database` fix — prevents runtime crash on report generation.
-- [ ] **BUG-10**: ReportingAgent SMS `channels_used.append("sms")` moved inside if-block — cosmetic fix for accurate reporting.
-- [ ] **BUG-11**: ReportingAgent real inventory + sales reports implemented — queries actual inventory data with stock levels, thresholds, wine details; aggregates pos_webhook_logs for sales.
-- [ ] **BUG-12**: ReportingAgent PDF export implemented — HTML template → PDF via weasyprint with restaurant branding.
+- [x] **BUG-01**: InventoryEngine race condition fixed — `update_inventory_stock` uses optimistic locking with `WHERE version = expected_version` and `SET version = version + 1`. Retry on conflict.
+- [x] **BUG-02**: InventoryEngine dead code removed — `update_queue` and `batch_size` deleted from __init__.
+- [x] **BUG-03**: POSIntegrationAgent `hmac.new` replaced with `hmac.HMAC` (deprecated API fix).
+- [x] **BUG-04**: POSIntegrationAgent wine detection upgraded — Toast menu category matching replaces keyword-only detection. Fallback to keyword for uncategorized items.
+- [x] **BUG-05**: POSIntegrationAgent signature verification fixed — uses raw payload bytes, not re-serialized `json.dumps(webhook_data)`.
+- [x] **BUG-06**: POSIntegrationAgent refund logic separated from void logic — refunds handle partial amounts and credit tracking.
+- [x] **BUG-07**: NotificationAgent rate limit counters persisted in Redis — `INCR wineops:ratelimit:{restaurant_id}:{channel}:hour` with TTL 3600. Survives restarts.
+- [x] **BUG-08**: NotificationAgent batch processor task reference stored — `self._batch_task = asyncio.create_task(...)` and monitored in health check.
+- [x] **BUG-09**: ReportingAgent `self.db` → `self.database` fix — prevents runtime crash on report generation.
+- [x] **BUG-10**: ReportingAgent SMS `channels_used.append("sms")` moved inside if-block — cosmetic fix for accurate reporting.
+- [x] **BUG-11**: ReportingAgent real inventory + sales reports implemented — queries actual inventory data with stock levels, thresholds, wine details; aggregates pos_webhook_logs for sales.
+- [x] **BUG-12**: ReportingAgent PDF export implemented — HTML template → PDF via weasyprint with restaurant branding.
 
 ### Hardening — Wave 1 Level 4 (Phase 20)
 
