@@ -2,7 +2,13 @@
 phase: 36
 slug: testing-foundation-functionality-registry
 status: draft
-nyquist_compliant: false
+nyquist_compliant: false  # STALE — superseded by 36-VERIFICATION.md 2026-07-27
+superseded_by: "36-VERIFICATION.md"
+superseded_note: "6/6 must-haves verified (status: passed). This frontmatter reflects the state at the
+  time of the validation pass and was never refreshed after verification closed the
+  gaps. Left as-is rather than flipped to true: a validation document should record
+  what its own pass found, and rewriting it to match a later verdict would erase the
+  fact that a gap existed. The pointer is the fix, not the value."
 wave_0_complete: false
 created: 2026-07-27
 ---
