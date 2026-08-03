@@ -99,21 +99,25 @@ export function Login() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                className="rounded border-gray-300 text-wine-600 focus:ring-wine-600/30"
-              />
-              <span className="ml-2 text-sm text-gray-600">Remember me</span>
-            </label>
-            <Link
-              to="/forgot-password"
-              className="text-sm font-medium text-wine-600 hover:text-wine-700 transition-colors"
-            >
-              Forgot password?
-            </Link>
-          </div>
+          {/*
+            "Remember me" and "Forgot password?" were removed 2026-07-31 (v3.0 task
+            44.15). Neither did anything, and both promised capability the system
+            does not have:
+
+            - The checkbox had no `checked` and no `onChange` — it was decoration.
+              Binding it would need a variable refresh-token TTL; the backend issues
+              a fixed 7d token (auth.service.ts:378). A bound control that changes
+              nothing is worse than none, because it looks like it works.
+            - "Forgot password?" linked to /forgot-password, which has no route, so
+              the catch-all sent the user back to "/" — a locked-out user clicking
+              the one thing meant to help them got a silent redirect to a page they
+              cannot reach. There is also no password-reset endpoint on the API at
+              all, so the page could not have been built here.
+
+            Restoring them is a feature with a backend prerequisite, tracked
+            separately. Removing them is not a downgrade: nothing was lost except
+            the appearance of a capability.
+          */}
 
           <Button
             type="submit"

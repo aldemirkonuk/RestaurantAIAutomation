@@ -87,27 +87,44 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 
 > ## ⚠️ RE-VERIFICATION REQUIRED BEFORE USING THIS AS A WORK LIST
 >
-> **Audited 2026-07-31 (v3.0 task 44.15). A sample of 6 of the 15 ❌ entries found
-> 4 stale or partly stale — the catalogue describes shipped features as missing.**
-> Working it as a backlog without re-checking each line would rebuild things that
-> already exist.
+> **Audited 2026-07-31 (v3.0 task 44.15). 11 of the 15 ❌ entries were re-checked
+> against current code; 6 are stale or partly stale** — the catalogue describes
+> shipped features as missing. Working it as a backlog without re-checking each
+> line would rebuild things that already exist.
 >
-> | Line | Claim | Verified state |
+> ### Stale — the feature shipped
+>
+> | Line | Claim | Evidence it is wrong |
 > |---|---|---|
-> | 173 | Recommendations cards "entirely read-only — no act/dismiss/snooze" | **STALE.** `analytics/recommendation-actions.service.ts` + migration `20260720120000_recommendation_actions.sql` both exist. |
-> | 151 | `ActiveConversationsPanel` "rendered but has no trigger (unreachable)" | **STALE.** `Orders.tsx:1512` — `onClick={() => setIsActiveConvPanelOpen(true)}`. |
-> | 253 | Login: "no OAuth buttons" | **PARTLY STALE.** OAuth/Google One Tap shipped. "Remember me" is still unbound and `/forgot-password` still routes nowhere — those two hold. |
-> | 187 | Promotions offers "non-interactive (no act/dismiss)" | **PARTLY STALE.** `Promotions.tsx:557` has `onDismiss`; promote/dismiss are wired. Search/sort/pagination claims not re-checked. |
-> | 162 | Menu-scan batch-add "doesn't persist" | **LIKELY STALE.** `lib/menuScannerPersistence.ts` exists and `WineLibrary.tsx` references batch add. Uncommitted work in flight — re-check after it lands. |
-> | 102 | Dashboard profile card "no handler" | **UNVERIFIED.** Could not locate the card; may have moved or been removed. |
+> | 173 | Recommendations "entirely read-only — no act/dismiss/snooze" | `analytics/recommendation-actions.service.ts` + migration `20260720120000` |
+> | 151 | `ActiveConversationsPanel` "rendered but has no trigger (unreachable)" | `Orders.tsx:1512` sets its open state on click |
+> | 249 | `ContributorTable` "⋮ menu + revoke are unwired" | `StudioCertify.tsx:32` defines `handleRevoke`, passed at `:82` |
+> | 122 | Low-stock modal "Reorder buttons are dead" | `Dashboard.tsx:142` comment reads "had no handler at all" — past tense; `reorderPicks` state exists |
 >
-> The remaining 9 ❌ entries and all 9 ⚠️ entries are **unverified**, not confirmed.
+> ### Partly stale — one half shipped, the other half still true
 >
-> **Why this matters more than the individual lines:** this document was cited in
-> the v2.0 audit and in the v3.0 debt register as a 16-item backlog. It is a
-> point-in-time snapshot that was never dated per entry, so age is invisible and
-> every line reads as current. Re-verify against code before acting on any of it,
-> and record the date beside each entry when you do.
+> | Line | Shipped | Still true |
+> |---|---|---|
+> | 253 | OAuth / Google One Tap on login | "Remember me" is unbound; `/forgot-password` routes nowhere |
+> | 187 | Promotions `onDismiss` wired (`Promotions.tsx:557`) | search / sort / pagination not re-checked |
+>
+> ### Appears to still hold (no handler found, but absence is not proof)
+>
+> L118 custom quick actions never rendered · L121 cannot edit/delete dashboard
+> dates · L168 Sommelier per-message Copy/Regenerate · L181 providers notes
+> display-only, no multi-select · L202 calendar "Edit" no-op
+>
+> ### Not re-checked at all
+>
+> L102, L136, L162, L219, and **all 9 ⚠️ entries**. Unverified, not confirmed.
+>
+> ---
+>
+> **The structural problem outlives these lines.** The catalogue carries no
+> per-entry date, so nothing distinguishes "checked yesterday" from "checked in
+> April" and every line reads as current. That is why it was cited as a live
+> 16-item backlog by both the v2.0 audit and the v3.0 debt register. **Record a
+> verified date beside each entry when you re-check it.**
 
 **Status tags used in Part 1:** ✅ works · ⚠️ partial / mocked · ❌ dead button (rendered, no handler) · 🚫 not shipped (built but unrouted).
 
