@@ -298,10 +298,10 @@
 
 ### Hardening — Wave 1 Level 4 (Phase 20)
 
-- [ ] **HARD-01**: InventoryEngine at Level 4 — idempotency via BaseAgent, decision logging for every stock state change, event sourcing (aggregate_type='inventory'), optimistic locking. 15+ integration tests: happy path, idempotency, concurrent updates, delivery, manual correction, edge cases.
-- [ ] **HARD-02**: POSIntegrationAgent at Level 4 — webhook deduplication by (order_guid + event_type), idempotency via BaseAgent, decision logging for wine matching, Toast API polling fallback as saga. 15+ integration tests: webhook happy path, duplicate, non-wine, signature, wine matching, polling fallback.
-- [ ] **HARD-03**: NotificationAgent at Level 4 — delivery tracking table (notification_deliveries), idempotency by event_id, batch processor health monitoring, DLQ for failed notifications. 10+ integration tests: alert routing, rate limiting, delivery tracking, idempotency, channel fallback.
-- [ ] **HARD-04**: ReportingAgent at Level 4 — idempotency keyed by (restaurant_id + report_type + date), decision logging, real report generation, PDF export via weasyprint. 10+ integration tests: scheduled reports, on-demand, idempotency, timezone, PDF output.
+- [x] **HARD-01**: InventoryEngine at Level 4 — idempotency via BaseAgent, decision logging for every stock state change, event sourcing (aggregate_type='inventory'), optimistic locking. 15+ integration tests: happy path, idempotency, concurrent updates, delivery, manual correction, edge cases.
+- [x] **HARD-02**: POSIntegrationAgent at Level 4 — webhook deduplication by (order_guid + event_type), idempotency via BaseAgent, decision logging for wine matching, Toast API polling fallback as saga. 15+ integration tests: webhook happy path, duplicate, non-wine, signature, wine matching, polling fallback.
+- [x] **HARD-03**: NotificationAgent at Level 4 — delivery tracking table (notification_deliveries), idempotency by event_id, batch processor health monitoring, DLQ for failed notifications. 10+ integration tests: alert routing, rate limiting, delivery tracking, idempotency, channel fallback.
+- [x] **HARD-04**: ReportingAgent at Level 4 — idempotency keyed by (restaurant_id + report_type + date), decision logging, real report generation, PDF export via weasyprint. 10+ integration tests: scheduled reports, on-demand, idempotency, timezone, PDF output.
 
 ### Golden Path E2E (Phase 21)
 

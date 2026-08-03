@@ -187,8 +187,13 @@ class TestBUG06RefundLogic:
 
         published_events = []
 
-        async def mock_publish(exchange, routing_key, message):
-            published_events.append(message)
+        # Parameter names match MessageBus.publish(exchange_name, routing_key,
+        # message_body). They are not cosmetic: the agent calls publish() with
+        # keyword arguments, so a stale name here makes the call raise instead of
+        # recording, and the test fails as "0 events published" rather than as a
+        # signature mismatch — which is why this looked like a refund bug.
+        async def mock_publish(exchange_name, routing_key, message_body, **kwargs):
+            published_events.append(message_body)
 
         agent.message_bus = MagicMock()
         agent.message_bus.publish = mock_publish
@@ -229,8 +234,13 @@ class TestBUG06RefundLogic:
         agent = _make_agent()
         published_events = []
 
-        async def mock_publish(exchange, routing_key, message):
-            published_events.append(message)
+        # Parameter names match MessageBus.publish(exchange_name, routing_key,
+        # message_body). They are not cosmetic: the agent calls publish() with
+        # keyword arguments, so a stale name here makes the call raise instead of
+        # recording, and the test fails as "0 events published" rather than as a
+        # signature mismatch — which is why this looked like a refund bug.
+        async def mock_publish(exchange_name, routing_key, message_body, **kwargs):
+            published_events.append(message_body)
 
         agent.message_bus = MagicMock()
         agent.message_bus.publish = mock_publish
