@@ -85,6 +85,30 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 | `Flow` | Multi-step journey across screens |
 | `Scan` | Camera / file / QR / OCR capture |
 
+> ## ⚠️ RE-VERIFICATION REQUIRED BEFORE USING THIS AS A WORK LIST
+>
+> **Audited 2026-07-31 (v3.0 task 44.15). A sample of 6 of the 15 ❌ entries found
+> 4 stale or partly stale — the catalogue describes shipped features as missing.**
+> Working it as a backlog without re-checking each line would rebuild things that
+> already exist.
+>
+> | Line | Claim | Verified state |
+> |---|---|---|
+> | 173 | Recommendations cards "entirely read-only — no act/dismiss/snooze" | **STALE.** `analytics/recommendation-actions.service.ts` + migration `20260720120000_recommendation_actions.sql` both exist. |
+> | 151 | `ActiveConversationsPanel` "rendered but has no trigger (unreachable)" | **STALE.** `Orders.tsx:1512` — `onClick={() => setIsActiveConvPanelOpen(true)}`. |
+> | 253 | Login: "no OAuth buttons" | **PARTLY STALE.** OAuth/Google One Tap shipped. "Remember me" is still unbound and `/forgot-password` still routes nowhere — those two hold. |
+> | 187 | Promotions offers "non-interactive (no act/dismiss)" | **PARTLY STALE.** `Promotions.tsx:557` has `onDismiss`; promote/dismiss are wired. Search/sort/pagination claims not re-checked. |
+> | 162 | Menu-scan batch-add "doesn't persist" | **LIKELY STALE.** `lib/menuScannerPersistence.ts` exists and `WineLibrary.tsx` references batch add. Uncommitted work in flight — re-check after it lands. |
+> | 102 | Dashboard profile card "no handler" | **UNVERIFIED.** Could not locate the card; may have moved or been removed. |
+>
+> The remaining 9 ❌ entries and all 9 ⚠️ entries are **unverified**, not confirmed.
+>
+> **Why this matters more than the individual lines:** this document was cited in
+> the v2.0 audit and in the v3.0 debt register as a 16-item backlog. It is a
+> point-in-time snapshot that was never dated per entry, so age is invisible and
+> every line reads as current. Re-verify against code before acting on any of it,
+> and record the date beside each entry when you do.
+
 **Status tags used in Part 1:** ✅ works · ⚠️ partial / mocked · ❌ dead button (rendered, no handler) · 🚫 not shipped (built but unrouted).
 
 ---
