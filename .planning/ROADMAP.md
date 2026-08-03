@@ -24,7 +24,7 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
 - [x] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers) (completed 2026-04-10)
 - [x] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export) (completed — absorbed into Phase 20 execution)
 - [x] **Phase 20: Wave 1 Level 4 Hardening** — Bring 4 golden path agents from Level 1.5 to Level 4 using new BaseAgent infrastructure: wire idempotency, decision logging, event sourcing, delivery tracking, and write 50+ integration tests across all 4 agents (completed 2026-04-11)
-- [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → ReportingAgent. Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
+- [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → **BufferManager** → InventoryEngine → NotificationAgent. (ReportingAgent is scheduled/on-demand, not part of this chain — see the corrected criterion #2 below.) Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
 - [x] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway (Python + NestJS) + CloudAMQP (RabbitMQ) + Upstash (Redis). 9/9 agents live. (completed + deployed 2026-04-13)
 
 ## Phase Details
@@ -106,7 +106,7 @@ Plans:
 **Requirements**: E2E-v2-01, E2E-v2-02, E2E-v2-03, E2E-v2-04, E2E-v2-05, E2E-v2-06
 **Success Criteria** (what must be TRUE):
   1. FastAPI endpoint `POST /api/v1/pos/webhook/toast` receives webhook and routes to POSIntegrationAgent
-  2. RabbitMQ exchanges configured: pos.events → InventoryEngine, stock.events → NotificationAgent + ReportingAgent
+  2. RabbitMQ exchanges configured: pos.events → **BufferManager** → stock.evaluated → InventoryEngine; stock.events → NotificationAgent. ⚠️ **Corrected 2026-07-31:** this read "pos.events → InventoryEngine, stock.events → NotificationAgent + ReportingAgent". Two errors. BufferManager sits between POS and inventory (it batches sales before evaluating stock), and **ReportingAgent never subscribes to stock.events** — reports are scheduled/on-demand, and wiring them to stock events would emit one report per pour. The code was right; the criterion overstated. Pinned by `tests/test_event_topology.py`.
   3. Mock Toast webhook → wine detected → stock decremented → notification sent: end-to-end in < 5 seconds
   4. Real Toast data: historical orders imported, inventory levels match Toast records
   5. Live webhook forwarding (ngrok → local) processes real orders in real-time
