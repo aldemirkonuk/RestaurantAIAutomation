@@ -97,7 +97,6 @@ CREATE TABLE IF NOT EXISTS conversation_embeddings (
 );
 COMMENT ON TABLE conversation_embeddings IS
     'Stores 768-dim text-embedding-004 vectors for signal messages only (has_signal=true, sensitive=false). Used for pgvector semantic retrieval. HNSW index supports cosine similarity search via match_conversation_embeddings RPC.';
-CREATE INDEX IF NOT EXISTS conversation_embeddings_restaurant_idx ON conversation_embeddings(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_ce_provider ON conversation_embeddings(provider_id);
 CREATE INDEX IF NOT EXISTS idx_ce_restaurant ON conversation_embeddings(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_ce_session ON conversation_embeddings(session_id);
@@ -168,10 +167,6 @@ CREATE INDEX IF NOT EXISTS idx_dlq_restaurant ON event_dead_letters(restaurant_i
 CREATE INDEX IF NOT EXISTS idx_dlq_status_retry ON event_dead_letters(status, next_retry_at)
     WHERE status = ANY (ARRAY['pending'::dlq_status,'retrying'::dlq_status]);
 -- Duplicates of the three above, present in production. See foot of file.
-CREATE INDEX IF NOT EXISTS idx_event_dlq_error_code ON event_dead_letters(error_code);
-CREATE INDEX IF NOT EXISTS idx_event_dlq_restaurant ON event_dead_letters(restaurant_id, failed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_event_dlq_status_retry ON event_dead_letters(status, next_retry_at)
-    WHERE status = ANY (ARRAY['pending'::dlq_status,'retrying'::dlq_status]);
 
 -- --------------------------------------------------------------------------
 -- event_replay_jobs — event replay/reprocessing for recovery and backfill.
@@ -211,9 +206,6 @@ COMMENT ON TABLE event_replay_jobs IS 'Tracks event replay/reprocessing jobs for
 CREATE INDEX IF NOT EXISTS idx_replay_jobs_restaurant ON event_replay_jobs(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_replay_jobs_status ON event_replay_jobs(status)
     WHERE status = ANY (ARRAY['pending'::replay_job_status,'running'::replay_job_status,'paused'::replay_job_status]);
-CREATE INDEX IF NOT EXISTS idx_event_replay_jobs_restaurant ON event_replay_jobs(restaurant_id);
-CREATE INDEX IF NOT EXISTS idx_event_replay_jobs_status ON event_replay_jobs(status)
-    WHERE status = ANY (ARRAY['pending'::replay_job_status,'running'::replay_job_status,'paused'::replay_job_status]);
 
 -- --------------------------------------------------------------------------
 -- event_schema_registry — JSON Schema per event type/version. HAS LIVE DATA
@@ -235,8 +227,6 @@ COMMENT ON TABLE event_schema_registry IS
     'JSON Schema definitions per event type and version for validation';
 CREATE INDEX IF NOT EXISTS idx_schema_registry_active ON event_schema_registry(is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_schema_registry_type ON event_schema_registry(event_type);
-CREATE INDEX IF NOT EXISTS idx_event_schema_registry_active ON event_schema_registry(is_active) WHERE is_active = TRUE;
-CREATE INDEX IF NOT EXISTS idx_event_schema_registry_type ON event_schema_registry(event_type);
 
 -- --------------------------------------------------------------------------
 -- inventory_events — idempotent inventory event log.
@@ -393,7 +383,6 @@ CREATE INDEX IF NOT EXISTS idx_vp_expiry ON vendor_promotions(valid_until) WHERE
 CREATE INDEX IF NOT EXISTS idx_vp_provider_active ON vendor_promotions(provider_id, status) WHERE status::text = 'active';
 CREATE INDEX IF NOT EXISTS idx_vp_restaurant ON vendor_promotions(restaurant_id);
 CREATE INDEX IF NOT EXISTS vendor_promotions_provider_id_idx ON vendor_promotions(provider_id);
-CREATE INDEX IF NOT EXISTS vendor_promotions_restaurant_id_idx ON vendor_promotions(restaurant_id);
 CREATE INDEX IF NOT EXISTS vendor_promotions_status_idx ON vendor_promotions(status);
 CREATE INDEX IF NOT EXISTS vendor_promotions_urgency_idx ON vendor_promotions(urgency_score DESC NULLS LAST);
 
