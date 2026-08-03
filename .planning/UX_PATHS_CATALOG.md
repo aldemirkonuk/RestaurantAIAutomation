@@ -85,46 +85,51 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 | `Flow` | Multi-step journey across screens |
 | `Scan` | Camera / file / QR / OCR capture |
 
-> ## ⚠️ RE-VERIFICATION REQUIRED BEFORE USING THIS AS A WORK LIST
+> ## ⚠️ AUDITED 2026-07-31 — 9 OF 16 CHECKED ENTRIES WERE STALE
 >
-> **Audited 2026-07-31 (v3.0 task 44.15). 11 of the 15 ❌ entries were re-checked
-> against current code; 6 are stale or partly stale** — the catalogue describes
-> shipped features as missing. Working it as a backlog without re-checking each
-> line would rebuild things that already exist.
+> **v3.0 task 44.15.** 16 of the 24 flagged entries (15 ❌, 9 ⚠️) were re-checked
+> against current code. **Nine describe shipped features as broken or missing.**
+> Working this document as a backlog without re-checking each line would rebuild
+> things that already exist.
 >
 > ### Stale — the feature shipped
 >
 > | Line | Claim | Evidence it is wrong |
 > |---|---|---|
-> | 173 | Recommendations "entirely read-only — no act/dismiss/snooze" | `analytics/recommendation-actions.service.ts` + migration `20260720120000` |
-> | 151 | `ActiveConversationsPanel` "rendered but has no trigger (unreachable)" | `Orders.tsx:1512` sets its open state on click |
+> | 173 | Recommendations "entirely read-only — no act/dismiss/snooze" | `recommendation-actions.service.ts` + migration `20260720120000` |
+> | 152 | User menu "Profile / Settings / Help are dead; only Log Out works" | `Header.tsx:421/429/437` navigate to each; `Header.userMenu.test.tsx` has 3 passing tests |
+> | 151 | `ActiveConversationsPanel` "rendered but has no trigger (unreachable)" | `Orders.tsx:1512` sets its open state |
+> | 149 | "⌘K / ESC hints are decorative — no keyboard listener exists" | `CommandProvider.tsx:123` registers a capture-phase `keydown`; `:108` checks meta/ctrl |
+> | 148 | Global search "input is not wired" | `CommandPalette.tsx:69` — `const [query, setQuery] = useState("")` |
 > | 249 | `ContributorTable` "⋮ menu + revoke are unwired" | `StudioCertify.tsx:32` defines `handleRevoke`, passed at `:82` |
-> | 122 | Low-stock modal "Reorder buttons are dead" | `Dashboard.tsx:142` comment reads "had no handler at all" — past tense; `reorderPicks` state exists |
+> | 122 | Low-stock modal "Reorder buttons are dead" | `Dashboard.tsx:142` comment reads "had no handler at all" — past tense |
 >
-> ### Partly stale — one half shipped, the other half still true
+> ### Partly stale — one half shipped, one half real
 >
-> | Line | Shipped | Still true |
+> | Line | Shipped | Was still true |
 > |---|---|---|
-> | 253 | OAuth / Google One Tap on login | "Remember me" is unbound; `/forgot-password` routes nowhere |
-> | 187 | Promotions `onDismiss` wired (`Promotions.tsx:557`) | search / sort / pagination not re-checked |
+> | 253 | OAuth / Google One Tap | "Remember me" unbound and `/forgot-password` routing nowhere — **both since removed, `f94ba88`** |
+> | 187 | Promotions `onDismiss` (`Promotions.tsx:557`) | search / sort / pagination not re-checked |
 >
-> ### Appears to still hold (no handler found, but absence is not proof)
+> ### Appears to still hold — no handler found, but absence is not proof
 >
 > L118 custom quick actions never rendered · L121 cannot edit/delete dashboard
 > dates · L168 Sommelier per-message Copy/Regenerate · L181 providers notes
 > display-only, no multi-select · L202 calendar "Edit" no-op
 >
-> ### Not re-checked at all
+> ### Not re-checked
 >
-> L102, L136, L162, L219, and **all 9 ⚠️ entries**. Unverified, not confirmed.
+> ❌ L102, L136, L162, L219 · ⚠️ L158, L236, L252, L268, L282. **Unverified, not
+> confirmed.**
 >
 > ---
 >
-> **The structural problem outlives these lines.** The catalogue carries no
-> per-entry date, so nothing distinguishes "checked yesterday" from "checked in
+> **The structural problem outlives the individual lines.** This catalogue carries
+> no per-entry date, so nothing distinguishes "checked yesterday" from "checked in
 > April" and every line reads as current. That is why it was cited as a live
-> 16-item backlog by both the v2.0 audit and the v3.0 debt register. **Record a
-> verified date beside each entry when you re-check it.**
+> 16-item backlog by both the v2.0 audit and the v3.0 debt register — and why more
+> than half of what was checked turned out to be already done. **Record a verified
+> date beside each entry when you re-check it.**
 
 **Status tags used in Part 1:** ✅ works · ⚠️ partial / mocked · ❌ dead button (rendered, no handler) · 🚫 not shipped (built but unrouted).
 
