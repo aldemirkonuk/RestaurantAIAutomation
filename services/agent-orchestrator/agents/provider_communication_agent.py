@@ -614,9 +614,9 @@ class ProviderCommunicationAgent(BaseAgent):
             # D-32-07: Auto-send path — publish event for downstream Gmail send
             try:
                 await self.message_bus.publish(
-                    exchange="provider.events",
+                    exchange_name="provider.events",
                     routing_key="provider.draft.auto_approved",
-                    message={
+                    message_body={
                         "conversation_id": conversation_id,
                         "order_id": order_id,
                         "restaurant_id": restaurant_id,

@@ -534,9 +534,9 @@ class POSIntegrationAgent(BaseAgent):
                 }
 
                 await self.message_bus.publish(
-                    exchange="pos.events",
+                    exchange_name="pos.events",
                     routing_key="pos.sale.refunded",
-                    message=event_data,
+                    message_body=event_data,
                 )
                 events_published += 1
 
@@ -560,9 +560,9 @@ class POSIntegrationAgent(BaseAgent):
                     "priority": 7,
                 }
                 await self.message_bus.publish(
-                    exchange="pos.events",
+                    exchange_name="pos.events",
                     routing_key="pos.sale.refunded",
-                    message=event_data,
+                    message_body=event_data,
                 )
 
             self.logger.info(
@@ -601,7 +601,7 @@ class POSIntegrationAgent(BaseAgent):
 
         # Publish to message bus
         await self.message_bus.publish(
-            exchange="pos.events", routing_key="pos.menu.modified", message=event_data
+            exchange_name="pos.events", routing_key="pos.menu.modified", message_body=event_data
         )
 
         return {"status": "success", "action": "sync_triggered"}
@@ -781,7 +781,15 @@ class POSIntegrationAgent(BaseAgent):
                     "restaurant_guid": restaurant_guid,
                     "restaurant_id": restaurant_id,
                     "order_guid": order_guid,
+                    # Same value under both keys. `match_wine_to_library` returns
+                    # a `restaurant_inventory` row id, so `inventory_id` is what it
+                    # actually is — and it is the key BufferManager reads
+                    # (buffer_manager.py:171). Emitting only `wine_id` meant every
+                    # sale was dropped with "Sale event missing inventory_id",
+                    # which is the last reason a POS sale never moved a bottle.
+                    # `wine_id` is kept because other consumers may read it.
                     "wine_id": wine_id,
+                    "inventory_id": wine_id,
                     "wine_name": wine_sale["item_name"],
                     "quantity": wine_sale["quantity"],
                     "price": wine_sale["price"],
@@ -797,9 +805,9 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange="pos.events",
+                exchange_name="pos.events",
                 routing_key="pos.sale.completed",
-                message=event_data,
+                message_body=event_data,
             )
 
             self.logger.debug(f"Published wine sale event for {wine_sale['item_name']}")
@@ -835,7 +843,7 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange="pos.events", routing_key="pos.sale.voided", message=event_data
+                exchange_name="pos.events", routing_key="pos.sale.voided", message_body=event_data
             )
 
             self.logger.debug(f"Published wine void event for {item_name}")
@@ -933,9 +941,9 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange="pos.events",
+                exchange_name="pos.events",
                 routing_key="pos.sync.completed",
-                message=response_data,
+                message_body=response_data,
             )
 
         except Exception as e:

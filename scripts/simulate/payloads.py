@@ -53,6 +53,17 @@ EVENT_ORDER_COMPLETED = "OrderCompleted"
 #: keyword fallback exclusively.
 WINE_CATEGORIES = {"Wine", "Wine by the Glass"}
 
+#: Our category label -> the label `POSIntegrationAgent.wine_menu_categories`
+#: actually accepts (`pos_integration_agent.py:89`). That list contains "Wine" and
+#: "Glass Wine" but NOT "Wine by the Glass", and `is_wine_item` treats a non-empty
+#: category as authoritative — so an unrecognised wine category is read as a
+#: definitive NOT-wine, which is worse than sending none at all. A real restaurant
+#: configuring Toast picks whatever name it likes and hits the same wall.
+AGENT_CATEGORY = {
+    "Wine": "Wine",
+    "Wine by the Glass": "Glass Wine",
+}
+
 
 def canonical_check(check: Check) -> dict[str, Any]:
     """Ingress A payload — `CanonicalCheck`.
@@ -96,8 +107,17 @@ def toast_webhook(check: Check, restaurant_guid: str) -> dict[str, Any]:
         {
             # The handler reads the item name from itemGroup.name. Not displayName.
             "itemGroup": {"name": item.name},
+            # BOTH keys, because the agent reads two different ones off this same
+            # object: `is_wine_item` (:631) checks `menuGroup.category`, while the
+            # decision logger (:390) checks `menuGroup.name`. Sending only `name`
+            # — which is what Toast's real API returns — leaves classification on
+            # the keyword fallback and detected 14 of 123 lines in a live run,
+            # while the decision log simultaneously recorded the correct category.
+            # Filed as a finding; sending both is what makes the pipeline work
+            # against the code as written.
             "menuGroup": {
-                "name": item.category if item.category in WINE_CATEGORIES else item.category
+                "name": item.category,
+                "category": AGENT_CATEGORY.get(item.category, item.category),
             },
             "quantity": item.quantity,
             # CENTS. handle_order_completed divides by 100.
