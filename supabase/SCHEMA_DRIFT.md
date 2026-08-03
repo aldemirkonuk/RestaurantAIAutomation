@@ -23,26 +23,36 @@ change is built on that assumption.
 
 ## Current findings
 
-### 13 ghost tables — live in the database, named in no migration
+### 13 ghost tables — CAPTURED 2026-07-28 ✅
 
-```
-_migrations              event_replay_jobs        negotiation_facts
-conversation_embeddings  event_schema_registry    restaurant_providers
-enrichment_queue         inventory_events         vendor_promotions
-event_dead_letters       keyboard_shortcuts       wine_aliases
-                         manager_preferences
-```
+All 13, plus **4 enums that were also ghosts** (`event_type`, `source_page`,
+`dlq_status`, `replay_job_status` — the drift was never limited to tables), are
+now in `20260731164610_capture_ghost_tables.sql`.
 
-A fresh environment will not have these, so anything depending on them works in
-production and fails locally. `_migrations` is probably a leftover from an older
-tooling choice and may just be droppable; the rest need capturing.
+Every definition was read out of the live catalog — `pg_attribute`,
+`pg_constraint`, `pg_indexes`, `pg_enum` — never inferred from the application
+code that uses these tables. Inferring is how the drift arrived: code shows which
+columns are *written*, never which are NOT NULL, defaulted, generated or
+constrained. The `notifications` table proved the cost of guessing, where three
+NOT NULL columns no code path mentioned were rejecting every insert.
 
-**How to capture one** (the pattern used for `procurement_order_items` in
-`20260727144415_procurement_document_spine.sql`): read its real definition out of
-`information_schema` and `pg_constraint`, write it into a migration as
-`CREATE TABLE IF NOT EXISTS`, which is a no-op where it already stands and
-correct on a fresh database. Do not guess the definition from the code that uses
-it — that is how the drift got here.
+Verified by applying it: a clean no-op against production (`{"success":true}`),
+with the two tables holding live data unchanged — `event_schema_registry` still 9
+rows, `restaurant_providers` still 8.
+
+Two things the capture surfaced that were not in the original finding:
+
+- **FK ordering holds.** All five referenced tables (`events`,
+  `master_wine_library`, `procurement_conversations`, `providers`, `restaurants`)
+  are in the baseline, which runs first — so this migration works on an empty
+  database, not just as a production no-op.
+- **Ten duplicate index pairs**, byte-identical under two names
+  (`idx_dlq_error_code` / `idx_event_dlq_error_code` and nine more), presumably a
+  migration applied twice under different naming conventions. Each costs write
+  throughput on every insert. **Reproduced deliberately**, because this file's
+  contract is "a fresh environment matches production"; dropping them is a
+  separate change that must land in both places at once. Tracked as v3.0 task
+  44.3e.
 
 ### Version skew — fixed 2026-07-27
 
