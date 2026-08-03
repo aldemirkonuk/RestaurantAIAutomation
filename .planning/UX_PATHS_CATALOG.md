@@ -85,10 +85,11 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 | `Flow` | Multi-step journey across screens |
 | `Scan` | Camera / file / QR / OCR capture |
 
-> ## ⚠️ AUDITED 2026-07-31 — 9 OF 16 CHECKED ENTRIES WERE STALE
+> ## ⚠️ AUDITED 2026-07-31 — 13 OF 20 CHECKED ENTRIES WERE STALE
 >
-> **v3.0 task 44.15.** 16 of the 24 flagged entries (15 ❌, 9 ⚠️) were re-checked
-> against current code. **Nine describe shipped features as broken or missing.**
+> **v3.0 task 44.15.** 20 of the 24 flagged entries (15 ❌, 9 ⚠️) were re-checked
+> against current code. **Thirteen describe shipped features as broken or missing** —
+> nearly two thirds of everything checked.
 > Working this document as a backlog without re-checking each line would rebuild
 > things that already exist.
 >
@@ -103,6 +104,10 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 > | 148 | Global search "input is not wired" | `CommandPalette.tsx:69` — `const [query, setQuery] = useState("")` |
 > | 249 | `ContributorTable` "⋮ menu + revoke are unwired" | `StudioCertify.tsx:32` defines `handleRevoke`, passed at `:82` |
 > | 122 | Low-stock modal "Reorder buttons are dead" | `Dashboard.tsx:142` comment reads "had no handler at all" — past tense |
+> | 282 | Settings "Save / toggles are simulated / non-persistent" | `Settings.tsx:850` — `await settingsApi.updateFeatureFlags(updates)` |
+> | 236 | `ReportScheduler` "Save/Generate only `console.log`" | `Communications.tsx:277` — `await scheduleReport({...})`; zero `console.log` in the component |
+> | 268 | "Mark as unread is coming soon" | `Notifications.tsx:405` — "NEW-474: mark back to unread (**was** a disabled 'coming soon' button)" |
+> | 158 | "Add to Calendar quick action → `alert()` stub" | zero `alert(` calls remain in `Dashboard.tsx` |
 >
 > ### Partly stale — one half shipped, one half real
 >
@@ -119,8 +124,9 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 >
 > ### Not re-checked
 >
-> ❌ L102, L136, L162, L219 · ⚠️ L158, L236, L252, L268, L282. **Unverified, not
-> confirmed.**
+> ❌ L136, L162 · ⚠️ L252. Plus L102 and L219, where the claimed controls could not
+> be located at all — they may have been removed, renamed or moved. **Unverified,
+> not confirmed.**
 >
 > ---
 >
