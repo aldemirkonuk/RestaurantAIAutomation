@@ -130,6 +130,14 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 >
 > ---
 >
+> **A third failure mode, beyond staleness: the subject moved.** L136 describes an
+> inventory page with no sorting or selection. That is true of `/inventory-legacy`
+> — but `/inventory` now serves `InventoryCommandPage`, which has both. The entry
+> was never re-pointed when the route changed, so it is simultaneously accurate
+> about a page nobody visits and wrong about the one they do. **The catalogue
+> contains no scoping note naming which inventory page it means.** Check the route,
+> not just the claim.
+>
 > **The structural problem outlives the individual lines.** This catalogue carries
 > no per-entry date, so nothing distinguishes "checked yesterday" from "checked in
 > April" and every line reads as current. That is why it was cited as a live
@@ -191,7 +199,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Row expansion actions: reconcile shadow→live, "Draft PO" → `/orders`, manual adjust (delta + reason + apply), transfer stock between locations, "View ledger".
 - ✅ Cellar Map: select a zone, "Open in table" (applies location filter), "Manage locations".
 - ✅ Receiving Workspace: three-way match (ordered/invoiced/received), price override + reason, rejected qty + reason, unlisted extras, notes, dynamic submit.
-- ❌ No multi-select, no bulk actions, no column-header sorting, no keyboard nav, no right-click menu, no KPI drill-through. Location filter only exposes first 4 locations.  `[⏳ unverified 2026-07-31]`
+- ❌ No multi-select, no bulk actions, no column-header sorting, no keyboard nav, no right-click menu, no KPI drill-through. Location filter only exposes first 4 locations.  `[✅ STALE 2026-07-31 — DESCRIBES THE WRONG PAGE: /inventory now serves InventoryCommandPage, which has column sorting (:627 SORTABLE_COL/applySort), selection (:607), and keydown handling. This entry matches /inventory-legacy, which nothing links to.]`
 - Legacy `pages/Inventory.tsx` still exists with checkboxes + a bulk bar whose buttons have **no handlers**, per-row Pour/Active toggle/Edit/Reconcile/Remove, sortable columns; QR generator is a disabled "coming soon".
 
 ## 5. Orders (`pages/Orders.tsx`, route `/orders`)
@@ -266,7 +274,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Time range 7d/30d/90d; Edit Layout toggle + Arrange Charts; Compare toggle; Export dropdown (CSV/PDF work; Excel/Sheets/Drive "coming soon").
 - ✅ Dashboard grid: drag-reorder + resize in edit mode; per-block grip/settings/hide/remove; add-widget modal; reset layout; persisted to localStorage.
 - ✅ Widget selector, chart config modal, chart arrangement modal, inline block config.
-- ⚠️ AI Command Palette (⌘K within Reports) — mock responses.  `[⏳ unverified 2026-07-31]`
+- ⚠️ AI Command Palette (⌘K within Reports) — mock responses.  `[⏳ could not locate 2026-07-31 — no Command/Palette component under components/reports]`
 - ✅ KPI section (drag reorder, add/edit/delete), KPI spotlight slide-in (Overview/Heatmap/By Wine Type/Export), data tables (sortable + paginated in `DataTableBlock` only), engine insights (recompute, goals), check scanner upload, preview overlay (Esc/Enter/zoom).
 
 ## 14. Documents (`pages/DocumentsPage.tsx`, route `/documents-reports`)
