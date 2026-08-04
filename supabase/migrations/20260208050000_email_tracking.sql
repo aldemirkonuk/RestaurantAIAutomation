@@ -4,7 +4,27 @@
 -- ============================================================================
 
 -- Add threading and email tracking columns to procurement_conversations
+--
+-- `restaurant_id` is a GHOST COLUMN captured here (see supabase/SCHEMA_DRIFT.md).
+-- It exists in the production database because DDL was once applied by hand, and
+-- in no migration at all — while THREE migrations index it (this one at
+-- idx_conversations_restaurant_date, 20260514000000_phase32_schema.sql:34, and
+-- 20260514120000_phase_32_workflow_status.sql:10). A fresh environment therefore
+-- died here with `column "restaurant_id" does not exist`, which is why local
+-- bootstrap was impossible and why a hand-rolled parallel schema looked like the
+-- only option. It is not: capturing the column is the fix.
+--
+-- `IF NOT EXISTS` makes this a no-op against the cloud database, where the column
+-- is already present, and the thing that makes a fresh bootstrap reach the same
+-- schema the cloud has.
 ALTER TABLE procurement_conversations
+    ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    -- Second ghost column, same story: the full-text index below builds on
+    -- `message_text` and nothing ever creates it. The baseline table has
+    -- `content` for the body, so this is the later name for the same idea; both
+    -- are kept because production has both and dropping either is a separate,
+    -- riskier decision than making a fresh database match production.
+    ADD COLUMN IF NOT EXISTS message_text TEXT,
     ADD COLUMN IF NOT EXISTS thread_id UUID,
     ADD COLUMN IF NOT EXISTS message_id VARCHAR(500),
     ADD COLUMN IF NOT EXISTS parent_message_id UUID REFERENCES procurement_conversations(id),
