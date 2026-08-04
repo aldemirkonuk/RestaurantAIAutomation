@@ -317,7 +317,7 @@
 - [x] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
 - [x] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
 - [x] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
-- [ ] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.
+- [x] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency. Built 2026-08-04 as the `business` block of `GET /api/v1/metrics` (`services/agent-orchestrator/api/health_routes.py`), sourced from `inventory_events`, `notification_deliveries`, `generated_reports.generation_time_ms` and `sales_events.created_at→processed_at`. Each metric degrades independently and reports `null` (never `0`) when unread, so a failed query cannot be mistaken for a quiet business. **Verification:** all 12 assertions in `tests/test_business_metrics.py` were executed and passed, but via a standalone harness — `pytest` cannot run in this checkout because the agent-orchestrator venv is gutted (see `SCHEMA_DRIFT.md` note / repo README). Re-run the pytest file once the venv is rebuilt.
 
 ### Deployment (Phase 22)
 

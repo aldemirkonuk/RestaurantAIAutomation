@@ -90,7 +90,7 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 - [ ] OBS-01: Sentry integration for error tracking
 - [ ] OBS-02: Per-agent health dashboard endpoint
 - [ ] OBS-03: Structured JSON log aggregation
-- [ ] OBS-04: Business metrics (stock updates/sec, notification delivery rate)
+- [x] OBS-04: Business metrics (stock updates/sec, notification delivery rate, report generation time, webhook latency) — `business` block of `GET /api/v1/metrics`, built 2026-08-04
 
 **Deployment (DEP)**
 - [ ] DEP-01: Frontend deployed to Vercel
