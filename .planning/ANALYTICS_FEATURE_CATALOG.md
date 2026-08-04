@@ -3,7 +3,21 @@
 **Version:** 1.2  
 **Created:** 2026-07-05 · **Updated:** 2026-07-20  
 **Total features:** 460  
-**Status:** Planning only — not built
+**Status:** ⚠️ PARTLY BUILT — this header said "Planning only — not built" until
+2026-08-04, when the v3.0 triage checked it against the code. The insight engine
+landed in `cebdc17` on **2026-07-21** — the same day Batch 6 was appended to this
+file. Nobody updated the header, so a shipped engine sat behind a "not built" label
+for two weeks.
+
+Built and on `main`: `apps/api-gateway/src/analytics/` — 24 source files, 8 spec
+files. `engine/` carries statistics, regression, forecasting, risk, finance,
+association and inventory-science with tests for each; `insights/` carries a
+563-line compositional `insight-catalog.ts` plus generator, scheduler and
+verbalizer.
+
+Not built: the remaining batches in this file are still a candidate space, not a
+delivered set. **Before planning from this document, verify each batch against
+`insight-catalog.ts` — the header was wrong once already.**
 
 > **v1.1 change:** Added Batch 5 (276–360) — Toast-parity / full-restaurant analytics.
 >

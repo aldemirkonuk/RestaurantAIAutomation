@@ -1,6 +1,14 @@
 # WineOps — `/inventory` SOTA Rebuild Plan
 
-> **Status:** Approved for execution (Phase 0 pending)
+> **Status:** ⚠️ PHASE 1 IS PARTLY LIVE — this header said "Phase 0 pending" until
+> 2026-08-04, when the v3.0 triage checked it. `/inventory` no longer serves the
+> page this plan was written against: `App.tsx:201` routes it to
+> `pages/inventory/command/InventoryCommandPage.tsx`, and the old page is parked at
+> `/inventory-legacy` (`App.tsx:202`), which nothing links to.
+>
+> Phases 2 and 3 (§6, §7) remain unstarted and are the real carry-forward.
+> **Phase 0's "verify ground truth" step is still worth running** — but run it
+> against `InventoryCommandPage`, not the legacy page this plan describes.
 > **Date:** 2026-07-10
 > **Owner:** aldemirkonuk
 > **Sources:** two read-only expert audits (Inventory Systems-Engineering ≈2.6/10; Inventory SOTA/Innovation ≈3.9/10) + direct code verification in this repo.
