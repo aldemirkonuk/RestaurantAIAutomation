@@ -20,6 +20,8 @@ export class MembersService {
     restaurantId: string,
     requiredRole?: "owner" | "manager" | "owner|manager",
   ): Promise<{ role: string }> {
+    let accessRole: string | null = null;
+
     const { data: access } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .select("role")
@@ -28,19 +30,33 @@ export class MembersService {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!access)
+    if (access) {
+      accessRole = access.role;
+    } else {
+      const { data: user } = await this.databaseService.supabase
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", actorUserId)
+        .maybeSingle();
+
+      if (user && user.restaurant_id === restaurantId) {
+        accessRole = user.role || "staff";
+      }
+    }
+
+    if (!accessRole)
       throw new ForbiddenException("Access denied to this restaurant");
 
-    if (requiredRole === "owner" && access.role !== "owner") {
+    if (requiredRole === "owner" && accessRole !== "owner") {
       throw new ForbiddenException("Only owners can perform this action");
     }
-    if (requiredRole === "owner|manager" && access.role === "staff") {
+    if (requiredRole === "owner|manager" && accessRole === "staff") {
       throw new ForbiddenException(
         "Only owners and managers can perform this action",
       );
     }
 
-    return access;
+    return { role: accessRole };
   }
 
   async getMembers(actorUserId: string, restaurantId: string): Promise<any[]> {
@@ -151,7 +167,7 @@ export class MembersService {
     if (selfLeave) {
       await this.assertMembership(actorUserId, restaurantId);
     } else {
-      await this.assertMembership(actorUserId, restaurantId, "owner");
+      await this.assertMembership(actorUserId, restaurantId, "owner|manager");
     }
 
     const { data: targetAccess } = await this.databaseService.supabase
@@ -163,7 +179,37 @@ export class MembersService {
       .maybeSingle();
 
     if (!targetAccess) {
-      throw new NotFoundException("Member not found in this restaurant");
+      // Fallback: check if target user has restaurant_id set in users table
+      const { data: targetUser } = await this.databaseService.supabase
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (!targetUser || targetUser.restaurant_id !== restaurantId) {
+        throw new NotFoundException("Member not found in this restaurant");
+      }
+
+      if (targetUser.role === "owner") {
+        const { count } = await this.databaseService.supabase
+          .from("users")
+          .select("*", { count: "exact", head: true })
+          .eq("restaurant_id", restaurantId)
+          .eq("role", "owner");
+
+        if ((count ?? 0) <= 1) {
+          throw new BadRequestException(
+            "You're the only owner. Transfer ownership or delete the restaurant first.",
+          );
+        }
+      }
+
+      await this.databaseService.supabase
+        .from("users")
+        .update({ restaurant_id: null })
+        .eq("user_id", targetUserId);
+
+      return;
     }
 
     if (targetAccess.role === "owner") {
