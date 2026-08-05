@@ -40,6 +40,8 @@ export class TeamService {
     restaurantId: string,
     required?: "owner" | "manager",
   ): Promise<{ role: Role }> {
+    let accessRole: string | null = null;
+
     const { data: access } = await this.sb
       .from("user_restaurant_access")
       .select("role")
@@ -48,10 +50,24 @@ export class TeamService {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!access)
+    if (access) {
+      accessRole = access.role;
+    } else {
+      const { data: user } = await this.sb
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (user && user.restaurant_id === restaurantId) {
+        accessRole = user.role || "staff";
+      }
+    }
+
+    if (!accessRole)
       throw new ForbiddenException("Access denied to this restaurant");
 
-    const role = access.role as Role;
+    const role = accessRole as Role;
     if (required === "owner" && role !== "owner")
       throw new ForbiddenException("Only owners can perform this action");
     if (required === "manager" && role === "staff")
