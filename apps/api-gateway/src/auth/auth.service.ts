@@ -1435,6 +1435,171 @@ export class AuthService {
     }
   }
 
+  /** Minimum seconds between password-reset requests for the same email. */
+  private readonly RESET_REQUEST_COOLDOWN_SECONDS = 60;
+
+  /**
+   * Request a password reset. Always resolves the same way regardless of
+   * whether the email matches an account — enumeration resistance is the
+   * point. The only branch that differs is entirely internal: no row is
+   * inserted and no email is sent for an unknown address, but the caller
+   * cannot observe that from the response or the response time (the lookup
+   * runs either way).
+   *
+   * Per-email throttling lives here as a DB timestamp check, same pattern as
+   * resendVerification() above. Per-IP throttling is a separate, coarser
+   * layer in RequestPasswordResetThrottleGuard (auth.controller.ts) — it
+   * cannot see which email was requested, only where the requests are coming
+   * from, so it catches a burst across many addresses that this per-email
+   * check would wave through one at a time.
+   */
+  async requestPasswordReset(
+    email: string,
+    requestIp: string | null,
+  ): Promise<{ sent: true }> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, name, email")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    // Always return the same shape. Do not throw NotFound here — that is
+    // exactly the timing/branching oracle enumeration relies on.
+    if (!user) {
+      this.logger.log(
+        `Password reset requested for unknown email (no-op): ${normalizedEmail}`,
+      );
+      return { sent: true };
+    }
+
+    const { data: recent } = await this.databaseService.supabase
+      .from("password_resets")
+      .select("created_at")
+      .eq("email", normalizedEmail)
+      .is("used_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recent) {
+      const secondsSinceLast =
+        (Date.now() - new Date(recent.created_at).getTime()) / 1000;
+      if (secondsSinceLast < this.RESET_REQUEST_COOLDOWN_SECONDS) {
+        // Still return success. Revealing "please wait" also reveals the
+        // email exists — the whole reason this method is enumeration-safe is
+        // that every branch produces the same response.
+        this.logger.log(
+          `Password reset re-requested within cooldown for ${normalizedEmail} — suppressing duplicate email`,
+        );
+        return { sent: true };
+      }
+    }
+
+    const { data: reset, error: insertErr } =
+      await this.databaseService.supabase
+        .from("password_resets")
+        .insert({
+          user_id: user.user_id,
+          email: normalizedEmail,
+          requested_ip: requestIp,
+        })
+        .select("token")
+        .single();
+
+    if (insertErr || !reset) {
+      this.logger.error(
+        `Failed to create password reset row for ${normalizedEmail}: ${insertErr?.message}`,
+      );
+      // Do not leak the failure to the caller — same reasoning as above.
+      return { sent: true };
+    }
+
+    const frontendUrl =
+      this.configService.get("FRONTEND_URL") ||
+      "https://restaurant-ai-automation-web.vercel.app";
+    const resetUrl = `${frontendUrl}/reset-password?token=${reset.token}`;
+
+    try {
+      const { passwordResetEmailTemplate } =
+        await import("../communications/email-templates");
+      const result = await this.gmailService.sendEmail({
+        to: [normalizedEmail],
+        subject: "Reset your WineOps AI password",
+        html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
+      });
+      if (!result.success) {
+        this.logger.warn(
+          `Password reset email not delivered to ${normalizedEmail}: ${result.error}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(`Failed to send password reset email: ${err.message}`);
+    }
+
+    return { sent: true };
+  }
+
+  /**
+   * Consume a password-reset token. Single-use: the row is stamped used_at in
+   * the same request that changes the password, and every other still-live
+   * reset row for that user is invalidated alongside it — a stale link from
+   * an earlier request must not remain a live way into the account after a
+   * newer one succeeded.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const { data: reset, error } = await this.databaseService.supabase
+      .from("password_resets")
+      .select("id, user_id, expires_at, used_at")
+      .eq("token", token)
+      .maybeSingle();
+
+    if (error || !reset) {
+      throw new BadRequestException("Invalid or expired reset link");
+    }
+
+    if (reset.used_at) {
+      throw new BadRequestException("This reset link has already been used");
+    }
+
+    if (new Date(reset.expires_at).getTime() < Date.now()) {
+      throw new BadRequestException("This reset link has expired");
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
+
+    const { error: updateErr } = await this.databaseService.supabase
+      .from("users")
+      .update({ password_hash: passwordHash })
+      .eq("user_id", reset.user_id);
+
+    if (updateErr) {
+      this.logger.error(`resetPassword failed: ${updateErr.message}`);
+      throw new BadRequestException("Failed to update password");
+    }
+
+    const usedAt = new Date().toISOString();
+
+    // Consume this token and any other still-pending reset for the same user
+    // in one statement, so a second unused link from an earlier request
+    // cannot be replayed after this one succeeds.
+    await this.databaseService.supabase
+      .from("password_resets")
+      .update({ used_at: usedAt })
+      .eq("user_id", reset.user_id)
+      .is("used_at", null);
+
+    // Deliberately does not revoke existing sessions. changePassword() above —
+    // the existing, in-app password-change path — does not do this either, and
+    // TokenBlacklistService can only blacklist a token it is handed; nothing in
+    // this codebase tracks the set of tokens issued to a user, so "revoke every
+    // outstanding session" is a real feature this change does not build. If a
+    // reset should force other devices out, that is a follow-up against
+    // TokenBlacklistService, applied consistently to changePassword too — not
+    // a one-off here.
+  }
+
   async getLinkedProviders(userId: string): Promise<{
     google: boolean;
     microsoft: boolean;

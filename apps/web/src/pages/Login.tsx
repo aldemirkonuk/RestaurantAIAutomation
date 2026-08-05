@@ -100,24 +100,27 @@ export function Login() {
           </div>
 
           {/*
-            "Remember me" and "Forgot password?" were removed 2026-07-31 (v3.0 task
-            44.15). Neither did anything, and both promised capability the system
-            does not have:
+            "Remember me" was removed 2026-07-31 (v3.0 task 44.15) and stays
+            removed: it had no `checked`/`onChange`, and binding it would need a
+            variable refresh-token TTL the backend does not have (fixed 7d token,
+            auth.service.ts:378). A bound control that changes nothing is worse
+            than none.
 
-            - The checkbox had no `checked` and no `onChange` — it was decoration.
-              Binding it would need a variable refresh-token TTL; the backend issues
-              a fixed 7d token (auth.service.ts:378). A bound control that changes
-              nothing is worse than none, because it looks like it works.
-            - "Forgot password?" linked to /forgot-password, which has no route, so
-              the catch-all sent the user back to "/" — a locked-out user clicking
-              the one thing meant to help them got a silent redirect to a page they
-              cannot reach. There is also no password-reset endpoint on the API at
-              all, so the page could not have been built here.
-
-            Restoring them is a feature with a backend prerequisite, tracked
-            separately. Removing them is not a downgrade: nothing was lost except
-            the appearance of a capability.
+            "Forgot password?" is restored 2026-08-05 (v3.0 task 20). It now has
+            a real destination: /forgot-password -> POST
+            /auth/request-password-reset -> emailed link -> /reset-password ->
+            POST /auth/reset-password. See password-reset.dto.ts and
+            AuthService#requestPasswordReset for the enumeration-resistance
+            reasoning behind the always-succeeds response.
           */}
+          <div className="flex justify-end -mt-2">
+            <Link
+              to="/forgot-password"
+              className="text-sm font-medium text-wine-600 hover:text-wine-700"
+            >
+              Forgot password?
+            </Link>
+          </div>
 
           <Button
             type="submit"

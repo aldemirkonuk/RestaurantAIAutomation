@@ -7,6 +7,7 @@ import { AuthController } from "./auth.controller";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
+import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { DatabaseModule } from "../database/database.module";
 import { CacheModule } from "../common/cache/cache.module";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
@@ -38,6 +39,7 @@ import { CommunicationsModule } from "../communications/communications.module";
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,
+    PasswordResetThrottleGuard,
     TokenBlacklistService,
     // Google OAuth Strategy - conditionally provided at runtime
     {
