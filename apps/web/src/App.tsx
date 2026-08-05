@@ -2,28 +2,44 @@ import { lazy, Suspense, ComponentType } from 'react'
 
 /**
  * Wraps a dynamic import so that stale-chunk errors (after a new deploy)
- * trigger a one-time page reload instead of crashing the app with
- * "text/html is not a valid JavaScript MIME type".
+ * trigger a one-time page reload instead of crashing the app.
+ * Covers Chromium ("Failed to fetch dynamically imported module"),
+ * Firefox ("error loading dynamically imported module"), and
+ * Safari ("Importing a module script failed").
  */
+function isStaleChunkError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '')
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('text/html') ||
+    lower.includes('failed to fetch dynamically imported module') ||
+    lower.includes('error loading dynamically imported module') ||
+    lower.includes('importing a module script failed') ||
+    lower.includes('loading chunk') ||
+    lower.includes('chunkloaderror')
+  )
+}
+
 function lazyWithRefresh<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>
 ) {
   return lazy(() =>
-    factory().catch((err: Error) => {
-      const isChunkError =
-        err?.message?.includes('text/html') ||
-        err?.message?.includes('Failed to fetch dynamically imported module') ||
-        err?.message?.includes('error loading dynamically imported module')
+    factory()
+      .then((mod) => {
+        // Successful load after a deploy-recovery reload — allow future recoveries.
+        sessionStorage.removeItem('chunk_reload')
+        return mod
+      })
+      .catch((err: Error) => {
+        if (isStaleChunkError(err) && !sessionStorage.getItem('chunk_reload')) {
+          sessionStorage.setItem('chunk_reload', '1')
+          window.location.reload()
+          // Return a never-resolving promise so React doesn't render anything
+          return new Promise<never>(() => {})
+        }
 
-      if (isChunkError && !sessionStorage.getItem('chunk_reload')) {
-        sessionStorage.setItem('chunk_reload', '1')
-        window.location.reload()
-        // Return a never-resolving promise so React doesn't render anything
-        return new Promise<never>(() => {})
-      }
-
-      throw err
-    })
+        throw err
+      })
   )
 }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
