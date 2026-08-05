@@ -133,15 +133,15 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
             exit={{ opacity: 0, scale: 0.95, y: '-48%' }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
           >
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
-              <Dialog.Title className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <div className="relative pb-3 mb-4 border-b border-gray-100 flex items-center justify-center">
+              <Dialog.Title className="text-lg font-semibold text-gray-900 flex items-center justify-center gap-2 text-center">
                 <FileSpreadsheet className="w-5 h-5 text-wine-600" />
                 Import Shift Configurations
               </Dialog.Title>
               <button
                 type="button"
                 onClick={handleClose}
-                className="text-gray-400 hover:text-gray-600 rounded-lg p-1 hover:bg-gray-100 transition-colors"
+                className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 rounded-lg p-1 hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

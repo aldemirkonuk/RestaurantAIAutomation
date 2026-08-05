@@ -746,13 +746,24 @@ export class AuthService {
     restaurantId: string,
     dto: InviteDto,
   ): Promise<object> {
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("restaurant_id, role")
+    const { data: userAccess } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role")
       .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
       .maybeSingle();
-    if (!user || user.restaurant_id !== restaurantId) {
-      throw new ForbiddenException("Access denied to this restaurant");
+
+    if (!userAccess) {
+      // Fallback: check users table if user_restaurant_access row isn't present
+      const { data: user } = await this.databaseService.supabase
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!user || user.restaurant_id !== restaurantId) {
+        throw new ForbiddenException("Access denied to this restaurant");
+      }
     }
 
     const { data: restaurant } = await this.databaseService.supabase
