@@ -12,7 +12,10 @@ import { WebsocketModule } from "./websocket/websocket.module";
 import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { PosHubModule } from "./pos-hub/pos-hub.module";
+import { SimposModule } from "./simpos/simpos.module";
+import { LogsModule } from "./logs/logs.module";
 import { OneTapActionsModule } from "./one-tap-actions/one-tap-actions.module";
 import { ToastModule } from "./toast/toast.module";
 import { EventsModule } from "./events/events.module";
@@ -73,8 +76,11 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     // Feature modules
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
+    VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
+    SimposModule, // Fake POS terminal — signed-webhook-only into PosHubModule
+    LogsModule, // Correlated read-only timeline across POS / stock / docs / agents
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration
     InventoryModule,

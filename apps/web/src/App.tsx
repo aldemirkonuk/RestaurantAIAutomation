@@ -77,6 +77,8 @@ import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
+const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
+const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
 
 // Heavy pages (lazy loaded)
 const Reports = lazyWithRefresh(() => import('./pages/Reports'))
@@ -92,6 +94,8 @@ const Providers = lazyWithRefresh(() => import('./pages/Providers'))
 const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
+const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
+const LogsTimelinePage = lazyWithRefresh(() => import('./pages/LogsTimelinePage'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
 const Calendar = lazyWithRefresh(() => import('./pages/Calendar'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
@@ -101,6 +105,8 @@ const Help = lazyWithRefresh(() => import('./pages/Help'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
+// Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
+const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -148,6 +154,9 @@ function App() {
                 {/* Public: linked from the auth screens and the consent page, so
                     it must be readable before you have an account. */}
                 <Route path="/privacy" element={<Privacy />} />
+                {/* Public vendor catalogue. No auth: this is what a vendor chose
+                    to publish, and our own ingester reads it back as structured data. */}
+                <Route path="/v/:slug" element={<VendorPortal />} />
                 <Route path="/get-started" element={<GetStarted />} />
                 <Route path="/onboarding" element={<Onboarding />} />
 
@@ -190,6 +199,29 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <DoorReceipt />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/*
+                  SimPOS terminal — chrome-free on purpose (decision C26).
+                  A fake POS used to drive real traffic into WineOps; sidebar
+                  and agent chrome would break the terminal illusion. Mapped
+                  to a Vercel subdomain rewrite in production.
+                */}
+                <Route
+                  path="/simpos/:restaurantId"
+                  element={
+                    <ProtectedRoute>
+                      <SimposTerminalPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/simpos/:restaurantId/orders"
+                  element={
+                    <ProtectedRoute>
+                      <SimposOrderLogPage />
                     </ProtectedRoute>
                   }
                 />
@@ -240,6 +272,9 @@ function App() {
                   <Route path="/calendar-classic" element={<Calendar />} />
                   <Route path="/communications" element={<Communications />} />
                   <Route path="/documents-reports" element={<DocumentsPage />} />
+                  <Route path="/receipts" element={<ReceiptsPage />} />
+                  <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
+                  <Route path="/logs" element={<LogsTimelinePage />} />
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/profile" element={<Profile />} />
