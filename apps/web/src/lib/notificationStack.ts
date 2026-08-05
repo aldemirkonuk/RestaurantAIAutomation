@@ -14,8 +14,10 @@ export function extractLowStockCount(n: Notification): number {
 type StackMode = 'max_count' | 'newest'
 
 function normalizeNotificationTitle(title: string): string {
+  // Keep emoji as alternates (not a char class) — multi-codepoint emoji inside
+  // [] trips no-misleading-character-class and matches incorrectly.
   return title
-    .replace(/^[\s\uFE0F\u200D⚠️🚨📦🔔]+/u, '')
+    .replace(/^(?:[\s\uFE0F\u200D]|⚠️|🚨|📦|🔔)+/u, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
