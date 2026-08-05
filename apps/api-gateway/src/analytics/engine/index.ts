@@ -26,6 +26,7 @@ export * as association from "./association";
 export * as compare from "./comparisons";
 export * as linalg from "./linalg";
 export * as pricing from "./pricing-agility";
+export * as costing from "./cost-basis";
 
 // Also re-export the flat surface for ergonomic single-name imports.
 export * from "./statistics";
@@ -37,3 +38,4 @@ export * from "./regression";
 export * from "./association";
 export * from "./comparisons";
 export * from "./pricing-agility";
+export * from "./cost-basis";
