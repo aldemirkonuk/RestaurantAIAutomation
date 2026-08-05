@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -22,7 +23,7 @@ import {
   Plus,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
-import { fetchProviderContacts } from '../../services/api/providers'
+import { fetchProviderContacts, getProviderLocations } from '../../services/api/providers'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 import { useAuth } from '../../contexts/AuthContext'
@@ -218,6 +219,7 @@ function buildInitialLocations(provider: Provider | null): ProviderLocation[] {
 
 export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditProviderModalProps) {
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   const [formData, setFormData] = useState<EditProviderData>({
     id: '',
@@ -285,7 +287,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       setShowCustomInput(false)
       setCustomSpecialtyInput('')
 
-      // Replace placeholder contacts with real ones from the DB
+      // Fetch real contacts & locations from DB
       let aborted = false
       fetchProviderContacts(provider.id)
         .then(dbContacts => {
@@ -311,6 +313,30 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         .catch((err) => {
           const status = (err as any)?.response?.status
           console.warn(`[EditProviderModal] fetchProviderContacts failed (${status ?? 'network'}) — using derived contacts`)
+        })
+
+      getProviderLocations(provider.id)
+        .then(dbLocations => {
+          if (aborted || dbLocations.length === 0) return
+          setFormData(prev => {
+            const locs: ProviderLocation[] = dbLocations.map(l => ({
+              id: l.id,
+              name: l.name,
+              type: (l.type as any) || 'office',
+              address: l.address || '',
+              isPrimary: l.isPrimary ?? false,
+            }))
+            const primaryLoc = locs.find(l => l.isPrimary) || locs[0]
+            return {
+              ...prev,
+              locations: locs,
+              address: primaryLoc && primaryLoc.address ? primaryLoc.address : prev.address,
+            }
+          })
+        })
+        .catch((err) => {
+          const status = (err as any)?.response?.status
+          console.warn(`[EditProviderModal] getProviderLocations failed (${status ?? 'network'}) — using derived locations`)
         })
 
       return () => { aborted = true }
@@ -422,10 +448,15 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   }
 
   const updateLocation = (locationId: string, updates: Partial<ProviderLocation>) => {
-    setFormData(prev => ({
-      ...prev,
-      locations: prev.locations.map(l => l.id === locationId ? { ...l, ...updates } : l),
-    }))
+    setFormData(prev => {
+      const updatedLocations = prev.locations.map(l => l.id === locationId ? { ...l, ...updates } : l)
+      const primaryLoc = updatedLocations.find(l => l.isPrimary)
+      return {
+        ...prev,
+        locations: updatedLocations,
+        address: primaryLoc ? primaryLoc.address : prev.address,
+      }
+    })
   }
 
   const removeLocation = (locationId: string) => {
@@ -435,18 +466,28 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       if (removedWasPrimary && updated.length > 0) {
         updated[0] = { ...updated[0], isPrimary: true }
       }
-      return { ...prev, locations: updated }
+      const primaryLoc = updated.find(l => l.isPrimary)
+      return {
+        ...prev,
+        locations: updated,
+        address: primaryLoc ? primaryLoc.address : prev.address,
+      }
     })
   }
 
   const setPrimaryLocation = (locationId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      locations: prev.locations.map(l => ({
+    setFormData(prev => {
+      const updatedLocations = prev.locations.map(l => ({
         ...l,
         isPrimary: l.id === locationId,
-      })),
-    }))
+      }))
+      const primaryLoc = updatedLocations.find(l => l.isPrimary)
+      return {
+        ...prev,
+        locations: updatedLocations,
+        address: primaryLoc ? primaryLoc.address : prev.address,
+      }
+    })
   }
 
   const toggleSpecialty = (specialty: string) => {
@@ -693,10 +734,26 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
               {/* Quick actions */}
               <div className="mt-auto space-y-1.5">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Actions</p>
-                <button className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    navigate(`/orders?provider=${encodeURIComponent(formData.id)}`)
+                  }}
+                  className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all"
+                >
                   View Orders
                 </button>
-                <button className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (formData.email) {
+                      window.location.href = `mailto:${formData.email}`
+                    }
+                  }}
+                  disabled={!formData.email}
+                  className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-600"
+                >
                   Send Message
                 </button>
               </div>
@@ -776,7 +833,21 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                           <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
                           <PlacesAutocomplete
                             value={formData.address}
-                            onChange={(val) => setFormData({ ...formData, address: val })}
+                            onChange={(val) => {
+                              setFormData(prev => {
+                                const hasPrimary = prev.locations.some(l => l.isPrimary)
+                                const updatedLocs = hasPrimary
+                                  ? prev.locations.map(l => l.isPrimary ? { ...l, address: val } : l)
+                                  : prev.locations.length > 0
+                                    ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: val, isPrimary: true } : l)
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office', address: val, isPrimary: true }]
+                                return {
+                                  ...prev,
+                                  address: val,
+                                  locations: updatedLocs,
+                                }
+                              })
+                            }}
                             onPlaceSelect={(place: PlaceResult) => {
                               const full = [
                                 place.streetAddress,
@@ -787,7 +858,19 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                               ]
                                 .filter(Boolean)
                                 .join(', ')
-                              setFormData((prev) => ({ ...prev, address: full }))
+                              setFormData(prev => {
+                                const hasPrimary = prev.locations.some(l => l.isPrimary)
+                                const updatedLocs = hasPrimary
+                                  ? prev.locations.map(l => l.isPrimary ? { ...l, address: full } : l)
+                                  : prev.locations.length > 0
+                                    ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: full, isPrimary: true } : l)
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office', address: full, isPrimary: true }]
+                                return {
+                                  ...prev,
+                                  address: full,
+                                  locations: updatedLocs,
+                                }
+                              })
                             }}
                             placeholder="Start typing an address…"
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"

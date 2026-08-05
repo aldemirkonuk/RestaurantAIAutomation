@@ -34,6 +34,10 @@ import {
   addProviderContact,
   updateProviderContact,
   deleteProviderContact,
+  getProviderLocations,
+  createProviderLocation,
+  updateProviderLocation,
+  deleteProviderLocation,
 } from '../services/api/providers'
 import { toast } from 'sonner'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
@@ -405,6 +409,42 @@ export function Providers() {
           ? 'Contact API not available — please redeploy the backend'
           : 'Unknown error'
       toast.warning(`Provider saved, but contacts could not be synced. ${reason}`)
+    }
+
+    // ── Step 3: sync provider_locations (decoupled — never blocks the save) ─
+    if (data.locations && data.locations.length > 0) {
+      try {
+        const existingDbLocations = await getProviderLocations(providerId)
+        const existingDbIds = new Set(existingDbLocations.map(l => l.id))
+        const currentRealIds = new Set(
+          data.locations.filter(l => !l.id.startsWith('new-loc-') && !l.id.startsWith('primary-location-')).map(l => l.id)
+        )
+
+        // Delete locations the user removed
+        await Promise.all(
+          existingDbLocations
+            .filter(l => !currentRealIds.has(l.id))
+            .map(l => deleteProviderLocation(providerId, l.id))
+        )
+
+        // Create new locations or update existing ones
+        await Promise.all(
+          data.locations.map(loc => {
+            const payload = {
+              name: loc.name || 'Office',
+              type: loc.type,
+              address: loc.address || '',
+              isPrimary: loc.isPrimary,
+            }
+            if (loc.id.startsWith('new-loc-') || loc.id.startsWith('primary-location-') || !existingDbIds.has(loc.id)) {
+              return createProviderLocation(providerId, payload)
+            }
+            return updateProviderLocation(providerId, loc.id, payload)
+          })
+        )
+      } catch (err: any) {
+        console.error('Location sync failed:', err)
+      }
     }
   }
 
