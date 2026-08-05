@@ -38,6 +38,7 @@ import { useNotifications, useMarkNotificationAsRead, useMarkNotificationAsUnrea
 import { useAuthStore } from '../stores'
 import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
 import type { Notification, NotificationType } from '../services/api/notifications'
+import { collapseStackedNotifications } from '../lib/notificationStack'
 
 type NotificationStatus = 'unread' | 'read'
 type NotificationPriority = 'low' | 'medium' | 'high' | 'critical'
@@ -227,7 +228,8 @@ export function Notifications() {
 
   const filteredNotifications = useMemo(() => {
     const safeNotifications = Array.isArray(notifications) ? notifications : []
-    return safeNotifications.filter(n => {
+    const { items: dedupedNotifications } = collapseStackedNotifications(safeNotifications)
+    return dedupedNotifications.filter(n => {
       const matchesFilter = filter === 'all' || n.status === filter
       const matchesPriority = priorityFilter === 'all' || n.priority === priorityFilter
       const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

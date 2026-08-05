@@ -43,17 +43,19 @@ export class IntegrationsOauthController {
 
     return {
       success: true,
-      integrations: Object.values(INTEGRATION_DEFINITIONS).map((definition) => ({
-        id: definition.id,
-        provider: definition.provider,
-        label: definition.label,
-        providerLabel: definition.providerLabel,
-        description: definition.description,
-        scopes: definition.scopes,
-        notRequested: definition.notRequested,
-        available: availability[definition.id].available,
-        unavailableReason: availability[definition.id].reason ?? null,
-      })),
+      integrations: Object.values(INTEGRATION_DEFINITIONS).map(
+        (definition) => ({
+          id: definition.id,
+          provider: definition.provider,
+          label: definition.label,
+          providerLabel: definition.providerLabel,
+          description: definition.description,
+          scopes: definition.scopes,
+          notRequested: definition.notRequested,
+          available: availability[definition.id].available,
+          unavailableReason: availability[definition.id].reason ?? null,
+        }),
+      ),
     };
   }
 

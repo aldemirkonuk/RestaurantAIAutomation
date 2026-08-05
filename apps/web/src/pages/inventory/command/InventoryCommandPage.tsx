@@ -27,6 +27,9 @@ import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
+import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher'
+import { useAuth } from '../../../contexts/AuthContext'
+import { getInventory } from '../../../services/api/inventory'
 import { toast } from 'sonner'
 import {
   Kpi, StockGauge, StatusChip, AbcBadge, TypeChip,
@@ -80,6 +83,8 @@ export function InventoryCommandPage() {
   } = page
 
   const { locations, setLocations } = useStorageLocations()
+  const { availableRestaurants } = useAuth()
+  const multiLocation = availableRestaurants.length > 1
   const createInventoryItem = useCreateInventoryItem()
   const navigate = useNavigate()
   const searchRef = useRef<HTMLInputElement>(null)
@@ -344,6 +349,46 @@ export function InventoryCommandPage() {
       'Inventory valuation',
     )
 
+  const allLocationsValuationColumns = useMemo(
+    (): TableExportColumn<{ branchName: string; item: InventoryItem }>[] => [
+      { header: 'Location', value: (r) => r.branchName },
+      ...valuationColumns.map((col) => ({
+        header: col.header,
+        value: (r: { branchName: string; item: InventoryItem }) =>
+          typeof col.value === 'function' ? col.value(r.item) : '',
+      })),
+    ],
+    [valuationColumns],
+  )
+
+  const exportAllLocationsValuation = useCallback(
+    async (format: TableExportFormat) => {
+      try {
+        const merged: { branchName: string; item: InventoryItem }[] = []
+        for (const branch of availableRestaurants) {
+          const items = await getInventory(branch.id)
+          for (const raw of items) {
+            merged.push({
+              branchName: branch.name,
+              item: raw as unknown as InventoryItem,
+            })
+          }
+        }
+        await exportTable({
+          format,
+          rows: merged,
+          columns: allLocationsValuationColumns,
+          filename: `inventory-all-locations-${new Date().toISOString().slice(0, 10)}`,
+          title: 'Inventory valuation — all locations',
+        })
+        toast.success(`Exported ${merged.length} rows across ${availableRestaurants.length} locations`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [allLocationsValuationColumns, availableRestaurants],
+  )
+
   const exportCountSheet = (format: TableExportFormat) =>
     runInventoryExport(
       format,
@@ -447,6 +492,7 @@ export function InventoryCommandPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap" data-tour="inventory-actions">
+          <RestaurantBranchSwitcher />
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => setView('table')}
@@ -477,6 +523,16 @@ export function InventoryCommandPage() {
             onExport={exportValuation}
             title="Export inventory valuation"
           />
+          {multiLocation && (
+            <ExportMenu
+              variant="soft"
+              size="sm"
+              label="Export all locations"
+              count={availableRestaurants.length}
+              onExport={exportAllLocationsValuation}
+              title="Export valuation across every branch you can access"
+            />
+          )}
           <button onClick={() => setShowStorageManager(true)} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
             <MapPin className="w-3.5 h-3.5" /> Locations
           </button>

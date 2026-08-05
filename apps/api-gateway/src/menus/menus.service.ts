@@ -142,7 +142,10 @@ export class MenusService {
     // Manager-added rows are always flagged for review, regardless of match.
     await this.dbService.supabase
       .from("menu_items")
-      .update({ status: "flagged", review_notes: "Manually added during review" })
+      .update({
+        status: "flagged",
+        review_notes: "Manually added during review",
+      })
       .eq("id", reviewItem.menuItemId);
 
     if (reviewItem.submissionId) {
@@ -191,7 +194,9 @@ export class MenusService {
       : dto.newValue;
 
     if (isPrice && Number.isNaN(newValueTyped as number)) {
-      throw new BadRequestException(`Invalid numeric value for ${dto.fieldName}`);
+      throw new BadRequestException(
+        `Invalid numeric value for ${dto.fieldName}`,
+      );
     }
 
     const { error: updateErr } = await this.dbService.supabase
@@ -222,7 +227,10 @@ export class MenusService {
           submission_id: menuItem.submission_id,
           actor_id: userId,
           field_name: dto.fieldName,
-          old_value: oldValue !== null && oldValue !== undefined ? String(oldValue) : null,
+          old_value:
+            oldValue !== null && oldValue !== undefined
+              ? String(oldValue)
+              : null,
           new_value: String(newValueTyped),
           reason: "Manager correction during menu import review",
           promotion_status: "pending",
@@ -268,7 +276,12 @@ export class MenusService {
           this.logger.warn(
             `Library resolution failed for "${item.name}" (non-fatal): ${err.message}`,
           );
-          return { item, masterWineId: null, matched: false, libraryTier: null };
+          return {
+            item,
+            masterWineId: null,
+            matched: false,
+            libraryTier: null,
+          };
         }
       }),
     );
@@ -314,7 +327,10 @@ export class MenusService {
 
     // Seed restaurant_inventory (awaited — previously fire-and-forget into a
     // table named "inventory" that does not exist in this schema).
-    const inventoryMap = await this.addToInventory(insertedMenuItems, restaurantId);
+    const inventoryMap = await this.addToInventory(
+      insertedMenuItems,
+      restaurantId,
+    );
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     // Provenance trail for governance (awaited, non-fatal on failure so a
@@ -338,7 +354,9 @@ export class MenusService {
       const menuItem = insertedMenuItems[idx];
       return {
         menuItemId: menuItem?.id,
-        submissionId: menuItem ? submissionMap.get(menuItem.id) ?? null : null,
+        submissionId: menuItem
+          ? (submissionMap.get(menuItem.id) ?? null)
+          : null,
         name: r.item.name,
         producer: r.item.producer ?? null,
         category: r.item.category ?? null,
@@ -529,7 +547,9 @@ export class MenusService {
     // completed_at for anyone who has now finished all three tasks.
     const { data: rows } = await this.dbService.supabase
       .from("user_onboarding_progress")
-      .select("id, menu_uploaded, vendor_added, team_member_invited, completed_at")
+      .select(
+        "id, menu_uploaded, vendor_added, team_member_invited, completed_at",
+      )
       .eq("restaurant_id", restaurantId);
 
     const toComplete = (rows ?? []).filter(
@@ -617,7 +637,10 @@ export class MenusService {
   ): Promise<{ default_threshold_min: number; threshold_configured: true }> {
     const { error } = await this.dbService.supabase
       .from("restaurants")
-      .update({ default_threshold_min: thresholdMin, threshold_configured: true })
+      .update({
+        default_threshold_min: thresholdMin,
+        threshold_configured: true,
+      })
       .eq("id", restaurantId);
 
     if (error) {

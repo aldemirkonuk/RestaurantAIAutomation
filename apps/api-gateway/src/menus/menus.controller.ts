@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -35,7 +43,9 @@ export class MenusController {
   }
 
   @Patch("items/:id")
-  @ApiOperation({ summary: "Apply a manager correction to one menu item field" })
+  @ApiOperation({
+    summary: "Apply a manager correction to one menu item field",
+  })
   async reviewMenuItem(
     @Param("id") id: string,
     @Body() dto: ReviewMenuItemDto,
@@ -71,15 +81,20 @@ export class OnboardingController {
 
   @Patch("threshold")
   @ApiOperation({
-    summary: "Set the restaurant's default low-stock threshold (get-started step 3)",
+    summary:
+      "Set the restaurant's default low-stock threshold (get-started step 3)",
   })
   async setThreshold(@Body() dto: SetThresholdDto) {
-    return this.menusService.setDefaultThreshold(dto.restaurantId, dto.thresholdMin);
+    return this.menusService.setDefaultThreshold(
+      dto.restaurantId,
+      dto.thresholdMin,
+    );
   }
 
   @Get("vendor-email")
   @ApiOperation({
-    summary: "Get (provisioning if needed) this restaurant's inbound vendor email address",
+    summary:
+      "Get (provisioning if needed) this restaurant's inbound vendor email address",
   })
   async getVendorEmail(@CurrentUser() user: { restaurantId: string }) {
     const address = await this.inboundAddress.addressFor(user.restaurantId);

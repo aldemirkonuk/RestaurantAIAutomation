@@ -85,7 +85,10 @@ export class IntegrationsOauthService {
    * Whether a given integration can be offered at all. Surfacing this lets the
    * UI hide connect buttons instead of failing at the end of a consent flow.
    */
-  availability(): Record<IntegrationId, { available: boolean; reason?: string }> {
+  availability(): Record<
+    IntegrationId,
+    { available: boolean; reason?: string }
+  > {
     const result = {} as Record<
       IntegrationId,
       { available: boolean; reason?: string }
@@ -240,7 +243,12 @@ export class IntegrationsOauthService {
     if (params.error) {
       // The user clicking "Deny" lands here; it is a normal outcome.
       const reason = params.error === "access_denied" ? "denied" : params.error;
-      return this.resultUrl(returnBase, "error", reason, stateRow.integration_id);
+      return this.resultUrl(
+        returnBase,
+        "error",
+        reason,
+        stateRow.integration_id,
+      );
     }
 
     if (!params.code || params.provider !== stateRow.provider) {
@@ -252,9 +260,8 @@ export class IntegrationsOauthService {
       );
     }
 
-    const definition = INTEGRATION_DEFINITIONS[
-      stateRow.integration_id as IntegrationId
-    ];
+    const definition =
+      INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
     if (!definition) {
       return this.resultUrl(returnBase, "error", "unknown_integration");
     }
@@ -264,7 +271,9 @@ export class IntegrationsOauthService {
 
       if (!tokens.access_token) {
         throw new Error(
-          tokens.error_description || tokens.error || "No access token returned",
+          tokens.error_description ||
+            tokens.error ||
+            "No access token returned",
         );
       }
 
@@ -575,7 +584,9 @@ export class IntegrationsOauthService {
 
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
-      .select("id, access_token_encrypted, refresh_token_encrypted, token_expires_at")
+      .select(
+        "id, access_token_encrypted, refresh_token_encrypted, token_expires_at",
+      )
       .eq("user_id", userId)
       .eq("integration_id", integrationId)
       .is("revoked_at", null)

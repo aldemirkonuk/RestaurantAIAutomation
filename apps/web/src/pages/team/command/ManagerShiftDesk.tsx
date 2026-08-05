@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog'
+import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { fetchCalendarEvents } from '../../../services/api/calendar'
@@ -375,6 +376,7 @@ export function ManagerShiftDesk() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <RestaurantBranchSwitcher />
           <button onClick={() => setPeopleOpen(true)} className="inline-flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
             <Users className="w-3.5 h-3.5" /> People
           </button>

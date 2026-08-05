@@ -94,6 +94,12 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
+    if (!user.password_hash) {
+      throw new UnauthorizedException(
+        'This account uses Google sign-in. Use the "Sign in with Google" button below.',
+      );
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {

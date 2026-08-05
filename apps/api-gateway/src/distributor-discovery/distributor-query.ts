@@ -59,7 +59,11 @@ export function normalizeBbox(b: {
   maxLat?: number;
 }): { minLng: number; minLat: number; maxLng: number; maxLat: number } | null {
   const { minLng, minLat, maxLng, maxLat } = b;
-  if ([minLng, minLat, maxLng, maxLat].some((v) => typeof v !== "number" || Number.isNaN(v))) {
+  if (
+    [minLng, minLat, maxLng, maxLat].some(
+      (v) => typeof v !== "number" || Number.isNaN(v),
+    )
+  ) {
     return null;
   }
   if (minLng! >= maxLng! || minLat! >= maxLat!) return null;
@@ -68,9 +72,17 @@ export function normalizeBbox(b: {
 
 /** Group flat facet-count rows into the shape the filter rail renders. */
 export function groupFacetCounts(
-  rows: Array<{ facet_kind: string; facet_slug: string; facet_value: string; vendors: number }>,
+  rows: Array<{
+    facet_kind: string;
+    facet_slug: string;
+    facet_value: string;
+    vendors: number;
+  }>,
 ): Record<string, Array<{ slug: string; value: string; vendors: number }>> {
-  const out: Record<string, Array<{ slug: string; value: string; vendors: number }>> = {};
+  const out: Record<
+    string,
+    Array<{ slug: string; value: string; vendors: number }>
+  > = {};
   for (const r of rows ?? []) {
     (out[r.facet_kind] ??= []).push({
       slug: r.facet_slug,

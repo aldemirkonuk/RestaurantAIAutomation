@@ -151,6 +151,11 @@ export function Login() {
             onSuccess={() => navigate(from, { replace: true })}
             onError={setError}
           />
+          <p className="text-center text-xs text-gray-400 leading-relaxed">
+            Email and password sign in to your WineOps account. Google account passwords do not
+            work here — use <span className="font-medium text-gray-500">Sign in with Google</span>{' '}
+            for Google-linked accounts.
+          </p>
         </form>
 
         <div className="mt-6 text-center">

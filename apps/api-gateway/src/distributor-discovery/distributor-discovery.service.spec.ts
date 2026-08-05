@@ -20,7 +20,10 @@ function makeDb(opts: {
       eq: () => chain,
       order: () => chain,
       maybeSingle: () =>
-        Promise.resolve({ data: opts.single === undefined ? null : opts.single, error: null }),
+        Promise.resolve({
+          data: opts.single === undefined ? null : opts.single,
+          error: null,
+        }),
       then: (resolve: any) => resolve({ data: rows[table] ?? [], error: null }),
     };
     return chain;
@@ -111,7 +114,11 @@ describe("DistributorDiscoveryService", () => {
       const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
       const svc = new DistributorDiscoveryService(makeDb({ rpc }));
 
-      await svc.search(RESTAURANT_ID, { minLng: -74.1, minLat: 40.6, maxLng: -73.9 });
+      await svc.search(RESTAURANT_ID, {
+        minLng: -74.1,
+        minLat: 40.6,
+        maxLng: -73.9,
+      });
 
       const args = rpc.mock.calls[0][1];
       expect(args.p_bbox_min_lng).toBeNull();
@@ -145,10 +152,14 @@ describe("DistributorDiscoveryService", () => {
     });
 
     it("rethrows RPC failures rather than returning an empty result", async () => {
-      const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: "boom" } });
+      const rpc = jest
+        .fn()
+        .mockResolvedValue({ data: null, error: { message: "boom" } });
       const svc = new DistributorDiscoveryService(makeDb({ rpc }));
 
-      await expect(svc.search(RESTAURANT_ID, {})).rejects.toMatchObject({ message: "boom" });
+      await expect(svc.search(RESTAURANT_ID, {})).rejects.toMatchObject({
+        message: "boom",
+      });
     });
   });
 
@@ -156,7 +167,9 @@ describe("DistributorDiscoveryService", () => {
     it("raises NotFound for an unknown or inactive distributor", async () => {
       const svc = new DistributorDiscoveryService(makeDb({ single: null }));
 
-      await expect(svc.findById("missing")).rejects.toBeInstanceOf(NotFoundException);
+      await expect(svc.findById("missing")).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it("returns the vendor with its locations, territories and facets", async () => {
@@ -165,9 +178,15 @@ describe("DistributorDiscoveryService", () => {
           single: { id: "v1", name: "Skurnik Wines & Spirits" },
           rows: {
             vendor_locations: [{ id: "l1", kind: "warehouse" }],
-            vendor_service_territories: [{ country: "US", admin_area_code: "NY" }],
+            vendor_service_territories: [
+              { country: "US", admin_area_code: "NY" },
+            ],
             vendor_portfolio_facets: [
-              { facet_kind: "region", facet_slug: "burgundy", facet_value: "Burgundy" },
+              {
+                facet_kind: "region",
+                facet_slug: "burgundy",
+                facet_value: "Burgundy",
+              },
             ],
           },
         }),
@@ -178,7 +197,10 @@ describe("DistributorDiscoveryService", () => {
       expect(detail.vendor).toMatchObject({ name: "Skurnik Wines & Spirits" });
       expect(detail.locations).toHaveLength(1);
       expect(detail.territories).toHaveLength(1);
-      expect(detail.facets.region[0]).toMatchObject({ slug: "burgundy", value: "Burgundy" });
+      expect(detail.facets.region[0]).toMatchObject({
+        slug: "burgundy",
+        value: "Burgundy",
+      });
     });
   });
 
@@ -186,7 +208,12 @@ describe("DistributorDiscoveryService", () => {
     it("groups counts by kind", async () => {
       const rpc = jest.fn().mockResolvedValue({
         data: [
-          { facet_kind: "region", facet_slug: "burgundy", facet_value: "Burgundy", vendors: 4 },
+          {
+            facet_kind: "region",
+            facet_slug: "burgundy",
+            facet_value: "Burgundy",
+            vendors: 4,
+          },
         ],
         error: null,
       });
@@ -194,7 +221,9 @@ describe("DistributorDiscoveryService", () => {
 
       const facets = await svc.facetCounts(RESTAURANT_ID, {});
 
-      expect(facets.region).toEqual([{ slug: "burgundy", value: "Burgundy", vendors: 4 }]);
+      expect(facets.region).toEqual([
+        { slug: "burgundy", value: "Burgundy", vendors: 4 },
+      ]);
     });
   });
 });

@@ -615,7 +615,8 @@ export class InventoryService {
     for (let index = 0; index < dto.items.length; index++) {
       const line = dto.items[index];
       const wineName =
-        line.wineDraft?.name || (line.wineId ? `wine ${line.wineId}` : "unknown");
+        line.wineDraft?.name ||
+        (line.wineId ? `wine ${line.wineId}` : "unknown");
 
       try {
         const resolved = await this.resolveBulkLineWine(line);
@@ -766,8 +767,10 @@ export class InventoryService {
       if (line.providerId) patch.provider_id = line.providerId;
       if (line.storageLocationId !== undefined)
         patch.storage_location_id = line.storageLocationId;
-      if (line.thresholdMin !== undefined) patch.threshold_min = line.thresholdMin;
-      if (line.thresholdMax !== undefined) patch.threshold_max = line.thresholdMax;
+      if (line.thresholdMin !== undefined)
+        patch.threshold_min = line.thresholdMin;
+      if (line.thresholdMax !== undefined)
+        patch.threshold_max = line.thresholdMax;
 
       if (Object.keys(patch).length > 0) {
         const { error: updateError } = await client

@@ -138,9 +138,7 @@ describe("iCal feed structure", () => {
     // property with an empty value, which some clients reject for the whole feed.
     const out = await svc({
       restaurant: { id: "r1", name: "R" },
-      events: [
-        { ...EVENT, description: null, end_time: null, end_date: null },
-      ],
+      events: [{ ...EVENT, description: null, end_time: null, end_date: null }],
     }).getICalFeed("tok");
 
     expect(out).toContain("BEGIN:VEVENT");

@@ -1200,8 +1200,8 @@ export class CalendarService {
       const emptyCal = ical({
         name: "WineOps Calendar",
         // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
-      // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
-      prodId: "//WineOps//Restaurant Calendar//EN",
+        // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
+        prodId: "//WineOps//Restaurant Calendar//EN",
       });
       return emptyCal.toString();
     }
@@ -1220,8 +1220,8 @@ export class CalendarService {
       const emptyCal = ical({
         name: "WineOps Calendar",
         // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
-      // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
-      prodId: "//WineOps//Restaurant Calendar//EN",
+        // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
+        prodId: "//WineOps//Restaurant Calendar//EN",
       });
       return emptyCal.toString();
     }

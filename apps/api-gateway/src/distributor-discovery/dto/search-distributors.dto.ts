@@ -37,7 +37,9 @@ export const FACET_KINDS = [
 ] as const;
 
 /** `kind:slug`, e.g. `region:burgundy`. */
-const FACET_PATTERN = new RegExp(`^(${FACET_KINDS.join("|")}):[a-z0-9][a-z0-9-]{0,63}$`);
+const FACET_PATTERN = new RegExp(
+  `^(${FACET_KINDS.join("|")}):[a-z0-9][a-z0-9-]{0,63}$`,
+);
 
 /** Query strings give us `"a"` for one value and `["a","b"]` for several. */
 const toArray = ({ value }: { value: unknown }): unknown =>
@@ -62,7 +64,9 @@ const toBool = ({ value }: { value: unknown }): unknown =>
  * from the authenticated user instead.
  */
 export class SearchDistributorsDto {
-  @ApiPropertyOptional({ description: "Free-text match on name or wine specialties" })
+  @ApiPropertyOptional({
+    description: "Free-text match on name or wine specialties",
+  })
   @IsString()
   @MaxLength(120)
   @IsOptional()
@@ -80,7 +84,8 @@ export class SearchDistributorsDto {
   territoryOnly?: boolean;
 
   @ApiPropertyOptional({
-    description: "Search origin latitude. Defaults to the restaurant's own location.",
+    description:
+      "Search origin latitude. Defaults to the restaurant's own location.",
   })
   @IsLatitude()
   @IsOptional()
@@ -93,7 +98,10 @@ export class SearchDistributorsDto {
   @Type(() => Number)
   lng?: number;
 
-  @ApiPropertyOptional({ description: "Max distance in metres from the origin.", maximum: 5_000_000 })
+  @ApiPropertyOptional({
+    description: "Max distance in metres from the origin.",
+    maximum: 5_000_000,
+  })
   @IsInt()
   @Min(100)
   @Max(5_000_000)

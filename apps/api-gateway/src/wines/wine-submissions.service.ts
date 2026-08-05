@@ -339,7 +339,7 @@ export class WineSubmissionsService {
     const parsedVintage =
       typeof item.vintage === "string"
         ? parseInt(item.vintage, 10) || null
-        : item.vintage ?? null;
+        : (item.vintage ?? null);
 
     const insertPayload = {
       wine_id: this.generateWineId(),
