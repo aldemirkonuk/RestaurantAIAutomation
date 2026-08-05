@@ -1,5 +1,40 @@
 # Schema drift — findings and how to check
 
+> **RESOLVED 2026-08-05 by a production baseline. This file is now history.**
+>
+> The findings below were correct but understated. Measured rather than counted
+> by hand, the drift was:
+>
+> | | |
+> |---|---|
+> | ghost tables (in production, created by no migration) | **27** (this file guessed 13) |
+> | ghost columns | **403** — 37 on `restaurant_inventory` alone |
+> | ghost functions (business logic with no source in the repo) | **13** |
+> | dead tables (migrations create them, production never had them) | **23** |
+>
+> Root cause was structural, not carelessness: the repo ran **two migration
+> systems**. `services/database/migrations/` created tables that
+> `supabase/migrations/` then altered, and only the latter is applied by
+> `supabase db reset` and the cloud project. A fresh database could not be built
+> at all — it died one missing object at a time.
+>
+> **What replaced it.** `supabase/migrations/20260805000000_baseline_from_production.sql`
+> is a `pg_dump` of production: 172 tables, 526 indexes, 43 functions, 44
+> triggers, 16 views, 57 RLS policies. A fresh `supabase db reset` now reproduces
+> production exactly — verified at 2673 columns on both sides, zero differences.
+> The 111 superseded files are in `supabase/migrations_archive/`, the 16 legacy
+> ones in `services/database/migrations_archive/`, and all of them in git history.
+>
+> **What stops it returning.** `scripts/check_schema_parity.sh` and the
+> `schema-parity` workflow rebuild from migrations and diff against remote on
+> every push and nightly. Hand-applied DDL now fails a build.
+>
+> Per-object detail as it stood: `.planning/SCHEMA_DRIFT_INVENTORY.txt`.
+>
+> The advice below — *"read the migrations" stops being a safe way to learn the
+> schema* — is exactly right, and is why the baseline was copied from production
+> rather than reconstructed by hand.
+
 **Last checked:** 2026-07-27 against project `exzueerziesmczwlhomd`.
 
 ## Why this file exists

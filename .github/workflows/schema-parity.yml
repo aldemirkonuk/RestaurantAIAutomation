@@ -1,0 +1,74 @@
+name: Schema parity
+
+# A fresh database built from migrations must equal the remote one.
+#
+# This exists because of what was measured on 2026-08-05: production had 27
+# tables, 403 columns and 13 functions that no migration created, because DDL had
+# been applied by hand over months. restaurant_inventory alone carried 37 such
+# columns, and the 13 functions were business logic with no source in the repo —
+# calculate_sales_velocity, resolve_sku_to_inventory — which would have vanished
+# silently had the database ever been rebuilt. A fresh `supabase db reset` could
+# not complete at all.
+#
+# The baseline migration cleaned that up once. This job is what keeps it clean:
+# it rebuilds from migrations and diffs against remote, so the next hand-applied
+# ALTER fails a pull request instead of going unnoticed for a year.
+#
+# Read-only against remote. It never writes to either database.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Drift is usually introduced outside a PR — someone fixing production live —
+  # so a daily run is what actually catches it.
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  parity:
+    name: Fresh database equals remote
+    runs-on: ubuntu-latest
+    # Without the connection secret this job can only ever be vacuously green,
+    # and a vacuously green check is worse than no check.
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local stack
+        run: supabase start
+
+      - name: Rebuild local database from migrations only
+        # If this step fails, migrations cannot build a database — exactly the
+        # condition that made local development impossible before the baseline.
+        run: supabase db reset --no-seed
+
+      - name: Compare against remote
+        env:
+          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          if [ -z "$SUPABASE_DIRECT_CONNECTION_STRING" ]; then
+            echo "::error::SUPABASE_DIRECT_CONNECTION_STRING secret is not set."
+            echo "::error::Without it this check cannot compare anything and would pass for the wrong reason."
+            exit 1
+          fi
+          ./scripts/check_schema_parity.sh
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Local and remote schemas disagree."
+          echo "::notice::Columns/functions only in REMOTE were applied by hand — capture them"
+          echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
+          echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
+          echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
