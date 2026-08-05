@@ -237,6 +237,12 @@ export class MembersService {
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }
+
+    // Also clear the legacy restaurant_id in users table just in case
+    await this.databaseService.supabase
+      .from("users")
+      .update({ restaurant_id: null })
+      .eq("user_id", targetUserId);
   }
 
   async addMember(
