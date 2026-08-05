@@ -4,14 +4,16 @@ Dry run is the default and is genuinely side-effect-free — it opens no socket.
 builds every payload, computes every signature, and reports what it would have
 sent, so the whole encoding path is exercisable with no infrastructure running.
 
-Signing is real. `ToastAdapter.verify_webhook` fails OPEN when no secret is
-configured, so an unsigned simulator would pass and leave the HMAC path untested
-forever. We compute the signature the adapter's own algorithm computes —
-`hmac_sha256(secret, raw_body).hexdigest()`, compared case-insensitively against
-the `Toast-Signature` header — over the EXACT bytes we put on the wire. Re-serialising
-JSON between signing and sending changes spacing and key order and produces a
-valid-looking signature that fails, which is the bug BUG-05 was filed for on the
-receiving side.
+Signing is real for both ingresses this bridge drives. `ToastAdapter
+.verify_webhook` and `PosHubService.verifyWebhookSignature` both fail CLOSED
+when no secret is configured (the former did not always — see decision B16 in
+`hmac_sha256_hex`'s docstring — an earlier version of this file relied on that
+fail-open behaviour, which is exactly the kind of thing that stops being true
+without warning). `assert_signing_configured` refuses `--apply` outright rather
+than let every request in a run 401 silently. Signatures are computed over the
+EXACT bytes put on the wire — re-serialising JSON between signing and sending
+changes spacing and key order and produces a valid-looking signature that fails,
+which is the bug BUG-05 was filed for on the receiving side.
 """
 
 from __future__ import annotations
@@ -48,11 +50,16 @@ STOCK_PATH = "/api/v1/pos/webhook/toast"
 MAPPINGS_PATH = API_PREFIX + "/pos-hub/mappings/{restaurant_id}"
 
 
-def sign_toast(secret: str, body: bytes) -> str:
-    """Reproduce ToastAdapter.verify_webhook's algorithm exactly.
+def hmac_sha256_hex(secret: str, body: bytes) -> str:
+    """HMAC-SHA256 hex digest, matching both verifiers this bridge signs for.
 
-    That method compares `hmac.new(secret, raw, sha256).hexdigest()` against
-    `signature.lower()`, so a lowercase hex digest is what it expects.
+    `ToastAdapter.verify_webhook` (Python) does `hmac.new(secret, raw,
+    sha256).hexdigest()` and lowercases before comparing. `PosHubService
+    .verifyWebhookSignature` (TypeScript) does `crypto.createHmac("sha256",
+    secret).update(rawBody).digest("hex")` compared via `timingSafeEqual`.
+    Same algorithm, different header and different secret — kept as one
+    function because the two verifiers agreeing on the primitive is the whole
+    reason a single sim can drive both ingresses.
     """
     return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
@@ -88,6 +95,11 @@ class BridgeConfig:
     analytics_base: str = "http://localhost:3001"
     stock_base: str = "http://localhost:8000"
     toast_secret: str = ""
+    #: HMAC key for X-Pos-Hub-Signature on the analytics/stock-depletion
+    #: ingress. Distinct from toast_secret — different header, different
+    #: verifier (PosHubService vs ToastAdapter), coincidentally the same
+    #: algorithm.
+    pos_hub_secret: str = ""
     timeout: float = 10.0
     #: "both" | "analytics" | "stock"
     ingress: str = "both"
@@ -136,9 +148,42 @@ class BridgeConfig:
                     "real deployment (see the 2026-08-05 incident note on this class)."
                 )
 
+    def assert_signing_configured(self) -> None:
+        """Refuse to apply against a fail-closed ingress with no secret.
+
+        Both verifiers reject an unsigned request outright — `PosHubService
+        .verifyWebhookSignature` (decision B17/B28) and, as of decision B16,
+        `ToastAdapter.verify_webhook` too (it used to fail OPEN; a missing
+        secret now gets every request rejected instead of silently accepted).
+        Posting anyway would burn every request in the run on a guaranteed
+        401-equivalent with nothing to show for it. Raising up front turns that
+        into one clear error instead of N confusing failures.
+        """
+        if not self.apply:
+            return
+        if self.wants("analytics") and not self.pos_hub_secret:
+            raise UnsignedApplyRefusedError(
+                "--apply refused: no pos_hub_secret configured (or "
+                "$POS_HUB_WEBHOOK_SECRET), and PosHubService.verifyWebhookSignature "
+                "fails closed without one — every request would be rejected. Pass "
+                "--pos-hub-secret, or run with --ingress stock to skip this side."
+            )
+        if self.wants("stock") and not self.toast_secret:
+            raise UnsignedApplyRefusedError(
+                "--apply refused: no toast_secret configured (or "
+                "$TOAST_WEBHOOK_SECRET), and ToastAdapter.verify_webhook fails "
+                "closed without one (decision B16) — every request would be "
+                "rejected. Pass --toast-secret, or run with --ingress analytics "
+                "to skip this side."
+            )
+
 
 class RemoteTargetRefusedError(RuntimeError):
     """Raised when --apply would post to a non-loopback host without --allow-remote."""
+
+
+class UnsignedApplyRefusedError(RuntimeError):
+    """Raised when --apply would post to a fail-closed ingress with no secret."""
 
 
 class Bridge:
@@ -146,6 +191,7 @@ class Bridge:
 
     def __init__(self, config: BridgeConfig) -> None:
         config.assert_targets_are_safe()
+        config.assert_signing_configured()
         self.config = config
         self.analytics = IngressResult(
             ingress="analytics",
@@ -157,6 +203,7 @@ class Bridge:
         )
         self.mappings: IngressResult | None = None
         self._unsigned_warned = False
+        self._analytics_unsigned_warned = False
 
     # -- transport ---------------------------------------------------------
 
@@ -218,6 +265,15 @@ class Bridge:
     # -- per ingress -------------------------------------------------------
 
     def send_analytics(self, check: Check) -> None:
+        """Ingress A — also the single POS door for stock, per the SimPOS
+        testbed plan (decision B13): closed checks deplete here via
+        apply_stock_movement/record_glass_pour, resolved through
+        pos_item_mappings. `PosHubService.verifyWebhookSignature` fails CLOSED
+        when `POS_HUB_WEBHOOK_SECRET` is unset (decision B17/B28) and requires
+        HMAC-SHA256 hex of the raw body in `X-Pos-Hub-Signature` — same shape as
+        Toast's signing, different secret and header name, so it is signed the
+        same way `send_stock` signs for Toast rather than left bare.
+        """
         result = self.analytics
         if not self.config.wants("analytics"):
             result.skipped += 1
@@ -225,12 +281,23 @@ class Bridge:
         # The hub accepts a single check or a list; one per request keeps a failure
         # attributable to a specific check.
         payload = canonical_check(check)
+        body = _encode(payload)
+        headers: dict[str, str] = {}
+        if self.config.pos_hub_secret:
+            headers["X-Pos-Hub-Signature"] = hmac_sha256_hex(self.config.pos_hub_secret, body)
+        elif not self._analytics_unsigned_warned:
+            self._analytics_unsigned_warned = True
+            result.errors.append(
+                "POS_HUB_WEBHOOK_SECRET not set. Dry run only — nothing is sent — but "
+                "note that --apply would refuse to run at all (assert_signing_configured), "
+                "since the hub fails CLOSED without it."
+            )
         if result.sample_payload is None:
             result.sample_payload = payload
         if not self.config.apply:
             result.skipped += 1
             return
-        self._post(result.url, _encode(payload), {}, result)
+        self._post(result.url, body, headers, result)
 
     def send_stock(self, check: Check) -> None:
         result = self.stock
@@ -242,12 +309,13 @@ class Bridge:
         body = _encode(payload)
         headers: dict[str, str] = {}
         if self.config.toast_secret:
-            headers["Toast-Signature"] = sign_toast(self.config.toast_secret, body)
+            headers["Toast-Signature"] = hmac_sha256_hex(self.config.toast_secret, body)
         elif not self._unsigned_warned:
             self._unsigned_warned = True
             result.errors.append(
-                "TOAST_WEBHOOK_SECRET not set — the adapter fails open, so this run "
-                "does NOT exercise signature verification. Set it to test that path."
+                "TOAST_WEBHOOK_SECRET not set. Dry run only — nothing is sent — but "
+                "note that --apply would refuse to run at all (assert_signing_configured), "
+                "since the adapter fails CLOSED without it as of decision B16."
             )
         if result.sample_payload is None:
             result.sample_payload = payload
