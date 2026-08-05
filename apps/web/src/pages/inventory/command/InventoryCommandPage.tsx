@@ -83,11 +83,16 @@ export function InventoryCommandPage() {
   } = page
 
   const { locations, setLocations } = useStorageLocations()
-  const { availableRestaurants } = useAuth()
+  const { availableRestaurants, refreshBranches } = useAuth()
   const multiLocation = availableRestaurants.length > 1
   const createInventoryItem = useCreateInventoryItem()
   const navigate = useNavigate()
   const searchRef = useRef<HTMLInputElement>(null)
+
+  // Re-fetch branches on inventory mount so the switcher appears after locations are linked
+  useEffect(() => {
+    void refreshBranches()
+  }, [refreshBranches])
 
   const [view, setView] = useState<'table' | 'map'>('table')
   const [sort, setSort] = useState<SortKey>('runway')
