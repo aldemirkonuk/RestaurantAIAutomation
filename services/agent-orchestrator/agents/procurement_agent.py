@@ -162,9 +162,26 @@ class ProcurementAgent(BaseAgent):
                 self.logger.error(f"Inventory not found: {inventory_id}")
                 return
 
-            primary_provider_id = manual_provider_id or inventory.get(
-                "primary_provider_id"
+            # The column is `provider_id`. `primary_provider_id` does not exist on
+            # restaurant_inventory in any environment, so this lookup returned None
+            # for EVERY wine and procurement could never be initiated at all — the
+            # failure surfaced as `get_provider(None)` crashing on a cache key.
+            # It stayed invisible because local databases were hand-built and never
+            # had the real column set either. `primary_provider_id` is kept as a
+            # fallback in case some row somewhere carries it.
+            primary_provider_id = (
+                manual_provider_id
+                or inventory.get("provider_id")
+                or inventory.get("primary_provider_id")
             )
+            if not primary_provider_id:
+                self.logger.error(
+                    "No provider on inventory %s (%s) — cannot reorder",
+                    inventory_id,
+                    wine_name,
+                )
+                return
+
             provider = await self.database.get_provider(primary_provider_id)
 
             if not provider:

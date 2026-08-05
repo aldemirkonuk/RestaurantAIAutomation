@@ -578,6 +578,13 @@ class BaseRepository(ABC, Generic[ModelT]):
         use_cache: bool = True,
     ) -> Optional[ModelT]:
         """Get entity by ID with multi-level caching"""
+        # A missing id is a legitimate "not found", not a crash. Without this,
+        # `_cache_key` raises TypeError joining None, and the traceback names the
+        # cache layer rather than the caller that had no id — which is how a
+        # missing provider on an inventory row presented as a caching bug.
+        # Every caller already handles a None return.
+        if not id:
+            return None
         cache_key = self._cache_key("id", id)
 
         # L1: Local cache
@@ -898,9 +905,7 @@ class InventoryRepository(BaseRepository[InventoryItem]):
             # Token containment catches "massolino barbera d alba glass" against
             # "barbera d alba", where raw ratio is dragged down by the extra words.
             tokens = set(combined.split())
-            overlap = (
-                len(target_tokens & tokens) / len(tokens) if tokens else 0.0
-            )
+            overlap = len(target_tokens & tokens) / len(tokens) if tokens else 0.0
             score = max(ratio, overlap)
 
             if score > best_score:

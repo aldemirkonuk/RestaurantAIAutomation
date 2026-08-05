@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from scripts.synth.ids import sim_org_id, sim_restaurant_id, sim_slug
 from scripts.synth.seed import build_seed_plan
@@ -49,10 +48,18 @@ def test_build_seed_plan_dry_run_covers_synth03_surfaces():
     assert tables["menu_items"]["row_count"] >= 1
     # Inventory/library are unique-by-signature_hash; menu_items keep 1:1 snapshot lines
     assert tables["restaurant_inventory"]["row_count"] >= 1
-    assert tables["restaurant_inventory"]["row_count"] <= tables["menu_items"]["row_count"]
+    assert (
+        tables["restaurant_inventory"]["row_count"] <= tables["menu_items"]["row_count"]
+    )
     # Library ALWAYS planned (W6 lock) — one provisional wine per unique signature
-    assert tables["master_wine_library"]["row_count"] == tables["restaurant_inventory"]["row_count"]
-    assert tables["master_wine_library_submissions"]["row_count"] == tables["master_wine_library"]["row_count"]
+    assert (
+        tables["master_wine_library"]["row_count"]
+        == tables["restaurant_inventory"]["row_count"]
+    )
+    assert (
+        tables["master_wine_library_submissions"]["row_count"]
+        == tables["master_wine_library"]["row_count"]
+    )
     assert tables["sim_ground_truth_runs"]["row_count"] == 1
     assert tables["sim_ground_truth_facts"]["row_count"] >= 6
 
@@ -68,7 +75,10 @@ def test_build_seed_plan_dry_run_covers_synth03_surfaces():
 
     # Provisional wine UUID5 sim.wine.* + source=sim
     wine = plan["samples"]["master_wine_library"][0]
-    assert wine.get("source") == "sim" or (wine.get("data_enrichment") or {}).get("source") == "sim"
+    assert (
+        wine.get("source") == "sim"
+        or (wine.get("data_enrichment") or {}).get("source") == "sim"
+    )
     assert wine["id"]  # deterministic uuid string
 
     # Roster roles
@@ -82,7 +92,9 @@ def test_build_seed_plan_dry_run_covers_synth03_surfaces():
 
 
 def test_build_seed_plan_respects_overrides():
-    plan = build_seed_plan("bistro", overrides={"price_tier": "premium", "size": "large"})
+    plan = build_seed_plan(
+        "bistro", overrides={"price_tier": "premium", "size": "large"}
+    )
     assert plan["profile"]["defaults"]["price_tier"] == "premium"
     assert plan["profile"]["defaults"]["size"] == "large"
 

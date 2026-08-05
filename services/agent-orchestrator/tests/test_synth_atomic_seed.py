@@ -3,20 +3,67 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from scripts.synth.seed import apply_seed, build_rpc_payload, build_seed_plan, execute_atomic_seed
+from scripts.synth.seed import (
+    apply_seed,
+    build_rpc_payload,
+    build_seed_plan,
+    execute_atomic_seed,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = (
-    REPO_ROOT
-    / "supabase"
-    / "migrations"
-    / "20260727230000_sim_ground_truth.sql"
-)
+MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
+
+
+def _function_body(function_name: str) -> str:
+    """Return just the CREATE FUNCTION block for `function_name`.
+
+    Two things this deliberately does not do.
+
+    It does not name a file. This test used to hardcode
+    20260727230000_sim_ground_truth.sql; the schema baseline in adc4131 folded
+    every per-feature migration into a single dump and deleted that file, so the
+    test failed on a missing path while the function itself was fine. A filename
+    is not the fact under test.
+
+    It does not return the whole migration. The baseline is ~15k lines
+    containing the entire schema, so asserting "SECURITY DEFINER" or a table
+    name against the full text would pass no matter what this function does —
+    the assertions would still be green with the function deleted. Slicing to
+    the single definition keeps the test measuring what it claims to measure.
+    """
+    # pg_dump emits "CREATE FUNCTION public.foo(...)"; hand-written migrations
+    # use "CREATE OR REPLACE FUNCTION foo(...)". Accept both spellings.
+    start_re = re.compile(
+        rf"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?{function_name}\b",
+        re.IGNORECASE,
+    )
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        sql = path.read_text(encoding="utf-8")
+        match = start_re.search(sql)
+        if not match:
+            continue
+        tail = sql[match.start() :]
+        # Function bodies are dollar-quoted ($$ … $$ or $tag$ … $tag$). Take
+        # through the closing tag; fall back to the rest of the file if the
+        # body is quoted some other way.
+        tag = re.match(r".*?(\$[A-Za-z_]*\$)", tail, re.DOTALL)
+        if tag:
+            delim = tag.group(1)
+            close = tail.find(delim, tail.find(delim) + len(delim))
+            if close != -1:
+                return tail[: close + len(delim)]
+        return tail
+    raise AssertionError(
+        f"No migration in {MIGRATIONS_DIR} defines {function_name}(). "
+        "It exists in production, so a migration must create it or a fresh "
+        "environment will diverge from prod."
+    )
 
 
 class _FakeCursor:
@@ -79,8 +126,7 @@ def _persona_env() -> dict[str, str]:
 
 
 def test_migration_seed_sim_restaurant_is_security_definer_callable():
-    sql = MIGRATION.read_text(encoding="utf-8")
-    assert "CREATE OR REPLACE FUNCTION seed_sim_restaurant" in sql
+    sql = _function_body("seed_sim_restaurant")
     assert "SECURITY DEFINER" in sql
     assert "not implemented" not in sql.lower()
     # Live write targets
@@ -120,8 +166,7 @@ def test_oracle_failure_rolls_back_no_commit():
     assert conn.rolled_back is True
     # Restaurant insert was attempted before oracle — but rolled back
     assert any(
-        op[0] == "execute" and op[1] and "restaurants" in op[1]
-        for op in conn.ops
+        op[0] == "execute" and op[1] and "restaurants" in op[1] for op in conn.ops
     )
 
 
@@ -136,7 +181,9 @@ def test_successful_atomic_seed_commits_live_and_oracle():
     assert conn.rolled_back is False
     assert result["restaurant_id"] == plan["restaurant_id"]
     assert result["ok"] is True
-    sql_blob = " ".join(str(op[1]) for op in conn.ops if op[0] in ("execute", "executemany"))
+    sql_blob = " ".join(
+        str(op[1]) for op in conn.ops if op[0] in ("execute", "executemany")
+    )
     assert "restaurant_inventory" in sql_blob
     assert "stock_live" in sql_blob
     assert "sim_ground_truth_runs" in sql_blob
@@ -152,9 +199,21 @@ def test_successful_atomic_seed_commits_live_and_oracle():
 
 def test_apply_seed_true_uses_rpc_caller_and_personas():
     personas = {
-        "owner": {"user_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "email": "o@x.test", "role": "owner"},
-        "manager": {"user_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "email": "m@x.test", "role": "manager"},
-        "staff": {"user_id": "cccccccc-cccc-cccc-cccc-cccccccccccc", "email": "s@x.test", "role": "staff"},
+        "owner": {
+            "user_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "email": "o@x.test",
+            "role": "owner",
+        },
+        "manager": {
+            "user_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "email": "m@x.test",
+            "role": "manager",
+        },
+        "staff": {
+            "user_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+            "email": "s@x.test",
+            "role": "staff",
+        },
     }
     rpc_calls: list[dict] = []
 

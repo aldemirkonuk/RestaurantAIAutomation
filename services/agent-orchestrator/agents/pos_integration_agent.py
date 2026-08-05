@@ -601,7 +601,9 @@ class POSIntegrationAgent(BaseAgent):
 
         # Publish to message bus
         await self.message_bus.publish(
-            exchange_name="pos.events", routing_key="pos.menu.modified", message_body=event_data
+            exchange_name="pos.events",
+            routing_key="pos.menu.modified",
+            message_body=event_data,
         )
 
         return {"status": "success", "action": "sync_triggered"}
@@ -843,7 +845,9 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange_name="pos.events", routing_key="pos.sale.voided", message_body=event_data
+                exchange_name="pos.events",
+                routing_key="pos.sale.voided",
+                message_body=event_data,
             )
 
             self.logger.debug(f"Published wine void event for {item_name}")
@@ -881,18 +885,34 @@ class POSIntegrationAgent(BaseAgent):
             return None
 
     async def get_restaurant_id(self, restaurant_guid: str) -> Optional[str]:
-        """Get internal restaurant ID from Toast GUID"""
+        """Get internal restaurant ID from the POS provider's own restaurant GUID.
+
+        This queried `restaurants.toast_restaurant_guid`, a column that exists in
+        NO environment — production stores the mapping in the `pos_credentials`
+        JSONB, keyed `restaurant_guid`, alongside `pos_system`. Every webhook
+        therefore failed to resolve a restaurant and the sale event went out with
+        `restaurant_id: None`. Postgres reported the missing column on every
+        request, and the broad except turned it into a returned None, so it read
+        as "restaurant not found" rather than "this query cannot ever work".
+        """
+        if not restaurant_guid:
+            return None
         try:
-            # Use Supabase to query restaurants table
             response = (
                 self.database.supabase.table("restaurants")
                 .select("id")
-                .eq("toast_restaurant_guid", restaurant_guid)
-                .single()
+                .eq("pos_credentials->>restaurant_guid", restaurant_guid)
+                .limit(1)
                 .execute()
             )
-
-            return response.data.get("id") if response.data else None
+            rows = response.data or []
+            if rows:
+                return rows[0].get("id")
+            self.logger.warning(
+                "No restaurant has pos_credentials->>restaurant_guid = %s",
+                restaurant_guid,
+            )
+            return None
         except Exception as e:
             self.logger.error(f"Error getting restaurant ID: {e}")
             return None

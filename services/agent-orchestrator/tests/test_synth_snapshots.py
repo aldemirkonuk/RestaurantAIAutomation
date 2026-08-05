@@ -6,8 +6,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -31,7 +29,9 @@ def test_load_snapshot_reads_frozen_json_only(monkeypatch):
 
     def _boom(*_a, **_k):
         crawl_called["n"] += 1
-        raise AssertionError("WebCrawlerService must not be called during load_snapshot")
+        raise AssertionError(
+            "WebCrawlerService must not be called during load_snapshot"
+        )
 
     monkeypatch.setattr(snapshots, "refresh_snapshot", _boom, raising=False)
 

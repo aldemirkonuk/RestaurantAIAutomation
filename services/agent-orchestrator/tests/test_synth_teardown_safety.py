@@ -74,8 +74,8 @@ def test_teardown_hard_guards_e2e_anchor():
 
     client = MagicMock()
     # Simulate a query that wrongly returns the anchor among sim-like rows
-    client.table.return_value.select.return_value.like.return_value.execute.return_value = (
-        MagicMock(data=rows)
+    client.table.return_value.select.return_value.like.return_value.execute.return_value = MagicMock(
+        data=rows
     )
     ids = resolve_sim_restaurant_ids(client)
     assert "e2e-test-restaurant" not in ids
@@ -118,12 +118,21 @@ def test_library_handler_is_sim_filtered_never_wholesale():
     # Must delete by filtered ids / source — never bare table().delete().execute()
     delete_call = client.table.return_value.delete
     assert delete_call.called
-    # Ensure we never called execute directly on delete without a filter
-    bare = client.table.return_value.delete.return_value.execute
     # Either in_ or eq must have been used as a filter step
     used_in = client.table.return_value.delete.return_value.in_.called
     used_eq = client.table.return_value.delete.return_value.eq.called
     assert used_in or used_eq, "library teardown must apply a sim filter"
+
+    # And no unfiltered delete may have fired alongside it. The check above only
+    # proves a filter was used *somewhere*; both a filtered and a bare delete can
+    # be true at once, and the bare one empties the whole table. This assertion
+    # was named in a comment and assigned to a variable here, but never actually
+    # written — ruff found it as an unused local (F841) in CI.
+    bare = client.table.return_value.delete.return_value.execute
+    assert not bare.called, (
+        "library teardown called table().delete().execute() with no filter — "
+        "that deletes every row, not just the simulated ones"
+    )
 
 
 def test_assert_teardown_coverage_passes_when_handlers_match():

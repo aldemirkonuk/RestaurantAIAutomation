@@ -84,7 +84,9 @@ class EmailIntelAgent(BaseAgent):
     async def initialize(self) -> None:
         # Create haiku_semaphore inside running event loop (AI-SPEC §3 pitfall 4)
         self.haiku_semaphore = get_haiku_semaphore()
-        self.logger.info("EmailIntelAgent initialized — listening on email.inbound.received")
+        self.logger.info(
+            "EmailIntelAgent initialized — listening on email.inbound.received"
+        )
 
     # =========================================================================
     # MESSAGE ENTRY POINT

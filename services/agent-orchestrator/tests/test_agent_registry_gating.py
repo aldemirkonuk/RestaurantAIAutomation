@@ -68,10 +68,20 @@ class TestOptionalTierGate:
         assert flags.get("AGENT_COMPLIANCE_AGENT_ENABLED") is True
         assert _registry(flags).is_enabled("compliance_agent") is True
 
-    @pytest.mark.parametrize("raw,expected", [
-        ("true", True), ("TRUE", True), ("1", True), ("yes", True), ("on", True),
-        ("false", False), ("0", False), ("", False), ("maybe", False),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("true", True),
+            ("TRUE", True),
+            ("1", True),
+            ("yes", True),
+            ("on", True),
+            ("false", False),
+            ("0", False),
+            ("", False),
+            ("maybe", False),
+        ],
+    )
     def test_env_values_are_parsed_not_truthiness_tested(
         self, monkeypatch, raw, expected
     ):
@@ -128,8 +138,13 @@ class TestStubsAreMarked:
             if cfg.get("tier") == AgentTier.OPTIONAL
         ]
 
-        assert sorted(optional) == sorted(n for n, _ in
-            [("ghost_inventory_agent", 0), ("negotiation_playbook_agent", 0),
-             ("auto_pilot_agent", 0), ("compliance_agent", 0),
-             ("shrinkage_detective_agent", 0)]
+        assert sorted(optional) == sorted(
+            n
+            for n, _ in [
+                ("ghost_inventory_agent", 0),
+                ("negotiation_playbook_agent", 0),
+                ("auto_pilot_agent", 0),
+                ("compliance_agent", 0),
+                ("shrinkage_detective_agent", 0),
+            ]
         )

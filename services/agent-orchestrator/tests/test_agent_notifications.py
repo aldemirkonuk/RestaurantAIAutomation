@@ -84,7 +84,10 @@ class _Logger:
 
 @pytest.fixture
 def store():
-    return {"members": [{"user_id": "user-1"}, {"user_id": "user-2"}], "restaurants": []}
+    return {
+        "members": [{"user_id": "user-1"}, {"user_id": "user-2"}],
+        "restaurants": [],
+    }
 
 
 class TestRequiredColumns:

@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 
 def test_cli_generate_without_apply_is_dry_run(monkeypatch):
@@ -26,7 +24,9 @@ def test_cli_generate_without_apply_is_dry_run(monkeypatch):
 
     monkeypatch.setattr(cli, "apply_seed", fake_apply)
     monkeypatch.setattr(
-        cli, "list_archetypes", lambda: ["bistro", "cafe", "fine-dining", "high-volume-bar", "turkish-clone"]
+        cli,
+        "list_archetypes",
+        lambda: ["bistro", "cafe", "fine-dining", "high-volume-bar", "turkish-clone"],
     )
     code = cli.main(["generate", "--archetype", "bistro"])
     assert code == 0

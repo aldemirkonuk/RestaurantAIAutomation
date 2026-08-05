@@ -57,9 +57,9 @@ class TestRoutingKeys:
 
         keys = EmailIntelAgent.get_subscribed_routing_keys(EmailIntelAgent)
 
-        assert all(k != self.DEAD_KEY for _, k in keys), (
-            "email.inbound.raw has no publishers; subscribing to it is a dead queue"
-        )
+        assert all(
+            k != self.DEAD_KEY for _, k in keys
+        ), "email.inbound.raw has no publishers; subscribing to it is a dead queue"
 
     def test_parsing_agent_listens_on_the_same_key(self):
         from agents.email_parsing_agent import EmailParsingAgent
@@ -78,9 +78,7 @@ class TestSignatureContract:
     ]
 
     def test_base_agent_contract_is_one_argument(self):
-        params = list(
-            inspect.signature(BaseAgent.process_message).parameters
-        )
+        params = list(inspect.signature(BaseAgent.process_message).parameters)
 
         assert params == ["self", "message"]
 
@@ -89,9 +87,7 @@ class TestSignatureContract:
             module = __import__(module_path, fromlist=[class_name])
             agent_class = getattr(module, class_name)
 
-            params = list(
-                inspect.signature(agent_class.process_message).parameters
-            )
+            params = list(inspect.signature(agent_class.process_message).parameters)
 
             assert params == ["self", "message"], (
                 f"{class_name}.process_message{tuple(params)} does not match "
@@ -120,15 +116,15 @@ class TestRepublishLoopIsClosed:
 
         source = inspect.getsource(EmailIntelAgent.process_message)
 
-        assert '__intel_bypass' in source, (
+        assert "__intel_bypass" in source, (
             "process_message must consume __intel_bypass or the agent reprocesses "
             "its own re-publish forever"
         )
         # The guard has to precede the classification work, or the loop still runs
         # once per hop before bailing.
-        assert source.index("__intel_bypass") < source.index("idempotency_key"), (
-            "the bypass check must come before any processing"
-        )
+        assert source.index("__intel_bypass") < source.index(
+            "idempotency_key"
+        ), "the bypass check must come before any processing"
 
     def test_parsing_agent_does_not_skip_bypassed_messages(self):
         # The flag exists to stop the CLASSIFIER reprocessing, not the parser —

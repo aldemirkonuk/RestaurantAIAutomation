@@ -94,9 +94,7 @@ def collect_business_metrics(
     mistaken for a zero.
     """
     window_seconds = max(1, int(window_seconds))
-    since = (
-        datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
-    ).isoformat()
+    since = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
 
     out: dict[str, Any] = {
         "window_seconds": window_seconds,

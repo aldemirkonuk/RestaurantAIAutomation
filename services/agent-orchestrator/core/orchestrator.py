@@ -221,7 +221,9 @@ class AgentOrchestrator:
             f"{len(enabled)} enabled, {len(disabled)} gated off"
         )
         if disabled:
-            logger.info(f"Gated off (no proxy, no subscriptions): {', '.join(sorted(disabled))}")
+            logger.info(
+                f"Gated off (no proxy, no subscriptions): {', '.join(sorted(disabled))}"
+            )
 
     def _create_lazy_proxies(self) -> None:
         """Create lazy proxies for all registered agents (no instantiation)."""

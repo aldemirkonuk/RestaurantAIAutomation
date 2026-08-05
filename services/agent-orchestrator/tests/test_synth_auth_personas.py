@@ -6,7 +6,6 @@ import os
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from scripts.synth.auth_personas import (
     PERSONA_ROLES,
@@ -42,7 +41,10 @@ def test_ensure_personas_idempotent_on_422_already_registered():
         "SIM_STAFF_PASSWORD": "staff-secret",
     }
     # Distinct emails required
-    assert len({env["SIM_OWNER_EMAIL"], env["SIM_MANAGER_EMAIL"], env["SIM_STAFF_EMAIL"]}) == 3
+    assert (
+        len({env["SIM_OWNER_EMAIL"], env["SIM_MANAGER_EMAIL"], env["SIM_STAFF_EMAIL"]})
+        == 3
+    )
 
     create_responses = []
     for i, role in enumerate(("owner", "manager", "staff")):
@@ -50,11 +52,12 @@ def test_ensure_personas_idempotent_on_422_already_registered():
         create_responses.append(
             httpx.Response(
                 201,
-                json={"id": f"00000000-0000-0000-0000-00000000000{i+1}", "email": env[f"SIM_{role.upper()}_EMAIL"]},
+                json={
+                    "id": f"00000000-0000-0000-0000-00000000000{i+1}",
+                    "email": env[f"SIM_{role.upper()}_EMAIL"],
+                },
             )
         )
-
-    list_resp = httpx.Response(200, json={"users": []})
 
     with patch.dict(os.environ, env, clear=False):
         with patch("scripts.synth.auth_personas.httpx.Client") as client_cls:
@@ -103,9 +106,18 @@ def test_ensure_personas_treats_422_as_ok_and_looks_up_user():
         200,
         json={
             "users": [
-                {"id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "email": "sim-owner@wineops.internal"},
-                {"id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "email": "sim-manager@wineops.internal"},
-                {"id": "cccccccc-cccc-cccc-cccc-cccccccccccc", "email": "sim-staff@wineops.internal"},
+                {
+                    "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "email": "sim-owner@wineops.internal",
+                },
+                {
+                    "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                    "email": "sim-manager@wineops.internal",
+                },
+                {
+                    "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                    "email": "sim-staff@wineops.internal",
+                },
             ]
         },
     )
