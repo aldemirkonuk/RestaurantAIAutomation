@@ -145,6 +145,12 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": ["inventory_engine"],
         "description": "Shrinkage detection",
     },
+    # SimPOS testbed — catalog drift (sim-* tenants only)
+    "drift_agent": {
+        "tier": AgentTier.ON_DEMAND,
+        "dependencies": [],
+        "description": "SimPOS catalog ↔ WineOps mapping/inventory drift",
+    },
 }
 
 

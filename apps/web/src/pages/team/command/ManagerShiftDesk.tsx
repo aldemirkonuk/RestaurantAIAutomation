@@ -10,10 +10,11 @@ import { toast } from 'sonner'
 import {
   Plus, Copy, Send, Megaphone, ChevronLeft, ChevronRight, UserPlus,
   Users, ClipboardCheck, AlertTriangle, CheckCircle2, Sparkles, SlidersHorizontal,
-  Pencil, Trash2, MessageSquare, Printer,
+  Pencil, Trash2, MessageSquare, Printer, FileSpreadsheet,
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog'
+import { ShiftImportModal } from '../../../components/team/ShiftImportModal'
 import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
@@ -46,6 +47,7 @@ export function ManagerShiftDesk() {
   const [deskTab, setDeskTab] = useState<DeskTab>('all')
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
   const [shiftEditor, setShiftEditor] = useState<{ shift?: Shift; date?: string; memberId?: string } | null>(null)
   const [memberEditor, setMemberEditor] = useState<{ member?: TeamMember | null } | null>(null)
   const [peopleOpen, setPeopleOpen] = useState(false)
@@ -442,6 +444,7 @@ export function ManagerShiftDesk() {
       <div className="flex items-center gap-2 flex-wrap mb-3 overflow-x-auto">
         <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mr-1">Quick actions</span>
         <ActionBtn onClick={() => setShiftEditor({ date: today })}><Plus className="w-3.5 h-3.5" /> Add shift</ActionBtn>
+        <ActionBtn onClick={() => setImportModalOpen(true)}><FileSpreadsheet className="w-3.5 h-3.5 text-wine-600" /> Import sheet</ActionBtn>
         <ActionBtn onClick={() => doCopy.mutate()}><Copy className="w-3.5 h-3.5" /> Copy last week</ActionBtn>
         <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew (inbox + push + email/SMS):'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
         <ActionBtn onClick={() => setInviteOpen(true)}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
@@ -457,6 +460,12 @@ export function ManagerShiftDesk() {
         <ActionBtn onClick={printWeek}><Printer className="w-3.5 h-3.5" /> Print sheet</ActionBtn>
         <ActionBtn onClick={() => doPublish.mutate()} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
+
+      <ShiftImportModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImportComplete={() => invalidateWeek()}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_330px] gap-4">
         {/* Schedule area */}

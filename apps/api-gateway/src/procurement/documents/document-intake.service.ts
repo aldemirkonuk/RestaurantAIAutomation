@@ -100,8 +100,17 @@ export class DocumentIntakeService {
       if (existing.data?.id)
         return { documentId: existing.data.id, parsed: null, duplicate: true };
 
+      // Decision E47 — the photo and upload channels arrive as a `buffer`
+      // with no `storagePath` of their own (the email channel already has
+      // one, set when rabbitmq-bridge persisted the attachment). Without
+      // this, storage_path lands NULL and the receipts page has nothing to
+      // show beside the extracted lines, and a disputed credit has no
+      // photograph to point a distributor at.
+      const storagePath = await this.persistOriginalBytes(input, sha256, bytes);
+      const resolvedInput: IntakeInput = { ...input, storagePath };
+
       const parsed = await this.route(input, bytes);
-      const documentId = await this.persist(input, sha256, bytes, parsed);
+      const documentId = await this.persist(resolvedInput, sha256, bytes, parsed);
       return { documentId, parsed, duplicate: false };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
@@ -111,6 +120,59 @@ export class DocumentIntakeService {
         duplicate: false,
         error: err?.message ?? "unknown error",
       };
+    }
+  }
+
+  /**
+   * Persist the original bytes to the private `vendor-attachments` bucket so
+   * a photographed or hand-uploaded document has an image to show beside its
+   * extracted lines, same as the email channel already gets from
+   * rabbitmq-bridge. Content-addressed at
+   * `{restaurantId}/documents/{sha256}/{filename}` — the same bytes ingested
+   * twice (retry, or the same invoice arriving by two channels) land at the
+   * same path, so this is a plain `upsert`, never a growing pile of
+   * duplicates.
+   *
+   * Best-effort: a storage failure must not fail the whole ingest, since the
+   * extraction and the four-way match evidence do not depend on the photo
+   * existing — only the receipts page's side-by-side view does. Skipped
+   * entirely when the caller already resolved a storagePath (email channel)
+   * or when there are no original bytes to store (EDI/SFTP text, which keeps
+   * its full content in `raw_payload` instead).
+   */
+  private async persistOriginalBytes(
+    input: IntakeInput,
+    sha256: string,
+    bytes: Buffer,
+  ): Promise<string | null> {
+    if (input.storagePath) return input.storagePath;
+    if (!input.buffer?.length) return null;
+
+    const safeName = (input.filename || "document")
+      .replace(/[^\w.-]+/g, "_")
+      .slice(0, 120);
+    const path = `${input.restaurantId}/documents/${sha256}/${safeName}`;
+
+    try {
+      const { error } = await this.db
+        .getClient()
+        .storage.from("vendor-attachments")
+        .upload(path, bytes, {
+          contentType: input.mimeType || "application/octet-stream",
+          upsert: true,
+        });
+      if (error) {
+        this.logger.warn(
+          `persistOriginalBytes: upload failed for ${safeName} — ${error.message}`,
+        );
+        return null;
+      }
+      return path;
+    } catch (err: any) {
+      this.logger.warn(
+        `persistOriginalBytes: unexpected failure for ${safeName} — ${err?.message}`,
+      );
+      return null;
     }
   }
 

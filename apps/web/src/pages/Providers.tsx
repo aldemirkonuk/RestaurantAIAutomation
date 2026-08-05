@@ -984,10 +984,24 @@ export function Providers() {
 
                       {/* Footer */}
                       <div className="pt-2.5 border-t border-gray-50 flex items-center justify-between">
-                        <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{provider.physicalAddress}</span>
-                        </div>
+                        {provider.physicalAddress && provider.physicalAddress !== 'N/A' ? (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.physicalAddress)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 min-w-0 text-xs text-gray-500 hover:text-wine-600 transition-colors group/addr"
+                            title="Open address in Google Maps"
+                          >
+                            <MapPin className="w-3 h-3 flex-shrink-0 text-wine-500 group-hover/addr:scale-110 transition-transform" />
+                            <span className="truncate hover:underline">{provider.physicalAddress}</span>
+                          </a>
+                        ) : (
+                          <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
+                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">No address on file</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {lastOrderDates[provider.id] && (
                             <span className="flex items-center gap-1 text-xs text-emerald-600">

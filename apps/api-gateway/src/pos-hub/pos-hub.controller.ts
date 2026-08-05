@@ -2,12 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   HttpStatus,
   Param,
   Post,
+  Query,
+  Req,
+  RawBodyRequest,
 } from "@nestjs/common";
-import { ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { Request } from "express";
+import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubService } from "./pos-hub.service";
 
 /**
@@ -22,7 +28,10 @@ import { PosHubService } from "./pos-hub.service";
 @ApiTags("pos-hub")
 @Controller("pos-hub")
 export class PosHubController {
-  constructor(private readonly posHub: PosHubService) {}
+  constructor(
+    private readonly posHub: PosHubService,
+    private readonly catalogMatcher: CatalogMatcherService,
+  ) {}
 
   @Get("providers")
   @ApiOperation({
@@ -45,13 +54,27 @@ export class PosHubController {
   @ApiOperation({
     summary: "Ingest a POS webhook payload",
     description:
-      "Normalizes the provider payload into canonical checks and upserts pos_checks (idempotent on external check id). Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today.",
+      "Normalizes the provider payload into canonical checks, upserts pos_checks (idempotent on external check id), and — for closed checks — depletes stock via apply_stock_movement/record_glass_pour. Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today. Requires an HMAC-SHA256 signature over the raw body, hex-encoded, in X-Pos-Hub-Signature, keyed by POS_HUB_WEBHOOK_SECRET.",
+  })
+  @ApiHeader({
+    name: "X-Pos-Hub-Signature",
+    description: "HMAC-SHA256(rawBody, POS_HUB_WEBHOOK_SECRET), hex-encoded",
+    required: true,
   })
   async webhook(
     @Param("provider") provider: string,
     @Param("restaurantId") restaurantId: string,
     @Body() payload: unknown,
+    @Headers("x-pos-hub-signature") signature: string | undefined,
+    @Req() request: RawBodyRequest<Request>,
   ) {
+    // B17/B28: shared-secret guard, fail closed (see PosHubService.verifyWebhookSignature).
+    if (!this.posHub.verifyWebhookSignature(request.rawBody, signature)) {
+      throw new HttpException(
+        "Webhook signature verification failed",
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
     try {
       return await this.posHub.ingest(restaurantId, provider, payload);
     } catch (error) {
@@ -103,6 +126,78 @@ export class PosHubController {
     } catch (error) {
       throw new HttpException(
         error.message || "Mapping failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post("catalog-match/:restaurantId")
+  @ApiOperation({
+    summary:
+      "Pull the POS catalog and match it against inventory (decisions D32-39)",
+    description:
+      "Body: { source }. Pulls the POS-side catalog (only 'simpos' is wired today), matches every unmapped item against restaurant_inventory via external id / SKU / trigram tiers (thresholds shared with the invoice line-matcher), auto-maps at >=0.9 confidence when unambiguous, and queues everything else in pos_catalog_match_proposals. Never overwrites an existing mapping silently.",
+  })
+  async catalogMatch(
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: { source?: string },
+  ) {
+    try {
+      return await this.catalogMatcher.pullAndMatch(
+        restaurantId,
+        body?.source || "simpos",
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Catalog match failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("catalog-match/:restaurantId/proposals")
+  @ApiOperation({
+    summary: "List pending (or other-status) catalog match proposals",
+  })
+  async listProposals(
+    @Param("restaurantId") restaurantId: string,
+    @Query("status") status?: string,
+  ) {
+    return this.catalogMatcher.listProposals(restaurantId, status || "pending");
+  }
+
+  @Post("catalog-match/:restaurantId/proposals/:proposalId/approve")
+  @ApiOperation({
+    summary: "Approve a proposal — writes the pos_item_mappings row",
+  })
+  async approveProposal(
+    @Param("restaurantId") restaurantId: string,
+    @Param("proposalId") proposalId: string,
+  ) {
+    try {
+      return await this.catalogMatcher.approveProposal(
+        restaurantId,
+        proposalId,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Approve failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post("catalog-match/:restaurantId/proposals/:proposalId/reject")
+  @ApiOperation({ summary: "Reject a proposal — leaves the item unmapped" })
+  async rejectProposal(
+    @Param("restaurantId") restaurantId: string,
+    @Param("proposalId") proposalId: string,
+  ) {
+    try {
+      return await this.catalogMatcher.rejectProposal(restaurantId, proposalId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Reject failed",
         HttpStatus.BAD_REQUEST,
       );
     }

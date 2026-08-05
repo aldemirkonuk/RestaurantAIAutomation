@@ -62,6 +62,7 @@ describe("InventoryLedgerService", () => {
       transactionType: TransactionType.SALE,
       source: TransactionSource.POS,
       quantityChange: -2,
+      idempotencyKey: "test-key-1",
     };
 
     it("should create a transaction successfully", async () => {
@@ -105,6 +106,21 @@ describe("InventoryLedgerService", () => {
       expect(result.quantityBefore).toBe(10);
       expect(result.quantityAfter).toBe(8);
       expect(mockEventsService.createEvent).toHaveBeenCalled();
+      // Regression guard: record_inventory_transaction referenced a ghost
+      // `live_stock` column and 500'd against the real DB (spine repair,
+      // decision A5). Every write now goes through apply_stock_movement.
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        "apply_stock_movement",
+        expect.objectContaining({
+          p_inventory_id: baseDto.inventoryId,
+          p_delta: baseDto.quantityChange,
+          p_idempotency_key: baseDto.idempotencyKey,
+        }),
+      );
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalledWith(
+        "record_inventory_transaction",
+        expect.anything(),
+      );
     });
 
     it("should reject zero quantity change", async () => {
@@ -123,6 +139,7 @@ describe("InventoryLedgerService", () => {
         source: TransactionSource.ORDER,
         quantityChange: 24,
         orderId: "order-123",
+        idempotencyKey: "test-key-purchase",
       };
 
       const transactionId = "txn-purchase";
@@ -409,6 +426,7 @@ describe("InventoryLedgerService", () => {
           transactionType: TransactionType.SALE,
           source: TransactionSource.POS,
           quantityChange: -2,
+          idempotencyKey: "test-key-bulk-1",
         },
         {
           inventoryId: "inv-2",
@@ -416,6 +434,7 @@ describe("InventoryLedgerService", () => {
           transactionType: TransactionType.SALE,
           source: TransactionSource.POS,
           quantityChange: -1,
+          idempotencyKey: "test-key-bulk-2",
         },
       ];
 

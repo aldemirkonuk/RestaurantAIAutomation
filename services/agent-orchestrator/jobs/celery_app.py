@@ -38,6 +38,7 @@ celery_app.conf.update(
         "jobs.recrawl_tasks",
         "jobs.trend_tasks",
         "jobs.research_tasks",
+        "jobs.drift_tasks",
     ),
 )
 
@@ -118,6 +119,12 @@ celery_app.conf.beat_schedule = {
     "research-staleness-reverify-weekly": {
         "task": "research.staleness_reverify",
         "schedule": crontab(day_of_week=0, hour=2, minute=0),  # Sunday 2 AM UTC
+        "options": {"expires": 3500},
+    },
+    # SimPOS testbed: catalog ↔ mappings/inventory drift (sim-* only, C31)
+    "drift-scan-sim-catalogs": {
+        "task": "drift.scan_sim_catalogs",
+        "schedule": crontab(minute=15),  # hourly at :15
         "options": {"expires": 3500},
     },
 }

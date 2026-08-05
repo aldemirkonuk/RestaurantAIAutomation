@@ -25,6 +25,8 @@ import {
   Calendar,
   Rocket,
   BookOpen,
+  FileText,
+  ScrollText,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -124,6 +126,18 @@ const secondaryNavItems: NavItem[] = [
     href: '/documents-reports',
     icon: DocumentsReportsIcon,
     description: 'Invoices, receipts, and generated report history.',
+  },
+  {
+    name: 'Receipts & Credits',
+    href: '/receipts',
+    icon: FileText,
+    description: 'Vendor documents to verify, and credit claims to chase.',
+  },
+  {
+    name: 'Logs',
+    href: '/logs',
+    icon: ScrollText,
+    description: 'Correlated timeline across POS, stock, documents, and agents.',
   },
   {
     name: 'Notifications',

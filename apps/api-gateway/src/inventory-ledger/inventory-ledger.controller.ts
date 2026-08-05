@@ -41,21 +41,6 @@ export class InventoryLedgerController {
 
   constructor(private readonly ledgerService: InventoryLedgerService) {}
 
-  /**
-   * Phase 1 · 1.4 / D4: the ledger WRITE path references a ghost `live_stock` column and an
-   * RPC written against the wrong schema, so it 500s against the real DB. It is quarantined
-   * behind a flag (default OFF) until the corrected ledger is ported in Phase 2.
-   * See .planning/INVENTORY_SOTA_PLAN.md §9A.
-   */
-  private assertLedgerEnabled(): void {
-    if (process.env.LEDGER_V1_ENABLED !== "true") {
-      throw new HttpException(
-        "Inventory ledger v1 is quarantined pending the Phase-2 corrected port (INVENTORY_SOTA_PLAN.md §9A).",
-        HttpStatus.NOT_IMPLEMENTED,
-      );
-    }
-  }
-
   // ==========================================================================
   // TRANSACTIONS
   // ==========================================================================
@@ -71,7 +56,6 @@ export class InventoryLedgerController {
     @Body() dto: CreateInventoryTransactionDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<InventoryTransactionResponseDto> {
-    this.assertLedgerEnabled();
     try {
       return await this.ledgerService.createTransaction(
         user.restaurantId,
@@ -108,7 +92,6 @@ export class InventoryLedgerController {
     @Body() dto: BulkTransactionDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<BulkTransactionResponseDto> {
-    this.assertLedgerEnabled();
     try {
       return await this.ledgerService.createBulkTransactions(
         user.restaurantId,
@@ -314,7 +297,6 @@ export class InventoryLedgerController {
     @Body() body: { wineId: string; actualCount: number; notes?: string },
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<InventoryTransactionResponseDto> {
-    this.assertLedgerEnabled();
     try {
       return await this.ledgerService.reconcileInventory(
         user.restaurantId,

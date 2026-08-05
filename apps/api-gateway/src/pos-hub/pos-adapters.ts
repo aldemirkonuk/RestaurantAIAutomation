@@ -41,6 +41,7 @@ export const genericAdapter: PosAdapter = {
         externalCheckId: String(r.externalCheckId ?? r.external_check_id),
         openedAt: String(r.openedAt ?? r.opened_at ?? new Date().toISOString()),
         closedAt: r.closedAt ?? r.closed_at ?? null,
+        voided: Boolean(r.voided ?? r.is_voided ?? false),
         tableRef: r.tableRef ?? r.table_ref ?? r.table ?? null,
         serverExternalId: r.serverExternalId ?? r.server_external_id ?? null,
         serverName: r.serverName ?? r.server_name ?? r.server ?? null,

@@ -38,6 +38,20 @@ SYNTH_WRITE_SET: list[str] = [
     # entry is easy to forget and why forgetting it is leakage — simulated service
     # would survive teardown and blend into a tenant's analytics forever.
     "pos_checks",
+    # Written INDIRECTLY: the same POS-hub webhook queues any wine line it
+    # can't resolve to an inventory item here instead of dropping it
+    # (decision B20) — same leakage risk as pos_checks above.
+    "pos_unresolved_lines",
+    # SimPOS testbed tables (decisions C23/C24): the fake POS terminal's own
+    # state, seeded once from the sim menu then free to diverge (that
+    # divergence is the whole point — it's what the drift agent finds).
+    # simpos_check_lines/simpos_checks/simpos_tables are written by the
+    # SimPOS terminal UI, not by seed.py, for the same reason pos_checks is
+    # indirect above.
+    "simpos_catalog",
+    "simpos_tables",
+    "simpos_checks",
+    "simpos_check_lines",
 ]
 
 TEARDOWN_TABLES: list[str] = list(SYNTH_WRITE_SET)

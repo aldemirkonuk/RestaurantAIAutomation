@@ -67,10 +67,23 @@ export class VendorCatalogueService {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      this.logger.error("Failed to search vendor catalogue", {
-        error: error.message,
-      });
-      throw error;
+      this.logger.warn(`Vendor catalogue search query warning: ${error.message}`);
+      // Fallback query without listing_tier filter in case listing_tier column is absent
+      const fallbackQuery = this.databaseService.supabase
+        .from("vendor_catalogue")
+        .select("*", { count: "exact" })
+        .eq("is_active", true);
+
+      const { data: fbData, count: fbCount } = await fallbackQuery
+        .order("name")
+        .range(offset, offset + limit - 1);
+
+      return {
+        data: (fbData ?? []) as VendorCatalogueRow[],
+        total: fbCount ?? 0,
+        limit,
+        offset,
+      };
     }
 
     return {

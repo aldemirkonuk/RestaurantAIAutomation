@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { isValidPhone } from '../../lib/phone'
+import { PlacesAutocomplete, PlaceResult } from '../ui/PlacesAutocomplete'
 
 interface AddProviderModalProps {
   isOpen: boolean
@@ -430,18 +431,17 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
                   {/* Address */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Physical Address
+                      Physical Address (Google Maps Autocomplete)
                     </label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <textarea
-                        value={formData.address}
-                        onChange={(e) => setFormData({...formData, address: e.target.value})}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 resize-none"
-                        placeholder="123 Main St, City, State, ZIP"
-                        rows={2}
-                      />
-                    </div>
+                    <PlacesAutocomplete
+                      value={formData.address}
+                      onChange={(addr) => setFormData({ ...formData, address: addr })}
+                      onPlaceSelect={(place: PlaceResult) => {
+                        const fullAddr = [place.streetAddress, place.city, place.stateProvince, place.postalCode, place.country].filter(Boolean).join(', ')
+                        setFormData({ ...formData, address: fullAddr })
+                      }}
+                      placeholder="Start typing provider address or business location..."
+                    />
                   </div>
                 </div>
               </div>

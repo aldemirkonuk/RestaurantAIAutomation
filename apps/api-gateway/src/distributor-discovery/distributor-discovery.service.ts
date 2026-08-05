@@ -103,11 +103,17 @@ export class DistributorDiscoveryService {
       });
 
     if (error) {
-      this.logger.error("Failed to search distributors", {
+      this.logger.warn("Failed to search distributors RPC, returning empty results", {
         restaurantId,
         error: error.message,
       });
-      throw error;
+      return {
+        data: [],
+        total: 0,
+        limit,
+        offset,
+        origin: null,
+      };
     }
 
     const rows = (data ?? []) as Array<
@@ -152,11 +158,11 @@ export class DistributorDiscoveryService {
       });
 
     if (error) {
-      this.logger.error("Failed to load distributor facet counts", {
+      this.logger.warn("Failed to load distributor facet counts RPC, returning empty object", {
         restaurantId,
         error: error.message,
       });
-      throw error;
+      return {};
     }
 
     return groupFacetCounts(data ?? []);

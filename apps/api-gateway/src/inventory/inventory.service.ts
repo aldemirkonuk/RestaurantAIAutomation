@@ -11,6 +11,7 @@ import { DatabaseService } from "../database/database.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
+import { PhotoCountService } from "./photo-count.service";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -44,6 +45,9 @@ export class InventoryService {
     @Optional()
     @Inject(WineSubmissionsService)
     private readonly wineSubmissions?: WineSubmissionsService,
+    @Optional()
+    @Inject(PhotoCountService)
+    private readonly photoCountService?: PhotoCountService,
   ) {}
 
   private mapInventoryItem(
@@ -87,6 +91,10 @@ export class InventoryService {
       pourSizeOz: roundOz(pourSizeMl),
       glassesPerBottle,
       saleType: row.sale_type ?? undefined,
+      // Decision E41: a real column, set only by recordSpotCount — never by
+      // a generic field edit — so the count-due badge measures counts, not
+      // "any edit at all" (which is what row.updated_at would give it).
+      lastCountedAt: row.last_counted_at ?? null,
       menuPriceGlass: row.menu_price_glass ?? undefined,
       glassesPerBottleOverride: row.glasses_per_bottle_override ?? undefined,
       retailPriceAvg: retailPriceAvg ?? undefined,
@@ -250,9 +258,19 @@ export class InventoryService {
       locationId?: string | null;
       source?: string;
       reason?: string;
+      idempotencyKey?: string | null;
     },
   ) {
     const client = this.dbService.getClient();
+    // pour_events.idempotency_key is now mandatory (spine repair, decision
+    // A12): a full unique constraint on a nullable column meant every
+    // key-less manual pour after the first collided on a duplicate NULL.
+    // Prefer the caller's key (stable across an offline retry); fall back to
+    // a server-generated one so this endpoint never 500s for a caller that
+    // hasn't been updated to send one yet — it simply loses retry-dedupe.
+    const idempotencyKey =
+      dto.idempotencyKey ??
+      `pour:${inventoryId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
     const { data: pourResult, error } = await client.rpc("record_glass_pour", {
       p_inventory_id: inventoryId,
       p_pours: dto.pours ?? 1,
@@ -260,6 +278,7 @@ export class InventoryService {
       p_location_id: dto.locationId ?? null,
       p_source: dto.source ?? "manual",
       p_reason: dto.reason ?? null,
+      p_idempotency_key: idempotencyKey,
     });
     if (error) {
       this.logger.error(`record_glass_pour failed: ${error.message}`);
@@ -296,6 +315,144 @@ export class InventoryService {
           )
         : null,
     };
+  }
+
+  /**
+   * Spot count (SimPOS testbed plan, decisions E40-E43): per-item count with
+   * immediate adjustment, no session and no separate variance table.
+   * set_stock_absolute both locks the row and computes the delta, so a
+   * count is safe against a concurrent manual override on the same item.
+   */
+  async recordSpotCount(
+    restaurantId: string,
+    inventoryId: string,
+    dto: {
+      countedQty: number;
+      stockState?: "live" | "shadow";
+      clientCountId: string;
+      reason?: string;
+      performedBy?: string | null;
+    },
+  ) {
+    if (
+      dto.countedQty == null ||
+      Number.isNaN(Number(dto.countedQty)) ||
+      dto.countedQty < 0
+    ) {
+      throw new HttpException(
+        "countedQty must be a non-negative number",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (!dto.clientCountId) {
+      throw new HttpException(
+        "clientCountId is required (client-generated, for retry-safe idempotency)",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const client = this.dbService.getClient();
+    const stockState = dto.stockState ?? "live";
+    // Decision E43: client-generated so a retry over flaky signal (the
+    // counting UI's declared use case) cannot double-apply a count that
+    // already landed but whose response never made it back.
+    const idempotencyKey = `count:${inventoryId}:${dto.clientCountId}`;
+
+    const { error: rpcErr } = await client.rpc("set_stock_absolute", {
+      p_inventory_id: inventoryId,
+      p_stock_state: stockState,
+      p_target_qty: Math.round(Number(dto.countedQty)),
+      p_transaction_type: "reconciliation",
+      p_source: "mobile_count",
+      p_performed_by: dto.performedBy ?? null,
+      p_reason: dto.reason ?? "Spot count",
+      p_idempotency_key: idempotencyKey,
+    });
+    if (rpcErr) {
+      this.logger.error(
+        `Spot count set_stock_absolute failed: ${rpcErr.message}`,
+      );
+      throw new HttpException(rpcErr.message, HttpStatus.BAD_REQUEST);
+    }
+
+    // Decision E41: stamp last_counted_at on every count, even one whose
+    // implied delta is zero — set_stock_absolute is a no-op write in that
+    // case (nothing to reconcile), but a count still happened and the
+    // count-due badge measures "was this ever counted", not "did the number
+    // change".
+    const { error: touchErr } = await client
+      .from("restaurant_inventory")
+      .update({ last_counted_at: new Date().toISOString() })
+      .eq("restaurant_id", restaurantId)
+      .eq("id", inventoryId);
+    if (touchErr) {
+      this.logger.warn(
+        `Failed to stamp last_counted_at for ${inventoryId}: ${touchErr.message}`,
+      );
+    }
+
+    const [row, rollup, locations] = await Promise.all([
+      client
+        .from("restaurant_inventory")
+        .select(
+          `*, master_wine_library (*), restaurants (default_pour_ml, measurement_unit)`,
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .single(),
+      this.fetchLotRollup(restaurantId),
+      this.fetchLocationBreakdown(restaurantId),
+    ]);
+
+    if (this.lowStockAlerts) {
+      void this.lowStockAlerts
+        .evaluateInventoryItem(restaurantId, inventoryId)
+        .catch(() => undefined);
+    }
+
+    return {
+      item: row.data
+        ? this.mapInventoryItem(
+            row.data,
+            rollup.get(inventoryId),
+            locations.get(inventoryId),
+          )
+        : null,
+    };
+  }
+
+  /**
+   * Photo counting (decision E46) — a vision suggestion only. Never writes
+   * anything; the caller drops the result into the same quantity field the
+   * voice path fills, and the human still has to call recordSpotCount.
+   */
+  async estimateCountFromPhoto(
+    restaurantId: string,
+    inventoryId: string,
+    imageBase64: string,
+  ) {
+    if (!imageBase64) {
+      throw new HttpException("imageBase64 is required", HttpStatus.BAD_REQUEST);
+    }
+    if (!this.photoCountService) {
+      throw new HttpException(
+        "Photo count estimation is not available",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    const client = this.dbService.getClient();
+    const { data: item } = await client
+      .from("restaurant_inventory")
+      .select("wine_name, master_wine_library(name)")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", inventoryId)
+      .maybeSingle();
+
+    const wineName =
+      item?.wine_name || (item as any)?.master_wine_library?.name || "this wine";
+
+    return this.photoCountService.estimate(imageBase64, wineName);
   }
 
   async getLowStockItems(restaurantId: string) {
@@ -906,12 +1063,12 @@ export class InventoryService {
   ) {
     const client = this.dbService.getClient();
 
-    // Fetch old values for event payload (before update)
+    // Fetch old values for the event payload only (informational — the actual
+    // stock delta is computed inside set_stock_absolute against a locked
+    // read, not against this value).
     const { data: oldItem } = await client
       .from("restaurant_inventory")
-      .select(
-        "stock_live, shadow_stock, threshold_min, master_wine_id, version",
-      )
+      .select("stock_live, shadow_stock, threshold_min, master_wine_id")
       .eq("restaurant_id", restaurantId)
       .eq("id", itemId)
       .single();
@@ -950,39 +1107,39 @@ export class InventoryService {
       }
     }
 
-    // Route stock changes through the ledger RPC as signed deltas (lots = source of truth,
-    // atomic, version-locked, idempotent, negative-guarded). Absolute set -> delta vs. old.
-    const applyStockDelta = async (
+    // Route stock changes through set_stock_absolute rather than computing a
+    // delta from `oldItem` here: that read has no lock, so two concurrent
+    // manual overrides can both diff against the same stale quantity and lose
+    // an update once both deltas land (spine repair, decision A11).
+    // set_stock_absolute locks the restaurant_inventory row FIRST and only
+    // then reads the true current lot total, so the delta it hands to
+    // apply_stock_movement is always computed against a value nobody else can
+    // change out from under it.
+    const setStockAbsolute = async (
       stockState: "live" | "shadow",
-      newQty: number,
-      oldQty: number,
+      targetQty: number,
     ) => {
-      const delta = newQty - (oldQty ?? 0);
-      if (delta === 0) return;
-      const { error: rpcErr } = await client.rpc("apply_stock_movement", {
+      const { error: rpcErr } = await client.rpc("set_stock_absolute", {
         p_inventory_id: itemId,
         p_stock_state: stockState,
-        p_delta: delta,
-        p_transaction_type: delta > 0 ? "purchase" : "adjustment",
+        p_target_qty: targetQty,
+        p_transaction_type: "adjustment",
         p_source: "manual",
         p_reason: "manual_override",
+        p_idempotency_key: `manual-override:${itemId}:${stockState}:${Date.now()}`,
       });
       if (rpcErr) {
         this.logger.error(
-          `apply_stock_movement(${stockState}, ${delta}) failed: ${rpcErr.message}`,
+          `set_stock_absolute(${stockState}, ${targetQty}) failed: ${rpcErr.message}`,
         );
         throw new HttpException(rpcErr.message, HttpStatus.BAD_REQUEST);
       }
     };
     if (dto.stockLive !== undefined) {
-      await applyStockDelta("live", dto.stockLive, oldItem?.stock_live ?? 0);
+      await setStockAbsolute("live", dto.stockLive);
     }
     if (dto.shadowStock !== undefined) {
-      await applyStockDelta(
-        "shadow",
-        dto.shadowStock,
-        oldItem?.shadow_stock ?? 0,
-      );
+      await setStockAbsolute("shadow", dto.shadowStock);
     }
 
     // Re-fetch the row (projection now reflects lot changes) for the response.

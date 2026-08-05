@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { CanonicalCheck } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
@@ -9,16 +10,22 @@ import {
 } from "./pos-provider.registry";
 
 /**
- * PosHubService — the unified ingestion pipeline (the "foundation" wave).
+ * PosHubService — the unified ingestion pipeline and the single POS door for
+ * stock writes (SimPOS testbed plan, decision B13).
  *
  * raw payload → adapter.normalize() → wine mapping (pos_item_mappings →
- * keyword heuristic) → table/server resolution → UPSERT pos_checks.
- * Idempotent on (restaurant_id, source, external_check_id), so webhook
- * replays and re-imports are safe.
+ * keyword heuristic) → table/server resolution → UPSERT pos_checks → stock
+ * depletion via apply_stock_movement/record_glass_pour for closed checks only
+ * (decision B18). Idempotent on (restaurant_id, source, external_check_id)
+ * for the check row, and on `pos:{source}:{externalCheckId}:{externalItemId}
+ * :{lineNo}` (decision B15) for every stock write, so webhook replays and
+ * re-imports are safe.
  */
 @Injectable()
 export class PosHubService {
   private readonly logger = new Logger(PosHubService.name);
+  private readonly webhookSecret: string | null =
+    process.env.POS_HUB_WEBHOOK_SECRET || null;
 
   // Multilingual wine keywords (incl. Turkish şarap) for the fallback
   // heuristic when no pos_item_mappings row exists yet.
@@ -58,6 +65,44 @@ export class PosHubService {
 
   getProviders() {
     return { summary: registrySummary(), providers: POS_PROVIDERS };
+  }
+
+  // =========================================================================
+  // Webhook auth (decision B17: the hub had no auth guard at all; decision
+  // B28: SimPOS signs with a real HMAC secret so this path stays exercised)
+  // =========================================================================
+
+  /**
+   * Verify an inbound webhook's HMAC-SHA256 signature against the raw request
+   * body. Fails closed: no configured secret means every signed request is
+   * rejected, matching decision B16's fail-closed posture elsewhere in the
+   * ingress path. `POS_HUB_WEBHOOK_SECRET` is unset -> reject.
+   */
+  verifyWebhookSignature(
+    rawBody: Buffer | string | undefined,
+    signature: string | null | undefined,
+  ): boolean {
+    if (!this.webhookSecret) {
+      this.logger.error(
+        "POS_HUB_WEBHOOK_SECRET not configured — rejecting webhook (fail closed)",
+      );
+      return false;
+    }
+    if (!signature || !rawBody) return false;
+    try {
+      const expected = crypto
+        .createHmac("sha256", this.webhookSecret)
+        .update(rawBody)
+        .digest("hex");
+      const a = Buffer.from(expected, "hex");
+      const b = Buffer.from(signature.toLowerCase(), "hex");
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch (err: any) {
+      this.logger.error(
+        `Webhook signature verification error: ${err?.message}`,
+      );
+      return false;
+    }
   }
 
   // =========================================================================
@@ -118,6 +163,8 @@ export class PosHubService {
             price: it.price,
             is_wine,
             master_wine_id: it.master_wine_id ?? mapped.masterWineId ?? null,
+            inventory_id: mapped.inventoryId,
+            sale_unit: mapped.saleUnit,
           };
         });
 
@@ -140,8 +187,22 @@ export class PosHubService {
         const { error } = await client.from("pos_checks").upsert(row, {
           onConflict: "restaurant_id,source,external_check_id",
         });
-        if (error) errors.push(`${check.externalCheckId}: ${error.message}`);
-        else upserted++;
+        if (error) {
+          errors.push(`${check.externalCheckId}: ${error.message}`);
+        } else {
+          upserted++;
+          // B18: only closed/paid checks deplete — an open check is
+          // analytics-only until closedAt lands (possibly on a later replay
+          // of the same externalCheckId, which the upsert above just handled).
+          if (check.closedAt) {
+            await this.applyStockEffects(
+              restaurantId,
+              providerKey,
+              check,
+              items,
+            );
+          }
+        }
       } catch (err: any) {
         errors.push(`${check.externalCheckId}: ${err?.message}`);
       }
@@ -167,17 +228,34 @@ export class PosHubService {
     const { data } = await this.dbService
       .getClient()
       .from("pos_item_mappings")
-      .select("external_item_id, item_name, category, is_wine, master_wine_id")
+      .select(
+        "external_item_id, item_name, category, is_wine, master_wine_id, inventory_id, sale_unit",
+      )
       .eq("restaurant_id", restaurantId)
       .in("source", [source, "*"]);
     return data || [];
   }
 
+  /**
+   * Mapping-table-first resolution (decision B21): a `pos_item_mappings` hit
+   * — by external id first, then exact name — is authoritative and is the
+   * only source that can produce an `inventoryId`/`saleUnit` (decision B36:
+   * sale unit never inferred from the item name). WINE_WORDS is a
+   * best-effort fallback used only to flag likely-wine items that have no
+   * mapping yet, so they get queued in pos_unresolved_lines instead of
+   * vanishing — it never has enough information to resolve a stock target.
+   */
   private resolveWine(
     name: string,
     externalItemId: string | null | undefined,
     mappings: any[],
-  ): { isWine: boolean; masterWineId: string | null; category: string | null } {
+  ): {
+    isWine: boolean;
+    masterWineId: string | null;
+    category: string | null;
+    inventoryId: string | null;
+    saleUnit: "glass" | "bottle" | null;
+  } {
     const lower = (name || "").toLowerCase();
     const byId = externalItemId
       ? mappings.find(
@@ -194,10 +272,143 @@ export class PosHubService {
         isWine: byName.is_wine === true,
         masterWineId: byName.master_wine_id ?? null,
         category: byName.category ?? null,
+        inventoryId: byName.inventory_id ?? null,
+        saleUnit: (byName.sale_unit as "glass" | "bottle" | null) ?? null,
       };
     }
     const isWine = PosHubService.WINE_WORDS.some((w) => lower.includes(w));
-    return { isWine, masterWineId: null, category: null };
+    return {
+      isWine,
+      masterWineId: null,
+      category: null,
+      inventoryId: null,
+      saleUnit: null,
+    };
+  }
+
+  // =========================================================================
+  // Stock effects (decision B13/B18/B19/B20) — closed checks only
+  // =========================================================================
+
+  private async applyStockEffects(
+    restaurantId: string,
+    source: string,
+    check: CanonicalCheck,
+    items: Array<{
+      name: string;
+      external_item_id: string | null;
+      qty: number;
+      price: number;
+      is_wine: boolean;
+      inventory_id: string | null;
+      sale_unit: "glass" | "bottle" | null;
+    }>,
+  ): Promise<void> {
+    const db = this.dbService.getClient();
+    const isVoid = check.voided === true;
+    const affected = new Set<string>();
+
+    for (let lineNo = 0; lineNo < items.length; lineNo++) {
+      const it = items[lineNo];
+      if (!it.is_wine) continue; // pos-hub tracks wine only
+
+      const qty = Math.max(0, Math.round(Number(it.qty) || 0));
+      if (qty <= 0) continue;
+
+      try {
+        if (!it.inventory_id) {
+          // B20: an unmapped wine line is queued for review, never dropped.
+          // supabase-js resolves with { error } rather than throwing on a
+          // constraint violation, so the dedupe check happens on the
+          // result, not in a catch block. The partial unique index on
+          // (restaurant_id, source, external_check_id, external_item_id)
+          // WHERE NOT resolved means a 23505 here just means it's already
+          // queued and open — not a real failure.
+          const { error: queueError } = await db
+            .from("pos_unresolved_lines")
+            .insert({
+              restaurant_id: restaurantId,
+              source,
+              external_check_id: check.externalCheckId,
+              external_item_id: it.external_item_id,
+              item_name: it.name,
+              qty: it.qty,
+              price: it.price,
+              raw: it,
+            });
+          if (queueError && queueError.code !== "23505") {
+            this.logger.warn(
+              `Failed to queue unresolved line ${it.name}: ${queueError.message}`,
+            );
+          }
+          continue;
+        }
+
+        // B15: depletion idempotency key.
+        const idem = `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}`;
+        const unit = it.sale_unit ?? "bottle"; // B36: default, never name-inferred
+
+        // supabase-js resolves RPC failures as { error } rather than
+        // throwing, so — as in the receiving-door bug this plan's spine
+        // repair fixed — the error field must be checked explicitly or a
+        // failed depletion reports success silently.
+        let rpcError: { message?: string } | null = null;
+        if (unit === "glass") {
+          if (isVoid) {
+            // B19: voids reverse glasses as well as bottles.
+            // record_glass_pour has no reversal mode, so a glass void is
+            // booked as a live-stock return of the equivalent glass count.
+            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
+              p_inventory_id: it.inventory_id,
+              p_stock_state: "live",
+              p_delta: qty,
+              p_transaction_type: "return",
+              p_source: "pos",
+              p_reason: `POS void (glass): ${it.name}`,
+              p_idempotency_key: idem,
+            }));
+          } else {
+            ({ error: rpcError } = await db.rpc("record_glass_pour", {
+              p_inventory_id: it.inventory_id,
+              p_pours: qty,
+              p_pour_ml: null,
+              p_location_id: null,
+              p_source: "pos",
+              p_reason: `POS sale: ${it.name}`,
+              p_idempotency_key: idem,
+            }));
+          }
+        } else {
+          ({ error: rpcError } = await db.rpc("apply_stock_movement", {
+            p_inventory_id: it.inventory_id,
+            p_stock_state: "live",
+            p_delta: isVoid ? qty : -qty,
+            p_transaction_type: isVoid ? "return" : "sale",
+            p_source: "pos",
+            p_reason: `POS ${isVoid ? "void" : "sale"}: ${it.name}`,
+            p_idempotency_key: idem,
+          }));
+        }
+
+        if (rpcError) {
+          this.logger.warn(
+            `Stock effect failed for ${it.name} (${unit}) on check ${check.externalCheckId}: ${rpcError.message}`,
+          );
+        } else {
+          affected.add(it.inventory_id);
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `Stock effect threw for ${it.name} on check ${check.externalCheckId}: ${err?.message}`,
+        );
+      }
+    }
+
+    if (affected.size > 0) {
+      this.logger.debug(
+        `POS ${isVoid ? "void" : "close"} [${source}] check=${check.externalCheckId}: stock updated for ${affected.size} item(s)`,
+      );
+    }
   }
 
   async upsertItemMapping(restaurantId: string, mapping: any) {

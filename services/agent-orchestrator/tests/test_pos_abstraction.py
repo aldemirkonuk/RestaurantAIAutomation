@@ -52,6 +52,18 @@ async def test_toast_adapter_verify_webhook_valid_signature():
 
 
 @pytest.mark.asyncio
+async def test_toast_adapter_verify_webhook_fails_closed_without_secret():
+    """SimPOS testbed decision B16: no configured secret must reject every
+    webhook rather than accept everything unsigned (fail closed, not open)."""
+    from adapters.toast_adapter import ToastAdapter
+
+    adapter = ToastAdapter(webhook_secret=None)
+    raw = b'{"guid": "order-1"}'
+    assert await adapter.verify_webhook(raw, signature="") is False
+    assert await adapter.verify_webhook(raw, signature="anything") is False
+
+
+@pytest.mark.asyncio
 async def test_toast_adapter_normalize_event_returns_pos_event():
     from adapters.toast_adapter import ToastAdapter
     from core.pos_provider import POSEvent

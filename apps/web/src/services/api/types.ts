@@ -39,6 +39,8 @@ export interface InventoryItem {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Set only by a spot count (recordSpotCount / apply_stock_movement source=mobile_count), never by a generic field edit. */
+  lastCountedAt?: string | null;
   bottleSizeMl: number;
   bottleSizeOz: number;
   saleType?: SaleType;

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
+import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubController } from "./pos-hub.controller";
 import { PosHubService } from "./pos-hub.service";
 
@@ -13,7 +14,7 @@ import { PosHubService } from "./pos-hub.service";
 @Module({
   imports: [DatabaseModule],
   controllers: [PosHubController],
-  providers: [PosHubService],
-  exports: [PosHubService],
+  providers: [PosHubService, CatalogMatcherService],
+  exports: [PosHubService, CatalogMatcherService],
 })
 export class PosHubModule {}

@@ -2,9 +2,11 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException } from "@nestjs/common";
 import { InventoryService } from "./inventory.service";
 import { DatabaseService } from "../database/database.service";
+import { PhotoCountService } from "./photo-count.service";
 
 describe("InventoryService", () => {
   let service: InventoryService;
+  const mockEstimate = jest.fn();
 
   // Each test configures specific return values via these jest.fn references.
   const mockSingle = jest.fn();
@@ -13,6 +15,7 @@ describe("InventoryService", () => {
   // `apply_stock_movement` RPC and then re-fetches the fresh row, so the mock
   // client must expose `.rpc()` as well as the fluent chain.
   const mockRpc = jest.fn();
+  const mockMaybeSingle = jest.fn();
 
   const mockSupabaseChain = {
     from: jest.fn().mockReturnThis(),
@@ -24,6 +27,7 @@ describe("InventoryService", () => {
     is: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     single: mockSingle,
+    maybeSingle: mockMaybeSingle,
     execute: mockExecute,
     rpc: mockRpc,
   };
@@ -52,11 +56,14 @@ describe("InventoryService", () => {
     // mockResolvedValueOnce — notably the post-insert fresh re-fetch. Returning
     // { data: null } makes createInventoryItem fall back to the inserted row.
     mockSingle.mockResolvedValue({ data: null, error: null });
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    mockEstimate.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InventoryService,
         { provide: DatabaseService, useValue: mockDatabaseService },
+        { provide: PhotoCountService, useValue: { estimate: mockEstimate } },
       ],
     }).compile();
 
@@ -178,6 +185,126 @@ describe("InventoryService", () => {
       // Must be null, not undefined — undefined as an object key becomes the string "undefined"
       expect(result.wineName).toBeNull();
       expect(result.wine_name).toBeNull();
+    });
+  });
+
+  describe("recordSpotCount (decisions E40-E43)", () => {
+    it("rejects a negative countedQty before calling the RPC", async () => {
+      await expect(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: -1,
+          clientCountId: "c1",
+        }),
+      ).rejects.toThrow(HttpException);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it("rejects a missing clientCountId before calling the RPC", async () => {
+      await expect(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 5,
+          clientCountId: "",
+        }),
+      ).rejects.toThrow(HttpException);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it("writes through set_stock_absolute with reconciliation/mobile_count and a count:{inventoryId}:{clientCountId} idempotency key", async () => {
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 8,
+        clientCountId: "client-count-42",
+      });
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        "set_stock_absolute",
+        expect.objectContaining({
+          p_inventory_id: "inv-1",
+          p_stock_state: "live",
+          p_target_qty: 8,
+          p_transaction_type: "reconciliation",
+          p_source: "mobile_count",
+          p_idempotency_key: "count:inv-1:client-count-42",
+        }),
+      );
+    });
+
+    it("stamps last_counted_at even when the count implies no stock change", async () => {
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 8,
+        clientCountId: "client-count-43",
+      });
+
+      const updateCall = mockSupabaseChain.update.mock.calls.find(
+        (args) => "last_counted_at" in (args[0] || {}),
+      );
+      expect(updateCall).toBeDefined();
+    });
+
+    it("surfaces an RPC error as an HttpException instead of silently succeeding", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: "inventory not found" },
+      });
+
+      await expect(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 8,
+          clientCountId: "client-count-44",
+        }),
+      ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe("estimateCountFromPhoto (decision E46 — suggestion only, never a stock write)", () => {
+    it("rejects a missing imageBase64 without calling the vision service", async () => {
+      await expect(
+        service.estimateCountFromPhoto("rest-1", "inv-1", ""),
+      ).rejects.toThrow(HttpException);
+      expect(mockEstimate).not.toHaveBeenCalled();
+    });
+
+    it("passes the resolved wine name to the vision estimator and returns its result verbatim", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { wine_name: "Château Pétrus", master_wine_library: null },
+        error: null,
+      });
+      mockEstimate.mockResolvedValueOnce({
+        suggestedQty: 7,
+        confidence: "medium",
+        note: "Counted 7 bottles on the shelf.",
+      });
+
+      const result = await service.estimateCountFromPhoto(
+        "rest-1",
+        "inv-1",
+        "ZmFrZS1iYXNlNjQ=",
+      );
+
+      expect(mockEstimate).toHaveBeenCalledWith(
+        "ZmFrZS1iYXNlNjQ=",
+        "Château Pétrus",
+      );
+      expect(result).toEqual({
+        suggestedQty: 7,
+        confidence: "medium",
+        note: "Counted 7 bottles on the shelf.",
+      });
+      // Never touches the RPC that actually moves stock.
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it("never writes to the database — it is a read-only vision call", async () => {
+      mockEstimate.mockResolvedValueOnce({
+        suggestedQty: null,
+        confidence: "low",
+        note: "Too blurry to count.",
+      });
+
+      await service.estimateCountFromPhoto("rest-1", "inv-1", "abc123");
+
+      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+      expect(mockSupabaseChain.update).not.toHaveBeenCalled();
+      expect(mockRpc).not.toHaveBeenCalled();
     });
   });
 });

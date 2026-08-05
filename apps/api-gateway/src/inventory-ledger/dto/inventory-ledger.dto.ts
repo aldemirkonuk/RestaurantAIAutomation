@@ -43,7 +43,6 @@ export enum TransactionSource {
 export enum StockType {
   LIVE = "live",
   SHADOW = "shadow",
-  RESERVED = "reserved",
 }
 
 // ============================================================================
@@ -131,6 +130,15 @@ export class CreateInventoryTransactionDto {
   @IsObject()
   @IsOptional()
   metadata?: Record<string, unknown>;
+
+  @ApiProperty({
+    description:
+      "Client-generated, stable across retries. Mandatory: apply_stock_movement " +
+      "is idempotent on this key, and a caller that cannot supply one cannot " +
+      "safely retry a stock write over a flaky connection.",
+  })
+  @IsString()
+  idempotencyKey: string;
 }
 
 // ============================================================================

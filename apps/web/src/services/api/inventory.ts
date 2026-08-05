@@ -198,16 +198,79 @@ export async function recordPour(
     locationId?: string | null;
     source?: string;
     reason?: string;
+    idempotencyKey?: string | null;
   },
   restaurantId?: string
 ): Promise<{ pour: any; item: InventoryItem | null }> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
+  // Client-generated so a retry over flaky signal can't double-pour once
+  // pour_events.idempotency_key is mandatory (spine repair, decision A12).
+  const idempotencyKey =
+    body.idempotencyKey ??
+    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? `pour:${itemId}:${crypto.randomUUID()}`
+      : `pour:${itemId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`);
+
   const response = await apiClient.post<{ pour: any; item: InventoryItem | null }>(
     `${INVENTORY_PATH}/${id}/item/${itemId}/pour`,
-    body
+    { ...body, idempotencyKey }
   );
+  return response.data;
+}
+
+/**
+ * Spot count (decisions E40-E43) — immediate reconciliation via
+ * apply_stock_movement(reconciliation/mobile_count). Idempotency key is
+ * client-generated as count:{inventoryId}:{clientCountId} so a retry over a
+ * flaky connection cannot double-apply the same count.
+ */
+export async function recordSpotCount(
+  itemId: string,
+  body: {
+    countedQty: number;
+    stockState?: 'live' | 'shadow';
+    clientCountId?: string;
+    reason?: string;
+    performedBy?: string | null;
+  },
+  restaurantId?: string
+): Promise<{ item: InventoryItem | null }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const clientCountId =
+    body.clientCountId ??
+    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}:${Math.random().toString(36).slice(2, 8)}`);
+
+  const response = await apiClient.post<{ item: InventoryItem | null }>(
+    `${INVENTORY_PATH}/${id}/item/${itemId}/count`,
+    { ...body, clientCountId }
+  );
+  return response.data;
+}
+
+/**
+ * Photo counting (decision E46) — a vision suggestion only, never a stock
+ * write. The caller drops the response into the same quantity field the
+ * voice path fills; the human still has to call recordSpotCount to commit.
+ */
+export async function estimateCountFromPhoto(
+  itemId: string,
+  imageBase64: string,
+  restaurantId?: string
+): Promise<{ suggestedQty: number | null; confidence: 'low' | 'medium' | 'high'; note: string }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const response = await apiClient.post<{
+    suggestedQty: number | null;
+    confidence: 'low' | 'medium' | 'high';
+    note: string;
+  }>(`${INVENTORY_PATH}/${id}/item/${itemId}/count-photo-estimate`, { imageBase64 });
   return response.data;
 }
 
@@ -326,6 +389,8 @@ export const inventoryApi = {
   updateInventoryItem,
   transferStock,
   recordPour,
+  recordSpotCount,
+  estimateCountFromPhoto,
   deleteInventoryItem,
   getUnmappedToastItems,
   findByToastGuid,

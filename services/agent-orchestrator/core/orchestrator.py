@@ -45,6 +45,7 @@ from agents.negotiation_playbook_agent import NegotiationPlaybookAgent
 from agents.auto_pilot_agent import AutoPilotAgent
 from agents.compliance_agent import ComplianceAgent
 from agents.shrinkage_detective_agent import ShrinkageDetectiveAgent
+from agents.drift_agent import DriftAgent
 
 # Phase 24 Agents — inbound email intelligence
 from agents.email_intel_agent import EmailIntelAgent
@@ -193,6 +194,7 @@ class AgentOrchestrator:
             "auto_pilot_agent": AutoPilotAgent,
             "compliance_agent": ComplianceAgent,
             "shrinkage_detective_agent": ShrinkageDetectiveAgent,
+            "drift_agent": DriftAgent,
             # Phase 24 agents — inbound email intelligence.
             #
             # Both were fully implemented and absent from this registry, so nothing

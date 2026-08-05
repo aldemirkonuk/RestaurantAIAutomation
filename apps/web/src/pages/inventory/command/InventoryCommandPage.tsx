@@ -30,6 +30,7 @@ import { cn } from '../../../lib/utils'
 import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher'
 import { useAuth } from '../../../contexts/AuthContext'
 import { getInventory } from '../../../services/api/inventory'
+import { watchSpotCountOutbox } from '../../../lib/spotCountOutbox'
 import { toast } from 'sonner'
 import {
   Kpi, StockGauge, StatusChip, AbcBadge, TypeChip,
@@ -93,6 +94,13 @@ export function InventoryCommandPage() {
   useEffect(() => {
     void refreshBranches()
   }, [refreshBranches])
+
+  // Flush any spot counts queued while offline (SpotCountPanel) whenever this
+  // page is open and the network returns or the tab regains focus.
+  useEffect(() => {
+    const stop = watchSpotCountOutbox(() => void refetchInventory())
+    return stop
+  }, [refetchInventory])
 
   const [view, setView] = useState<'table' | 'map'>('table')
   const [sort, setSort] = useState<SortKey>('runway')

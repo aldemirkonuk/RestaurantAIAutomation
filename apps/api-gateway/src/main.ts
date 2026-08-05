@@ -6,6 +6,11 @@ import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
+    // Needed for exact-byte HMAC signature verification on webhook routes
+    // (Toast, pos-hub/SimPOS) — without this, req.rawBody is always
+    // undefined and verification falls back to a re-serialized JSON
+    // approximation that can mismatch a real signature.
+    rawBody: true,
     cors: {
       origin: [
         ...(process.env.FRONTEND_URL

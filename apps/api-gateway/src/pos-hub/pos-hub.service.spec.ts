@@ -1,0 +1,261 @@
+import { PosHubService } from "./pos-hub.service";
+import { DatabaseService } from "../database/database.service";
+
+/**
+ * Ingress unification (SimPOS testbed plan, decisions B13/B15/B17-B20).
+ *
+ * Locks in: closed checks deplete stock through apply_stock_movement /
+ * record_glass_pour, open checks never do, voids reverse, unmapped wine
+ * lines are queued instead of dropped, and the webhook signature guard
+ * fails closed.
+ */
+
+type Row = Record<string, any>;
+
+function makeDb(opts: { mappings?: Row[]; tables?: Row[] }) {
+  const calls = {
+    rpc: [] as any[],
+    unresolvedInserts: [] as any[],
+    checkUpserts: [] as any[],
+  };
+
+  const client: any = {
+    from(table: string) {
+      const q: any = {
+        _table: table,
+        select: () => q,
+        eq: () => q,
+        in: () => q,
+      };
+      if (table === "pos_item_mappings") {
+        q.in = async () => ({ data: opts.mappings ?? [], error: null });
+      }
+      if (table === "restaurant_tables") {
+        q.eq = () => ({
+          eq: async () => ({ data: opts.tables ?? [], error: null }),
+        });
+      }
+      if (table === "pos_checks") {
+        q.upsert = async (row: Row) => {
+          calls.checkUpserts.push(row);
+          return { error: null };
+        };
+      }
+      if (table === "pos_unresolved_lines") {
+        q.insert = async (row: Row) => {
+          calls.unresolvedInserts.push(row);
+          return { error: null };
+        };
+      }
+      return q;
+    },
+    rpc: async (name: string, args: Row) => {
+      calls.rpc.push({ name, args });
+      return { data: "tx-1", error: null };
+    },
+  };
+
+  return {
+    db: { getClient: () => client } as unknown as DatabaseService,
+    calls,
+  };
+}
+
+function makeService(opts: { mappings?: Row[]; tables?: Row[] } = {}) {
+  const { db, calls } = makeDb(opts);
+  const service = new PosHubService(db);
+  return { service, calls };
+}
+
+const closedCheckPayload = (overrides: Row = {}) => ({
+  externalCheckId: "chk-1",
+  openedAt: "2026-08-05T18:00:00Z",
+  closedAt: "2026-08-05T19:00:00Z",
+  items: [
+    {
+      name: "Caymus Cabernet",
+      externalItemId: "item-1",
+      qty: 2,
+      price: 24,
+    },
+  ],
+  ...overrides,
+});
+
+describe("PosHubService.ingest — stock effects", () => {
+  it("does not touch stock for an open check (B18)", async () => {
+    const { service, calls } = makeService({
+      mappings: [
+        {
+          external_item_id: "item-1",
+          item_name: "Caymus Cabernet",
+          is_wine: true,
+          inventory_id: "inv-1",
+          sale_unit: "bottle",
+        },
+      ],
+    });
+
+    await service.ingest("r1", "generic_webhook", [
+      { ...closedCheckPayload(), closedAt: null },
+    ]);
+
+    expect(calls.rpc).toHaveLength(0);
+  });
+
+  it("depletes a mapped bottle sale via apply_stock_movement on close (B13/B18)", async () => {
+    const { service, calls } = makeService({
+      mappings: [
+        {
+          external_item_id: "item-1",
+          item_name: "Caymus Cabernet",
+          is_wine: true,
+          inventory_id: "inv-1",
+          sale_unit: "bottle",
+        },
+      ],
+    });
+
+    await service.ingest("r1", "generic_webhook", [closedCheckPayload()]);
+
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    expect(calls.rpc[0].args.p_inventory_id).toBe("inv-1");
+    expect(calls.rpc[0].args.p_delta).toBe(-2);
+    expect(calls.rpc[0].args.p_transaction_type).toBe("sale");
+    expect(calls.rpc[0].args.p_source).toBe("pos");
+    // B15: idempotency key format.
+    expect(calls.rpc[0].args.p_idempotency_key).toBe(
+      "pos:generic_webhook:chk-1:item-1:0",
+    );
+  });
+
+  it("depletes a mapped glass sale via record_glass_pour, never apply_stock_movement", async () => {
+    const { service, calls } = makeService({
+      mappings: [
+        {
+          external_item_id: "item-1",
+          item_name: "Caymus Cabernet",
+          is_wine: true,
+          inventory_id: "inv-1",
+          sale_unit: "glass",
+        },
+      ],
+    });
+
+    await service.ingest("r1", "generic_webhook", [closedCheckPayload()]);
+
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("record_glass_pour");
+    expect(calls.rpc[0].args.p_pours).toBe(2);
+  });
+
+  it("reverses a bottle void with a positive return delta (B19)", async () => {
+    const { service, calls } = makeService({
+      mappings: [
+        {
+          external_item_id: "item-1",
+          item_name: "Caymus Cabernet",
+          is_wine: true,
+          inventory_id: "inv-1",
+          sale_unit: "bottle",
+        },
+      ],
+    });
+
+    await service.ingest("r1", "generic_webhook", [
+      closedCheckPayload({ voided: true }),
+    ]);
+
+    expect(calls.rpc[0].args.p_delta).toBe(2);
+    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+  });
+
+  it("reverses a glass void via apply_stock_movement, not record_glass_pour (B19)", async () => {
+    const { service, calls } = makeService({
+      mappings: [
+        {
+          external_item_id: "item-1",
+          item_name: "Caymus Cabernet",
+          is_wine: true,
+          inventory_id: "inv-1",
+          sale_unit: "glass",
+        },
+      ],
+    });
+
+    await service.ingest("r1", "generic_webhook", [
+      closedCheckPayload({ voided: true }),
+    ]);
+
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    expect(calls.rpc[0].args.p_delta).toBe(2);
+    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+  });
+
+  it("queues an unmapped wine line in pos_unresolved_lines instead of dropping it (B20)", async () => {
+    const { service, calls } = makeService({ mappings: [] });
+
+    // No mapping row at all, but the name is caught by the WINE_WORDS
+    // fallback, so it's flagged wine with nothing to resolve it to stock.
+    await service.ingest("r1", "generic_webhook", [
+      closedCheckPayload({
+        items: [
+          {
+            name: "Mystery Cabernet",
+            externalItemId: "item-9",
+            qty: 1,
+            price: 30,
+          },
+        ],
+      }),
+    ]);
+
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.unresolvedInserts).toHaveLength(1);
+    expect(calls.unresolvedInserts[0].item_name).toBe("Mystery Cabernet");
+    expect(calls.unresolvedInserts[0].external_item_id).toBe("item-9");
+  });
+
+  it("never queues or depletes a non-wine item", async () => {
+    const { service, calls } = makeService({ mappings: [] });
+
+    await service.ingest("r1", "generic_webhook", [
+      closedCheckPayload({
+        items: [
+          { name: "Cheeseburger", externalItemId: "food-1", qty: 1, price: 12 },
+        ],
+      }),
+    ]);
+
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.unresolvedInserts).toHaveLength(0);
+  });
+});
+
+describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
+  const crypto = require("crypto");
+
+  it("fails closed when no secret is configured", () => {
+    delete process.env.POS_HUB_WEBHOOK_SECRET;
+    const { service } = makeService();
+    expect(service.verifyWebhookSignature(Buffer.from("{}"), "anything")).toBe(
+      false,
+    );
+  });
+
+  it("rejects a mismatched signature and accepts a correct one", () => {
+    process.env.POS_HUB_WEBHOOK_SECRET = "test-secret";
+    const { service } = makeService();
+    const body = Buffer.from(JSON.stringify({ hello: "world" }));
+    const good = crypto
+      .createHmac("sha256", "test-secret")
+      .update(body)
+      .digest("hex");
+
+    expect(service.verifyWebhookSignature(body, "deadbeef")).toBe(false);
+    expect(service.verifyWebhookSignature(body, good)).toBe(true);
+    delete process.env.POS_HUB_WEBHOOK_SECRET;
+  });
+});

@@ -11,6 +11,19 @@ Handles:
 - Menu modifications
 
 Publishes to RabbitMQ exchanges for consumption by other agents.
+
+SCOPE, as of the SimPOS Synthetic Testbed plan (decision B13/B14): the NestJS
+pos-hub (apps/api-gateway/src/pos-hub) is the single POS door and the only
+place that writes stock — via apply_stock_movement / record_glass_pour, gated
+on closed/paid checks, resolved through pos_item_mappings. This agent, and
+buffer_manager.py which consumes its pos.sale.completed events, do NOT write
+restaurant_inventory.stock_live or shadow_stock anywhere in this file, and
+that is intentional, not an oversight: it never became a second write path,
+and per decision B14 it should not become one. What remains here (buffering
+for shadow-stock threshold alerts, wine-name matching, saga-based polling for
+incomplete webhooks) is exactly the "drift and reorder" work the orchestrator
+keeps. Do not add a stock write to this file — route it through
+apply_stock_movement in NestJS instead.
 """
 
 import asyncio
@@ -166,10 +179,16 @@ class POSIntegrationAgent(BaseAgent):
             True if signature is valid, False otherwise
         """
         if not self.toast_webhook_secret:
-            self.logger.warning(
-                "No Toast webhook secret configured - skipping signature verification"
+            # SimPOS testbed plan (decision B16): fail closed. An unconfigured
+            # secret must reject real traffic, not wave it through — the
+            # previous "return True" meant a missing env var silently turned
+            # off webhook auth in whatever environment forgot to set it.
+            # Local/dev testing without a secret should use mock_mode instead
+            # (checked by the caller before this method is even invoked).
+            self.logger.error(
+                "No Toast webhook secret configured - rejecting webhook (fail closed)"
             )
-            return True
+            return False
 
         try:
             expected_signature = hmac.HMAC(
@@ -614,11 +633,19 @@ class POSIntegrationAgent(BaseAgent):
         """
         Check if an item is a wine product.
 
-        Strategy (BUG-04 fix):
+        Strategy (SimPOS testbed plan, decision B21 fix):
         1. If a Toast selection dict is provided, check menuGroup.category first.
            Toast categorises wines correctly for named wines (Caymus, Opus One, etc.)
-           that contain no wine keywords in their name.
-        2. Fall back to keyword scan for uncategorised items or when selection is None.
+           that contain no wine keywords in their name. A category match here is a
+           POSITIVE signal only — it is one restaurant's finite house category list
+           (self.wine_menu_categories), not Toast's exhaustive category vocabulary,
+           so a category that ISN'T on that list is evidence of nothing.
+        2. Always fall back to the keyword scan when step 1 didn't already confirm
+           a wine. Previously, any non-empty category not on the wine list was
+           treated as "definitively not wine" — so a restaurant with wine filed
+           under "Reserve List", "Cellar Selections", or any house category this
+           hardcoded list didn't happen to include had every such wine silently
+           reclassified as not-wine, with the keyword check never even running.
 
         Args:
             item_name: Name of the menu item
@@ -628,17 +655,16 @@ class POSIntegrationAgent(BaseAgent):
         Returns:
             True if item is a wine, False otherwise
         """
-        # Step 1: Category-based detection (accurate for brand-name wines)
+        # Step 1: Category-based detection (accurate for brand-name wines) —
+        # positive signal only, never a negative one.
         if selection:
             category = (selection.get("menuGroup") or {}).get("category", "")
-            if category:
-                # When Toast supplies a non-empty category, treat it as authoritative.
-                # A non-wine category (e.g. "Beverages") means definitively not wine;
-                # a wine category (e.g. "Red Wine") means definitively wine.
-                return category in self.wine_menu_categories
+            if category and category in self.wine_menu_categories:
+                return True
 
-        # Step 2: Keyword fallback — only reached when category is empty/absent,
-        # meaning Toast did not categorise the item (catches uncategorised wines).
+        # Step 2: Keyword fallback — always runs unless step 1 already
+        # confirmed a wine, so an uncategorised OR unrecognised-category item
+        # still gets a real chance at being caught by name.
         item_name_lower = item_name.lower()
         return any(
             keyword in item_name_lower for keyword in self.wine_category_keywords

@@ -45,6 +45,9 @@ jobs:
       - name: Type check
         run: pnpm run type-check
 
+      - name: Guard against direct stock_live/shadow_stock writes
+        run: ./scripts/check_no_direct_stock_writes.sh
+
   # Lint Python code
   lint-python:
     name: Lint Python

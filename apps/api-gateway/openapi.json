@@ -2459,6 +2459,63 @@
         ]
       }
     },
+    "/api/v1/vendor-portal/{slug}": {
+      "get": {
+        "operationId": "VendorPortalController_getPage",
+        "summary": "Fetch a published vendor catalogue page by slug",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "description": "Subdomain label for the vendor page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Vendor Portal (public)"
+        ]
+      }
+    },
+    "/api/v1/vendor-portal/{slug}/jsonld": {
+      "get": {
+        "operationId": "VendorPortalController_getJsonLd",
+        "summary": "schema.org ItemList for a published vendor page",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "url",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Vendor Portal (public)"
+        ]
+      }
+    },
     "/api/v1/ux/signals": {
       "post": {
         "operationId": "UxOptimizerController_ingest",
@@ -2776,7 +2833,7 @@
       "post": {
         "operationId": "PosHubController_webhook",
         "summary": "Ingest a POS webhook payload",
-        "description": "Normalizes the provider payload into canonical checks and upserts pos_checks (idempotent on external check id). Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today.",
+        "description": "Normalizes the provider payload into canonical checks, upserts pos_checks (idempotent on external check id), and — for closed checks — depletes stock via apply_stock_movement/record_glass_pour. Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today. Requires an HMAC-SHA256 signature over the raw body, hex-encoded, in X-Pos-Hub-Signature, keyed by POS_HUB_WEBHOOK_SECRET.",
         "parameters": [
           {
             "name": "provider",
@@ -2790,6 +2847,15 @@
             "name": "restaurantId",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Pos-Hub-Signature",
+            "in": "header",
+            "description": "HMAC-SHA256(rawBody, POS_HUB_WEBHOOK_SECRET), hex-encoded",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -2874,6 +2940,481 @@
         },
         "tags": [
           "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/catalog-match/{restaurantId}": {
+      "post": {
+        "operationId": "PosHubController_catalogMatch",
+        "summary": "Pull the POS catalog and match it against inventory (decisions D32-39)",
+        "description": "Body: { source }. Pulls the POS-side catalog (only 'simpos' is wired today), matches every unmapped item against restaurant_inventory via external id / SKU / trigram tiers (thresholds shared with the invoice line-matcher), auto-maps at >=0.9 confidence when unambiguous, and queues everything else in pos_catalog_match_proposals. Never overwrites an existing mapping silently.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/catalog-match/{restaurantId}/proposals": {
+      "get": {
+        "operationId": "PosHubController_listProposals",
+        "summary": "List pending (or other-status) catalog match proposals",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/catalog-match/{restaurantId}/proposals/{proposalId}/approve": {
+      "post": {
+        "operationId": "PosHubController_approveProposal",
+        "summary": "Approve a proposal — writes the pos_item_mappings row",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/pos-hub/catalog-match/{restaurantId}/proposals/{proposalId}/reject": {
+      "post": {
+        "operationId": "PosHubController_rejectProposal",
+        "summary": "Reject a proposal — leaves the item unmapped",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "pos-hub"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/catalog/seed": {
+      "post": {
+        "operationId": "SimposController_seedCatalog",
+        "summary": "Seed simpos_catalog once from the sim restaurant's live inventory",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "description": "sim.* restaurant UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/catalog": {
+      "get": {
+        "operationId": "SimposController_listCatalog",
+        "summary": "List the SimPOS catalog (Menu pane data source)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      },
+      "post": {
+        "operationId": "SimposController_upsertCatalogItem",
+        "summary": "Edit POS: add or reprice a SKU",
+        "description": "Body: { id?, wineName, producer?, vintage?, sizeMl?, price }. Omit id to create.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/catalog/{catalogId}": {
+      "delete": {
+        "operationId": "SimposController_removeCatalogItem",
+        "summary": "Edit POS: remove a SKU",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "catalogId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/tables": {
+      "get": {
+        "operationId": "SimposController_listTables",
+        "summary": "Tables 1-20 strip (decision C29 — visible, disabled, future)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/check": {
+      "get": {
+        "operationId": "SimposController_getOrCreateOpenCheck",
+        "summary": "The Home pane's current check — open one if none exists",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/orders": {
+      "get": {
+        "operationId": "SimposController_listOrders",
+        "summary": "Full-page order log: every check ever produced, with lines, Loss total, and webhook status",
+        "description": "Debugging view over SimPOS's own data only — distinct from the cross-cutting WineOps logs timeline. Reached via 'check logs in full page' from the Home tab.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/check/{checkId}": {
+      "get": {
+        "operationId": "SimposController_getCheck",
+        "summary": "Check detail with lines and the running Loss total",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/check/{checkId}/lines": {
+      "post": {
+        "operationId": "SimposController_addLine",
+        "summary": "Add Item: append a catalog SKU (vintage + size already chosen) to the open check",
+        "description": "Body: { catalogId, qty? }",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/lines/{lineId}": {
+      "patch": {
+        "operationId": "SimposController_setLineStatus",
+        "summary": "Void / comp / discount a line (feeds the Loss indicator)",
+        "description": "Body: { status: 'active'|'voided'|'comped'|'discounted', reason?, discountAmount? }",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/simpos/{restaurantId}/check/{checkId}/close": {
+      "post": {
+        "operationId": "SimposController_closeCheck",
+        "summary": "Order: close the check and fire the signed webhook to pos-hub",
+        "description": "Only close deplete real WineOps stock (decision B18) — this is SimPOS's only channel into WineOps (decision C25).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "simpos"
+        ]
+      }
+    },
+    "/api/v1/logs/timeline/{restaurantId}": {
+      "get": {
+        "operationId": "LogsController_getTimeline",
+        "summary": "Correlated read-only logs timeline",
+        "description": "Merges pos_checks, decision_log, inventory_transactions, procurement_documents, system_audit_log, and (when a correlation_id is given) event_store into one chronological feed. Pass correlationId to follow a single business event across tables.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "correlationId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "logs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -4635,6 +5176,72 @@
         ]
       }
     },
+    "/api/v1/inventory/{restaurantId}/item/{itemId}/count": {
+      "post": {
+        "operationId": "InventoryController_recordSpotCount",
+        "summary": "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
+        "description": "Writes through set_stock_absolute with transaction_type=reconciliation, source=mobile_count (decision E42), and always stamps last_counted_at, even when the counted quantity matches stock exactly (decision E41). idempotencyKey should be client-generated as count:{inventoryId}:{clientCountId} so a retry on flaky signal cannot double-apply (decision E43).",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/{restaurantId}/item/{itemId}/count-photo-estimate": {
+      "post": {
+        "operationId": "InventoryController_estimateCountFromPhoto",
+        "summary": "Vision-derived count suggestion from a photo — never writes stock",
+        "description": "Decision E46: photo counting produces a suggestion, never a direct stock write. The response fills the spot-count screen's quantity field, exactly like the voice path (decision E45) — a human still has to review and call POST .../count to commit it.",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
     "/api/v1/wines": {
       "get": {
         "operationId": "WinesController_searchWines",
@@ -5057,8 +5664,7 @@
               "default": "live",
               "enum": [
                 "live",
-                "shadow",
-                "reserved"
+                "shadow"
               ],
               "type": "string"
             }
@@ -11759,6 +12365,30 @@
         ]
       }
     },
+    "/api/v1/menus/{restaurantId}": {
+      "get": {
+        "operationId": "MenusController_getMenu",
+        "summary": "The active menu and its items for a restaurant (the interactive menu's read path)",
+        "parameters": [
+          {
+            "name": "restaurantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "menus"
+        ]
+      }
+    },
     "/api/v1/menus/import": {
       "post": {
         "operationId": "MenusController_importMenu",
@@ -14720,8 +15350,7 @@
             "type": "string",
             "enum": [
               "live",
-              "shadow",
-              "reserved"
+              "shadow"
             ],
             "default": "live"
           },
@@ -14764,6 +15393,10 @@
           "metadata": {
             "type": "object",
             "description": "Additional metadata"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Client-generated, stable across retries. Mandatory: apply_stock_movement is idempotent on this key, and a caller that cannot supply one cannot safely retry a stock write over a flaky connection."
           }
         },
         "required": [
@@ -14771,7 +15404,8 @@
           "wineId",
           "transactionType",
           "source",
-          "quantityChange"
+          "quantityChange",
+          "idempotencyKey"
         ]
       },
       "InventoryTransactionResponseDto": {
@@ -14830,8 +15464,7 @@
             "type": "string",
             "enum": [
               "live",
-              "shadow",
-              "reserved"
+              "shadow"
             ]
           },
           "referenceType": {
@@ -14989,8 +15622,7 @@
             "type": "string",
             "enum": [
               "live",
-              "shadow",
-              "reserved"
+              "shadow"
             ]
           }
         },

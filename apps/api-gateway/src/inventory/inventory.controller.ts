@@ -351,6 +351,7 @@ export class InventoryController {
       locationId?: string | null;
       source?: string;
       reason?: string;
+      idempotencyKey?: string | null;
     },
   ) {
     try {
@@ -359,6 +360,65 @@ export class InventoryController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to record pour",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(":restaurantId/item/:itemId/count")
+  @ApiOperation({
+    summary: "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
+    description:
+      "Writes through set_stock_absolute with transaction_type=reconciliation, source=mobile_count (decision E42), and always stamps last_counted_at, even when the counted quantity matches stock exactly (decision E41). idempotencyKey should be client-generated as count:{inventoryId}:{clientCountId} so a retry on flaky signal cannot double-apply (decision E43).",
+  })
+  async recordSpotCount(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body()
+    dto: {
+      countedQty: number;
+      stockState?: "live" | "shadow";
+      clientCountId: string;
+      reason?: string;
+      performedBy?: string | null;
+    },
+  ) {
+    try {
+      return await this.inventoryService.recordSpotCount(
+        restaurantId,
+        itemId,
+        dto,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to record spot count",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(":restaurantId/item/:itemId/count-photo-estimate")
+  @ApiOperation({
+    summary: "Vision-derived count suggestion from a photo — never writes stock",
+    description:
+      "Decision E46: photo counting produces a suggestion, never a direct stock write. The response fills the spot-count screen's quantity field, exactly like the voice path (decision E45) — a human still has to review and call POST .../count to commit it.",
+  })
+  async estimateCountFromPhoto(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body() body: { imageBase64: string },
+  ) {
+    try {
+      return await this.inventoryService.estimateCountFromPhoto(
+        restaurantId,
+        itemId,
+        body?.imageBase64 || "",
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to estimate count from photo",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

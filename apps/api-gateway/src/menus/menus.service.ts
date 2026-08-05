@@ -246,6 +246,47 @@ export class MenusService {
     return { menuItemId, fieldName: dto.fieldName, newValue: dto.newValue };
   }
 
+  /**
+   * Read path for the interactive menu (decision 39 — the menus module had
+   * no GET at all, which is why no menu page could exist). Returns the
+   * restaurant's active menu with its items, newest first within category.
+   */
+  async getMenu(restaurantId: string): Promise<{
+    menuId: string | null;
+    name: string | null;
+    status: string | null;
+    items: Array<Record<string, unknown>>;
+  }> {
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, name, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
+    if (!menu) return { menuId: null, name: null, status: null, items: [] };
+
+    const { data: items, error: itemsErr } = await this.dbService.supabase
+      .from("menu_items")
+      .select(
+        "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, created_at",
+      )
+      .eq("menu_id", menu.id)
+      .order("category", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (itemsErr)
+      throw new Error(`Failed to load menu items: ${itemsErr.message}`);
+
+    return {
+      menuId: menu.id,
+      name: menu.name,
+      status: menu.status,
+      items: items ?? [],
+    };
+  }
+
   // ── Shared pipeline: resolve against the library, insert, seed inventory ──
 
   private async resolveAndPersistItems(

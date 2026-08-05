@@ -180,7 +180,25 @@ export class DocumentsController {
         .eq("document_id", id),
     ]);
 
-    return { document: doc, lines: lines ?? [], links: links ?? [] };
+    // Decision E48 — the receipts page renders the stored photo/PDF beside
+    // the extracted lines. storage_path is a private-bucket object path, not
+    // a URL, so it needs a short-lived signed URL to be viewable at all.
+    // Best-effort: a signing failure must not take down the rest of the
+    // document, since the extraction and match evidence do not depend on it.
+    let imageUrl: string | null = null;
+    if (doc.storage_path) {
+      try {
+        const { data: signed } = await this.db
+          .getClient()
+          .storage.from("vendor-attachments")
+          .createSignedUrl(doc.storage_path, 3600);
+        imageUrl = signed?.signedUrl ?? null;
+      } catch {
+        /* best-effort — a missing object just yields no image */
+      }
+    }
+
+    return { document: { ...doc, imageUrl }, lines: lines ?? [], links: links ?? [] };
   }
 
   @Post(":id/match")
