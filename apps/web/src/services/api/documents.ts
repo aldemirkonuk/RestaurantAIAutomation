@@ -34,6 +34,12 @@ export interface ProcurementDocument {
   extraction_confidence: number | null
   notes: string | null
   created_at: string
+  storage_path?: string | null
+  /** Short-lived signed URL for the stored photo/PDF (detail endpoint only). */
+  imageUrl?: string | null
+  provider_id?: string | null
+  order_id?: string | null
+  filename?: string | null
 }
 
 export interface ProcurementDocumentLine {
@@ -53,6 +59,12 @@ export interface ProcurementDocumentLine {
   order_line_id: string | null
 }
 
+/** Decision E49 — absence is never agreement. Render nulls as an em dash, never as a pass. */
+export function dashNull(value: string | number | null | undefined): string {
+  if (value == null || value === '') return '—'
+  return String(value)
+}
+
 export const documentsApi = {
   /** Documents linked to one order. Empty when none are attached yet. */
   async forOrder(orderId: string): Promise<ProcurementDocument[]> {
@@ -62,9 +74,26 @@ export const documentsApi = {
     return data.items ?? []
   },
 
+  /** All documents for the restaurant, optionally filtered by status (needs_review / verified). */
+  async list(opts: {
+    status?: string
+    docType?: string
+    limit?: number
+  } = {}): Promise<ProcurementDocument[]> {
+    const { data } = await apiClient.get('/procurement/documents', {
+      params: {
+        status: opts.status,
+        docType: opts.docType,
+        limit: opts.limit ?? 100,
+      },
+    })
+    return data.items ?? []
+  },
+
   async detail(id: string): Promise<{
     document: ProcurementDocument
     lines: ProcurementDocumentLine[]
+    links: unknown[]
   }> {
     const { data } = await apiClient.get(`/procurement/documents/${id}`)
     return data
