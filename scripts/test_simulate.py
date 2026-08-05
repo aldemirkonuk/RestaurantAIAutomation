@@ -434,3 +434,70 @@ def test_sold_out_wines_stop_appearing(wine_list):
     )
     poured_after = set(wine_units_poured(after))
     assert not (poured_after & sold_out), "a sold-out wine was poured anyway"
+
+
+# ---------------------------------------------------------------------------
+# Remote-target guardrail (2026-08-05 incident)
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_never_checks_remote_targets():
+    """A dry run against a remote host must not be blocked — it sends nothing."""
+    from scripts.simulate.bridge import Bridge, BridgeConfig
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base="https://example.supabase.co",
+        stock_base="https://example.supabase.co",
+        apply=False,
+    )
+    Bridge(cfg)  # must not raise
+
+
+def test_apply_against_remote_host_is_refused_by_default():
+    from scripts.simulate.bridge import Bridge, BridgeConfig, RemoteTargetRefusedError
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base="https://example.supabase.co",
+        apply=True,
+    )
+    with pytest.raises(RemoteTargetRefusedError):
+        Bridge(cfg)
+
+
+def test_apply_against_remote_host_proceeds_with_allow_remote():
+    from scripts.simulate.bridge import Bridge, BridgeConfig
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base="https://example.supabase.co",
+        apply=True,
+        allow_remote=True,
+    )
+    Bridge(cfg)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://[::1]:3001",  # IPv6 loopback needs brackets in a URL authority
+        "http://0.0.0.0:3001",
+    ],
+)
+def test_apply_against_every_loopback_form_is_allowed(base):
+    from scripts.simulate.bridge import Bridge, BridgeConfig
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base=base,
+        stock_base=base,
+        apply=True,
+    )
+    Bridge(cfg)  # must not raise

@@ -22,6 +22,7 @@ import json
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
@@ -91,15 +92,60 @@ class BridgeConfig:
     #: "both" | "analytics" | "stock"
     ingress: str = "both"
     apply: bool = False
+    #: Required to --apply against a non-loopback analytics_base/stock_base.
+    #:
+    #: INCIDENT, 2026-08-05: a local dev script sourced a scratchpad env file to
+    #: point the orchestrator at local Supabase before running the simulator.
+    #: Between sessions the scratchpad was cleared; `. "$FILE"` on a missing file
+    #: fails SILENTLY in bash (no `set -e` in that shell, and sourcing nothing is
+    #: not an error), so the orchestrator process fell through to `.env`, which
+    #: holds the PRODUCTION Supabase credentials. 311 requests went to
+    #: `exzueerziesmczwlhomd.supabase.co` before it was noticed. The simulator
+    #: itself posted to `localhost:8000` exactly as configured — the leak was in
+    #: a separate, manually-launched process that the simulator had no way to see
+    #: or check. 114 decision_log rows and 53 idempotency_keys rows landed in
+    #: production (no business table — inventory_lots, restaurant_inventory,
+    #: procurement_orders, pos_checks — was touched); all were identified and
+    #: deleted the same session.
+    #:
+    #: This flag is the mitigation on the side that CAN be checked: the HTTP
+    #: target the simulator itself calls. It is not a fix for the class of bug
+    #: above (a downstream process resolving the wrong config), which needs a
+    #: guard in whatever launches that process — see scripts/dev_local_env.sh.
+    allow_remote: bool = False
 
     def wants(self, which: str) -> bool:
         return self.ingress in ("both", which)
+
+    #: Hosts treated as "local" without --allow-remote. IPv6 loopback included
+    #: because `curl -6` and some Docker configurations resolve localhost there.
+    _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+    def assert_targets_are_safe(self) -> None:
+        """Refuse to apply against a non-loopback ingress without explicit opt-in."""
+        if not self.apply or self.allow_remote:
+            return
+        for label, base in (("analytics_base", self.analytics_base), ("stock_base", self.stock_base)):
+            host = urllib.parse.urlparse(base).hostname or ""
+            if host not in self._LOCAL_HOSTS:
+                raise RemoteTargetRefusedError(
+                    f"--apply refused: {label}={base!r} is not localhost. "
+                    "If this is deliberate, pass --allow-remote. If it is not, "
+                    "check what set this value — a config file may have silently "
+                    "failed to load and fallen back to a default pointing at a "
+                    "real deployment (see the 2026-08-05 incident note on this class)."
+                )
+
+
+class RemoteTargetRefusedError(RuntimeError):
+    """Raised when --apply would post to a non-loopback host without --allow-remote."""
 
 
 class Bridge:
     """Posts checks through the production ingresses."""
 
     def __init__(self, config: BridgeConfig) -> None:
+        config.assert_targets_are_safe()
         self.config = config
         self.analytics = IngressResult(
             ingress="analytics",
