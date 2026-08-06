@@ -100,9 +100,7 @@ class DriftAgent(BaseAgent):
             try:
                 results.append(await self.check_restaurant(rid, slug=rest.get("slug")))
             except Exception as exc:
-                self.logger.error(
-                    f"Drift check failed for {rid}: {exc}", exc_info=True
-                )
+                self.logger.error(f"Drift check failed for {rid}: {exc}", exc_info=True)
                 results.append(
                     {
                         "restaurant_id": rid,
@@ -625,9 +623,7 @@ class DriftAgent(BaseAgent):
             self.logger.warning(f"Failed to insert drift_finding: {exc}")
         return None
 
-    async def _load_previous_snapshot_hash(
-        self, restaurant_id: str
-    ) -> Optional[str]:
+    async def _load_previous_snapshot_hash(self, restaurant_id: str) -> Optional[str]:
         """Read last snapshot hash from decision_log output metadata."""
         try:
             result = (

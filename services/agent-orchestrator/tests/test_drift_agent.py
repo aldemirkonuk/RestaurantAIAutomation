@@ -129,7 +129,9 @@ class _TableRouter:
         return chain
 
 
-def _make_agent(tables: Dict[str, List[Dict[str, Any]]]) -> tuple[DriftAgent, _TableRouter]:
+def _make_agent(
+    tables: Dict[str, List[Dict[str, Any]]]
+) -> tuple[DriftAgent, _TableRouter]:
     router = _TableRouter(tables)
     db = MagicMock()
     db.supabase.table.side_effect = router.table
@@ -227,9 +229,7 @@ async def test_new_item_creates_match_proposal():
 
     # Must NOT write an open drift_finding for safe new_item auto-heal
     open_findings = [
-        f
-        for f in router.inserts.get("drift_findings", [])
-        if f.get("status") == "open"
+        f for f in router.inserts.get("drift_findings", []) if f.get("status") == "open"
     ]
     assert open_findings == []
 

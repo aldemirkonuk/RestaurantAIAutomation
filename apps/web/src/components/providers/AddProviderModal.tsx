@@ -6,7 +6,6 @@ import {
   User,
   Mail,
   Globe,
-  MapPin,
   DollarSign,
   Truck,
   Package,

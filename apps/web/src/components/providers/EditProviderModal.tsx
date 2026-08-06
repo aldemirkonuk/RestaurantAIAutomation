@@ -840,7 +840,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                   ? prev.locations.map(l => l.isPrimary ? { ...l, address: val } : l)
                                   : prev.locations.length > 0
                                     ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: val, isPrimary: true } : l)
-                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office', address: val, isPrimary: true }]
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office' as const, address: val, isPrimary: true }]
                                 return {
                                   ...prev,
                                   address: val,
@@ -864,7 +864,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                   ? prev.locations.map(l => l.isPrimary ? { ...l, address: full } : l)
                                   : prev.locations.length > 0
                                     ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: full, isPrimary: true } : l)
-                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office', address: full, isPrimary: true }]
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office' as const, address: full, isPrimary: true }]
                                 return {
                                   ...prev,
                                   address: full,

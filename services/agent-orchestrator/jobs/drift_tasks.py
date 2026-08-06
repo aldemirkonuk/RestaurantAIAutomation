@@ -50,7 +50,9 @@ async def _run_drift_scan_async(
 
 
 @celery_app.task(name="drift.scan_sim_catalogs", bind=True, max_retries=1)
-def drift_scan_sim_catalogs_task(self, restaurant_id: str | None = None) -> Dict[str, Any]:
+def drift_scan_sim_catalogs_task(
+    self, restaurant_id: str | None = None
+) -> Dict[str, Any]:
     """
     Periodic SimPOS drift scan (sim-* restaurants only).
 

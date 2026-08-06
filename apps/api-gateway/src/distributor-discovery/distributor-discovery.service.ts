@@ -103,17 +103,16 @@ export class DistributorDiscoveryService {
       });
 
     if (error) {
-      this.logger.warn("Failed to search distributors RPC, returning empty results", {
+      // Rethrow rather than returning an empty page. "0 distributors found" and
+      // "the query failed" are different facts, and collapsing them renders a
+      // confident empty-state to someone whose search actually broke — they
+      // conclude no vendor serves them and stop looking. The caller can decide
+      // to degrade; this layer must not decide it silently.
+      this.logger.error("Failed to search distributors RPC", {
         restaurantId,
         error: error.message,
       });
-      return {
-        data: [],
-        total: 0,
-        limit,
-        offset,
-        origin: null,
-      };
+      throw new Error(error.message);
     }
 
     const rows = (data ?? []) as Array<
@@ -158,10 +157,13 @@ export class DistributorDiscoveryService {
       });
 
     if (error) {
-      this.logger.warn("Failed to load distributor facet counts RPC, returning empty object", {
-        restaurantId,
-        error: error.message,
-      });
+      this.logger.warn(
+        "Failed to load distributor facet counts RPC, returning empty object",
+        {
+          restaurantId,
+          error: error.message,
+        },
+      );
       return {};
     }
 

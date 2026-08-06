@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import { PosHubService } from "./pos-hub.service";
 import { DatabaseService } from "../database/database.service";
 
@@ -235,8 +236,6 @@ describe("PosHubService.ingest — stock effects", () => {
 });
 
 describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
-  const crypto = require("crypto");
-
   it("fails closed when no secret is configured", () => {
     delete process.env.POS_HUB_WEBHOOK_SECRET;
     const { service } = makeService();
