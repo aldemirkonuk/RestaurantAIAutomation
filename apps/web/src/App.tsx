@@ -107,6 +107,8 @@ const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeInte
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
+// Owner/manager only — vendor pricing is the restaurant's negotiating position.
+const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -260,6 +262,10 @@ function App() {
                   <Route path="/recommendations" element={<Recommendations />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
                   <Route path="/providers" element={<Providers />} />
+                  {/* Vendor price comparison. Role gate is enforced server-side
+                      too (owner/manager on /vendor-intel/*) — a hidden route is
+                      not access control. */}
+                  <Route path="/vendor-prices" element={<VendorPriceCompare />} />
                   {/* Discovery moved into Providers as a tab; keep the old path
                       working so existing links and bookmarks land in the right place. */}
                   <Route

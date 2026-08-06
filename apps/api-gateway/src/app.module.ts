@@ -13,6 +13,7 @@ import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
+import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
 import { PosHubModule } from "./pos-hub/pos-hub.module";
 import { SimposModule } from "./simpos/simpos.module";
 import { LogsModule } from "./logs/logs.module";
@@ -77,6 +78,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
+    VendorIntelModule, // Vendor price scraping + multi-source comparison
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
     SimposModule, // Fake POS terminal — signed-webhook-only into PosHubModule
