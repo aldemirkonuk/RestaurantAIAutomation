@@ -67,6 +67,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   error: string | null
+  clearError: () => void
   activeRestaurantId: string | null
   /** Role at the active branch from user_restaurant_access; null if unknown */
   activeRole: 'owner' | 'manager' | 'staff' | null
@@ -595,10 +596,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [logout])
 
+  const clearError = useCallback(() => setError(null), [])
+
   const value: AuthContextType = {
     user,
     loading,
     error,
+    clearError,
     activeRestaurantId,
     activeRole,
     availableRestaurants,

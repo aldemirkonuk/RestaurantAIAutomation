@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   getGoogleClientId,
@@ -13,6 +13,17 @@ interface GoogleSignInButtonProps {
   disabled?: boolean
   /** Show Google One Tap (saved accounts) on mount — only on login/register. */
   enableOneTap?: boolean
+}
+
+export interface GoogleSignInHandle {
+  /**
+   * Programmatically open the Google account chooser — used to auto-redirect
+   * a user who typed credentials for an account that only has Google sign-in.
+   * Unlike clicking the visible <button>, this ignores the `disabled` prop
+   * (e.g. while a password-login request is still in flight) and only
+   * requires that the GSI script itself has finished loading.
+   */
+  open: () => boolean
 }
 
 /** Official multicolor Google "G". */
@@ -44,12 +55,12 @@ function GoogleGlyph({ className }: { className?: string }) {
  * The white Google popup (accounts.google.com) is hosted by Google; we cannot
  * restyle it. One Tap shows saved accounts on the WineOps page when available.
  */
-export function GoogleSignInButton({
+export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInButtonProps>(function GoogleSignInButton({
   onSuccess,
   onError,
   disabled,
   enableOneTap = false,
-}: GoogleSignInButtonProps) {
+}, ref) {
   const { loginWithGoogle } = useAuth()
   const gsiHostRef = useRef<HTMLDivElement>(null)
   const oneTapShownRef = useRef(false)
@@ -124,12 +135,23 @@ export function GoogleSignInButton({
     }
   }, [clientId, handleCredential, enableOneTap, showOneTap])
 
-  const openGoogleChooser = () => {
+  const openGoogleChooser = useCallback(() => {
     const gsiButton = gsiHostRef.current?.querySelector<HTMLElement>(
       'div[role="button"], button, [tabindex="0"]',
     )
     gsiButton?.click()
-  }
+    return !!gsiButton
+  }, [])
+
+  useImperativeHandle(ref, () => ({
+    open: () => {
+      // Ignore `disabled`/`signingIn` — a caller redirecting a
+      // Google-only account after a failed password attempt must still be
+      // able to open the chooser even though the login form is mid-submit.
+      if (!ready) return false
+      return openGoogleChooser()
+    },
+  }), [ready, openGoogleChooser])
 
   if (unavailable) {
     return (
@@ -172,4 +194,4 @@ export function GoogleSignInButton({
       )}
     </div>
   )
-}
+})

@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
-import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
+import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
 
 const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
@@ -13,7 +13,8 @@ const fieldClass =
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, error: authError } = useAuth()
+  const { login, error: authError, clearError } = useAuth()
+  const googleRef = useRef<GoogleSignInHandle>(null)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -27,14 +28,12 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    clearError()
 
-    // Auto-direct gmail accounts to Google Sign-In
-    if (email.toLowerCase().endsWith('@gmail.com')) {
-      const googleBtn = document.getElementById('google-signin-btn')
-      if (googleBtn) {
-        googleBtn.click()
-        return
-      }
+    // Auto-direct Gmail addresses straight to Google's chooser — these can
+    // never have a WineOps password, so don't even try one.
+    if (email.toLowerCase().endsWith('@gmail.com') && googleRef.current?.open()) {
+      return
     }
 
     setLoading(true)
@@ -43,14 +42,16 @@ export function Login() {
       await login(email, password)
       navigate(from, { replace: true })
     } catch (err: any) {
-      // Auto-direct if the backend says this account uses Google sign-in
-      if (err.message?.includes('Google sign-in')) {
-        const googleBtn = document.getElementById('google-signin-btn')
-        if (googleBtn) {
-          googleBtn.click()
-          setLoading(false)
-          return
-        }
+      // The backend also flags non-Gmail addresses that were provisioned via
+      // a Google Workspace account (no password_hash) — redirect those too,
+      // and make sure the raw "use Google sign-in" error never flashes on
+      // screen first. `login()` stashes it in context error state before
+      // throwing, so clear that alongside the local one.
+      const isGoogleOnly = err.message?.includes('Google sign-in')
+      if (isGoogleOnly && googleRef.current?.open()) {
+        clearError()
+        setLoading(false)
+        return
       }
       setError(err.message || 'Login failed')
     } finally {
@@ -165,16 +166,13 @@ export function Login() {
           </div>
 
           <GoogleSignInButton
+            ref={googleRef}
             enableOneTap
             disabled={loading}
             onSuccess={() => navigate(from, { replace: true })}
             onError={setError}
           />
-          <p className="text-center text-xs text-gray-400 leading-relaxed">
-            Email and password sign in to your WineOps account. Google account passwords do not
-            work here — use <span className="font-medium text-gray-500">Sign in with Google</span>{' '}
-            for Google-linked accounts.
-          </p>
+
         </form>
 
         <div className="mt-6 text-center">
