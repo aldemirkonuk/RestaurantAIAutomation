@@ -3,6 +3,24 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorTracking } from '../lib/error-tracking'
 import { useAuthStore } from '../stores'
 
+/**
+ * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
+ * structured fields the API sends for OAuth-only accounts (see
+ * auth.service.ts#validateUser) — e.g. `{ code: 'OAUTH_ONLY', provider:
+ * 'microsoft' }` — so callers can branch on the real provider instead of
+ * pattern-matching the human-readable message text.
+ */
+export class LoginError extends Error {
+  constructor(
+    message: string,
+    public code?: string,
+    public provider?: 'google' | 'microsoft',
+  ) {
+    super(message)
+    this.name = 'LoginError'
+  }
+}
+
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const api = axios.create({
   baseURL: API_URL,
@@ -434,7 +452,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? 'Cannot reach server. Start the API Gateway: cd apps/api-gateway && pnpm start:dev'
         : (err?.response?.data?.message || err?.message || 'Login failed.')
       setError(message)
-      throw new Error(message)
+      // Preserve the structured { code, provider } the backend sends for
+      // OAuth-only accounts — callers (Login.tsx) branch on `provider` to
+      // decide which sign-in flow to redirect into. Don't make them
+      // regex-parse the human-readable `message` for that.
+      throw new LoginError(message, err?.response?.data?.code, err?.response?.data?.provider)
     } finally {
       setLoading(false)
     }

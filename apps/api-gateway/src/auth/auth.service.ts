@@ -95,9 +95,22 @@ export class AuthService {
     }
 
     if (!user.password_hash) {
-      throw new UnauthorizedException(
-        'This account uses Google sign-in. Use the "Sign in with Google" button below.',
-      );
+      // oauth_provider records which identity provider actually created this
+      // account (google or microsoft) — do not assume Google. A hotmail.com
+      // address, for example, is just as likely to have signed up via
+      // Microsoft, and telling that user to use Google sign-in sends them
+      // into a flow that can never work for their account.
+      const provider: "google" | "microsoft" | null =
+        user.oauth_provider === "microsoft" ? "microsoft" : "google";
+      const providerLabel = provider === "microsoft" ? "Microsoft" : "Google";
+      throw new UnauthorizedException({
+        message:
+          provider === "google"
+            ? `This account uses ${providerLabel} sign-in. Use the "Sign in with Google" button below.`
+            : `This account uses ${providerLabel} sign-in, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
+        code: "OAUTH_ONLY",
+        provider,
+      });
     }
 
     // Verify password

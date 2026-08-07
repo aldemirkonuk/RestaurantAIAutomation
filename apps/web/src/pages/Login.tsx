@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -42,17 +42,24 @@ export function Login() {
       await login(email, password)
       navigate(from, { replace: true })
     } catch (err: any) {
-      // The backend also flags non-Gmail addresses that were provisioned via
-      // a Google Workspace account (no password_hash) — redirect those too,
-      // and make sure the raw "use Google sign-in" error never flashes on
-      // screen first. `login()` stashes it in context error state before
-      // throwing, so clear that alongside the local one.
-      const isGoogleOnly = err.message?.includes('Google sign-in')
-      if (isGoogleOnly && googleRef.current?.open()) {
+      // The backend flags any account with no password (Google- or
+      // Microsoft-provisioned) via a structured { code, provider } — see
+      // auth.service.ts#validateUser. Branch on that, not on the message
+      // text: a hotmail.com address is a Microsoft account just as often as
+      // a Google one, and auto-clicking "Sign in with Google" for a
+      // Microsoft-only account would send the user into a flow that can
+      // never work for them.
+      const isOAuthOnly = err instanceof LoginError && err.code === 'OAUTH_ONLY'
+      if (isOAuthOnly && err.provider === 'google' && googleRef.current?.open()) {
+        // `login()` stashes the raw message in context error state before
+        // throwing — clear it so it never flashes before the redirect fires.
         clearError()
         setLoading(false)
         return
       }
+      // Microsoft-only accounts have no working sign-in button on this page
+      // yet, so just surface the backend's message as-is — it already
+      // points the user at "Forgot password?" as the working path.
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
