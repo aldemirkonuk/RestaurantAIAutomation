@@ -5,7 +5,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { hashWineIdentity } from "./wine-identity";
+import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
 import {
   ConsensusResult,
   PriceObservation,
@@ -85,8 +85,7 @@ export class VendorComparisonService {
     };
     return {
       identityHash: hashWineIdentity(row),
-      label:
-        [row.producer, row.name, row.vintage].filter(Boolean).join(" ") || null,
+      label: wineDisplayLabel(row),
     };
   }
 

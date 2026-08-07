@@ -19,6 +19,7 @@ import {
   apiErrorMessage,
   compareVendorPrices,
   recordVendorPrice,
+  retryUnlessClientError,
   type ManualSourceType,
   type PriceSourceType,
   type PriceTrend,
@@ -45,8 +46,46 @@ const MANUAL_SOURCES: Array<{ value: ManualSourceType; label: string; hint: stri
 const money = (v: number | null) =>
   v === null ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(v)
 
-const wineLabel = (w: Wine) =>
-  [w.producer, w.name, w.vintage].filter(Boolean).join(' ')
+/**
+ * A wine's name without repeating itself.
+ *
+ * Mirrors `wineDisplayLabel` in the gateway's wine-identity.ts — the browser
+ * cannot import server code, and the two must agree because the chip and the
+ * heading below it sit two lines apart. Joining all three fields
+ * unconditionally reads "Schramsberg Vineyards 2021 Schramsberg Blanc de Noir
+ * North Coast 2021", because the master library's `name` often already carries
+ * the producer and the vintage.
+ */
+const TRADE_WORDS = new Set([
+  'vineyard', 'vineyards', 'winery', 'wineries', 'estate', 'estates', 'cellar',
+  'cellars', 'domaine', 'domaines', 'chateau', 'bodega', 'bodegas', 'weingut',
+  'tenuta', 'azienda', 'agricola', 'cantina', 'maison', 'champagne', 'wine',
+  'wines', 'company', 'co', 'inc', 'ltd', 'llc', 'the', 'family', 'brothers',
+  'bros', 'and',
+])
+
+const wineLabel = (w: Wine) => {
+  const norm = (s?: string | null) =>
+    (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+
+  const name = (w.name ?? '').trim()
+  const producer = (w.producer ?? '').trim()
+  const vintage = w.vintage ? String(w.vintage) : ''
+
+  // Suppress the producer when the name already says it. Substring containment
+  // is too strict \u2014 "Schramsberg Vineyards" is not inside "2021 Schramsberg
+  // Blanc de Noir North Coast" \u2014 so compare only the distinctive words.
+  const distinctive = norm(producer).split(' ').filter((x) => x && !TRADE_WORDS.has(x))
+  const nameWords = new Set(norm(name).split(' '))
+  const nameSaysProducer = distinctive.length > 0 && distinctive.every((x) => nameWords.has(x))
+
+  const parts: string[] = []
+  if (producer && !nameSaysProducer) parts.push(producer)
+  if (name) parts.push(name)
+  if (vintage && !new RegExp(`\\b${vintage}\\b`).test(name)) parts.push(vintage)
+  return parts.join(' ')
+}
 
 function SourceBadge({ type }: { type: PriceSourceType }) {
   const meta = SOURCE_META[type] ?? SOURCE_META.manual
@@ -364,6 +403,7 @@ export function VendorPriceCompare() {
     enabled: !!masterWineId && !selectedWine,
     queryFn: () => getWineById(masterWineId),
     staleTime: 5 * 60_000,
+    retry: retryUnlessClientError,
   })
 
   useEffect(() => {
@@ -374,6 +414,7 @@ export function VendorPriceCompare() {
     queryKey: ['vendor-compare', masterWineId],
     enabled: !!masterWineId,
     queryFn: () => compareVendorPrices({ masterWineId }),
+    retry: retryUnlessClientError,
   })
 
   const ladder = useMemo(() => {
