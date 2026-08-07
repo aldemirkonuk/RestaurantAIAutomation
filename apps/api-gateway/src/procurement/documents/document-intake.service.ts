@@ -110,7 +110,12 @@ export class DocumentIntakeService {
       const resolvedInput: IntakeInput = { ...input, storagePath };
 
       const parsed = await this.route(input, bytes);
-      const documentId = await this.persist(resolvedInput, sha256, bytes, parsed);
+      const documentId = await this.persist(
+        resolvedInput,
+        sha256,
+        bytes,
+        parsed,
+      );
       return { documentId, parsed, duplicate: false };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);

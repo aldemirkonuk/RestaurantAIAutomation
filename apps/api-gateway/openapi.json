@@ -2516,6 +2516,121 @@
         ]
       }
     },
+    "/api/v1/vendor-intel/compare": {
+      "get": {
+        "operationId": "VendorIntelController_compare",
+        "summary": "Vendor price ladder + 7/30/90d trends for one product, across all sources",
+        "parameters": [
+          {
+            "name": "masterWineId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "signatureHash",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "windowDays",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Vendor Intelligence"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vendor-intel/observations": {
+      "post": {
+        "operationId": "VendorIntelController_recordObservation",
+        "summary": "Record a hand-entered vendor price observation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualObservationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Vendor Intelligence"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vendor-intel/scrape": {
+      "post": {
+        "operationId": "VendorIntelController_scrape",
+        "summary": "Extract prices from one vendor page",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Vendor Intelligence"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vendor-intel/sweep": {
+      "post": {
+        "operationId": "VendorIntelController_sweep",
+        "summary": "Sweep active vendor_catalogue websites (sequential, rate-limited)",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Vendor Intelligence"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/ux/signals": {
       "post": {
         "operationId": "UxOptimizerController_ingest",
@@ -13666,6 +13781,10 @@
           "byLocation"
         ]
       },
+      "ManualObservationDto": {
+        "type": "object",
+        "properties": {}
+      },
       "IngestSignalDto": {
         "type": "object",
         "properties": {
@@ -16695,9 +16814,13 @@
             "type": "string",
             "description": "Vendor website URL"
           },
-          "contactName": {
+          "contactFirstName": {
             "type": "string",
-            "description": "Primary contact name at the vendor"
+            "description": "Primary contact first name at the vendor"
+          },
+          "contactLastName": {
+            "type": "string",
+            "description": "Primary contact last name at the vendor"
           }
         }
       },
@@ -16957,6 +17080,16 @@
           },
           "isPrimary": {
             "type": "boolean"
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
           }
         },
         "required": [
@@ -16978,6 +17111,16 @@
           },
           "isPrimary": {
             "type": "boolean"
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
           }
         }
       },

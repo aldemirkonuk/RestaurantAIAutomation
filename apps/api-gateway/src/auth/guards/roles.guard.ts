@@ -28,7 +28,11 @@ export class RolesGuard implements CanActivate {
 
     // If owner/manager required, accept both as well as admin
     if (requiredRoles.includes("owner") || requiredRoles.includes("manager")) {
-      if (userRole === "owner" || userRole === "manager" || userRole === "admin") {
+      if (
+        userRole === "owner" ||
+        userRole === "manager" ||
+        userRole === "admin"
+      ) {
         return true;
       }
     }

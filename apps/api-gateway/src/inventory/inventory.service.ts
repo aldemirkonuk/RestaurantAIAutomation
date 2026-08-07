@@ -432,7 +432,10 @@ export class InventoryService {
     imageBase64: string,
   ) {
     if (!imageBase64) {
-      throw new HttpException("imageBase64 is required", HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        "imageBase64 is required",
+        HttpStatus.BAD_REQUEST,
+      );
     }
     if (!this.photoCountService) {
       throw new HttpException(
@@ -450,7 +453,9 @@ export class InventoryService {
       .maybeSingle();
 
     const wineName =
-      item?.wine_name || (item as any)?.master_wine_library?.name || "this wine";
+      item?.wine_name ||
+      (item as any)?.master_wine_library?.name ||
+      "this wine";
 
     return this.photoCountService.estimate(imageBase64, wineName);
   }

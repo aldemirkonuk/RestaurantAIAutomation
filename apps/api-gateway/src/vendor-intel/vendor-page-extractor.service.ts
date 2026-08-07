@@ -8,6 +8,7 @@ import {
   isPathAllowed,
   normalizeExtraction,
 } from "./vendor-page-extraction";
+import { hashWineIdentity } from "./wine-identity";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -248,6 +249,16 @@ export class VendorPageExtractorService {
       vendor_catalogue_id: ctx.vendorCatalogueId ?? null,
       vendor_name_raw: ctx.vendorName ?? null,
       product_name_raw: item.name,
+      // Without this the row is written and then permanently unreachable: the
+      // comparison endpoint looks up by master_wine_id or signature_hash, and
+      // a scrape knows neither until the name is resolved. The identity hash
+      // is what lets two vendors' pages for the same bottle land in one
+      // ladder; null (no usable name) means "not comparable", not "unmatched".
+      signature_hash: hashWineIdentity({
+        producer: item.producer,
+        name: item.name,
+        vintage: item.vintage,
+      }),
       source_type: "website_scrape",
       trust_tier: 4,
       // Per-item source_ref keeps the dedup index meaningful: the page is the

@@ -26,7 +26,8 @@ export class MenusController {
 
   @Get(":restaurantId")
   @ApiOperation({
-    summary: "The active menu and its items for a restaurant (the interactive menu's read path)",
+    summary:
+      "The active menu and its items for a restaurant (the interactive menu's read path)",
   })
   async getMenu(@Param("restaurantId") restaurantId: string) {
     return this.menusService.getMenu(restaurantId);

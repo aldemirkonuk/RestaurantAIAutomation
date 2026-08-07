@@ -67,7 +67,9 @@ export class VendorCatalogueService {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      this.logger.warn(`Vendor catalogue search query warning: ${error.message}`);
+      this.logger.warn(
+        `Vendor catalogue search query warning: ${error.message}`,
+      );
       // Fallback query without listing_tier filter in case listing_tier column is absent
       const fallbackQuery = this.databaseService.supabase
         .from("vendor_catalogue")

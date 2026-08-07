@@ -20,7 +20,10 @@ export class VendorPortalController {
   @Get(":slug")
   @Public()
   @ApiOperation({ summary: "Fetch a published vendor catalogue page by slug" })
-  @ApiParam({ name: "slug", description: "Subdomain label for the vendor page" })
+  @ApiParam({
+    name: "slug",
+    description: "Subdomain label for the vendor page",
+  })
   async getPage(@Param("slug") slug: string) {
     const page = await this.vendorPortalService.getPublishedPage(slug);
     return { success: true, page };

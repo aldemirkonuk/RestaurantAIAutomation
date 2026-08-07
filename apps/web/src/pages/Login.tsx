@@ -27,12 +27,31 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    // Auto-direct gmail accounts to Google Sign-In
+    if (email.toLowerCase().endsWith('@gmail.com')) {
+      const googleBtn = document.getElementById('google-signin-btn')
+      if (googleBtn) {
+        googleBtn.click()
+        return
+      }
+    }
+
     setLoading(true)
 
     try {
       await login(email, password)
       navigate(from, { replace: true })
     } catch (err: any) {
+      // Auto-direct if the backend says this account uses Google sign-in
+      if (err.message?.includes('Google sign-in')) {
+        const googleBtn = document.getElementById('google-signin-btn')
+        if (googleBtn) {
+          googleBtn.click()
+          setLoading(false)
+          return
+        }
+      }
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)

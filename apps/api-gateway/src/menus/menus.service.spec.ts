@@ -57,19 +57,39 @@ describe("MenusService.getMenu", () => {
   it("returns an empty shape when the restaurant has no active menu", async () => {
     const service = makeService({ restaurant_menus: [], menu_items: [] });
     const result = await service.getMenu("rest-1");
-    expect(result).toEqual({ menuId: null, name: null, status: null, items: [] });
+    expect(result).toEqual({
+      menuId: null,
+      name: null,
+      status: null,
+      items: [],
+    });
   });
 
   it("returns the active menu's items scoped to that menu only", async () => {
     const service = makeService({
       restaurant_menus: [
-        { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" },
-        { id: "menu-2", restaurant_id: "rest-2", name: "Other", status: "active" },
+        {
+          id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Wine List",
+          status: "active",
+        },
+        {
+          id: "menu-2",
+          restaurant_id: "rest-2",
+          name: "Other",
+          status: "active",
+        },
       ],
       menu_items: [
         { id: "mi-1", menu_id: "menu-1", name: "Opus One", category: "Red" },
         { id: "mi-2", menu_id: "menu-1", name: "Sancerre", category: "White" },
-        { id: "mi-3", menu_id: "menu-2", name: "Should not appear", category: "Red" },
+        {
+          id: "mi-3",
+          menu_id: "menu-2",
+          name: "Should not appear",
+          category: "Red",
+        },
       ],
     });
 

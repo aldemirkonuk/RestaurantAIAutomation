@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
 
@@ -10,7 +14,7 @@ const COUNT_PROMPT =
   "visibly full-or-partial bottles of the wine described. Return ONLY a JSON " +
   'object, no surrounding text: {"suggestedQty": <integer or null>, ' +
   '"confidence": "low"|"medium"|"high", "note": "<one short sentence>"}. ' +
-  "Set suggestedQty to null and confidence to \"low\" if the photo does not " +
+  'Set suggestedQty to null and confidence to "low" if the photo does not ' +
   "clearly show countable bottles (e.g. too blurry, wrong item, empty shelf " +
   "with no bottles). Never guess wildly — a null with a clear note is better " +
   "than a confident wrong number.";
@@ -127,7 +131,9 @@ export class PhotoCountService {
             : "Could not read a confident count from this photo.",
       };
     } catch {
-      this.logger.warn(`Failed to parse photo count response: ${text.slice(0, 200)}`);
+      this.logger.warn(
+        `Failed to parse photo count response: ${text.slice(0, 200)}`,
+      );
       return {
         suggestedQty: null,
         confidence: "low",

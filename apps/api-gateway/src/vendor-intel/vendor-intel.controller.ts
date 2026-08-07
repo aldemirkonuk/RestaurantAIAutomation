@@ -14,6 +14,11 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { VendorComparisonService } from "./vendor-comparison.service";
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
+import { ManualObservationDto } from "./dto/manual-observation.dto";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SIGNATURE_HASH_RE = /^[0-9a-f]{64}$/i;
 
 /**
  * Vendor price intelligence.
@@ -49,6 +54,21 @@ export class VendorIntelController {
         "Provide masterWineId or signatureHash to identify the product.",
       );
     }
+    // Validate the shape before it reaches Postgres. Without this, typing a
+    // wine name into the search box produced 22P02 "invalid input syntax for
+    // type uuid", which surfaced as a 500 — an outage message for a typo.
+    // signatureHash is checked as strict hex because it is interpolated into a
+    // PostgREST filter string when both keys are queried together.
+    if (masterWineId && !UUID_RE.test(masterWineId)) {
+      throw new BadRequestException(
+        "masterWineId must be a wine id. Search for the wine by name and pick it from the list instead of typing it.",
+      );
+    }
+    if (signatureHash && !SIGNATURE_HASH_RE.test(signatureHash)) {
+      throw new BadRequestException(
+        "signatureHash must be a 64-character hex digest.",
+      );
+    }
     const parsedWindow = windowDays ? Number(windowDays) : undefined;
     const result = await this.comparison.compare({
       masterWineId,
@@ -60,6 +80,27 @@ export class VendorIntelController {
           : undefined,
     });
     return { success: true, ...result };
+  }
+
+  /**
+   * Record a price someone was told — the phone quote, the WhatsApp message.
+   *
+   * Manager-level rather than owner-only: managers are the people who actually
+   * take these calls, and a price that has to wait for the owner to log in is
+   * a price that never gets recorded.
+   */
+  @Post("observations")
+  @ApiOperation({ summary: "Record a hand-entered vendor price observation" })
+  async recordObservation(
+    @CurrentUser() user: { restaurantId: string; userId?: string; id?: string },
+    @Body() body: ManualObservationDto,
+  ) {
+    const observation = await this.comparison.recordManualObservation({
+      ...body,
+      restaurantId: user.restaurantId,
+      userId: user.userId ?? user.id,
+    });
+    return { success: true, observation };
   }
 
   /**

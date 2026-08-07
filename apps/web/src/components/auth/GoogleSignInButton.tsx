@@ -148,6 +148,7 @@ export function GoogleSignInButton({
       />
 
       <button
+        id="google-signin-btn"
         type="button"
         disabled={disabled || signingIn || !ready}
         onClick={openGoogleChooser}

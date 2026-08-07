@@ -35,9 +35,7 @@ function makeFakeClient(tables: Record<string, Row[]>) {
         },
         then(resolve: any) {
           let rows = tables[table] || [];
-          rows = rows.filter((r) =>
-            filters.every(([c, v]) => r[c] === v),
-          );
+          rows = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
           for (const [col, obj] of containsFilters) {
             rows = rows.filter((r) => {
               const meta = r[col] || {};

@@ -93,7 +93,8 @@ export class VendorPortalService {
         region: l.region ?? null,
         country: l.country ?? null,
         grapeVarieties: l.grape_varieties ?? null,
-        price: l.price === null || l.price === undefined ? null : Number(l.price),
+        price:
+          l.price === null || l.price === undefined ? null : Number(l.price),
         currency: l.currency ?? "USD",
         packSize: l.pack_size ?? 1,
         volumeMl: l.volume_ml ?? null,
@@ -118,7 +119,10 @@ export class VendorPortalService {
    * Listings with no price emit no Offer rather than an Offer of zero. A
    * zero-price Offer is a valid document and a false statement.
    */
-  buildJsonLd(page: PublicVendorPage, canonicalUrl: string): Record<string, unknown> {
+  buildJsonLd(
+    page: PublicVendorPage,
+    canonicalUrl: string,
+  ): Record<string, unknown> {
     return {
       "@context": "https://schema.org",
       "@type": "ItemList",
@@ -129,7 +133,9 @@ export class VendorPortalService {
         const product: Record<string, unknown> = {
           "@type": "Product",
           name: l.productName,
-          ...(l.producer ? { brand: { "@type": "Brand", name: l.producer } } : {}),
+          ...(l.producer
+            ? { brand: { "@type": "Brand", name: l.producer } }
+            : {}),
           ...(l.vintage ? { productionDate: String(l.vintage) } : {}),
           ...(l.region || l.country
             ? { countryOfOrigin: l.country ?? l.region }

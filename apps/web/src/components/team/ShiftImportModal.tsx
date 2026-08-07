@@ -232,7 +232,7 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
             )}
 
             {/* Action buttons */}
-            <div className="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-gray-100">
+            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
               <Button variant="ghost" onClick={handleClose} disabled={isUploading}>
                 Cancel
               </Button>

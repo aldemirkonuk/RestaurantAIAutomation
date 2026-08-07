@@ -85,7 +85,10 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     const [path, uploadedBytes, opts] = mockStorageUpload.mock.calls[0];
     expect(path).toMatch(/^rest-1\/documents\/[a-f0-9]{64}\/invoice\.pdf$/);
     expect(Buffer.isBuffer(uploadedBytes)).toBe(true);
-    expect(opts).toMatchObject({ contentType: "application/pdf", upsert: true });
+    expect(opts).toMatchObject({
+      contentType: "application/pdf",
+      upsert: true,
+    });
 
     // storage_path on the insert must be the uploaded path, not null.
     const insertCall = mockSupabaseChain.insert.mock.calls[0][0];

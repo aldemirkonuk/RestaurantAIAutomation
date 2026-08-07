@@ -367,7 +367,8 @@ export class InventoryController {
 
   @Post(":restaurantId/item/:itemId/count")
   @ApiOperation({
-    summary: "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
+    summary:
+      "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
     description:
       "Writes through set_stock_absolute with transaction_type=reconciliation, source=mobile_count (decision E42), and always stamps last_counted_at, even when the counted quantity matches stock exactly (decision E41). idempotencyKey should be client-generated as count:{inventoryId}:{clientCountId} so a retry on flaky signal cannot double-apply (decision E43).",
   })
@@ -400,7 +401,8 @@ export class InventoryController {
 
   @Post(":restaurantId/item/:itemId/count-photo-estimate")
   @ApiOperation({
-    summary: "Vision-derived count suggestion from a photo — never writes stock",
+    summary:
+      "Vision-derived count suggestion from a photo — never writes stock",
     description:
       "Decision E46: photo counting produces a suggestion, never a direct stock write. The response fills the spot-count screen's quantity field, exactly like the voice path (decision E45) — a human still has to review and call POST .../count to commit it.",
   })

@@ -734,7 +734,14 @@ export function ManagerShiftDesk() {
       {shiftEditor && (
         <ShiftEditor shift={shiftEditor.shift} defaultDate={shiftEditor.date} defaultMemberId={shiftEditor.memberId} members={members} onClose={() => setShiftEditor(null)} />
       )}
-      {memberEditor && <MemberEditor member={memberEditor.member} wageVisible={week?.settings?.wage_visible ?? true} onClose={() => setMemberEditor(null)} />}
+      {memberEditor && (
+        <MemberEditor
+          member={memberEditor.member}
+          wageVisible={week?.settings?.wage_visible ?? true}
+          ownerCount={members.filter(m => m.role === 'owner').length}
+          onClose={() => setMemberEditor(null)}
+        />
+      )}
       <InviteTeamDialog
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}

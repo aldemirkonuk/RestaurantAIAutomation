@@ -29,7 +29,9 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
     mockChain.from.mockReturnThis();
     mockChain.select.mockReturnThis();
     mockChain.eq.mockReturnThis();
-    mockChain.storage.from.mockReturnValue({ createSignedUrl: mockCreateSignedUrl });
+    mockChain.storage.from.mockReturnValue({
+      createSignedUrl: mockCreateSignedUrl,
+    });
     mockOrder.mockResolvedValue({ data: [] });
 
     // Constructed directly rather than through Nest's DI container — the

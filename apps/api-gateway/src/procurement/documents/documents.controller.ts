@@ -198,7 +198,11 @@ export class DocumentsController {
       }
     }
 
-    return { document: { ...doc, imageUrl }, lines: lines ?? [], links: links ?? [] };
+    return {
+      document: { ...doc, imageUrl },
+      lines: lines ?? [],
+      links: links ?? [],
+    };
   }
 
   @Post(":id/match")
