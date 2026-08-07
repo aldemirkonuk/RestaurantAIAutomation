@@ -39,9 +39,9 @@ describe("buildWineIdentity", () => {
   });
 
   it("uses 'nv' for a missing vintage, which is a real answer not a gap", () => {
-    expect(
-      buildWineIdentity({ producer: "Krug", name: "Grande Cuvee" }),
-    ).toBe("krug|grande cuvee|nv");
+    expect(buildWineIdentity({ producer: "Krug", name: "Grande Cuvee" })).toBe(
+      "krug|grande cuvee|nv",
+    );
   });
 
   it("distinguishes NV from a vintage-dated bottling of the same cuvee", () => {

@@ -79,7 +79,9 @@ export function buildWineIdentity(input: WineIdentity): string {
   // it is a different bottle from a vintage-dated one. "nv" is that answer;
   // an empty string would mean "we do not know", which is not the same.
   const vintage =
-    input.vintage === null || input.vintage === undefined || input.vintage === ""
+    input.vintage === null ||
+    input.vintage === undefined ||
+    input.vintage === ""
       ? "nv"
       : String(input.vintage).trim().toLowerCase();
 

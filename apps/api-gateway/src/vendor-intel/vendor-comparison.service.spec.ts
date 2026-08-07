@@ -162,7 +162,9 @@ describe("VendorComparisonService", () => {
 
     expect(out.consensus.bestPrice).toBeNull();
     expect(out.consensus.ladder).toHaveLength(0);
-    expect(out.consensus.notes.join(" ")).toMatch(/no usable price observations/i);
+    expect(out.consensus.notes.join(" ")).toMatch(
+      /no usable price observations/i,
+    );
   });
 
   it("throws on a query failure instead of reporting an empty market", async () => {
@@ -224,9 +226,9 @@ describe("VendorComparisonService", () => {
         code: "22P02",
         message: 'invalid input syntax for type uuid: "chardonnay"',
       });
-      await expect(svc.compare({ masterWineId: WINE_ID })).rejects.toMatchObject(
-        { status: 400 },
-      );
+      await expect(
+        svc.compare({ masterWineId: WINE_ID }),
+      ).rejects.toMatchObject({ status: 400 });
     });
   });
 

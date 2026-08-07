@@ -286,7 +286,9 @@ export class VendorComparisonService {
       .single();
 
     if (error) {
-      this.logger.error(`Failed to record manual observation: ${error.message}`);
+      this.logger.error(
+        `Failed to record manual observation: ${error.message}`,
+      );
       throw new InternalServerErrorException(
         `Could not record the observation: ${error.message}`,
       );
