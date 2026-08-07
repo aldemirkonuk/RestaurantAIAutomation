@@ -36,6 +36,13 @@ export interface Provider {
   minimumOrder?: number
   /** Lead time in days */
   leadTimeDays?: number
+  /**
+   * Coordinates of this provider's geocoded location, attached by
+   * listProviders from provider_locations. Absent when no site has been
+   * geocoded — such a provider cannot be plotted, which is a real state.
+   */
+  latitude?: number | null
+  longitude?: number | null
   /** Wine specialties array (mirrors winePortfolio but as array) */
   specialties?: string[]
 }
@@ -73,7 +80,8 @@ export interface CreateProviderInput {
   statesOrRegionsServed?: string[]
   notes?: string
   restaurantId: string
-  contactPerson?: string
+  contactFirstName?: string
+  contactLastName?: string
   accountNumber?: string
   paymentTerms?: string
   minimumOrderValue?: number
@@ -384,6 +392,16 @@ export interface ProviderLocation {
   type: string
   address: string | null
   isPrimary: boolean
+  /**
+   * Resolved by Places autocomplete when the address was selected. Null means
+   * "not geocoded" — never 0, which is a real point off West Africa. Callers
+   * must filter on null rather than falsy, or every ungeocoded location lands
+   * in the Gulf of Guinea.
+   */
+  latitude?: number | null
+  longitude?: number | null
+  geocodedAt?: string | null
+  geocodeSource?: 'google_places' | 'manual' | 'import' | null
   createdAt?: string
 }
 
@@ -394,7 +412,14 @@ export async function getProviderLocations(providerId: string): Promise<Provider
 
 export async function createProviderLocation(
   providerId: string,
-  data: { name: string; type?: string; address?: string; isPrimary?: boolean }
+  data: {
+    name: string
+    type?: string
+    address?: string
+    isPrimary?: boolean
+    latitude?: number
+    longitude?: number
+  }
 ): Promise<ProviderLocation> {
   const response = await apiClient.post<ProviderLocation>(`/providers/${providerId}/locations`, data)
   return response.data
@@ -403,7 +428,14 @@ export async function createProviderLocation(
 export async function updateProviderLocation(
   providerId: string,
   locationId: string,
-  data: Partial<{ name: string; type: string; address: string; isPrimary: boolean }>
+  data: Partial<{
+    name: string
+    type: string
+    address: string
+    isPrimary: boolean
+    latitude: number
+    longitude: number
+  }>
 ): Promise<ProviderLocation> {
   const response = await apiClient.patch<ProviderLocation>(
     `/providers/${providerId}/locations/${locationId}`,

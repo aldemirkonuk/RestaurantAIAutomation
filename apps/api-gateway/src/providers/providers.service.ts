@@ -133,6 +133,8 @@ export class ProvidersService {
         personality_notes: dto.notes ?? null,
         contact_phone: normalizeToE164(dto.phone),
         contact_email: dto.email ?? null,
+        contact_first_name: dto.contactFirstName ?? null,
+        contact_last_name: dto.contactLastName ?? null,
         catalogue_vendor_id: null,
         is_custom: true,
         restaurant_id: restaurantId ?? null,
@@ -211,7 +213,46 @@ export class ProvidersService {
       throw error;
     }
 
-    return (data || []).map((row) => this.mapProviderRow(row as ProviderRow));
+    const providers = (data || []).map((row) =>
+      this.mapProviderRow(row as ProviderRow),
+    );
+
+    // Attach coordinates from each provider's geocoded location so callers can
+    // map them without a second round trip per provider. Best-effort: a
+    // provider with no geocoded site simply has no coordinates, which is a
+    // meaningful state (it cannot be plotted) rather than an error.
+    try {
+      const { data: locs } = await this.databaseService.supabase
+        .from("provider_locations")
+        .select("provider_id, latitude, longitude, is_primary")
+        .eq("restaurant_id", restaurantId)
+        .not("latitude", "is", null);
+
+      if (locs?.length) {
+        // Primary wins; otherwise the first geocoded site. A provider with a
+        // geocoded warehouse but an ungeocoded head office should still appear.
+        const byProvider = new Map<string, any>();
+        for (const l of locs as any[]) {
+          const existing = byProvider.get(l.provider_id);
+          if (!existing || (l.is_primary && !existing.is_primary)) {
+            byProvider.set(l.provider_id, l);
+          }
+        }
+        for (const p of providers as any[]) {
+          const l = byProvider.get(p.id);
+          if (l) {
+            p.latitude = Number(l.latitude);
+            p.longitude = Number(l.longitude);
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not attach provider coordinates: ${err?.message ?? "unknown"}`,
+      );
+    }
+
+    return providers;
   }
 
   async getProvider(
@@ -919,6 +960,12 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
+      // Numeric columns arrive as strings over PostgREST; Number() here keeps
+      // the API contract numeric so callers do not compare "40.7" to 40.7.
+      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      geocodedAt: row.geocoded_at ?? null,
+      geocodeSource: row.geocode_source ?? null,
       createdAt: row.created_at,
     }));
   }
@@ -945,6 +992,17 @@ export class ProvidersService {
         type: dto.type || "office",
         address: dto.address || null,
         is_primary: dto.isPrimary ?? false,
+        // Only stamp geocode metadata when a real pair arrived. The DB CHECK
+        // rejects half a coordinate, so sending one alone fails loudly rather
+        // than storing an unplottable row.
+        ...(dto.latitude !== undefined && dto.longitude !== undefined
+          ? {
+              latitude: dto.latitude,
+              longitude: dto.longitude,
+              geocoded_at: new Date().toISOString(),
+              geocode_source: "google_places",
+            }
+          : {}),
       })
       .select("*")
       .single();
@@ -964,6 +1022,10 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
+      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      geocodedAt: row.geocoded_at ?? null,
+      geocodeSource: row.geocode_source ?? null,
     };
   }
 
@@ -988,6 +1050,14 @@ export class ProvidersService {
         ...(dto.type !== undefined && { type: dto.type }),
         ...(dto.address !== undefined && { address: dto.address }),
         ...(dto.isPrimary !== undefined && { is_primary: dto.isPrimary }),
+        ...(dto.latitude !== undefined && dto.longitude !== undefined
+          ? {
+              latitude: dto.latitude,
+              longitude: dto.longitude,
+              geocoded_at: new Date().toISOString(),
+              geocode_source: "google_places",
+            }
+          : {}),
       })
       .eq("id", locationId)
       .eq("provider_id", providerId)
@@ -1010,6 +1080,10 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
+      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      geocodedAt: row.geocoded_at ?? null,
+      geocodeSource: row.geocode_source ?? null,
     };
   }
 

@@ -34,6 +34,13 @@ export interface ProviderLocation {
   type: 'office' | 'warehouse' | 'store' | 'other'
   address: string
   isPrimary: boolean
+  /**
+   * Set only when the address came from Places autocomplete. Undefined means
+   * the address was typed and never geocoded — distinct from 0, which is a
+   * real coordinate.
+   */
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export interface EditProviderData {
@@ -860,11 +867,15 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                 .join(', ')
                               setFormData(prev => {
                                 const hasPrimary = prev.locations.some(l => l.isPrimary)
+                                const coords = {
+                                  latitude: place.latitude,
+                                  longitude: place.longitude,
+                                }
                                 const updatedLocs = hasPrimary
-                                  ? prev.locations.map(l => l.isPrimary ? { ...l, address: full } : l)
+                                  ? prev.locations.map(l => l.isPrimary ? { ...l, address: full, ...coords } : l)
                                   : prev.locations.length > 0
-                                    ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: full, isPrimary: true } : l)
-                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office' as const, address: full, isPrimary: true }]
+                                    ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: full, isPrimary: true, ...coords } : l)
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office' as const, address: full, isPrimary: true, ...coords }]
                                 return {
                                   ...prev,
                                   address: full,

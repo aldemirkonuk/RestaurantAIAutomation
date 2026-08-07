@@ -22,16 +22,26 @@ const WINE_DARK = '#7C3339'
 const SLATE = '#8A817C'
 
 /** Pin markup. Kept as raw SVG so marker content is a plain DOM node. */
-function pinElement(opts: { active: boolean; dimmed: boolean; label?: string }): HTMLElement {
+function pinElement(opts: { active: boolean; dimmed: boolean; label?: string; isCustom?: boolean }): HTMLElement {
   const el = document.createElement('div')
   el.style.cssText = `transform: translateY(${opts.active ? '-3px' : '0'}); transition: transform .12s ease; cursor: pointer;`
-  const fill = opts.dimmed ? SLATE : opts.active ? WINE_DARK : WINE
+  
+  const baseColor = opts.isCustom ? '#D97706' : WINE
+  const activeColor = opts.isCustom ? '#B45309' : WINE_DARK
+  const dimmedColor = opts.isCustom ? '#FCD34D' : SLATE
+  
+  const fill = opts.dimmed ? dimmedColor : opts.active ? activeColor : baseColor
   const scale = opts.active ? 1.18 : 1
+  
+  const centerIcon = opts.isCustom
+    ? `<path d="M13 7.5L14.5 11.5L18.5 12L15.5 15L16.5 19L13 17L9.5 19L10.5 15L7.5 12L11.5 11.5L13 7.5Z" fill="#fff" fill-opacity="${opts.dimmed ? 0.75 : 0.95}"/>`
+    : `<circle cx="13" cy="12.6" r="5.1" fill="#fff" fill-opacity="${opts.dimmed ? 0.75 : 0.95}"/>`
+
   el.innerHTML = `
     <svg width="${26 * scale}" height="${34 * scale}" viewBox="0 0 26 34" fill="none" xmlns="http://www.w3.org/2000/svg"
          style="filter: drop-shadow(0 ${opts.active ? 3 : 1}px ${opts.active ? 6 : 3}px rgba(0,0,0,.3));">
       <path d="M13 0C5.82 0 0 5.82 0 13c0 9.2 11.6 20.2 12.1 20.6a1.3 1.3 0 0 0 1.8 0C14.4 33.2 26 22.2 26 13 26 5.82 20.18 0 13 0Z" fill="${fill}"/>
-      <circle cx="13" cy="12.6" r="5.1" fill="#fff" fill-opacity="${opts.dimmed ? 0.75 : 0.95}"/>
+      ${centerIcon}
     </svg>`
   return el
 }
@@ -162,7 +172,7 @@ export function DistributorMap({
           mk = new marker.AdvancedMarkerElement({
             map,
             position,
-            content: pinElement({ active: false, dimmed: !d.may_serve }),
+            content: pinElement({ active: false, dimmed: !d.may_serve, isCustom: d.listing_tier === 'custom' }),
             title: d.name,
           })
           mk.addListener('click', () => onSelectRef.current(d.id))
@@ -197,7 +207,7 @@ export function DistributorMap({
       const mk = markersRef.current.get(d.id)
       if (!mk) continue
       const active = d.id === hoveredId || d.id === selectedId
-      mk.content = pinElement({ active, dimmed: !d.may_serve })
+      mk.content = pinElement({ active, dimmed: !d.may_serve, isCustom: d.listing_tier === 'custom' })
       mk.zIndex = active ? 100 : 2
       const el = mk.content as HTMLElement
       el.addEventListener('mouseenter', () => onHoverRef.current(d.id))

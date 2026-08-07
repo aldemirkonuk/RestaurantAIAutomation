@@ -139,6 +139,17 @@ export function TierBadge({ tier }: { tier: string }) {
       </span>
     )
   }
+  if (tier === 'custom') {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-semibold text-amber-700"
+        title="Custom provider added by you"
+      >
+        <ShieldCheck className="h-2.5 w-2.5" />
+        My Provider
+      </span>
+    )
+  }
   if (tier === 'registry') {
     return (
       <span

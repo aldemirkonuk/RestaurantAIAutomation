@@ -74,7 +74,8 @@ function saveCustomTypes(types: CustomProviderType[]) {
 
 export interface NewProviderData {
   name: string
-  contactPerson: string
+  contactFirstName: string
+  contactLastName: string
   phone: string
   email: string
   website: string
@@ -122,7 +123,8 @@ const PAYMENT_TERMS = [
 export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalProps) {
   const [formData, setFormData] = useState<NewProviderData>({
     name: '',
-    contactPerson: '',
+    contactFirstName: '',
+    contactLastName: '',
     phone: '',
     email: '',
     website: '',
@@ -194,7 +196,8 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
     // Reset form
     setFormData({
       name: '',
-      contactPerson: '',
+      contactFirstName: '',
+      contactLastName: '',
       phone: '',
       email: '',
       website: '',
@@ -235,8 +238,8 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
     if (!formData.name.trim()) {
       errors.name = 'Provider name is required'
     }
-    if (!formData.contactPerson.trim()) {
-      errors.contactPerson = 'Contact person is required'
+    if (!formData.contactFirstName.trim()) {
+      errors.contactFirstName = 'First name is required'
     }
     if (!formData.phone.trim()) {
       errors.phone = 'Phone number is required'
@@ -355,24 +358,38 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
                     )}
                   </div>
 
-                  {/* Contact Person */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Contact Person <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  {/* Contact First / Last Name */}
+                  <div className="grid grid-cols-2 gap-3 md:col-span-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        First Name <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={formData.contactFirstName}
+                          onChange={(e) => setFormData({...formData, contactFirstName: e.target.value})}
+                          className={`w-full pl-10 pr-4 py-3 border rounded-xl bg-white text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 ${validationErrors.contactFirstName ? 'border-rose-500' : 'border-gray-200'}`}
+                          placeholder="John"
+                        />
+                      </div>
+                      {validationErrors.contactFirstName && (
+                        <p className="text-xs text-rose-600 mt-1">{validationErrors.contactFirstName}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Last Name
+                      </label>
                       <input
                         type="text"
-                        value={formData.contactPerson}
-                        onChange={(e) => setFormData({...formData, contactPerson: e.target.value})}
-                        className={`w-full pl-10 pr-4 py-3 border rounded-xl bg-white text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 ${validationErrors.contactPerson ? 'border-rose-500' : 'border-gray-200'}`}
-                        placeholder="John Smith"
+                        value={formData.contactLastName}
+                        onChange={(e) => setFormData({...formData, contactLastName: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Smith"
                       />
                     </div>
-                    {validationErrors.contactPerson && (
-                      <p className="text-xs text-rose-600 mt-1">{validationErrors.contactPerson}</p>
-                    )}
                   </div>
 
                   {/* Phone */}

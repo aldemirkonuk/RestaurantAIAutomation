@@ -148,7 +148,7 @@ type ProvidersTab = 'mine' | 'discover'
 // Loaded on demand — the map surface pulls in a tile renderer that the roster view
 // has no use for, so it should not be in the Providers bundle.
 const DistributorMapPage = lazy(
-  () => import('./distributors/command/DistributorMapPage'),
+  () => import('./distributors/command/DistributorMapPage').then(m => ({ default: m.DistributorMapPage })),
 )
 
 /**
@@ -261,23 +261,7 @@ export function Providers() {
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
 
-  // Local ratings state — updates immediately for snappy UI. Syncs to remote
-  // preferences async. The useEffect seeds from server data on first load /
-  // hard refresh but never overwrites in-session changes.
-  const [ratings, setLocalRatings] = useState<Record<string, number>>(
-    () => (preferences.providerRatings ?? {}) as Record<string, number>,
-  )
-  useEffect(() => {
-    const serverRatings = (preferences.providerRatings ?? {}) as Record<string, number>
-    // Only seed local state when it is still empty (fresh mount / hard refresh)
-    setLocalRatings(prev => {
-      if (Object.keys(prev).length === 0 && Object.keys(serverRatings).length > 0) {
-        return serverRatings
-      }
-      // Merge server ratings in for any provider the local state hasn't touched
-      return { ...serverRatings, ...prev }
-    })
-  }, [preferences.providerRatings])
+  const ratings: Record<string, number> = (preferences.providerRatings ?? {}) as Record<string, number>
 
   const setFavorites = useCallback((updater: (prev: string[]) => string[]) => {
     updatePreferences({ providerFavorites: updater(favorites) })
@@ -288,13 +272,9 @@ export function Providers() {
   }, [notes, updatePreferences])
 
   const setRatings = useCallback((updater: (prev: Record<string, number>) => Record<string, number>) => {
-    setLocalRatings(prev => {
-      const next = updater(prev)
-      // Persist async — never block the UI on this
-      updatePreferences({ providerRatings: next })
-      return next
-    })
-  }, [updatePreferences])
+    // Rely entirely on the optimistic update in useUserPreferences
+    updatePreferences({ providerRatings: updater(ratings) })
+  }, [updatePreferences, ratings])
 
   const { data: providers = [], isLoading, isFetching, error, refetch } = useProviders(restaurantId || '', {
     search: searchQuery,
@@ -430,11 +410,19 @@ export function Providers() {
         // Create new locations or update existing ones
         await Promise.all(
           data.locations.map(loc => {
+            // Coordinates are sent only as a complete pair. The DB enforces
+            // (latitude IS NULL) = (longitude IS NULL), so half a coordinate
+            // is rejected loudly rather than stored as an unplottable row.
+            const hasCoords =
+              typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
             const payload = {
               name: loc.name || 'Office',
               type: loc.type,
               address: loc.address || '',
               isPrimary: loc.isPrimary,
+              ...(hasCoords
+                ? { latitude: loc.latitude as number, longitude: loc.longitude as number }
+                : {}),
             }
             if (loc.id.startsWith('new-loc-') || loc.id.startsWith('primary-location-') || !existingDbIds.has(loc.id)) {
               return createProviderLocation(providerId, payload)
@@ -462,7 +450,9 @@ export function Providers() {
         primaryBusinessType: (providerData.primaryBusinessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
         phone: providerData.phone, email: providerData.email,
         physicalAddress: providerData.address, restaurantId,
-        contactPerson: providerData.contactPerson, website: providerData.website,
+        contactFirstName: providerData.contactFirstName, 
+        contactLastName: providerData.contactLastName,
+        website: providerData.website,
         accountNumber: providerData.accountNumber,
         winePortfolio: providerData.specialties.join(', '),
         statesOrRegionsServed: providerData.deliveryDays,
@@ -474,7 +464,7 @@ export function Providers() {
       if (providerData.rating > 0 && result?.id) setRatings(prev => ({ ...prev, [result.id]: providerData.rating }))
       await dispatchProviderUpdate({
         type: 'added', providerId: result?.id ?? '', providerName: providerData.name,
-        data: { contactPerson: providerData.contactPerson, email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
+        data: { contactPerson: `${providerData.contactFirstName} ${providerData.contactLastName}`.trim(), email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
         source: 'providers_page', timestamp: new Date().toISOString(),
       })
     } catch (err) {
@@ -627,7 +617,7 @@ export function Providers() {
             section title under the page title rather than a competing one. Left alone
             deliberately so this tab needs no changes inside the distributor surface. */}
         <Suspense fallback={<div className="px-6 pt-6"><PageSkeleton /></div>}>
-          <DistributorMapPage />
+          <DistributorMapPage customProviders={providers} />
         </Suspense>
       </div>
     )

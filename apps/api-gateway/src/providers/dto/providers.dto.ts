@@ -98,10 +98,15 @@ export class CreateProviderDto {
   @IsOptional()
   website?: string;
 
-  @ApiPropertyOptional({ description: "Primary contact name at the vendor" })
+  @ApiPropertyOptional({ description: "Primary contact first name at the vendor" })
   @IsString()
   @IsOptional()
-  contactName?: string;
+  contactFirstName?: string;
+
+  @ApiPropertyOptional({ description: "Primary contact last name at the vendor" })
+  @IsString()
+  @IsOptional()
+  contactLastName?: string;
 }
 
 export class UpdateProviderDto {
@@ -457,6 +462,25 @@ export class CreateProviderLocationDto {
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
+
+  /**
+   * Coordinates resolved by Places autocomplete when the address was picked.
+   * Optional and nullable: an address typed by hand has no point, and the DB
+   * enforces that latitude and longitude are supplied together.
+   */
+  @ApiPropertyOptional({ minimum: -90, maximum: 90 })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ minimum: -180, maximum: 180 })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @IsOptional()
+  longitude?: number;
 }
 
 export class UpdateProviderLocationDto {
@@ -479,4 +503,23 @@ export class UpdateProviderLocationDto {
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
+
+  /**
+   * Coordinates resolved by Places autocomplete when the address was picked.
+   * Optional and nullable: an address typed by hand has no point, and the DB
+   * enforces that latitude and longitude are supplied together.
+   */
+  @ApiPropertyOptional({ minimum: -90, maximum: 90 })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ minimum: -180, maximum: 180 })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @IsOptional()
+  longitude?: number;
 }
