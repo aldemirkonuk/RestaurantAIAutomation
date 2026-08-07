@@ -101,6 +101,23 @@ export async function recordVendorPrice(input: ManualObservationInput) {
  * wine from the list rather than typing a name" — is the whole point of having
  * returned a 400.
  */
+/**
+ * Retry the network, never the request.
+ *
+ * The global default retries once. For a 4xx that costs a round trip and buys
+ * nothing — the server has already said the request itself is wrong, and it
+ * will say so again. Worse, it leaves the UI in a hole: between attempts
+ * react-query reports neither `isLoading` (nothing is in flight) nor `isError`
+ * (the query has not given up), so a page that renders loading / error / data
+ * and nothing else renders NOTHING. Hitting /vendor-prices with a bad id
+ * showed a blank panel under the search box for exactly that reason.
+ */
+export function retryUnlessClientError(failureCount: number, error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status
+  if (typeof status === 'number' && status >= 400 && status < 500) return false
+  return failureCount < 1
+}
+
 export function apiErrorMessage(error: unknown, fallback = 'Unknown error'): string {
   const body = (error as { response?: { data?: { message?: unknown } } })?.response?.data
   const message = body?.message

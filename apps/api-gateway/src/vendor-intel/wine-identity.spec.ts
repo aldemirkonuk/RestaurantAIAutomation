@@ -2,6 +2,7 @@ import {
   buildWineIdentity,
   hashWineIdentity,
   normalizeIdentityText,
+  wineDisplayLabel,
 } from "./wine-identity";
 
 describe("normalizeIdentityText", () => {
@@ -102,5 +103,61 @@ describe("hashWineIdentity", () => {
   it("is stable across calls, since stored rows must stay findable", () => {
     const input = { producer: "Krug", name: "Grande Cuvee" };
     expect(hashWineIdentity(input)).toBe(hashWineIdentity(input));
+  });
+});
+
+describe("wineDisplayLabel", () => {
+  it("does not repeat a producer and vintage the name already carries", () => {
+    // The real row that produced "Schramsberg Vineyards 2021 Schramsberg Blanc
+    // de Noir North Coast 2021" on the page.
+    expect(
+      wineDisplayLabel({
+        producer: "Schramsberg Vineyards",
+        name: "2021 Schramsberg Blanc de Noir North Coast",
+        vintage: 2021,
+      }),
+    ).toBe("2021 Schramsberg Blanc de Noir North Coast");
+  });
+
+  it("adds both when the name carries neither", () => {
+    expect(
+      wineDisplayLabel({
+        producer: "Domaine Carneros",
+        name: "Brut Rose",
+        vintage: 2019,
+      }),
+    ).toBe("Domaine Carneros Brut Rose 2019");
+  });
+
+  it("suppresses an accented producer that the name spells without accents", () => {
+    expect(
+      wineDisplayLabel({
+        producer: "Château Margaux",
+        name: "Chateau Margaux Grand Vin",
+        vintage: 2015,
+      }),
+    ).toBe("Chateau Margaux Grand Vin 2015");
+  });
+
+  it("keeps the vintage when the name only contains it as part of a longer number", () => {
+    // A word-boundary match, not a substring one: "Lot 20195" is not a vintage.
+    expect(
+      wineDisplayLabel({
+        producer: "X",
+        name: "Cuvee Lot 20195",
+        vintage: 2019,
+      }),
+    ).toBe("X Cuvee Lot 20195 2019");
+  });
+
+  it("omits a vintage nobody recorded rather than printing NV", () => {
+    // 'nv' is the right answer for the hash key and the wrong one on screen.
+    expect(wineDisplayLabel({ producer: "Krug", name: "Grande Cuvee" })).toBe(
+      "Krug Grande Cuvee",
+    );
+  });
+
+  it("returns null when there is nothing to show", () => {
+    expect(wineDisplayLabel({})).toBeNull();
   });
 });
