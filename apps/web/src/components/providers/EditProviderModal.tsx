@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { SendMessageSlideOver } from './SendMessageSlideOver'
 import { useNavigate } from 'react-router-dom'
+import { useOrderHistory } from '../../hooks/queries/useOrderQueries'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -16,11 +18,14 @@ import {
   Download,
   Package,
   ChevronDown,
+  ChevronUp,
   Tag,
   UserPlus,
   Edit,
   MapPin,
   Plus,
+  ExternalLink,
+  ShoppingBag,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
 import { fetchProviderContacts, getProviderLocations } from '../../services/api/providers'
@@ -257,6 +262,14 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const [wineLibrarySearch, setWineLibrarySearch] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [customSpecialtyInput, setCustomSpecialtyInput] = useState('')
+  const [showSendMessage, setShowSendMessage] = useState(false)
+  const [showOrderDropdown, setShowOrderDropdown] = useState(false)
+
+  // Fetch recent orders for this provider
+  const { data: orderHistoryData, isLoading: ordersLoading } = useOrderHistory({
+    providerId: formData.id || undefined,
+    limit: 5,
+  })
 
   // Populate form from provider
   useEffect(() => {
@@ -741,25 +754,91 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
               {/* Quick actions */}
               <div className="mt-auto space-y-1.5">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Actions</p>
+
+                {/* ── View Orders dropdown ── */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowOrderDropdown(v => !v)}
+                    className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all flex items-center justify-between"
+                  >
+                    <span>View Orders</span>
+                    {showOrderDropdown
+                      ? <ChevronUp className="w-3 h-3 text-gray-400" />
+                      : <ChevronDown className="w-3 h-3 text-gray-400" />}
+                  </button>
+
+                  {showOrderDropdown && (
+                    <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                      {ordersLoading ? (
+                        <div className="px-3 py-4 text-center">
+                          <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-1.5" />
+                          <p className="text-[10px] text-gray-400">Loading orders…</p>
+                        </div>
+                      ) : (() => {
+                        const orders = (orderHistoryData as any)?.data ?? []
+                        if (orders.length === 0) {
+                          return (
+                            <div className="px-3 py-4 text-center">
+                              <ShoppingBag className="w-5 h-5 text-gray-300 mx-auto mb-1.5" />
+                              <p className="text-[10px] text-gray-500 font-medium">No recent orders with</p>
+                              <p className="text-[10px] text-gray-400 truncate">{formData.name}</p>
+                            </div>
+                          )
+                        }
+                        return (
+                          <>
+                            <div className="max-h-[160px] overflow-y-auto divide-y divide-gray-100">
+                              {orders.slice(0, 5).map((order: any) => {
+                                const statusColors: Record<string, string> = {
+                                  delivered: 'bg-emerald-100 text-emerald-700',
+                                  approved: 'bg-blue-100 text-blue-700',
+                                  pending: 'bg-amber-100 text-amber-700',
+                                  cancelled: 'bg-gray-100 text-gray-500',
+                                }
+                                return (
+                                  <div key={order.id} className="px-3 py-2 hover:bg-gray-50 transition-colors">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-[11px] font-medium text-gray-800 truncate">
+                                        {order.wineName || order.orderNumber || `Order #${order.id.slice(0, 6)}`}
+                                      </p>
+                                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 capitalize ${statusColors[order.status] || 'bg-gray-100 text-gray-500'}`}>
+                                        {order.status}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400">
+                                      <span>{order.quantity} btl{order.quantity !== 1 ? 's' : ''}</span>
+                                      <span>·</span>
+                                      <span>${(order.totalPrice ?? order.unitPrice * order.quantity).toLocaleString()}</span>
+                                      <span>·</span>
+                                      <span>{new Date(order.createdAt || order.requestedAt).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose()
+                                navigate(`/orders?provider=${encodeURIComponent(formData.id)}`)
+                              }}
+                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border-t border-gray-200 transition-colors"
+                            >
+                              View all orders
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => {
-                    onClose()
-                    navigate(`/orders?provider=${encodeURIComponent(formData.id)}`)
-                  }}
+                  onClick={() => setShowSendMessage(true)}
                   className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all"
-                >
-                  View Orders
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (formData.email) {
-                      window.location.href = `mailto:${formData.email}`
-                    }
-                  }}
-                  disabled={!formData.email}
-                  className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-600"
                 >
                   Send Message
                 </button>
@@ -1498,6 +1577,15 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Send Message Slide-Over */}
+      <SendMessageSlideOver
+        isOpen={showSendMessage}
+        onClose={() => setShowSendMessage(false)}
+        providerName={formData.name}
+        providerEmail={formData.email}
+        providerPhone={formData.phone}
+      />
     </AnimatePresence>
   )
 }
