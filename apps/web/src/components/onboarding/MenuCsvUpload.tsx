@@ -12,6 +12,7 @@ interface PreviewRow {
 }
 
 const EXCEL_EXTENSION_RE = /\.(xlsx|xls)$/i
+const SCAN_EXTENSION_RE = /\.(pdf|png|jpg|jpeg|webp)$/i
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -27,6 +28,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
   const [csvContent, setCsvContent] = useState<string | null>(null)
   const [fileBase64, setFileBase64] = useState<string | null>(null)
   const [isExcelFile, setIsExcelFile] = useState(false)
+  const [isScanFile, setIsScanFile] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
   const [preview, setPreview] = useState<PreviewRow[]>([])
   const [headers, setHeaders] = useState<string[]>([])
@@ -68,6 +70,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     setCsvContent(null)
     setFileBase64(null)
     setIsExcelFile(false)
+    setIsScanFile(false)
     setFileName(null)
     setPreview([])
     setHeaders([])
@@ -82,13 +85,12 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     setFileName(file.name)
 
     const excel = EXCEL_EXTENSION_RE.test(file.name)
+    const scanFile = SCAN_EXTENSION_RE.test(file.name)
     setIsExcelFile(excel)
+    setIsScanFile(scanFile)
 
-    if (excel) {
-      // Binary workbook — read as bytes and base64-encode for the server-side
-      // ExcelJS parser. Reading this as text (the previous behavior) fed
-      // raw binary garbage into a CSV line-splitter and silently produced
-      // zero or nonsense rows with no error shown to the user.
+    if (excel || scanFile) {
+      // Binary file (Excel or Image/PDF) — read as bytes and base64-encode for the server
       const reader = new FileReader()
       reader.onload = () => {
         const buffer = reader.result as ArrayBuffer
@@ -118,9 +120,14 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     setLoading(true)
     setError(null)
     try {
-      const result = fileBase64
-        ? await importMenu('csv', { fileBase64 })
-        : await importMenu('csv', { csvContent: csvContent! })
+      let result;
+      if (isScanFile) {
+        result = await importMenu('scan', { imageBase64: fileBase64! })
+      } else {
+        result = fileBase64
+          ? await importMenu('csv', { fileBase64 })
+          : await importMenu('csv', { csvContent: csvContent! })
+      }
       onSuccess(result)
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
@@ -141,7 +148,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.xlsx,.xls"
+        accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg"
         onChange={handleFileSelect}
         className="hidden"
       />
@@ -162,12 +169,12 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             <FileSpreadsheet className="w-6 h-6 text-gray-500 group-hover:text-[#9E4249] transition-colors" />
           </div>
           <div className="text-center">
-            <p className="font-medium text-gray-700">Click to upload CSV or Excel file</p>
-            <p className="text-sm text-gray-400 mt-1">Supports .csv, .xlsx, .xls</p>
+            <p className="font-medium text-gray-700">Click to upload file</p>
+            <p className="text-sm text-gray-400 mt-1">Supports .csv, .xlsx, .pdf, images</p>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <Upload className="w-3 h-3" />
-            <span>Export from your POS, Excel, or Google Sheets</span>
+            <span>Export from your POS, Excel, or upload a document</span>
           </div>
         </button>
       ) : (
@@ -176,7 +183,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             <div className="flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-[#9E4249]" />
               <span className="font-medium text-gray-900 text-sm">{fileName}</span>
-              {!isExcelFile && (
+              {!isExcelFile && !isScanFile && (
                 <span className="text-xs text-gray-500">({estimatedTotal} rows detected)</span>
               )}
             </div>
@@ -189,6 +196,10 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             <div className="mb-4 p-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
               Excel file ready. We'll read the first sheet and match its columns
               (Name, Producer, Vintage, Region, Grape, Glass/Bottle price) when you import.
+            </div>
+          ) : isScanFile ? (
+            <div className="mb-4 p-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
+              Document ready. We'll extract your wines using AI when you import.
             </div>
           ) : (
             preview.length > 0 && (
@@ -237,7 +248,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
                 <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 Importing...
               </span>
-            ) : isExcelFile ? (
+            ) : isExcelFile || isScanFile ? (
               'Import wines'
             ) : (
               `Import ${estimatedTotal > 0 ? estimatedTotal : ''} wines`

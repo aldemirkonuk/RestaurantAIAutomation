@@ -36,6 +36,8 @@ export class ScanParserService {
     // Infer image media type from base64 prefix bytes
     const mediaType = this.detectMediaType(imageBase64);
 
+    const isPdf = mediaType === "application/pdf";
+
     try {
       const response = await axios.post(
         ANTHROPIC_API_URL,
@@ -47,7 +49,7 @@ export class ScanParserService {
               role: "user",
               content: [
                 {
-                  type: "image",
+                  type: isPdf ? "document" : "image",
                   source: {
                     type: "base64",
                     media_type: mediaType,
@@ -81,7 +83,8 @@ export class ScanParserService {
 
   private detectMediaType(
     base64: string,
-  ): "image/jpeg" | "image/png" | "image/webp" | "image/gif" {
+  ): "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "application/pdf" {
+    if (base64.startsWith("JVBERi0")) return "application/pdf";
     if (base64.startsWith("/9j/")) return "image/jpeg";
     if (base64.startsWith("iVBORw")) return "image/png";
     if (base64.startsWith("UklGR")) return "image/webp";

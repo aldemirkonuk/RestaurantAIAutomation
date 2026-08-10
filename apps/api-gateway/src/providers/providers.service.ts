@@ -124,7 +124,14 @@ export class ProvidersService {
         company_name: dto.companyName ?? null,
         primary_contact: dto.primaryContact ?? {},
         alternative_contacts: dto.alternativeContacts ?? null,
-        address: dto.address ?? null,
+        // physicalAddress is the plain string the user typed; dto.address is a
+        // legacy JSONB object ({ line1: … }) that older clients still send
+        // alongside it. Preferring the object here was the create/update split
+        // that made a freshly-added provider read back an OBJECT from this
+        // jsonb column while an edited one read back a string — the "address
+        // is not saved" bug. Update already prefers physicalAddress; create
+        // now agrees with it.
+        address: dto.physicalAddress ?? dto.address ?? null,
         specialties: dto.specialties ?? null,
         regions_covered: dto.regionsCovered ?? null,
         minimum_order: dto.minimumOrder ?? null,
@@ -1124,6 +1131,32 @@ export class ProvidersService {
     };
   }
 
+  /**
+   * `providers.address` is a jsonb column that has held two shapes over time:
+   * a plain string (what create/update write today) and a legacy object
+   * `{ line1, city, … }` written by an earlier create path. Returning the raw
+   * value meant callers received an object where the contract promises a
+   * string — the card list then handed that object straight to React, which
+   * refuses to render it. Rows written before the create-path fix still hold
+   * objects, so normalising on read is what makes them display without a
+   * backfill migration.
+   */
+  private normalizeAddress(value: unknown): string | undefined {
+    if (value == null) return undefined;
+    if (typeof value === "string") return value || undefined;
+    if (typeof value === "object") {
+      const o = value as Record<string, unknown>;
+      const direct = o.line1 ?? o.formatted_address ?? o.formattedAddress;
+      if (typeof direct === "string" && direct) return direct;
+      // Otherwise assemble whatever parts are present rather than dropping the
+      // address entirely — a partial address is more useful than none.
+      const parts = [o.street, o.line2, o.city, o.state, o.postalCode, o.country]
+        .filter((p): p is string => typeof p === "string" && p.length > 0);
+      return parts.length ? parts.join(", ") : undefined;
+    }
+    return undefined;
+  }
+
   private mapProviderRow(row: ProviderRow): ProviderResponseDto {
     // Phone/email: prefer dedicated columns; fall back to primary_contact JSONB
     // for legacy providers created before the dedicated columns existed.
@@ -1140,7 +1173,7 @@ export class ProvidersService {
       email,
       contactFirstName: row.contact_first_name ?? undefined,
       contactLastName: row.contact_last_name ?? undefined,
-      physicalAddress: row.address ?? undefined,
+      physicalAddress: this.normalizeAddress(row.address),
       website: row.website ?? undefined,
       rating: row.rating ?? undefined,
       notes: row.personality_notes ?? undefined,

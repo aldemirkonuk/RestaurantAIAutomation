@@ -23,6 +23,16 @@ async function bootstrap() {
         /^https:\/\/.*\.vercel\.app$/, // all Vercel preview + production URLs
         /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
         /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+        // Vite falls through to the next free port (3001, 3002, …) whenever
+        // 3000 is already taken by another local process, which happens
+        // often enough in a dev environment running several projects at
+        // once. Without this, that ordinary port bump presents as a broken
+        // CORS preflight with no indication the actual cause was "the wrong
+        // origin isn't allow-listed". Scoped to non-production only, same as
+        // the dev auth bypass this exists alongside.
+        ...(process.env.NODE_ENV !== "production"
+          ? [/^http:\/\/(localhost|127\.0\.0\.1):\d+$/]
+          : []),
       ],
       credentials: true,
     },

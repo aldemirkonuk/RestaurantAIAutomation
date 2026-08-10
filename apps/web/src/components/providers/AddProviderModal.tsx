@@ -80,6 +80,13 @@ export interface NewProviderData {
   email: string
   website: string
   address: string
+  /**
+   * Coordinates of `address`, resolved by Places autocomplete when the user
+   * picked from the dropdown. Null when the address was typed by hand — such
+   * a provider cannot be plotted, which is a real state, not an error.
+   */
+  latitude?: number | null
+  longitude?: number | null
   primaryBusinessType: string // Now accepts custom types too
   specialties: string[]
   paymentTerms: string
@@ -129,6 +136,8 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
     email: '',
     website: '',
     address: '',
+    latitude: null,
+    longitude: null,
     primaryBusinessType: 'Distributor',
     specialties: [],
     paymentTerms: 'Net 30',
@@ -451,10 +460,26 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
                     </label>
                     <PlacesAutocomplete
                       value={formData.address}
-                      onChange={(addr) => setFormData({ ...formData, address: addr })}
+                      // Typing by hand invalidates any previously picked place:
+                      // the coordinates would still point at the old address
+                      // and would drop a pin in the wrong city. Null is the
+                      // honest state — the provider simply is not mappable
+                      // until an address is picked from the dropdown.
+                      onChange={(addr) =>
+                        setFormData({ ...formData, address: addr, latitude: null, longitude: null })
+                      }
                       onPlaceSelect={(place: PlaceResult) => {
                         const fullAddr = [place.streetAddress, place.city, place.stateProvince, place.postalCode, place.country].filter(Boolean).join(', ')
-                        setFormData({ ...formData, address: fullAddr })
+                        setFormData({
+                          ...formData,
+                          address: fullAddr,
+                          // Places already resolved these, so keeping them
+                          // costs nothing and is what lets the new provider
+                          // appear on the distributor map. Discarding them
+                          // here is why an added provider never got a pin.
+                          latitude: place.latitude ?? null,
+                          longitude: place.longitude ?? null,
+                        })
                       }}
                       placeholder="Start typing provider address or business location..."
                     />

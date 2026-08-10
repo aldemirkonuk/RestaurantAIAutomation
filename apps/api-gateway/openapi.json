@@ -226,6 +226,17 @@
         }
       }
     },
+    "/api/v1/auth/dev-bypass-login": {
+      "post": {
+        "operationId": "AuthController_devBypassLogin",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "AuthController_register",
@@ -16770,6 +16781,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "physicalAddress": {
+            "type": "string"
           },
           "address": {
             "type": "object"

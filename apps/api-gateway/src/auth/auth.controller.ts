@@ -34,6 +34,7 @@ import {
 } from "./dto/password-reset.dto";
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { Request } from "express";
+import { devBypassAllowed } from "./dev-bypass.util";
 
 @Controller("auth")
 export class AuthController {
@@ -53,6 +54,31 @@ export class AuthController {
       success: true,
       ...tokens,
       message: "Login successful",
+    };
+  }
+
+  /**
+   * Mints a real login session for DEV_AUTH_BYPASS_EMAIL, no password.
+   *
+   * Exists purely so localhost testing (manual, or an automated browser tool)
+   * never has to hold or type a real password. Off unless every condition in
+   * `devBypassAllowed` holds — see that function and .env.local for the
+   * switches — and the resulting session is a normal, fully-signed JWT with
+   * no special handling anywhere else: refresh, /me, /me/role, tenant scoping
+   * all work exactly as they do for a password login.
+   */
+  @Public()
+  @Post("dev-bypass-login")
+  @HttpCode(HttpStatus.OK)
+  async devBypassLogin(@Req() req: Request) {
+    if (!devBypassAllowed(req)) {
+      throw new BadRequestException("Dev auth bypass is not available");
+    }
+    const tokens = await this.authService.devBypassLogin();
+    return {
+      success: true,
+      ...tokens,
+      message: "Dev bypass session issued",
     };
   }
 

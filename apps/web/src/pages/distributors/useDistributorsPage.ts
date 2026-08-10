@@ -33,6 +33,7 @@ export function useDistributorsPage() {
   const [facets, setFacets] = useState<string[]>([])
   const [sort, setSort] = useState<'distance' | 'name'>('distance')
   const [bbox, setBbox] = useState<Bbox | null>(null)
+  const [states, setStates] = useState<string[]>([])
 
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -63,8 +64,38 @@ export function useDistributorsPage() {
   const search = useDistributorSearch(params)
   const facetQuery = useDistributorFacets({ territoryOnly, type: types.length ? types : undefined })
 
-  const distributors = search.data?.data ?? []
+  const allDistributors = useMemo(() => search.data?.data ?? [], [search.data])
   const origin = search.data?.origin ?? null
+
+  /**
+   * State filtering is client-side, unlike every other filter here.
+   *
+   * The search endpoint has no state parameter — its geography is expressed as
+   * a radius or a bbox — and adding one would mean a DTO, a query branch and a
+   * migration for an index. The result set is already capped at 100 rows and
+   * fully in memory, so filtering here is exact, instant, and adds no round
+   * trip. If the cap ever rises this must move server-side, because filtering
+   * a truncated page would silently hide matches beyond row 100.
+   */
+  const stateOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const d of allDistributors) {
+      if (!d.state) continue
+      counts.set(d.state, (counts.get(d.state) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([value, vendors]) => ({ value, vendors }))
+      .sort((a, b) => b.vendors - a.vendors || a.value.localeCompare(b.value))
+  }, [allDistributors])
+
+  const distributors = useMemo(
+    () => (states.length ? allDistributors.filter((d) => d.state && states.includes(d.state)) : allDistributors),
+    [allDistributors, states],
+  )
+
+  const toggleState = useCallback((value: string) => {
+    setStates((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]))
+  }, [])
 
   const toggleType = useCallback((t: DistributorType) => {
     setTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
@@ -80,6 +111,7 @@ export function useDistributorsPage() {
     setQuery('')
     setTypes([])
     setFacets([])
+    setStates([])
     setRadiusIndex(RADIUS_MAX_INDEX)
     setBbox(null)
     setTerritoryOnly(true)
@@ -89,6 +121,7 @@ export function useDistributorsPage() {
   const filterCount =
     types.length +
     facets.length +
+    states.length +
     (query ? 1 : 0) +
     (radiusM ? 1 : 0) +
     (bbox ? 1 : 0) +
@@ -124,6 +157,9 @@ export function useDistributorsPage() {
     setVerifiedOnly,
     facets,
     toggleFacet,
+    states,
+    toggleState,
+    stateOptions,
     sort,
     setSort,
     bbox,
@@ -134,7 +170,10 @@ export function useDistributorsPage() {
     // data
     distributors,
     origin,
-    total: search.data?.total ?? 0,
+    // With a state filter on, the API's total counts rows the user is no
+    // longer being shown. Reporting the filtered length keeps the header
+    // honest about what is on screen.
+    total: states.length ? distributors.length : (search.data?.total ?? 0),
     isLoading: search.isLoading,
     isFetching: search.isFetching,
     error: search.error,

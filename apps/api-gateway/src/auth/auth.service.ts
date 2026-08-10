@@ -139,6 +139,50 @@ export class AuthService {
   }
 
   /**
+   * Mint a real session for DEV_AUTH_BYPASS_EMAIL, skipping password
+   * verification entirely.
+   *
+   * Every caller-side gate (env, localhost, shared-secret header) is checked
+   * by the controller before this runs — see dev-bypass.util.ts — so this
+   * method only has to answer "does that account exist?" But it re-checks the
+   * env flag itself too, on the theory that a private service method should
+   * never trust that its only caller checked first; a future second caller of
+   * `devBypassLogin()` must not accidentally inherit this endpoint's power
+   * without also inheriting its gate.
+   *
+   * Deliberately reuses `generateTokens` rather than building a token by
+   * hand: the result is indistinguishable from a real login on the wire, so
+   * every other endpoint — refresh, /me, /me/role, tenant scoping — needs no
+   * bypass-awareness of its own.
+   */
+  async devBypassLogin(): Promise<TokenPair> {
+    if (process.env.NODE_ENV === "production" || process.env.DEV_AUTH_BYPASS !== "true") {
+      throw new UnauthorizedException("Dev auth bypass is not enabled");
+    }
+    const email = process.env.DEV_AUTH_BYPASS_EMAIL;
+    if (!email) {
+      throw new UnauthorizedException("DEV_AUTH_BYPASS_EMAIL is not set");
+    }
+
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error || !user) {
+      throw new UnauthorizedException(
+        `Dev auth bypass: no user found for ${email}`,
+      );
+    }
+
+    this.logger.warn(
+      `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
+    );
+    return this.generateTokens(user);
+  }
+
+  /**
    * Register new user
    */
   async register(data: RegisterData): Promise<TokenPair> {
