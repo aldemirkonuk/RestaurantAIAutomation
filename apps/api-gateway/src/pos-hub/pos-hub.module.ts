@@ -1,5 +1,6 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubController } from "./pos-hub.controller";
 import { PosHubService } from "./pos-hub.service";
@@ -12,7 +13,7 @@ import { PosHubService } from "./pos-hub.service";
  * adapter instead of a bespoke integration. Analytics reads pos_checks only.
  */
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, forwardRef(() => NotificationsModule)],
   controllers: [PosHubController],
   providers: [PosHubService, CatalogMatcherService],
   exports: [PosHubService, CatalogMatcherService],

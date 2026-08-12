@@ -1,6 +1,13 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  forwardRef,
+} from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import {
@@ -61,7 +68,15 @@ export class PosHubService {
     "barolo",
   ];
 
-  constructor(private readonly dbService: DatabaseService) {}
+  constructor(
+    private readonly dbService: DatabaseService,
+    // Optional so the hub still boots (and ingests) if the notifications
+    // module is unavailable — alerting is a side effect of depletion, never a
+    // precondition for it.
+    @Optional()
+    @Inject(forwardRef(() => LowStockAlertsService))
+    private readonly lowStockAlerts?: LowStockAlertsService,
+  ) {}
 
   getProviders() {
     return { summary: registrySummary(), providers: POS_PROVIDERS };
@@ -396,6 +411,9 @@ export class PosHubService {
           );
         } else {
           affected.add(it.inventory_id);
+          if (!isVoid) {
+            await this.recordConsumption(restaurantId, it, unit, qty, idem);
+          }
         }
       } catch (err: any) {
         this.logger.warn(
@@ -407,6 +425,81 @@ export class PosHubService {
     if (affected.size > 0) {
       this.logger.debug(
         `POS ${isVoid ? "void" : "close"} [${source}] check=${check.externalCheckId}: stock updated for ${affected.size} item(s)`,
+      );
+      // Real-time low-stock edge check for every wine this check touched —
+      // the same call ToastService makes after its own depletion loop.
+      // Without it only Toast raised par alerts, while the generic webhook
+      // path (the documented bridge for every other POS in the registry)
+      // depleted stock silently. Fire-and-forget: alerting must never slow
+      // or block POS ingestion.
+      if (this.lowStockAlerts) {
+        void this.lowStockAlerts
+          .evaluateInventoryItems(restaurantId, [...affected])
+          .catch(() => undefined);
+      }
+    }
+  }
+
+  /**
+   * Mirror a depleting POS sale into `wine_consumption_log`.
+   *
+   * That table is the demand series behind essentially all of the
+   * consumption-side analytics — velocity, XYZ classification, reorder point
+   * and safety stock, the Holt-Winters forecast, consumption insights, goal
+   * progress and the dashboard's pour panels all SELECT from it. Until now
+   * nothing in the codebase ever INSERTed a row: POS sales landed only in
+   * `inventory_transactions`, so every one of those surfaces read an empty
+   * series and reported zero demand forever, for every restaurant. The
+   * table's own CHECK constraint (`source IN ('manual','pos','ai_agent')`)
+   * shows a POS writer was always the intent.
+   *
+   * Deliberately non-fatal and after the fact: stock depletion is the
+   * contract of this path, and a analytics-mirror failure must never roll it
+   * back or block the webhook. Voids are excluded — a voided line never
+   * happened, so it is not consumption.
+   */
+  private async recordConsumption(
+    restaurantId: string,
+    item: {
+      name: string;
+      qty: number;
+      price: number;
+      inventory_id: string | null;
+    },
+    unit: "glass" | "bottle",
+    qty: number,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (!item.inventory_id) return;
+    try {
+      const db = this.dbService.getClient();
+      const { data: inv } = await db
+        .from("restaurant_inventory")
+        .select("bottle_size_ml, pour_size_ml, menu_price_current")
+        .eq("id", item.inventory_id)
+        .maybeSingle();
+
+      const bottleMl = Number(inv?.bottle_size_ml) || 750;
+      const pourMl = Number(inv?.pour_size_ml) || 150;
+      const volumeMl = unit === "glass" ? pourMl * qty : bottleMl * qty;
+      const unitPrice =
+        Number(item.price) || Number(inv?.menu_price_current) || null;
+
+      await db.from("wine_consumption_log").insert({
+        restaurant_id: restaurantId,
+        inventory_id: item.inventory_id,
+        wine_name: item.name,
+        consumption_type: unit,
+        quantity: qty,
+        volume_ml: volumeMl,
+        unit_price: unitPrice,
+        total_revenue: unitPrice != null ? unitPrice * qty : null,
+        source: "pos",
+        notes: `pos:${idempotencyKey}`,
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Consumption log write failed for ${item.name}: ${err?.message}`,
       );
     }
   }
