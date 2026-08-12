@@ -215,7 +215,10 @@ export class InsightGeneratorService {
       await Promise.allSettled([
         client
           .from("wine_consumption_log")
-          .select("master_wine_id, quantity, volume_ml, created_at")
+          // No master_wine_id column — resolve via the inventory FK.
+          .select(
+            "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+          )
           .eq("restaurant_id", restaurantId)
           .gte("created_at", since90),
         client
@@ -229,7 +232,7 @@ export class InsightGeneratorService {
         client
           .from("restaurant_inventory")
           .select(
-            "id, wine_name, wine_type, stock_live, unit_price, unit_cost, master_wine_id",
+            "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
