@@ -240,19 +240,44 @@ After them, they import 218 / 285 / 248 wines with a loud error log.
 menu whose priced-line count suggests substantially more. Salvage converts a
 silent total failure into a visible partial one — it does not solve the limit.
 
-### Required fix, in priority order
+### RESOLVED — adaptive recursive page splitting (shipped)
 
-1. **Split by page range** (recommended first move). Send a large menu as N
-   sub-requests of ~10-15 pages and merge, deduping on
-   `(producer, name, vintage)` at the seam. No streaming rewrite, composes
-   with the Batch API, and each sub-request lands far inside 16,000.
-2. **Stream with `max_tokens: 64000`** (Haiku's hard cap). Removes the ceiling
-   for every menu in this corpus, but requires rewriting the raw `axios.post`
-   in `scan-parser.service.ts` into an SSE consumer.
+`ScanParserService` now splits large PDFs into page ranges, extracts each
+separately, and merges with a `(producer, name, vintage)` dedupe at the seam.
+Measured on RL Restaurant, the densest menu in the corpus:
 
-Route selection can be automatic: run the cheap `pdfplumber` page/priced-line
-scan first, and send anything over ~15 pages or ~250 priced lines down the
-split path.
+| Configuration | Wines extracted |
+|---|---|
+| Original (`max_tokens: 4096`) | **0** — silent failure |
+| `max_tokens: 16000` alone | 193 — truncated, salvaged |
+| Single-level split (6-page chunks) | 326 |
+| **Adaptive recursive split** | **485** (475 uniquely priced) |
+
+485 extracted against 491 priced lines in the text layer is ~99% coverage.
+
+Three design points, each forced by a measurement rather than chosen up front:
+
+1. **Page count cannot decide the split.** RL truncates at 12 pages (~41
+   priced lines/page); Theodora fits at 65 (~5/page). So the trigger is
+   `stop_reason == "max_tokens"`, not page count — the cap reports itself.
+2. **The 60s HTTP timeout had to move first.** A full 16,000-token response
+   takes ~100s at Haiku's ~160 tok/s, so the old timeout fired *before*
+   truncation was observable, turning a recoverable truncation into a hard
+   503. Now 180s.
+3. **One split is not always enough.** Even 6-page chunks of RL overflow, so
+   the splitter recurses (bounded at depth 3, halving to 2-page chunks) and
+   keeps whichever pass recovered more.
+
+Remaining lever, not yet taken: the extraction prompt requests `raw_text`,
+persisted to `menu_items.raw_extracted_text`. It raises per-wine output from
+~58 to ~84 tokens — roughly **45% of output spend** — and is what pushes dense
+menus over the cap in the first place. Dropping it would cut cost and reduce
+splitting, but it is a real audit field, so it needs a product decision rather
+than a silent removal.
+
+**Latency is now the constraint, not correctness:** 516s for RL Restaurant.
+That is acceptable for an async import and reinforces §3 Phase 1 — this work
+belongs on the Batch API, not on a synchronous HTTP request.
 
 ### Reproducing
 
