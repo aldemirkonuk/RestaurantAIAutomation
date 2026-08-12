@@ -43,7 +43,16 @@ export class ScanParserService {
         ANTHROPIC_API_URL,
         {
           model: "claude-haiku-4-5",
-          max_tokens: 4096,
+          // A real wine list costs ~55-60 output tokens per wine, so 4096 —
+          // the previous value — truncated the JSON on any menu past ~70
+          // wines. Measured against datasets/annotation_inbox/pdfs: a 2-page,
+          // 76-wine list needs 4,363 tokens and a 13-page, 199-wine list needs
+          // 11,808, so three of four sampled menus silently produced nothing
+          // (the truncated array failed JSON.parse and parseJsonResponse
+          // returned []). 16000 covers ~270 wines and stays under the
+          // non-streaming HTTP timeout; past that the stop_reason check below
+          // reports the truncation instead of hiding it.
+          max_tokens: 16000,
           messages: [
             {
               role: "user",
@@ -72,7 +81,23 @@ export class ScanParserService {
       );
 
       const content: string = response.data?.content?.[0]?.text ?? "";
-      return this.parseJsonResponse(content);
+      const stopReason: string = response.data?.stop_reason ?? "";
+      const items = this.parseJsonResponse(content);
+
+      // Truncation used to be invisible: the cut-off array failed JSON.parse
+      // and the caller got an empty list indistinguishable from "this menu had
+      // no wines". Salvaging partial results is the right call for a menu
+      // import (60 of 199 wines beats 0), but it must be logged loudly so the
+      // gap is attributable rather than mysterious.
+      if (stopReason === "max_tokens") {
+        this.logger.error(
+          `Menu extraction hit the ${16000}-token output cap — recovered ` +
+            `${items.length} wine(s) from a truncated response. The menu is ` +
+            `larger than one request can return; split it or move this call ` +
+            `to a streaming request with a higher max_tokens.`,
+        );
+      }
+      return items;
     } catch (error) {
       this.logger.error(`Scan parser LLM call failed: ${error.message}`);
       throw new ServiceUnavailableException(
@@ -92,20 +117,83 @@ export class ScanParserService {
   }
 
   private parseJsonResponse(text: string): WineExtractItem[] {
+    const cleaned = text.replace(/```(?:json)?\n?/g, "").trim();
     try {
-      const cleaned = text.replace(/```(?:json)?\n?/g, "").trim();
       const parsed = JSON.parse(cleaned);
       if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (item: unknown): item is WineExtractItem =>
-          typeof (item as any)?.name === "string" &&
-          (item as any).name.length > 0,
-      );
+      return this.keepNamedItems(parsed);
     } catch {
+      // A truncated array is the common failure (output token cap), and it is
+      // recoverable: every element before the cut is still well-formed JSON.
+      // Returning those beats discarding a whole menu import.
+      const salvaged = this.salvageTruncatedArray(cleaned);
+      if (salvaged.length > 0) {
+        this.logger.warn(
+          `LLM JSON response was truncated — salvaged ${salvaged.length} complete item(s)`,
+        );
+        return salvaged;
+      }
       this.logger.warn(
-        `Failed to parse LLM JSON response: ${text.slice(0, 200)}`,
+        `Failed to parse LLM JSON response: ${cleaned.slice(0, 200)}`,
       );
       return [];
     }
+  }
+
+  private keepNamedItems(parsed: unknown[]): WineExtractItem[] {
+    return parsed.filter(
+      (item: unknown): item is WineExtractItem =>
+        typeof (item as any)?.name === "string" && (item as any).name.length > 0,
+    );
+  }
+
+  /**
+   * Pull every complete `{...}` element out of a JSON array that was cut off
+   * mid-write. Scans with a depth counter so nested objects stay intact, and
+   * ignores braces inside string literals (wine names contain quotes and
+   * escapes often enough to matter).
+   */
+  private salvageTruncatedArray(text: string): WineExtractItem[] {
+    const start = text.indexOf("[");
+    if (start === -1) return [];
+
+    const items: unknown[] = [];
+    let depth = 0;
+    let objStart = -1;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start + 1; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+
+      if (ch === "{") {
+        if (depth === 0) objStart = i;
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          try {
+            items.push(JSON.parse(text.slice(objStart, i + 1)));
+          } catch {
+            // Skip an element we can't parse; keep collecting the rest.
+          }
+          objStart = -1;
+        }
+      }
+    }
+    return this.keepNamedItems(items);
   }
 }

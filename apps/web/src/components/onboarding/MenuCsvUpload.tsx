@@ -2,6 +2,16 @@ import { useState, useRef } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type MenuImportResult } from '../../services/api/menus'
+import {
+  DOCUMENT_ACCEPT,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_FILES,
+  formatBytes,
+  validateSelection,
+  isScannable,
+  isTabular,
+  resetFileInput,
+} from '../../lib/uploadAccept'
 
 interface MenuCsvUploadProps {
   onSuccess: (result: MenuImportResult) => void
@@ -12,7 +22,7 @@ interface PreviewRow {
 }
 
 const EXCEL_EXTENSION_RE = /\.(xlsx|xls)$/i
-const SCAN_EXTENSION_RE = /\.(pdf|png|jpg|jpeg|webp)$/i
+const SCAN_EXTENSION_RE = /\.(pdf|png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif)$/i
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -34,6 +44,11 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
   const [headers, setHeaders] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Files beyond the first, when several are picked at once. Each is imported
+  // as its own request — batching them into one body would blow past both our
+  // body limit and Anthropic's 32 MB per-request ceiling.
+  const [queue, setQueue] = useState<File[]>([])
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const parseCsvPreview = (text: string) => {
@@ -74,14 +89,29 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     setFileName(null)
     setPreview([])
     setHeaders([])
+    setQueue([])
+    setProgress(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const input = e.target
+    // Validate size/type/count up front. Without this an oversized file is
+    // only rejected at the server as a bare 413 — which arrives before the
+    // auth guard and reads as a generic network error in the UI.
+    const { accepted, errors } = validateSelection(input.files, {
+      accept: (f) => isScannable(f) || isTabular(f),
+      kindLabel: 'a spreadsheet, CSV, PDF, or image',
+    })
+    resetFileInput(input)
 
-    setError(null)
+    if (errors.length) setError(errors.join(' '))
+    else setError(null)
+    if (accepted.length === 0) return
+
+    const [file, ...rest] = accepted
+    setQueue(rest)
+    setProgress(null)
     setFileName(file.name)
 
     const excel = EXCEL_EXTENSION_RE.test(file.name)
@@ -115,24 +145,82 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     reader.readAsText(file)
   }
 
+  /** Import one already-read file. */
+  const importOne = async (opts: {
+    scan: boolean
+    base64: string | null
+    csv: string | null
+  }) => {
+    if (opts.scan) return importMenu('scan', { imageBase64: opts.base64! })
+    return opts.base64
+      ? importMenu('csv', { fileBase64: opts.base64 })
+      : importMenu('csv', { csvContent: opts.csv! })
+  }
+
+  const readFile = (file: File) =>
+    new Promise<{ scan: boolean; base64: string | null; csv: string | null }>(
+      (resolve, reject) => {
+        const excel = EXCEL_EXTENSION_RE.test(file.name)
+        const scan = SCAN_EXTENSION_RE.test(file.name)
+        const reader = new FileReader()
+        reader.onerror = () => reject(new Error(`Failed to read "${file.name}"`))
+        if (excel || scan) {
+          reader.onload = () =>
+            resolve({
+              scan,
+              base64: arrayBufferToBase64(reader.result as ArrayBuffer),
+              csv: null,
+            })
+          reader.readAsArrayBuffer(file)
+        } else {
+          reader.onload = () =>
+            resolve({ scan: false, base64: null, csv: reader.result as string })
+          reader.readAsText(file)
+        }
+      },
+    )
+
   const handleImport = async () => {
     if (!csvContent && !fileBase64) return
     setLoading(true)
     setError(null)
     try {
-      let result;
-      if (isScanFile) {
-        result = await importMenu('scan', { imageBase64: fileBase64! })
-      } else {
-        result = fileBase64
-          ? await importMenu('csv', { fileBase64 })
-          : await importMenu('csv', { csvContent: csvContent! })
+      const total = 1 + queue.length
+      if (total > 1) setProgress({ done: 0, total, current: fileName || '' })
+
+      // The file already read into state, then the rest of the queue — each as
+      // its own request. One failure is reported but does not abandon the
+      // files after it.
+      let result = await importOne({
+        scan: isScanFile,
+        base64: fileBase64,
+        csv: csvContent,
+      })
+      const failures: string[] = []
+
+      for (let i = 0; i < queue.length; i++) {
+        const f = queue[i]
+        setProgress({ done: i + 1, total, current: f.name })
+        try {
+          result = await importOne(await readFile(f))
+        } catch (err: any) {
+          failures.push(
+            `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
+          )
+        }
+      }
+
+      if (failures.length) {
+        setError(
+          `${failures.length} of ${total} file(s) failed — ${failures.join('; ')}`,
+        )
       }
       onSuccess(result)
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
     } finally {
       setLoading(false)
+      setProgress(null)
     }
   }
 
@@ -148,7 +236,8 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg"
+        accept={DOCUMENT_ACCEPT}
+        multiple
         onChange={handleFileSelect}
         className="hidden"
       />
@@ -170,7 +259,10 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           </div>
           <div className="text-center">
             <p className="font-medium text-gray-700">Click to upload file</p>
-            <p className="text-sm text-gray-400 mt-1">Supports .csv, .xlsx, .pdf, images</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Supports .csv, .xlsx, .pdf, images — up to {MAX_UPLOAD_FILES} files,{' '}
+              {formatBytes(MAX_UPLOAD_BYTES)} each
+            </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <Upload className="w-3 h-3" />
@@ -183,12 +275,17 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             <div className="flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-[#9E4249]" />
               <span className="font-medium text-gray-900 text-sm">{fileName}</span>
+              {queue.length > 0 && (
+                <span className="text-xs font-medium text-[#9E4249]">
+                  +{queue.length} more queued
+                </span>
+              )}
               {!isExcelFile && !isScanFile && (
                 <span className="text-xs text-gray-500">({estimatedTotal} rows detected)</span>
               )}
             </div>
             <button onClick={resetFile} className="text-xs text-gray-400 hover:text-gray-600 underline">
-              Change file
+              {queue.length > 0 ? 'Clear files' : 'Change file'}
             </button>
           </div>
 
@@ -246,8 +343,12 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             {loading ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                Importing...
+                {progress
+                  ? `Importing ${progress.done + 1} of ${progress.total} — ${progress.current}`
+                  : 'Importing...'}
               </span>
+            ) : queue.length > 0 ? (
+              `Import ${queue.length + 1} files`
             ) : isExcelFile || isScanFile ? (
               'Import wines'
             ) : (

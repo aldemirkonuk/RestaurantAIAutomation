@@ -1,11 +1,12 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import * as fs from "fs";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Needed for exact-byte HMAC signature verification on webhook routes
     // (Toast, pos-hub/SimPOS) — without this, req.rawBody is always
     // undefined and verification falls back to a re-serialized JSON
@@ -37,6 +38,31 @@ async function bootstrap() {
       credentials: true,
     },
   });
+
+  // Body size limit.
+  //
+  // Express/body-parser defaults to 100 kB, which was never overridden here.
+  // Menu and receipt uploads are sent as base64 inside JSON, and base64
+  // inflates a file by ~33%, so the default rejected any upload over ~75 kB of
+  // real file with a bare `413 request entity too large` — raised before the
+  // auth guard runs, so it surfaced in the UI as a generic network failure
+  // rather than "file too big". A 1.4 MB menu PDF is ~1.87 MB encoded, 19x
+  // over the old cap.
+  //
+  // 15 MB carries the 10 MB per-file limit the web app enforces
+  // (MAX_UPLOAD_BYTES in apps/web/src/lib/uploadAccept.ts) plus base64
+  // overhead and JSON envelope. Sized against the real corpus in
+  // datasets/annotation_inbox/pdfs: 26 restaurant wine lists, largest 4.4 MB —
+  // so 10 MB covers every one of them with >2x headroom while staying well
+  // inside Anthropic's 32 MB per-request ceiling once encoded.
+  //
+  // NOTE: `rawBody: true` above means Nest also retains the raw Buffer for
+  // HMAC verification, so a request near the cap holds the body roughly twice
+  // in memory. That is the ceiling to revisit if uploads ever move to
+  // multipart streaming.
+  const bodyLimit = process.env.MAX_REQUEST_BODY_SIZE || "15mb";
+  app.useBodyParser("json", { limit: bodyLimit });
+  app.useBodyParser("urlencoded", { limit: bodyLimit, extended: true });
 
   // Global validation pipe
   app.useGlobalPipes(
