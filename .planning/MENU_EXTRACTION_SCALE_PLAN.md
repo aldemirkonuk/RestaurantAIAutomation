@@ -58,9 +58,12 @@ before Anthropic does.
 `menus.service.ts` used `Promise.all(items.map(...))` to resolve every wine
 against the library with **no concurrency limit**. A 485-wine menu fired 485
 simultaneous Supabase round trips; ten concurrent imports meant ~4,850
-in-flight queries. Now bounded at 8 via `mapWithConcurrency`, which keeps
-results index-aligned so the caller can still zip them against the bulk
-`INSERT ... RETURNING`.
+in-flight queries.
+
+First bounded at concurrency 8, then removed entirely: the fan-out is now a
+single batched call (§11). Bounding concurrency was treating the symptom —
+485 round trips at 8-at-a-time is still 485 round trips, and it was the round
+trips, not the parallelism, that cost 183 seconds.
 
 ### 2.3 The library race silently unlinks wines — RESOLVED
 `master_wine_library` has a partial unique index on `signature_hash`, so the
