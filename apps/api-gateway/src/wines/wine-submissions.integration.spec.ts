@@ -127,6 +127,47 @@ describeIfDb("WineSubmissionsService against the real database", () => {
     expect(data?.normalized_name).toBeTruthy();
   });
 
+  it("resolves a whole menu in one batch, index-aligned", async () => {
+    const batch = [
+      // already exists from the tests above — must link, not duplicate
+      { ...wine },
+      // genuinely new
+      { name: `Batch Cuvee ${suffix}`, producer: `Domaine ${suffix}`, vintage: "2021" },
+      // the same wine twice, which is what a by-the-glass / by-the-bottle
+      // listing looks like. A naive bulk insert touches one conflict target
+      // twice and the whole statement fails.
+      { name: `Batch Cuvee ${suffix}`, producer: `Domaine ${suffix}`, vintage: "2021" },
+    ];
+
+    const results = await service.resolveLibraryWinesBatch(batch);
+
+    expect(results).toHaveLength(3);
+    expect(results[0]?.masterWineId).toBe(createdWineIds[0]);
+    expect(results[0]?.matched).toBe(true);
+
+    expect(results[1]?.masterWineId).toBeTruthy();
+    expect(results[1]?.matched).toBe(false);
+    // the duplicate resolves to the SAME row rather than creating a second
+    expect(results[2]?.masterWineId).toBe(results[1]?.masterWineId);
+
+    createdWineIds.push(results[1]!.masterWineId);
+  });
+
+  it("returns an entry per input even when nothing matches", async () => {
+    // Index alignment is what the caller zips menu_items against. A dropped
+    // or reordered entry silently attaches wines to the wrong rows.
+    const results = await service.resolveLibraryWinesBatch([
+      { name: `Zeta ${suffix}`, producer: `Bodega Zeta ${suffix}` },
+      { name: `Eta ${suffix}`, producer: `Bodega Eta ${suffix}` },
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.masterWineId).toBeTruthy();
+    expect(results[1]?.masterWineId).toBeTruthy();
+    expect(results[0]?.masterWineId).not.toBe(results[1]?.masterWineId);
+    results.forEach((r) => r && createdWineIds.push(r.masterWineId));
+  });
+
   it("normalizes every library row identically to Postgres", async () => {
     // The authoritative parity check, and the reason there is no standalone
     // script for it: a harness that keeps its own copy of the normalizer

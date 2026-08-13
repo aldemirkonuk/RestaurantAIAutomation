@@ -562,4 +562,168 @@ export class WineSubmissionsService {
         `no row carries signature ${signatureHash.slice(0, 12)}`,
     );
   }
+
+  /**
+   * Resolve a whole menu at once.
+   *
+   * resolveOrCreateLibraryWine is one round trip per wine, and against this
+   * project's pooler each is ~320-380ms — almost entirely network, since the
+   * query itself runs in single-digit milliseconds off the indexes. Measured
+   * on a real 182-wine extraction scaled to RL Restaurant's 485:
+   *
+   *     per wine   183.12s   (378ms each)
+   *     batched      0.91s
+   *                  202x
+   *
+   * No amount of index work touches that; the round trips are the cost. This
+   * collapses an import to three statements regardless of menu size: one match,
+   * one bulk insert of the wines that matched nothing, one read-back.
+   *
+   * Results are index-aligned with `items`, which the caller depends on to zip
+   * them against its own array. Aligning on name would be wrong — the same
+   * wine legitimately appears twice on a menu (by the glass and by the
+   * bottle), so position is the only correct join.
+   */
+  async resolveLibraryWinesBatch(
+    items: LibraryResolutionInput[],
+  ): Promise<Array<LibraryResolutionResult | null>> {
+    if (items.length === 0) return [];
+
+    const parseVintage = (v: LibraryResolutionInput["vintage"]) =>
+      typeof v === "string" ? parseInt(v, 10) || null : (v ?? null);
+
+    const { data: matches, error: matchError } =
+      await this.dbService.supabase.rpc("match_library_wines_batch", {
+        p_wines: items.map((i) => ({
+          name: i.name,
+          producer: i.producer ?? null,
+          vintage: i.vintage == null ? null : String(i.vintage),
+          country: i.country ?? null,
+          region: i.region ?? null,
+          grape_variety: i.grapeVariety ?? null,
+        })),
+      });
+
+    // A matcher outage must not be downgraded into "none of these exist" —
+    // that would fabricate a duplicate for every wine on the menu.
+    if (matchError) {
+      throw new Error(`Library batch match failed: ${matchError.message}`);
+    }
+
+    const byIndex = new Map<number, any>();
+    for (const row of matches ?? []) {
+      if (row?.id) byIndex.set(row.input_index, row);
+    }
+
+    const results: Array<LibraryResolutionResult | null> = new Array(
+      items.length,
+    ).fill(null);
+    const needsCreate: number[] = [];
+
+    items.forEach((_, idx) => {
+      const best = byIndex.get(idx);
+      if (
+        best &&
+        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+      ) {
+        results[idx] = {
+          masterWineId: best.id,
+          matched: true,
+          libraryTier: best.library_tier ?? null,
+          confidence: best.confidence,
+        };
+      } else {
+        needsCreate.push(idx);
+      }
+    });
+
+    if (needsCreate.length === 0) return results;
+
+    // Two wines on one menu can share a signature — the same bottle listed by
+    // the glass and by the bottle. Insert one row per distinct signature and
+    // fan the resulting id back out, rather than letting Postgres reject the
+    // statement for touching a conflict target twice.
+    const signatureOf = new Map<number, string>();
+    const rowBySignature = new Map<string, Record<string, unknown>>();
+
+    for (const idx of needsCreate) {
+      const item = items[idx];
+      const vintage = parseVintage(item.vintage);
+      const signatureHash = this.hashSignature(
+        this.buildSignature({
+          name: item.name,
+          producer: item.producer ?? null,
+          vintage,
+          country: item.country ?? null,
+          region: item.region ?? null,
+          grapeVariety: item.grapeVariety ?? null,
+        }),
+      );
+      signatureOf.set(idx, signatureHash);
+      if (!rowBySignature.has(signatureHash)) {
+        rowBySignature.set(signatureHash, {
+          wine_id: this.generateWineId(),
+          name: item.name,
+          producer: item.producer || item.name,
+          primary_type: "unknown",
+          country: item.country || "Unknown",
+          region: item.region ?? null,
+          grape_variety: item.grapeVariety ?? null,
+          vintage,
+          library_tier: 3,
+          source: "menu_import",
+          signature_hash: signatureHash,
+          normalized_name: this.normalizeText(item.name),
+          normalized_producer: this.normalizeText(item.producer),
+          signature_source: "menu_import",
+        });
+      }
+    }
+
+    const { error: insertError } = await this.dbService.supabase
+      .from("master_wine_library")
+      .upsert([...rowBySignature.values()], {
+        onConflict: "signature_hash",
+        ignoreDuplicates: true,
+      });
+
+    if (insertError) {
+      throw new Error(
+        `Failed to create ${rowBySignature.size} provisional library wine(s): ` +
+          insertError.message,
+      );
+    }
+
+    // Read back by signature rather than trusting the insert's RETURNING:
+    // ignoreDuplicates omits rows a concurrent import already created, and
+    // those rows are exactly the ones we still need ids for.
+    const signatures = [...rowBySignature.keys()];
+    const { data: created, error: readError } = await this.dbService.supabase
+      .from("master_wine_library")
+      .select("id, library_tier, signature_hash")
+      .in("signature_hash", signatures);
+
+    if (readError) {
+      throw new Error(
+        `Failed to read back provisional library wines: ${readError.message}`,
+      );
+    }
+
+    const idBySignature = new Map(
+      (created ?? []).map((r) => [r.signature_hash, r]),
+    );
+
+    for (const idx of needsCreate) {
+      const row = idBySignature.get(signatureOf.get(idx) as string);
+      if (!row) continue; // stays null — the caller reports it as unlinked
+      results[idx] = {
+        masterWineId: row.id,
+        matched: false,
+        libraryTier: row.library_tier ?? 3,
+        confidence: byIndex.get(idx)?.confidence ?? null,
+      };
+    }
+
+    return results;
+  }
 }
