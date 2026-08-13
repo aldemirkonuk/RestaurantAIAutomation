@@ -503,6 +503,62 @@ inputs that cannot occur says nothing about accuracy. The perturbation now
 collapses whitespace and trims, and a harder realistic case
 (producer reduced to its first word, 189 probes) was added.
 
+### Measured precision — 1,058 adversarial probes
+
+Recall was measured exhaustively; precision had been measured on seven
+hand-picked negatives, which is far too thin to support a claim about false
+links. So the hard negatives are built out of the library itself:
+
+| probe family | n | false auto-links | precision |
+|---|---|---|---|
+| cross-producer (real name, unrelated producer) | 274 | 1 | 0.9964 |
+| cross-name (real producer, unrelated name) | 279 | 1 | 0.9964 |
+| wrong vintage (same wine, one year off) | 267 | 0 | 1.0000 |
+| near-miss producer (one character deleted) | 238 | 0 | 1.0000 |
+| **overall** | **1,058** | **2** | **0.9981** |
+
+Cases that could legitimately match — where the library holds the same wine
+under both rows — are excluded rather than counted as errors.
+
+Both failures are the **same library row**, and it is not a matcher defect.
+
+### The precision ceiling is the seed data, not the matcher
+
+That row reads:
+
+```
+producer  "Antonio Facchin & Figli"
+name      "2010 Guiseppe Rinaldi Brunate Barolo"
+```
+
+Two different producers. **39 rows share that one producer value** while their
+names say Chateau Latour, Vega Sicilia, Shafer, Dal Forno Romano — the
+`wineops_basic_v1` seed importer applied one producer across a whole page and
+misaligned the vintage column with it (`1966 Chateau Longueville…` carries
+vintage 2023).
+
+Measured over the 195 long-form rows from that source — the ones whose name
+begins with a year, so the producer *should* appear in it:
+
+| | |
+|---|---|
+| producer appears nowhere in its own name | **45 (23.1%)** |
+| vintage disagrees with the year in its own name | 33 |
+| both | 33 |
+
+**No matcher can be more correct than its inputs.** This is the ceiling on
+library accuracy until that seed is re-imported, and it is worth naming rather
+than absorbing as unexplained match noise.
+
+`library_data_quality_issues()` (migration `20260813100000`) reports these
+rows. It deliberately does not fix them: the vintage half is mechanically
+recoverable from the name, but the producer half means guessing how many
+leading words are the producer, and guessing wrong writes a false producer into
+the canonical library. Bare-style rows are excluded — a row named
+`CHARDONNAY` with producer `CANUS` is correct and simply does not embed its
+producer; counting those flags 96% of the sim seed and makes the number
+useless.
+
 ### The end-to-end test that reproduces the original bug
 
 Recall against perturbed rows is a proxy. The real question is whether a menu
