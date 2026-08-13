@@ -511,16 +511,24 @@ links. So the hard negatives are built out of the library itself:
 
 | probe family | n | false auto-links | precision |
 |---|---|---|---|
-| cross-producer (real name, unrelated producer) | 274 | 1 | 0.9964 |
-| cross-name (real producer, unrelated name) | 279 | 1 | 0.9964 |
-| wrong vintage (same wine, one year off) | 267 | 0 | 1.0000 |
-| near-miss producer (one character deleted) | 238 | 0 | 1.0000 |
-| **overall** | **1,058** | **2** | **0.9981** |
+| cross-producer (real name, unrelated producer) | 265 | 0 | 1.0000 |
+| cross-name (real producer, unrelated name) | 265 | 0 | 1.0000 |
+| wrong vintage (same wine, one year off) | 255 | 0 | 1.0000 |
+| near-miss producer (one character deleted) | 222 | 0 | 1.0000 |
+| **overall** | **1,007** | **0** | **1.0000** |
+
+Getting here took fixing the DATA and fixing the TEST, not the matcher.
+
+The first run scored 0.9981, and both failures were one corrupt seed row
+(§below). Repairing it took precision to 1.0000. A later run showed 0.9990,
+and that one was the test's fault: some library rows put the cuvée in the
+producer field ("Paul Hobbs 'Goldrock Estate'"), so grafting "Paul Hobbs" onto
+that wine's name produces a correct description of a real wine, not an
+adversarial probe. A probe now only counts as adversarial if its producer is
+not simply a terser form of the matched row's.
 
 Cases that could legitimately match — where the library holds the same wine
 under both rows — are excluded rather than counted as errors.
-
-Both failures are the **same library row**, and it is not a matcher defect.
 
 ### The precision ceiling is the seed data, not the matcher
 
@@ -698,9 +706,115 @@ recurring billable outbound web searches, which is a spend decision rather than
 a deployment detail. The existing per-record ($0.04) and daily ($5.00) ceilings
 still apply once on.
 
+## 11. Matching is now one round trip per menu, not per wine
+
+`match_library_wine` runs in single-digit milliseconds off its indexes. That
+was never the cost. Against the pooler each *call* is ~320–380ms, almost
+entirely network, and the importer made one per wine.
+
+| | 485 wines |
+|---|---|
+| per wine | 183.12s (378ms each) |
+| batched | **0.91s** |
+| | **202×** |
+
+`match_library_wines_batch` takes the menu as JSON and returns one row per
+input, in input order. Ordinality is the join key rather than name, because the
+same wine legitimately appears twice on a menu — by the glass and by the bottle
+— so position is the only correct alignment. An import is now three statements
+regardless of size: match, bulk-insert whatever matched nothing, read back.
+
+The read-back is load-bearing: `ignoreDuplicates` omits rows a concurrent
+import already created, and those are exactly the ones still needing ids.
+Wines sharing a signature within one menu are inserted once and fanned back
+out, rather than letting Postgres reject the statement for touching one
+conflict target twice.
+
+A whole-batch failure is now fatal. Per-wine failures used to be caught as
+non-fatal and become `masterWineId: null` — which is how an import reported
+success while linking nothing.
+
+## 12. Duplicate finding, and why it does not auto-merge everything
+
+`find_library_duplicates()` reuses `match_library_wine` rather than
+reimplementing similarity. That is not just convenience: a finder with
+different rules from the importer would report pairs the importer never
+creates, or miss the ones it keeps creating. It is bounded by index lookups per
+row, not the O(n²) pairwise form — 45 billion comparisons at 300k rows.
+
+It found **30 pairs the signature index cannot see**, since a duplicate that
+survived did so precisely by differing somewhere ("Massican" vs "Massican
+Winery").
+
+But the matcher is deliberately forgiving so a menu line reaches its wine, and
+that forgiveness is **wrong** for deciding whether two *library rows* are one
+wine. So pairs are classified:
+
+| kind | meaning | action |
+|---|---|---|
+| `identical` | differ only in punctuation, case, accents | safe to merge |
+| `name_extends` | one name's words are a superset — a cuvée or vineyard | review |
+| `fuzzy` | similar but neither contains the other | review |
+
+That distinction earned itself immediately. **`Ultramarine … Blanc de Noir` vs
+`Blanc de Blancs` scored 88.** Those are different wines — red grapes versus
+white — and an unattended merge would have destroyed one.
+
+15 `identical` merges applied: 282 → 267 rows, **1,103 bottles before and
+after**. 10 pairs left for a human. Merging also lifted top-1 ranking
+(verbatim 0.932 → 0.985), because fewer near-identical rows compete for first
+place.
+
+## 13. Enrichment cost: the cap is the constraint, and caching cannot fix it
+
+Research is billed per record ($0.04 ceiling) under a $5.00/day cap — ~125
+records/day. At 1000 restaurants × ~300 wines that is 300,000 records:
+**$12,000, and 6.6 years to clear at the cap.**
+
+The obvious hope is that restaurants carry the same wines so the library
+amortises the work. Measured on four real extracted lists, they do not:
+
+| | |
+|---|---|
+| cross-menu bypass rate | 0.0%, 0.5%, 2.0% |
+| wines per producer | 1.3 |
+| producers shared across 4 menus | 18 of 419 |
+
+Independent wine lists barely overlap — that is the *point* of a wine list. So
+caching, producer-level rollups and dedup cannot close a 6.6-year gap; they
+were never going to. This document previously assumed the opposite; measuring
+it showed that was wrong.
+
+Re-importing the **same** menu does bypass at 100% (verified end to end), which
+is what makes menu updates free. That is a real saving but a different one, and
+it does not touch first-import volume.
+
+What does close the gap is not researching wines nobody sells:
+
+| | records | cost | time at the same cap |
+|---|---|---|---|
+| everything | 300,000 | $12,000 | 6.6 years |
+| top 30% by demand | 90,000 | $3,600 | 2.0 years |
+| top 15% by demand | 45,000 | $1,800 | 1.0 years |
+
+`research_eligible_submissions` is therefore ordered by demand — sold in the
+last 30 days, then has sold, then in stock, then carried, then not carried.
+Nothing is excluded; a wine with no stock is still researched eventually. But
+with a hard daily cap **the order is the budget**, and the wine a sommelier was
+asked about this week should not wait behind 200 bottles nobody has poured.
+
+**This still needs a decision:** even at top-15% the backlog is a year. Either
+the daily cap rises, or enrichment stays demand-gated and the long tail is
+simply never enriched. That is a spend question, not an engineering one.
+
 ### Still open
 
-- **`embedding` is 0/282**, so the pgvector similarity bypass is unavailable.
+- **Enrichment spend needs a decision** — see §13. Demand ordering makes the
+  budget go to the right wines; it does not make 300,000 records fit in
+  $5.00/day.
+- **10 duplicate pairs** await a human: `SELECT * FROM find_library_duplicates()
+  WHERE NOT safe_to_merge;`
+- **`embedding` is 0/267**, so the pgvector similarity bypass is unavailable.
   The trigram matcher covers the lexical case; embeddings would cover the
   semantic one (a menu naming a wine by its grape where the library names it by
   its cuvée).
