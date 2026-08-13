@@ -8,16 +8,48 @@ import axios from "axios";
 import { WineExtractItem } from "../wine-extract-item.interface";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+
+/**
+ * Two things in this prompt are load-bearing and were both set by measurement.
+ *
+ * `raw_text` is absent on purpose. It used to be requested and persisted to
+ * menu_items.raw_extracted_text as an audit trail. An A/B over six real menus
+ * (three runs each: with, without, and without-again to measure the model's
+ * disagreement with itself) found dropping it is not a cost-for-accuracy
+ * trade — it is strictly better on both:
+ *
+ *   - identity agreement with the original prompt was 0.909, HIGHER than the
+ *     original prompt's agreement with its own rerun (0.888). The delta sits
+ *     inside sampling noise.
+ *   - absolute counts of priced wines were identical on every menu that fit
+ *     in one response (331 vs 331 across four menus).
+ *   - on Piccolo Sogno it was decisive: with raw_text the response hit the
+ *     16,000-token cap and returned 122 priced wines; without it the same menu
+ *     completed at 12,127 tokens and returned 159, against 174 priced lines in
+ *     the PDF text layer. The audit field was costing whole wines.
+ *   - output cost fell 27-32% per wine.
+ *
+ * `name` must not repeat the producer. The earlier wording ("'Merlot' or
+ * 'Duckhorn Merlot' as printed") let the model choose, and it chose
+ * differently between runs of the same menu — Rose Mary returned "Santa Lucia
+ * Malvasia Istria" once and "Kozlović 'Santa Lucia' Malvasia Istria" the next
+ * time. name feeds master_wine_library.normalized_name, which is a match key,
+ * so a coin-flip there means the same wine fails to match itself across two
+ * imports.
+ */
 const WINE_EXTRACTION_PROMPT =
   "You are analyzing a restaurant wine list or beverage menu image. " +
   "Extract all wine and beverage items you can identify. For each item return JSON: " +
-  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, raw_text }. " +
-  "producer is the winery/estate/château name if distinguishable from the wine's cuvée/label name " +
-  "(e.g. for 'Duckhorn Merlot', producer is 'Duckhorn' and name is 'Merlot' or 'Duckhorn Merlot' as printed). " +
-  "If the menu only prints one name with no separable producer, set producer to the same value as name. " +
+  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
+  "producer is the winery/estate/château name. " +
+  "name is the wine's cuvée or label designation ONLY — do NOT repeat the producer in it, " +
+  "and do NOT include the vintage, region, country or price " +
+  "(e.g. for '2019 Duckhorn Merlot, Napa Valley 120', producer is 'Duckhorn', name is 'Merlot', " +
+  "vintage is '2019', region is 'Napa Valley', bottle_price is 120). " +
+  "If the menu prints only one name with no separable producer, set producer to the same value as name. " +
   "Return ONLY a JSON array with no surrounding text. " +
   "If a field is not visible, omit it. " +
-  'Example: [{"name":"Chateau Margaux","producer":"Chateau Margaux","category":"red","vintage":"2018","bottle_price":120}]';
+  'Example: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120}]';
 
 @Injectable()
 export class ScanParserService {
@@ -29,12 +61,17 @@ export class ScanParserService {
    * Extract wines from a menu image or PDF.
    *
    * Large PDFs are split into page-range chunks and extracted separately, then
-   * merged. Measured on datasets/annotation_inbox/pdfs: a wine costs ~58
-   * output tokens, so a menu past ~270 wines cannot fit in one response — and
-   * 3 of the 4 largest menus in that corpus hit the cap (RL Restaurant,
-   * Saison, Obelix all returned stop_reason=max_tokens). Splitting keeps every
-   * sub-request far inside the limit and is preferred over raising max_tokens,
-   * which is already at the practical non-streaming ceiling.
+   * merged. Measured on datasets/annotation_inbox/pdfs with the current
+   * prompt, a wine costs 59-96 output tokens depending on how many optional
+   * fields the menu prints (mean 84 over four menus that completed in one
+   * response). So one response holds roughly 170-270 wines, and the largest
+   * menus in that corpus — RL Restaurant, Saison, Obelix, Rose Mary — all
+   * exceed it and return stop_reason=max_tokens.
+   *
+   * Splitting is preferred over raising max_tokens, which is already at the
+   * practical non-streaming ceiling. Note the per-wine cost is a range, not a
+   * constant, which is why the split trigger below is the reported
+   * stop_reason rather than an estimate derived from it.
    */
   async parse(imageBase64: string): Promise<WineExtractItem[]> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");

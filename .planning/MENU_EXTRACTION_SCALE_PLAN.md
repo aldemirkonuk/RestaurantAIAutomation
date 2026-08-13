@@ -54,19 +54,31 @@ request. 1000 restaurants onboarding means 1000 concurrent connections each
 held open for ~60s. The Node event loop and the connection pool will fail long
 before Anthropic does.
 
-### 2.2 Unbounded fan-out per menu
-`menus.service.ts:305` — `Promise.all(items.map(...))` resolves every wine
-against the library with **no concurrency limit**. A 199-wine menu fires 199
-simultaneous Supabase round trips. Ten concurrent imports = ~2,000 in-flight
-queries.
+### 2.2 Unbounded fan-out per menu — RESOLVED
+`menus.service.ts` used `Promise.all(items.map(...))` to resolve every wine
+against the library with **no concurrency limit**. A 485-wine menu fired 485
+simultaneous Supabase round trips; ten concurrent imports meant ~4,850
+in-flight queries. Now bounded at 8 via `mapWithConcurrency`, which keeps
+results index-aligned so the caller can still zip them against the bulk
+`INSERT ... RETURNING`.
 
-### 2.3 The library race silently unlinks wines
+### 2.3 The library race silently unlinks wines — RESOLVED
 `master_wine_library` has a partial unique index on `signature_hash`, so the
-race cannot create duplicate rows — good. But `resolveOrCreateLibraryWine`
-failures are caught as *non-fatal* and return `masterWineId: null`. Under
-concurrency the losing side of a race produces a wine that imports **with no
-library link**, so it never matches inventory and never reaches analytics.
-This is exactly the silent-error class the requirement forbids.
+race could not create duplicate rows — but the loser of the race threw, was
+caught as *non-fatal*, and returned `masterWineId: null`. That wine imported
+**with no library link**, so it never matched inventory and never reached
+analytics: exactly the silent-error class the requirement forbids.
+
+Worse, the upsert used the default merge-on-conflict. Once every row carries a
+signature (see §8), a colliding upsert would have *overwritten* the existing
+row — stamping `primary_type` back to `"unknown"` and `library_tier` back to 3
+on a curated wine.
+
+Now `ignoreDuplicates: true`, and when the insert is skipped the row is
+re-read by signature. Losing the race is expected and handled; the winner's
+row is the one we want. A matcher *failure* is now rethrown rather than
+downgraded to "no match", because silently treating an outage as "this wine is
+new" is what fabricates duplicates.
 
 ### 2.4 No idempotency
 Nothing keys on `(restaurant_id, file_hash)`. A retry after a partial failure
@@ -268,12 +280,61 @@ Three design points, each forced by a measurement rather than chosen up front:
    the splitter recurses (bounded at depth 3, halving to 2-page chunks) and
    keeps whichever pass recovered more.
 
-Remaining lever, not yet taken: the extraction prompt requests `raw_text`,
-persisted to `menu_items.raw_extracted_text`. It raises per-wine output from
-~58 to ~84 tokens — roughly **45% of output spend** — and is what pushes dense
-menus over the cap in the first place. Dropping it would cut cost and reduce
-splitting, but it is a real audit field, so it needs a product decision rather
-than a silent removal.
+### RESOLVED — `raw_text` removed from the prompt
+
+`raw_text` was requested and persisted to `menu_items.raw_extracted_text` as an
+audit trail. It looked like a cost-versus-audit trade. It was not — measurement
+showed it was costing accuracy outright.
+
+Method: six real menus, three runs each — **A** with `raw_text`, **B1** without,
+**B2** without again. B2 is the point. Comparing A against B alone says nothing
+without knowing how much the model disagrees with *itself*, and the first
+analysis pass nearly produced a wrong answer for exactly that reason: keyed on
+`(producer, name, vintage)` it reported ~0 agreement between two runs of the
+identical prompt, which is not a model result but a broken key. The runs found
+the same wines and merely phrased `name` differently. Re-keyed on
+`(producer, vintage, price)` — what the menu prints, not how it reads:
+
+| | |
+|---|---|
+| identity agreement A vs B | **0.909** |
+| identity agreement B vs B (self-variance) | **0.888** |
+
+Dropping `raw_text` agrees with the original *more* than the original agrees
+with its own rerun. The delta is inside sampling noise.
+
+Absolute priced-wine counts on the four menus that fit in one response: **331
+with, 331 without.** Identical. Rate-based field completeness looked like a 7pp
+price regression, but that was an artifact — B found 9 extra *unpriced* rows on
+one menu, which lowers the rate without losing anything. Absolute counts are the
+honest measure.
+
+Piccolo Sogno settled it. With `raw_text` the response hit the 16,000-token cap
+and returned **122** priced wines; without it the same menu completed at 12,127
+tokens and returned **159–173**, against 174 priced lines in the PDF text layer.
+The audit field was costing whole wines.
+
+Output cost fell **27–32%** per wine as a side effect.
+
+**The real cost, stated plainly:** `raw_text` *was* faithful — spot-checked
+against the PDF text layer it reproduced source lines verbatim apart from smart
+quotes. And `restaurant_menus` stores no source file, so nothing else retains
+what the menu said. Nothing reads `raw_extracted_text` today, and losing a
+whole wine is strictly worse than losing one wine's audit line, so removing it
+is right — but the provenance gap is now at the document level. **Retaining the
+uploaded file is the correct fix and is not done.** A composed string built
+from the other columns would be derivable from its neighbours and therefore
+worthless as provenance; it is deliberately not implemented.
+
+### Also fixed: `name` was a coin flip
+
+The old wording let the model choose between `"Merlot"` and `"Duckhorn Merlot"`.
+It chose differently between runs of the same menu — Rose Mary returned
+`"Santa Lucia Malvasia Istria"` once and `"Kozlović 'Santa Lucia' Malvasia
+Istria"` the next time. `name` feeds `master_wine_library.normalized_name`,
+which is a **match key**, so that coin flip meant the same wine failed to match
+itself across two imports. The prompt now states the rule: name is the cuvée
+only, never repeating the producer, never carrying vintage/region/price.
 
 **Latency is now the constraint, not correctness:** 516s for RL Restaurant.
 That is acceptable for an async import and reinforces §3 Phase 1 — this work
@@ -288,3 +349,193 @@ python3 scripts/build_finetune_dataset.py \
 ```
 
 Records whose `flags` contain `truncated_response` are the affected menus.
+
+---
+
+## 8. VERIFIED: library matching had never worked
+
+Extraction was never the weakest stage. Matching was, and it was worse than the
+earlier note in this document claimed.
+
+### The root cause: every wine creation returned HTTP 400
+
+`resolveOrCreateLibraryWine` creates a provisional wine with
+`.upsert(payload, { onConflict: "signature_hash" })`, which PostgREST turns
+into `INSERT ... ON CONFLICT (signature_hash)`. The only unique index on that
+column was **partial** (`WHERE signature_hash IS NOT NULL`). Postgres will not
+infer a partial index as an `ON CONFLICT` target unless the statement repeats
+the index predicate, and PostgREST cannot emit one. So every insert failed:
+
+```
+42P10: there is no unique or exclusion constraint matching the
+       ON CONFLICT specification
+```
+
+Verified by POSTing that exact payload to PostgREST: **HTTP 400**.
+
+It was invisible because `menus.service.ts` catches resolution failures as
+non-fatal and falls back to `masterWineId: null`. The import reported success
+while every wine landed with no library link — so no inventory row, and no
+analytics. The library is the proof: across 293 rows there is **not one** with
+`source = 'menu_import'`.
+
+Fixed in `20260813020000` by making the index non-partial. That is not weaker —
+Postgres treats NULLs as distinct in a unique index, so rows without a
+signature are still permitted; the index simply becomes inferrable. Re-probed
+after the migration: insert `201`, duplicate `201` with `[]`, which the
+`ignoreDuplicates` + re-read path in §2.3 handles.
+
+### What was measured on the live library
+
+- **`normalized_name` and `normalized_producer` were NULL on all 293 rows.**
+  The fallback lookup compares a value against a universally-NULL column, so it
+  could never match. The earlier figure of "201 of 293 unmatchable" understated
+  it — via that path *every* row was unmatchable.
+- `signature_hash` was set on only 92 rows, all synthetic sim seeds.
+- The library already showed the damage: **14 `(name, producer)` groups holding
+  2–3 identical rows each** — the same wine re-imported as a fresh provisional
+  every time.
+- `buildSignature` included `primary_type` from `submitWine` but not from
+  `resolveOrCreateLibraryWine`, so **the same bottle hashed two different ways
+  depending on which door it came through.**
+- The fallback was `.limit(1)` with **no `ORDER BY`**, so when duplicates
+  existed the same menu linked to a different row on each import.
+- The fallback ignored vintage entirely: a 2018 and a 2019 of one wine
+  collapsed onto whichever row came back first.
+
+### What shipped
+
+Three migrations (`20260812000000`, `20260813000000`, `20260813010000`):
+
+1. **Backfill.** `normalized_name` / `normalized_producer` for all 293 rows;
+   `signature_hash` recomputed for all of them under one contract with
+   `primary_type` removed. 282 keyed, **11 left NULL and reported** — those are
+   genuine duplicates that need a human merge, surfaced rather than silently
+   collapsed.
+2. **One normalization rule in two languages.** `public.wine_normalize_text`
+   mirrors the TypeScript normalizer exactly. It deliberately does **not** use
+   `unaccent()` (a dictionary fold with different coverage, and not installed
+   here) and does not use `pgcrypto.digest()` (installed into the `extensions`
+   schema); core `normalize(…, NFD)` and `sha256()` have no such dependency.
+   Order matters: combining marks must be stripped *before* non-alphanumerics
+   become spaces, or NFD-decomposed `Château` becomes `cha teau`.
+   **Cross-checked over all 293 rows × 3 fields: 0 mismatches**, and pinned by
+   `wine-submissions.service.spec.ts` so drift fails a test instead of
+   producing an unmatchable wine.
+3. **`match_library_wine` RPC.** Replaces three PostgREST round trips per wine
+   (~1,500 for a 485-wine menu) with one indexed query returning ranked
+   candidates.
+
+### Why `word_similarity`, not `similarity`
+
+The library holds two naming styles because two importers wrote it:
+`"chardonnay"` and `"2022 olivier leflaive les setilles bourgogne france"`.
+Plain trigram similarity penalises the length gap and makes half the library
+unreachable:
+
+| probe | `similarity` | `word_similarity` |
+|---|---|---|
+| `les setilles bourgogne` | 0.438 | **1.000** |
+| `jeune blanc` | 0.235 | **1.000** |
+| `setilles` | 0.188 | **1.000** |
+
+Best *false* candidate scores 0.238, so the threshold sits in a wide empty band
+rather than being tuned to the data.
+
+Name similarity alone is too loose — a bare library name like `"chardonnay"`
+matches any verbose probe containing the word. Precision comes from an
+independent producer gate. Measured: true producer matches 0.733–1.000, best
+false candidate 0.571 (`chateau musar` vs `chateau de bligny` — a shared trade
+word). Both gates must clear.
+
+### Confidence, and why it is continuous
+
+The first tier scheme was ordinal buckets, and measuring it exposed the flaw:
+the library holds `"2015 Louis Roederer Cristal Champagne"`, and a menu
+printing producer `Louis Roederer` / name `Cristal` / vintage 2015 matched it
+on every field at similarity 1.00 — and scored **69**, below a bucket meaning
+"same name, *wrong* vintage". The fuzzy branch ignored vintage entirely.
+
+Now: `100` for a signature match, otherwise `round(LEAST(name_sim,
+producer_sim) × 100)` less `0 / 10 / 30` as vintage agrees, is unknown on one
+side, or disagrees. Auto-link at **≥ 85**.
+
+### Measured recall — 660 probes derived from real rows
+
+Each probe is a real library row perturbed the way menus actually print it, so
+the correct answer is known for every one.
+
+| perturbation | n | recall | top-1 | median confidence |
+|---|---|---|---|---|
+| verbatim | 292 | 1.000 | 0.897 | 100 |
+| name without glued-on vintage | 232 | 1.000 | 0.931 | 100 |
+| producer trade suffix dropped | 64 | 0.969 | 0.969 | 100 |
+| both | 59 | 0.966 | 0.966 | 100 |
+| producer abbreviated (`Dom.`) | 13 | 0.692 | 0.692 | 79 |
+
+**0 false auto-links** across 7 negative controls. An eighth
+(`Louis Roederer Cristal`) linked — and was *correct*; the library genuinely
+holds it, so the control was wrong, not the matcher.
+
+Abbreviated producers are the known weak spot at 0.692 recall / confidence 79.
+That is below the auto-link floor, so those go to review rather than being
+linked or dropped — the intended behaviour for a genuinely ambiguous
+abbreviation, not a silent failure.
+
+### The end-to-end test that reproduces the original bug
+
+Recall against perturbed rows is a proxy. The real question is whether a menu
+matches itself on **re-import** — the exact scenario that produced the 14
+duplicate groups.
+
+`reimport_roundtrip.py` extracts a menu twice with two independent model calls,
+writes run 1 to `master_wine_library` exactly as the service does, then matches
+run 2 against it, inside a transaction that is rolled back:
+
+```
+Elske_Wine_Menu.pdf: run1=82 wines, run2=82 wines
+import #1 created 82 library row(s)
+import #2 of the same menu:
+  auto-linked           : 82/82  (100.0%)
+  review                : 0/82
+  new (would duplicate) : 0/82
+```
+
+Because run 2 is a separate extraction, this covers the name-phrasing failure
+too — under the old prompt the two runs disagreed on whether `name` includes
+the producer, and that alone was enough to miss. Measured on the same menu with
+the new prompt: **name stability 1.000** over 79 shared wines, and **0 of 82**
+names repeat the producer.
+
+### Index shape matters more than the current numbers suggest
+
+The first RPC ORed the signature, exact and trigram tests together. No index
+can serve a disjunction, so the planner chose `Seq Scan` — 3.6ms, which looks
+fine at 293 rows and is the trap. One import runs this once per wine (485 times
+for RL Restaurant); at 1000 restaurants the library is ~300k rows. Rewritten as
+a `UNION` of separately-indexable branches, `EXPLAIN` now shows an index scan
+on each: unique btree on `signature_hash`, btree on
+`(normalized_name, normalized_producer, vintage)`, and a bitmap scan on the GIN
+trigram index via `%>`.
+
+One caveat the caller must know: `<%` prefilters using
+`pg_trgm.word_similarity_threshold` (default 0.6), **not** `p_min_name_sim` —
+Supabase denies `SET pg_trgm.*` on a function at migration time. So 0.6 is a
+hard floor and `p_min_name_sim` can only tighten. No measured recall cost: the
+perturbations above score 1.000 on name.
+
+### Still open
+
+- **Enrichment is not wired.** Wines below the auto-link floor become tier-3
+  provisionals with `primary_type: "unknown"` and are never enriched. The
+  Python side has `serper_client` / `web_verification_service` /
+  `research_tasks`, but the NestJS import path never calls them.
+- **`embedding` is 0/293**, so the pgvector similarity bypass is unavailable.
+  The trigram matcher covers the lexical case; embeddings would cover the
+  semantic one.
+- **11 duplicate rows** need a human merge decision:
+  `SELECT id, producer, name, vintage FROM master_wine_library WHERE signature_hash IS NULL;`
+- **`processPendingSubmissions` still uses `.limit(1)` with no `ORDER BY`** and
+  exact-equality name matching. It now benefits from the backfilled columns,
+  but it should move to `match_library_wine` for the same reasons the import
+  path did.

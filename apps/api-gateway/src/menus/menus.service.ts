@@ -23,6 +23,8 @@ interface ResolvedItem {
   masterWineId: string | null;
   matched: boolean;
   libraryTier: number | null;
+  /** Best library-match score, 0-100. See LibraryResolutionResult. */
+  confidence: number | null;
 }
 
 interface InsertedMenuItem {
@@ -289,6 +291,34 @@ export class MenusService {
 
   // ── Shared pipeline: resolve against the library, insert, seed inventory ──
 
+  /**
+   * Promise.all with a ceiling on how many run at once.
+   *
+   * Results stay index-aligned with the input, which the caller relies on to
+   * zip `resolved` against the bulk INSERT ... RETURNING rows.
+   */
+  private async mapWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    fn: (item: T, index: number) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let next = 0;
+
+    const worker = async () => {
+      while (true) {
+        const index = next++;
+        if (index >= items.length) return;
+        results[index] = await fn(items[index], index);
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(limit, items.length) }, worker),
+    );
+    return results;
+  }
+
   private async resolveAndPersistItems(
     items: WineExtractItem[],
     restaurantId: string,
@@ -302,8 +332,17 @@ export class MenusService {
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
     // asynchronously after the fact.
-    const resolved: ResolvedItem[] = await Promise.all(
-      items.map(async (item) => {
+    //
+    // Bounded rather than a bare Promise.all over `items`. RL Restaurant's
+    // menu extracts 485 wines, and firing 485 concurrent PostgREST requests
+    // exhausts the connection pool — which surfaces as resolution failures on
+    // arbitrary wines, i.e. silently unlinked inventory, not as a clean error.
+    // 8 keeps the pool healthy while still overlapping the round trips that
+    // dominate this loop (measured ~235ms each).
+    const resolved: ResolvedItem[] = await this.mapWithConcurrency(
+      items,
+      8,
+      async (item) => {
         try {
           const result = await this.wineSubmissions.resolveOrCreateLibraryWine({
             name: item.name,
@@ -322,10 +361,21 @@ export class MenusService {
             masterWineId: null,
             matched: false,
             libraryTier: null,
+            confidence: null,
           };
         }
-      }),
+      },
     );
+
+    // Unlinked items are the ones a manager has to fix by hand, so say how
+    // many there are rather than leaving it to be discovered in the UI.
+    const unlinked = resolved.filter((r) => !r.masterWineId).length;
+    if (unlinked > 0) {
+      this.logger.error(
+        `Menu import: ${unlinked}/${resolved.length} item(s) could not be ` +
+          `linked to the wine library and will have no inventory row`,
+      );
+    }
 
     const menuItemRows = resolved.map(({ item, masterWineId }, idx) => ({
       menu_id: menuId,
