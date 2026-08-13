@@ -460,27 +460,48 @@ Now: `100` for a signature match, otherwise `round(LEAST(name_sim,
 producer_sim) × 100)` less `0 / 10 / 30` as vintage agrees, is unknown on one
 side, or disagrees. Auto-link at **≥ 85**.
 
-### Measured recall — 660 probes derived from real rows
+### Measured recall — 847 probes derived from real rows
 
 Each probe is a real library row perturbed the way menus actually print it, so
 the correct answer is known for every one.
 
 | perturbation | n | recall | top-1 | median confidence |
 |---|---|---|---|---|
-| verbatim | 292 | 1.000 | 0.897 | 100 |
-| name without glued-on vintage | 232 | 1.000 | 0.931 | 100 |
-| producer trade suffix dropped | 64 | 0.969 | 0.969 | 100 |
-| both | 59 | 0.966 | 0.966 | 100 |
-| producer abbreviated (`Dom.`) | 13 | 0.692 | 0.692 | 79 |
+| verbatim | 281 | 1.000 | 0.932 | 100 |
+| name without glued-on vintage | 227 | 1.000 | 0.952 | 100 |
+| producer trade suffix dropped | 71 | 1.000 | 1.000 | 100 |
+| producer reduced to first word | 189 | 1.000 | 0.984 | 100 |
+| both name and producer reduced | 66 | 1.000 | 1.000 | 100 |
+| producer abbreviated (`Dom.`) | 13 | 1.000 | 1.000 | 100 |
 
-**0 false auto-links** across 7 negative controls. An eighth
-(`Louis Roederer Cristal`) linked — and was *correct*; the library genuinely
-holds it, so the control was wrong, not the matcher.
+Getting there took two fixes and one correction to the measurement itself.
 
-Abbreviated producers are the known weak spot at 0.692 recall / confidence 79.
-That is below the auto-link floor, so those go to review rather than being
-linked or dropped — the intended behaviour for a genuinely ambiguous
-abbreviation, not a silent failure.
+**Abbreviations went from 0.692 to 1.000.** The first figure was also
+*optimistic*: it counted candidate recall, and a wider probe over every
+abbreviable producer in the library found auto-link recall was **0 of 27** —
+`Dom. Faiveley` returned no candidate at all for `Domaine Faiveley`, and
+`Ten. di Arceno` scored 62 against `Tenuta di Arceno`. Every one of them
+silently created a duplicate. Trigram similarity is simply the wrong
+instrument for a prefix truncation: `dom` and `domaine` share two trigrams out
+of five however exactly the rest of the name agrees. Fixed in normalization
+rather than by lowering the gate — see `20260813060000`.
+
+**Trade-word omission (`Alban Vineyards` printed as `Alban`) scored 0.80**,
+just under the floor. Lowering the gate to admit it would also admit
+`chateau musar` vs `chateau de bligny` at 0.571. Instead the matcher now
+compares producers *both* in full and reduced to their distinctive words. That
+moves precision and recall the same direction rather than trading them: the
+true cases match exactly, and the false ones get *worse*, because `chateau
+musar` and `chateau de bligny` reduce to `musar` and `de bligny`, which share
+nothing.
+
+**The last three "misses" were a broken benchmark, not a broken matcher.**
+Inspecting them individually showed the perturbation function was stripping
+trade words with a naive regex and leaving fragments — `Kavaklıdere  Co.`,
+`Alban  "Patrina"`, `Fekete  Somló` — forms no menu prints. Measuring against
+inputs that cannot occur says nothing about accuracy. The perturbation now
+collapses whitespace and trims, and a harder realistic case
+(producer reduced to its first word, 189 probes) was added.
 
 ### The end-to-end test that reproduces the original bug
 
@@ -564,18 +585,74 @@ On "name repeats the producer": Elina's flags 15 of 67, but 13 are
 single-name items ("Monkey Shoulder", "Hendrick's") and is harmless for
 matching — both sides agree. The genuine violation rate is 2/67.
 
+## 9. RESOLVED: the 11 duplicates are merged
+
+`merge_library_wines(keeper, loser)` (migrations `20260813030000`,
+`20260813040000`) collapses a duplicate safely. "Safely" is carrying weight:
+
+- **15 columns across 15 tables** reference `master_wine_library.id`, and five
+  of those FKs are `ON DELETE CASCADE`. Deleting a duplicate without repointing
+  first silently deletes a restaurant's inventory.
+- **Seven referencing tables** carry UNIQUE constraints that include the FK
+  column, so a blind repoint raises 23505 part-way through.
+- **`restaurant_inventory` cannot be repointed at all.** It is UNIQUE on
+  `(restaurant_id, master_wine_id)`, and measured on all 11 duplicates the
+  keeper and loser hold stock *in the same restaurant every time*. Those rows
+  have to be merged.
+
+FKs are discovered from the catalog, not listed in the function. A hard-coded
+list is wrong the moment someone adds a referencing table, and wrong silently —
+which is the failure mode this entire line of work exists to remove.
+
+Stock is never written directly: `inventory_lots` is the source of truth and
+`stock_live` is a projection maintained by `trg_project_stock_from_lots` (see
+`scripts/check_no_direct_stock_writes.sh`), so the merge moves lots and lets
+the trigger recompute. Summing `stock_live` by hand would both violate that
+contract and drift from the lots.
+
+Dry run is the default, performs the real work, and rolls back — a dry run
+that only predicts is worthless on an operation whose risk lives in the parts
+you did not predict. The step log travels out in the exception `DETAIL`,
+because `RETURN NEXT` rows do not survive the rollback.
+
+**Result: 293 → 282 rows, 0 unkeyed.** Every keeper's post-merge lot total
+matched the prediction captured beforehand, `stock_live` agreed with the lots
+on all 11, and the global invariant held — **1,103 bottles before and after**.
+A merge must move bottles, never create or destroy them.
+
+## 10. RESOLVED: enrichment dispatch is wired
+
+`research_agent_task` only ever ran when a human POSTed
+`/api/v1/research/trigger`. Nothing dispatched it for wines created by an
+import, so a restaurant could import a 485-wine list and every unmatched bottle
+would sit as a tier-3 stub forever. `research.dispatch_batch` now runs hourly
+at `:30`.
+
+It deliberately does **not** reuse the endpoint's batch query, which selects any
+submission with `last_research_run_at IS NULL`. That was defensible when
+nothing matched; now that matching works, an import creates a submission for
+*every* wine including ones that auto-linked to fully-populated canonical rows,
+so that query would spend the daily budget re-deriving facts the library
+already holds. Selection moved to `research_eligible_submissions()`, which
+returns only wines still carrying no real data — and orders them emptiest
+first, because with a daily cap the sort order *is* the budget.
+
+**Off by default** (`RESEARCH_DISPATCH_ENABLED=false`). Enabling it starts
+recurring billable outbound web searches, which is a spend decision rather than
+a deployment detail. The existing per-record ($0.04) and daily ($5.00) ceilings
+still apply once on.
+
 ### Still open
 
-- **Enrichment is not wired.** Wines below the auto-link floor become tier-3
-  provisionals with `primary_type: "unknown"` and are never enriched. The
-  Python side has `serper_client` / `web_verification_service` /
-  `research_tasks`, but the NestJS import path never calls them.
-- **`embedding` is 0/293**, so the pgvector similarity bypass is unavailable.
+- **`embedding` is 0/282**, so the pgvector similarity bypass is unavailable.
   The trigram matcher covers the lexical case; embeddings would cover the
-  semantic one.
-- **11 duplicate rows** need a human merge decision:
-  `SELECT id, producer, name, vintage FROM master_wine_library WHERE signature_hash IS NULL;`
+  semantic one (a menu naming a wine by its grape where the library names it by
+  its cuvée).
 - **`processPendingSubmissions` still uses `.limit(1)` with no `ORDER BY`** and
   exact-equality name matching. It now benefits from the backfilled columns,
   but it should move to `match_library_wine` for the same reasons the import
   path did.
+- **The source menu file is still not retained**, so provenance for a scanned
+  menu rests on the extracted fields alone (see §7).
+- **Import is still synchronous.** RL Restaurant takes 516s. Correctness is no
+  longer the constraint; latency is. That is §3 Phase 1, the Batch API.

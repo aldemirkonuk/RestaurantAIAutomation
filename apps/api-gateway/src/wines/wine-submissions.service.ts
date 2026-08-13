@@ -78,6 +78,48 @@ export class WineSubmissionsService {
     /[̀-ͯ᪰-᫿᷀-᷿︠-︯^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]/g;
 
   /**
+   * Trade abbreviations a menu prints, expanded to the word they stand for.
+   *
+   * Measured before this existed: of 27 library producers beginning with an
+   * abbreviable trade word, rewritten the way a menu prints them, ZERO reached
+   * the auto-link floor. "Dom. Faiveley" produced no candidate at all against
+   * "Domaine Faiveley"; "Ten. di Arceno" scored 62 against "Tenuta di Arceno".
+   * Every one of them silently created a duplicate.
+   *
+   * Trigram similarity is the wrong instrument for a prefix truncation --
+   * "dom" and "domaine" share two trigrams out of five however exactly the
+   * rest of the name agrees. Lowering the producer gate far enough to reach 62
+   * would admit "chateau musar" vs "chateau de bligny" at 0.571 and every
+   * other shared-trade-word false positive. So the fix belongs here: these are
+   * the same word, and the normalizer should say so.
+   *
+   * The trailing period is required on every pattern. Bare "dom" is not an
+   * abbreviation -- Dom Perignon is a wine, and expanding it would invent a
+   * producer that does not exist. Multi-token patterns come first so
+   * "az. agr." expands as a unit rather than "az." matching alone.
+   *
+   * Mirrored exactly by public.wine_normalize_text; the spec fails on drift.
+   */
+  private static readonly ABBREVIATIONS: ReadonlyArray<
+    readonly [RegExp, string]
+  > = [
+    [/\baz\.\s*agr\.\s*/g, "azienda agricola "],
+    [/\bdom\.\s*/g, "domaine "],
+    [/\bch\.\s*/g, "chateau "],
+    [/\bcht\.\s*/g, "chateau "],
+    [/\bbod\.\s*/g, "bodegas "],
+    [/\bwgt\.\s*/g, "weingut "],
+    [/\bten\.\s*/g, "tenuta "],
+    [/\bfatt\.\s*/g, "fattoria "],
+    [/\bcant\.\s*/g, "cantina "],
+    [/\bmarch\.\s*/g, "marchesi "],
+    [/\bste\.\s*/g, "sainte "],
+    [/\bst\.\s*/g, "saint "],
+    [/\bmt\.\s*/g, "monte "],
+  ];
+
+
+  /**
    * Public because it is the ONLY correct implementation.
    *
    * There were four: this one, another in wines.service.ts with a narrower
@@ -87,12 +129,14 @@ export class WineSubmissionsService {
    */
   normalizeText(value?: string | null): string {
     if (!value) return "";
-    return value
+    let s = value
       .normalize("NFD")
       .replace(WineSubmissionsService.DIACRITICS, "")
-      .replace(/[^a-zA-Z0-9]+/g, " ")
-      .trim()
       .toLowerCase();
+    for (const [pattern, expansion] of WineSubmissionsService.ABBREVIATIONS) {
+      s = s.replace(pattern, expansion);
+    }
+    return s.replace(/[^a-z0-9]+/g, " ").trim();
   }
 
   /**

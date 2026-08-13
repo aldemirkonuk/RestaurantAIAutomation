@@ -127,6 +127,60 @@ describeIfDb("WineSubmissionsService against the real database", () => {
     expect(data?.normalized_name).toBeTruthy();
   });
 
+  it("normalizes every library row identically to Postgres", async () => {
+    // The authoritative parity check, and the reason there is no standalone
+    // script for it: a harness that keeps its own copy of the normalizer
+    // drifts from the real one, which is precisely the failure this whole
+    // area suffered from. This calls the shipped class and the shipped SQL
+    // function over every row, so neither can move without the other.
+    const { data: rows, error } = await supabase
+      .from("master_wine_library")
+      .select("name, producer, normalized_name, normalized_producer")
+      .limit(2000);
+
+    expect(error).toBeNull();
+    expect(rows?.length).toBeGreaterThan(0);
+
+    const drift = (rows ?? [])
+      .filter(
+        (r: any) =>
+          service.normalizeText(r.name) !== r.normalized_name ||
+          service.normalizeText(r.producer) !== r.normalized_producer,
+      )
+      .slice(0, 10)
+      .map((r: any) => ({
+        name: r.name,
+        ts: service.normalizeText(r.name),
+        sql: r.normalized_name,
+        tsProducer: service.normalizeText(r.producer),
+        sqlProducer: r.normalized_producer,
+      }));
+
+    expect(drift).toEqual([]);
+  });
+
+  it("expands trade abbreviations without inventing producers", async () => {
+    // "Dom." is Domaine. Bare "Dom" is Dom Perignon and must survive intact —
+    // expanding it would fabricate a producer that does not exist.
+    expect(service.normalizeText("Dom. Mandeliere")).toBe("domaine mandeliere");
+    expect(service.normalizeText("Ch. Clerc Milon")).toBe("chateau clerc milon");
+    expect(service.normalizeText("Az. Agr. Gini")).toBe("azienda agricola gini");
+    expect(service.normalizeText("St. Helena")).toBe("saint helena");
+    expect(service.normalizeText("Dom Perignon")).toBe("dom perignon");
+  });
+
+  it("auto-links a wine whose producer the menu abbreviated", async () => {
+    // Measured at 0 of 27 before abbreviation expansion: every abbreviated
+    // producer fell below the auto-link floor and created a duplicate.
+    const abbreviated = await service.resolveOrCreateLibraryWine({
+      ...wine,
+      producer: `Dom. ${suffix}`,
+    });
+
+    expect(abbreviated.masterWineId).toBe(createdWineIds[0]);
+    expect(abbreviated.matched).toBe(true);
+  });
+
   it("exposes the stub to the enrichment dispatcher once a submission exists", async () => {
     // resolveOrCreateLibraryWine does not write submissions — menus.service
     // does, after the bulk insert. Stand one in so the eligibility query has

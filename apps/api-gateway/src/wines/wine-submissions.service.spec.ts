@@ -53,8 +53,43 @@ describe("WineSubmissionsService normalization contract", () => {
       ["", ""],
     ];
 
+    // Trade abbreviations. Before these expanded, ZERO of 27 library
+    // producers beginning with an abbreviable trade word auto-linked when
+    // probed the way a menu prints them — every one created a duplicate.
+    const abbreviations: Array<[string, string]> = [
+      ["Dom. Mandeliere", "domaine mandeliere"],
+      ["Ch. Clerc Milon", "chateau clerc milon"],
+      ["Cht. Margaux", "chateau margaux"],
+      ["Az. Agr. Gini", "azienda agricola gini"],
+      ["Bod. Emilio Moro", "bodegas emilio moro"],
+      ["Wgt. Schloss Gobelsburg", "weingut schloss gobelsburg"],
+      ["Ten. di Arceno", "tenuta di arceno"],
+      ["March. di Gresy", "marchesi di gresy"],
+      ["St. Helena", "saint helena"],
+      ["Ste. Marie", "sainte marie"],
+      // ALL CAPS is how plenty of menus print, and must expand identically.
+      ["DOM. CARNEROS", "domaine carneros"],
+    ];
+
     it.each(cases)("normalizes %j", (input, expected) => {
       expect(normalize(input)).toBe(expected);
+    });
+
+    it.each(abbreviations)("expands the trade abbreviation in %j", (input, expected) => {
+      expect(normalize(input)).toBe(expected);
+    });
+
+    it("leaves a bare trade word alone", () => {
+      // Dom Pérignon is a wine, not a Domaine. Expanding a period-less "Dom"
+      // would invent a producer that does not exist — which is why every
+      // abbreviation pattern requires the period a menu actually prints.
+      expect(normalize("Dom Perignon")).toBe("dom perignon");
+      expect(normalize("Dom Ruinart")).toBe("dom ruinart");
+      // "Chateau" spelled out is already the expansion; it must not double up.
+      expect(normalize("Chateau Musar")).toBe("chateau musar");
+      // A name that merely starts with the same letters is not an abbreviation.
+      expect(normalize("Stella Rosa")).toBe("stella rosa");
+      expect(normalize("Tenement Wines")).toBe("tenement wines");
     });
 
     it("treats null and undefined as empty", () => {
