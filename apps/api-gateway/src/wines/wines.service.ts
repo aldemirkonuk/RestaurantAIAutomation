@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { WineSubmissionsService } from "./wine-submissions.service";
 import {
   GetWinesQueryDto,
   WineMetaQueryDto,
@@ -46,7 +46,10 @@ interface WineSubmissionRow {
 export class WinesService {
   private readonly logger = new Logger(WinesService.name);
 
-  constructor(private readonly dbService: DatabaseService) {}
+  constructor(
+    private readonly dbService: DatabaseService,
+    private readonly wineSubmissions: WineSubmissionsService,
+  ) {}
 
   private mapWine(row: WineRow) {
     const bottleSizeMl = row.bottle_size_ml ?? 750;
@@ -75,42 +78,42 @@ export class WinesService {
     };
   }
 
+  /**
+   * Delegated to WineSubmissionsService, which owns the one implementation
+   * that master_wine_library's columns and the SQL mirror are keyed on.
+   *
+   * What used to live here was a fourth variant, and it was incompatible in
+   * four separate ways: it stripped a narrower diacritic class, joined with
+   * `.filter(Boolean)` so empty fields collapsed instead of holding their
+   * position, included primary_type and appellation, and used lowercase "nv".
+   * Wines created through this service therefore landed in a key space that
+   * the menu importer and public.wine_signature_hash could never reach \u2014
+   * which is the same class of bug as the primary_type split, in a third
+   * location.
+   */
   private normalizeText(value?: string | null) {
-    if (!value) return "";
-    return value
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    return this.wineSubmissions.normalizeText(value);
   }
 
-  private buildSignature(input: {
+  private buildSignatureHash(input: {
     name?: string | null;
     producer?: string | null;
     vintage?: number | null;
-    primary_type?: string | null;
     grape_variety?: string | null;
     country?: string | null;
     region?: string | null;
-    appellation?: string | null;
-  }) {
-    const parts = [
-      this.normalizeText(input.producer),
-      this.normalizeText(input.name),
-      input.vintage ? String(input.vintage) : "nv",
-      this.normalizeText(input.primary_type),
-      this.normalizeText(input.grape_variety),
-      this.normalizeText(input.country),
-      this.normalizeText(input.region),
-      this.normalizeText(input.appellation),
-    ];
-    return parts.filter(Boolean).join("|");
-  }
-
-  private hashSignature(signature: string) {
-    return crypto.createHash("sha256").update(signature).digest("hex");
+  }): string | null {
+    // A signature over nothing identifies nothing. Null means "not
+    // comparable", which the caller must store rather than a hash of "|||||".
+    if (!input.name && !input.producer) return null;
+    return this.wineSubmissions.signatureHashFor({
+      name: input.name ?? "",
+      producer: input.producer ?? null,
+      vintage: input.vintage ?? null,
+      country: input.country ?? null,
+      region: input.region ?? null,
+      grapeVariety: input.grape_variety ?? null,
+    });
   }
 
   private buildNormalizedFields(payload: any) {
@@ -138,19 +141,15 @@ export class WinesService {
   async submitWine(payload: any, restaurantId?: string, submittedBy?: string) {
     const client = this.dbService.getClient();
     const normalizedFields = this.buildNormalizedFields(payload);
-    const signature = this.buildSignature({
+    const signatureHash = this.buildSignatureHash({
       name: payload?.name,
       producer: payload?.producer,
       vintage: payload?.vintage ?? null,
-      primary_type:
-        payload?.primary_type || payload?.classification?.primary_type,
       grape_variety:
         payload?.grape_variety || payload?.classification?.grape_variety,
       country: payload?.country || payload?.classification?.country,
       region: payload?.region || payload?.classification?.region,
-      appellation: payload?.appellation || payload?.classification?.appellation,
     });
-    const signatureHash = signature ? this.hashSignature(signature) : null;
 
     const { data, error } = await client
       .from("master_wine_library_submissions")
@@ -192,20 +191,15 @@ export class WinesService {
 
     for (const submission of submissions) {
       const payload = submission.payload || {};
-      const signature = this.buildSignature({
+      const signatureHash = this.buildSignatureHash({
         name: payload?.name,
         producer: payload?.producer,
         vintage: payload?.vintage ?? null,
-        primary_type:
-          payload?.primary_type || payload?.classification?.primary_type,
         grape_variety:
           payload?.grape_variety || payload?.classification?.grape_variety,
         country: payload?.country || payload?.classification?.country,
         region: payload?.region || payload?.classification?.region,
-        appellation:
-          payload?.appellation || payload?.classification?.appellation,
       });
-      const signatureHash = signature ? this.hashSignature(signature) : null;
 
       if (signatureHash) {
         const { data: existing } = await client

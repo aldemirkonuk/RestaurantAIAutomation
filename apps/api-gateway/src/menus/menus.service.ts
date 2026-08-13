@@ -514,7 +514,14 @@ export class MenusService {
         matched_master_id: r.masterWineId,
         payload: r.item,
         normalized_fields: {
-          normalized_name: r.item.name.toLowerCase().trim(),
+          // Was `name.toLowerCase().trim()`, a third normalizer writing the
+          // same field name as the library's normalized_name but folding
+          // nothing — so "Château Margaux" stayed "château margaux" here and
+          // was "chateau margaux" everywhere else.
+          normalized_name: this.wineSubmissions.normalizeText(r.item.name),
+          normalized_producer: this.wineSubmissions.normalizeText(
+            r.item.producer,
+          ),
           producer: r.item.producer ?? null,
           vintage: r.item.vintage ?? null,
           region: r.item.region ?? null,

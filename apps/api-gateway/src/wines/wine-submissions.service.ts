@@ -77,7 +77,15 @@ export class WineSubmissionsService {
   private static readonly DIACRITICS =
     /[̀-ͯ᪰-᫿᷀-᷿︠-︯^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]/g;
 
-  private normalizeText(value?: string | null): string {
+  /**
+   * Public because it is the ONLY correct implementation.
+   *
+   * There were four: this one, another in wines.service.ts with a narrower
+   * diacritic class, a `name.toLowerCase().trim()` in menus.service.ts, and
+   * the SQL function. All four wrote the same columns. Anything that needs to
+   * normalize a wine string must call this.
+   */
+  normalizeText(value?: string | null): string {
     if (!value) return "";
     return value
       .normalize("NFD")
@@ -85,6 +93,21 @@ export class WineSubmissionsService {
       .replace(/[^a-zA-Z0-9]+/g, " ")
       .trim()
       .toLowerCase();
+  }
+
+  /**
+   * The signature hash for a wine, under the one contract that
+   * master_wine_library.signature_hash is keyed on.
+   *
+   * Public for the same reason as normalizeText: wines.service.ts had its own
+   * version that dropped empty segments with `.filter(Boolean)` and added
+   * primary_type and appellation, so wines it created were unreachable from
+   * the menu-import path and from the SQL mirror. Dropping empty segments is
+   * the specific bug documented at length in vendor-intel/wine-identity.ts —
+   * it lets a missing producer shift the name into the producer's slot.
+   */
+  signatureHashFor(input: SignatureInput): string {
+    return this.hashSignature(this.buildSignature(input));
   }
 
   /**

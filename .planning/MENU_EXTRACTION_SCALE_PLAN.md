@@ -524,6 +524,46 @@ Supabase denies `SET pg_trgm.*` on a function at migration time. So 0.6 is a
 hard floor and `p_min_name_sim` can only tighten. No measured recall cost: the
 perturbations above score 1.000 on name.
 
+### There were four normalizers writing the same columns
+
+Unifying them was not cosmetic — each variant put wines into a key space the
+others could not reach:
+
+| location | what it did |
+|---|---|
+| `wine-submissions.service.ts` | the canonical one, mirrored in SQL |
+| `wines.service.ts` | narrower diacritic class; signature joined with `.filter(Boolean)` so empty fields **collapsed instead of holding position**; included `primary_type` and `appellation`; lowercase `"nv"` |
+| `menus.service.ts` | `name.toLowerCase().trim()` — folded nothing, so `"Château Margaux"` stayed `"château margaux"` |
+| `public.wine_normalize_text` | the SQL mirror |
+
+`wines.service.ts` writes `master_wine_library.signature_hash` directly, so its
+variant was actively populating the shared column with unreachable keys. All
+three TypeScript copies now delegate to the one implementation, and
+`.filter(Boolean)` is gone — dropping empty segments is the exact bug
+`vendor-intel/wine-identity.ts` documents at length, because it lets a missing
+producer shift the name into the producer's slot.
+
+### Extraction, re-measured with the shipped prompt
+
+Two independent runs per menu, prompt read out of the service so the test
+cannot drift from what ships:
+
+| menu | run 1 / run 2 | stop_reason | tok/wine | name stability |
+|---|---|---|---|---|
+| Elske | 82 / 82 | end_turn / end_turn | 87.6 | 1.000 |
+| Piccolo Sogno | 159 / 182 | end_turn / end_turn | 84.4 | 0.993 |
+| Elina's | 67 / 67 | end_turn / end_turn | 56.8 | 0.902 |
+| Rose Mary | 194 / 198 | max_tokens / end_turn | 82.5 | 0.878 |
+
+Rose Mary is the clearest before/after: under the old prompt **all three** A/B
+runs truncated and returned 165–189 wines. It now reaches **198** against 202
+priced lines in the text layer, with one of the two runs completing cleanly.
+
+On "name repeats the producer": Elina's flags 15 of 67, but 13 are
+`name == producer`, which is the prompt's own fallback for spirits and
+single-name items ("Monkey Shoulder", "Hendrick's") and is harmless for
+matching — both sides agree. The genuine violation rate is 2/67.
+
 ### Still open
 
 - **Enrichment is not wired.** Wines below the auto-link floor become tier-3
