@@ -263,48 +263,73 @@ export class WineSubmissionsService {
       const signature = this.buildSignature(payload);
       const signatureHash =
         submission.signature_hash || this.hashSignature(signature);
+      const normalizedName = this.normalizeText(payload.name);
+      const normalizedProducer = this.normalizeText(payload.producer);
 
-      // Exact signature match
-      const { data: existingMaster } = await this.dbService.supabase
-        .from("master_wine_library")
-        .select("id")
-        .eq("signature_hash", signatureHash)
-        .maybeSingle();
+      // Matching is delegated to the same RPC the menu importer uses. This
+      // path used to run its own ladder — exact signature, then
+      // normalized_name + normalized_producer equality with `.limit(1)` and no
+      // ORDER BY — which carried every defect the importer's copy did:
+      // unreachable across the library's two naming styles, blind to
+      // abbreviated producers, and non-deterministic whenever duplicates
+      // existed. Two matchers on one table also means two answers for one
+      // wine depending on which door it came through, which is what put
+      // primary_type in the signature and split the key space in the first
+      // place.
+      const { data: candidates, error: matchError } =
+        await this.dbService.supabase.rpc("match_library_wine", {
+          p_name: payload.name,
+          p_producer: payload.producer ?? null,
+          p_vintage:
+            typeof payload.vintage === "string"
+              ? parseInt(payload.vintage, 10) || null
+              : (payload.vintage ?? null),
+          p_country: payload.country ?? null,
+          p_region: payload.region ?? null,
+          p_grape_variety: payload.grapeVariety ?? null,
+        });
 
-      if (existingMaster?.id) {
+      // Leave the submission pending rather than treating an outage as "this
+      // wine is new" — that is how duplicates get created.
+      if (matchError) {
+        this.logger.error("Library match failed for submission", {
+          id: submission.id,
+          error: matchError.message,
+        });
+        results.push({ id: submission.id, status: "pending" });
+        continue;
+      }
+
+      const best = (candidates ?? [])[0];
+
+      if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
             status: "merged",
-            matched_master_id: existingMaster.id,
-            decision_reason: "signature_match",
+            matched_master_id: best.id,
+            decision_reason: `library_match_${best.confidence}`,
             signature_hash: signatureHash,
           })
           .eq("id", submission.id);
         results.push({
           id: submission.id,
           status: "merged",
-          matchedMasterId: existingMaster.id,
+          matchedMasterId: best.id,
         });
         continue;
       }
 
-      // Conservative review: same name+producer, different vintage
-      const normalizedName = this.normalizeText(payload.name);
-      const normalizedProducer = this.normalizeText(payload.producer);
-      const { data: nameProducerMatch } = await this.dbService.supabase
-        .from("master_wine_library")
-        .select("id, vintage")
-        .eq("normalized_name", normalizedName)
-        .eq("normalized_producer", normalizedProducer)
-        .limit(1);
-
-      if (nameProducerMatch && nameProducerMatch.length > 0) {
+      // A near miss is the case a human should look at: close enough that
+      // creating a second row is probably wrong, not close enough to link
+      // automatically. Governance keeps this conservative on purpose.
+      if (best) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
             status: "pending_review",
-            decision_reason: "name_producer_match",
+            decision_reason: `near_match_${best.confidence}`,
+            matched_master_id: best.id,
             signature_hash: signatureHash,
           })
           .eq("id", submission.id);
