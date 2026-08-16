@@ -1,7 +1,19 @@
 # Beverage catalogue, display names, and blend data
 
 Plan only — nothing here is built yet. Every number is measured against the
-live library (2,443 rows) or the 26-menu corpus, not estimated.
+live library or the 26-menu corpus, not estimated.
+
+**Companion document:** `.planning/BEVERAGE_CATALOGUE_ARCHITECTURE.md` holds the
+design contract — global identity scope, the beverage merge policy, the
+one-table/JSONB/view shape, **the promotion path to per-category 1:1 tables**,
+the premortem, and the `is_wine` bug. This file stays the *what and in what
+order*; that file is the *how, and how it is allowed to change later*.
+
+> **Numbers corrected 2026-08-16.** The library is **4,160 rows**, not 2,443 —
+> it grew after the corpus load. The non-wine population is **202**, not 342
+> (342 was `menu_items`' row count, misattributed). References to those 202
+> rows across all 15 FK tables: **0**, not 1. The `is_wine` mistag count is
+> **7**, not 40 — but the underlying defect is broader than the count; see §2.0.
 
 ---
 
@@ -30,10 +42,11 @@ ownership**: Avli Taverna ↔ Avli on the Park 88%, Francesca's on Chestnut ↔
 Mia Francesca 85%, Ema ↔ aba 23%. See §5.
 
 **"Non-wines are in the wine library" — and they are free to move right now.**
-Of the 342 non-wine rows, exactly **1** is referenced by `restaurant_inventory`
-and **0** by `menu_items`, `inventory_lots` or submissions. The migration in §2
-costs almost nothing today. It gets more expensive every week restaurants add
-stock against these rows.
+The 202 non-wine rows are referenced by **nothing**: a sweep of all 15 tables
+with a foreign key into `master_wine_library` returns 0 rows pointing at them.
+The migration in §2 costs almost nothing today. That zero is a window, not a
+stable state — it rises every week restaurants add stock, price menu items or
+map POS checks against these rows.
 
 ---
 
@@ -86,8 +99,51 @@ conventions collapse to one; vintage becomes searchable. No matching change.
 
 ## 2. Beverage catalogue split
 
+### 2.0 Blocker — the `is_wine` flag is a null-flag, not a classification
+
+**Nothing in §2 may ship before this is fixed.** Full write-up in
+`BEVERAGE_CATALOGUE_ARCHITECTURE.md` §6; the short version:
+
+`load_enriched_wines.py:212` sets `"is_wine": bool(e.get("primary_type"))`. That
+reads as "is this a wine?" but computes "did enrichment return a type?" — it
+conflates *not a wine* with *the model could not classify it*. The proof is that
+**all 202** `is_wine=false` rows carry `primary_type='unknown'`, without
+exception: a sake and a Napa Cabernet are flagged identically because the model
+returned nothing for both.
+
+**7 actual wines** are mistagged today — BonAnno, Duc des Nauves, Frank Family
+Vineyards, Heitz Cellar, Ink Grade, My Favorite Neighbor, Renaissance Vineyard,
+all listed under a menu's `red` section. (I previously reported 40; 7 is the
+measured figure.) The count is small; the defect is not, because it is *the
+migration predicate*. Selecting on `is_wine=false` walks those 7 out of the wine
+library, and the rule stays wrong for every future load.
+
+Fix: split into `classification_status` and `beverage_kind`, fall back to the
+menu's own section header when enrichment is silent, re-run over the 202,
+log to `wine_repair_log`, add a regression test, and gate the migration on a
+verified `beverage_kind` with a pre-migration assertion that zero wine-section
+rows are in the migration set. Also backfill the 218 legacy rows where `is_wine`
+is *absent*, so absent/false/unknown stop being three states every consumer has
+to interpret.
+
+### 2.1 Shape
+
 **Decision: one `beverages` table + `beverage_type` + `type_attributes` JSONB,
 with a per-category VIEW for each. No physical per-category tables.**
+
+**Rows are globally shared, like wine** — one Hendrick's row for every
+restaurant — **with a stricter identity contract than wine gets**: barcode
+authoritative when present, default to *distinct* rather than to merge,
+identity-bearing discriminators (`age_years`, `cask_finish`, `expression`,
+`proof`) as real columns rather than JSONB, and review-queue proposals instead
+of wine's 85% auto-link. Rationale and evidence in the architecture doc §2–§3.
+
+**Promotion to a real 1:1 table is deferred, not refused.** The view is the
+contract, so promotion later swaps a view's implementation while its signature
+stays byte-identical and nothing downstream changes. Objective triggers,
+expand→migrate→contract mechanics, and the anti-patterns that would make
+promotion impossible are in the architecture doc §4.3 — read it before adding
+any per-category table.
 
 Confirmed by audit against this codebase:
 
@@ -145,20 +201,23 @@ Per-category attributes to model in `type_attributes` (none exist today):
 | amari | 9 | botanical bill, bittering agent, proof |
 
 **Tasks**
-1. **First, fix 40 misclassifications.** 40 rows are tagged `is_wine=false` but
-   their menu category is red/white/rosé/sparkling. My loader set `is_wine`
-   from "did the model return a primary_type", which conflates *not a wine*
-   with *model could not classify*. Those stay in the wine library.
+1. **First, §2.0** — fix the `is_wine` semantics and the 7 mistagged wines.
+   Hard prerequisite.
 2. Create `beverages`, reusing the same normalizer/signature functions so the
    matcher, dedup and merge tooling work unchanged on it.
 3. Per-category views (`whiskey`, `beer`, `sake`, …) flattening
-   `type_attributes`, plus a GIN index on it.
+   `type_attributes`, plus a GIN index on it. **Generate them from the
+   `beverage_type_schema` registry**, not by hand, so adding a category
+   attribute is one registry row rather than nineteen edited definitions.
+   Add the CI grep that forbids reading `type_attributes` outside migrations
+   and view bodies **in the same PR** — that guard is what keeps promotion
+   possible (architecture doc §4.3).
 4. `catalogue_items` view = wines ∪ beverages, for the places that genuinely
    need "everything" (search, menu display). One query surface, two physical
    tables, no duplicated rows.
-5. Migrate the 342 (minus the 40, minus cocktails) with the same
+5. Migrate the 202 (minus the 7, minus 35 cocktails ⇒ ~160) with the same
    snapshot → dry-run → apply → invariant-check discipline as the wine merges.
-   Repoint the single referencing inventory row.
+   No rows to repoint — the FK sweep found zero references.
 6. Extend `merge_library_wines` and `find_library_duplicates` to `beverages`,
    or generalise them — non-wines will accumulate duplicates the same way.
 
@@ -249,22 +308,44 @@ None of this needs a separate branch yet.
 
 ## 6. Order of work
 
+*Not final — further items pending. Phase 1 has not started.*
+
 | # | item | why this order | est. cost |
 |---|---|---|---|
 | 1 | `display_name` + search | Fixes the visible "duplicates" complaint; touches nothing structural | — |
-| 2 | Fix the 40 `is_wine` misclassifications | Must precede any migration or 40 wines leave the wine library | — |
+| 2 | Fix `is_wine` semantics + the 7 mistags (§2.0) | Hard prerequisite: it is the migration predicate, and it is wrong | — |
 | 3 | Finish enrichment (2,099 wines) | Already paid for extraction; resumable | ~$4 |
-| 4 | `beverages` + views + migrate 342 | Cheapest now (1 referencing row); cost grows weekly | — |
+| 4 | `beverages` + views + migrate ~160 | Cheapest now (**zero** FK references); cost grows weekly | — |
 | 5 | Cocktails + recipes | Needs a second extraction pass | ~$1 |
 | 6 | Blend research | Independent; can run any time | ~$22 |
 | 7 | Autocomplete / sibling pre-fill | Product work, no research dependency | — |
 
-## 7. Open
+## 7. Resolved, and still open
 
-- **Whose data is `beverages`?** Wine is global/shared. Are beers and spirits
-  equally shared, or restaurant-scoped? Affects whether dedup applies.
-- **Sake sits oddly.** Brewed, vintage-less, but sold like wine and 39 rows
-  strong. It may belong in the wine library's shape more than the spirits'.
+**Resolved 2026-08-16** (detail in `BEVERAGE_CATALOGUE_ARCHITECTURE.md`):
+
+- **Whose data is `beverages`?** → **Global, like wine**, with a stricter
+  identity contract than wine gets. Spirits repeat 6.2% across menus vs wine's
+  1.0% and carry real UPCs; house/unbranded items are 2 of 829 rows, which
+  killed the hybrid option. Arch §2–§3.
+- **Where does sake go?** → **`beverages`, `beverage_type='sake'`, wine-shaped
+  core.** Not the wine library — it is brewed from rice. The consequence is that
+  `beverages` must carry `body`, `acidity`, `serving_temp_celsius` and
+  `glass_type` as real columns, since all four apply to sake. Arch §4.5.
+
+**Still open:**
+
+- **Discriminator-parse coverage on spirits is unmeasured.** What share of 733
+  spirit rows yield a clean `age_years` / `cask_finish` / `proof`? This sets the
+  beverage auto-link threshold and is the leading indicator for the worst
+  failure mode in the premortem (a global wrong merge). Measure before writing
+  the matcher.
+- **Barcode coverage is unmeasured.** The contract makes UPC authoritative, but
+  menus don't print barcodes — if coverage is near zero at load time, that rule
+  only pays off once distributor catalogues are joined, and conservatism carries
+  the whole load until then.
 - The 2,099 unenriched wines are loaded as extracted-only or not loaded at all;
-  they need the enrichment pass before `beverages` migration to classify
-  correctly.
+  they need the enrichment pass before the `beverages` migration or they
+  classify as `unknown` and land in the wrong population — §2.0's failure at
+  10× the scale.
+- **Order of work is not final** — more items to be added before phase 1 starts.
