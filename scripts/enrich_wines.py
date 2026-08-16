@@ -224,6 +224,8 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=20)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--limit", type=int, help="only enrich the first N wines (for trials)")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="re-enrich everything, ignoring existing output")
     args = ap.parse_args()
 
     env = load_env()
@@ -255,10 +257,34 @@ def main() -> int:
 
     if args.limit:
         wines = wines[: args.limit]
-    print(f"{len(wines)} distinct wine(s) to enrich with {args.model}\n", flush=True)
+
+    # Resume. A long run can die part-way — the first full pass lost 105 of 225
+    # batches to an exhausted API credit balance — and re-enriching wines that
+    # already succeeded is money spent to overwrite identical data. Keyed on the
+    # same (producer, name, vintage) triple used for de-duplication.
+    previous: dict = {}
+    prior_file = out / "enriched.json"
+    if prior_file.exists() and not args.no_resume:
+        for rec in json.loads(prior_file.read_text()):
+            if rec.get("enrichment"):
+                x = rec["extracted"]
+                previous[tuple(
+                    re.sub(r"[^a-z0-9]+", " ", str(x.get(f) or "").lower()).strip()
+                    for f in ("producer", "name", "vintage")
+                )] = rec["enrichment"]
+
+    def wine_key(w):
+        return tuple(
+            re.sub(r"[^a-z0-9]+", " ", str(w.get(f) or "").lower()).strip()
+            for f in ("producer", "name", "vintage")
+        )
+
+    todo = [w for w in wines if wine_key(w) not in previous]
+    print(f"{len(wines)} distinct wine(s); {len(previous)} already enriched, "
+          f"{len(todo)} to do with {args.model}\n", flush=True)
 
     en = Enricher(key, args.model)
-    batches = [wines[i:i + args.batch] for i in range(0, len(wines), args.batch)]
+    batches = [todo[i:i + args.batch] for i in range(0, len(todo), args.batch)]
     results: dict[int, dict] = {}
 
     def work(bi: int, batch: list[dict]):
@@ -277,9 +303,14 @@ def main() -> int:
             if done % 10 == 0 or done == len(batches):
                 print(f"  {done}/{len(batches)} batches", flush=True)
 
+    fresh = {}
+    for idx, w in enumerate(todo):
+        if results.get(idx):
+            fresh[wine_key(w)] = results[idx]
+
     merged, counts = [], {"known": 0, "inferred": 0, "unknown": 0, "missing": 0}
-    for idx, w in enumerate(wines):
-        e = results.get(idx)
+    for w in wines:
+        e = fresh.get(wine_key(w)) or previous.get(wine_key(w))
         k = (e or {}).get("knowledge")
         counts[k if k in counts else "missing"] += 1
         merged.append({"extracted": w, "enrichment": e})
@@ -296,6 +327,11 @@ def main() -> int:
 
     print(f"\n{len(wines)} wines: " + "  ".join(f"{k}={v}" for k, v in counts.items()))
     print(f"{en.calls} calls, {en.in_tok:,} in / {en.out_tok:,} out, ${cost:.2f}")
+    if counts["missing"]:
+        print(f"\n*** {counts['missing']} wine(s) have NO enrichment — the run did not "
+              f"complete. Re-run the same command to resume; finished wines are "
+              f"not re-charged. ***")
+        return 1
     return 0
 
 

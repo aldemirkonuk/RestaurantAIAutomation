@@ -202,6 +202,14 @@ def main() -> int:
                 "knowledge": knowledge,
                 "model": "claude-haiku-4-5",
                 "menus": x.get("menus", []),
+                # The corpus is beverage lists, not wine lists: 374 of 2,400
+                # items are amari, beers and spirits, which the model correctly
+                # declines to give a primary_type. They belong in the library —
+                # restaurants stock and sell them, and it already holds
+                # Hendrick's and Monkey Shoulder — but they must stay
+                # separable, so the menu's own category is kept verbatim.
+                "menu_category": x.get("category"),
+                "is_wine": bool(e.get("primary_type")),
             }
 
             mid, mconf = matches.get(j, (None, None))
@@ -212,13 +220,20 @@ def main() -> int:
                 if args.apply:
                     cur.execute(
                         """UPDATE master_wine_library SET
-                             primary_type  = CASE WHEN primary_type IN ('unknown','')
-                                                  OR primary_type IS NULL
-                                             THEN %s ELSE primary_type END,
+                             -- coalesce, not CASE. A CASE that unconditionally
+                             -- assigned the new value blanked this column
+                             -- whenever the enrichment was 'unknown' (NULL),
+                             -- and the column is NOT NULL. Keep any real
+                             -- existing value; take the new one only if there
+                             -- is one; otherwise stand pat.
+                             -- (Do not write a placeholder token in a SQL
+                             -- comment here: psycopg2 counts it as a real
+                             -- parameter and the whole statement shifts.)
+                             primary_type  = coalesce(nullif(primary_type,'unknown'),
+                                                      %s, primary_type),
                              grape_variety = coalesce(grape_variety, %s),
-                             country       = CASE WHEN country IN ('Unknown','')
-                                                  OR country IS NULL
-                                             THEN %s ELSE country END,
+                             country       = coalesce(nullif(country,'Unknown'),
+                                                      %s, country),
                              region        = coalesce(region, %s),
                              sub_region    = coalesce(sub_region, %s),
                              appellation   = coalesce(appellation, %s),
@@ -287,7 +302,13 @@ def main() -> int:
                      to_num(e.get("aging_potential_years")),
                      e.get("farming"), e.get("aging_vessel"),
                      TIER[knowledge], REVIEW[knowledge],
-                     sig, x.get("name"), x.get("producer"),
+                     # Normalize the SAME value the producer column receives.
+                     # Passing the raw producer here while the column takes
+                     # `producer or name` desynced them: 28 rows landed with a
+                     # populated producer and an EMPTY normalized_producer, and
+                     # the matcher scores an empty-vs-present producer as 0.0,
+                     # so those wines could not match even themselves.
+                     sig, x.get("name"), x.get("producer") or x.get("name"),
                      json.dumps(confidences), json.dumps(enrich_meta)),
                 )
             stats["inserted"] += 1
