@@ -106,56 +106,252 @@ Cocktails. A restaurant's Negroni recipe is its own. Cocktails carry
 
 ---
 
-## 3. Decision 2 — a stricter identity contract for beverages than wine gets
+## 3. Decision 2 — identity is a deterministic key, not a similarity score
 
 Scope and merge policy are separable decisions, and only the second one is
-dangerous. Beverages are global *and* harder to identify than wine, so the
-merge policy must be strictly more conservative.
+dangerous. This section replaces an earlier draft of the contract that did not
+survive measurement. **The corrections are kept visible rather than swapped
+out**, because the reasons the first version failed are the reasons the second
+one is shaped as it is.
 
-### The problem, in the data
+### 3.0 What the first draft got wrong
 
-132 of 405 non-wine producers write the same brand more than one way:
+| first draft said | measurement | verdict |
+|---|---|---|
+| "UPC/EAN is authoritative when present" | menus print no barcodes; 0% of rows carry one | **inapplicable** — and wrong in principle: wine producers reuse one UPC across vintages (hence the existing `barcode_vintage_mapping` column), and GS1 permits GTIN reuse years after a product is discontinued. A barcode is strong *evidence*, never an authority. |
+| "merge only when every present discriminator agrees" | 13% of spirit rows carry an age, 10% a cask, **0% a proof, 0% a volume** | **a fiction for 87% of rows** — with no discriminator present the rule silently falls back to name similarity, the exact thing it was written to prevent |
+| "discriminators are columns", enumerated as age/cask/expression/proof | an enumerated key produced **145 false merges** | **unachievable** — §3.3 |
+| "pick an auto-link threshold from the measurement" | positive and negative similarity distributions **overlap** | **no threshold exists** — §3.2 |
+
+### 3.1 The instrument: labels from the world, not from me
+
+Matcher precision was previously measured against adversarial probes I
+generated, which cannot surface the errors I did not think to simulate. The
+labelled set in `datasets/merge_eval/` is different, and everything below rests
+on it:
+
+> **Two different entries on the same menu are different products.**
+
+A restaurant does not print one bottle twice at two prices. Every pair of
+distinct entries within one menu is therefore a free *negative* label, and the
+26-menu corpus yields **732,874** of them — against 12 positives built the same
+way (entries on *different* menus that coincide under aggressive orthographic
+canonicalisation).
+
+The asymmetry in set sizes matches the asymmetry in risk: the negative set
+bounds precision tightly, which is what guards the silent global failure; the
+positive set bounds recall loosely, which is the error we can afford. Both
+caveats are handled rather than ignored — extraction artifacts (one bottle read
+twice) and under-identified rows (§3.5) are excluded, and manual label
+corrections live in `datasets/merge_eval/adjudicated.json` with a written reason
+each. **Exclusions are never derived from the policy under test**; that would
+make the evaluation circular.
+
+`scripts/build_merge_eval_set.py` builds it; `scripts/eval_merge_policies.py`
+scores against it.
+
+### 3.2 Result: no similarity threshold can work
 
 ```
-macallan      → 'macallan 12', 'macallan 12 year', 'macallan 12yr sherry cask',
-                'macallan 15', 'macallan 15 year'
-the macallan  → 'classic cut 2017 release', '2017 5223 10', ...
-balvenie      → 'balvenie 14yr caribbean cask', 'balvenie caribbean cask 14 year',
-                'balvenie doublewood 12 year', 'balvenie portwood 21 year'
+policy                                    false MERGES  false splits
+--------------------------------------------------------------------
+exact signature (today, wine)                        0            12
+residual-token key (proposed)                        0             5
+fuzzy similarity >= 0.98                             1            12
+fuzzy similarity >= 0.95                            61            12
+fuzzy similarity >= 0.90                           123             5
+fuzzy similarity >= 0.85                           212             5
 ```
 
-Two opposite forces are tangled in there:
+The two error columns must never be summed into one score. A false merge is
+silent, global, and destroys the evidence of itself; a false split shows a
+duplicate in a list.
 
-- `macallan 12` and `macallan 12 year` — **one product**, two spellings → must merge.
-- `macallan 12` and `macallan 12yr sherry cask` — **possibly two products** → must not merge.
-- `macallan` and `the macallan` — two producer strings, one distillery. The
-  trade-word machinery built for wine (`Dom.`, `Ch.`, `Bodega`, family guard)
-  extends to `The`, `Distillery`, `Brewing Co.`, `Brouwerij` almost for free.
+Why no threshold survives — the worst *true* match scores **0.919**
+(`johnnie walker blue` / `johnnie walker blue label`) while the worst *false*
+pair scores **0.979**:
 
-Wine's identity key is (producer, cuvée, vintage), and vintage is a clean
-integer in its own column. A spirit's identity key is **(brand, expression, age
-statement, cask finish, proof, size)** — and the last four sit inside free text.
-`Don Julio 1942` is an expression name, not a vintage; the data-quality checker
-already had to special-case it.
+```
+0.979  pappy van winkle 12          |  pappy van winkle 15       $60 vs $80
+0.973  macallan double cask 12 yr   |  macallan double cask 25 yr
+0.973  macallan classic cut 2020    |  macallan classic cut 2024
+```
 
-### The contract
+The distributions **overlap**, so the ordering itself is uninformative and no
+cut point separates them. The cause is structural, not a tuning problem:
 
-1. **UPC/EAN is authoritative when present.** Equal barcode ⇒ same product, no
-   fuzzy work, no review. This is a *stronger* key than wine ever gets.
-2. **Default to distinct.** Wine proposes a merge on high similarity. Beverages
-   merge only when every *present* discriminator agrees. Any discriminator that
-   differs, or is absent on one side and present on the other, ⇒ separate rows.
-   Duplicates are visible and cheap to fix; a wrong merge is invisible and
-   global.
-3. **Discriminators are columns, never JSONB.** See §4.1 — this is the rule
-   that makes point 2 enforceable rather than aspirational.
-4. **No auto-link.** Wine auto-links at confidence ≥ 85 (`AUTO_LINK_CONFIDENCE`).
-   Beverages produce review-queue proposals only, until discriminator-parse
-   coverage has been measured. Pick a threshold from that measurement; do not
-   inherit 85 by default.
-5. **Merges are logged and reversible.** `wine_merge_log` has a `beverages`
-   equivalent, with the same snapshot → dry-run → apply → invariant-check
-   discipline the wine merges used.
+> **The discriminating token is usually a number. A number is worth ~2% of
+> string similarity and 100% of the product identity. Similarity therefore
+> *rises* as names grow more descriptive, because the shared prefix dominates
+> precisely when the names are most complete.**
+
+Weighting numbers more heavily does not rescue it either: `Don Julio 1942` and
+`Old Forester 1924 Series` are expression names, `Classic Cut 2020` is a release
+year, `Weller 107` is a proof, `Macallan 12` is an age. One token shape, four
+meanings.
+
+### 3.3 Discriminators cannot be enumerated
+
+The first structural key enumerated the discriminating vocabulary — age, cask,
+finish, proof. It produced **145 false merges**, and the failures name the flaw:
+
+```
+johnnie walker black label  |  johnnie walker blue label
+blanton's bourbon           |  blanton's gold bourbon
+weller 12yr bourbon         |  weller cypb bourbon
+glenlivet 12yr              |  glenlivet 18yr      (\b\d+\b never matches '12yr')
+```
+
+`black` / `blue` / `gold` / `cypb` / `primavera` / `birthday` — no enumeration is
+ever complete, and **every gap is a silent false merge**. That is the wrong
+direction for incompleteness to fail.
+
+### 3.4 The rule: residual-token equality under a closed equivalence
+
+Invert it. **Every non-brand token discriminates until an explicit, tested
+equivalence says otherwise.**
+
+```
+identity_key = ( brand tokens,
+                 COMPLETE multiset of remaining tokens,
+                 vintage )
+```
+
+- Numbers are never normalised away. They are the identity.
+- Glued forms are split (`12yr` → `12 yr`, `107proof` → `107 proof`), so that
+  spelling varies rather than content.
+- The equivalence relation is **closed, tiny and versioned**: `{yrs, year,
+  years, yo} → yr`, plus a noise set `{the, label, co, company, distillery,
+  distillers, and}`. `label` is in it because *Johnnie Walker Blue* and *Johnnie
+  Walker Blue Label* are one product. `black` and `blue` are not in it, and
+  never will be.
+- Adding an entry to either set is a reviewed change that must re-run §3.1.
+
+**The property that makes this bulletproof: incompleteness fails safe.** An
+unrecognised token is assumed to discriminate, so a gap in the equivalence
+relation costs a false *split* — visible, cheap, recoverable — never a false
+merge. Contrast the enumerated design, where the same gap costs a false merge.
+Identical ignorance, opposite consequence.
+
+Measured: **0 false merges across 732,874 known-distinct pairs**, in every
+category, while still collapsing 4,822 rows to 4,418 products with 293 appearing
+on more than one menu. It dominates today's exact-signature rule on both axes —
+the same zero false merges, with fewer false splits (5 vs 12).
+
+### 3.5 The third failure class: under-identified rows
+
+Merge policy has two familiar failure modes. The corpus exposed a third that no
+merge policy can fix, and that the first draft missed entirely.
+
+**357 library rows have `normalized_producer = normalized_name`.** On one menu
+alone, *six different* Hermitage Blanc wines — different growers, different
+prices — are stored as six identical rows, because the extractor wrote the
+**appellation into the producer field**:
+
+```
+  6x  hermitage blanc     [Obelix_Chicago_Wine_Menu.pdf]
+  4x  cote rotie          [Obelix_Chicago_Wine_Menu.pdf]
+  4x  hermitage           [Obelix_Chicago_Wine_Menu.pdf]
+  3x  chateau petrus      [Obelix_Chicago_Wine_Menu.pdf]
+```
+
+These rows carry **no identity**. Merging them is "correct given the data" and
+destroys real, distinct products. Keeping them apart is equally unjustified —
+there is nothing to keep apart *by*. The information was lost upstream and
+cannot be recovered downstream.
+
+**Rule: under-identified rows are quarantined, never merged.** A row is
+under-identified when its residual token multiset is empty — the name adds
+nothing to the producer — optionally strengthened by the producer matching a
+known appellation. Such rows may be stored, displayed and counted, but are
+ineligible to be merged, ineligible as a match target, and flagged for
+re-extraction. The real fix is upstream: extraction must never put an
+appellation in `producer`.
+
+> **Live hazard.** `find_library_duplicates(85)` returns 289 proposals today, of
+> which **200 are pairs co-occurring on a single menu** — provably different
+> products — and **18 are flagged `safe_to_merge`**. Nothing auto-merges, so this
+> is latent rather than active, but the merge tool must not be run against the
+> library until the quarantine rule and the §3.8 gate exist.
+
+### 3.6 Separate candidate *generation* from the merge *decision*
+
+This is the move that reconciles the evidence above with the fact that the wine
+matcher genuinely measures recall 1.000.
+
+| stage | tool | property needed | cost of an error |
+|---|---|---|---|
+| **generate** candidates | trigram / `word_similarity`, embeddings | high recall, cheap | a miss is a duplicate; a spurious candidate is wasted review |
+| **decide** merge | `identity_key` equality (§3.4) | **zero false merges** | permanent and global |
+| **adjudicate** the remainder | human review queue | throughput | an uncleared queue leaves duplicates — safe |
+
+Fuzzy matching is excellent at generation and unacceptable as a decider. The
+existing recall measurement was measuring generation, and it was not wrong — it
+answered a different question from the one that matters here. Keeping the stages
+separate is what lets each tool be used where it is strong.
+
+**Nothing auto-merges. Ever, in any category.** A key match may auto-*link* an
+incoming menu line to an existing catalogue row — that creates a link, not a
+rewrite, and is reversible. Collapsing two catalogue rows is always reviewed.
+
+### 3.7 Merge must be non-destructive
+
+Given §3.5, and given that a catalogue row accumulates inventory, price history
+and POS mappings over time, merge cannot mean "collapse two rows' attributes and
+keep one".
+
+- **Supersede, don't overwrite.** The loser is marked superseded and gains an
+  alias pointing at the keeper. `wine_aliases.canonical_id` already exists for
+  exactly this; `beverages` gets the same.
+- **Never fuse conflicting non-null attributes.** Two rows disagreeing on a
+  non-null ABV, volume or vintage is *evidence they are different products*. It
+  **blocks** the merge; it is not resolved by picking a winner.
+- **Repoint current references; leave history alone.** After first reference by
+  inventory or procurement, a merge stops being a catalogue edit and starts
+  rewriting financial history. Past facts keep pointing where they pointed.
+- **Un-merge must be tested, not asserted.** A reversible merge nobody has ever
+  reversed is not reversible. A property test merges then un-merges random pairs
+  and asserts bit-identical state.
+
+### 3.8 The gate
+
+§3.1 is not a one-off study; it is a permanent CI fixture.
+
+- Any change to the normalizer, the equivalence relation, the noise set, the
+  identity key or the matcher re-runs `eval_merge_policies.py`.
+- **False merges must be 0.** Not "low" — zero. This is the one hard gate.
+- False splits are reported and may move; a rise is a discussion, not a failure.
+- Every new menu extends the negative set for free, so the gate strengthens over
+  time with nobody labelling anything.
+
+### 3.9 Why the two errors are never traded off
+
+If a false merge costs *c*ᶠᵐ and a false split costs *c*ᶠˢ, merging is rational
+only when `P(same) > cᶠᵐ / (cᶠᵐ + cᶠˢ)`. A false merge silently mis-states a
+product for every restaurant at once with its own evidence destroyed; a false
+split shows a duplicate in a list. That ratio is not 2:1 or 10:1, it is nearer
+100:1, putting the rational threshold above 0.99 — and §3.2 showed no threshold
+that high is achievable. The quantitative argument lands on the same place as
+the structural one: **do not use a threshold at all.**
+
+### 3.10 What this means for wine
+
+Wine keeps its matcher. The `word_similarity` work solved a real problem —
+bare-vs-verbose names (`Ribolla` vs `Ribolla Gialla Friuli`) — and wine's
+discriminating axis, vintage, is already a typed column rather than free text.
+Beverages have four discriminating axes, all in free text. Different problems,
+different tools: a deliberate split, not an inconsistency.
+
+Wine does adopt three things from this section, all pure additions that change
+no matching behaviour:
+
+1. **Quarantine** for the 357 under-identified rows (§3.5).
+2. **The §3.8 CI gate**, which wine has never had — its precision was measured
+   against probes I wrote myself.
+3. **A guard on `find_library_duplicates` / `merge_library_wines`:** no pair may
+   be proposed `safe_to_merge` when its two rows co-occur on a single menu. That
+   one rule removes 18 of today's 19 `safe_to_merge` proposals, all of which are
+   wrong.
 
 ---
 
@@ -167,8 +363,10 @@ beverages
   country, region, abv_pct, volume_ml, package_format,
   price_reference, barcode / sku / upc / ean, embedding,
   library_tier, review_status, field_confidences, data_enrichment,
-  signature_hash, normalized_name, normalized_producer,   -- same matcher
-  age_years, cask_finish, expression, proof,              -- identity-bearing (§4.1)
+  signature_hash, normalized_name, normalized_producer,   -- same normalizer
+  identity_key, identity_status,                          -- §3.4 / §3.5
+  body, acidity, serving_temp_celsius, glass_type,        -- sensory core (§4.5)
+  age_years, cask_finish, expression, proof,              -- parsed projections (§4.1)
   type_attributes jsonb                                   -- descriptive only
 ```
 
@@ -193,19 +391,28 @@ The split is **not** "common vs rare". It is:
 
 | the attribute… | lives in | why |
 |---|---|---|
-| participates in identity / matching / dedup | **column** | §3.2 cannot enforce a rule against a value it can't constrain or index reliably |
+| is the identity itself | **`identity_key`**, a generated column | §3.4 — it must be indexable, comparable and impossible to disagree with |
 | is referenced by a foreign key or a CHECK | **column** | JSONB cannot be an FK target |
 | is filtered, sorted or joined at scale | **column** (promote when it happens — §4.3) | |
 | is descriptive, or an ML feature only ever read as a block | **`type_attributes`** | |
 
-`age_years`, `cask_finish`, `expression` and `proof` are promoted **on day one**
-despite being whiskey-specific, because they are identity-bearing. Sake's
-`seimaibuai` and `smv`, beer's `ibu`, gin's botanical bill are descriptive →
-JSONB.
+**An important correction from §3.** An earlier draft put `age_years`,
+`cask_finish`, `expression` and `proof` in columns *because they were
+identity-bearing*. §3.3 retired that: identity cannot be carried by an
+enumerated set of parsed fields, because the enumeration is never complete and
+every gap is a silent false merge. Identity is carried by `identity_key` — the
+complete residual token multiset — which by construction cannot have a gap.
 
-This rule is the whole reason the architecture is safe. A category whose
-identity depends on an attribute that is buried in JSONB is a category whose
-dedup silently doesn't work.
+Those four columns stay, but their job changed. They are **best-effort parsed
+projections** for filtering, faceting and ML ("show me 12-year whiskies"), and
+they are explicitly **not authoritative for identity**. A null `age_years` on a
+row whose name says `12 yr` is a parsing miss, not an identity change — the key
+already has the token. This distinction must be written into the column comments
+in the migration, or someone will reasonably assume the parsed columns decide
+identity and reintroduce §3.3's failure.
+
+Sake's `seimaibuai` and `smv`, beer's `ibu`, gin's botanical bill are
+descriptive → JSONB.
 
 ### 4.2 Why not nine physical tables now
 
@@ -388,16 +595,46 @@ expected damage (likelihood × blast radius), with the guard that prevents each.
 ### P1 — A wrong merge corrupted a product across every restaurant at once
 **Likelihood: high. Blast radius: global. Detectability: very poor.**
 
-`Macallan 12 Sherry Cask` was folded into `Macallan 12 Double Cask` because the
-names were 94% similar. A $90 bottle is now mispriced everywhere, and nobody
-notices because there is no per-restaurant discrepancy to compare against — all
-restaurants are wrong identically. Reservation counts, procurement suggestions
-and analytics all inherit it.
+`Pappy Van Winkle 12` was folded into `Pappy Van Winkle 15` — a real pair from
+the corpus, priced $60 and $80 on one menu, and **97.9% string-similar**. The
+bottle is now mispriced everywhere, and nobody notices, because there is no
+per-restaurant discrepancy to compare against: every restaurant is wrong
+identically. Inventory value, procurement suggestions and analytics all inherit
+it, and the evidence that the two were ever distinct is gone.
 
-*Guard:* §3 in full — barcode-authoritative, default-to-distinct, discriminators
-as columns, review queue instead of auto-link, reversible logged merges. **This
-is the single highest-value guard in the document.** If only one thing from here
-survives, it should be §3.2.
+*Guard:* §3 in full, and specifically §3.4 — a deterministic residual-token key
+measured at **0 false merges across 732,874 known-distinct pairs**, in place of
+any threshold. **This is the single highest-value guard in the document.** If
+only one thing here survives, it should be §3.4 plus the §3.8 gate that keeps
+it true.
+
+*Status in shipped code, measured — the two paths differ sharply and should not
+be conflated:*
+
+- **Linking** an incoming menu line to a library row (`match_library_wine` at
+  ≥85) is in good shape: **1 wrong auto-link in 3,074** same-menu wine pairs —
+  `Gabbiano Chianti Classico` vs `Gabbiano Chianti Classico Riserva`. (Sample
+  skewed toward smaller menus; the residual-token key catches even this one,
+  since `riserva` is a residual token.)
+- **Merging** two catalogue rows (`find_library_duplicates` at ≥85) is not:
+  200 of 289 proposals are pairs that co-occur on a single menu, and **18 are
+  flagged `safe_to_merge`**. Nothing runs it automatically, so this is a loaded
+  gun rather than a fired one — but it must not be run before §3.5's quarantine
+  and §3.10's co-occurrence guard exist.
+
+### P1b — Rows that never had an identity got merged anyway
+**Likelihood: certain if unguarded (357 rows exist today). Blast radius: silent data loss. Detectability: none after the fact.**
+
+Six different Hermitage Blanc wines are stored as six identical rows because the
+extractor wrote the appellation into `producer`. A dedup pass "correctly"
+collapses them to one, and five real wines — with five real prices — vanish. No
+merge policy can prevent this, because by the time the rows exist there is
+nothing left to distinguish them by.
+
+*Guard:* §3.5 — quarantine any row whose residual token multiset is empty:
+ineligible to merge, ineligible as a match target, flagged for re-extraction.
+The durable fix is upstream, in the extraction prompt. This failure is the
+reason "improve the matcher" is the wrong response to duplicate complaints.
 
 ### P2 — The view contract leaked, and promotion became impossible
 **Likelihood: medium-high. Blast radius: architectural. Detectability: good, if instrumented.**
@@ -489,17 +726,42 @@ and adding a `beverages` column meant editing nineteen definitions.
 hand-writing them, so a registry row is the only edit. One generator, nine
 outputs.
 
+### P10 — The review queue was never cleared, so the design degraded to "never merge"
+**Likelihood: high. Blast radius: lost value, not lost correctness.**
+
+Because nothing auto-merges (§3.6), everything the key does not decide waits for
+a human. Nobody had time. Two years of duplicates accumulated, enrichment was
+paid for twice on the same bottle, and demand aggregation fragmented.
+
+This is the *designed* failure direction — it degrades to safe — but it is a
+failure, and pretending otherwise would be dishonest.
+
+*Guard:* make the queue cheap rather than large. Order proposals by value
+(restaurants affected × price impact), show the evidence inline (both names,
+both menus, both prices, which tokens differ), and accept the whole queue's
+existence as the price of §3.9's cost ratio. Track queue age as a health metric.
+If it proves unclearable, the answer is better candidate generation — fewer,
+better proposals — never a loosened decision rule.
+
 ### What would make me change the recommendation
 
 Stated in advance, so it is a measurement rather than a retrofit:
 
-- Discriminator-parse coverage below ~70% on spirits ⇒ §3.2's "default to
-  distinct" degrades to "never merge", and the catalogue accumulates duplicates
-  faster than review can clear them. Response: invest in parsing, not in
-  loosening the threshold.
-- House/unbranded share above ~5% ⇒ revisit P8's scoping exit.
-- Any single category past ~5,000 rows within 12 months ⇒ promotion becomes a
-  near-term plan item rather than a hypothetical.
+- **A single false merge appearing in the §3.8 gate** ⇒ the identity key is
+  wrong and ships nothing until it is 0 again. No exceptions, no "it's only
+  one".
+- **False splits climbing above ~2% of catalogue rows** ⇒ the equivalence
+  relation is too small. Response: add reviewed entries to `EQUIV`/`NOISE`, each
+  re-running the gate. Never a threshold.
+- **Review queue unclearable** (age trending up for a quarter) ⇒ P10 has
+  arrived; fix generation, not the decision rule.
+- **House/unbranded share above ~5%** ⇒ revisit P8's scoping exit.
+- **Any single category past ~5,000 rows within 12 months** ⇒ promotion becomes
+  a near-term plan item rather than a hypothetical.
+
+The earlier trigger "discriminator-parse coverage below ~70%" is withdrawn: it
+was measured at 13%/10%/0%/0%, which retired the enumerated-discriminator design
+entirely (§3.0) rather than tuning it.
 
 ---
 
@@ -585,28 +847,60 @@ different things is how this bug class recurs.
 - **Phase 2 (`is_wine` fix)** is upgraded from "fix 40 rows" to "fix the flag's
   semantics, then the 7 rows". It is a prerequisite for phase 4, not a
   nice-to-have. See §6.
-- **Phase 4 (`beverages`)** gains: the wine-shaped sensory core as columns
-  (§4.5), the four identity-bearing discriminator columns (§4.1), the
-  `beverage_type_schema` registry (§4.4), the CI grep guarding the view contract
-  (§4.3), and generated rather than hand-written views (P9).
+- **Phase 4 (`beverages`)** gains: `identity_key` + `identity_status` (§3.4,
+  §3.5), the wine-shaped sensory core as columns (§4.5), the parsed projection
+  columns with their non-authoritative status documented in-migration (§4.1),
+  the `beverage_type_schema` registry (§4.4), the CI grep guarding the view
+  contract (§4.3), and generated rather than hand-written views (P9).
 - **Phase 4 migration predicate** changes from `is_wine=false` to a verified
   `beverage_kind`, with cocktails excluded structurally (P6).
 - **Beverage dedup tooling** is not a copy of the wine tooling. It shares the
-  normalizer and signature functions but carries a different merge policy (§3).
+  normalizer but replaces the decision rule (§3.4) and never auto-merges.
+
+**A new phase belongs before the rest, and it is cheap.** The identity work in
+§3 is independent of the beverage split, benefits wine immediately, and closes
+a live hazard:
+
+| | item | why it comes first |
+|---|---|---|
+| 0a | Land `datasets/merge_eval/` + `eval_merge_policies.py` in CI | The gate must exist before anything it guards changes. Already built. |
+| 0b | Co-occurrence guard on `find_library_duplicates` | Removes 18 of 19 wrong `safe_to_merge` proposals. One predicate. |
+| 0c | Quarantine the 357 under-identified rows | Stops P1b outright; no schema change, one status column |
+| 0d | Fix the extraction prompt so `producer` never takes an appellation | The durable fix for 0c; costs one re-extraction of affected menus |
 
 ---
 
 ## 8. Still open
 
-- **Discriminator-parse coverage is unmeasured.** What share of the 733 spirit
-  rows yield a clean `age_years` / `cask_finish` / `proof`? This number sets the
-  beverage auto-link threshold and is the leading indicator for P1. Measure it
-  before writing the matcher, not after.
+Both of the previously-open identity questions are now **closed by
+measurement**, and the answers changed the design rather than tuning it:
+
+- ~~Discriminator-parse coverage~~ → measured at 13% age, 10% cask, **0% proof,
+  0% volume**. It did not set a threshold; it retired the enumerated-
+  discriminator design entirely (§3.0, §3.3).
+- ~~Barcode coverage~~ → 0% on menu-sourced rows, and a barcode is not an
+  identity authority even when present (UPC reuse across vintages, GS1 GTIN
+  reuse after discontinuation). Demoted from "authoritative" to "evidence"
+  (§3.0). It becomes useful only once distributor catalogues are joined.
+
+Genuinely still open:
+
 - **The 2,099 unenriched corpus wines** must be enriched before the migration,
   or they classify as `unknown` and land in the wrong population — the same
   failure §6 describes, at 10× the scale.
-- **Barcode coverage is unmeasured.** §3.1 makes UPC authoritative, but nothing
-  yet says how many beverage rows will actually have one from a menu (likely
-  near zero — menus don't print barcodes). If it is near zero at load time, the
-  barcode rule only becomes valuable once distributor catalogues are joined,
-  and §3.2's conservatism carries the whole load until then.
+- **Positive labels are thin** — 12 pairs. The negative set (732,874) bounds
+  precision tightly, which is the error that matters, but recall is bounded only
+  loosely. Two cheap sources would fix it: distributor catalogues (same product,
+  many spellings) and human review-queue decisions, which become labels the
+  moment someone confirms a merge. Until then, false-split figures should be
+  read as indicative, not precise.
+- **Per-category attribute detail** — the sake/beer/whiskey/gin `type_attributes`
+  schemas are sketched in §4 but not specified to field level, and the
+  `beverage_type_schema` registry rows are what make them real. That work is
+  scoped per category and best done at the point each category is populated,
+  not preemptively.
+- **Cross-category collision is untested.** The identity key is evaluated within
+  the corpus as a whole, but a beer and a whiskey from the same parent brand
+  (Guinness, Jameson, Sam Adams' spirits line) could in principle collide. Add
+  `beverage_type` to the key, or measure that it never happens, before the
+  first multi-category load.

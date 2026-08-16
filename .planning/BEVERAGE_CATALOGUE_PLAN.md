@@ -132,11 +132,21 @@ to interpret.
 with a per-category VIEW for each. No physical per-category tables.**
 
 **Rows are globally shared, like wine** — one Hendrick's row for every
-restaurant — **with a stricter identity contract than wine gets**: barcode
-authoritative when present, default to *distinct* rather than to merge,
-identity-bearing discriminators (`age_years`, `cask_finish`, `expression`,
-`proof`) as real columns rather than JSONB, and review-queue proposals instead
-of wine's 85% auto-link. Rationale and evidence in the architecture doc §2–§3.
+restaurant — **and identity is decided by a deterministic key, never by a
+similarity threshold.** Measured on 732,874 pairs of provably-different products
+(two entries on one menu are two products), no threshold separates true matches
+from false ones: the worst true match scores 0.919 and the worst false pair
+0.979, because the discriminating token is usually a *number* — worth ~2% of
+string similarity and 100% of the identity. `Pappy Van Winkle 12` and `15` are
+97.9% similar and $20 apart.
+
+The rule that replaces it: **every non-brand token discriminates until a small,
+closed, versioned equivalence says otherwise.** 0 false merges across all
+732,874 pairs, strictly better than today's exact-signature rule on both error
+axes. Its key property is that *incompleteness fails safe* — a gap in the
+equivalence list costs a visible duplicate, never a silent global merge.
+Full derivation, the retired first draft and why it failed, the third failure
+class (under-identified rows), and the CI gate are in architecture doc §3.
 
 **Promotion to a real 1:1 table is deferred, not refused.** The view is the
 contract, so promotion later swaps a view's implementation while its signature
@@ -312,6 +322,10 @@ None of this needs a separate branch yet.
 
 | # | item | why this order | est. cost |
 |---|---|---|---|
+| **0a** | Land `datasets/merge_eval/` + `eval_merge_policies.py` as a CI gate | The gate must exist before anything it guards changes. **Already built** — see arch §3.1/§3.8 | — |
+| **0b** | Co-occurrence guard on `find_library_duplicates` | Closes a live hazard: 18 of 19 today's `safe_to_merge` proposals are provably wrong. One predicate | — |
+| **0c** | Quarantine the 357 under-identified rows | Six different Hermitage Blanc wines are stored identically; a dedup pass would delete five real wines | — |
+| **0d** | Stop extraction writing appellations into `producer` | The durable fix for 0c | ~$0.30 re-extract |
 | 1 | `display_name` + search | Fixes the visible "duplicates" complaint; touches nothing structural | — |
 | 2 | Fix `is_wine` semantics + the 7 mistags (§2.0) | Hard prerequisite: it is the migration predicate, and it is wrong | — |
 | 3 | Finish enrichment (2,099 wines) | Already paid for extraction; resumable | ~$4 |
