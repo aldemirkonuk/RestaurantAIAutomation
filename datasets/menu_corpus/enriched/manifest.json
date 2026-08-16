@@ -1,0 +1,14 @@
+{
+ "model": "claude-haiku-4-5",
+ "wines": 4499,
+ "calls": 120,
+ "input_tokens": 173644,
+ "output_tokens": 835006,
+ "cost_usd": 4.3487,
+ "knowledge": {
+  "known": 933,
+  "inferred": 1071,
+  "unknown": 396,
+  "missing": 2099
+ }
+}

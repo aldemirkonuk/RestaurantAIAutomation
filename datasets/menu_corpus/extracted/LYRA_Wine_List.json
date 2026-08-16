@@ -1,0 +1,831 @@
+{
+ "menu": "LYRA_Wine_List.pdf",
+ "pages": 4,
+ "wine_count": 99,
+ "seconds": 41.3,
+ "wines": [
+  {
+   "name": "Notios",
+   "producer": "Gai'a Estate",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Nemea, Greece",
+   "grape_variety": "Agiorgitiko",
+   "bottle_price": 60
+  },
+  {
+   "name": "Mavrodaphne",
+   "producer": "Haritatos Vineyard",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Kefallonia, Greece",
+   "bottle_price": 85
+  },
+  {
+   "name": "Grand Reserve",
+   "producer": "Harlaftis",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Nemea, Greece",
+   "grape_variety": "Agiorgitiko",
+   "bottle_price": 78
+  },
+  {
+   "name": "Nemea Reserve",
+   "producer": "Seméli",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Nemea, Greece",
+   "grape_variety": "Agiorgitiko",
+   "bottle_price": 90
+  },
+  {
+   "name": "Megas Oenos",
+   "producer": "Domaine Skouras",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Peloponnese, Greece",
+   "grape_variety": "Agiorgitiko | Cabernet Sauvignon",
+   "bottle_price": 97
+  },
+  {
+   "name": "Agiorgitiko",
+   "producer": "Gai'a Estate",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Nemea, Greece",
+   "bottle_price": 115
+  },
+  {
+   "name": "Grand Cuvee",
+   "producer": "Domaine Skouras",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Nemea, Greece",
+   "grape_variety": "Agiorgitiko",
+   "bottle_price": 95
+  },
+  {
+   "name": "Skouras Saint George",
+   "producer": "Skouras",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Nemea, Greece",
+   "grape_variety": "Agiorgitiko",
+   "bottle_price": 75
+  },
+  {
+   "name": "Synoro",
+   "producer": "Domaine Skouras",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Nemea, Greece",
+   "grape_variety": "Agiorgitiko/Cab Franc/Merlot",
+   "bottle_price": 115
+  },
+  {
+   "name": "Hedgehog Single Vineyard",
+   "producer": "Alpha Estate",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Amyndeon, Greece",
+   "grape_variety": "Xinomavro",
+   "bottle_price": 68
+  },
+  {
+   "name": "The Fallen Oak",
+   "producer": "Kir-Yianni",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Naoussa, Greece",
+   "grape_variety": "Xinomavro/Merlot/Syrah",
+   "bottle_price": 64
+  },
+  {
+   "name": "Young Vines",
+   "producer": "Thymiopoulos",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Naoussa, Greece",
+   "grape_variety": "Xinomavro",
+   "bottle_price": 68
+  },
+  {
+   "name": "AXIA",
+   "producer": "Alpha Estate",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Amyndeon, Greece",
+   "grape_variety": "Syrah | Xinomavro",
+   "bottle_price": 80
+  },
+  {
+   "name": "Cuvée Village",
+   "producer": "Kir-Yianni",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Naoussa, Greece",
+   "grape_variety": "Xinomavro",
+   "bottle_price": 75
+  },
+  {
+   "name": "Diaporos",
+   "producer": "Kir-Yianni",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Naoussa, Greece",
+   "grape_variety": "Xinomavro",
+   "bottle_price": 150
+  },
+  {
+   "name": "Kotsifali/Syrah Blend",
+   "producer": "Alexakis Winery",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Crete, Greece",
+   "bottle_price": 80
+  },
+  {
+   "name": "Strofi",
+   "producer": "Alpha Estate",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Amyndeon, Greece",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 85
+  },
+  {
+   "name": "The Little Prince",
+   "producer": "Karavitakis",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Crete, Greece",
+   "grape_variety": "Kostifali/Mandilari",
+   "bottle_price": 70
+  },
+  {
+   "name": "Akakies",
+   "producer": "Kir-Yianni",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Amyndeon, Greece",
+   "grape_variety": "Sparkling Rosé",
+   "bottle_price": 68
+  },
+  {
+   "name": "Sparkling Brut",
+   "producer": "FRE",
+   "category": "sparkling",
+   "region": "California",
+   "bottle_price": 48
+  },
+  {
+   "name": "Code Rouge Blanc de Blanc",
+   "producer": "Gerard Bertrand",
+   "category": "sparkling",
+   "region": "Limoux, France",
+   "bottle_price": 80
+  },
+  {
+   "name": "Vintage Brut",
+   "producer": "Argyle",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Willamette Valley, Oregon",
+   "bottle_price": 80
+  },
+  {
+   "name": "Brut Excellence",
+   "producer": "Scharffenberger",
+   "category": "sparkling",
+   "region": "Mendocino County, California",
+   "bottle_price": 80
+  },
+  {
+   "name": "Prosecco",
+   "producer": "Avissi",
+   "category": "sparkling",
+   "region": "Veneto, Italy",
+   "bottle_price": 52
+  },
+  {
+   "name": "Champagne",
+   "producer": "Perrier Jouet",
+   "category": "champagne",
+   "region": "Champagne, France",
+   "bottle_price": 120
+  },
+  {
+   "name": "Rosé",
+   "producer": "Henriot",
+   "category": "champagne",
+   "region": "Champagne, France",
+   "grape_variety": "Pinot Noir/Pinot Meunier",
+   "bottle_price": 230
+  },
+  {
+   "name": "Blanc de Blanc",
+   "producer": "Drappier",
+   "category": "champagne",
+   "region": "Champagne, France",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 150
+  },
+  {
+   "name": "Imperial Brut",
+   "producer": "Moet & Chandon",
+   "category": "champagne",
+   "region": "Champagne, France",
+   "grape_variety": "Pinot Noir | Pinot Meunier | Chardonnay",
+   "bottle_price": 275
+  },
+  {
+   "name": "Brut Yellow Label",
+   "producer": "Veuve Clicquot",
+   "category": "champagne",
+   "region": "Champagne, France",
+   "grape_variety": "Pinot Noir | Pinot Meunier | Chardonnay",
+   "bottle_price": 275
+  },
+  {
+   "name": "Mountain Sun",
+   "producer": "Semeli",
+   "category": "rosé",
+   "vintage": "2023",
+   "region": "Nemea, Greece",
+   "bottle_price": 60
+  },
+  {
+   "name": "Rosé",
+   "producer": "Bieler",
+   "category": "rosé",
+   "vintage": "2023",
+   "region": "Bandol, France",
+   "bottle_price": 84
+  },
+  {
+   "name": "Symphonie Rosé",
+   "producer": "St. Marguerite",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Cotes de Provence, France",
+   "bottle_price": 70
+  },
+  {
+   "name": "Tibouren Rosé",
+   "producer": "Clos Cibonne",
+   "category": "rosé",
+   "vintage": "2023",
+   "region": "Cotes de Provence, France",
+   "bottle_price": 100
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Kir-Yianni",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Amyndeon, Greece",
+   "bottle_price": 68
+  },
+  {
+   "name": "ATMA",
+   "producer": "ATMA",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Amyndeon/Naoussa, Greece",
+   "grape_variety": "Assyrtiko",
+   "bottle_price": 65
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Artemis Karamolegos",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Santorini, Greece",
+   "bottle_price": 130
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Domaine Sigalas",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Santorini, Greece",
+   "bottle_price": 105
+  },
+  {
+   "name": "Moscofilero",
+   "producer": "Domaine Skouras",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Peloponnese, Greece",
+   "bottle_price": 60
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Alpha Estate",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Amyndeon, Greece",
+   "bottle_price": 68
+  },
+  {
+   "name": "Almyra",
+   "producer": "Domaine Skouras",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Peloponnese, Greece",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 70
+  },
+  {
+   "name": "The Naked Truth",
+   "producer": "Mylonas",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Attika, Greece",
+   "grape_variety": "Savatiano",
+   "bottle_price": 65
+  },
+  {
+   "name": "Ecosystem Tramonto",
+   "producer": "Alpha Estate",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Amyndeon, Greece",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 90
+  },
+  {
+   "name": "Turtles Vineyard",
+   "producer": "Alpha Estate",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Florina, Greece",
+   "grape_variety": "Malagouzia",
+   "bottle_price": 60
+  },
+  {
+   "name": "Salto",
+   "producer": "Domaine Skouras",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Peloponnese, Greece",
+   "grape_variety": "Moscofilero",
+   "bottle_price": 70
+  },
+  {
+   "name": "Aspros Lagos",
+   "producer": "Domaine Douloufakis",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Crete, Greece",
+   "grape_variety": "Vidiano",
+   "bottle_price": 95
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Weather",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Sonoma Coast, California",
+   "bottle_price": 72
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Stonestreet Estate Vineyards",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "bottle_price": 110
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Jordan",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sonoma County, California",
+   "bottle_price": 95
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Graymore",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Edna Valley, California",
+   "bottle_price": 75
+  },
+  {
+   "name": "Aquilis",
+   "producer": "Ca' Bolani",
+   "category": "white",
+   "vintage": "2017",
+   "region": "Friuli DOC, Italy",
+   "grape_variety": "Sauvignon Blanc",
+   "bottle_price": 85
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Cliff Lede",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Napa Valley, California",
+   "bottle_price": 90
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Robert Mondavi",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Napa Valley, California",
+   "bottle_price": 76
+  },
+  {
+   "name": "Sancerre",
+   "producer": "Domaine Reverdy DuCroux",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Loire, France",
+   "grape_variety": "Sauvignon Blanc",
+   "bottle_price": 95
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Terlato",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Fruili, Italy",
+   "bottle_price": 68
+  },
+  {
+   "name": "Verdejo",
+   "producer": "Aviana",
+   "category": "white",
+   "vintage": "2022",
+   "region": "La Mancha, Spain",
+   "bottle_price": 52
+  },
+  {
+   "name": "Carricante",
+   "producer": "Alta Mora",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Mt. Edna DOC, Sicily, Italy",
+   "bottle_price": 76
+  },
+  {
+   "name": "Albarino",
+   "producer": "Abadia de San Campio",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Rias Baixas, Spain",
+   "bottle_price": 70
+  },
+  {
+   "name": "Gran Vino Albarino",
+   "producer": "Pazo de Barrantes",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Rias Baixas, Spain",
+   "bottle_price": 105
+  },
+  {
+   "name": "Gewurztraminer",
+   "producer": "Hyland Estates",
+   "category": "white",
+   "vintage": "2023",
+   "region": "McMinnville, Willamette Valley, Oregon",
+   "bottle_price": 60
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Complicated",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Monterey County, California",
+   "bottle_price": 76
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Ram's Gate",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sonoma Coast, California",
+   "bottle_price": 95
+  },
+  {
+   "name": "Estate Pinot Noir",
+   "producer": "Bethel Heights",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Eola-Amity Hills, Willamette Valley, Oregon",
+   "bottle_price": 90
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "O.P.P.",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Willamette Valley, Oregon",
+   "bottle_price": 80
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Stonestreet Estate Vineyards",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Alexander Valley, California",
+   "bottle_price": 120
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Jordan",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "bottle_price": 130
+  },
+  {
+   "name": "Coach Insignia",
+   "producer": "Fisher",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Napa Valley, California",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 280
+  },
+  {
+   "name": "My Favorite Neighbor",
+   "producer": "Booker Vineyards",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Paso Robles, California",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 100
+  },
+  {
+   "name": "Six Bridges",
+   "producer": "Kenwood",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Alexander Valley, California",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 76
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Napa Cellars",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, California",
+   "bottle_price": 85
+  },
+  {
+   "name": "Mountain Cuvee",
+   "producer": "Chappellet",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Napa Valley, California",
+   "grape_variety": "Proprietor's Blend",
+   "bottle_price": 116
+  },
+  {
+   "name": "Pritchard Hill",
+   "producer": "Chappellet",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "grape_variety": "Cabernet Franc",
+   "bottle_price": 280
+  },
+  {
+   "name": "Zinfandel",
+   "producer": "Rombauer",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Napa Valley, California",
+   "bottle_price": 95
+  },
+  {
+   "name": "Saldo",
+   "producer": "Prisoner Wine Company",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "bottle_price": 85
+  },
+  {
+   "name": "Pagani Ranch Zinfandel",
+   "producer": "Ridge Vineyards",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Sonoma Valley, California",
+   "bottle_price": 130
+  },
+  {
+   "name": "Merlot",
+   "producer": "Rutherford Hill",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, California",
+   "bottle_price": 100
+  },
+  {
+   "name": "Bodyguard",
+   "producer": "Daou Wines",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Paso Robles, California",
+   "bottle_price": 85
+  },
+  {
+   "name": "Le Orme",
+   "producer": "Michele Chiarlo",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piedmont, Italy",
+   "grape_variety": "Barbera d'Asti",
+   "bottle_price": 70
+  },
+  {
+   "name": "Rioja Reserva",
+   "producer": "Marques de Murrieta",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Rioja, Spain",
+   "bottle_price": 85
+  },
+  {
+   "name": "Brunello di Montalcino",
+   "producer": "Il Poggione",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Tuscany, Italy",
+   "bottle_price": 160
+  },
+  {
+   "name": "Rioja Reserva",
+   "producer": "Bodegas Muriel",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Rioja, Spain",
+   "bottle_price": 68
+  },
+  {
+   "name": "Malbec",
+   "producer": "Aruma",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Mendoza, Argentina",
+   "bottle_price": 85
+  },
+  {
+   "name": "Amarone della Valpolicella",
+   "producer": "Zonin",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Veneto, Italy",
+   "bottle_price": 125
+  },
+  {
+   "name": "Garnacha",
+   "producer": "Juan Gil, Bodegas Morca",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Campo de Borja, Spain",
+   "bottle_price": 105
+  },
+  {
+   "name": "Rioja",
+   "producer": "Conde de los Andes",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Rioja, Spain",
+   "bottle_price": 110
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Lonesome Rock Estate",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Yamhill-Carlton, Willamette Valley, Oregon",
+   "bottle_price": 130
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Capensis",
+   "category": "white",
+   "vintage": "2015",
+   "region": "Western Cape, South Africa",
+   "bottle_price": 170
+  },
+  {
+   "name": "Camp Meeting Ridge",
+   "producer": "Flowers",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Sonoma Coast, California",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 200
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Quilceda Creek",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Columbia Valley, Washington",
+   "bottle_price": 500
+  },
+  {
+   "name": "ARTEMIS",
+   "producer": "Stag's Leap Wine Cellars",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 210
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "La Jota Vineyards",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Howell Mountain, Napa Valley, California",
+   "bottle_price": 375
+  },
+  {
+   "name": "Tomahawk",
+   "producer": "Chimney Rock",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 395
+  },
+  {
+   "name": "Morca Touran",
+   "producer": "Juan Gil Bodega",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Campo be Borja, Spain",
+   "grape_variety": "Grenache",
+   "bottle_price": 270
+  },
+  {
+   "name": "Malbec | Cabernet Sauvignon",
+   "producer": "Bodegas Caro",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Mendoza, California",
+   "bottle_price": 170
+  },
+  {
+   "name": "Red Blend",
+   "producer": "Clos Apalta",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Central Valley, Chile",
+   "bottle_price": 325
+  },
+  {
+   "name": "Casteel Estate",
+   "producer": "Bethel Heights",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Eola-Amity Hills, Willamette Valley, Oregon",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 165
+  },
+  {
+   "name": "Megas Oenos Labyrinth",
+   "producer": "Domaine Skouras",
+   "category": "red",
+   "vintage": "1999-2019",
+   "region": "Nemea, Greece",
+   "bottle_price": 410
+  },
+  {
+   "name": "Estate Pinot Noir",
+   "producer": "J. Rochioli Vineyards",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Russian River Valley, California",
+   "bottle_price": 220
+  },
+  {
+   "name": "Merlot",
+   "producer": "Freemark Abbey",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, California",
+   "bottle_price": 135
+  },
+  {
+   "name": "Carte d'Or",
+   "producer": "Drappier",
+   "category": "champagne",
+   "region": "Champagne, France",
+   "grape_variety": "Pinot Noir / Chardonnay",
+   "bottle_price": 300
+  }
+ ]
+}
