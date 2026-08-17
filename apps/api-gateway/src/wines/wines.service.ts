@@ -28,6 +28,12 @@ interface WineRow {
   bottle_size_ml?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // Plan §1: derived full descriptive name ("2016 Gravner Ribolla
+  // Friuli-Venezia Giulia"), computed in SQL by wine_display_name() via
+  // trigger. Never a match key — name/normalized_name still are. Optional
+  // for the same reason the provenance fields below are: present only when
+  // the query actually selected it.
+  display_name?: string | null;
   // N4 (BEVERAGE_CATALOGUE_PLAN.md) / arch §9.3, §10.6 M3: provenance,
   // carried through so a consumer can tell a recalled fact from a reasoned
   // default. 76% of the library is `inferred` (a typical profile for the
@@ -71,6 +77,12 @@ export class WinesService {
     return {
       id: row.id,
       name: row.name,
+      // Plan §1: present only when selected (same undefined-vs-null
+      // discipline as the provenance block below). Callers should prefer
+      // this over `name` for anything user-facing — it disambiguates
+      // vintage variants that otherwise render identically (three Château
+      // Pétrus rows all read "Château Pétrus" via `name` alone).
+      displayName: row.display_name ?? undefined,
       producer: row.producer,
       vintage: row.vintage ?? undefined,
       price: row.price_reference ?? 0,
@@ -501,7 +513,10 @@ export class WinesService {
     const { data, error } = await client
       .from("master_wine_library")
       .select(
-        "id, wine_id, name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
+        // display_name added (plan §1): this is the search/autocomplete
+        // list, exactly where the "same wine, different vintage, reads
+        // identical" complaint was visible.
+        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
       )
       .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
       .limit(query.limit || 10);
