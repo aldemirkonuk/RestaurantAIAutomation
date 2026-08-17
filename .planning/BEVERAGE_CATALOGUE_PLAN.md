@@ -264,12 +264,24 @@ cuts, both explained below.**
    for traceability. Verified independently post-migration: `beverage_kind`
    census on `master_wine_library` now shows only `wine`(3,497) and
    `cocktail`(55); `beverages` holds exactly 608 with 0 null identity keys.
-6. **Not done — extending `merge_library_wines`/`find_library_duplicates` to
-   `beverages`.** The identity *decision* (`beverage_identity_key`, 0 false
-   merges) exists; a beverage-specific *duplicate-finder* tool that proposes
-   candidates for review does not yet. Real gap, tracked here rather than
-   silently dropped — non-wines will accumulate duplicates the same way wine
-   did before 0b/0c existed, and there is no guard against it yet.
+6. ~~Not done — extending `merge_library_wines`/`find_library_duplicates` to
+   `beverages`~~ — **done 2026-08-17.** `find_beverage_duplicates()`,
+   deliberately **simpler** than the wine finder: a direct `GROUP BY
+   identity_key` rather than trigram candidate-generation-then-classify.
+   Not a shortcut — the right shape given what's different: wine's finder
+   needs candidate generation because word-similarity is approximate;
+   `beverage_identity_key` isn't (0 false merges, measured). Equal key
+   already **is** the decision, so grouping has 100% recall with 0 false
+   positives, for free. Same co-occurrence guard as 0b. **Verified against
+   the live 608-row population**: 23 candidate pairs, 10 `safe_to_merge`
+   (genuine extraction-artifact duplicates — "Hennessy"/"VSOP" vs
+   "Hennessy"/"Hennessy VSOP", correctly matched even across a diacritic
+   difference, "Añejo" vs "Anejo"), 13 blocked by co-occurrence. Some
+   blocked pairs look like the *same* extraction artifact that also
+   happens to appear twice on one menu — left blocked anyway, on purpose:
+   the guard errs toward a false split (cheap, visible, a human clears it
+   in seconds) over a false merge (the failure mode this whole build
+   exists to prevent), consistent with §3.9's ~100:1 cost ratio.
 
 ---
 
