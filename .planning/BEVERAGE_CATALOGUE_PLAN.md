@@ -322,6 +322,10 @@ None of this needs a separate branch yet.
 
 | # | item | why this order | est. cost |
 |---|---|---|---|
+| **N1** | **Persist POS food lines** — remove the `if (!it.is_wine) continue` discard, write every line to `sales_events` | Highest-value item here, and it is a deletion. Every service without it destroys pairing labels permanently | — |
+| **N2** | Log recommendation **impressions** (shown, position, not-chosen) | Must exist before the first recommendation is ever displayed, or the first model trains on its own output | — |
+| **N3** | Stamp `observed_at` on enrichment writes | Point-in-time correctness cannot be retrofitted | — |
+| **N4** | Preserve provenance through every projection | 76% of the library is `inferred`; one careless flatten loses the label | — |
 | **0a** | Land `datasets/merge_eval/` + `eval_merge_policies.py` as a CI gate | The gate must exist before anything it guards changes. **Already built** — see arch §3.1/§3.8 | — |
 | **0b** | Co-occurrence guard on `find_library_duplicates` | Closes a live hazard: 18 of 19 today's `safe_to_merge` proposals are provably wrong. One predicate | — |
 | **0c** | Quarantine the 357 under-identified rows | Six different Hermitage Blanc wines are stored identically; a dedup pass would delete five real wines | — |
@@ -390,6 +394,10 @@ group A is live today.
 | **A8** | **Cocktails are catalogue rows.** No producer, vintage, SKU or purchasable unit; they already broke matching once when `producer` fell back to `name` | 35 rows | Own tables (`cocktails`, `cocktail_ingredients`), excluded structurally — not by category name alone | plan §3 |
 | **A9** | **Three naming conventions; vintage unsearchable.** 194 rows lead with a year, 150 end in an ALLCAPS country, 409 embed the producer | searching "2016 Gravner" matches nothing today | Derived `display_name` + add it to `search_vector`; never rewrite `name`, which is a match key | plan §1 |
 | **A10** | **2,099 wines unenriched**, so they classify as `unknown` and would land in the wrong population | corpus manifest | Finish the resumable enrichment pass *before* the beverages migration — otherwise A4 recurs at 10× scale | plan §6 |
+| **A11** | **POS discards every food line.** `pos-hub.service.ts:328` skips non-wine before anything persists, so the one organic pairing label — *this table drank X with Y* — is destroyed at ingestion | `sales_events` 0 rows; `simpos_check_lines` 85, beverage-only | Delete the discard; write every line. **Unrecoverable for every service that passes without it** | arch §10.2 |
+| **A12** | **Sensory data has two homes.** Typed `acidity`/`tannins`/`texture`/`finish`/`primary_aromas` populated on **0** rows; values live in JSONB | `wine_structure` 3,350, `sensory_profile` 3,626 | Pick one — backfill the columns and derive the JSON, or drop the columns and add expression indexes. Choosing matters more than which | arch §10.3 |
+| **A13** | **`embedding` indexed but empty** — a live pgvector index over 0 of 4,160 rows. No semantic search, no similarity, no cold-start neighbours | 0/4,160 | Populate from `display_name` + sensory profile + region, after §1 | arch §10.4 |
+| **A14** | **No person identity anywhere.** A schema-wide search for `guest`/`customer`/`diner`/`loyalty`/`party` returns nothing | — | Not a bug to fix — a scope limit to state. Individual likeability is unreachable; the ladder tops out at **server** (`pos_checks.server_name`), which is already captured | arch §10.5 |
 
 ### B. Already fixed — keep the guard, do not re-litigate
 
