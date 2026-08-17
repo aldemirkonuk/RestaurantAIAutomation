@@ -6,6 +6,14 @@ Reports, for each policy, how many provably-distinct products it would fuse
 products it would keep apart (false splits -- visible, cheap, recoverable).
 
 These two errors are not symmetric and must never be summed into one score.
+
+CI gate (0a, BEVERAGE_CATALOGUE_PLAN.md; arch §3.1/§3.8): the false-merge
+count of the PROPOSED policy (residual-token key) alone is the pass/fail
+signal. The fuzzy-threshold rows exist to prove no threshold works and are
+EXPECTED to show nonzero false merges -- do not gate on them, and do not sum
+across policies. Exits 1 iff the proposed policy has any false merge, 0
+otherwise. Every new menu added to datasets/menu_corpus/extracted strengthens
+this gate automatically; nobody hand-labels anything.
 """
 from __future__ import annotations
 
@@ -13,6 +21,7 @@ import collections
 import difflib
 import json
 import pathlib
+import sys
 import re
 import unicodedata
 
@@ -82,7 +91,7 @@ def fuzzy_factory(threshold: float):
     return same
 
 
-def main() -> None:
+def main() -> int:
     entries = json.loads(EVAL.read_text())
     by_menu: dict[str, list[dict]] = collections.defaultdict(list)
     for entry in entries:
@@ -141,11 +150,14 @@ def main() -> None:
         for t in (0.98, 0.95, 0.90, 0.85)
     ]
 
+    proposed_false_merges = None
     for label, same in policies:
         fm = sum(1 for a, b in negatives if same(a, b))
         fs = sum(1 for a, b in positives if not same(a, b))
         flag = "  <-- unusable" if fm else ""
         print(f"{label:<40}{fm:>14,}{fs:>14}{flag}")
+        if label == "residual-token key (proposed)":
+            proposed_false_merges = fm
 
     print("\nfalse merges by category (proposed rule):")
     counts = collections.Counter(
@@ -160,6 +172,19 @@ def main() -> None:
     print(f"\ndedup value retained: {len(entries):,} rows -> {len(keys):,} products; "
           f"{sum(1 for v in keys.values() if len(v) > 1):,} appear on more than one menu")
 
+    print()
+    if proposed_false_merges is None:
+        print("GATE: could not locate the proposed policy in the results — failing closed.")
+        return 1
+    if proposed_false_merges > 0:
+        print(f"GATE FAILED: {proposed_false_merges} false merge(s) in the proposed "
+              f"identity policy. This must be 0 — see arch §3.8. Do not relax this; "
+              f"fix the equivalence relation (scripts/eval_merge_policies.py residual_key) "
+              f"and re-run.")
+        return 1
+    print(f"GATE PASSED: 0 false merges across {len(negatives):,} known-distinct pairs.")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
