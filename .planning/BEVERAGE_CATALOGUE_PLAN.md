@@ -265,21 +265,41 @@ cuts, both explained below.**
    census on `master_wine_library` now shows only `wine`(3,497) and
    `cocktail`(55); `beverages` holds exactly 608 with 0 null identity keys.
 6. ~~Not done — extending `merge_library_wines`/`find_library_duplicates` to
-   `beverages`~~ — **done 2026-08-17.** `find_beverage_duplicates()`,
-   deliberately **simpler** than the wine finder: a direct `GROUP BY
-   identity_key` rather than trigram candidate-generation-then-classify.
-   Not a shortcut — the right shape given what's different: wine's finder
-   needs candidate generation because word-similarity is approximate;
-   `beverage_identity_key` isn't (0 false merges, measured). Equal key
-   already **is** the decision, so grouping has 100% recall with 0 false
-   positives, for free. Same co-occurrence guard as 0b. **Verified against
-   the live 608-row population**: 23 candidate pairs, 10 `safe_to_merge`
-   (genuine extraction-artifact duplicates — "Hennessy"/"VSOP" vs
-   "Hennessy"/"Hennessy VSOP", correctly matched even across a diacritic
-   difference, "Añejo" vs "Anejo"), 13 blocked by co-occurrence. Some
-   blocked pairs look like the *same* extraction artifact that also
-   happens to appear twice on one menu — left blocked anyway, on purpose:
-   the guard errs toward a false split (cheap, visible, a human clears it
+   `beverages`~~ — **done 2026-08-17, corrected 2026-08-18 after an
+   independent premortem audit.** `find_beverage_duplicates()`, initially a
+   direct `GROUP BY identity_key` with **no** generation stage, on the claim
+   that equal key already **is** the decision (0 false merges, measured) so
+   grouping gives "100% recall … for free." **That recall claim was false**,
+   and the repo's own gate proved it: `eval_merge_policies.py` shows the
+   residual-token key produces **5 false splits out of 12 known positives**
+   — 0 false merges (the safety property genuinely holds) is not the same
+   claim as 100% recall, and the migration's own header conflated them.
+   Two of the five are real, checkable pairs — the same bottle, one menu's
+   category header says "Bourbon," another says "Whiskey," and neither word
+   is in `EQUIV`, so the keys differ and a pure `GROUP BY` can never surface
+   them. Fixed with a second candidate class, `match_kind='near_key'`: same
+   producer tokens, different `identity_key` — generation only, **never**
+   `safe_to_merge`, always routed to review. Register C5's own rule applied
+   a second time: "if unclearable, fix generation, never the decision
+   rule." Verified live: 219 `near_key` pairs surfaced (0 of them
+   `safe_to_merge`, checked directly after first catching a column-index
+   bug in my own verification script, not in the SQL), including the exact
+   Woodford Reserve / Maker's Mark pair the audit named. `scripts/
+   check_beverage_identity_parity.py` — proving the SQL key matches the
+   validated Python one — is now wired into CI
+   (`.github/workflows/schema-parity.yml`, reusing the existing read-only
+   remote-DB secret) rather than sitting unrun as a "discipline, not a
+   guarantee."
+
+   Same co-occurrence guard as 0b, on `exact_key` pairs only. **Verified
+   against the live 608-row population**: 23 `exact_key` candidate pairs,
+   10 `safe_to_merge` (genuine extraction-artifact duplicates —
+   "Hennessy"/"VSOP" vs "Hennessy"/"Hennessy VSOP", correctly matched even
+   across a diacritic difference, "Añejo" vs "Anejo"), 13 blocked by
+   co-occurrence. Some blocked pairs look like the *same* extraction
+   artifact that also happens to appear twice on one menu — left blocked
+   anyway, on purpose: the guard errs toward a false split (cheap, visible,
+   a human clears it
    in seconds) over a false merge (the failure mode this whole build
    exists to prevent), consistent with §3.9's ~100:1 cost ratio.
 

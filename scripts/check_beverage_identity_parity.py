@@ -11,8 +11,13 @@ wine_normalize_text (which expands trade abbreviations -- "St." -> "saint",
 "Mt." -> "monte", correct for WINE matching) and it silently diverged from
 the validated Python norm() on 67 of 4,822 entries.
 
-Requires a live DB connection (SUPABASE_DB_URL in .env) -- not wired into
-GitHub Actions CI, same as the other DB-dependent checks in this directory.
+Requires a live DB connection. Prefers SUPABASE_DB_URL from the environment
+(CI: schema-parity.yml's own secrets.SUPABASE_DIRECT_CONNECTION_STRING,
+exported as SUPABASE_DB_URL -- premortem audit finding #1 corrected an
+earlier claim in this file that no CI wiring was possible; ci.yml has no
+DB secret but schema-parity.yml already does, read-only, same posture this
+check needs), falling back to .env for local dev.
+
 Run after any change to beverage_identity_key(), beverage_tokenize(),
 beverage_normalize_text(), or scripts/eval_merge_policies.py's residual_key().
 """
@@ -20,6 +25,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import pathlib
 import sys
 
@@ -48,11 +54,13 @@ def main() -> int:
     ev = load_eval_module(root)
 
     entries = json.loads((root / "datasets/merge_eval/entries.json").read_text())
-    dsn = next(
-        line.split("=", 1)[1].strip()
-        for line in (root / ".env").read_text().splitlines()
-        if line.startswith("SUPABASE_DB_URL=")
-    )
+    dsn = os.environ.get("SUPABASE_DB_URL")
+    if not dsn:
+        dsn = next(
+            line.split("=", 1)[1].strip()
+            for line in (root / ".env").read_text().splitlines()
+            if line.startswith("SUPABASE_DB_URL=")
+        )
     conn = psycopg2.connect(dsn)
     conn.autocommit = True
     cur = conn.cursor()
