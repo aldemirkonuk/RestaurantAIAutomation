@@ -567,3 +567,38 @@ once, in the register at §8 (**A12**, **A13**) — not duplicated here.
   and **server** (`server_name`, `server_external_id`) — the last being the
   sleeper, since it is how wine actually gets sold and it is already captured.
 
+
+---
+
+## 10. Premortem audit of unilateral implementation decisions (2026-08-18)
+
+Several implementation-level decisions during the §1–§3/A5/A12/A13/§18 build
+(a session prior to this one, same day) were made and shipped by reasoning
+inline rather than through a separate review pass — the plan/architecture
+docs' own design was pre-reviewed, but *how specific pieces were built* was
+not. Flagged by a stop-hook, corrected by dispatching an independent opus
+agent to audit five such decisions against the live, shipped code — read-only,
+then every claim it made was independently re-verified against the database
+before anything was changed on its say-so.
+
+**Verdicts: three real defects, two defensible-but-improved. All five fixed
+and verified, not just reported.**
+
+| # | decision | verdict | fixed by |
+|---|---|---|---|
+| 1 | `find_beverage_duplicates` needs no candidate generation | **real defect** — "100% recall" was false; the repo's own gate showed 5/12 known positives split, two are real corpus pairs (Woodford Reserve, Maker's Mark — same bottle, "Bourbon" vs "Whiskey" as the menu category word, neither in `EQUIV`) | `match_kind='near_key'` generation stage (never `safe_to_merge`); comment corrected; `check_beverage_identity_parity.py` wired into `schema-parity.yml` (reusing its existing read-only DB secret — the "no CI DB access" assumption behind not wiring it earlier was itself wrong) |
+| 2 | sensory columns trigger-derived, not dropped | **defensible but improved** — the derive-don't-drop call was right (audited and confirmed: no malformed-JSON risk, no failing constraint, JSONB is genuinely the only write path); the trigger *mechanism* let a direct write silently discard instead of erroring | converted to `GENERATED ALWAYS AS (...) STORED` — a direct write now fails immediately (42601) instead of vanishing on the next trigger fire |
+| 3 | `merge_library_wines_undo()` partial scope | **real defect** — reproduced concretely: merge moves a loser's inventory onto the keeper, "undo" resurrects the loser as a live row with zero inventory anywhere, keeper's stock silently overstates permanently, function reports nothing amiss | renamed `unsupersede_library_wine` (zero callers, confirmed) — reverses the catalogue-level decision only, and now reads `wine_merge_log` back and reports every step it did *not* reverse, prefixed `NOT REVERSED:`, in the same result set. Full FK-repoint reversal (needs row-id tracking, a bigger change) deferred on purpose, not attempted rushed |
+| 4 | cocktails migrated at `restaurant_id = NULL` | **real defect — not in the NULL call itself** (that was right; attribution is genuinely underivable) **but in what shipped alongside it**: `cocktails`/`cocktail_ingredients` RLS had no tenant isolation at all — the one restaurant-scoped table in this schema with none — and the three new views claimed `SECURITY INVOKER` without ever setting it (Postgres defaults to `DEFINER`; PG17 confirmed), which would have made every RLS policy in this schema decorative for anyone reading through them | tenant-isolation policies matching `restaurant_inventory`'s exact production shape; `security_invoker=true` set explicitly on all three views; `catalogue_items` gained a real `restaurant_id` column; also found and fixed a related no-op — the prior `REVOKE SELECT (type_attributes)` didn't narrow `authenticated`'s pre-existing table-level grant (column privileges only *add*, never narrow) |
+| 5 | same-menu pairs blanket-blocked, no artifact detection | **defensible but improved** — the block itself is right (reusing `is_artifact()` to *approve* would be a stronger claim than the eval script makes with it); the review queue gave a human no way to tell an artifact from a genuine two-products case, and the co-occurrence guard failed *open* on rows missing `data_enrichment->'menus'` | `artifact_shape` column (ported `is_artifact()` directly), `menus_known` required for `safe_to_merge` so an unrun guard stops reading as a passed one, ordered by review value instead of an opaque key |
+
+Every fix verified against the live database after applying — real merge→undo
+round trips (including one reproducing the exact audited inventory-residue
+scenario), real fill-count comparisons before/after the generated-column
+conversion, real RLS policy readback, real `find_beverage_duplicates` output
+inspection catching one bug in the *verification script itself* (a wrong
+column index) before it could be mistaken for a bug in the SQL. All six
+standing regression scripts (`eval_merge_policies.py`,
+`check_beverage_identity_parity.py`, `check_beverage_kind_regression.py`,
+`check_display_name_parity.py`, `check_no_direct_type_attributes_access.sh`,
+`check_no_direct_stock_writes.sh`) pass after every fix in this section.
