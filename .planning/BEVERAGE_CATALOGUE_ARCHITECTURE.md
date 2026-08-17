@@ -1155,36 +1155,67 @@ entity that does not exist.
 `diner`, `loyalty` or `party` columns returns **nothing**. Individual-level
 "likeability tendency" has no key to hang on. §10.5 gives the reachable ladder.
 
-**c) The pairing label is being destroyed at ingestion. This is the finding.**
+**c) ~~The pairing label is being destroyed at ingestion.~~ Withdrawn,
+2026-08-17 — I read the code wrong. Kept here rather than deleted, because the
+mistake and how it was caught are both worth having on record.**
+
+I saw
 
 ```ts
 // apps/api-gateway/src/pos-hub/pos-hub.service.ts:328
 if (!it.is_wine) continue;   // pos-hub tracks wine only
 ```
 
-The POS payload *already contains* the food lines. Every check that closes tells
-us "this table drank the Etna Rosso **with** the branzino" — and that sentence
-is thrown away before anything persists it. Note the asymmetry three lines
-below: an unmapped *wine* line is queued for review and "never dropped", while
-food is discarded outright.
+and concluded food lines never reach storage. Sent to a premortem review before
+building anything on it (per the build directive: an architecture claim outside
+the written plan gets checked before it's acted on), and independently verified
+by reading the cited lines directly. Both wrong:
 
-The infrastructure to hold it already exists and is idle:
-
+```ts
+// pos-hub.service.ts:168 — a MAP, not a filter. Every line, wine and food.
+const items = check.items.map((it) => { ... is_wine, ... });
+// :199-204 — the full array is upserted into pos_checks.items UNCONDITIONALLY,
+// on conflict (restaurant_id, source, external_check_id) — idempotent on replay.
+row.items = items;
+await client.from("pos_checks").upsert(row, { onConflict: "..." });
+// :212 — only THEN does applyStockEffects run, closed checks only.
+// :328 — the line above lives INSIDE applyStockEffects. It gates inventory
+// RPCs (apply_stock_movement / record_glass_pour), which food correctly has
+// none of. It has nothing to do with whether the line was persisted — it was,
+// 126 lines earlier.
 ```
-simpos_check_lines   85 rows   check_id, catalog_id, qty, price, added_at   (beverage only)
-sales_events          0 rows   pos_check_id, day_of_week, hour_of_day, is_weekend,
-                               time_window, server_id, stock_before/after   (empty)
+
+And a consumer already exists:
+
+```ts
+// table-analytics.service.ts:416 — getBasketAffinity()
+const items: any[] = Array.isArray(c.items) ? c.items : [];
+const names = items.map((it) => it?.name).filter(Boolean);   // no is_wine filter
+// ... E.pairAssociations(transactions, ...) — lift-based market-basket pairing,
+// wine and food together, over every closed check today.
 ```
 
-`sales_events` is the richest schema in the database for this purpose and holds
-nothing.
+So the grain question the original §10.2 asked answers itself: **the pairing
+grain is the check, and one `pos_checks` row already *is* one check** — the
+basket is a single row, which is the ideal shape, not a compromise. `sales_events`
+(cited below as "the richest schema for this") turned out to be the wrong target
+regardless: it has `inventory_id NOT NULL` FK'd to `restaurant_inventory`, and a
+matching non-Optional Pydantic contract on the Python side
+(`services/agent-orchestrator/core/database.py:168`, `SalesEvent.inventory_id: str`)
+with real if currently-idle consumers (weekly reports, `inequality_detector.py`,
+`inventory_count_service.py`) that assume every row is an inventory-tracked sale.
+Repurposing it for food would have silently changed what "revenue from
+sales_events" means in every one of those, with no error anywhere.
 
-**This is the most expensive silence in the system.** Attributes can be
-re-enriched, names re-extracted, identity keys recomputed. A co-occurrence
-observation from a table that has already paid and left is gone forever. Every
-night of service that passes without capturing food lines is a night of pairing
-labels that can never be recovered — and the fix is to *stop discarding data we
-are already receiving*, which is close to free.
+**What actually blocks pairing is not storage — it's identity.**
+`pos_checks.items[].name` is a raw POS string. "Ribeye 12oz" and "Ribeye" are
+different entities to any grouping query, so a model can accumulate
+co-occurrence counts today but cannot yet answer "how does this dish pair"
+without deciding what counts as the same dish. That is a product-scope question,
+not a schema fix, and no table design resolves it. Tracked as register A15.
+
+No code changed as a result of this section, beyond one clarifying comment at
+`pos-hub.service.ts:328` so the next reader doesn't make the same misreading.
 
 ### 10.3 A live dual-home defect in the sensory data
 
@@ -1309,10 +1340,15 @@ lose data permanently for every day they are not done, and they are all cheap:
 
 | # | capture | why it cannot wait |
 |---|---|---|
-| **N1** | **Persist POS food lines** — delete the `if (!it.is_wine) continue` discard and write every line to `sales_events` | Each service without it is pairing labels destroyed forever. The data is already in the payload |
+| ~~N1~~ | ~~Persist POS food lines~~ — withdrawn, §10.2(c). They already are (`pos-hub.service.ts:168/202`), and `getBasketAffinity` already consumes them | — |
 | **N2** | **Log impressions** for anything recommended — shown, position, not-chosen | Without it the first learned model trains on its own output (M1) |
 | **N3** | **`observed_at`** on enrichment writes | Point-in-time correctness cannot be retrofitted (§9.3) |
 | **N4** | **Preserve provenance** through every projection | 76% of the library is `inferred`; the label is one flatten from gone |
 
-N1 is the highest-value line of work in this entire plan, and it is a deletion.
+N2 is now the highest-value line of work remaining on this list. Dish-identity
+canonicalization (register A15) is deliberately **not** on it: the raw POS item
+name is already stored, so nothing is lost by deciding it later — it is a
+product-scope call (fuzzy-match on read? a canonical dish table fed by menu
+extraction? require POS-side menu integration?) genuinely requiring the human's
+input, not a data-loss risk. Escalated rather than built.
 

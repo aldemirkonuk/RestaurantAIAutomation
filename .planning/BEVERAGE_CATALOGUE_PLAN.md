@@ -322,7 +322,7 @@ None of this needs a separate branch yet.
 
 | # | item | why this order | est. cost |
 |---|---|---|---|
-| **N1** | **Persist POS food lines** — remove the `if (!it.is_wine) continue` discard, write every line to `sales_events` | Highest-value item here, and it is a deletion. Every service without it destroys pairing labels permanently | — |
+| ~~N1~~ | ~~Persist POS food lines~~ — **withdrawn 2026-08-17, verified false.** Already persisted at `pos-hub.service.ts:168/202` and already consumed by `getBasketAffinity`. No code change; see register A11/A15 | — | — |
 | **N2** | Log recommendation **impressions** (shown, position, not-chosen) | Must exist before the first recommendation is ever displayed, or the first model trains on its own output | — |
 | **N3** | Stamp `observed_at` on enrichment writes | Point-in-time correctness cannot be retrofitted | — |
 | **N4** | Preserve provenance through every projection | 76% of the library is `inferred`; one careless flatten loses the label | — |
@@ -394,7 +394,8 @@ group A is live today.
 | **A8** | **Cocktails are catalogue rows.** No producer, vintage, SKU or purchasable unit; they already broke matching once when `producer` fell back to `name` | 35 rows | Own tables (`cocktails`, `cocktail_ingredients`), excluded structurally — not by category name alone | plan §3 |
 | **A9** | **Three naming conventions; vintage unsearchable.** 194 rows lead with a year, 150 end in an ALLCAPS country, 409 embed the producer | searching "2016 Gravner" matches nothing today | Derived `display_name` + add it to `search_vector`; never rewrite `name`, which is a match key | plan §1 |
 | **A10** | **2,099 wines unenriched**, so they classify as `unknown` and would land in the wrong population | corpus manifest | Finish the resumable enrichment pass *before* the beverages migration — otherwise A4 recurs at 10× scale | plan §6 |
-| **A11** | **POS discards every food line.** `pos-hub.service.ts:328` skips non-wine before anything persists, so the one organic pairing label — *this table drank X with Y* — is destroyed at ingestion | `sales_events` 0 rows; `simpos_check_lines` 85, beverage-only | Delete the discard; write every line. **Unrecoverable for every service that passes without it** | arch §10.2 |
+| ~~A11~~ | ~~POS discards every food line~~ — **false alarm, corrected 2026-08-17.** `pos-hub.service.ts:168` `.map()`s every line (wine and food) into `pos_checks.items`, upserted unconditionally at line 202. The `if (!it.is_wine) continue` at line 328 runs *after* persistence and only gates stock-depletion RPCs — it was misread as an ingestion filter. A consumer already exists: `table-analytics.service.ts:416` `getBasketAffinity()` reads `c.items` with no `is_wine` filter and runs lift-based market-basket pairing over every item name today | verified by reading both files directly, not by report | **No code change.** One clarifying comment at line 328. See A15 for the real gap this surfaced | — |
+| **A15** | **No stable dish identity.** `pos_checks.items[].name` is a raw POS string — "Ribeye 12oz" and "Ribeye" are different entities to any grouping query. Pairing wine X to dish Y needs Y to be stable, and no table-shape decision fixes this | `menu_items` is wine-only; no dish/recipe entity anywhere | Product-scope question, not a schema fix — needs a decision on whether/how to canonicalize dish names before a learned pairing model is worth building | arch §10.2 |
 | **A12** | **Sensory data has two homes.** Typed `acidity`/`tannins`/`texture`/`finish`/`primary_aromas` populated on **0** rows; values live in JSONB | `wine_structure` 3,350, `sensory_profile` 3,626 | Pick one — backfill the columns and derive the JSON, or drop the columns and add expression indexes. Choosing matters more than which | arch §10.3 |
 | **A13** | **`embedding` indexed but empty** — a live pgvector index over 0 of 4,160 rows. No semantic search, no similarity, no cold-start neighbours | 0/4,160 | Populate from `display_name` + sensory profile + region, after §1 | arch §10.4 |
 | **A14** | **No person identity anywhere.** A schema-wide search for `guest`/`customer`/`diner`/`loyalty`/`party` returns nothing | — | Not a bug to fix — a scope limit to state. Individual likeability is unreachable; the ladder tops out at **server** (`pos_checks.server_name`), which is already captured | arch §10.5 |
@@ -446,19 +447,13 @@ are not in place, and they jump the queue for that reason alone.
 
 | # | capture | cost | why it cannot wait |
 |---|---|---|---|
-| **N1** | **Persist POS food lines.** `pos-hub.service.ts:328` does `if (!it.is_wine) continue` — the food lines are already in the payload and are discarded. Write every line to `sales_events` (0 rows today, and the richest schema we have for it) | a deletion + a write | Every service without it destroys the only organic pairing label: *this table drank X with Y*. Attributes can be re-enriched; a table that already paid and left cannot |
+| ~~N1~~ | ~~Persist POS food lines~~ — **corrected 2026-08-17, verified against source, no longer on this list.** They already are: `pos-hub.service.ts:168` maps every line, wine and food, into `pos_checks.items`, upserted unconditionally at line 202. `table-analytics.service.ts:416` already runs lift-based basket pairing over them with no `is_wine` filter. The `is_wine` skip at line 328 only gates stock RPCs and runs after persistence. See register A11/A15 | — | — |
 | **N2** | **Log impressions**, not just conversions — what was recommended, in what position, and what was not chosen | small | Without it the first learned recommender trains on its own output. Offline metrics improve as it gets worse (arch §10.6 M1) |
 | **N3** | **`observed_at`** on enrichment writes | small | Point-in-time correctness cannot be retrofitted; the history was never recorded |
 | **N4** | **Preserve provenance** through every projection | discipline | 76% of the library is `inferred`; the label is one careless flatten from gone |
 
-**N1 is the highest-value item in this plan and it is a deletion.**
-
-### Two live defects the review surfaced
-
-| # | defect | fix |
-|---|---|---|
-| **A11** | **Sensory data has two homes.** Typed columns `acidity`/`tannins`/`texture`/`finish`/`primary_aromas` are populated on **0** rows; the values live in `wine_structure` (3,350) and `sensory_profile` (3,626) JSONB. One fact, two possible homes — §4.1 violated inside the wine library itself, and it puts every pairing filter through a JSONB scan | Pick one: backfill the columns and make the JSON derived, or drop the columns and add expression indexes. Choosing matters more than which |
-| **A12** | **`embedding` is indexed but empty** — 0 of 4,160 rows, with a live pgvector index over it. No semantic search, no similarity, no cold-start neighbours | Populate from `display_name` + sensory profile + region, after plan §1 |
+The two live sensory/embedding defects the fitness review surfaced are tracked
+once, in the register at §8 (**A12**, **A13**) — not duplicated here.
 
 ### What is reachable, stated plainly
 

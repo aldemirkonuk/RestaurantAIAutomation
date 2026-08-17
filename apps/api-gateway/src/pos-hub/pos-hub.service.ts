@@ -325,7 +325,14 @@ export class PosHubService {
 
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
-      if (!it.is_wine) continue; // pos-hub tracks wine only
+      // Stock-scoped skip only. The full line set — food included — was
+      // already persisted verbatim to pos_checks.items at the upsert above
+      // (ingest(), ~line 202), before this loop runs, and is already read by
+      // TableAnalyticsService.getBasketAffinity() for wine/dish co-occurrence
+      // with no is_wine filter. Do not read this line as "food is discarded" —
+      // it isn't; only stock depletion (which food has no inventory row for)
+      // is skipped here. See .planning/BEVERAGE_CATALOGUE_PLAN.md register A11.
+      if (!it.is_wine) continue;
 
       const qty = Math.max(0, Math.round(Number(it.qty) || 0));
       if (qty <= 0) continue;

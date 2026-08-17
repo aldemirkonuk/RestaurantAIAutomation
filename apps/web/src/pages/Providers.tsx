@@ -1449,7 +1449,12 @@ export function Providers() {
         )
       })()}
 
-      <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
+      <AddProviderModal
+        isOpen={showAddProviderModal}
+        onClose={() => setShowAddProviderModal(false)}
+        onSave={handleAddProvider}
+        onCatalogueVendorAdded={() => refetch()}
+      />
       <EditProviderModal
         isOpen={!!editingProvider}
         onClose={() => setEditingProvider(null)}
@@ -1459,7 +1464,15 @@ export function Providers() {
           : null
         }
       />
-      <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
+      <VendorSearchModal
+        open={showVendorSearch}
+        onClose={() => setShowVendorSearch(false)}
+        onProviderAdded={() => refetch()}
+        onAddCustom={() => setShowAddProviderModal(true)}
+        addedCatalogueVendorIds={providers
+          .map((p) => p.catalogueVendorId)
+          .filter((id): id is string => !!id)}
+      />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
       )}

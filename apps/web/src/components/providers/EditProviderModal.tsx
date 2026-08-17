@@ -29,6 +29,8 @@ import {
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
 import { fetchProviderContacts, getProviderLocations } from '../../services/api/providers'
+import { VendorMatchModal } from './VendorMatchModal'
+import { useDuplicateVendorCheck } from '../../hooks/useDuplicateVendorCheck'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 import { useAuth } from '../../contexts/AuthContext'
@@ -254,6 +256,34 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   })
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({})
+
+  // ── Duplicate detection on rename ─────────────────────────────────────
+  // Renaming is the other way a duplicate appears: "Breakthru Bev" becomes
+  // "Breakthru Beverage Group" and now collides with a catalogue vendor or
+  // with another provider already in the list. Only checked once the name or
+  // address actually CHANGES from what was loaded — otherwise simply opening
+  // and saving an untouched provider would report a match against records it
+  // is already equivalent to.
+  const nameChanged = !!provider && formData.name.trim() !== (provider.name ?? '').trim()
+  const addressChanged =
+    !!provider && formData.address.trim() !== (provider.physicalAddress ?? '').trim()
+
+  const { pendingMatch, acknowledge, reset: resetMatches } = useDuplicateVendorCheck({
+    enabled: isOpen && (nameChanged || addressChanged),
+    name: formData.name,
+    address: formData.address,
+    // Without this the row being edited matches itself at 1.0.
+    excludeProviderId: provider?.id,
+    // A provider created from the catalogue legitimately carries that
+    // vendor's exact name; warning that it duplicates the entry it is
+    // already linked to would be noise, not a finding.
+    linkedCatalogueVendorId: provider?.catalogueVendorId ?? null,
+  })
+
+  const handleDismissMatch = () => {
+    if (pendingMatch) acknowledge(pendingMatch.id)
+  }
+
   const [activeTab, setActiveTab] = useState<'details' | 'contacts' | 'locations'>('details')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -389,6 +419,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
   const handleClose = () => {
     setValidationErrors({})
+    resetMatches()
     onClose()
   }
 
@@ -406,6 +437,11 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
   const handleSave = () => {
     if (!validate()) return
+    // Same belt-and-braces as the add form: the warning modal already
+    // overlays this one whenever a match is pending, but the debounced
+    // lookup can resolve in the same tick as the click. Dismissing the
+    // warning clears pendingMatch and Save proceeds.
+    if (pendingMatch) return
     onSave(formData)
     handleClose()
   }
@@ -572,8 +608,12 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const isActive = (provider as any).isActive !== false
 
   return (
+    // Children carry explicit keys: AnimatePresence tracks its children by
+    // key, and several siblings without one collide (React logs "two children
+    // with the same key" and may drop or duplicate them on exit).
     <AnimatePresence>
       <motion.div
+        key="edit-provider-backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -1580,11 +1620,22 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
       {/* Send Message Slide-Over */}
       <SendMessageSlideOver
+        key="edit-provider-send-message"
         isOpen={showSendMessage}
         onClose={() => setShowSendMessage(false)}
         providerName={formData.name}
         providerEmail={formData.email}
         providerPhone={formData.phone}
+      />
+
+      {/* Duplicate warning on rename. context="edit" so it only warns —
+          merging existing provider records is deliberately not offered. */}
+      <VendorMatchModal
+        key="edit-provider-duplicate-warning"
+        open={!!pendingMatch}
+        match={pendingMatch}
+        context="edit"
+        onDismiss={handleDismissMatch}
       />
     </AnimatePresence>
   )

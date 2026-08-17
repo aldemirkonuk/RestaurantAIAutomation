@@ -1,11 +1,44 @@
 # Producer Reputation — Design Plan
 
-Status: **PLAN ONLY, NOT BUILT**. Schema work is owned by another session; this document
-specifies what should be stored and why, not how to migrate it.
+Status: **PLAN ONLY for the reputation model.** The two blocking data prerequisites in §7
+are **DONE** (applied 2026-08-17, see §7). Schema work is owned by the
+`BEVERAGE_CATALOGUE_PLAN` session; this document specifies what should be stored and why,
+not how to migrate it.
+
+**Companion documents.** `.planning/BEVERAGE_CATALOGUE_PLAN.md` and
+`BEVERAGE_CATALOGUE_ARCHITECTURE.md` own identity, the catalogue split, and the merge
+policy. This plan is downstream of them and conforms to their decisions — see §0.
 
 Author context: written after repairing the menu-corpus enrichment, where `producer_tier`
 was found to be 53% self-contradictory (premium wines labelled "emerging") and was reset to
 `unknown` for 1,097 wines rather than guessed.
+
+---
+
+## 0. Conformance to BEVERAGE_CATALOGUE_PLAN
+
+Read that plan first. Every point below is a constraint this one inherits, not a choice.
+
+| Their rule | What it forces here |
+|---|---|
+| **A1** — identity by deterministic key + a *small, closed, versioned* equivalence list; never a similarity score | The producer alias list in §7.1 is explicit and versioned (`producer-canon-v1`). No fuzzy matching decides a merge. A gap costs a visible duplicate, never a silent merge. |
+| **A3** — 357 rows with `normalized_producer = normalized_name` are quarantined, ineligible as merge or match targets | Those rows are **excluded from producer research entirely**. §7.2 adds 30 more explicit quarantines. |
+| **A5** — merge must supersede + alias, never overwrite without trace | Every repair in §7 wrote a `wine_repair_log` row with the prior value. All 230 changes are reversible. |
+| **§4** — researched facts recorded only from tier-A sources, with citation; *"No model guessing"* | Producer research **must reuse `SOURCE_TIER_DOMAINS` and the existing research-agent tiering**, not invent a parallel one. Reputation axes are new entries in the researched-field list, same as `grape_blend_pct`. |
+| **C10 / N4** — a flattened ML export must never drop `field_confidences` / `knowledge` | This is exactly the §4 raw-vs-derived split. Provenance travels beside every axis. |
+| **C11 / N3** — `observed_at` stamped at write; cannot be retrofitted | Every observation in §4 carries `retrieved_at`. Non-negotiable, and cheap only if done from the first write. |
+| **C12** — `price_reference` is a *market hint*, never a restaurant's price | Constrains Axis 5 (§3.1) and the validation in §9: it may inform market position, and it must never be reported as what a restaurant paid or charges. |
+| **§2.1** — `beverages` keeps `producer`/`brand` as plain string columns | **A producers entity does not exist in their design.** §7.1's proposal is therefore genuinely new, and must serve `master_wine_library` *and* `beverages`. See the open question in §10. |
+
+**Their "rule underneath all of it"** — *a fact stored in two places, or a decision made by a
+score where it should be made by a key* — is the review test for anything proposed here. A
+producers table passes it only if the wine row holds a **reference**, not a second copy of
+the name. The raw menu string is a different fact from canonical identity (as `display_name`
+is from `name`), so keeping both is legitimate; keeping two *canonical* names is not.
+
+**Cost benchmark inherited from their §4:** research runs at a **$0.04/record ceiling**.
+At 1,960 canonical producers that puts full-depth coverage near **$78**, materially cheaper
+than the staged plan in §8 assumed. Stage 3 may be affordable after all — see §8.
 
 ---
 
