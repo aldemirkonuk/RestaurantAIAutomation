@@ -1108,4 +1108,211 @@ truth** rather than two designs competing for one table:
 The failure mode to refuse is the tempting one: a second wide table that is
 *also* written to, because "the analysts needed a column". That is `stock_live`
 again. Analysts get a mart; the mart gets rebuilt; the truth stays in one place.
+---
+
+## 10. Fitness for the goal: pairing, ingredients, preference, and speed
+
+The stated end goal is to predict how well a bottle matches a **meal**, its
+**ingredients**, and a **person's** tendency to like it — while the app stays
+instant to search and browse. This section grades the structure against that,
+honestly, with what is measured today.
+
+**Verdict in one line: the item side is genuinely strong, the interaction side
+barely exists, and one line of code is destroying the data the whole goal
+depends on, every service, permanently.**
+
+| capability | ready? | blocker |
+|---|---|---|
+| describe a bottle richly enough to pair it | **yes** | — |
+| pair bottle ↔ dish | **no** | no dish entity; and pairing observations are discarded at POS ingestion |
+| match ↔ ingredients | **no** | no ingredient entity anywhere |
+| person-level likeability | **not reachable** | no guest identity exists in the schema |
+| fast search / browse | **yes at today's size**, two real risks at scale | sensory filters hit JSONB; `embedding` is empty |
+
+### 10.1 The item side is strong, and it is the hard half
+
+```
+wine_structure   3,350 rows   body, acidity, tannins, texture, sweetness, finish, alcohol
+sensory_profile  3,626 rows   primary / secondary / tertiary aromas, flavor_profile,
+                              aroma_complexity, flavor_intensity
+provenance       4,160 rows   knowledge + field_confidences + library_tier on every row
+```
+
+Those are precisely the axes classical pairing reasons over — acidity against
+fat and salt, tannin against protein, body against weight, sweetness against
+heat, intensity against intensity. Having them on 3,350 bottles, each labelled
+with how it was obtained, is a real asset and it is the part most projects never
+get. **Nothing in the identity or catalogue design threatens it.**
+
+### 10.2 The interaction side is nearly absent — and one gap is actively bleeding
+
+**a) There is no food.** No dish, recipe or ingredient table exists.
+`menu_items` is wine-only — its columns are `producer`, `vintage`, `region`,
+`grape_variety`, `wine_library_id`. A pairing model cannot be built against an
+entity that does not exist.
+
+**b) There is no person.** A schema-wide search for `guest`, `customer`,
+`diner`, `loyalty` or `party` columns returns **nothing**. Individual-level
+"likeability tendency" has no key to hang on. §10.5 gives the reachable ladder.
+
+**c) The pairing label is being destroyed at ingestion. This is the finding.**
+
+```ts
+// apps/api-gateway/src/pos-hub/pos-hub.service.ts:328
+if (!it.is_wine) continue;   // pos-hub tracks wine only
+```
+
+The POS payload *already contains* the food lines. Every check that closes tells
+us "this table drank the Etna Rosso **with** the branzino" — and that sentence
+is thrown away before anything persists it. Note the asymmetry three lines
+below: an unmapped *wine* line is queued for review and "never dropped", while
+food is discarded outright.
+
+The infrastructure to hold it already exists and is idle:
+
+```
+simpos_check_lines   85 rows   check_id, catalog_id, qty, price, added_at   (beverage only)
+sales_events          0 rows   pos_check_id, day_of_week, hour_of_day, is_weekend,
+                               time_window, server_id, stock_before/after   (empty)
+```
+
+`sales_events` is the richest schema in the database for this purpose and holds
+nothing.
+
+**This is the most expensive silence in the system.** Attributes can be
+re-enriched, names re-extracted, identity keys recomputed. A co-occurrence
+observation from a table that has already paid and left is gone forever. Every
+night of service that passes without capturing food lines is a night of pairing
+labels that can never be recovered — and the fix is to *stop discarding data we
+are already receiving*, which is close to free.
+
+### 10.3 A live dual-home defect in the sensory data
+
+```
+typed columns   acidity=0  tannins=0  texture=0  finish=0  primary_aromas=0
+JSONB           wine_structure=3,350        sensory_profile=3,626
+```
+
+The typed columns exist and are **empty**; the values live in JSONB. That is the
+§4.1 rule already violated inside `master_wine_library` — one fact with two
+possible homes, which is how they drift the moment anyone writes the column.
+
+It also directly costs the goal: pairing filters ("light body, high acidity")
+and ML feature extraction both go through a JSONB scan rather than an index.
+
+**Decide one way and enforce it**: either backfill the typed columns from JSONB
+and make the JSON a derived view, or drop the empty columns and add expression
+indexes on the JSONB keys. Having both is the defect; which one wins is a
+smaller question than choosing.
+
+### 10.4 `embedding` is indexed but empty
+
+`pgvector` is installed and `idx_master_wine_library_embedding` exists —
+over a column populated on **0 of 4,160 rows**. Semantic search ("something like
+this but lighter"), nearest-neighbour pairing and cold-start similarity are all
+unavailable until it is filled. Cheap to fix once `display_name` exists, since
+the natural embedding input is display name + sensory profile + region.
+
+### 10.5 What each target actually requires
+
+**Pairing (bottle ↔ dish).** Reachable, in two stages, and the first stage needs
+no ML at all:
+
+1. **A knowledge-based pairing engine now.** The classical axes are already
+   populated on 3,350 bottles. Rules over acidity/tannin/body/sweetness/intensity
+   give useful recommendations immediately, with no labels, and — critically —
+   they are *explainable*, which is what a sommelier will accept.
+2. **A learned model later**, once food lines have been captured long enough to
+   have co-occurrence data. Stage 1 is what generates the data stage 2 needs.
+
+Do not skip to stage 2. With no labels, a "model" here is a rules engine wearing
+a costume, and calling it ML makes it unfalsifiable.
+
+**Ingredients.** Not reachable without an ingredient entity. The cheapest
+credible path is to treat the dish *name* as the unit first (POS gives you
+"Branzino, Grilled") and only decompose into ingredients if dish-level pairing
+proves insufficient. Building an ingredient ontology before knowing that is
+premature by a wide margin.
+
+**Person-level likeability.** **Not reachable today, and it should not be
+promised.** The honest ladder, in order of what the data can actually support:
+
+| level | key available? | notes |
+|---|---|---|
+| restaurant taste profile | **yes** | aggregate of what this list carries and sells |
+| occasion / day-part | **yes** | `sales_events` has day_of_week, hour_of_day, is_weekend, time_window |
+| party size | **yes** | `pos_checks.covers` |
+| **server** | **yes** | `pos_checks.server_name`, `server_external_id` — who recommends what, and what converts |
+| table / check | **yes** | the natural unit of a pairing observation |
+| individual guest | **no** | needs a loyalty or reservation identity that does not exist |
+
+Server-level is the sleeper here: it is available today, it is the actual
+mechanism by which wine gets sold in a restaurant, and "which staff member sells
+which style" is both useful and immediately actionable.
+
+### 10.6 Premortem for the ML goal
+
+**M1 — We built a recommender and then trained on its own output.**
+*Likelihood: near-certain if unguarded.* Recommend a pairing, it sells, train on
+the sale, recommend it harder. Within months the model has learned its own
+priors and the catalogue's tail is invisible. **This is the classic recommender
+failure and it is invisible in offline metrics, which improve as it worsens.**
+*Guard:* log **impressions, not just conversions** — what was shown, in what
+position, and what was *not* chosen. Impossible to reconstruct later. It must
+exist before the first recommendation is ever displayed.
+
+**M2 — Beautiful features, no labels.** *Likelihood: high.* 35 attributes per
+bottle invite modelling before there is anything to predict. *Guard:* §10.5's
+two-stage path; ship rules first and say so plainly.
+
+**M3 — Trained on inferred attributes for a task that cannot tolerate them.**
+*Likelihood: medium.* Note the nuance that makes provenance more valuable, not
+less: **the requirement differs by task.** For *pairing*, an `inferred` typical
+Barolo profile is a legitimate basis — pairing reasons about style. For *"will
+this specific bottle sell here at this price"*, inferred attributes are a
+guess about the very thing being predicted. *Guard:* every training set declares
+its accepted tiers, and the model card records it.
+
+**M4 — Leakage through enrichment time.** Training on today's attributes against
+last quarter's sales. *Guard:* §9.3's `observed_at`.
+
+**M5 — Cold start.** A new restaurant with no history, a new bottle with no
+sales. *This is where the structure is strongest*: content features carry
+recommendations from day one, which is exactly why the 4,160-row library was
+worth building. Already banked.
+
+**M6 — The pairing engine is right and nobody trusts it.** Sommeliers reject
+opaque recommendations. *Guard:* keep stage 1 explainable and keep the
+explanation attached to stage 2's output ("high acidity cuts the cream sauce"),
+not just a score.
+
+### 10.7 Search and browse: fast today, two things to fix before it isn't
+
+At 4,160 rows every query is instant regardless of design, so today's speed
+proves nothing about tomorrow's. The indexes are in good shape — GIN trigram on
+normalized name and producer, a tsvector `search_vector`, btree on the identity
+and barcode columns. Three real risks:
+
+1. **Sensory filtering hits JSONB** (§10.3). This is the filter a pairing UI uses
+   most. Fix with the same decision.
+2. **`embedding` is empty** (§10.4), so there is no semantic or similarity search.
+3. **`search_vector` lacks `display_name`**, so vintage is unsearchable — already
+   plan §1, and it is the most visible of the three to a user typing
+   "2016 Gravner".
+
+None is a re-architecture; all three are population and indexing work.
+
+### 10.8 The now-or-never list
+
+Everything else in this document can be built whenever it is needed. These four
+lose data permanently for every day they are not done, and they are all cheap:
+
+| # | capture | why it cannot wait |
+|---|---|---|
+| **N1** | **Persist POS food lines** — delete the `if (!it.is_wine) continue` discard and write every line to `sales_events` | Each service without it is pairing labels destroyed forever. The data is already in the payload |
+| **N2** | **Log impressions** for anything recommended — shown, position, not-chosen | Without it the first learned model trains on its own output (M1) |
+| **N3** | **`observed_at`** on enrichment writes | Point-in-time correctness cannot be retrofitted (§9.3) |
+| **N4** | **Preserve provenance** through every projection | 76% of the library is `inferred`; the label is one flatten from gone |
+
+N1 is the highest-value line of work in this entire plan, and it is a deletion.
 

@@ -427,3 +427,42 @@ A1–A5 and C1–C3 are all one of those two. When a new design choice comes up,
 which of the two it risks — that question has caught every defect in this
 register.
 
+---
+
+## 9. Now-or-never captures (added after the ML fitness review)
+
+`BEVERAGE_CATALOGUE_ARCHITECTURE.md` §10 grades the structure against the actual
+goal — pairing to meals and ingredients, preference tendency, instant search.
+The item side is strong. Four captures lose data permanently for every day they
+are not in place, and they jump the queue for that reason alone.
+
+| # | capture | cost | why it cannot wait |
+|---|---|---|---|
+| **N1** | **Persist POS food lines.** `pos-hub.service.ts:328` does `if (!it.is_wine) continue` — the food lines are already in the payload and are discarded. Write every line to `sales_events` (0 rows today, and the richest schema we have for it) | a deletion + a write | Every service without it destroys the only organic pairing label: *this table drank X with Y*. Attributes can be re-enriched; a table that already paid and left cannot |
+| **N2** | **Log impressions**, not just conversions — what was recommended, in what position, and what was not chosen | small | Without it the first learned recommender trains on its own output. Offline metrics improve as it gets worse (arch §10.6 M1) |
+| **N3** | **`observed_at`** on enrichment writes | small | Point-in-time correctness cannot be retrofitted; the history was never recorded |
+| **N4** | **Preserve provenance** through every projection | discipline | 76% of the library is `inferred`; the label is one careless flatten from gone |
+
+**N1 is the highest-value item in this plan and it is a deletion.**
+
+### Two live defects the review surfaced
+
+| # | defect | fix |
+|---|---|---|
+| **A11** | **Sensory data has two homes.** Typed columns `acidity`/`tannins`/`texture`/`finish`/`primary_aromas` are populated on **0** rows; the values live in `wine_structure` (3,350) and `sensory_profile` (3,626) JSONB. One fact, two possible homes — §4.1 violated inside the wine library itself, and it puts every pairing filter through a JSONB scan | Pick one: backfill the columns and make the JSON derived, or drop the columns and add expression indexes. Choosing matters more than which |
+| **A12** | **`embedding` is indexed but empty** — 0 of 4,160 rows, with a live pgvector index over it. No semantic search, no similarity, no cold-start neighbours | Populate from `display_name` + sensory profile + region, after plan §1 |
+
+### What is reachable, stated plainly
+
+- **Pairing** — reachable in two stages. Rules over the sensory axes *now*
+  (3,350 bottles already carry them, no labels needed, and it is explainable
+  enough for a sommelier to accept); a learned model *after* N1 has accumulated
+  co-occurrence. Stage 1 generates what stage 2 needs.
+- **Ingredients** — not reachable yet; no ingredient entity exists. Use the dish
+  *name* as the unit first and only decompose if dish-level proves insufficient.
+- **Person-level likeability** — **not reachable, and should not be promised.**
+  No guest identity exists anywhere in the schema. What *is* available today:
+  restaurant profile, day-part, party size (`pos_checks.covers`), table/check,
+  and **server** (`server_name`, `server_external_id`) — the last being the
+  sleeper, since it is how wine actually gets sold and it is already captured.
+
