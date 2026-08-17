@@ -224,26 +224,52 @@ Per-category attributes to model in `type_attributes` (none exist today):
 | vodka | 10 | base material, distillation count, filtration |
 | amari | 9 | botanical bill, bittering agent, proof |
 
-**Tasks**
-1. **First, §2.0** — fix the `is_wine` semantics and the 7 mistagged wines.
-   Hard prerequisite.
-2. Create `beverages`, reusing the same normalizer/signature functions so the
-   matcher, dedup and merge tooling work unchanged on it.
-3. Per-category views (`whiskey`, `beer`, `sake`, …) flattening
-   `type_attributes`, plus a GIN index on it. **Generate them from the
-   `beverage_type_schema` registry**, not by hand, so adding a category
-   attribute is one registry row rather than nineteen edited definitions.
-   Add the CI grep that forbids reading `type_attributes` outside migrations
-   and view bodies **in the same PR** — that guard is what keeps promotion
-   possible (architecture doc §4.3).
-4. `catalogue_items` view = wines ∪ beverages, for the places that genuinely
-   need "everything" (search, menu display). One query surface, two physical
-   tables, no duplicated rows.
-5. Migrate the 202 (minus the 7, minus 35 cocktails ⇒ ~160) with the same
-   snapshot → dry-run → apply → invariant-check discipline as the wine merges.
-   No rows to repoint — the FK sweep found zero references.
-6. Extend `merge_library_wines` and `find_library_duplicates` to `beverages`,
-   or generalise them — non-wines will accumulate duplicates the same way.
+**Tasks — done 2026-08-17, with corrected numbers and two deliberate scope
+cuts, both explained below.**
+
+1. ~~First, §2.0~~ — **done**, see §2.0.
+2. ~~Create `beverages`~~ — **done.** `identity_key`/`identity_status` use a
+   **new** function (`beverage_identity_key`), not the wine matcher —
+   correct, per arch §3.4: beverages need the deterministic residual-token
+   key, not word-similarity. Verified **byte-identical** to the validated
+   Python reference (`scripts/eval_merge_policies.py`) across all 4,822
+   corpus entries (`scripts/check_beverage_identity_parity.py`) — a first
+   attempt reused `wine_normalize_text` for tokenizing and it silently
+   diverged on 67 entries (abbreviation expansion — "St."→"saint" — that the
+   validated Python version doesn't do); caught by the parity check before
+   shipping, not assumed correct.
+3. ~~Per-category views~~ — **shipped 2 of 9** (`whiskey`, `beer`), not all
+   nine via a `beverage_type_schema` registry. **Deliberate cut**:
+   `type_attributes` is empty (`{}`) on all 608 migrated rows — no
+   beverage-specific enrichment has run yet — so a full registry-generated
+   set of 9 views extracting named JSONB keys would be extracting nothing,
+   the exact "infrastructure for data that doesn't exist" this plan refuses
+   elsewhere (arch §4.2, §9.4). The 2 shipped are the worked template;
+   adding a category is a small, mechanical migration once it has real
+   attribute data. **The CI grep guard shipped** (`scripts/check_no_direct_
+   type_attributes_access.sh`, wired into `.github/workflows/ci.yml`), plus a
+   column-level `REVOKE`/`GRANT` at the database layer for the `authenticated`
+   role — both landed in the same migration as the table, not after a
+   violation.
+4. ~~`catalogue_items` view~~ — **done.**
+5. ~~Migrate ~160~~ — **608 rows migrated**, not ~160. The population moved
+   during this build the same way the `is_wine`/mistag counts did (§2.0) —
+   live, shared database, concurrent enrichment activity, not new rows
+   arriving. Snapshot → dry-run → apply → invariant-check
+   (`scripts/migrate_beverages.py`), **non-destructive**: source rows are
+   soft-deleted (`deleted_at`), never hard-deleted — checked first, and
+   correctly: `wine_repair_log.wine_id` has `ON DELETE CASCADE`, so a hard
+   delete would have silently destroyed the audit trail for 15 rows'
+   worth of prior repairs. New `beverages` rows reuse the source row's `id`
+   for traceability. Verified independently post-migration: `beverage_kind`
+   census on `master_wine_library` now shows only `wine`(3,497) and
+   `cocktail`(55); `beverages` holds exactly 608 with 0 null identity keys.
+6. **Not done — extending `merge_library_wines`/`find_library_duplicates` to
+   `beverages`.** The identity *decision* (`beverage_identity_key`, 0 false
+   merges) exists; a beverage-specific *duplicate-finder* tool that proposes
+   candidates for review does not yet. Real gap, tracked here rather than
+   silently dropped — non-wines will accumulate duplicates the same way wine
+   did before 0b/0c existed, and there is no guard against it yet.
 
 ---
 
