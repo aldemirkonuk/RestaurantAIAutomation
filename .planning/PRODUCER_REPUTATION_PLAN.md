@@ -189,51 +189,97 @@ downstream marks it as suspect.
 
 ---
 
-## 7. Hard prerequisites (blocking — must land before any research runs)
+## 7. Hard prerequisites — **RESOLVED 2026-08-17**
 
-Analysis of the live table surfaced two data problems that would corrupt the research if
-not fixed first.
+Two data problems would have corrupted the research. Both are now fixed in the live table,
+reversibly. **230 `wine_repair_log` entries** were written; every change records its prior
+value and its evidence, so any repair can be traced and undone (A5).
 
-### 7.1 Producers are not first-class entities
+### 7.1 Duplicate producer spellings — **FIXED**
 
-`producer` is a free-text string on each wine row. Consequences measured in the live data:
+`producer` is free text, so one producer could appear under several strings and be
+researched twice with contradictory results.
 
-- **2,034 distinct producer strings** across 3,222 menu-corpus wines
-- **68 of them are duplicate spellings** of a producer already present, covering
-  **232 wines / $76,638 of list value (11% of total)**
+**Measured:** 2,034 distinct producer strings; **93 duplicate-spelling groups** covering
+**358 wines / $91,638**. (My first pass reported 68/$76,638 — that was the menu-corpus
+subset; 93 is the whole library.)
 
-Worst offenders — each of these would be researched twice and could receive *contradictory*
-tiers:
+**The near-miss worth recording.** My first normalizer stripped legal-form prefixes
+(`Domaine`, `Château`) to group variants. That rule **merges different producers**:
 
-| Split identity | Value at stake |
+| Would have merged | Reality |
 |---|---|
-| `Armand Rousseau` / `Domaine Armand Rousseau` | $14,874 |
-| `Dujac` / `Domaine Dujac` | $6,555 |
-| `Ulysse Collin` / `Ulysse-Collin` | $5,320 |
-| `Roumier` / `Domaine Roumier` | $3,775 |
-| `Faiveley` / `Domaine Faiveley` | $2,599 |
+| `Château Montrose` ($660, St-Estèphe 2nd Growth) + `Domaine Montrose` ($64, Languedoc) | **different producers, 10× price apart** |
+| `Ch. Des Tours` (Vacqueyras) + `Domaine des Tours` (Vin de Pays de Vaucluse) | different estates |
 
-**Required:** a `producers` table with canonical identity, and wines referencing it by FK.
-Research once per entity, join to all their wines. This also cuts research cost and
-guarantees consistency by construction rather than by discipline.
+The legal form is *discriminating*, not noise — which is A1's thesis restated. A second
+heuristic ("canonical = the variant with most diacritics and greatest length") also produced
+wrong names: `COS` → `Cos` (it is an acronym — **C**ilia, **O**cchipinti, **S**trano),
+`Penner-Ash` → `Penner Ash`, `Laurent-Perrier` → `Laurent Perrier`.
 
-### 7.2 188 "producers" are loader artifacts, not producers
+**What shipped instead** — a closed, versioned equivalence list (`producer-canon-v1`), split
+by what the difference actually *is*:
 
-`load_enriched_wines.py:294` writes `producer = x.get("producer") or x.get("name")` — when a
-menu omits the producer, the **wine name is copied into the producer column**. Result:
-**220 wines / 188 distinct strings where `name == producer`**.
+| Rule class | Basis | Groups |
+|---|---|---|
+| diacritic restoration | menus strip accents, never add them — safe and directional | 12 |
+| case normalization | mixed-case wins, with brand exceptions (`COS`, `GlenDronach`, `EnRoute`) and Italian/French particles kept lowercase (`di`, `de`, `l'`) | 22 |
+| punctuation / spacing | **not** auto-decidable; each verified individually | 22 |
+| legal-form expansion to full estate name | verified per producer | 36 |
 
-These split into two kinds needing different handling:
+**Result: 168 rows repaired, 103 producer strings collapsed, 1 group left unmerged**
+(`Eno Trio` / `Enó-Trio`, orthography unverified) plus the 2 blocked pairs above. Leaving
+them costs a visible duplicate — the intended fail-safe direction.
 
-- **Real producers** that happen to be listed mononymously — `Ch. Pétrus` ($15,645),
-  `Harlan Estate`, `Dominus Estate`, `Chateau Margaux`. Researchable as-is.
-- **Appellations mistaken for producers** — `Hermitage` ($1,600), `Côte-Rôtie` ($1,800),
-  `Côte Brune`, `Hermitage Blanc` ($2,400). **Not researchable as producers at all**;
-  researching "Hermitage" as a producer returns appellation data and would fabricate a
-  reputation for a place rather than a company.
+Names were expanded to the **full, unabbreviated legal form**, per instruction. Two canonical
+names turned out to be *neither* stored variant:
 
-**Required:** triage these 188 before research. Estimated ~1 hour of manual review, and it
-protects the highest-value single row in the corpus ($15,645 Pétrus).
+| Stored variants | Canonical | Source |
+|---|---|---|
+| `Roumier`, `Domaine Roumier` | **Domaine Georges Roumier** | web — and two other Roumier domaines exist in Chambolle, so the bare surname is genuinely ambiguous |
+| `Grange des Pères`, `Domaine Grange des Pères` | **Domaine de la Grange des Pères** | web |
+| `Frederic Magnien`, `Fredéric Magnien` | **Frédéric Magnien** | web — both stored spellings wrong |
+| `Faiveley`, `Domaine Faiveley` | **Domaine Faiveley** | the bare rows are *Monopoles*, i.e. own-vineyard fruit, which is definitionally the Domaine label and not the négociant one |
+
+### 7.2 `producer` auto-filled from `name` — **TRIAGED**
+
+`load_enriched_wines.py:294` writes `producer = x.get("producer") or x.get("name")`, so when
+a menu omits the producer the **wine name is copied into the producer column**. This is their
+**A3** (357 rows library-wide; 220 in the menu-corpus wine subset — same defect, two scopes).
+
+The string turns out to be three different kinds of thing, needing three treatments:
+
+| Kind | Treatment | Rows |
+|---|---|---|
+| Real producer, abbreviated / misspelled / carrying classification junk | expand to full legal name | 32 |
+| **Cuvée or second wine mistaken for a house** — `Cristal`, `Alter Ego de Palmer`, `Petit Figeac`, `172nd Edition Krug, Grande Cuvée`, `L'Oratoire des Papes` | set the *actual* producing house (Louis Roederer, Château Palmer, Château Figeac, Krug, Ogier) | included above |
+| **Appellation or lieu-dit** — `Hermitage`, `Côte-Rôtie`, `Cornas`, `Côte Brune`, `La Landonne` | **quarantined, no producer invented** | 30 |
+| Real producer already correctly named | untouched | 295 |
+
+Detection for the appellation class used **evidence from our own corpus**, not a hand-written
+list: a string is an appellation if ≥2 *other* producers use it as their region. That is a
+key, not a score.
+
+Highest-value repairs: `Ch. Pétrus` → **Château Pétrus** ($15,645, the single most valuable
+producer string in the corpus) and `Chateau Lafite Rotschild` → **Château Lafite Rothschild**
+(misspelled).
+
+The 30 quarantined rows carry a `data_enrichment.producer_quarantine` note and
+`review_status='needs_review'`. They are **ineligible for producer research** — researching
+"Hermitage" as a producer would fabricate a reputation for a *place*. Their durable fix is
+the other session's **0d** (stop extraction writing appellations into `producer`, ~$0.30
+re-extract); this triage identifies exactly which rows that pass must correct.
+
+### 7.3 New defect found and fixed: country contradicted region
+
+Not in either plan's register. **464 rows stated a country that its own region disproves** —
+186 Italian and 168 American wines were labelled `France`, plus Spanish, Austrian, German,
+Greek, New Zealand, South African, Portuguese and Lebanese wines. Cause: a `France` default
+applied where enrichment had no country.
+
+Fixed by deriving country from region (unambiguous geography — Sicily is in Italy), each
+logged to `wine_repair_log`. **This is why Axis 5 and the §9 validation are now trustworthy:
+region and country were the two fields any geographic reputation signal keys on.**
 
 ---
 
@@ -253,18 +299,47 @@ Also: **71% of producers appear on exactly one wine.** The long tail is single-b
 low-value, and mostly the hardest to research (small, obscure, little web presence) — the
 worst possible effort-to-value ratio.
 
-**Staged plan:**
+**Staged plan — DECIDED: run Stage 1 first, verify it, then continue to full coverage.**
 
-| Stage | Scope | Depth | Est. searches | Value unlocked |
-|---|---|---|---|---|
-| 0 | Prerequisites §7 + Axis 5 (price position) | no web research | 0 | pricing use cases, immediately |
-| 1 | Top 101 producers | all 5 axes | ~500 | 44% of list value |
-| 2 | Next ~300 | 3 axes (prestige, maturity, reach) | ~600 | → ~62% |
-| 3 | Remainder | 1 confirming search, or leave `unknown` | ~1,500 | → ~100%, low marginal value |
+| Stage | Scope | Depth | Est. cost @ $0.04/rec | Value unlocked | Status |
+|---|---|---|---|---|---|
+| 0 | Prerequisites §7 + Axis 5 (price position) | no web research | $0 | pricing use cases | **§7 DONE**; Axis 5 ready to build |
+| 1 | Top 101 producers | all 5 axes | ~$4 | **44% of list value** | next — **gated on verification below** |
+| 2 | Next ~300 | all 5 axes | ~$12 | → ~62% | after Stage 1 verification passes |
+| 3 | Remaining ~1,560 | all 5 axes | ~$62 | → 100% | proceed to completion |
 
-Recommend committing to **Stage 0 + 1**, then re-evaluating with measured hit-rate data
-before funding Stage 2. Stage 3 likely never pays for itself and should default to honest
-`unknown`.
+The inherited $0.04/record ceiling changes the earlier recommendation: full coverage is
+**~$78 total**, not the prohibitive figure the search-count estimate implied. Completing all
+three stages is affordable. Staging is retained for a different reason — **Stage 1 is the
+verification gate**, not a budget cut.
+
+**Stage 1 verification (must pass before Stage 2 is funded).** Do not treat "the research
+ran" as success:
+
+1. **Manual audit of 20 of the 101** against their own producer sites — the axis values must
+   match the cited source, not merely look plausible.
+2. **Held-out price check** — Spearman ρ between PRESTIGE and within-region price percentile
+   over the 101. A weak or negative ρ means the research is wrong, not that the metric is.
+3. **Coverage report** — what fraction of the 101 yielded ≥2 axes with evidence. If it is
+   below ~70%, the sourcing strategy needs changing before it is applied to 1,900 more.
+4. **Reproducibility** — re-derive every tier label from stored observations with the pure
+   function in §4. Any label that cannot be reproduced from its own evidence is a bug.
+
+Report these four numbers before starting Stage 2.
+
+**Stage 3 default: `unknown`, plus a correction affordance.** Where evidence is insufficient
+the value stays `unknown` (§6). To stop that becoming a permanent dead end, the UI shows an
+explicit **"Suggest a correction / report this"** action on any `unknown` reputation field,
+open to users with the appropriate authority. Rationale: a visibly empty field with a way to
+fill it recruits the people who actually know — sommeliers and buyers — whereas a
+wrong-but-confident value is never questioned and never corrected. Suggestions enter the
+review queue as *proposals with an author*, never as direct writes, and are subject to the
+same evidence gate as researched values.
+
+> Guard (their **C5**): a review queue that is never cleared turns "never auto-merge" into
+> "never merge". Order the queue by value (restaurants × price impact), show the evidence
+> inline, and track queue age as a health metric. If it proves unclearable, fix *generation* —
+> never relax the decision rule.
 
 ---
 
@@ -285,23 +360,82 @@ from any validation that uses price as the target, or the check is circular and 
 
 ---
 
-## 10. Open decisions for you
+## 10. Decisions — resolved and still open
 
-1. **Scope of Stage 1** — 101 producers (44% of value) as proposed, or a different cut?
-2. **Stage 3 default** — leave the ~1,500 long-tail producers as honest `unknown`
-   indefinitely, or is a low-confidence heuristic guess preferable for UI completeness?
-   (My recommendation: `unknown`. A visibly empty field prompts a human to fill it;
-   a wrong-but-confident field never gets corrected.)
-3. **§7.2 triage** — I can do the 188-string real-producer-vs-appellation split, or it can
-   go to whoever owns the schema session, since it touches the same rows.
-4. **Does the other session's schema work already cover the `producers` table in §7.1?**
-   If so this plan should conform to theirs rather than propose a parallel structure.
+**Resolved 2026-08-17:**
+
+1. **Stage 1 scope** → top **101 producers** (44% of list value), **verified** against the
+   four checks in §8, then continue to full coverage. Not a pilot to be abandoned; a gate.
+2. **Stage 3 default** → **`unknown`**, plus an authority-gated *"suggest a correction"*
+   affordance so empty fields recruit correction rather than rot. §8.
+3. **§7.2 triage** → **done in this plan** (§7.2). It does not preempt the other session's
+   **0d** re-extraction; it identifies precisely which rows that pass must fix.
+4. **Does `BEVERAGE_CATALOGUE_PLAN` already own a producers table?** → **No.** Their §2.1
+   `beverages` shape keeps `producer` and `brand` as plain string columns, exactly as
+   `master_wine_library` does. There is no producer entity in their design.
+
+**Open — and this is the one that needs an owner, not an answer from me:**
+
+5. **Who owns the producers entity, and does it get built at all?**
+   §7.1 is now fixed *as data* — 103 strings collapsed, reversibly — but the underlying
+   design issue stands: producers are still free text, so the same drift will recur on the
+   next menu load. A `producers` table would fix it structurally.
+
+   It cannot be specified here alone, because it would have to serve **both**
+   `master_wine_library` and their forthcoming `beverages` table, and their §2.1 shape does
+   not have it. Three coherent options:
+
+   | Option | Cost | Consequence |
+   |---|---|---|
+   | **a.** Producers entity shared by wines + beverages | schema work in *their* migration | Fixes drift structurally; research once per entity; reputation attaches to the entity where it belongs |
+   | **b.** Keep strings; re-run the §7.1 equivalence list after each load as a maintenance job | near zero | Drift recurs every load and is caught after the fact, never prevented. Acceptable only while load frequency stays low |
+   | **c.** Producer reputation keyed on the canonical *string* | low | Works today, but breaks the moment two producers legitimately share a name — the `Montrose` case, one table over |
+
+   **Recommendation: (a)**, folded into their migration rather than added beside it — a
+   second parallel structure is the "one fact, two places" failure their own register is
+   organized around. **(b)** is a survivable interim; **(c)** should be rejected — §7.1
+   proved same-name-different-producer is live in this data, not hypothetical.
+
+6. **Should `producer_tier` be retired once the vector exists?** Keeping both a derived label
+   and its source axes is defensible (the label is a projection, cheaply recomputed), but
+   only if nothing ever *writes* the label independently. If it does, that is C2 in a new
+   costume. Recommend: keep as read-only derived, enforced by a column comment and a check
+   that it always equals the pure function of the axes.
 
 ---
 
-## Appendix — provenance of every number in this document
+## Appendix A — what was applied to the live table on 2026-08-17
 
-All figures were measured against the live `master_wine_library`, scoped to
-`source='menu_corpus' AND primary_type != 'unknown'` (3,222 wines), on 2026-08-17.
-No figure here is estimated or assumed. The Pareto table, the 68 split identities, and the
-220 loader-artifact rows are reproducible by re-running the queries in this session's history.
+All reversible; every row records its prior value in `wine_repair_log`.
+
+| Change | Rows | Log tag |
+|---|---|---|
+| Producer canonicalization to full legal names (§7.1) | 168 | `producer-canonicalization` |
+| `producer==name` repair + quarantine (§7.2) | 62 (32 + 30) | `producer-name-triage` |
+| Country corrected from region (§7.3) | 464 | `country-region-consistency` |
+| **Total** | **694** | |
+
+Deliberately **not** changed, and why: `Château Montrose` / `Domaine Montrose`,
+`Ch. Des Tours` / `Domaine des Tours` (different producers), `Eno Trio` / `Enó-Trio`
+(orthography unverified), and the 295 `producer==name` rows whose producer is already
+correct. In every case a visible duplicate was preferred to a silent merge.
+
+To reverse any change:
+```sql
+SELECT wine_id, field_changes FROM wine_repair_log
+WHERE repaired_by = '<tag>' ORDER BY repaired_at DESC;
+```
+
+## Appendix B — provenance of every number in this document
+
+All figures were measured against the live `master_wine_library` on 2026-08-17, not
+estimated. Scope is stated per figure, because the two plans use different ones and
+conflating them is what made 220 and 357 look like disagreeing counts of the same defect:
+
+- **whole library** (4,160 rows) — the 93 duplicate-spelling groups, the 357 `A3` rows,
+  the 464 country corrections
+- **menu-corpus wines** (`source='menu_corpus' AND primary_type != 'unknown'`, 3,222 rows) —
+  the Pareto table, producer counts, the 220-row subset
+
+The Pareto distribution, the split identities, and the loader-artifact triage are all
+reproducible by re-running the queries in this session's history.
