@@ -420,10 +420,14 @@ A `whiskey_details` row living *alongside* a `beverages` row for the same bottle
 is two representations of one entity that drift independently. That is the exact
 failure this codebase already paid to fix in inventory — `stock_live` written by
 three uncoordinated actors, an "immutable" ledger nothing wrote to
-(`.planning/INVENTORY_SOTA_PLAN.md` §1) — and it is **already recurring** in
-`vendor_catalogue`, where a custom-provider row duplicates a curated row for the
-same real vendor (`20260811010000_vendor_catalogue_match.sql`). Twice burned is
-enough to make it a rule rather than a preference.
+(`.planning/INVENTORY_SOTA_PLAN.md` §1).
+
+*(An earlier draft also cited `vendor_catalogue` as a second instance. Checked:
+it holds 25 rows, all `source='curated'`. The real pattern there is one vendor
+appearing both as a restaurant-scoped `providers` row and as a global
+`vendor_catalogue` row — which is an **identity** problem of the §3 kind, not
+independent copies drifting. It belongs in the argument for §3, not this one,
+and the overstatement is corrected rather than left standing.)*
 
 Nine tables also means nine migrations, nine matchers, nine dedup paths, and a
 nine-way UNION for every "search all drinks" query — paid up front, for

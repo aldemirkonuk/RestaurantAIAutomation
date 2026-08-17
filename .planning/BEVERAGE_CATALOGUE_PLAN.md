@@ -363,3 +363,62 @@ None of this needs a separate branch yet.
   classify as `unknown` and land in the wrong population — §2.0's failure at
   10× the scale.
 - **Order of work is not final** — more items to be added before phase 1 starts.
+---
+
+## 8. Architecture remediation register
+
+Every architectural defect found so far, in one place: what is already wrong and
+must be repaired, what is already fixed and must stay fixed, and what is not yet
+wrong and must be prevented by construction. Detail for each lives in
+`BEVERAGE_CATALOGUE_ARCHITECTURE.md` at the section named.
+
+Ordered by *blast radius × how quietly it fails*, not by effort. Everything in
+group A is live today.
+
+### A. Already made — repair these
+
+| # | defect | evidence today | fix | ref |
+|---|---|---|---|---|
+| **A1** | **Merge decides identity by similarity.** A score cannot separate `Pappy Van Winkle 12` from `15` (97.9% similar, $20 apart) — positive and negative distributions overlap, so no threshold exists | 212 false merges at 0.85 across 732,874 labelled pairs | Replace the *decision* rule with the deterministic residual-token key (0 false merges). Keep fuzzy for *candidate generation* only | arch §3.2, §3.4, §3.6 |
+| **A2** | **`find_library_duplicates` proposes provably-wrong merges** | 200 of 289 proposals co-occur on one menu; **18 flagged `safe_to_merge`** | Add the co-occurrence predicate: no pair may be `safe_to_merge` if its rows appear on a single menu. Do **not** run the merge tool before this lands | arch §3.10 |
+| **A3** | **357 under-identified rows.** Extraction wrote appellations into `producer`, so six different Hermitage Blanc wines are stored identically | 357 rows with `normalized_producer = normalized_name` | Quarantine: ineligible to merge, ineligible as a match target, flagged for re-extraction. Then fix the extraction prompt so `producer` never takes an appellation | arch §3.5 |
+| **A4** | **`is_wine` is a null-flag wearing a classification's name.** It computes "did enrichment return a type", not "is this wine" | all 202 `is_wine=false` rows carry `primary_type='unknown'`; **7 real wines** mistagged; 218 rows have the flag *absent*, a silent third state | Split into `classification_status` + `beverage_kind`; fall back to the menu's own section header; backfill the 218; gate any migration on the verified kind, never on `is_wine` | arch §6 |
+| **A5** | **Merge is destructive.** Attribute collapse loses the evidence that two rows were ever distinct, and un-merge has never been executed | `wine_merge_log` exists; no un-merge has ever run | Supersede + alias instead of overwrite; block merges on conflicting non-null attributes; repoint current references but never rewrite history; property-test un-merge | arch §3.7 |
+| **A6** | **No CI gate on identity.** Precision was self-graded against probes I wrote, which cannot find errors I did not imagine | the independent label set found failures the probes missed | `eval_merge_policies.py` in CI; **false merges must be 0**, not "low". Every new menu strengthens it for free | arch §3.1, §3.8 |
+| **A7** | **Non-wines live in a table named for wine.** 202 beer/sake/spirit/cocktail rows sit in `master_wine_library`, ~39 of its 88 columns meaningless to them | 202 rows, referenced by **0** of 15 FK tables — the cheapest this will ever be | Migrate to `beverages` after A4. The zero is a window, not a stable state | plan §2, arch §4 |
+| **A8** | **Cocktails are catalogue rows.** No producer, vintage, SKU or purchasable unit; they already broke matching once when `producer` fell back to `name` | 35 rows | Own tables (`cocktails`, `cocktail_ingredients`), excluded structurally — not by category name alone | plan §3 |
+| **A9** | **Three naming conventions; vintage unsearchable.** 194 rows lead with a year, 150 end in an ALLCAPS country, 409 embed the producer | searching "2016 Gravner" matches nothing today | Derived `display_name` + add it to `search_vector`; never rewrite `name`, which is a match key | plan §1 |
+| **A10** | **2,099 wines unenriched**, so they classify as `unknown` and would land in the wrong population | corpus manifest | Finish the resumable enrichment pass *before* the beverages migration — otherwise A4 recurs at 10× scale | plan §6 |
+
+### B. Already fixed — keep the guard, do not re-litigate
+
+| # | was | why it stays fixed |
+|---|---|---|
+| **B1** | `stock_live` written by three uncoordinated actors | `inventory_lots` is the source of truth, `stock_live` a projection; `scripts/check_no_direct_stock_writes.sh` fails the build on regression |
+| **B2** | `ON CONFLICT` against a **partial** unique index → 42P10, silently swallowed | **Verified clean today:** every upsert conflict target in `apps/api-gateway/src` was cross-checked against the 21 partial unique indexes in the database — none is backed only by a partial index. Worth a periodic re-check, not a task |
+| **B3** | `raw_text` in the extraction prompt cost ~45% of output spend; names carried producer + vintage + region | prompt pins `name` to the cuvée only; `extract_menu_corpus.py` reads the prompt out of the service and **refuses to run** if it drifts |
+
+### C. Not yet made — prevent by construction
+
+These are cheap now and expensive later. Each has a guard that must ship *with*
+the thing it guards, not after the first violation.
+
+| # | the future mistake | guard | ref |
+|---|---|---|---|
+| **C1** | Something reads `type_attributes` directly, so a category can never be promoted without a four-repo change | CI grep forbidding it outside migrations and view bodies; grants on views, not the base table; no `type_attributes` in serializers | arch §4.3, P2 |
+| **C2** | A promotion writes an attribute to both JSONB and the new table "during transition" — `stock_live` for the third time | Read path flips atomically at the view swap; the contract migration that drops the old keys is mandatory and separate; "keep both for now" is a blocking review comment | arch §4.3, P3 |
+| **C3** | JSONB key sprawl — `age`, `age_statement`, `age_years` all written by different runs | `beverage_type_schema` registry; unregistered keys **rejected** at write, not tolerated; weekly drift report | arch §4.4, P4 |
+| **C4** | Nine physical per-category tables built preemptively for categories of 4 and 9 rows | Promotion requires **two** objective triggers; a single hot JSONB key is answered with a GIN expression index first | arch §4.3 |
+| **C5** | The review queue is never cleared, so "never auto-merge" degrades into "never merge" | Order by value (restaurants × price impact), show evidence inline, track queue age as a health metric. If unclearable, fix *generation* — never the decision rule | arch P10 |
+| **C6** | A beer and a whiskey from one parent brand collide on the identity key | Add `beverage_type` to the key, or measure that it never happens, before the first multi-category load | arch §8 |
+| **C7** | Global scope turns out wrong for house-made items | Accepted risk with a cheap exit: nullable `owned_by_restaurant_id` (NULL = global) needs no backfill. Measured at 2 of 829 rows; revisit above ~5% | arch P8 |
+| **C8** | Parsed columns (`age_years`, `cask_finish`, …) get mistaken for the identity, reintroducing the enumeration failure | Their non-authoritative status is written into the **column comments** in the migration itself | arch §4.1 |
+
+### The rule underneath all of it
+
+Every entry above is the same mistake in a different costume: **a fact stored in
+two places, or a decision made by a score where it should be made by a key.**
+A1–A5 and C1–C3 are all one of those two. When a new design choice comes up, ask
+which of the two it risks — that question has caught every defect in this
+register.
+
