@@ -865,12 +865,12 @@ different things is how this bug class recurs.
 §3 is independent of the beverage split, benefits wine immediately, and closes
 a live hazard:
 
-| | item | why it comes first |
-|---|---|---|
-| 0a | Land `datasets/merge_eval/` + `eval_merge_policies.py` in CI | The gate must exist before anything it guards changes. Already built. |
-| 0b | Co-occurrence guard on `find_library_duplicates` | Removes 18 of 19 wrong `safe_to_merge` proposals. One predicate. |
-| 0c | Quarantine the 357 under-identified rows | Stops P1b outright; no schema change, one status column |
-| 0d | Fix the extraction prompt so `producer` never takes an appellation | The durable fix for 0c; costs one re-extraction of affected menus |
+| | item | why it comes first | status |
+|---|---|---|---|
+| 0a | Land `datasets/merge_eval/` + `eval_merge_policies.py` in CI | The gate must exist before anything it guards changes | **done** — wired into `.github/workflows/ci.yml`, verified to fail on a deliberately broken policy |
+| 0b | Co-occurrence guard on `find_library_duplicates` | Removes wrong `safe_to_merge` proposals | **done** — 18→0 co-occurring-and-safe proposals, verified live |
+| 0c | Quarantine the under-identified rows | Stops P1b outright; no schema change, one status column | **done** — 334 rows flagged (measured live at apply time; the 357 first quoted had already drifted in this shared database), matcher and duplicate-finder both verified to exclude them |
+| 0d | Fix the extraction prompt so `producer` never takes an appellation | The durable fix for 0c, forward-looking | **done** — prompt updated, drift guard + tsc verified. Retroactively fixing the 334 already-quarantined rows is separate cleanup, not required for this to be closed — plan §6 item 0d-2, cost corrected from an assumed ~$0.30 to ~$2 once the true span (21 of 26 menus) was measured |
 
 ---
 

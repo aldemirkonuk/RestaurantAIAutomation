@@ -46,7 +46,28 @@ const WINE_EXTRACTION_PROMPT =
   "and do NOT include the vintage, region, country or price " +
   "(e.g. for '2019 Duckhorn Merlot, Napa Valley 120', producer is 'Duckhorn', name is 'Merlot', " +
   "vintage is '2019', region is 'Napa Valley', bottle_price is 120). " +
-  "If the menu prints only one name with no separable producer, set producer to the same value as name. " +
+  // 0d (BEVERAGE_CATALOGUE_PLAN.md; arch §3.5): the prior instruction here —
+  // "if only one name prints, set producer to the same value as name" — is
+  // what put an appellation into producer. A menu line reading just
+  // "Hermitage Blanc" or "Cornas" is a REGION with no producer visible, and
+  // the old rule copied that region string into producer verbatim, so six
+  // different Hermitage Blanc wines (different growers, different prices)
+  // landed as six IDENTICAL library rows with no way to tell them apart —
+  // not a matcher bug, an extraction one. The two cases below are genuinely
+  // different and must not collapse into one rule again.
+  "Some listings print ONLY a region or appellation with no producer visible " +
+  "(e.g. 'Hermitage', 'Cornas', 'Côte-Rôtie', 'Chablis', 'Sancerre') — these are " +
+  "PLACES, not wineries. When that happens, put the term in region (never in " +
+  "name or producer) and OMIT producer entirely — an omitted producer is later " +
+  "recorded as genuinely unknown; a region copied into producer would falsely " +
+  "claim the place IS the winery, and would make this wine indistinguishable " +
+  "from every other producer's wine from the same place. " +
+  "Only set producer equal to name when the printed text is unambiguously a " +
+  "producer/estate name standing alone with no separate cuvée (e.g. a menu " +
+  "printing just 'Opus One') — never when the printed text names a place. " +
+  "If in doubt whether a word is a producer or a place, prefer omitting " +
+  "producer over guessing — a missing producer can be researched later; a " +
+  "wrong one propagates. " +
   "Return ONLY a JSON array with no surrounding text. " +
   "If a field is not visible, omit it. " +
   'Example: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120}]';
