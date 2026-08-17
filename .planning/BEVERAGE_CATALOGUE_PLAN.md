@@ -275,10 +275,28 @@ cuts, both explained below.**
 
 ## 3. Cocktails are recipes, not catalogue rows
 
-35 cocktails ("Out of Office", "The Benito", "Dove Va Negroni") have no
-producer, no vintage, no SKU and no purchasable unit. They were also the rows
-that broke matching — five wines could not match themselves because
-`producer` fell back to `name` while `normalized_producer` stayed empty.
+**Done 2026-08-17.** **55 cocktails** migrated (not 35 — same live-database
+drift as §2.0/§2.1's counts), not 35 ("Out of Office", "The Benito", "Dove Va
+Negroni" among them) — no producer, no vintage, no SKU, no purchasable unit.
+They were also the rows that broke matching — five wines could not match
+themselves because `producer` fell back to `name` while `normalized_producer`
+stayed empty.
+
+`cocktails` + `cocktail_ingredients` created; 55 rows moved out of
+`master_wine_library` with the same snapshot → dry-run → apply →
+invariant-check discipline as §2.1 (`scripts/migrate_cocktails.py`),
+soft-delete not hard-delete, source id reused. Verified independently:
+`master_wine_library`'s `beverage_kind` census is now **wine only** —
+non-wine content of every kind (spirits, beer, sake, cocktails) has fully
+left the wine library. `restaurant_id` is nullable and left NULL for this
+batch — checked first: none of the 26-menu demo corpus these rows come from
+maps to a live `restaurants` row (11 real restaurants exist; corpus
+provenance is a PDF filename, not a restaurant_id). `catalogue_items`
+extended to union all three tables — 3,660 total rows across wine (3,497) +
+beverages (608) + cocktails (55).
+
+`cocktail_ingredients` is empty and stays empty — recipes were never
+extracted (see below, unchanged from the original plan).
 
 **Decision.** Out of the catalogue, into their own structure, **categorised by
 recipe**:
