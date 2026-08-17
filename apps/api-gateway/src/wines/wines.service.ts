@@ -28,6 +28,20 @@ interface WineRow {
   bottle_size_ml?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // N4 (BEVERAGE_CATALOGUE_PLAN.md) / arch §9.3, §10.6 M3: provenance,
+  // carried through so a consumer can tell a recalled fact from a reasoned
+  // default. 76% of the library is `inferred` (a typical profile for the
+  // grape/region, not a fact about THIS bottle) — dropping these at the
+  // mapping boundary is how a flattened view quietly teaches "confident,
+  // wrong, and self-consistent" downstream. Optional because narrower
+  // selects (search, distinct-value lookups) legitimately omit them; only
+  // the detail-level SELECT * populates them, and mapWine() below must not
+  // silently drop what it received.
+  library_tier?: number | null;
+  review_status?: string | null;
+  field_confidences?: Record<string, number> | null;
+  data_enrichment?: { knowledge?: string | null; [k: string]: unknown } | null;
+  enrichment_observed_at?: string | null;
 }
 
 interface WineSubmissionRow {
@@ -75,6 +89,28 @@ export class WinesService {
       bottleSizeOz,
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
+      // N4: present only when the query selected these columns (row.* is
+      // undefined, not null, for a column that was never asked for) — so a
+      // narrow list projection doesn't advertise provenance it doesn't have,
+      // and a detail projection never loses it in the mapping step.
+      ...(row.library_tier !== undefined ||
+      row.review_status !== undefined ||
+      row.field_confidences !== undefined ||
+      row.data_enrichment !== undefined ||
+      row.enrichment_observed_at !== undefined
+        ? {
+            provenance: {
+              tier: row.library_tier ?? undefined,
+              reviewStatus: row.review_status ?? undefined,
+              // 'known' | 'inferred' | 'unknown' | undefined — see
+              // BEVERAGE_CATALOGUE_ARCHITECTURE.md §9.3 for what each means
+              // and why a consumer must not treat 'inferred' as fact.
+              knowledge: row.data_enrichment?.knowledge ?? undefined,
+              fieldConfidences: row.field_confidences ?? undefined,
+              observedAt: row.enrichment_observed_at ?? undefined,
+            },
+          }
+        : {}),
     };
   }
 
