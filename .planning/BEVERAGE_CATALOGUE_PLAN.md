@@ -101,30 +101,44 @@ conventions collapse to one; vintage becomes searchable. No matching change.
 
 ### 2.0 Blocker — the `is_wine` flag is a null-flag, not a classification
 
-**Nothing in §2 may ship before this is fixed.** Full write-up in
-`BEVERAGE_CATALOGUE_ARCHITECTURE.md` §6; the short version:
+**Done 2026-08-17.** Full write-up in `BEVERAGE_CATALOGUE_ARCHITECTURE.md` §6;
+short version and what shipped:
 
 `load_enriched_wines.py:212` sets `"is_wine": bool(e.get("primary_type"))`. That
 reads as "is this a wine?" but computes "did enrichment return a type?" — it
-conflates *not a wine* with *the model could not classify it*. The proof is that
-**all 202** `is_wine=false` rows carry `primary_type='unknown'`, without
-exception: a sake and a Napa Cabernet are flagged identically because the model
-returned nothing for both.
+conflates *not a wine* with *the model could not classify it*. Proof: **every**
+`is_wine=false` row carries `primary_type='unknown'`, without exception, at
+every count taken during this build.
 
-**7 actual wines** are mistagged today — BonAnno, Duc des Nauves, Frank Family
-Vineyards, Heitz Cellar, Ink Grade, My Favorite Neighbor, Renaissance Vineyard,
-all listed under a menu's `red` section. (I previously reported 40; 7 is the
-measured figure.) The count is small; the defect is not, because it is *the
-migration predicate*. Selecting on `is_wine=false` walks those 7 out of the wine
-library, and the rule stays wrong for every future load.
+**The row count moved under us while this was being fixed** — a real,
+instructive fact about this being a live, shared database, not a snapshot.
+`is_wine=false` was 202 when first measured, then **671** by the time this item
+was reached (total library size unchanged at 4,160 — concurrent enrichment
+activity elsewhere in the system reclassified rows, not new rows arriving). The
+mistag count moved with it: **8** real wines, not the 7 first reported — Vin
+Santo Chianti Classico (Felsina) was the eighth, filed under `red` like the
+other seven. This is exactly why the fix is a **trigger-maintained
+classifier**, not a one-time correction of specific IDs: it has to be correct
+regardless of which rows currently hold which state.
 
-Fix: split into `classification_status` and `beverage_kind`, fall back to the
-menu's own section header when enrichment is silent, re-run over the 202,
-log to `wine_repair_log`, add a regression test, and gate the migration on a
-verified `beverage_kind` with a pre-migration assertion that zero wine-section
-rows are in the migration set. Also backfill the 218 legacy rows where `is_wine`
-is *absent*, so absent/false/unknown stop being three states every consumer has
-to interpret.
+Shipped: `beverage_kind` (`wine | beer | spirit | sake | cider | cocktail |
+non_alcoholic | unknown`) and `classification_status`
+(`classified | unclassified`), both auto-maintained by
+`trg_wine_beverage_kind`, by precedence — real `primary_type` (never `unknown`,
+since that column has only ever held wine styles) > the menu's own section
+header (`wine_classify_beverage_kind()`, keyword-matched with spirit/beer/sake/
+cocktail/cider checked *before* the wine keywords, so an ambiguous word like
+"dessert" in "brandy & dessert" doesn't misfire — caught by testing, not
+assumed) > `unknown`. All 8 mistags logged to `wine_repair_log`
+(`repaired_by='20260817060000_beverage_kind_classification.sql'`). Regression
+check: `scripts/check_beverage_kind_regression.py` — passing, 0 wine-section
+rows misclassified across the live library. `is_wine` itself is left inside
+`data_enrichment` for backward compatibility but **must never be the migration
+predicate again**; `beverage_kind` is.
+
+The 218 legacy `is_wine`-absent rows are covered by the same trigger — they now
+carry a real `beverage_kind` (derived from their own `primary_type`, all wine)
+rather than a third, silent "absent" state.
 
 ### 2.1 Shape
 
@@ -388,7 +402,7 @@ group A is live today.
 | **A1** | **Merge decides identity by similarity.** A score cannot separate `Pappy Van Winkle 12` from `15` (97.9% similar, $20 apart) — positive and negative distributions overlap, so no threshold exists | 212 false merges at 0.85 across 732,874 labelled pairs | Replace the *decision* rule with the deterministic residual-token key (0 false merges). Keep fuzzy for *candidate generation* only | arch §3.2, §3.4, §3.6 |
 | **A2** | **`find_library_duplicates` proposes provably-wrong merges** | 200 of 289 proposals co-occur on one menu; **18 flagged `safe_to_merge`** | Add the co-occurrence predicate: no pair may be `safe_to_merge` if its rows appear on a single menu. Do **not** run the merge tool before this lands | arch §3.10 |
 | **A3** | **357 under-identified rows.** Extraction wrote appellations into `producer`, so six different Hermitage Blanc wines are stored identically | 357 rows with `normalized_producer = normalized_name` | Quarantine: ineligible to merge, ineligible as a match target, flagged for re-extraction. Then fix the extraction prompt so `producer` never takes an appellation | arch §3.5 |
-| **A4** | **`is_wine` is a null-flag wearing a classification's name.** It computes "did enrichment return a type", not "is this wine" | all 202 `is_wine=false` rows carry `primary_type='unknown'`; **7 real wines** mistagged; 218 rows have the flag *absent*, a silent third state | Split into `classification_status` + `beverage_kind`; fall back to the menu's own section header; backfill the 218; gate any migration on the verified kind, never on `is_wine` | arch §6 |
+| ~~A4~~ | ~~`is_wine` is a null-flag wearing a classification's name~~ — **done 2026-08-17.** `beverage_kind`/`classification_status`, trigger-maintained, precedence classifier. 8 mistags found (count moved 7→8 as the live library changed under this fix) and logged to `wine_repair_log`. `scripts/check_beverage_kind_regression.py` passing | was: all `is_wine=false` rows carry `primary_type='unknown'`, no exception | §2.0 for the full account, including the mid-fix row-count shift | arch §6 |
 | **A5** | **Merge is destructive.** Attribute collapse loses the evidence that two rows were ever distinct, and un-merge has never been executed | `wine_merge_log` exists; no un-merge has ever run | Supersede + alias instead of overwrite; block merges on conflicting non-null attributes; repoint current references but never rewrite history; property-test un-merge | arch §3.7 |
 | **A6** | **No CI gate on identity.** Precision was self-graded against probes I wrote, which cannot find errors I did not imagine | the independent label set found failures the probes missed | `eval_merge_policies.py` in CI; **false merges must be 0**, not "low". Every new menu strengthens it for free | arch §3.1, §3.8 |
 | **A7** | **Non-wines live in a table named for wine.** 202 beer/sake/spirit/cocktail rows sit in `master_wine_library`, ~39 of its 88 columns meaningless to them | 202 rows, referenced by **0** of 15 FK tables — the cheapest this will ever be | Migrate to `beverages` after A4. The zero is a window, not a stable state | plan §2, arch §4 |
