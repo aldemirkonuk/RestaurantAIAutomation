@@ -908,3 +908,204 @@ Genuinely still open:
   (Guinness, Jameson, Sam Adams' spirits line) could in principle collide. Add
   `beverage_type` to the key, or measure that it never happens, before the
   first multi-category load.
+---
+
+## 9. Read models: one source of truth, two audiences
+
+### 9.0 The vendor model is the house pattern, and it was right
+
+An earlier draft called the `providers` / `vendor_catalogue` split an identity
+defect. That was wrong, and the reasoning matters more than the correction.
+
+Vendors are **relationships, not catalogue entries**. Every restaurant has its
+own history with a distributor: communication style, personality notes, who owes
+whom a favour, what was said last time. And prices are not equal to everyone —
+a vendor genuinely quotes its better customers differently. A global vendor row
+cannot hold any of that without flattening 500 relationships into one.
+
+The schema already models this correctly:
+
+```
+vendor_catalogue          providers                     (per restaurant)
+  global, curated   ←──   catalogue_vendor_id            personality_notes
+  27 rows                 is_custom                      response_pattern
+                          21 rows, 18 custom, 3 linked   close_relationship
+                                                         relationship_health_score
+                                                         last_contact_notes
+                                                         payment_terms, tier
+```
+
+and `procurement_order_items` carries `quoted_unit_price`,
+`negotiated_unit_price` and `final_unit_price` separately — which is precisely
+the "vendors favour their better customers" fact, already first-class.
+
+`catalogue_vendor_id` is the nullable link that makes the eventual verification
+flow non-destructive: when a phone number or email later matches a verified
+vendor, the suggestion sets the link and **nothing scoped is touched**. Notes,
+sentiment and terms stay exactly where they are. That is the correct design and
+it needs no repair.
+
+**Name it as the house pattern, because it is the same shape as everything else
+here:**
+
+> **A global row for what the thing *is*. A restaurant-scoped row for what the
+> thing *is to us*. A nullable link between them, so the two can be connected
+> later without disturbing either.**
+
+| what it is (global) | what it is to us (scoped) | link |
+|---|---|---|
+| `vendor_catalogue` | `providers` | `catalogue_vendor_id` |
+| `master_wine_library` | `restaurant_inventory`, `menu_items` | `master_wine_id` |
+| `beverages` (planned) | same | same |
+
+**A correction to the beverage design falls out of this.** `price_reference` and
+`retail_price_avg` sit on the global library row. Given that price is a
+relationship outcome, those are **market hints, never a restaurant's price**,
+and must never be displayed or computed against as if they were. Real prices are
+already scoped, in five tables (`menu_items`, `wine_menu_prices`, `price_history`,
+`vendor_price_observations`, `procurement_order_items`). The global fields should
+carry that caveat in their column comments, or someone will one day average them
+into a report.
+
+### 9.1 The rule
+
+> **One write model. Many read models. The flow is one-way, and every read model
+> is disposable.**
+
+- **Layer 1 — source of truth (OLTP).** `master_wine_library`, `beverages`,
+  `cocktails`, the scoped tables. Normalized, constrained, RLS'd. **All writes
+  land here and nowhere else.** This is what §3 and §4 specify.
+- **Layer 2 — serving views (UX).** `catalogue_items`, the per-category views,
+  `display_name`. Zero-copy, always current, no staleness, no sync job. Serves
+  search, autocomplete, display, ad-hoc analysis.
+- **Layer 3 — analytical marts (ML).** Materialized, versioned, per-grain,
+  provenance-carrying. Built by a job from Layer 1. **Never hand-edited.**
+
+**The test that keeps Layer 3 from becoming a second master:** you must be able
+to `DROP` the entire analytical layer and rebuild it from Layer 1 without losing
+anything. If you can't, something was written there that exists nowhere else —
+and that is dual-bookkeeping wearing a data-science hat, at a bigger scale than
+`stock_live` ever managed.
+
+### 9.2 Views serve UX. They do not serve ML
+
+An earlier claim in §4 — "`SELECT * FROM whiskey` is ML-ready" — is true for
+*exporting a snapshot* and false as an ML architecture. Four reasons, and none
+is fixable by writing a better view:
+
+1. **No reproducibility.** A view returns today's rows. A model trained "on the
+   whiskey view" cannot be retrained on the same data tomorrow, so a regression
+   can never be attributed to the code rather than the data.
+2. **No point-in-time correctness.** This is the one that silently destroys
+   models. Train a "what will this restaurant reorder" model using today's
+   enriched attributes against last quarter's sales, and the model learns from
+   facts that did not exist when the sale happened. It scores beautifully
+   offline and fails in production. Preventing it requires knowing *when we
+   learned* each fact, not just when it became true.
+3. **No provenance carried through.** §9.3 — the single biggest risk here.
+4. **Wrong grain.** One row per bottle answers product questions. Demand,
+   elasticity and vendor-behaviour questions each need a different grain, and no
+   single wide table serves all of them.
+
+### 9.3 The four things that must be designed now because they cannot be backfilled
+
+Everything else in Layer 3 can wait. These cannot — each one is either captured
+at write time or lost permanently.
+
+**1. Provenance. 76% of the library is a guess, and it is currently labelled.**
+
+```
+inferred   3,151    typical profile for the grape/region — a reasoned default
+known        468    the model recognises this specific bottling
+unknown      323
+(absent)     218    legacy seed
+```
+
+`field_confidences` and `library_tier` are populated on **all 4,160 rows**. That
+is a genuinely valuable asset and it is one careless flattening away from being
+destroyed. If a wide table is built with `tannins` but not
+`tannins_confidence`/`knowledge`, then 76% of the training signal is *a model's
+prior about typical Barolo*, presented as fact. Training on it teaches the next
+model to reproduce the first model's assumptions rather than reality — confident,
+wrong, and unfalsifiable, because the errors are self-consistent.
+
+> **Rule: every ML feature carries its provenance alongside it, and every
+> training set declares which tiers it accepts.** The default for any model that
+> predicts real-world outcomes should be `known` only, with `inferred` admitted
+> deliberately and recorded in the model card.
+
+**2. Bitemporality — `observed_at`, not just `updated_at`.**
+
+Two different questions: *when did this become true* (a wine's vintage was
+always 2016) versus *when did we learn it* (we enriched it on 2026-08-14).
+Point-in-time correctness needs the second, and it must be stamped at write
+time. The library has `updated_at`, `library_tier_updated_at` and
+`scores_last_updated_at` — partial, and overwritten in place. Enrichment writes
+should append an observation with its own timestamp rather than only mutating
+the row. **Retrofitting this is impossible: the history was never recorded.**
+
+**3. Stable join keys.** Every training set will reference `id`. A merge that
+deletes a row orphans historical training data and silently changes what a past
+experiment meant. This is a second, independent argument for §3.7's
+supersede-and-alias over destructive merge. And a rule: **ML joins on `id`,
+never on `identity_key`** — the identity key legitimately changes when the
+equivalence relation is versioned, which is a schema event, not an entity event.
+
+**4. Grain, declared per question.** One wide table cannot serve these:
+
+| question | grain |
+|---|---|
+| what is this bottle like | product |
+| what will sell next week | restaurant × product × week |
+| how does price move volume | restaurant × product × price-change event |
+| which vendor treats us well | restaurant × vendor × order |
+
+Layer 3 is therefore **one mart per grain**, not one big table. Each is built
+from Layer 1, versioned by snapshot date, and independently droppable.
+
+### 9.4 What to build now, and what not to
+
+Honest assessment of whether there is anything to train on today:
+
+```
+pos_checks                 47      procurement_order_items      1
+inventory_events            8      wine_menu_prices             0
+inventory_lots             94      price_history                0
+restaurant_inventory      138      recommendation_actions       0
+menu_items                342      master_wine_library      4,160
+```
+
+**There is no transaction-grain ML to do yet.** The only rich asset is the
+product catalogue itself. Building a feature store now would be building
+infrastructure for data that does not exist — the same mistake as nine
+per-category tables for categories of four rows.
+
+So:
+
+| now (cannot be backfilled) | later (easy to add once data exists) |
+|---|---|
+| Preserve provenance columns through every projection | The marts themselves |
+| Stamp `observed_at` on enrichment writes | Snapshot versioning + content hashes |
+| Stable ids: supersede + alias, never delete | Feature engineering, encoders, embeddings |
+| Declare grain in any new fact table | Training/serving skew checks |
+
+The first column is cheap today and impossible later. The second is
+straightforward whenever it is needed. That asymmetry is the whole scheduling
+argument.
+
+### 9.5 So — ML-ready or best UX?
+
+Both, and they are not in tension, because they are **read models over the same
+truth** rather than two designs competing for one table:
+
+- **UX** gets the normalized row plus zero-copy views: one query surface, one
+  display name, point lookups on indexed columns, no staleness. Fast because the
+  data is small and indexed, not because it was denormalized.
+- **ML** gets materialized per-grain marts carrying provenance and observation
+  time, versioned so an experiment is reproducible, rebuildable so they are
+  safe to throw away.
+
+The failure mode to refuse is the tempting one: a second wide table that is
+*also* written to, because "the analysts needed a column". That is `stock_live`
+again. Analysts get a mart; the mart gets rebuilt; the truth stays in one place.
+

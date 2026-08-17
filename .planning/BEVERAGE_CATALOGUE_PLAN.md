@@ -326,6 +326,7 @@ None of this needs a separate branch yet.
 | **0b** | Co-occurrence guard on `find_library_duplicates` | Closes a live hazard: 18 of 19 today's `safe_to_merge` proposals are provably wrong. One predicate | — |
 | **0c** | Quarantine the 357 under-identified rows | Six different Hermitage Blanc wines are stored identically; a dedup pass would delete five real wines | — |
 | **0d** | Stop extraction writing appellations into `producer` | The durable fix for 0c | ~$0.30 re-extract |
+| **0e** | Stamp `observed_at` on enrichment writes; never drop provenance in a projection | **Impossible to backfill.** 76% of the library is `inferred`; losing that label makes every future model train on our own guesses | — |
 | 1 | `display_name` + search | Fixes the visible "duplicates" complaint; touches nothing structural | — |
 | 2 | Fix `is_wine` semantics + the 7 mistags (§2.0) | Hard prerequisite: it is the migration predicate, and it is wrong | — |
 | 3 | Finish enrichment (2,099 wines) | Already paid for extraction; resumable | ~$4 |
@@ -413,6 +414,10 @@ the thing it guards, not after the first violation.
 | **C6** | A beer and a whiskey from one parent brand collide on the identity key | Add `beverage_type` to the key, or measure that it never happens, before the first multi-category load | arch §8 |
 | **C7** | Global scope turns out wrong for house-made items | Accepted risk with a cheap exit: nullable `owned_by_restaurant_id` (NULL = global) needs no backfill. Measured at 2 of 829 rows; revisit above ~5% | arch P8 |
 | **C8** | Parsed columns (`age_years`, `cask_finish`, …) get mistaken for the identity, reintroducing the enumeration failure | Their non-authoritative status is written into the **column comments** in the migration itself | arch §4.1 |
+| **C9** | A wide "ML table" gets built **and written to**, because an analyst needed a column — `stock_live` with a data-science hat, at larger scale | One-way flow; the analytical layer must be droppable and rebuildable from source, and that is the acceptance test | arch §9.1 |
+| **C10** | A flattened ML export drops `field_confidences` / `knowledge`, so **76% inferred values** are trained on as fact | Every ML feature carries its provenance beside it; training sets declare which tiers they accept | arch §9.3 |
+| **C11** | A model is trained on today's enriched attributes against last quarter's sales — scores well offline, fails in production | `observed_at` stamped at write time. Cannot be retrofitted: the history was never recorded | arch §9.3 |
+| **C12** | `price_reference` on a global row gets averaged into a report as if it were a restaurant's price | It is a market hint only — prices are relationship outcomes and live in the five scoped tables. Put the caveat in the column comment | arch §9.0 |
 
 ### The rule underneath all of it
 
