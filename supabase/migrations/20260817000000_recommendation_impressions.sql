@@ -59,6 +59,11 @@ alter table recommendation_impressions enable row level security;
 -- RecommendationsService), never directly by a client. No end-user SELECT
 -- policy is needed today; add one scoped to restaurant membership if a
 -- future admin surface reads it directly instead of through an API.
+-- DROP first so this migration is re-runnable. Every later migration in
+-- this series does the same; this one predated that habit and was the only
+-- file in the set that failed a re-run test (2026-08-18).
+drop policy if exists recommendation_impressions_service_role
+  on recommendation_impressions;
 create policy recommendation_impressions_service_role
   on recommendation_impressions
   for all
