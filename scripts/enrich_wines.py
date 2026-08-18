@@ -263,15 +263,26 @@ def main() -> int:
     # already succeeded is money spent to overwrite identical data. Keyed on the
     # same (producer, name, vintage) triple used for de-duplication.
     previous: dict = {}
+    # Full prior records, keyed the same way. Needed because the output file
+    # is rewritten from scratch below: without these, running with a FILTERED
+    # input directory (e.g. only the wines still needing enrichment) silently
+    # truncates enriched.json to that subset and discards every previously
+    # enriched wine not in it. That is not hypothetical -- it happened on
+    # 2026-08-17 with `--limit 3`, cutting the corpus from 4,499 entries to 3
+    # and throwing away ~$4.35 of already-paid enrichment. Recovered from git
+    # that time; this keeps it from being possible.
+    prior_records: dict = {}
     prior_file = out / "enriched.json"
     if prior_file.exists() and not args.no_resume:
         for rec in json.loads(prior_file.read_text()):
+            x = rec["extracted"]
+            k = tuple(
+                re.sub(r"[^a-z0-9]+", " ", str(x.get(f) or "").lower()).strip()
+                for f in ("producer", "name", "vintage")
+            )
+            prior_records[k] = rec
             if rec.get("enrichment"):
-                x = rec["extracted"]
-                previous[tuple(
-                    re.sub(r"[^a-z0-9]+", " ", str(x.get(f) or "").lower()).strip()
-                    for f in ("producer", "name", "vintage")
-                )] = rec["enrichment"]
+                previous[k] = rec["enrichment"]
 
     def wine_key(w):
         return tuple(
@@ -309,18 +320,31 @@ def main() -> int:
             fresh[wine_key(w)] = results[idx]
 
     merged, counts = [], {"known": 0, "inferred": 0, "unknown": 0, "missing": 0}
+    seen_keys = set()
     for w in wines:
         e = fresh.get(wine_key(w)) or previous.get(wine_key(w))
         k = (e or {}).get("knowledge")
         counts[k if k in counts else "missing"] += 1
+        seen_keys.add(wine_key(w))
         merged.append({"extracted": w, "enrichment": e})
+
+    # Carry forward every prior record this run's input did not cover, so a
+    # filtered input can never truncate the corpus (see prior_records above).
+    carried = 0
+    for k, rec in prior_records.items():
+        if k not in seen_keys:
+            merged.append(rec)
+            carried += 1
+    if carried:
+        print(f"  carried forward {carried} prior record(s) outside this run's input")
 
     (out / "enriched.json").write_text(json.dumps(merged, ensure_ascii=False, indent=1))
     cost = en.in_tok * 1e-6 + en.out_tok * 5e-6
     if "sonnet" in args.model:
         cost = en.in_tok * 3e-6 + en.out_tok * 15e-6
     (out / "manifest.json").write_text(json.dumps({
-        "model": args.model, "wines": len(wines), "calls": en.calls,
+        "model": args.model, "wines": len(merged), "wines_this_run": len(wines),
+        "carried_forward": carried, "calls": en.calls,
         "input_tokens": en.in_tok, "output_tokens": en.out_tok,
         "cost_usd": round(cost, 4), "knowledge": counts,
     }, indent=1))
