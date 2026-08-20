@@ -134982,7 +134982,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 0,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir, pinot meunier",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Vallee de la Marne",
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white flowers",
+    "green apple"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "chalk",
+    "white peach"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -134996,7 +135041,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 1,
+   "knowledge": "inferred",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": null,
+   "appellation": "Champagne",
+   "appellation_class": "Premier Cru",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "orchard fruit"
+   ],
+   "secondary_aromas": [
+    "toast",
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "lemon",
+    "almond",
+    "chalk"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135008,7 +135097,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 2,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "pinot noir, chardonnay, pinot meunier",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Ay",
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "baked apple",
+    "pear",
+    "citrus zest"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "toasted nuts",
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "apple",
+    "toast",
+    "hazelnut",
+    "chalk"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 9,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "old oak barrels"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135020,7 +135156,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 3,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Cote des Blancs",
+   "appellation": "Champagne",
+   "appellation_class": "Blanc de Blancs",
+   "body": "light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white peach",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "brioche"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "lemon",
+    "chalk",
+    "almond"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135034,7 +135214,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 4,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Epernay",
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "white peach",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "almond"
+   ],
+   "tertiary_aromas": [
+    "honey",
+    "smoke"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "toast",
+    "chalk",
+    "iodine"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135048,7 +135277,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 5,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "pinot noir, chardonnay, pinot meunier",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Reims",
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "quince",
+    "citrus zest",
+    "dried fruit"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "hazelnut",
+    "vanilla"
+   ],
+   "tertiary_aromas": [
+    "honey",
+    "gingerbread"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "candied citrus",
+    "toast",
+    "nuts",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 30,
+   "farming": null,
+   "aging_vessel": "small oak casks"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135062,7 +135341,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 6,
+   "knowledge": "inferred",
+   "primary_type": "sparkling",
+   "grape_variety": "glera",
+   "country": "Italy",
+   "region": "Veneto",
+   "sub_region": "Valdobbiadene",
+   "appellation": "Prosecco Superiore",
+   "appellation_class": "Valdobbiadene Prosecco Superiore DOCG",
+   "body": "light",
+   "sweetness": "off-dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "short",
+   "alcohol_pct": 11,
+   "alcohol_level": "medium-low",
+   "primary_aromas": [
+    "green apple",
+    "pear",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "pear",
+    "citrus"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 7,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 2,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135075,7 +135396,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 7,
+   "knowledge": "inferred",
+   "primary_type": "sparkling",
+   "grape_variety": "xarel-lo, macabeo, parellada",
+   "country": "Spain",
+   "region": "Catalonia",
+   "sub_region": "Penedes",
+   "appellation": "Cava",
+   "appellation_class": "Cava DO",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 11.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "lemon",
+    "bread crust"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 4,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135088,7 +135453,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 8,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot nero, pinot bianco",
+   "country": "Italy",
+   "region": "Lombardy",
+   "sub_region": "Franciacorta",
+   "appellation": "Franciacorta",
+   "appellation_class": "Franciacorta DOCG",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white peach",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "almond"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135101,7 +135511,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 9,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "North Coast",
+   "appellation": "North Coast",
+   "appellation_class": null,
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "apple",
+    "citrus",
+    "pear"
+   ],
+   "secondary_aromas": [
+    "yeast",
+    "toast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "lemon",
+    "biscuit"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 4,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135115,7 +135570,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 10,
+   "knowledge": "inferred",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir, pinot meunier",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Russian River Valley",
+   "appellation": "Russian River Valley",
+   "appellation_class": null,
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "apple",
+    "citrus",
+    "strawberry"
+   ],
+   "secondary_aromas": [
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "cream"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135128,7 +135627,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 11,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Anderson Valley",
+   "appellation": "Anderson Valley",
+   "appellation_class": null,
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "pear",
+    "citrus",
+    "apple"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "toasted bread"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135141,7 +135685,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 12,
+   "knowledge": "inferred",
+   "primary_type": "sparkling",
+   "grape_variety": "glera, pinot noir",
+   "country": "Italy",
+   "region": "Veneto",
+   "sub_region": null,
+   "appellation": "Prosecco Rose",
+   "appellation_class": "Prosecco DOC",
+   "body": "light",
+   "sweetness": "off-dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "short",
+   "alcohol_pct": 11,
+   "alcohol_level": "medium-low",
+   "primary_aromas": [
+    "strawberry",
+    "red apple",
+    "rose"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red berries",
+    "citrus",
+    "apple"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 7,
+   "glass_type": "Flute",
+   "decanting_recommended": false,
+   "aging_potential_years": 2,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135154,7 +135740,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 13,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "pinot nero, chardonnay",
+   "country": "Italy",
+   "region": "Trentino-Alto Adige",
+   "sub_region": "Trento",
+   "appellation": "Trento",
+   "appellation_class": "Trentodoc",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "wild strawberry",
+    "raspberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "yeast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red berries",
+    "citrus",
+    "bread crust"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135167,7 +135797,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 14,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "pinot noir, chardonnay, pinot meunier",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Reims",
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red currant",
+    "cherry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "pastry"
+   ],
+   "tertiary_aromas": [
+    "dried fruit"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "red berries",
+    "toast",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": true,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135180,7 +135857,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 15,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": "Vallee de la Marne",
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "low",
+   "texture": "crisp",
+   "finish": "long",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "strawberry",
+    "raspberry",
+    "red currant"
+   ],
+   "secondary_aromas": [
+    "brioche"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "red fruit",
+    "citrus",
+    "chalk"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135192,7 +135913,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 16,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "chardonnay, pinot noir",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": null,
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "wild strawberry",
+    "raspberry",
+    "pomegranate"
+   ],
+   "secondary_aromas": [
+    "brioche"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red berries",
+    "citrus",
+    "chalk"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 9,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135204,7 +135969,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 17,
+   "knowledge": "known",
+   "primary_type": "sparkling",
+   "grape_variety": "pinot noir, pinot meunier, chardonnay",
+   "country": "France",
+   "region": "Champagne",
+   "sub_region": null,
+   "appellation": "Champagne",
+   "appellation_class": "Champagne AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "low",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "strawberry",
+    "cherry",
+    "red currant"
+   ],
+   "secondary_aromas": [
+    "brioche",
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "red fruit",
+    "cream",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135218,7 +136028,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 18,
+   "knowledge": "known",
+   "primary_type": "rose",
+   "grape_variety": "grenache, cinsault, syrah",
+   "country": "France",
+   "region": "Provence",
+   "sub_region": null,
+   "appellation": "Cotes de Provence",
+   "appellation_class": "Cotes de Provence AOC",
+   "body": "light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "short",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "strawberry",
+    "white peach",
+    "citrus"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "delicate",
+   "flavor_profile": [
+    "red berries",
+    "citrus",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 9,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 2,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135231,7 +136083,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 19,
+   "knowledge": "inferred",
+   "primary_type": "rose",
+   "grape_variety": "grenache, cinsault, mourvedre",
+   "country": "France",
+   "region": "Provence",
+   "sub_region": null,
+   "appellation": "Cotes de Provence",
+   "appellation_class": "Cotes de Provence AOC",
+   "body": "light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "strawberry",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "delicate",
+   "flavor_profile": [
+    "red berries",
+    "citrus",
+    "saline"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135245,7 +136139,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 20,
+   "knowledge": "inferred",
+   "primary_type": "rose",
+   "grape_variety": "grenache, cinsault, mourvedre",
+   "country": "France",
+   "region": "Provence",
+   "sub_region": "Cassis",
+   "appellation": "Cassis",
+   "appellation_class": "Cassis AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "strawberry",
+    "peach",
+    "herbs"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "saline",
+    "garrigue"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135259,7 +136195,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 21,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Dundee Hills",
+   "appellation": "Dundee Hills",
+   "appellation_class": "Dundee Hills AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "lemon",
+    "pear"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "butter"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "apple",
+    "hazelnut",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135273,7 +136255,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 22,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sta. Rita Hills",
+   "appellation": "Sta. Rita Hills",
+   "appellation_class": "Sta. Rita Hills AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "lemon",
+    "white peach",
+    "pear"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135287,7 +136314,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 23,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Central Coast",
+   "appellation": "Central Coast",
+   "appellation_class": "Central Coast AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "lemon",
+    "green apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "apple",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135301,7 +136372,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 24,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sonoma Valley",
+   "appellation": "Sonoma Valley",
+   "appellation_class": "Sonoma Valley AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "lemon",
+    "apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "hazelnut",
+    "butter",
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "apple",
+    "nuts",
+    "mineral"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135315,7 +136433,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 25,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "ripe pear",
+    "lemon curd",
+    "tropical fruit"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "butter",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "citrus",
+    "vanilla",
+    "hazelnut"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135329,7 +136494,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 26,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "baked apple",
+    "tropical fruit",
+    "lemon"
+   ],
+   "secondary_aromas": [
+    "butter",
+    "vanilla",
+    "toast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "apple",
+    "caramel",
+    "spice",
+    "cream"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135343,7 +136555,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 27,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Carneros",
+   "appellation": "Los Carneros",
+   "appellation_class": "Carneros AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "lemon",
+    "white peach",
+    "pear"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "butter"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "mineral",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135357,7 +136616,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 28,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sta. Rita Hills",
+   "appellation": "Sta. Rita Hills",
+   "appellation_class": "Sta. Rita Hills AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "lemon",
+    "white peach",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toast"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "mineral"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135371,7 +136675,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 29,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "Australia",
+   "region": "Western Australia",
+   "sub_region": "Margaret River",
+   "appellation": "Margaret River",
+   "appellation_class": null,
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "nectarine",
+    "grapefruit",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "cashew"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "nuts"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 7,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135385,7 +136734,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 30,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "South Africa",
+   "region": "Walker Bay",
+   "sub_region": "Hemel-en-Aarde Ridge",
+   "appellation": "Hemel-en-Aarde Ridge",
+   "appellation_class": null,
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "lemon",
+    "green apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "apple",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135399,7 +136792,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 31,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "Italy",
+   "region": "Piedmont",
+   "sub_region": "Langhe",
+   "appellation": "Langhe",
+   "appellation_class": "Langhe DOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white peach",
+    "acacia"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "hazelnut"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "mineral",
+    "almond"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135413,7 +136853,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 32,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Maconnais",
+   "appellation": "Vire-Clesse",
+   "appellation_class": "Vire-Clesse AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "ripe apple",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "hazelnut"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135427,7 +136911,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 33,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Beaujolais",
+   "sub_region": null,
+   "appellation": "Beaujolais Blanc",
+   "appellation_class": "Beaujolais AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135441,7 +136967,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 34,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Bourgogne",
+   "appellation_class": "Bourgogne AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "green apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "apple",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135455,7 +137025,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 35,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Chablis",
+   "appellation": "Chablis",
+   "appellation_class": "Chablis AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "lemon",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "green apple",
+    "flint",
+    "saline"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135469,7 +137082,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 36,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Bourgogne",
+   "appellation_class": "Bourgogne AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "green apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "apple",
+    "hazelnut"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135482,7 +137139,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 37,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Meursault",
+   "appellation_class": "Meursault AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "ripe pear",
+    "citrus",
+    "white peach"
+   ],
+   "secondary_aromas": [
+    "hazelnut",
+    "butter",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "hazelnut",
+    "butter",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135495,7 +137199,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 38,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Puligny-Montrachet",
+   "appellation_class": "Puligny-Montrachet AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white flowers",
+    "green apple"
+   ],
+   "secondary_aromas": [
+    "hazelnut",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "almond",
+    "mineral",
+    "flint"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135509,7 +137259,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 39,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Nuits",
+   "appellation": "Bourgogne",
+   "appellation_class": "Bourgogne AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white flowers",
+    "apple"
+   ],
+   "secondary_aromas": [
+    "hazelnut"
+   ],
+   "tertiary_aromas": [
+    "honey"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "mineral",
+    "almond"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135522,7 +137318,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 40,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chardonnay",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Chassagne-Montrachet",
+   "appellation_class": "Chassagne-Montrachet 1er Cru",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white peach",
+    "acacia"
+   ],
+   "secondary_aromas": [
+    "hazelnut",
+    "toasted oak",
+    "butter"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "hazelnut",
+    "mineral",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135536,7 +137379,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 41,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "grapefruit",
+    "lemongrass",
+    "white peach"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "melon",
+    "herbs"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135550,7 +137435,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 42,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "United States",
+   "region": "Washington",
+   "sub_region": null,
+   "appellation": "Washington",
+   "appellation_class": null,
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "grapefruit",
+    "green apple",
+    "herbs"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "green herbs",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135564,7 +137491,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 43,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc, semillon",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Entre-Deux-Mers",
+   "appellation": "Bordeaux Blanc",
+   "appellation_class": "Bordeaux AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "short",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white flowers",
+    "green apple"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "green apple",
+    "herbs"
+   ],
+   "quality_level": "entry",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 2,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135578,7 +137547,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 44,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "France",
+   "region": "Loire Valley",
+   "sub_region": "Pouilly-Fume",
+   "appellation": "Pouilly-Fume",
+   "appellation_class": "Pouilly-Fume AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "grapefruit",
+    "gooseberry",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "flint",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135591,7 +137602,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 45,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "France",
+   "region": "Loire Valley",
+   "sub_region": "Sancerre",
+   "appellation": "Sancerre",
+   "appellation_class": "Sancerre AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "grapefruit",
+    "gooseberry",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "flint",
+    "mineral",
+    "herbs"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135605,7 +137659,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 46,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "New Zealand",
+   "region": "Marlborough",
+   "sub_region": null,
+   "appellation": "Marlborough",
+   "appellation_class": null,
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "passionfruit",
+    "gooseberry",
+    "lime"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "tropical fruit",
+    "citrus",
+    "cut grass"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 9,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135619,7 +137715,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 47,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "New Zealand",
+   "region": "Marlborough",
+   "sub_region": "Wairau Valley",
+   "appellation": "Marlborough",
+   "appellation_class": null,
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "passionfruit",
+    "grapefruit",
+    "lemongrass"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "tropical fruit",
+    "citrus",
+    "herbs",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135633,7 +137772,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 48,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "Greece",
+   "region": "Macedonia",
+   "sub_region": "Florina",
+   "appellation": "Florina",
+   "appellation_class": "PGI Florina",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white peach",
+    "herbs"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135647,7 +137828,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 49,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "sauvignon blanc",
+   "country": "Italy",
+   "region": "Trentino-Alto Adige",
+   "sub_region": "Alto Adige",
+   "appellation": "Alto Adige",
+   "appellation_class": "Alto Adige DOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "white peach",
+    "elderflower",
+    "citrus"
+   ],
+   "secondary_aromas": [
+    "flint"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "citrus",
+    "mineral",
+    "sage"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135661,7 +137887,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 50,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "pinot gris",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Willamette Valley",
+   "appellation": "Willamette Valley",
+   "appellation_class": "Willamette Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "pear",
+    "white peach",
+    "citrus"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "pear",
+    "citrus",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135675,7 +137943,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 51,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "pinot gris",
+   "country": "France",
+   "region": "Alsace",
+   "sub_region": null,
+   "appellation": "Alsace",
+   "appellation_class": "Alsace AOC",
+   "body": "full",
+   "sweetness": "off-dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "quince",
+    "ripe pear",
+    "apricot"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "honey",
+    "smoke"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "honey",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": "neutral oak foudre"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135689,7 +138003,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 52,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "riesling",
+   "country": "Germany",
+   "region": "Nahe",
+   "sub_region": null,
+   "appellation": "Nahe",
+   "appellation_class": "Qualitatswein",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "long",
+   "alcohol_pct": 12,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "lime",
+    "green apple",
+    "white peach"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "petrol"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "slate",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135702,7 +138061,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 53,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "riesling",
+   "country": "Germany",
+   "region": "Mosel",
+   "sub_region": "Erden",
+   "appellation": "Erdener Treppchen",
+   "appellation_class": "Auslese",
+   "body": "medium",
+   "sweetness": "sweet",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 8,
+   "alcohol_level": "low",
+   "primary_aromas": [
+    "apricot",
+    "peach",
+    "honeysuckle"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "honey",
+    "petrol",
+    "dried apricot"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "honey",
+    "slate",
+    "citrus"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 9,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135716,7 +138122,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 54,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "gruner veltliner",
+   "country": "Austria",
+   "region": "Weinviertel",
+   "sub_region": null,
+   "appellation": "Weinviertel",
+   "appellation_class": "Weinviertel DAC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "citrus",
+    "white pepper"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "green apple",
+    "white pepper",
+    "lentil"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 4,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135729,7 +138178,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 55,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "riesling",
+   "country": "Austria",
+   "region": "Wachau",
+   "sub_region": null,
+   "appellation": "Wachau",
+   "appellation_class": "Federspiel",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "white peach",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "stone fruit",
+    "citrus",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135743,7 +138234,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 56,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "gruner veltliner",
+   "country": "Austria",
+   "region": "Kamptal",
+   "sub_region": null,
+   "appellation": "Kamptal",
+   "appellation_class": "Kamptal DAC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "citrus",
+    "white pepper"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "green apple",
+    "white pepper",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135757,7 +138291,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 57,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "gruner veltliner",
+   "country": "Austria",
+   "region": "Wachau",
+   "sub_region": null,
+   "appellation": "Wachau",
+   "appellation_class": "Smaragd",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "ripe stone fruit",
+    "citrus",
+    "white pepper"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "honey"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "stone fruit",
+    "white pepper",
+    "mineral",
+    "tobacco"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135771,7 +138350,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 58,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "gruner veltliner",
+   "country": "Austria",
+   "region": "Wachau",
+   "sub_region": null,
+   "appellation": "Wachau",
+   "appellation_class": "Federspiel",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "green apple",
+    "citrus",
+    "white pepper"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "green apple",
+    "white pepper",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135785,7 +138407,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 59,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "vermentino, marsanne, roussanne",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Applegate Valley",
+   "appellation": "Applegate Valley",
+   "appellation_class": "Applegate Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white flowers",
+    "stone fruit"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "herbs",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135799,7 +138463,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 60,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "albarino",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Monterey County",
+   "appellation": "Monterey",
+   "appellation_class": "Monterey AVA",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "citrus",
+    "white peach",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "citrus",
+    "stone fruit",
+    "saline"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 10,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 3,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135813,7 +138519,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 61,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chenin blanc",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Clarksburg",
+   "appellation": "Clarksburg",
+   "appellation_class": "Clarksburg AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "quince",
+    "apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "honeydew"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135827,7 +138575,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 62,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chenin blanc",
+   "country": "France",
+   "region": "Loire Valley",
+   "sub_region": "Anjou",
+   "appellation": "Savennieres",
+   "appellation_class": "Savennieres AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "quince",
+    "yellow apple",
+    "chamomile"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "honey",
+    "beeswax"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "quince",
+    "honey",
+    "mineral",
+    "wet stone"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135841,7 +138635,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 63,
+   "knowledge": "known",
+   "primary_type": "white",
+   "grape_variety": "chenin blanc",
+   "country": "France",
+   "region": "Loire Valley",
+   "sub_region": "Anjou",
+   "appellation": "Savennieres",
+   "appellation_class": "Savennieres AOC",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "quince",
+    "ripe pear",
+    "acacia"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "honey",
+    "beeswax",
+    "smoke"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "quince",
+    "honey",
+    "flint",
+    "mineral"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 12,
+   "glass_type": "Universal",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "stainless steel"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -135855,7 +138696,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 64,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "albana",
+   "country": "Italy",
+   "region": "Emilia-Romagna",
+   "sub_region": "Romagna",
+   "appellation": "Romagna Albana",
+   "appellation_class": "Romagna Albana DOCG",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "low",
+   "texture": "structured",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "yellow apple",
+    "apricot",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "stone fruit",
+    "citrus",
+    "almond"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
