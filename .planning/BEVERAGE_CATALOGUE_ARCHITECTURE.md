@@ -1214,6 +1214,26 @@ co-occurrence counts today but cannot yet answer "how does this dish pair"
 without deciding what counts as the same dish. That is a product-scope question,
 not a schema fix, and no table design resolves it. Tracked as register A15.
 
+**Resolved 2026-08-20 — deferred, with the design written first.** The product
+owner's call is to keep raw strings for now. The full design, the traps, and the
+revisit triggers live in `.planning/DISH_IDENTITY_DESIGN.md`. Two findings from
+writing it are worth carrying here, because they change what "deferred" means:
+
+1. **There is no negative-label source for dishes.** What makes the beverage key
+   trustworthy is not its construction but that it was falsified against 732,874
+   known-distinct pairs, harvested free from same-menu entries. No food menu
+   exists in this schema, so that test cannot be run at all. A dish-matching
+   policy adopted today would be *unfalsifiable*, which is strictly worse than
+   having none.
+2. **The volume is 47 checks, one restaurant, one day, 37 distinct strings.**
+   Any policy fitted to that is fitted to noise — and would pass human review
+   precisely because n=37 is eyeballable.
+
+The trap to name explicitly, since it is the way this will try to enter the
+codebase: "just normalize the strings and strip the sizes" *is* a merge policy.
+It would merge `Ribeye 12oz` with `Ribeye 16oz` — the same error class as
+`Pappy 12` vs `Pappy 15`, which fuzzy matching at 0.85 committed 212 times.
+
 No code changed as a result of this section, beyond one clarifying comment at
 `pos-hub.service.ts:328` so the next reader doesn't make the same misreading.
 
