@@ -496,7 +496,7 @@ group A is live today.
 | **A15** | **No stable dish identity.** `pos_checks.items[].name` is a raw POS string — "Ribeye 12oz" and "Ribeye" are different entities to any grouping query. Pairing wine X to dish Y needs Y to be stable, and no table-shape decision fixes this | `menu_items` is wine-only; no dish/recipe entity anywhere | **DECIDED 2026-08-20 by the product owner: DEFER — keep raw strings.** Design written up in full first, so the deferral carries a plan rather than a gap: `.planning/DISH_IDENTITY_DESIGN.md`. Measurement that settled it: 47 `pos_checks` rows, 1 restaurant, a single day (2026-08-11), 37 distinct item strings — and no food menu anywhere, so the free-negative-label source that made the beverage key falsifiable (§3, 732,874 pairs) **does not exist for dishes**. Any policy fitted now would be unfalsifiable. Revisit triggers are in that doc §7 | arch §10.2 |
 | **A12** | **Sensory data has two homes.** Typed `acidity`/`tannins`/`texture`/`finish`/`primary_aromas` populated on **0** rows; values live in JSONB | `wine_structure` 3,350, `sensory_profile` 3,626 | Pick one — backfill the columns and derive the JSON, or drop the columns and add expression indexes. Choosing matters more than which | arch §10.3 |
 | ~~A13~~ | ~~`embedding` indexed but empty~~ — **done 2026-08-17.** 3,497 wines + 608 beverages, 100% coverage, via `sentence-transformers/all-MiniLM-L6-v2` (already a configured dependency — `EMBEDDING_MODEL`/`EMBEDDING_DIMENSION` in `.env`, and a stub in `wine_matcher.py` that had never been wired up). Local inference, no API cost, ~15 min for all rows. Verified with a real nearest-neighbour query, not just a non-null count: querying a Champagne row's embedding surfaces the same "Blanc de Noirs" style first, then a genuine Champagne-house cluster | 3,497/3,497, 608/608 | `scripts/populate_embeddings.py` | arch §10.4 |
-| **A14** | **No person identity anywhere.** A schema-wide search for `guest`/`customer`/`diner`/`loyalty`/`party` returns nothing | — | Not a bug to fix — a scope limit to state. Individual likeability is unreachable; the ladder tops out at **server** (`pos_checks.server_name`), which is already captured | arch §10.5 |
+| ~~**A14**~~ | ~~**No person identity anywhere.**~~ A schema-wide search for `guest`/`customer`/`diner`/`loyalty`/`party` returned nothing, and this was written up as a scope limit — the ladder tops out at **server** (`pos_checks.server_name`) | — | **REOPENED AND BUILT, 2026-08-20.** The product owner chose to build real guest identity rather than accept the limit. An opus premortem ran first (§11 below); the minimal slice is `20260819000000_guest_identity_minimal_slice.sql` — `guests` / `guest_identifiers` / `guest_check_links`, per-restaurant scope, hashed verified channels only, erasure by hard delete + tombstone, and a zero-false-merge CI gate that ships **before** the data. Five questions were escalated rather than guessed: see §11.4 | arch §10.5 |
 
 ### B. Already fixed — keep the guard, do not re-litigate
 
@@ -602,3 +602,141 @@ standing regression scripts (`eval_merge_policies.py`,
 `check_beverage_identity_parity.py`, `check_beverage_kind_regression.py`,
 `check_display_name_parity.py`, `check_no_direct_type_attributes_access.sh`,
 `check_no_direct_stock_writes.sh`) pass after every fix in this section.
+
+---
+
+## 11. Guest identity: premortem and decision record (2026-08-20)
+
+Register A14 was written as a scope *limit* — "no person identity anywhere; the
+ladder tops out at server". The product owner reversed it and chose to build
+real guest identity. Because that is an architecture decision outside every
+plan in this directory, an opus premortem ran before any DDL was written, with
+read-only database access and no authority to create anything.
+
+### 11.1 What the premortem changed about the build
+
+It did not argue against the decision. It argued that **the team was about to
+apply §3's conclusions and skip §3's method** — and it was right, so the slice
+below is shaped entirely around porting the method rather than the answers.
+
+| §3 property (bottles) | Guest equivalent as built |
+| --- | --- |
+| identity is an exact key, never a score | exact hashed verified channel; `uq_guest_identifiers_channel` makes it structural |
+| incompleteness fails safe (split, not merge) | `guest_channel_canonicalise()` returns NULL on anything unrecognised — a phone without a country code is **refused**, not guessed, because inferring the country is inventing identity rather than normalising spelling |
+| the equivalence relation is closed, tiny, versioned | `guest_canonicaliser_version()`, stamped on every row; bumping it is a migration that re-derives every hash |
+| free negative labels from a fact about the world | **two guests linked to the same check are different people** — `guest_copresence_negatives`, the direct analogue of "two entries on one menu are different products" |
+| generation and decision stay separate | fuzzy matching may generate candidates; only an exact verified key or a human may decide |
+
+Four findings changed the design outright:
+
+1. **A name is not the analogue of a bottle name.** `master_wine_library.name`
+   *is* part of a match key. A person's name is a collision class — which John
+   Smith is not in the string at all, so no tokenisation recovers it. `display_label`
+   is display-only, guarded by `check_no_guest_name_matching.sh`.
+2. **A card fingerprint is the most dangerous key precisely because it looks
+   best.** It is machine-produced, high-quality, and identifies a *household or
+   company*. A joint card merges a marriage into one guest. Quarantined as
+   `identity_status='shared_instrument'` regardless of verification.
+3. **"Global" in this schema is implemented as "no restaurant predicate in the
+   RLS policy."** `master_wine_library` is `USING (true) TO anon`; `beverages`
+   is `USING (deleted_at IS NULL)`. Copying either shape to a guest table
+   publishes the guest list, and the policy text looks identical at review time.
+   Guests are scoped to one restaurant, and the per-restaurant pepper makes that
+   arithmetic rather than a predicate someone can copy wrongly.
+4. **Soft delete cannot implement erasure here, for a mechanical reason.** The
+   API connects as `service_role`, which holds `rolbypassrls`, so every
+   `deleted_at IS NULL` predicate lives in a policy the application never
+   evaluates — a soft-deleted guest would still be returned everywhere. Erasure
+   is hard delete of identifiers plus a tombstone that holds nothing.
+
+### 11.2 The asymmetry is not §3.9's, and that matters
+
+Arch §3.9 prices a false bottle merge at ~100:1 against a false split and
+concludes the rational threshold is above 0.99, hence unachievable, hence no
+threshold. The guest number is not merely larger — it is a different quantity.
+A false bottle merge is a data-quality error with a bounded monetary cost. A
+false guest merge is a **disclosure**: one person's history, spend, allergies
+and companions become readable as another's. No un-merge reverses a disclosure.
+So there is no threshold at all, not even a very high one.
+
+### 11.3 What shipped, and what was deliberately not built
+
+Test applied: arch §9.4's — build only what cannot be backfilled.
+
+**Built** (`20260819000000_guest_identity_minimal_slice.sql`): `guests`,
+`guest_identifiers`, `guest_check_links` (many-to-many, because a check has
+`covers` people and one-guest-per-check is the falsehood that *hides* the
+joint-card merge); consent as a versioned record rather than a boolean;
+`guest_copresence_negatives`; canonicalisation and hashing as database
+functions with one home; RLS on the post-audit cocktails template **plus** a
+`valid_until` check no existing policy has; `eval_guest_merge_policies.py` and
+two guard scripts wired into `schema-parity.yml`.
+
+**Not built, deliberately:** any merge/dedup engine or review queue, any fuzzy
+or probabilistic resolution, cross-restaurant or organisation-level sharing,
+preference aggregates, any model, a `guest_consent` event table (one purpose
+today), a retention scheduler, anything hanging off `contacts`, and any storage
+of plaintext contact channels.
+
+**Why so little.** The interaction corpus is 47 `pos_checks` rows, one
+restaurant, a single 43-minute window on 2026-08-11, 82 line items, all
+simulator-produced. `server_name`, `covers`, `table_id` and `total` are 0/47.
+The modal guest under a *perfect* capture system would have one visit.
+Distinguishing a guest's 60% Barolo rate from a 30% house rate needs ~20–25
+observations from that one guest. This is infrastructure two to three orders of
+magnitude ahead of the data — and arch §4.3 exists to refuse exactly that trade.
+What justifies building anything at all is that **the link cannot be
+backfilled**: ring checks for a year with no guest reference and that year is
+permanently unavailable, the same asymmetry that scheduled N2/N3/N4.
+
+One correction found while verifying the gate: the premortem's proposed primary
+check ("two guests share a merge-eligible identifier") is **unrepresentable** —
+`uq_guest_identifiers_channel` is unique on `(restaurant_id, channel_type,
+channel_hash)`, so one channel belongs to at most one guest and a second
+claimant silently gets nothing, which is a false split. The gate was repointed
+at the operation that *is* representable, `superseded_by`, and falsified against
+both a direct and a transitive merge before being wired into CI. The transitive
+case is caught only by the chain check, which is why that check exists.
+
+### 11.4 Still needs a human — five questions, not guessed
+
+1. **Does the product need to display or dial a guest's phone or email?** Built
+   hash-only, which is strictly better and cheaper if the answer is no. If yes,
+   this needs encryption plus crypto-shred (`pgcrypto` and `supabase_vault` are
+   both installed) — with the honest caveat that this buys post-deletion
+   unreadability, **not** access control, since the app runs as `service_role`.
+   This one answer changes the identifier design and nothing else.
+2. **Is a chain or organisation one controller for consent?** 7 organizations
+   cover 10 of 11 restaurants; one has 3. Legal question. Architectural answer
+   regardless: not in v1, because adding a sharing path later is additive and
+   withdrawing one after guests are shared is not.
+3. **Retention floor for an inactive guest, and the k-anonymity floor for
+   restaurant-level aggregates?** Both are numbers a human sets.
+4. **Which jurisdictions?** `restaurants` carries `country`/`city`/
+   `state_province`, and there is a Turkey distributor seed in the tree. KVKK,
+   GDPR and a US state regime are not the same obligation. Changes nothing in
+   the DDL and everything in the policy above it.
+5. **Who may read a guest profile?** The shipped policy grants to anyone with
+   active `user_restaurant_access`. `user_restaurant_access.role` exists
+   (default `'manager'`) and is used by no policy in this schema. Narrowing to
+   sommelier/manager is a policy edit and is nearly free to get right now.
+
+### 11.5 One live defect fixed in passing
+
+`settings.service.ts` hardcoded `enable_guest_crm: true`, and `Settings.tsx:126`
+renders it as "Guest CRM — Track guest preferences and wine history".
+`restaurant_feature_flags` has no such column, so the flag was on for every
+restaurant, persisted nowhere, backed by nothing. Now defaults `false`, matching
+`enable_ai_autonomous_send` twelve lines above it — capture must begin by a
+restaurant's deliberate act, because consent is per guest and versioned and
+someone has to decide what the notice says.
+
+### 11.6 Deferred aggregate trap, recorded before it can be sprung
+
+When preference aggregates are eventually built: **restaurant-level aggregates
+must never be recomputed in response to an erasure.** If both the pre- and
+post-erasure versions of a statistic are retained — and `analytics_cache` retains
+by `cache_key` with an `expires_at`, so it does — the difference between them is
+the erased guest's preference vector, exactly. The erasure creates the
+disclosure. Guest-keyed aggregates are hard-deleted with the guest; restaurant-
+level aggregates are k-anonymous and roll forward on their normal schedule.
