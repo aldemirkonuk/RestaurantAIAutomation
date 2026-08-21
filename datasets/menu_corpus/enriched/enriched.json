@@ -138752,7 +138752,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 65,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "viura",
+   "country": "Spain",
+   "region": "Rioja",
+   "sub_region": null,
+   "appellation": "Rioja",
+   "appellation_class": "Rioja DOCa",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "creamy",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "yellow apple",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "almond",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138766,7 +138811,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 66,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "loureiro, trajadura, arinto",
+   "country": "Portugal",
+   "region": "Minho",
+   "sub_region": "Amarante",
+   "appellation": "Vinho Verde",
+   "appellation_class": "Vinho Verde DOC",
+   "body": "light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "short",
+   "alcohol_pct": 11,
+   "alcohol_level": "medium-low",
+   "primary_aromas": [
+    "citrus",
+    "green apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "delicate",
+   "flavor_profile": [
+    "citrus",
+    "green apple",
+    "mineral"
+   ],
+   "quality_level": "entry",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 8,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 2,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138780,7 +138867,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 67,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chenin blanc",
+   "country": "South Africa",
+   "region": "Walker Bay",
+   "sub_region": null,
+   "appellation": "Walker Bay",
+   "appellation_class": "Walker Bay WO",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "quince",
+    "yellow apple",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "honey"
+   ],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "honey",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138794,7 +138926,49 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 68,
+   "knowledge": "inferred",
+   "primary_type": "white",
+   "grape_variety": "chenin blanc",
+   "country": "Mexico",
+   "region": "Baja California",
+   "sub_region": "Guadalupe Valley",
+   "appellation": "Valle de Guadalupe",
+   "appellation_class": null,
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "none",
+   "texture": "crisp",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "yellow apple",
+    "citrus",
+    "white flowers"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "apple",
+    "citrus",
+    "saline"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 11,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 4,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138808,7 +138982,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 69,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Willamette Valley",
+   "appellation": "Willamette Valley",
+   "appellation_class": "Willamette Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red cherry",
+    "cranberry",
+    "forest floor"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138822,7 +139040,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 70,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sonoma Coast",
+   "appellation": "Sonoma Coast",
+   "appellation_class": "Sonoma Coast AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "cola",
+    "spice"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138836,7 +139099,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 71,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Russian River Valley",
+   "appellation": "Russian River Valley",
+   "appellation_class": "Russian River Valley AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "cola",
+    "spice",
+    "cocoa"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138850,7 +139160,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 72,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Willamette Valley",
+   "appellation": "Willamette Valley",
+   "appellation_class": "Willamette Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "cranberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "forest floor",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138864,7 +139220,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 73,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sonoma Coast",
+   "appellation": "Sonoma Coast",
+   "appellation_class": "Sonoma Coast AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "forest floor",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138878,7 +139280,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 74,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Willamette Valley",
+   "appellation": "Willamette Valley",
+   "appellation_class": "Willamette Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "earth",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 7,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138892,7 +139338,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 75,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Laurelwood District",
+   "appellation": "Laurelwood District",
+   "appellation_class": "Laurelwood District AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "forest floor",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138906,7 +139397,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 76,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sta. Rita Hills",
+   "appellation": "Sta. Rita Hills",
+   "appellation_class": "Sta. Rita Hills AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "cranberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "baking spice",
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "earth",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138920,7 +139457,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 77,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Willamette Valley",
+   "appellation": "Willamette Valley",
+   "appellation_class": "Willamette Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "forest floor",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": true,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138934,7 +139516,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 78,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Dundee Hills",
+   "appellation": "Dundee Hills",
+   "appellation_class": "Dundee Hills AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "forest floor",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138948,7 +139576,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 79,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sonoma Coast",
+   "appellation": "Sonoma Coast",
+   "appellation_class": "Sonoma Coast AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "cola",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138962,7 +139636,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 80,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Santa Cruz Mountains",
+   "appellation": "Santa Cruz Mountains",
+   "appellation_class": "Santa Cruz Mountains AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "cranberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [
+    "forest floor",
+    "mushroom"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "earth",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138976,7 +139697,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 81,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "Oregon",
+   "sub_region": "Dundee Hills",
+   "appellation": "Dundee Hills",
+   "appellation_class": "Dundee Hills AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "earth",
+    "spice",
+    "cocoa"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -138990,7 +139758,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 82,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "New Zealand",
+   "region": "Central Otago",
+   "sub_region": "Alexandra",
+   "appellation": "Central Otago",
+   "appellation_class": null,
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "black cherry",
+    "plum",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "thyme",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139004,7 +139818,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 83,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Russian River Valley",
+   "appellation": "Russian River Valley",
+   "appellation_class": "Russian River Valley AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "red fruit",
+    "cola",
+    "spice",
+    "earth"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139018,7 +139878,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 84,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sonoma Coast",
+   "appellation": "Sonoma Coast",
+   "appellation_class": "Sonoma Coast AVA",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "cola",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 7,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139032,7 +139936,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 85,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Russian River Valley",
+   "appellation": "Russian River Valley",
+   "appellation_class": "Russian River Valley AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "rose"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "cola",
+    "spice",
+    "earth"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139046,7 +139997,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 86,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Russian River Valley",
+   "appellation": "Russian River Valley",
+   "appellation_class": "Russian River Valley AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "plum",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "mocha",
+    "spice",
+    "cola"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139060,7 +140058,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 87,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sta. Rita Hills",
+   "appellation": "Sta. Rita Hills",
+   "appellation_class": "Sta. Rita Hills AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "baking spice"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "cocoa",
+    "spice",
+    "earth"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139073,7 +140118,50 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 88,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "gamay",
+   "country": "France",
+   "region": "Beaujolais",
+   "sub_region": null,
+   "appellation": "Beaujolais Nouveau",
+   "appellation_class": "Beaujolais AOC",
+   "body": "light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "low",
+   "texture": "crisp",
+   "finish": "short",
+   "alcohol_pct": 12.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "strawberry",
+    "raspberry",
+    "banana"
+   ],
+   "secondary_aromas": [
+    "bubblegum"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red berries",
+    "candied fruit"
+   ],
+   "quality_level": "entry",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 13,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 1,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139087,7 +140175,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 89,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "gamay",
+   "country": "France",
+   "region": "Beaujolais",
+   "sub_region": "Morgon",
+   "appellation": "Morgon",
+   "appellation_class": "Morgon AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "forest floor"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "earth",
+    "granite",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 14,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "old oak barrels"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139100,7 +140233,51 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 90,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Hautes-Cotes de Beaune",
+   "appellation": "Bourgogne Hautes-Cotes de Beaune",
+   "appellation_class": "Bourgogne AOC",
+   "body": "medium-light",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "cranberry",
+    "violet"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "forest floor"
+   ],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "earth",
+    "mineral"
+   ],
+   "quality_level": "standard",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 15,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 6,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139113,7 +140290,55 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 91,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Nuits",
+   "appellation": "Morey-Saint-Denis",
+   "appellation_class": "Morey-Saint-Denis AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "black cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [
+    "forest floor"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark cherry",
+    "earth",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139126,7 +140351,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 92,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Nuits",
+   "appellation": "Cote de Nuits-Villages",
+   "appellation_class": "Cote de Nuits-Villages AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "forest floor",
+    "leather"
+   ],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "earth",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139139,7 +140409,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 93,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Pommard",
+   "appellation_class": "Pommard AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium-high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "black cherry",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [
+    "forest floor",
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "earth",
+    "spice",
+    "iron"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139152,7 +140471,55 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 94,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Beaune",
+   "appellation": "Volnay",
+   "appellation_class": "Volnay AOC",
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [
+    "forest floor"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "rose",
+    "spice",
+    "mineral"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139165,7 +140532,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 95,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Nuits",
+   "appellation": "Nuits-Saint-Georges",
+   "appellation_class": "Nuits-Saint-Georges AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium-high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "black cherry",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "baking spice"
+   ],
+   "tertiary_aromas": [
+    "forest floor",
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "earth",
+    "spice",
+    "iron"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139178,7 +140594,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 96,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "pinot noir",
+   "country": "France",
+   "region": "Burgundy",
+   "sub_region": "Cote de Nuits",
+   "appellation": "Clos de la Roche",
+   "appellation_class": "Grand Cru",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "black cherry",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "baking spice",
+    "vanilla"
+   ],
+   "tertiary_aromas": [
+    "forest floor",
+    "truffle",
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "truffle",
+    "earth",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Burgundy",
+   "decanting_recommended": true,
+   "aging_potential_years": 30,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139192,7 +140658,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 97,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Lodi",
+   "appellation": "Lodi",
+   "appellation_class": "Lodi AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "medium",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "blackberry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "low",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "dark fruit",
+    "vanilla",
+    "cocoa"
+   ],
+   "quality_level": "entry",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": false,
+   "aging_potential_years": 5,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139206,7 +140717,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 98,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, syrah",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackberry",
+    "black cherry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "chocolate",
+    "spice",
+    "cedar"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139220,7 +140778,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 99,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "cedar",
+    "chocolate",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139234,7 +140839,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 100,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Oakville",
+   "appellation": "Oakville",
+   "appellation_class": "Oakville AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "dark chocolate",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139248,7 +140900,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 101,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "cedar",
+    "chocolate"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139262,7 +140959,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 102,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Calistoga",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "cedar",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "graphite",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139276,7 +141020,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 103,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Rutherford",
+   "appellation": "Rutherford",
+   "appellation_class": "Rutherford AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "dust",
+    "chocolate"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139290,7 +141081,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 104,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, cabernet franc",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "chocolate",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139318,7 +141156,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 106,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Rutherford",
+   "appellation": "Rutherford",
+   "appellation_class": "Rutherford AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "chocolate",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139332,7 +141217,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 107,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Stags Leap District",
+   "appellation": "Stags Leap District",
+   "appellation_class": "Stags Leap District AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cocoa",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139346,7 +141278,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 108,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "chocolate",
+    "cedar"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139360,7 +141338,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 109,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Sonoma County",
+   "appellation": "Sonoma County",
+   "appellation_class": "Sonoma County AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "cedar"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139374,7 +141399,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 110,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Oakville",
+   "appellation": "Oakville",
+   "appellation_class": "Oakville AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "chocolate",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139388,7 +141460,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 111,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Rutherford",
+   "appellation": "Rutherford",
+   "appellation_class": "Rutherford AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "cedar"
+   ],
+   "tertiary_aromas": [
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "dust",
+    "chocolate"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": true,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139402,7 +141523,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 112,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Alexander Valley",
+   "appellation": "Alexander Valley",
+   "appellation_class": "Alexander Valley AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla"
+   ],
+   "tertiary_aromas": [
+    "tobacco",
+    "leather",
+    "forest floor"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "tobacco",
+    "earth"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": true,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139416,7 +141587,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 113,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "chocolate",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139430,7 +141648,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 114,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "Washington",
+   "sub_region": "Columbia Valley",
+   "appellation": "Columbia Valley",
+   "appellation_class": "Columbia Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "cedar",
+    "herbs"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139444,7 +141707,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 115,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "St. Helena",
+   "appellation": "St. Helena",
+   "appellation_class": "St. Helena AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "chocolate",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 18,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139458,7 +141768,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 116,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, cabernet franc, petit verdot, merlot",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Pritchard Hill",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139472,7 +141829,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 117,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "chocolate",
+    "cedar"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 18,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139486,7 +141889,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 118,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, petit verdot, merlot",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "chocolate",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139500,7 +141950,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 119,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Oakville",
+   "appellation": "Oakville",
+   "appellation_class": "Oakville AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139514,7 +142011,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 120,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Oakville",
+   "appellation": "Oakville",
+   "appellation_class": "Oakville AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 15,
+   "alcohol_level": "high",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "chocolate",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139528,7 +142072,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 121,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, cabernet franc, petit verdot",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Napa Valley",
+   "appellation": "Napa Valley",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "chocolate",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139542,7 +142135,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 122,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Oakville",
+   "appellation": "Oakville",
+   "appellation_class": "Oakville AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "dust",
+    "cedar"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 30,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139556,7 +142195,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 123,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Margaux",
+   "appellation_class": "Margaux AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "red cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "cedar",
+    "graphite"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139570,7 +142254,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 124,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Pauillac",
+   "appellation_class": "Cinquieme Cru Classe",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "graphite",
+    "tobacco"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139584,7 +142317,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 125,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Graves",
+   "appellation": "Pessac-Leognan",
+   "appellation_class": "Cru Classe de Graves",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "smoke"
+   ],
+   "tertiary_aromas": [
+    "tobacco",
+    "earth"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "gravel",
+    "cedar",
+    "smoke"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 18,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139598,7 +142381,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 126,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Margaux",
+   "appellation_class": "Troisieme Cru Classe",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "violet",
+    "cedar",
+    "graphite"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139612,7 +142442,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 127,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Saint-Estephe",
+   "appellation_class": "Saint-Estephe AOC",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "cedar",
+    "graphite",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 18,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139626,7 +142503,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 128,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, cabernet franc",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Margaux",
+   "appellation_class": "Deuxieme Cru Classe",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "violet",
+    "cedar",
+    "graphite"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139640,7 +142566,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 129,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "merlot, cabernet franc",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Libournais",
+   "appellation": "Pomerol",
+   "appellation_class": "Pomerol AOC",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "plum",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [
+    "truffle"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "truffle",
+    "chocolate",
+    "iron"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 18,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139654,7 +142629,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 130,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, petit verdot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Saint-Julien",
+   "appellation_class": "Quatrieme Cru Classe",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "tobacco",
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "cedar",
+    "tobacco",
+    "graphite"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139668,7 +142693,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 131,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Margaux",
+   "appellation_class": "Troisieme Cru Classe",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "red cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "violet",
+    "cedar",
+    "spice"
+   ],
+   "quality_level": "luxury",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139682,7 +142754,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 132,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, petit verdot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Margaux",
+   "appellation_class": "Troisieme Cru Classe",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla"
+   ],
+   "tertiary_aromas": [
+    "truffle",
+    "tobacco",
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "truffle",
+    "cedar",
+    "tobacco"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 20,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139696,7 +142818,58 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 133,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, petit verdot, cabernet franc",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Medoc",
+   "appellation": "Margaux",
+   "appellation_class": "Premier Cru Classe",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "tobacco",
+    "truffle",
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "violet",
+    "cedar",
+    "truffle"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 30,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139710,7 +142883,57 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 134,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet franc, merlot",
+   "country": "France",
+   "region": "Bordeaux",
+   "sub_region": "Libournais",
+   "appellation": "Saint-Emilion",
+   "appellation_class": "Premier Grand Cru Classe A",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "blackcurrant",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "truffle",
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "truffle",
+    "limestone",
+    "spice"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "cult",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 35,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139724,7 +142947,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 135,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "syrah",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "San Luis Obispo Coast",
+   "appellation": "SLO Coast",
+   "appellation_class": "SLO Coast AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "blackberry",
+    "black pepper",
+    "violet"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "olive"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "dark fruit",
+    "black pepper",
+    "olive",
+    "mineral"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139738,7 +143006,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 136,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, syrah",
+   "country": "Mexico",
+   "region": "Baja California",
+   "sub_region": "Valle de Guadalupe",
+   "appellation": "Valle de Guadalupe",
+   "appellation_class": null,
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "medium",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackberry",
+    "plum",
+    "black cherry"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "spice",
+    "herbs"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "emerging",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139752,7 +143065,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 137,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "shiraz, cinsault, grenache",
+   "country": "South Africa",
+   "region": "Swartland",
+   "sub_region": null,
+   "appellation": "Swartland",
+   "appellation_class": "Swartland WO",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "long",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "blackberry",
+    "dried herbs"
+   ],
+   "secondary_aromas": [],
+   "tertiary_aromas": [
+    "earth"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "fynbos",
+    "white pepper",
+    "earth"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": "old oak barrels"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139766,7 +143124,54 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 138,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "zinfandel, petite sirah, syrah",
+   "country": "United States",
+   "region": "California",
+   "sub_region": null,
+   "appellation": "California",
+   "appellation_class": null,
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 15,
+   "alcohol_level": "high",
+   "primary_aromas": [
+    "blackberry",
+    "black cherry",
+    "plum"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "jammy dark fruit",
+    "chocolate",
+    "spice",
+    "vanilla"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Universal",
+   "decanting_recommended": true,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139780,7 +143185,55 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 139,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "sangiovese, cabernet sauvignon, syrah",
+   "country": "United States",
+   "region": "Washington",
+   "sub_region": "Columbia Valley",
+   "appellation": "Columbia Valley",
+   "appellation_class": "Columbia Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "red cherry",
+    "blackberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "leather"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "red fruit",
+    "tobacco",
+    "spice",
+    "cedar"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 12,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139794,7 +143247,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 140,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "merlot, malbec, cabernet sauvignon",
+   "country": "South Africa",
+   "region": "Western Cape",
+   "sub_region": "Stellenbosch",
+   "appellation": "Stellenbosch",
+   "appellation_class": "Stellenbosch WO",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium-high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "plum",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak",
+    "mocha"
+   ],
+   "tertiary_aromas": [
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "dark fruit",
+    "chocolate",
+    "spice",
+    "cedar"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139807,7 +143309,56 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 141,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet sauvignon, merlot, petit verdot, cabernet franc",
+   "country": "United States",
+   "region": "California",
+   "sub_region": "Oakville",
+   "appellation": "Oakville",
+   "appellation_class": "Napa Valley AVA",
+   "body": "full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "high",
+   "texture": "velvety",
+   "finish": "long",
+   "alcohol_pct": 14.5,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "blackcurrant",
+    "black cherry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar",
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [
+    "tobacco"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "cassis",
+    "graphite",
+    "cedar",
+    "chocolate"
+   ],
+   "quality_level": "icon",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": true,
+   "aging_potential_years": 25,
+   "farming": null,
+   "aging_vessel": "French oak"
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139821,7 +143372,52 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 142,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "merlot",
+   "country": "United States",
+   "region": "Washington",
+   "sub_region": "Walla Walla Valley",
+   "appellation": "Walla Walla Valley",
+   "appellation_class": "Walla Walla Valley AVA",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "velvety",
+   "finish": "medium",
+   "alcohol_pct": 14,
+   "alcohol_level": "medium-high",
+   "primary_aromas": [
+    "black cherry",
+    "plum",
+    "blackberry"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "toasted oak"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "dark fruit",
+    "chocolate",
+    "herbs"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": false,
+   "serving_temp_celsius": 17,
+   "glass_type": "Bordeaux",
+   "decanting_recommended": false,
+   "aging_potential_years": 10,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139835,7 +143431,55 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 143,
+   "knowledge": "known",
+   "primary_type": "red",
+   "grape_variety": "cabernet franc",
+   "country": "France",
+   "region": "Loire Valley",
+   "sub_region": "Chinon",
+   "appellation": "Chinon",
+   "appellation_class": "Chinon AOC",
+   "body": "medium-full",
+   "sweetness": "dry",
+   "acidity": "high",
+   "tannins": "medium-high",
+   "texture": "structured",
+   "finish": "long",
+   "alcohol_pct": 13,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "raspberry",
+    "blackcurrant",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "cedar"
+   ],
+   "tertiary_aromas": [
+    "tobacco",
+    "earth"
+   ],
+   "aroma_complexity": "high",
+   "flavor_intensity": "pronounced",
+   "flavor_profile": [
+    "red fruit",
+    "graphite",
+    "bell pepper",
+    "earth"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "renowned",
+   "reserve_status": false,
+   "serving_temp_celsius": 16,
+   "glass_type": "Universal",
+   "decanting_recommended": true,
+   "aging_potential_years": 15,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
@@ -139849,7 +143493,53 @@
     "Roka_Chicago_Beverage_Menu_29August2025.pdf"
    ]
   },
-  "enrichment": null
+  "enrichment": {
+   "i": 144,
+   "knowledge": "inferred",
+   "primary_type": "red",
+   "grape_variety": "cabernet franc",
+   "country": "United States",
+   "region": "Virginia",
+   "sub_region": "Monticello",
+   "appellation": "Virginia",
+   "appellation_class": null,
+   "body": "medium",
+   "sweetness": "dry",
+   "acidity": "medium-high",
+   "tannins": "medium",
+   "texture": "silky",
+   "finish": "medium",
+   "alcohol_pct": 13.5,
+   "alcohol_level": "medium",
+   "primary_aromas": [
+    "red cherry",
+    "raspberry",
+    "violet"
+   ],
+   "secondary_aromas": [
+    "vanilla",
+    "cedar"
+   ],
+   "tertiary_aromas": [],
+   "aroma_complexity": "medium",
+   "flavor_intensity": "moderate",
+   "flavor_profile": [
+    "red fruit",
+    "bell pepper",
+    "herbs",
+    "spice"
+   ],
+   "quality_level": "premium",
+   "producer_tier": "established",
+   "reserve_status": true,
+   "serving_temp_celsius": 16,
+   "glass_type": "Universal",
+   "decanting_recommended": false,
+   "aging_potential_years": 8,
+   "farming": null,
+   "aging_vessel": null
+  },
+  "enrichment_source": "in_session"
  },
  {
   "extracted": {
