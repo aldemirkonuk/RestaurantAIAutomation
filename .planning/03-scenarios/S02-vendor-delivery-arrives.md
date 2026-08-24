@@ -4,7 +4,7 @@ id: S02
 slug: vendor-delivery-arrives
 class: happy-path
 actors: [vendor-driver, receiver, manager, inventory-system, invoice-pipeline]
-modules: ["[[inbound-understanding]]", "[[inventory-ledger]]", "[[procurement-vendor-network]]"]
+modules: ["[[inbound-understanding-charter|inbound-understanding]]", "[[inventory-ledger-charter|inventory-ledger]]", "[[procurement-vendor-network-charter|procurement-vendor-network]]"]
 signals: [delivery-photo, invoice-document, receiving-count, email, nf_a]
 insights_class: [vendor-reliability, cogs-drift, price-variance, stockout-avoidance]
 tier: undecided
@@ -58,7 +58,7 @@ shorted items, par-level adjustment after repeated shorts.
 ## 8. Failure modes
 - Invoice parsed wrong → stock wrong → every downstream insight wrong (silent, compounding)
 - Receiver skips counting under pressure → garbage signals honestly recorded
-- Vendor substitutes a product → identity mismatch → duplicate catalogue entry (feeds [[catalogue-identity]])
+- Vendor substitutes a product → identity mismatch → duplicate catalogue entry (feeds [[catalogue-identity-charter|catalogue-identity]])
 - Credit chased, never reconciled → "recovered" overstates forever
 
 ## 9. Simulation & deploy gate
