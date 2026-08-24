@@ -7,6 +7,11 @@ status: provisional
 metrics: [nf_a.emission_coverage, obs.decision_log_join_rate, obs.metrics_with_liveness_twin_pct]
 updated: 2026-08-24
 links: ["[[observability-telemetry-plumbing-charter]]", "[[observability-telemetry-plumbing-directive]]", "[[reliability-sre-loops]]", "[[neural-footprint-instrumentation-charter]]", "[[harness-runtime-charter]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["obs-nf-a-emission-coverage", "obs-signal-liveness", "obs-error-capture-fidelity", "obs-triage-displacement", "obs-health-surface-truthfulness"]
+loop_close_times: ["weekly", "hourly detection / weekly review", "monthly", "weekly, escalating after 3 consecutive close-times", "monthly, plus after every incident"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Observability & Telemetry Plumbing — Loops

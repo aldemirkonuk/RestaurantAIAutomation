@@ -11,6 +11,11 @@ links:
   - "[[brand-identity-directive]]"
   - "[[media-brand-loops]]"
   - "[[editorial-gate-loops]]"
+loop_count: 5
+loop_count: 5
+loop_ids: ["legacy-name-burndown", "legacy-domain-burndown", "brand-guard-regression", "voice-guide-conformance", "reference-shortlist-verification"]
+loop_close_times: ["weekly", "weekly", "per-PR", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Brand Identity (M1) — Loops

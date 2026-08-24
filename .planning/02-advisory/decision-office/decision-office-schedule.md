@@ -35,14 +35,15 @@ running jobs today and did not exist as a document before this session.
 Vision. That cadence and that owner are both wrong now, and this office says so
 rather than quietly running a second one:
 
-- **Daily is too fast.** A 23-row register whose items unblock on *scheduled
+- **Daily is too fast.** A 35-row register whose items unblock on *scheduled
   sessions* and *founder calls* cannot change daily. A daily digest would be
   identical five days running and would hit §6's own rule — *a scheduled job that
   produces no action for 3 consecutive runs gets downgraded or deleted* — inside
   the first week. It would be correct to delete it, which is a bad way to lose the
   only decision-facing job in the corpus.
-- **Weekly matches the decision rate.** All 12 resolved rows carry one date. The
-  observed close rate is a burst, not a daily stream.
+- **Weekly matches the decision rate.** Every resolved row carries the same date.
+  The observed close rate is a burst, not a daily stream — 2 closes against 14 new
+  rows in the session this document was written.
 - **The owner is now this function.** §6 predates [[0007-org-structure]], which
   created the Decision Office and gave it the register. **Reassigning the row is
   not this office's call** — it is a contradiction between two foundation

@@ -7,6 +7,11 @@ status: provisional
 metrics: [nf_b.events_per_active_guest_month, nf_b.points_confirm_rate, nf_b.verified_visit_rate, nf_b.abuse_hold_rate, nf_b.review_quality_pass_rate]
 updated: 2026-08-24
 links: ["[[consumer-app-points-economy-charter]]", "[[consumer-app-points-economy-directive]]", "[[consumer-app-points-economy-premortem]]", "[[guest-experience-loops]]", "[[taste-fingerprint-loops]]", "[[guest-identity-consent-loops]]", "[[security-charter]]", "[[design-charter]]", "[[LOOP-MAP]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["nf-b-signal-volume", "points-abuse-posture", "ledger-integrity", "consumer-surface-retention"]
+loop_close_times: ["weekly", "weekly", "per-commit", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Consumer App & Points Economy — Loops

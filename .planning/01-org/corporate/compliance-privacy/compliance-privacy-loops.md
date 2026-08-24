@@ -6,6 +6,11 @@ status: partial
 metrics: [privacy.erasure_completeness, privacy.pii_definition_count, privacy.consent_call_sites, privacy.consent_gate_denials, compliance.obligation_coverage, compliance.subprocessor_classification, compliance.notice_accuracy, nf_b.research_store_erasability]
 updated: 2026-08-24
 links: ["[[compliance-privacy-charter]]", "[[compliance-privacy-schedule]]", "[[compliance-privacy-directive]]", "[[privacy-engineering-loops]]", "[[regulatory-posture-loops]]", "[[regulated-operations-loops]]", "[[customer-relationship-research-charter]]", "[[taste-fingerprint-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[legal-charter]]", "[[security-charter]]", "[[decision-office-charter]]", "[[ORG_STRUCTURE]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["erasure-completeness", "pii-definition-convergence", "consent-propagation", "obligation-register-currency", "purpose-widening-review", "guest-identity-ci-guards"]
+loop_close_times: ["per-request, reviewed monthly", "per-merge", "real-time on the gate, weekly on the audit", "monthly, plus per-PR for changes touching a registered control", "per-proposal, audited quarterly", "per-push and per-PR, plus daily cron"]
+loop_statuses: ["blocked", "proposed", "blocked", "proposed", "proposed", "running"]
 ---
 
 # Compliance & Privacy — Loops

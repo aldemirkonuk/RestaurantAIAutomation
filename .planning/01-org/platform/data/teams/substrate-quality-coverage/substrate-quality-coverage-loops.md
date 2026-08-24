@@ -7,6 +7,11 @@ status: provisional
 metrics: [substrate.quarantine_rate, substrate.confidence_threshold_value, substrate.rows_without_source_guarantee, substrate.governance_tier_distribution, substrate.repair_class_closure_rate]
 updated: 2026-08-24
 links: ["[[substrate-quality-coverage-charter]]", "[[substrate-quality-coverage-premortem]]", "[[substrate-quality-coverage-directive]]", "[[substrate-quality-coverage-schedule]]", "[[data-loops]]", "[[corpora-enrichment-loops]]", "[[annotation-ground-truth-loops]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[LOOP-MAP]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["provenance-integrity-audit", "quarantine-rate-tracking", "threshold-change-review", "repair-class-closure", "substrate-progress-report", "gate-efficacy-review"]
+loop_close_times: ["weekly", "daily", "monthly", "weekly", "daily", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Substrate Quality & Coverage — Loops

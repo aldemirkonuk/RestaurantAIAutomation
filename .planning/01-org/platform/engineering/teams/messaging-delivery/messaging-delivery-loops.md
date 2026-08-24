@@ -7,6 +7,11 @@ status: provisional
 metrics: [messaging.duplicate_delivery_rate, messaging.drop_rate, messaging.restart_reconciliation_gap]
 updated: 2026-08-24
 links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-directive]]", "[[engineering-loops]]", "[[sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["md-exactly-once-ledger", "md-restart-survival", "md-delivery-state-honesty", "md-threading-correctness", "md-send-surface-exposure"]
+loop_close_times: ["daily", "per-event", "weekly", "weekly", "daily"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Messaging & Delivery — Loops

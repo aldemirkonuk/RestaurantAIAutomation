@@ -7,6 +7,11 @@ status: provisional
 metrics: [roster.truth_pct, roster.unregistered_module_count, roster.silent_default_spec_count, roster.declared_stub_count, roster.maturity_level_evidenced_pct, roster.headcount_claim_variance, roster.retirement_count]
 updated: 2026-08-24
 links: ["[[roster-lifecycle-charter]]", "[[roster-lifecycle-premortem]]", "[[roster-lifecycle-directive]]", "[[people-agent-ops-loops]]", "[[performance-doneability-loops]]", "[[LOOP-MAP]]", "[[ai-orchestration-charter]]", "[[agent-fleet-charter]]", "[[harness-runtime-charter]]", "[[reliability-sre-charter]]", "[[decision-office-charter]]", "[[positioning-fundraise-readiness-charter]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["rl-three-way-census", "rl-onboarding-gate", "rl-silent-default-audit", "rl-headcount-reconciliation", "rl-fleet-lifecycle-review"]
+loop_close_times: ["daily", "per PR", "weekly", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Roster & Lifecycle — Loops

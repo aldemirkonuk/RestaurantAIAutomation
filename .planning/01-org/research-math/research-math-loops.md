@@ -6,6 +6,11 @@ status: provisional
 metrics: [nf_a.event_completeness, nf_a.cost_per_completed_task, nf_a.harness_overhead_ms, nf_a.verified_task_success_rate]
 updated: 2026-08-24
 links: ["[[research-math-charter]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[aio-evaluation-gates]]", "[[aio-model-routing]]", "[[decision-office-charter]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["nf-a-emission-completeness", "cost-per-completed-task", "doneability-verdict-coverage", "harness-overhead-bakeoff", "nf-schema-contract", "applied-ai-seam-audit"]
+loop_close_times: ["weekly", "monthly", "weekly", "6 weeks to a decision, then quarterly re-run", "fortnightly until OD-11 closes", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Research & Math — Loops

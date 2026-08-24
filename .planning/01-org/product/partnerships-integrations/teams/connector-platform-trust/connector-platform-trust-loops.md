@@ -14,6 +14,11 @@ links:
   - "[[access-control-tenant-isolation-charter]]"
   - "[[engineering-charter]]"
   - "[[LOOP-MAP]]"
+loop_count: 5
+loop_count: 5
+loop_ids: ["cpt-ingress-classification", "cpt-credential-lifecycle", "cpt-consent-truth", "cpt-external-surface", "cpt-boundary-nonduplication"]
+loop_close_times: ["per-PR", "monthly", "per-scope-change", "quarterly", "bi-weekly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Connector Platform & Trust — Loops

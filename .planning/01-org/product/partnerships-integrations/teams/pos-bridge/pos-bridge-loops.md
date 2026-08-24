@@ -14,6 +14,11 @@ links:
   - "[[analytics-engine-charter]]"
   - "[[architecture-review-charter]]"
   - "[[LOOP-MAP]]"
+loop_count: 5
+loop_count: 5
+loop_ids: ["pos-registry-truth", "pos-canonical-neutrality", "pos-catalog-match-gate", "pos-hub-route-posture", "pos-real-throughput"]
+loop_close_times: ["monthly", "per-change", "weekly", "per-PR", "weekly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # POS Bridge — Loops

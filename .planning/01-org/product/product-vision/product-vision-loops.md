@@ -6,6 +6,11 @@ status: provisional
 metrics: [surface.unowned_surface_count, askai.refusal_correctness, inbound.false_accept_count, floor.misroute_rate, supply.sku_dual_price_coverage_pct]
 updated: 2026-08-24
 links: ["[[product-vision-charter]]", "[[product-vision-directive]]", "[[product-vision-premortem]]", "[[product-vision-schedule]]", "[[surface-portfolio-loops]]", "[[inbound-understanding-loops]]", "[[ask-ai-loops]]", "[[service-floor-loops]]", "[[supply-discovery-loops]]", "[[decision-office-charter]]"]
+loop_count: 7
+loop_count: 7
+loop_ids: ["route-portfolio-verdict", "inbound-proposal-quality", "ask-ai-refusal", "floor-input-availability", "supply-coverage-freshness", "product-vision-decision-closure", "provisional-agenda-decay"]
+loop_close_times: ["monthly", "weekly", "weekly", "monthly", "monthly", "daily", "monthly"]
+loop_statuses: ["proposed", "proposed", "blocked", "blocked", "blocked", "proposed", "proposed"]
 ---
 
 # Product & Vision — Loops

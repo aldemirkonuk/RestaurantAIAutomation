@@ -7,6 +7,11 @@ status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
 links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-directive]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[reliability-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["loop-harness-health", "loop-dlq-triage", "loop-harness-coverage-census", "loop-od03-bakeoff"]
+loop_close_times: ["daily", "daily", "monthly", "one-shot — a dated bake-off"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Harness & Runtime — Loops

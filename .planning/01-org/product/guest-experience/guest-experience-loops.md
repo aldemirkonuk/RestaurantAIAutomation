@@ -7,6 +7,11 @@ status: provisional
 metrics: [nf_b.subject_coverage, nf_b.false_merge_count, nf_b.event_completeness, nf_b.divergence_within_cohort, nf_b.events_per_active_guest_month, nf_b.points_confirm_rate, nf_b.ops_conversion, nf_b.k_anonymity_pass_rate]
 updated: 2026-08-24
 links: ["[[guest-experience-charter]]", "[[guest-experience-directive]]", "[[guest-experience-premortem]]", "[[guest-identity-consent-loops]]", "[[taste-fingerprint-loops]]", "[[consumer-app-points-economy-loops]]", "[[guest-value-monetization-loops]]", "[[compliance-privacy-charter]]", "[[analytics-bi-charter]]", "[[data-charter]]", "[[product-vision-charter]]", "[[LOOP-MAP]]"]
+loop_count: 7
+loop_count: 7
+loop_ids: ["nf-b-subject-coverage", "nf-b-false-merge-gate", "nf-b-event-completeness", "nf-b-cohort-divergence", "nf-b-signal-volume", "nf-b-ops-conversion", "nf-b-k-anonymity-gate"]
+loop_close_times: ["weekly", "per-commit", "weekly", "monthly", "weekly", "quarterly", "per-render"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Guest Experience — Loops

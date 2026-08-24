@@ -7,6 +7,11 @@ status: provisional
 metrics: [identity.false_merge_count, identity.false_split_count, identity.producer_collapse_ratio]
 updated: 2026-08-24
 links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-directive]]", "[[engineering-loops]]", "[[dat-annotation-ground-truth]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["ci-merge-policy-scoring", "ci-labelled-set-coverage", "ci-producer-collapse-watch", "ci-unmerge-attribution-audit", "ci-guest-identity-boundary"]
+loop_close_times: ["per-PR", "weekly", "weekly", "per-event", "weekly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Catalogue & Identity — Loops

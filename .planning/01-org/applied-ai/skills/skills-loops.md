@@ -6,6 +6,11 @@ status: partial
 metrics: [skills.registry_size, skills.firing_rate_30d, skills.deletions_per_quarter, skills.protocol_compliance_rate, skills.script_to_skill_ratio]
 updated: 2026-08-24
 links: ["[[skills-charter]]", "[[skills-schedule]]", "[[skills-directive]]", "[[skill-registry-authoring-loops]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[skill-harvesting-loops]]", "[[ai-orchestration-charter]]", "[[research-and-math-charter]]", "[[ORG_STRUCTURE]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["skill-firing-telemetry", "skill-staleness-review", "skill-protocol-compliance", "skill-registry-census", "skill-harvest-candidates"]
+loop_close_times: ["weekly", "monthly", "per-merge", "monthly", "quarterly"]
+loop_statuses: ["blocked", "blocked", "proposed", "proposed", "dormant"]
 ---
 
 # Skills — Loops

@@ -7,6 +7,11 @@ status: partial
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
 links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-loops]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["loop-unconfirmed-mutation", "loop-gate-integrity", "loop-attention-budget", "loop-action-schema-coverage", "loop-allowlist-drift", "loop-audit-reconstructability"]
+loop_close_times: ["daily", "monthly", "monthly", "per-commit (CI gate), reviewed monthly", "quarterly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Action Safety & the Human Gate — Loops

@@ -6,6 +6,11 @@ status: new
 metrics: [decisions.open_count, decisions.intake_rate, decisions.close_rate_per_week, decisions.median_age_days, decisions.oldest_age_days, decisions.unowned_count, decisions.decided_here_count, decisions.namespace_collisions, decisions.unfiled_fork_count, loops.undefined_close_time_count, loops.status_vocabulary_drift, triggers.dated_unwatched_count, triggers.fired_but_unactioned_count, corpus.contradiction_count, corpus.stale_citation_count]
 updated: 2026-08-24
 links: ["[[decision-office-charter]]", "[[decision-office-premortem]]", "[[decision-office-directive]]", "[[decision-office-schedule]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[0002-documentation-first-operating-mode]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[analytics-bi-charter]]", "[[privacy-engineering-charter]]", "[[supplier-distributor-network-charter]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["decision-register-health", "dated-trigger-watch", "fork-namespace-integrity", "loop-close-time-audit", "contradiction-register", "decision-office-authority-audit"]
+loop_close_times: ["weekly", "weekly", "per-intake", "monthly", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Decision Office — Loops
@@ -57,11 +62,18 @@ nothing moved. A number that appears only when it changes cannot embarrass anyon
 3. `close_rate_per_week` and `median_age_days`.
 4. `unowned_count` — **target 0**.
 
-**Baseline, 2026-08-24:** `open_count` **23**; `unowned_count` **23**;
-`median_age_days` **undefined** (no row carries a filed date); `close_rate` **0/wk**
-(all 12 resolved rows share one date, which is a burst, not a rate).
+**Baseline, 2026-08-24:** `open_count` **35**; `unowned_count` **35**;
+`median_age_days` **undefined** (no row carries a filed date); `close_rate`
+**unmeasured** (the resolved rows share one date, which is a burst, not a rate).
 
-**First action of the first cycle** — retroactive owner and filed-date on all 23
+⚠️ **The baseline moved while it was being written.** `open_count` read **23** when
+this file was drafted and **35** an hour later: 14 rows (OD-32…OD-45) filed by
+parallel sessions, 2 closed (OD-08 folded into OD-21). **A 7:1 fill-to-drain ratio in
+one session.** That is not a forecast of ADR 0002's revisit condition — it is a
+measurement of it, taken on the day this loop was proposed, and it is the reason the
+close-time above is weekly rather than monthly.
+
+**First action of the first cycle** — retroactive owner and filed-date on all 35
 rows. Neither field changes what any row *means*, so both are bookkeeping under
 [[decision-office-directive]] §Decision rights.
 
@@ -83,15 +95,26 @@ measures: [triggers.dated_unwatched_count, triggers.fired_but_unactioned_count, 
 changes: [decisions.escalation_queue, decisions.digest_ordering]
 inputs_from: [skills, sales, legal, partnerships-integrations, all-units]
 outputs_to: [founder, red-team, the-owning-unit]
-close_time: weekly scan; per-trigger the loop closes only on a terminal state (actioned · deferred-with-a-new-date · withdrawn)
+close_time: weekly
 status: proposed
 ```
 
-**Two close-times, deliberately.** The *scan* is weekly. The *trigger* closes when
-the escalated item reaches a terminal state — never when the escalation is sent.
-Escalation is not an outcome; that conflation is
-[[decision-office-premortem]] M5, and it is the failure mode most compatible with
-findings-only authority.
+**One parseable close-time, and a second one the schema cannot hold.** The *scan* is
+`weekly` — that is the field's value and it stays a single word. But an individual
+trigger does not close when the scan runs; it closes when the escalated item reaches
+a **terminal state**: actioned, deferred *with a new date*, or withdrawn. Escalation
+is not an outcome; that conflation is [[decision-office-premortem]] M5, and it is
+the failure mode most compatible with findings-only authority.
+
+⚠️ **This is itself a finding, and this loop is the reason to state it plainly.**
+The [[ORG_STRUCTURE]] §5 schema has **one** `close_time` field and many real loops
+have two — a *scan cadence* and a *per-item close condition*. That gap is why the
+corpus uses **94 distinct `close_time` values across 396 blocks, 67 of them
+multi-word free text** (L4) — each one an author trying to fit two ideas into one
+field, and each unparseable as a result. This office keeps the field parseable and
+puts the second close-time in prose rather than adding to the drift it audits.
+**Whether the schema gains a second field is not this office's to decide** — it is filed for [[architecture-review-charter]] alongside the
+frontmatter question in L4.
 
 **The watch list, as of 2026-08-24:**
 
@@ -131,9 +154,12 @@ measures: [decisions.namespace_collisions, decisions.unfiled_fork_count]
 changes: [decisions.id_allocation, decisions.alias_table]
 inputs_from: [all-units]
 outputs_to: [founder, all-units]
-close_time: per-intake for allocation; monthly sweep for unfiled forks
+close_time: per-intake
 status: proposed
 ```
+
+*(Second close-time, per L2's note: a **monthly sweep** for unfiled forks. Kept in
+prose so the field stays parseable.)*
 
 **Per-intake, because a collision is only cheap before it is cited.** OD-24 cost
 nothing on the day it was minted twice; it is now cited by **25 documents** across
@@ -184,7 +210,7 @@ and hit [[foundation-README]] §6's own three-runs-no-action downgrade rule.
 | `status: blocked` | 25 | |
 | **`status: exists` / `running`** | **4 / 2** | Six loops in the entire org are running |
 | `close_time: weekly` / `monthly` | 129 / 111 | |
-| Free-text close-times | ~60 distinct phrasings | e.g. *"weekly, escalating after 3 consecutive close-times"* — informative, unparseable |
+| **Distinct `close_time` values** | **94**, of which **67 are multi-word free text** | e.g. *"weekly, escalating after 3 consecutive close-times"* — informative, unparseable. 396 blocks, 94 vocabularies |
 | **Explicitly undefined** | **≥1** | `privacy-engineering-loops.md:188` — `close_time: UNDEFINED — must be set by the decision that creates this loop`, with `owner: UNASSIGNED — escalated` and `outputs_to: [decision-office]` |
 | **Status-field drift** | **1** | `content-production-loops.md:58` — `status: monthly`, a cadence written into the status field |
 

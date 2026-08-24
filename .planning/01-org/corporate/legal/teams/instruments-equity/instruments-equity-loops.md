@@ -7,6 +7,11 @@ status: provisional
 metrics: [legal.instrument_chain_integrity, legal.counsel_gate_compliance, legal.consent_record_completeness, legal.cap_table_tie_out_divergence]
 updated: 2026-08-24
 links: ["[[instruments-equity-charter]]", "[[instruments-equity-premortem]]", "[[instruments-equity-directive]]", "[[instruments-equity-schedule]]", "[[legal-loops]]", "[[positioning-fundraise-readiness-loops]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["ie-chain-completion", "ie-cap-table-tie-out", "ie-consent-ordering", "ie-verbal-commitment-reconciliation", "ie-activation-check"]
+loop_close_times: ["per_instrument", "quarterly", "per_board_action", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Instruments & Equity — Loops

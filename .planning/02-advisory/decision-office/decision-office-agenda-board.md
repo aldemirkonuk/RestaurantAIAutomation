@@ -73,17 +73,18 @@ fixed here — moving 396 blocks is corpus-wide.
 
 ## Register — as of 2026-08-24
 
-- **`open_count` — 23.** OD-01, 03–08, 11, 14, 18–31
-- **`unowned_count` — 23 of 23.** No open row names an owner
+- **`open_count` — 35.** OD-01, 03–07, 11, 14, 18–20, 22–45
+- ⚠️ **It was 23 when this charter was drafted.** 14 rows (OD-32…OD-45) filed and 2 closed (OD-08 folded into OD-21) **during this single session** — a 7:1 fill-to-drain ratio
+- **`unowned_count` — 35 of 35.** The table still has 4 columns: ID · Question · Why it matters · What unblocks it. **No owner column, no filed-date column**
 - **`median_age_days` — undefined.** No open row carries a filed date
-- **`close_rate_per_week` — unmeasured.** All 12 resolved rows share one date: a burst, not a rate
+- **`close_rate_per_week` — unmeasured.** All 18 resolved rows share one date: a burst, not a rate
 - **`decided_here_count` — 0.** Target **0**, permanently ([[decision-office-premortem]] M3)
 - **`intake_returned_count` — 0.** Target **0**, not "low" (M1)
 - ⚠️ **Register mutated mid-session** — OD-28…OD-31 appended by parallel agents; **OD-23 rewritten in place** while **51 documents cite it**
 
 ## Inbox this function was handed before it existed
 
-- **222 of 581** unit documents reference `decision-office`
+- **222 of 581** unit documents in `01-org/` reference `decision-office`
 - **329** `[[decision-office-charter]]` wikilinks — all unresolved until this session
 - **168** loop blocks route `outputs_to: [decision-office]`
 - **OD-30**, filed by a parallel session: *"Decision Office's first assignment; mechanical to fix"*
@@ -144,7 +145,7 @@ Good culture, missing registrar.
 
 ## Next 3 — need nobody's permission
 
-- [ ] **1.** Owner + filed-date + severity on all 23 rows → `unowned_count` 23 → 0
+- [ ] **1.** Owner + filed-date + severity on all 35 rows → `unowned_count` 35 → 0
 - [ ] **2.** Digest #1: oldest item first; `open_count` and `intake_rate` on one line
 - [ ] **3.** Dated-trigger calendar live → `dated_unwatched_count` 6 → 0
 

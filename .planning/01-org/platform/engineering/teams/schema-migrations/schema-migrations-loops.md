@@ -7,6 +7,11 @@ status: provisional
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak, schema.function_body_mismatches]
 updated: 2026-08-24
 links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-directive]]", "[[engineering-loops]]", "[[sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["sm-parity-streak", "sm-emergency-ddl-reconciliation", "sm-function-body-parity", "sm-generated-type-fidelity", "sm-irreversible-operation-review"]
+loop_close_times: ["per-PR and daily", "per-event, resolved within 24h", "daily", "per-PR", "per-PR"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Schema & Migrations — Loops

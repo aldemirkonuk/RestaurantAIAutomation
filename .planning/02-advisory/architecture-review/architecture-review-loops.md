@@ -6,6 +6,11 @@ status: new
 metrics: [arch.layer_violations_open, arch.finding_age_days_max, arch.findings_closed_by_decision_ratio, arch.duplicated_invariants, arch.diverged_invariant_count, arch.direct_provider_callsites, arch.layer_bypass_callsites, arch.handmade_ddl_objects]
 updated: 2026-08-24
 links: ["[[architecture-review-charter]]", "[[architecture-review-directive]]", "[[architecture-review-premortem]]", "[[architecture-review-schedule]]", "[[architecture-review-agenda-board]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[security-charter]]", "[[engineering-charter]]", "[[schema-migrations-charter]]", "[[client-surfaces-charter]]", "[[platform-api-charter]]", "[[messaging-delivery-charter]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[model-routing-inference-economics-charter]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]", "[[README]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["loop-layer-sweep", "loop-finding-age", "loop-invariant-census", "loop-callsite-convergence", "loop-layer-stack-review"]
+loop_close_times: ["fortnightly — sweep on the 1st and the 15th; a signal seen in a sweep becomes a written finding inside that same sweep or is dropped", "fortnightly to re-report; 42 days (three sweeps) to force a binary", "fortnightly for the census itself (one invariant per sweep); per-commit for any invariant that earns a CI check", "monthly", "quarterly — on the calendar whether or not anything has gone wrong"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Architecture Review — Loops

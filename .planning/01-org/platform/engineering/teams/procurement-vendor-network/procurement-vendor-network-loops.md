@@ -7,6 +7,11 @@ status: provisional
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.no_touch_reconciliation_rate, procurement.unguarded_money_moving_routes]
 updated: 2026-08-24
 links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-directive]]", "[[engineering-loops]]", "[[action-safety-the-human-gate]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["pv-order-delivery-reconciliation", "pv-money-path-exposure", "pv-price-contract-integrity", "pv-spend-authority-boundary", "pv-vendor-portal-surface"]
+loop_close_times: ["weekly", "daily", "weekly", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Procurement & Vendor Network — Loops

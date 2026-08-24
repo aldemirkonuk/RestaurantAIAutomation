@@ -7,6 +7,11 @@ status: provisional
 metrics: [standards.stale_claim_rate, standards.unpinned_claim_count, standards.docs_past_60_day_rule, standards.stale_brand_doc_count, standards.regenerated_companion_age_days]
 updated: 2026-08-24
 links: ["[[standards-verification-charter]]", "[[standards-verification-premortem]]", "[[standards-verification-directive]]", "[[standards-verification-schedule]]", "[[knowledge-documentation-loops]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
+loop_count: 3
+loop_count: 3
+loop_ids: ["sv-claim-verification", "sv-sixty-day-sweep", "sv-generated-doc-integrity"]
+loop_close_times: ["weekly", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed"]
 ---
 
 # Standards & Verification — Loops

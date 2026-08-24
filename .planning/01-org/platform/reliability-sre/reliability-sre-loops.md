@@ -6,6 +6,11 @@ status: provisional
 metrics: [nf_a.emission_coverage, sre.time_to_revert, sre.dlq_depth_and_oldest_age, sre.mttd_silent_corruption, sre.days_since_verified_restore]
 updated: 2026-08-24
 links: ["[[reliability-sre-charter]]", "[[reliability-sre-directive]]", "[[reliability-sre-schedule]]", "[[observability-telemetry-plumbing-loops]]", "[[release-engineering-loops]]", "[[runtime-resilience-loops]]", "[[state-integrity-invariants-loops]]", "[[decision-office-charter]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["sre-red-signal-audit", "sre-signal-liveness", "sre-recovery-path-proving", "sre-unowned-queue-sweep", "sre-rejected-team-trigger-watch"]
+loop_close_times: ["weekly", "weekly", "quarterly", "weekly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Reliability / SRE — Loops

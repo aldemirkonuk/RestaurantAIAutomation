@@ -7,6 +7,11 @@ status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
 updated: 2026-08-24
 links: ["[[positioning-fundraise-readiness-charter]]", "[[positioning-fundraise-readiness-premortem]]", "[[positioning-fundraise-readiness-directive]]", "[[positioning-fundraise-readiness-schedule]]", "[[strategy-fundraising-loops]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["pfr-register-entry", "pfr-verb-strength", "pfr-citation-drift", "pfr-wedge-reduction", "pfr-readiness-balance"]
+loop_close_times: ["per_claim", "per_claim", "monthly", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Positioning & Fundraise Readiness — Loops

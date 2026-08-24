@@ -7,6 +7,11 @@ status: provisional
 metrics: [analytics.metric_claim_divergence_count, analytics.kpi_ground_truth_agreement, analytics.registry_binding_share, analytics.silent_zero_paths, analytics.claims_without_provenance]
 updated: 2026-08-24
 links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-premortem]]", "[[metric-contract-truth-assurance-directive]]", "[[metric-contract-truth-assurance-schedule]]", "[[analytics-bi-loops]]", "[[analytics-engine-loops]]", "[[insight-narrative-generation-loops]]", "[[engineering-charter]]", "[[decision-office-charter]]", "[[media-and-brand-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["truth-claim-divergence-census", "truth-ground-truth-agreement", "truth-registry-binding", "truth-silent-zero-elimination", "truth-published-claim-provenance"]
+loop_close_times: ["weekly, plus before every external publication", "monthly", "monthly", "weekly sweep; structural fix tracked monthly", "per publication (gate), audited monthly"]
+loop_statuses: ["proposed", "blocked", "proposed", "proposed", "proposed"]
 ---
 
 # Metric Contract & Truth Assurance — Loops

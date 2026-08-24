@@ -104,8 +104,18 @@ days is either finished or fiction.
 
 ## 5. Loop graph conventions — Obsidian + Graphify
 
-Loops are documented now and executable later (OD-12 resolved). To make that true
-rather than aspirational, every `loops.md` entry carries machine-readable frontmatter:
+Loops are documented now and executable later (OD-12 resolved).
+
+> **Correction 2026-08-24.** This section previously showed the loop block as a *fenced*
+> ```yaml``` snippet and called it "machine-readable frontmatter". It is not — fenced YAML in
+> a document body is invisible to Dataview. All 99 generators followed the contract
+> faithfully, so **all 482 loops were unqueryable**, and `[[LOOP-MAP]]` (56 inbound links)
+> could not exist. Fixed by `scripts/build_loop_index.py`, which lifts each block into real
+> frontmatter (`loop_count`, `loop_ids`, `loop_close_times`, `loop_statuses`) and generates
+> `00-index/LOOP-MAP.md` + `00-index/loops.json`. The narrative block stays in the body for
+> humans; the frontmatter arrays are what machines read. Rerun the script after editing loops.
+
+Each loop is written in the body as:
 
 ```yaml
 ---

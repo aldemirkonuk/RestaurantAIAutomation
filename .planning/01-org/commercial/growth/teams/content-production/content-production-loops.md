@@ -7,6 +7,11 @@ status: provisional
 metrics: [content.published_units_per_week, content.first_pass_clear_rate, content.faq_orphan_pages, content.draft_queue_weeks, nf_a.cost_per_task]
 updated: 2026-08-24
 links: ["[[content-production-charter]]", "[[content-production-premortem]]", "[[content-production-directive]]", "[[content-production-schedule]]", "[[growth-loops]]", "[[editorial-gate-loops]]", "[[search-demand-research-loops]]", "[[technical-seo-ai-answer-surface-loops]]", "[[inference-cost-charter]]", "[[LOOP-MAP]]"]
+loop_count: 3
+loop_count: 3
+loop_ids: ["g2-draft-to-verdict", "g2-link-graph-integrity", "g2-originality-citation-feedback"]
+loop_close_times: ["weekly", "per publication, and monthly as a sweep", "monthly"]
+loop_statuses: ["proposed", "monthly", "proposed"]
 ---
 
 # Content Production — Loops

@@ -7,6 +7,11 @@ status: partial
 metrics: [skills.protocol_compliance_rate, skills.description_disambiguation_rate, skills.script_to_skill_ratio]
 updated: 2026-08-24
 links: ["[[skill-registry-authoring-charter]]", "[[skill-registry-authoring-directive]]", "[[skill-registry-authoring-schedule]]", "[[skills-loops]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[ORG_STRUCTURE]]"]
+loop_count: 3
+loop_count: 3
+loop_ids: ["skill-protocol-gate", "skill-description-collision", "skill-authoring-bypass-pressure"]
+loop_close_times: ["per-merge", "weekly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed"]
 ---
 
 # Skill Registry & Authoring — Loops

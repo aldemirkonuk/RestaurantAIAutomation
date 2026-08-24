@@ -12,6 +12,11 @@ links:
   - "[[narrative-collateral-loops]]"
   - "[[social-community-loops]]"
   - "[[customer-relationship-research-loops]]"
+loop_count: 4
+loop_count: 4
+loop_ids: ["legacy-brand-surface-burndown", "headline-claim-consistency", "consent-register-reconciliation", "outward-surface-inventory"]
+loop_close_times: ["weekly", "monthly", "weekly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Media & Brand — Loops

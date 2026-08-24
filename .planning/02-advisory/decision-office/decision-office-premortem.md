@@ -82,9 +82,10 @@ became one more document in a 693-document corpus that
 **Earliest observable signal.** This one does not need waiting for — it is
 **already true today** and that is the finding, not a forecast:
 
-- `decisions.unowned_count` = **23 of 23**.
+- `decisions.unowned_count` = **35 of 35**.
 - `decisions.median_age_days` = **undefined**, because no row carries a filed date.
-- The 12 resolved rows are all dated 2026-08-24 — a single burst, not a rate.
+- The 18 resolved rows are all dated 2026-08-24 — a single burst, not a rate.
+- **Measured this session: 14 rows filed, 2 closed.** A 7:1 fill-to-drain ratio.
 - ADR 0002 named the tripwire (*"grows faster than it drains for a sustained
   period"*) and it has **never been computed**.
 
@@ -105,7 +106,7 @@ because none of them decides anything:
    when it moves cannot embarrass anyone.
 3. **Digest ranks by age × severity, and names the single oldest item first**,
    every week, until it closes. Repetition is the mechanism. A register that
-   re-states its oldest item weekly is harder to ignore than one that lists 23
+   re-states its oldest item weekly is harder to ignore than one that lists 35
    items in filing order.
 
 ---
@@ -253,7 +254,7 @@ to the person who is not responding is not reporting.
 | # | Mechanism | Earliest signal | Counter-pressure | Live today? |
 |---|---|---|---|---|
 | M1 | Tollbooth | `intake_rate` falls while corpus grows; any intake returned for reformatting | Intake never rejected; `intake_returned_count` target **0**; report intake beside queue length | No — risk begins at first triage |
-| M2 | Passive list | `unowned_count` = 23/23; `median_age_days` undefined; two consecutive zero-close triages | Owner + filed date on every row; age reported weekly regardless of movement; digest leads with oldest | **Yes — already true** |
+| M2 | Passive list | `unowned_count` = 35/35; `median_age_days` undefined; two consecutive zero-close triages | Owner + filed date on every row; age reported weekly regardless of movement; digest leads with oldest | **Yes — already true** |
 | M3 | Authority creep | `decided_here_count` > 0; the word *"should"* in a finding; accepting a team (OD-C6) | May mint unused IDs, may never reassign a cited one; OD-C6 declined in writing; quarterly Red Team audit | **Yes — OD-C6 and OD-30 are live pressure** |
 | M4 | Reconciliation theatre | A month with metadata shipped and zero rows closed; OD-03/OD-11 past 90 days | Reconciliation is a one-off, time-boxed to two close-times; digest leads with oldest, never with mechanics | Latent — begins with assignment #1 |
 | M5 | Escalating ≠ closing | `fired_but_unactioned_count` > 0 for two close-times | Escalation carries its own close-time; terminal state required; third re-raise goes to Red Team too | Latent — first test 2026-11-24 |

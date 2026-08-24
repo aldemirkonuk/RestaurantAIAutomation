@@ -7,6 +7,11 @@ status: provisional
 metrics: [funnel.visit_to_activated_rate, funnel.measurable_steps, funnel.step_dropoff, funnel.fabricated_social_proof_count, conversion.checklist_items_green, conversion.privacy_coupling_violations]
 updated: 2026-08-24
 links: ["[[conversion-funnel-charter]]", "[[conversion-funnel-premortem]]", "[[conversion-funnel-directive]]", "[[conversion-funnel-schedule]]", "[[growth-loops]]", "[[technical-seo-ai-answer-surface-loops]]", "[[editorial-gate-loops]]", "[[design-partner-operations-charter]]", "[[compliance-privacy-charter]]", "[[LOOP-MAP]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["g5-visit-to-activation", "g5-privacy-coupling", "g5-social-proof-provenance", "g5-checklist-outcome"]
+loop_close_times: ["monthly", "per commit (CI), reviewed weekly", "quarterly", "monthly"]
+loop_statuses: ["proposed", "weekly", "proposed", "proposed"]
 ---
 
 # Conversion & Funnel — Loops

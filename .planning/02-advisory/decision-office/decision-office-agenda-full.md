@@ -38,7 +38,7 @@ one sentence is most of the operating model, and each clause answers a specific
 failure:
 
 - *Weekly*, not daily — [[foundation-README]] §6 proposes a daily queue digest, and
-  a 23-row register whose items unblock on scheduled sessions cannot change daily.
+  a 35-row register whose items unblock on scheduled sessions cannot change daily.
   A digest identical five days running gets deleted by §6's own three-runs rule.
 - *Oldest item first*, not most tractable — otherwise metadata work occupies the
   top line forever ([[decision-office-premortem]] M4). OD-11 (**65 documents**) and
@@ -63,7 +63,7 @@ run until someone else is unblocked has no standing to report on who is blocked.
 
 Because the inbox already exists and the function does not.
 
-- **222 of 581 generated unit documents reference this office.** **329
+- **222 of 581 unit documents in `01-org/` reference this office.** **329
   `[[decision-office-charter]]` wikilinks** resolved to nothing until this session.
   **168 loop blocks** route `outputs_to: [decision-office]`.
 - **A parallel session assigned it work before it had a charter.** Register row
@@ -87,7 +87,7 @@ Ordered by what buys the most closure per unit of effort, **not** by tractabilit
 
 | # | Step | Loop | Done when |
 |---|---|---|---|
-| 1 | **Retrofit owner + filed-date + severity onto all 23 open rows.** Bookkeeping — changes no row's meaning ([[decision-office-directive]] §Decision rights) | L1 | `unowned_count` = 0; `median_age_days` computable for the first time |
+| 1 | **Retrofit owner + filed-date + severity onto all 35 open rows.** Bookkeeping — changes no row's meaning ([[decision-office-directive]] §Decision rights) | L1 | `unowned_count` = 0; `median_age_days` computable for the first time |
 | 2 | **Ship digest #1** — oldest item first, with `open_count` and `intake_rate` on the same line | L1 | Founder has one page; a baseline exists to measure drain against |
 | 3 | **Stand up the dated-trigger calendar.** Six triggers, `days_until` reported from this week | L2 | `dated_unwatched_count` 6 → 0 |
 | 4 | **Fork-registry reconciliation, as a proposal.** Collision table + alias table + a namespace scheme. **Time-boxed to two close-times**, then abandoned rather than extended | L3 | In front of the founder as a new register row. **Not applied** — 51 documents cite OD-23; application is a decision |

@@ -7,6 +7,11 @@ status: provisional
 metrics: [nf_b.event_completeness, nf_b.divergence_within_cohort, nf_b.tourist_delta_coverage, nf_b.exposure_prior_coverage, nf_b.novel_stimulus_hit_rate]
 updated: 2026-08-24
 links: ["[[taste-fingerprint-charter]]", "[[taste-fingerprint-directive]]", "[[taste-fingerprint-premortem]]", "[[guest-experience-loops]]", "[[guest-identity-consent-loops]]", "[[research-math-charter]]", "[[data-charter]]", "[[LOOP-MAP]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["nf-b-event-completeness", "nf-b-cohort-divergence", "nf-b-novel-stimulus", "nf-b-tourist-baseline"]
+loop_close_times: ["weekly", "per-model-version", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Taste Fingerprint (NF-B) — Loops

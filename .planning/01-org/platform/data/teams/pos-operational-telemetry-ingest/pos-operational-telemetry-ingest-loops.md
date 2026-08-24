@@ -7,6 +7,11 @@ status: provisional
 metrics: [pos.line_resolution_rate, pos.worst_restaurant_resolution_rate, pos.unresolved_queue_depth, pos.provider_schema_drift_findings, sales.density]
 updated: 2026-08-24
 links: ["[[pos-operational-telemetry-ingest-charter]]", "[[pos-operational-telemetry-ingest-premortem]]", "[[pos-operational-telemetry-ingest-directive]]", "[[pos-operational-telemetry-ingest-schedule]]", "[[data-loops]]", "[[corpora-enrichment-loops]]", "[[integration-engineering-charter]]", "[[catalogue-identity-charter]]", "[[analytics-bi-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["unresolved-queue-drain", "onboarding-resolution-gate", "provider-shape-monitoring", "sales-density-reporting", "ingest-incident-triage"]
+loop_close_times: ["weekly", "per onboarding, within 7 days", "daily", "weekly", "per incident, ownership within 1 hour"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # POS & Operational Telemetry Ingest — Loops

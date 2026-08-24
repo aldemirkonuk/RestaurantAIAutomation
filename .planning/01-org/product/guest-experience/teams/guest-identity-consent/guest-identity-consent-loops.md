@@ -7,6 +7,11 @@ status: provisional
 metrics: [nf_b.subject_coverage, nf_b.false_merge_count, nf_b.refusal_count, nf_b.consented_link_rate, nf_b.unverified_identifier_share]
 updated: 2026-08-24
 links: ["[[guest-identity-consent-charter]]", "[[guest-identity-consent-directive]]", "[[guest-identity-consent-premortem]]", "[[guest-experience-loops]]", "[[taste-fingerprint-loops]]", "[[compliance-privacy-charter]]", "[[security-charter]]", "[[partnerships-integrations-charter]]", "[[LOOP-MAP]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["guest-merge-gate", "guest-pii-guard-integrity", "guest-subject-coverage", "consent-provability"]
+loop_close_times: ["per-commit", "per-commit", "weekly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Guest Identity & Consent — Loops

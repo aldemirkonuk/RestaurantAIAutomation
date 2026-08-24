@@ -7,6 +7,11 @@ status: new
 metrics: [skills.harvested_firing_rate_30d, skills.registry_size, skills.script_to_skill_ratio]
 updated: 2026-08-24
 links: ["[[skill-harvesting-charter]]", "[[skill-harvesting-directive]]", "[[skill-harvesting-schedule]]", "[[skills-loops]]", "[[skill-registry-authoring-loops]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[ORG_STRUCTURE]]"]
+loop_count: 2
+loop_count: 2
+loop_ids: ["skill-harvest-staffing-gate", "skill-harvest-candidates"]
+loop_close_times: ["monthly", "quarterly"]
+loop_statuses: ["proposed", "dormant"]
 ---
 
 # Skill Harvesting — Loops

@@ -14,6 +14,11 @@ links:
   - "[[partner-alliance-development-loops]]"
   - "[[perimeter-ingress-integrity-charter]]"
   - "[[LOOP-MAP]]"
+loop_count: 6
+loop_count: 6
+loop_ids: ["pi-merchant-pull", "pi-ingress-verification", "pi-counterparty-unblocking", "pi-open-fork-staleness", "pi-canonical-shape-neutrality", "pi-doc-drift-repair"]
+loop_close_times: ["weekly", "weekly", "monthly", "monthly", "per-change", "weekly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Partnerships & Integrations — Loops

@@ -7,6 +7,11 @@ status: provisional
 metrics: [sec.injection_corpus_size, sec.corpus_detection_rate, sec.autonomous_send_rate, sec.tenants_with_inference_budget, nf_a.unauthenticated_inference_spend, sec.model_callsites_emitting_cost]
 updated: 2026-08-24
 links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-agenda-board]]", "[[security-loops]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-loops]]", "[[compliance-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["ais-corpus-growth", "ais-bounded-spend-and-autonomy", "ais-cost-telemetry-dependency", "ais-prompt-content-audit"]
+loop_close_times: ["monthly", "monthly", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "blocked", "proposed"]
 ---
 
 # AI Surface Security — Loops

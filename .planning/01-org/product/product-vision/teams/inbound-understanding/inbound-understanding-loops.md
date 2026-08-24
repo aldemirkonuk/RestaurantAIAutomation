@@ -7,6 +7,11 @@ status: provisional
 metrics: [inbound.proposal_accept_without_edit_rate, inbound.false_accept_count]
 updated: 2026-08-24
 links: ["[[inbound-understanding-charter]]", "[[inbound-understanding-directive]]", "[[inbound-understanding-premortem]]", "[[inbound-understanding-schedule]]", "[[product-vision-loops]]", "[[connector-platform-trust-charter]]", "[[ask-ai-loops]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["inbound-proposal-quality", "inbound-rubber-stamp-detection", "inbound-corpus-drift", "inbound-contract-conformance", "inbound-input-trust", "inbound-askai-confirm-parity"]
+loop_close_times: ["weekly", "weekly", "monthly", "weekly", "weekly", "monthly"]
+loop_statuses: ["blocked", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Inbound Understanding — Loops

@@ -7,6 +7,11 @@ status: exists
 metrics: [privacy.erasure_completeness, privacy.pii_definition_count, privacy.consent_call_sites, privacy.consent_gate_denials, privacy.store_inventory_coverage, privacy.guard_allowlist_size]
 updated: 2026-08-24
 links: ["[[privacy-engineering-charter]]", "[[privacy-engineering-schedule]]", "[[privacy-engineering-directive]]", "[[compliance-privacy-loops]]", "[[regulatory-posture-loops]]", "[[customer-relationship-research-charter]]", "[[taste-fingerprint-charter]]", "[[schema-migrations-charter]]", "[[security-charter]]", "[[ORG_STRUCTURE]]"]
+loop_count: 6
+loop_count: 6
+loop_ids: ["pii-definition-convergence", "store-inventory-currency", "erasure-proof", "consent-gate", "guest-identity-ci-guards", "nfb-research-store-erasability"]
+loop_close_times: ["per-merge", "per-migration, swept daily", "per-request; drill monthly", "real-time in the request path; weekly audit sweep", "per-push and per-PR, plus daily cron", "UNDEFINED — must be set by the decision that creates this loop"]
+loop_statuses: ["proposed", "proposed", "blocked", "blocked", "running", "escalated"]
 ---
 
 # Privacy Engineering — Loops

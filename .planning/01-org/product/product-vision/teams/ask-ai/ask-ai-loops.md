@@ -7,6 +7,11 @@ status: provisional
 metrics: [askai.refusal_correctness, askai.confirm_without_edit_rate, askai.entry_point_count, askai.allowlist_family_count]
 updated: 2026-08-24
 links: ["[[ask-ai-charter]]", "[[ask-ai-directive]]", "[[ask-ai-premortem]]", "[[ask-ai-schedule]]", "[[product-vision-loops]]", "[[inbound-understanding-loops]]", "[[ai-orchestration-charter]]", "[[security-charter]]", "[[surface-portfolio-charter]]"]
+loop_count: 7
+loop_count: 7
+loop_ids: ["ask-ai-refusal-correctness", "ask-ai-confirm-quality", "ask-ai-entry-point-convergence", "ask-ai-allowlist-stability", "ask-ai-intent-observation", "ask-ai-audit-integrity", "ask-ai-settled-decision-integrity"]
+loop_close_times: ["weekly", "weekly", "weekly", "weekly", "monthly", "weekly", "quarterly"]
+loop_statuses: ["blocked", "blocked", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Ask AI — Action Composer — Loops

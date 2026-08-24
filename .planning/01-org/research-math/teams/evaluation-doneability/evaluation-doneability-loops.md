@@ -7,6 +7,11 @@ status: provisional
 metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false_merge_count]
 updated: 2026-08-24
 links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-schedule]]", "[[research-math-loops]]", "[[harness-model-routing-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[aio-evaluation-gates]]", "[[security-charter]]", "[[skills-charter]]", "[[decision-office-charter]]"]
+loop_count: 7
+loop_count: 7
+loop_ids: ["verified-vs-self-reported-gap", "golden-set-provenance", "weekly-ci-eval", "identity-false-merge-gate", "bakeoff-pass-conditions", "skill-health-antisprawl", "evaluation-seam-audit"]
+loop_close_times: ["weekly", "per-set at creation, reviewed monthly", "weekly", "per-PR (CI), reviewed weekly", "before each bake-off; audited quarterly", "weekly", "monthly, terminating in a ruling"]
+loop_statuses: ["proposed", "proposed", "proposed", "live", "proposed", "proposed", "proposed"]
 ---
 
 # Evaluation & Doneability (RM-2) — Loops

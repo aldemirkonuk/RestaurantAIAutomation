@@ -7,6 +7,11 @@ status: provisional
 metrics: [analytics.satisfiable_candidate_share, analytics.candidate_type_count, analytics.engine_service_test_ratio, analytics.false_discovery_estimate]
 updated: 2026-08-24
 links: ["[[analytics-engine-charter]]", "[[analytics-engine-premortem]]", "[[analytics-engine-directive]]", "[[analytics-engine-schedule]]", "[[analytics-bi-loops]]", "[[data-charter]]", "[[insight-narrative-generation-loops]]", "[[metric-contract-truth-assurance-loops]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["engine-candidate-reach", "engine-requirement-integrity", "engine-false-discovery-estimate", "engine-pipeline-coverage", "engine-purity-guard"]
+loop_close_times: ["weekly", "on every PR touching insight-catalog.ts, audited monthly", "monthly", "monthly", "per PR (CI), verified weekly by the headless script"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Analytics Engine — Loops

@@ -12,7 +12,7 @@ links: ["[[decision-office-premortem]]", "[[decision-office-directive]]", "[[dec
 
 > **NEW as a unit — and that is the unusual part.** Before this file, the directory
 > `.planning/02-advisory/decision-office/` was empty: 0 of 7 artifacts. Yet **222 of
-> the 581 generated unit documents already reference this function**, carrying
+> the 581 unit documents in `01-org/` already reference this function**, carrying
 > **329 `[[decision-office-charter]]` wikilinks** that resolved to nothing, and
 > **168 loop blocks route `outputs_to: [decision-office]`**. This function starts
 > with no artifacts and a full inbox. See §Evidence today before reading anything
@@ -103,11 +103,11 @@ before the pressure is real.
 
 | Metric | Definition | Value today |
 |---|---|---|
-| `decisions.open_count` | Rows in the `## Open` table of `OPEN-DECISIONS.md` | **23** (OD-01, 03–08, 11, 14, 18–31) — and see the volatility note below |
+| `decisions.open_count` | Rows in the `## Open` table of `OPEN-DECISIONS.md` | **35** — and it was **23** when this charter was drafted. See the volatility note below |
 | `decisions.median_age_days` | Median days since an open row was filed | **undefined** — no row carries a filed date |
 | `decisions.oldest_age_days` | Age of the oldest open row | **undefined**, same reason |
-| `decisions.unowned_count` | Open rows with no named owner | **23 of 23.** The `What unblocks it` column names a *mechanism*, never a person or unit for most rows |
-| `decisions.close_rate_per_week` | Rows moving Open → Resolved per week | **unmeasured**; 12 resolved rows all dated 2026-08-24 |
+| `decisions.unowned_count` | Open rows with no named owner | **35 of 35.** The table has 4 columns and none is an owner. The `What unblocks it` column names a *mechanism*, not a unit, for most rows |
+| `decisions.close_rate_per_week` | Rows moving Open → Resolved per week | **unmeasured**; all 18 resolved rows dated 2026-08-24. Session observation: **14 filed, 2 closed** |
 | `decisions.namespace_collisions` | Distinct meanings assigned to one fork ID | **3** each for OD-20, OD-21, OD-22, OD-23, OD-24; **2** for OD-19 |
 | `decisions.unfiled_fork_count` | Forks staged in a document but never entered in the register | **≥19** (OD-C1…C8, CM-F1…F6, F-1…F-5) |
 | `loops.undefined_close_time_count` | Loop blocks whose `close_time` is not a cadence | **≥1** explicit `UNDEFINED`, plus vocabulary drift across 396 blocks |
@@ -127,7 +127,7 @@ Graded **EXISTS** = running with an artifact · **PARTIAL** = stub or fraction �
 **Roll-up: NEW — with an inherited, non-hypothetical backlog on day one.** This is
 the honest grade and it is unusual. Most NEW units in this corpus are chartered
 against a hypothesis. This one is chartered against a queue that already exists,
-already has 23 items, already collided its own identifiers, and is already cited
+already has 35 items, already collided its own identifiers, and is already cited
 329 times by documents written before it did.
 
 ### EXISTS — the substrate it inherits
@@ -137,8 +137,8 @@ already has 23 items, already collided its own identifiers, and is already cited
   `:31-41` lists 7 more locked *elsewhere* (pre-log), deliberately not copied.
   The structure is sound. It was set up by [[0002-documentation-first-operating-mode]]
   and it is the one thing here that works.
-- **The open-decision register.** `decisions/OPEN-DECISIONS.md` — 23 open rows,
-  12 resolved rows.
+- **The open-decision register.** `decisions/OPEN-DECISIONS.md` — **35 open rows,
+  18 resolved.** It held 23 open when this section was first written.
 - **396 loop blocks** across **82 `*-loops.md` files** in `01-org/`. Close-time
   vocabulary is wide (`weekly` ×129, `monthly` ×111, and ~60 one-off phrasings).
   Status vocabulary: `proposed` ×356, `provisional` ×63, `blocked` ×25, and only
@@ -150,7 +150,8 @@ already has 23 items, already collided its own identifiers, and is already cited
 
 ### PARTIAL — the register, as an instrument
 
-- **No owner column.** 23 of 23 open rows name no owner.
+- **No owner column.** 35 of 35 open rows name no owner. The table is four columns
+  wide and not one of them is an owner or a date.
 - **No date column.** No row records when it was filed, so no row can age, so
   ADR 0002's "grows faster than it drains" tripwire cannot fire.
 - **No triage state.** OD-20 carries 🔴 and the word *urgent* (live unauthenticated
@@ -237,8 +238,14 @@ evidence of a good corpus culture and of a missing registrar.
 **Reconciling this into one authoritative numbering is this office's first
 assignment** — as a *proposal*, per §Authority.
 
-**2. Register growth with no triage.** 23 open rows across two sessions, growing
-during this one. No owner, no age, no severity ordering.
+**2. Register growth with no triage — measured, not forecast.** The `## Open` table
+held **23 rows** when this section was drafted and **35** by the time it was
+finished: **14 filed (OD-32…OD-45), 2 closed** (OD-08 folded into OD-21). A **7:1
+fill-to-drain ratio inside one session**, with no owner, no age, and no severity
+ordering on any row. [[0002-documentation-first-operating-mode]] §Consequences says
+to revisit *"if the register's founder-queue grows faster than it drains for a
+sustained period."* One session is not yet a sustained period — but it is the first
+datapoint anyone has taken, and it is 7:1.
 
 **3. Structures only ratchet upward — OD-26.** The corpus names **split triggers in
 11 documents and merge triggers in 3** (raised by the Legal generator,

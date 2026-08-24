@@ -6,6 +6,11 @@ status: provisional
 metrics: [identity.false_merge_count, inventory.projection_divergence_rows, platform.endpoints_protected_by_default_pct, schema.days_since_hand_applied_ddl, integration.verified_signature_coverage]
 updated: 2026-08-24
 links: ["[[engineering-charter]]", "[[engineering-premortem]]", "[[engineering-directive]]", "[[catalogue-identity-loops]]", "[[inventory-ledger-loops]]", "[[procurement-vendor-network-loops]]", "[[messaging-delivery-loops]]", "[[client-surfaces-loops]]", "[[platform-api-loops]]", "[[integration-engineering-loops]]", "[[schema-migrations-loops]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["eng-wrongness-board", "eng-seam-arbitration", "eng-guard-outcome-reconciliation", "eng-irreversible-class-review", "eng-public-surface-exposure"]
+loop_close_times: ["weekly", "weekly", "monthly", "monthly", "weekly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Engineering — Loops

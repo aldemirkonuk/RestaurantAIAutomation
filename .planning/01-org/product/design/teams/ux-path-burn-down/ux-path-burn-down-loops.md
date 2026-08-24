@@ -7,6 +7,11 @@ status: provisional
 metrics: [design.ledger_drift_days, design.paths_closed_per_month, design.deferred_unblocker_ratio, design.blocked_on_endpoint_count, design.paths_closed_on_service_routes]
 updated: 2026-08-24
 links: ["[[ux-path-burn-down-charter]]", "[[ux-path-burn-down-premortem]]", "[[ux-path-burn-down-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[engineering-charter]]", "[[data-charter]]", "[[decision-office-charter]]", "[[UX_PATHS_CATALOG]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["uxb-blocker-reconciliation", "uxb-close-rate-vs-service", "uxb-endpoint-blocked-escalation", "uxb-inflow-from-reality"]
+loop_close_times: ["weekly", "monthly", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # UX Path Burn-Down — Loops

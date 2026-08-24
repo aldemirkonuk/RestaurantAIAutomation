@@ -7,6 +7,11 @@ status: provisional
 metrics: [design.time_to_first_real_action_staff_min, design.role_default_coverage_pct, design.first_run_completion_rate_by_role, design.surface_items_cut_by_role]
 updated: 2026-08-24
 links: ["[[activation-in-product-guidance-charter]]", "[[activation-in-product-guidance-premortem]]", "[[activation-in-product-guidance-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[analytics-bi-charter]]", "[[ux-path-burn-down-charter]]", "[[exploration-studio-charter]]", "[[growth-charter]]", "[[decision-office-charter]]"]
+loop_count: 4
+loop_count: 4
+loop_ids: ["act-time-to-first-real-action", "act-surface-cut-by-role", "act-guidance-efficacy", "act-blocker-truth"]
+loop_close_times: ["monthly", "monthly", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Activation & In-Product Guidance — Loops

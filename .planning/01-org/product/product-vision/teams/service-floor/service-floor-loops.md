@@ -7,6 +7,11 @@ status: provisional
 metrics: [floor.providers_emitting_table_and_server, floor.providers_emitting_kitchen_ready, floor.kitchen_ready_to_waiter_p95_seconds, floor.misroute_rate]
 updated: 2026-08-24
 links: ["[[service-floor-charter]]", "[[service-floor-directive]]", "[[service-floor-premortem]]", "[[service-floor-schedule]]", "[[product-vision-loops]]", "[[pos-bridge-charter]]", "[[partner-alliance-development-charter]]", "[[design-charter]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["floor-input-availability", "floor-routing-correctness", "floor-latency-segments", "floor-engagement-integrity", "floor-blocker-commissioning"]
+loop_close_times: ["monthly", "per-service", "per-service", "monthly", "monthly"]
+loop_statuses: ["proposed", "blocked", "blocked", "blocked", "proposed"]
 ---
 
 # Service Floor (Floor Checker) — Loops

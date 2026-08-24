@@ -7,6 +7,11 @@ status: provisional
 metrics: [annotation.gold_set_freshness_days, annotation.gold_set_size, annotation.inter_annotator_agreement, annotation.correction_to_rule_conversion_rate, annotation.rubber_stamp_rate]
 updated: 2026-08-24
 links: ["[[annotation-ground-truth-charter]]", "[[annotation-ground-truth-premortem]]", "[[annotation-ground-truth-directive]]", "[[annotation-ground-truth-schedule]]", "[[data-loops]]", "[[corpora-enrichment-loops]]", "[[synthetic-generation-simulation-loops]]", "[[research-math-charter]]", "[[LOOP-MAP]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["gold-set-freshness", "active-learning-correction", "blind-subset-agreement", "annotator-agreement", "canary-set-supply"]
+loop_close_times: ["weekly", "weekly", "monthly", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Annotation & Ground Truth — Loops

@@ -6,6 +6,11 @@ status: provisional
 metrics: [design.ledger_drift_days, design.paths_closed_per_month, design.resolved_question_rate, design.token_source_count, design.time_to_first_real_action_staff_min]
 updated: 2026-08-24
 links: ["[[design-charter]]", "[[design-premortem]]", "[[design-directive]]", "[[ux-path-burn-down-loops]]", "[[design-system-motion-substrate-loops]]", "[[exploration-studio-loops]]", "[[activation-in-product-guidance-loops]]", "[[LOOP-MAP]]", "[[decision-office-charter]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["dsn-ledger-reconciliation", "dsn-convergence-pressure", "dsn-substrate-leakage", "dsn-activation-by-role", "dsn-service-surface-allocation"]
+loop_close_times: ["weekly", "biweekly", "monthly", "monthly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Design — Loops

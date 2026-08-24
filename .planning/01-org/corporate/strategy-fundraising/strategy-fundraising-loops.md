@@ -6,6 +6,11 @@ status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
 updated: 2026-08-24
 links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-premortem]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-schedule]]", "[[positioning-fundraise-readiness-loops]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[editorial-gate-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[finance-pricing-charter]]", "[[conversion-funnel-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]", "[[OPEN-DECISIONS]]"]
+loop_count: 5
+loop_count: 5
+loop_ids: ["str-claim-verification", "str-verb-strength", "str-wedge-coherence", "str-open-target-hygiene", "str-team-shape-review"]
+loop_close_times: ["per_send", "per_claim", "monthly", "monthly", "quarterly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Strategy & Fundraising — Loops
