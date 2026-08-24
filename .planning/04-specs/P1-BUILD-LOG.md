@@ -240,6 +240,37 @@ Two reasons, and neither is instrumentation:
 zero.** That is the state P1 ends in, and the readout says so rather than printing a
 number.
 
+**Reason 2 was cleared the same day.** The founder added credit, and the Anthropic
+success branch — the one link P1 had never proved, because the earlier verification could
+only reach it with a stubbed HTTP response — was driven for real through
+`ModelClientService` inside a real Nest HTTP app, so the correlation middleware ran:
+
+```
+subject_id      P1LiveVerification
+stimulus        verification_probe
+choice          text:P1LIVE
+outcome         partial          <- stop_reason was max_tokens, NOT stamped success on HTTP 200
+cost_usd        0.000040
+input_tokens    15      output_tokens 5      duration_ms 2849
+correlation_id  283799c0-8023-4f06-a3b2-72c47e1156c6
+context         {"model":"claude-haiku-4-5-20251001","attempts":1,
+                 "task_type":"p1_anthropic_live_verification","stop_reason":"max_tokens",
+                 "outcome_basis":"call_level_v0"}
+```
+
+The cost is arithmetically checked, not eyeballed: haiku-4-5 at $1/$5 per MTok gives
+(15 × 1 + 5 × 5) / 1e6 = **$0.000040**, exactly what was written.
+
+The `partial` is the detail worth keeping. The call returned HTTP 200 and the emitter
+still refused to call it a success, because `stop_reason` was `max_tokens` — the
+completion was truncated. `call_level_v0` is a placeholder, but it is a placeholder that
+already declines to overstate.
+
+**Reason 1 stands, and it is the whole remaining gap.** One deliberate call was made, not
+thirty. Manufacturing probe traffic to cross the readout's volume threshold would defeat
+the reason the threshold exists — the number becomes real when the product runs, not when
+the verifier runs.
+
 ## 14. What P1 did not close
 
 | Item | Owner |
