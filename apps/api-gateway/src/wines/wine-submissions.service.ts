@@ -73,9 +73,26 @@ export class WineSubmissionsService {
    * Greek subset below is the part that can actually alter a wine name.
    *
    * Parity with the SQL function is asserted in the spec, not assumed.
+   *
+   * Spelled as `\u`-escaped alternatives rather than one character class. The
+   * literal marks rendered as gibberish — they attach to the `[` and to the
+   * range hyphens — and two adjacent combining-mark ranges also trip ESLint's
+   * no-misleading-character-class. Every alternative matches exactly one
+   * character, so the match set is identical to the class it replaces; the
+   * order below is the order it had.
    */
-  private static readonly DIACRITICS =
-    /[̀-ͯ᪰-᫿᷀-᷿︠-︯^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]/g;
+  private static readonly DIACRITICS = new RegExp(
+    [
+      "[\\u0300-\\u036F]", // combining diacritical marks
+      "[\\u1AB0-\\u1AFF]", // combining diacritical marks extended
+      "[\\u1DC0-\\u1DFF]", // combining diacritical marks supplement
+      "[\\uFE20-\\uFE2F]", // combining half marks
+      "[\\u005E\\u0060\\u00A8\\u00AF\\u00B4\\u00B7\\u00B8]", // ^ ` ¨ ¯ ´ · ¸
+      "[\\u02B0-\\u02FF]", // spacing modifier letters
+      "[\\u0374\\u0375\\u037A\\u0384\\u0385]", // Greek numeral signs and accents
+    ].join("|"),
+    "g",
+  );
 
   /**
    * Trade abbreviations a menu prints, expanded to the word they stand for.
