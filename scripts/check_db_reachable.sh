@@ -19,11 +19,11 @@
 # Never prints the DSN: it carries credentials.
 set -uo pipefail
 
-DSN="${SUPABASE_DB_URL:-${SUPABASE_DIRECT_CONNECTION_STRING:-}}"
+DSN="${SUPABASE_DB_URL:-${SUPABASE_POOLER_URL:-${SUPABASE_POOLER_CONNECTION_STRING:-${SUPABASE_DIRECT_CONNECTION_STRING:-}}}}"
 
 if [ -z "$DSN" ]; then
   echo "::error::No database connection string set."
-  echo "::error::Set SUPABASE_POOLER_CONNECTION_STRING (preferred) or SUPABASE_DIRECT_CONNECTION_STRING."
+  echo "::error::Set SUPABASE_POOLER_URL (the name already used in .env) or SUPABASE_POOLER_CONNECTION_STRING."
   exit 1
 fi
 
@@ -65,7 +65,7 @@ if [ -n "$have_aaaa" ]; then
   echo "::error::Fix: use the Supavisor pooler, which is IPv4-reachable."
   echo "::error::  1. Supabase dashboard -> Project Settings -> Database -> Connection string -> 'Session pooler'"
   echo "::error::  2. It looks like: postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
-  echo "::error::  3. Save it as the repository secret SUPABASE_POOLER_CONNECTION_STRING"
+  echo "::error::  3. Save it as the repository secret SUPABASE_POOLER_URL (same name as .env)"
   echo "::error::Alternative: buy the Supabase IPv4 add-on to keep using the direct host."
   exit 1
 fi

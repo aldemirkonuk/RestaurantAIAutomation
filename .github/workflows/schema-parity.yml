@@ -64,7 +64,7 @@ jobs:
       - name: Compare against remote
         env:
           # Pooler first: db.<ref>.supabase.co is IPv6-only and runners are IPv4-only.
-          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
           ./scripts/check_db_reachable.sh
           ./scripts/check_schema_parity.sh
@@ -108,7 +108,7 @@ jobs:
 
       - name: Compare SQL beverage_identity_key() against the validated Python reference
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
           ./scripts/check_db_reachable.sh
           python3 scripts/check_beverage_identity_parity.py
@@ -142,7 +142,7 @@ jobs:
 
       - name: No known-different guests may be merged
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
           ./scripts/check_db_reachable.sh
           python3 scripts/eval_guest_merge_policies.py
