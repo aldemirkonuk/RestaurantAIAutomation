@@ -45,6 +45,27 @@ interface InventoryCandidate {
 
 type MatchMethod = "external_id" | "sku" | "trigram";
 
+/**
+ * A catalog *pull* source and a sales *delivery* source are different
+ * namespaces, and conflating them silently defeats this whole module.
+ *
+ * SimPOS's catalog is pulled as `simpos`, but its closed checks arrive over
+ * the canonical adapter at `/pos-hub/webhook/generic_webhook/:restaurantId`
+ * — there is no `simpos` entry in the provider registry at all. Because
+ * PosHubService.loadItemMappings() filters `source IN (arrivingSource, '*')`,
+ * a mapping stamped `simpos` is invisible to every inbound sale: the item
+ * resolves to no inventory row and falls through to `pos_unresolved_lines`,
+ * no matter how many proposals a human approves. Stamp the mapping with the
+ * source sales actually arrive under, not the one the catalog was read from.
+ */
+const SALES_SOURCE_BY_PULL_SOURCE: Record<string, string> = {
+  simpos: "generic_webhook",
+};
+
+function salesSourceFor(pullSource: string): string {
+  return SALES_SOURCE_BY_PULL_SOURCE[pullSource] ?? pullSource;
+}
+
 interface ScoredMatch {
   candidate: InventoryCandidate;
   confidence: number;
@@ -113,7 +134,7 @@ export class CatalogMatcherService {
 
       if (best && !best.ambiguous && best.confidence >= AUTO_MATCH_THRESHOLD) {
         await this.posHub.upsertItemMapping(restaurantId, {
-          source,
+          source: salesSourceFor(source),
           external_item_id: item.externalItemId,
           item_name: item.itemName,
           category: item.category ?? null,
@@ -397,7 +418,7 @@ export class CatalogMatcherService {
       throw new Error("Proposal has no candidate inventory item to approve");
 
     await this.posHub.upsertItemMapping(restaurantId, {
-      source: proposal.source,
+      source: salesSourceFor(proposal.source),
       external_item_id: proposal.external_item_id,
       item_name: proposal.item_name,
       is_wine: true,

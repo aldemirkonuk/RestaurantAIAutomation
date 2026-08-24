@@ -342,8 +342,8 @@ export default function GetStarted() {
                 />
                 <MenuImportCard
                   icon={<FileSpreadsheet className="w-5 h-5" />}
-                  title="Upload CSV"
-                  description="Export from your POS system or Excel and import directly"
+                  title="Upload File"
+                  description="Export from your POS system or Excel and import directly. Supports CSV, PDF, and other common formats."
                   active={activeMethod === 'csv'}
                   dimmed={activeMethod !== null && activeMethod !== 'csv'}
                   onClick={() => toggleMethod('csv')}

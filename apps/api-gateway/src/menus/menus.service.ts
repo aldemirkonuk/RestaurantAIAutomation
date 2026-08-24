@@ -23,6 +23,8 @@ interface ResolvedItem {
   masterWineId: string | null;
   matched: boolean;
   libraryTier: number | null;
+  /** Best library-match score, 0-100. See LibraryResolutionResult. */
+  confidence: number | null;
 }
 
 interface InsertedMenuItem {
@@ -302,30 +304,50 @@ export class MenusService {
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
     // asynchronously after the fact.
-    const resolved: ResolvedItem[] = await Promise.all(
-      items.map(async (item) => {
-        try {
-          const result = await this.wineSubmissions.resolveOrCreateLibraryWine({
-            name: item.name,
-            producer: item.producer,
-            vintage: item.vintage,
-            region: item.region,
-            grapeVariety: item.grape_variety,
-          });
-          return { item, ...result };
-        } catch (err) {
-          this.logger.warn(
-            `Library resolution failed for "${item.name}" (non-fatal): ${err.message}`,
-          );
-          return {
-            item,
-            masterWineId: null,
-            matched: false,
-            libraryTier: null,
-          };
-        }
-      }),
-    );
+    //
+    // One batched call, not one per wine. This used to be a bounded-concurrency
+    // loop of individual lookups; against the pooler each round trip is
+    // ~320-380ms and almost none of that is query time. Measured on a real
+    // 182-wine extraction scaled to RL Restaurant's 485 wines, batching took
+    // 183.12s down to 0.91s.
+    //
+    // A whole-batch failure is fatal here on purpose. Per-wine failures were
+    // caught as non-fatal and turned into masterWineId: null, which is how an
+    // import could report success while linking nothing; if the single call
+    // covering every wine fails, the import genuinely cannot proceed and should
+    // say so rather than write a menu of unlinked items.
+    let resolved: ResolvedItem[];
+    try {
+      const results = await this.wineSubmissions.resolveLibraryWinesBatch(
+        items.map((item) => ({
+          name: item.name,
+          producer: item.producer,
+          vintage: item.vintage,
+          region: item.region,
+          grapeVariety: item.grape_variety,
+        })),
+      );
+      resolved = items.map((item, idx) => ({
+        item,
+        masterWineId: results[idx]?.masterWineId ?? null,
+        matched: results[idx]?.matched ?? false,
+        libraryTier: results[idx]?.libraryTier ?? null,
+        confidence: results[idx]?.confidence ?? null,
+      }));
+    } catch (err) {
+      this.logger.error(`Library resolution failed for menu: ${err.message}`);
+      throw new Error(`Menu import failed during library resolution: ${err.message}`);
+    }
+
+    // Unlinked items are the ones a manager has to fix by hand, so say how
+    // many there are rather than leaving it to be discovered in the UI.
+    const unlinked = resolved.filter((r) => !r.masterWineId).length;
+    if (unlinked > 0) {
+      this.logger.error(
+        `Menu import: ${unlinked}/${resolved.length} item(s) could not be ` +
+          `linked to the wine library and will have no inventory row`,
+      );
+    }
 
     const menuItemRows = resolved.map(({ item, masterWineId }, idx) => ({
       menu_id: menuId,
@@ -464,7 +486,14 @@ export class MenusService {
         matched_master_id: r.masterWineId,
         payload: r.item,
         normalized_fields: {
-          normalized_name: r.item.name.toLowerCase().trim(),
+          // Was `name.toLowerCase().trim()`, a third normalizer writing the
+          // same field name as the library's normalized_name but folding
+          // nothing — so "Château Margaux" stayed "château margaux" here and
+          // was "chateau margaux" everywhere else.
+          normalized_name: this.wineSubmissions.normalizeText(r.item.name),
+          normalized_producer: this.wineSubmissions.normalizeText(
+            r.item.producer,
+          ),
           producer: r.item.producer ?? null,
           vintage: r.item.vintage ?? null,
           region: r.item.region ?? null,

@@ -74,6 +74,21 @@ class Settings:
         self.research_eligibility_cooldown_days: int = int(
             os.getenv("RESEARCH_ELIGIBILITY_COOLDOWN_DAYS", "7")
         )
+        # Automatic dispatch of research for wines the library matcher could
+        # not resolve. Off by default and opt-in per environment: turning it on
+        # starts recurring, billable outbound web searches, which is a spend
+        # decision rather than a deployment detail. The budget ceilings above
+        # still apply once it is on — this only decides whether anything is
+        # offered to the agent without a human pressing the trigger.
+        self.research_dispatch_enabled: bool = (
+            os.getenv("RESEARCH_DISPATCH_ENABLED", "false").lower() == "true"
+        )
+        # 20/hour against a $0.04/record ceiling is at most $19.20/day, which
+        # the $5.00 daily cap truncates to ~125 records — so the cap, not this
+        # number, is what bounds spend. This bounds the burst.
+        self.research_dispatch_batch_size: int = int(
+            os.getenv("RESEARCH_DISPATCH_BATCH_SIZE", "20")
+        )
         self.research_fetch_verify_enabled: bool = (
             os.getenv("RESEARCH_FETCH_VERIFY_ENABLED", "true").lower() == "true"
         )

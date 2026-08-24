@@ -25,11 +25,21 @@ import {
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { isValidPhone } from '../../lib/phone'
 import { PlacesAutocomplete, PlaceResult } from '../ui/PlacesAutocomplete'
+import { VendorMatchModal } from './VendorMatchModal'
+import { useDuplicateVendorCheck } from '../../hooks/useDuplicateVendorCheck'
 
 interface AddProviderModalProps {
   isOpen: boolean
   onClose: () => void
   onSave: (provider: NewProviderData) => void
+  /**
+   * Fired instead of onSave when the user accepted a duplicate-detection
+   * match and the catalogue vendor was added directly (VendorMatchModal
+   * makes the addProviderFromCatalogue call itself). The provider list needs
+   * a refetch either way — this is that signal, mirroring
+   * VendorSearchModal's onProviderAdded.
+   */
+  onCatalogueVendorAdded?: () => void
 }
 
 // Custom provider type stored in localStorage
@@ -80,6 +90,13 @@ export interface NewProviderData {
   email: string
   website: string
   address: string
+  /**
+   * Coordinates of `address`, resolved by Places autocomplete when the user
+   * picked from the dropdown. Null when the address was typed by hand — such
+   * a provider cannot be plotted, which is a real state, not an error.
+   */
+  latitude?: number | null
+  longitude?: number | null
   primaryBusinessType: string // Now accepts custom types too
   specialties: string[]
   paymentTerms: string
@@ -120,7 +137,7 @@ const PAYMENT_TERMS = [
   'Custom',
 ]
 
-export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalProps) {
+export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdded }: AddProviderModalProps) {
   const [formData, setFormData] = useState<NewProviderData>({
     name: '',
     contactFirstName: '',
@@ -129,6 +146,8 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
     email: '',
     website: '',
     address: '',
+    latitude: null,
+    longitude: null,
     primaryBusinessType: 'Distributor',
     specialties: [],
     paymentTerms: 'Net 30',
@@ -139,7 +158,35 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
   })
 
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
-  
+
+  // ── Duplicate detection ───────────────────────────────────────────────
+  // Checks both the curated catalogue and this restaurant's existing
+  // providers; see useDuplicateVendorCheck for why both matter.
+  const { pendingMatch, acknowledge, reset: resetMatches } = useDuplicateVendorCheck({
+    enabled: isOpen,
+    name: formData.name,
+    address: formData.address,
+  })
+
+  // Surface as soon as a confident, unacknowledged match appears. Acknowledging
+  // removes it from pendingMatch, so no separate "dismissed" flag is needed —
+  // and a DIFFERENT vendor becoming the top match later still prompts, because
+  // the dismissal was about the earlier candidate, not a blanket "never ask
+  // again".
+  const matchModalOpen = !!pendingMatch
+
+  const handleDismissMatch = () => {
+    if (pendingMatch) acknowledge(pendingMatch.id)
+  }
+
+  const handleUsedCatalogueVendor = () => {
+    onCatalogueVendorAdded?.()
+    // The catalogue vendor is now a real provider — close and reset exactly
+    // like a normal save, without also creating the custom duplicate this
+    // whole flow exists to prevent.
+    handleClose()
+  }
+
   // Custom provider types state
   const [customTypes, setCustomTypes] = useState<CustomProviderType[]>(loadCustomTypes())
   const [showAddTypeModal, setShowAddTypeModal] = useState(false)
@@ -211,6 +258,7 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
       rating: 0,
     })
     setValidationErrors({})
+    resetMatches()
     onClose()
   }
 
@@ -260,6 +308,11 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
 
   const handleSave = () => {
     if (!validate()) return
+    // Belt and braces: the match modal already overlays this form whenever a
+    // pending match exists, but the debounced lookup can resolve in the same
+    // tick as a click. Bail rather than create the duplicate the modal is
+    // about to warn about; dismissing it clears pendingMatch and Save works.
+    if (pendingMatch) return
     onSave(formData)
     handleClose()
   }
@@ -294,6 +347,7 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
   if (!isOpen) return null
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -451,10 +505,26 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
                     </label>
                     <PlacesAutocomplete
                       value={formData.address}
-                      onChange={(addr) => setFormData({ ...formData, address: addr })}
+                      // Typing by hand invalidates any previously picked place:
+                      // the coordinates would still point at the old address
+                      // and would drop a pin in the wrong city. Null is the
+                      // honest state — the provider simply is not mappable
+                      // until an address is picked from the dropdown.
+                      onChange={(addr) =>
+                        setFormData({ ...formData, address: addr, latitude: null, longitude: null })
+                      }
                       onPlaceSelect={(place: PlaceResult) => {
                         const fullAddr = [place.streetAddress, place.city, place.stateProvince, place.postalCode, place.country].filter(Boolean).join(', ')
-                        setFormData({ ...formData, address: fullAddr })
+                        setFormData({
+                          ...formData,
+                          address: fullAddr,
+                          // Places already resolved these, so keeping them
+                          // costs nothing and is what lets the new provider
+                          // appear on the distributor map. Discarding them
+                          // here is why an added provider never got a pin.
+                          latitude: place.latitude ?? null,
+                          longitude: place.longitude ?? null,
+                        })
                       }}
                       placeholder="Start typing provider address or business location..."
                     />
@@ -840,6 +910,15 @@ export function AddProviderModal({ isOpen, onClose, onSave }: AddProviderModalPr
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    <VendorMatchModal
+      open={matchModalOpen}
+      match={pendingMatch}
+      context="add"
+      onUseCatalogue={handleUsedCatalogueVendor}
+      onDismiss={handleDismissMatch}
+    />
+    </>
   )
 }
 

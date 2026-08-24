@@ -251,10 +251,12 @@ export function DistributorDrawer({ distributorId, onClose, customProviders = []
                       {locations.map((l) => (
                         <Row key={l.id} icon={Warehouse}>
                           <span className="capitalize">{l.kind}</span>
-                          {(l.city || l.admin_area_code) && (
+                          {(l.city || l.admin_area_code || l.address) && (
                             <span className="text-gray-500">
                               {' — '}
-                              {[l.city, l.admin_area_code].filter(Boolean).join(', ')}
+                              {l.city || l.admin_area_code
+                                ? [l.city, l.admin_area_code].filter(Boolean).join(', ')
+                                : l.address}
                             </span>
                           )}
                         </Row>

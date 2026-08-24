@@ -38,6 +38,12 @@ export interface Distributor {
   listing_tier: ListingTier
   data_confidence: number | null
   verified_at: string | null
+  /**
+   * Full address string. Catalogue rows break this into city/state/country;
+   * custom providers carry a single flat string that cannot be split reliably.
+   * The card renders this as a fallback when city and state are both null.
+   */
+  full_address?: string | null
 }
 
 /**

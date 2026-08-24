@@ -10,6 +10,7 @@ import { BarChart3, Plus, Upload } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
+import { TABULAR_ACCEPT } from '../../../lib/uploadAccept'
 
 export function PerformancePanel({ member }: { member: TeamMember | null }) {
   const qc = useQueryClient()
@@ -147,7 +148,7 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept={TABULAR_ACCEPT}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]

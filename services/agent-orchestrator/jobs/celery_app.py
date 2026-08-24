@@ -114,6 +114,20 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute=0),  # hourly at minute 0
         "options": {"expires": 3500},
     },
+    # Enrichment for wines the library matcher could not resolve. Before this
+    # entry, research only ran when a human POSTed /api/v1/research/trigger, so
+    # provisional wines created by a menu import stayed tier-3 stubs with
+    # primary_type='unknown' indefinitely.
+    #
+    # The task is a no-op unless RESEARCH_DISPATCH_ENABLED=true, because it
+    # spends money on outbound web searches. Runs at :30 so it does not
+    # contend with the on-the-hour jobs, and skips itself while another
+    # research run is in flight.
+    "research-dispatch-batch": {
+        "task": "research.dispatch_batch",
+        "schedule": crontab(minute=30),  # hourly at minute 30
+        "options": {"expires": 3500},
+    },
     # Phase 12.1 D-07: Weekly staleness re-verification of human_resolved fields > 180 days
     # Re-fetches original citation URLs; downgrades to 0.85 if value no longer present
     "research-staleness-reverify-weekly": {

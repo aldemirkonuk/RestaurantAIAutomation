@@ -210,26 +210,37 @@ export class SimposService {
   // Check lifecycle (decision C27: open, add lines, close)
   // =========================================================================
 
+  /**
+   * The Home pane's current check.
+   *
+   * Always returns the same shape as getCheck() — { ...check, lines,
+   * lossTotal } — never the bare simpos_checks row. The frontend's
+   * SimposCheck type declares `lines` as required and the terminal page
+   * reads `check.lines.length` unguarded, so a response missing `lines`
+   * (as this endpoint used to return on both the "found existing" and the
+   * "just created" path) crashes the page on load, before a single line has
+   * ever been added.
+   */
   async getOrCreateOpenCheck(restaurantId: string) {
     await this.assertSimRestaurant(restaurantId);
     const db = this.dbService.supabase;
     const { data: existing } = await db
       .from("simpos_checks")
-      .select("*")
+      .select("id")
       .eq("restaurant_id", restaurantId)
       .eq("status", "open")
       .order("opened_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (existing) return existing;
+    if (existing) return this.getCheck(restaurantId, existing.id);
 
     const { data: created, error } = await db
       .from("simpos_checks")
       .insert({ restaurant_id: restaurantId, status: "open" })
-      .select()
+      .select("id")
       .single();
     if (error) throw new Error(error.message);
-    return created;
+    return this.getCheck(restaurantId, created.id);
   }
 
   async getCheck(restaurantId: string, checkId: string) {

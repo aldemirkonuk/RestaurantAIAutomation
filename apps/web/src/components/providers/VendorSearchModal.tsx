@@ -19,6 +19,13 @@ export interface VendorSearchModalProps {
   onClose: () => void
   onProviderAdded: () => void
   onAddCustom: () => void
+  /**
+   * catalogue_vendor_id of every vendor already in this restaurant's
+   * providers. Used to label those rows as added instead of offering an
+   * "Add" button that the server now rejects with 409 — showing the state up
+   * front is better than letting someone click and be told no.
+   */
+  addedCatalogueVendorIds?: string[]
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -52,7 +59,9 @@ export function VendorSearchModal({
   onClose,
   onProviderAdded,
   onAddCustom,
+  addedCatalogueVendorIds = [],
 }: VendorSearchModalProps) {
+  const addedIds = new Set(addedCatalogueVendorIds)
   const [query, setQuery] = useState('')
   const [country, setCountry] = useState('US')
   const [results, setResults] = useState<VendorCatalogueEntry[]>([])
@@ -121,6 +130,15 @@ export function VendorSearchModal({
       onProviderAdded()
       onClose()
     } catch (err: unknown) {
+      // 409 means it is already in the list — an expected outcome, not a
+      // fault, so it reads as information rather than a red error toast.
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 409) {
+        toast.info(`${vendor.name} is already in your providers`)
+        onProviderAdded()
+        onClose()
+        return
+      }
       const message = err instanceof Error ? err.message : 'Failed to add vendor'
       toast.error(`Could not add ${vendor.name}`, { description: message })
     }
@@ -276,6 +294,7 @@ export function VendorSearchModal({
                           key={vendor.id}
                           vendor={vendor}
                           onAdd={handleAdd}
+                          alreadyAdded={addedIds.has(vendor.id)}
                         />
                       ))}
                     </motion.div>

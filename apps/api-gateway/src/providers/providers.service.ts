@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -31,6 +32,20 @@ function normalizeToE164(phone: string | null | undefined): string | null {
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
   return phone;
+}
+
+/** One row from the match_restaurant_providers RPC. */
+export interface ProviderMatchCandidate {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  catalogue_vendor_id: string | null;
+  is_custom: boolean;
+  name_similarity: number;
+  address_similarity: number | null;
 }
 
 interface ProviderRow {
@@ -91,6 +106,29 @@ export class ProvidersService {
         );
       }
 
+      // Same catalogue vendor, same restaurant, twice = an unambiguous
+      // duplicate, so this is a hard guard rather than the advisory
+      // similarity check the add-provider form does. Nothing in the UI
+      // prevented clicking "Add to My Providers" on a vendor already in the
+      // list; the two rows would then be indistinguishable except by id, and
+      // every later "which of these is the real Breakthru?" question — orders,
+      // invoices, conversations — becomes ambiguous.
+      if (restaurantId) {
+        const { data: alreadyLinked } = await this.databaseService.supabase
+          .from("providers")
+          .select("id, name")
+          .eq("restaurant_id", restaurantId)
+          .eq("catalogue_vendor_id", dto.catalogue_vendor_id)
+          .is("deleted_at", null)
+          .maybeSingle();
+
+        if (alreadyLinked) {
+          throw new ConflictException(
+            `${alreadyLinked.name} is already in your providers`,
+          );
+        }
+      }
+
       // Build notes from catalogue type + website + specialties
       const noteParts: string[] = [];
       if (vendor.type) noteParts.push(`Type: ${vendor.type}`);
@@ -124,7 +162,14 @@ export class ProvidersService {
         company_name: dto.companyName ?? null,
         primary_contact: dto.primaryContact ?? {},
         alternative_contacts: dto.alternativeContacts ?? null,
-        address: dto.address ?? null,
+        // physicalAddress is the plain string the user typed; dto.address is a
+        // legacy JSONB object ({ line1: … }) that older clients still send
+        // alongside it. Preferring the object here was the create/update split
+        // that made a freshly-added provider read back an OBJECT from this
+        // jsonb column while an edited one read back a string — the "address
+        // is not saved" bug. Update already prefers physicalAddress; create
+        // now agrees with it.
+        address: dto.physicalAddress ?? dto.address ?? null,
         specialties: dto.specialties ?? null,
         regions_covered: dto.regionsCovered ?? null,
         minimum_order: dto.minimumOrder ?? null,
@@ -253,6 +298,51 @@ export class ProvidersService {
     }
 
     return providers;
+  }
+
+  /**
+   * Duplicate-detection candidates within this restaurant's own provider list.
+   *
+   * The local counterpart to VendorCatalogueService.match: that one answers
+   * "is this already a verified catalogue vendor?", this one answers "do you
+   * already have this supplier yourself?". Both are needed — a restaurant can
+   * duplicate a vendor that was never in the catalogue at all.
+   *
+   * excludeId is what makes this usable from the edit screen: without it the
+   * row being renamed matches itself at 1.0 and every rename looks like a
+   * duplicate.
+   */
+  async matchProviders(
+    restaurantId: string,
+    params: {
+      name?: string;
+      address?: string;
+      excludeId?: string;
+      limit?: number;
+    },
+  ): Promise<ProviderMatchCandidate[]> {
+    const name = params.name?.trim();
+    const address = params.address?.trim();
+    if (!restaurantId || (!name && !address)) return [];
+
+    const { data, error } = await this.databaseService.supabase.rpc(
+      "match_restaurant_providers",
+      {
+        p_restaurant_id: restaurantId,
+        p_name: name || "",
+        p_address: address || null,
+        p_exclude_id: params.excludeId || null,
+        p_limit: params.limit ?? 5,
+      },
+    );
+
+    if (error) {
+      this.logger.warn(`Provider match RPC failed: ${error.message}`);
+      // Advisory only — never block the form it is attached to.
+      return [];
+    }
+
+    return (data ?? []) as ProviderMatchCandidate[];
   }
 
   async getProvider(
@@ -1124,6 +1214,32 @@ export class ProvidersService {
     };
   }
 
+  /**
+   * `providers.address` is a jsonb column that has held two shapes over time:
+   * a plain string (what create/update write today) and a legacy object
+   * `{ line1, city, … }` written by an earlier create path. Returning the raw
+   * value meant callers received an object where the contract promises a
+   * string — the card list then handed that object straight to React, which
+   * refuses to render it. Rows written before the create-path fix still hold
+   * objects, so normalising on read is what makes them display without a
+   * backfill migration.
+   */
+  private normalizeAddress(value: unknown): string | undefined {
+    if (value == null) return undefined;
+    if (typeof value === "string") return value || undefined;
+    if (typeof value === "object") {
+      const o = value as Record<string, unknown>;
+      const direct = o.line1 ?? o.formatted_address ?? o.formattedAddress;
+      if (typeof direct === "string" && direct) return direct;
+      // Otherwise assemble whatever parts are present rather than dropping the
+      // address entirely — a partial address is more useful than none.
+      const parts = [o.street, o.line2, o.city, o.state, o.postalCode, o.country]
+        .filter((p): p is string => typeof p === "string" && p.length > 0);
+      return parts.length ? parts.join(", ") : undefined;
+    }
+    return undefined;
+  }
+
   private mapProviderRow(row: ProviderRow): ProviderResponseDto {
     // Phone/email: prefer dedicated columns; fall back to primary_contact JSONB
     // for legacy providers created before the dedicated columns existed.
@@ -1140,7 +1256,7 @@ export class ProvidersService {
       email,
       contactFirstName: row.contact_first_name ?? undefined,
       contactLastName: row.contact_last_name ?? undefined,
-      physicalAddress: row.address ?? undefined,
+      physicalAddress: this.normalizeAddress(row.address),
       website: row.website ?? undefined,
       rating: row.rating ?? undefined,
       notes: row.personality_notes ?? undefined,

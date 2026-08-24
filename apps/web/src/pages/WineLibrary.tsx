@@ -1043,7 +1043,7 @@ Redirecting to Orders page...`)
                               />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-gray-900 truncate">{wine.name}</p>
+                              <p className="font-medium text-gray-900 truncate">{wine.displayName || wine.name}</p>
                               <p className="text-xs text-gray-500 truncate">{wine.producer} · {wine.grape}</p>
                             </div>
                           </div>
@@ -1203,7 +1203,7 @@ Redirecting to Orders page...`)
 
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 group-hover:text-wine-600 transition-colors truncate">
-                      {wine.name}
+                      {wine.displayName || wine.name}
                     </h3>
                     <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5 min-w-0 flex-wrap">
                       <span className="truncate">{wine.vintage || 'NV'} · {wine.country}</span>

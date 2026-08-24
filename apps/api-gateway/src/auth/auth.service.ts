@@ -95,9 +95,22 @@ export class AuthService {
     }
 
     if (!user.password_hash) {
-      throw new UnauthorizedException(
-        'This account uses Google sign-in. Use the "Sign in with Google" button below.',
-      );
+      // oauth_provider records which identity provider actually created this
+      // account (google or microsoft) — do not assume Google. A hotmail.com
+      // address, for example, is just as likely to have signed up via
+      // Microsoft, and telling that user to use Google sign-in sends them
+      // into a flow that can never work for their account.
+      const provider: "google" | "microsoft" | null =
+        user.oauth_provider === "microsoft" ? "microsoft" : "google";
+      const providerLabel = provider === "microsoft" ? "Microsoft" : "Google";
+      throw new UnauthorizedException({
+        message:
+          provider === "google"
+            ? `This account uses ${providerLabel} sign-in. Use the "Sign in with Google" button below.`
+            : `This account uses ${providerLabel} sign-in, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
+        code: "OAUTH_ONLY",
+        provider,
+      });
     }
 
     // Verify password
@@ -122,6 +135,50 @@ export class AuthService {
 
     this.logger.log(`User logged in: ${user.email}`);
 
+    return this.generateTokens(user);
+  }
+
+  /**
+   * Mint a real session for DEV_AUTH_BYPASS_EMAIL, skipping password
+   * verification entirely.
+   *
+   * Every caller-side gate (env, localhost, shared-secret header) is checked
+   * by the controller before this runs — see dev-bypass.util.ts — so this
+   * method only has to answer "does that account exist?" But it re-checks the
+   * env flag itself too, on the theory that a private service method should
+   * never trust that its only caller checked first; a future second caller of
+   * `devBypassLogin()` must not accidentally inherit this endpoint's power
+   * without also inheriting its gate.
+   *
+   * Deliberately reuses `generateTokens` rather than building a token by
+   * hand: the result is indistinguishable from a real login on the wire, so
+   * every other endpoint — refresh, /me, /me/role, tenant scoping — needs no
+   * bypass-awareness of its own.
+   */
+  async devBypassLogin(): Promise<TokenPair> {
+    if (process.env.NODE_ENV === "production" || process.env.DEV_AUTH_BYPASS !== "true") {
+      throw new UnauthorizedException("Dev auth bypass is not enabled");
+    }
+    const email = process.env.DEV_AUTH_BYPASS_EMAIL;
+    if (!email) {
+      throw new UnauthorizedException("DEV_AUTH_BYPASS_EMAIL is not set");
+    }
+
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error || !user) {
+      throw new UnauthorizedException(
+        `Dev auth bypass: no user found for ${email}`,
+      );
+    }
+
+    this.logger.warn(
+      `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
+    );
     return this.generateTokens(user);
   }
 

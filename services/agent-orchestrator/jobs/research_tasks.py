@@ -1507,6 +1507,103 @@ def research_agent_task(submission_id: str, dry_run: bool = False) -> None:
     asyncio.run(_research_async(submission_id, dry_run))
 
 
+@celery_app.task(name="research.dispatch_batch")
+def research_dispatch_batch_task(batch_size: Optional[int] = None) -> dict:
+    """
+    Celery task: queue research for wines the matcher could not resolve.
+
+    Why this exists
+    ---------------
+    Until now research_agent_task only ran when a human POSTed
+    /api/v1/research/trigger. Nothing dispatched it for wines created by a menu
+    import, so a restaurant could import a 485-wine list and every unmatched
+    bottle sat as a tier-3 stub with primary_type='unknown' forever. This is
+    the missing link between "the importer created a provisional" and "the
+    research agent fills it in".
+
+    Why it does not reuse the endpoint's batch query
+    -----------------------------------------------
+    That query selects any submission with last_research_run_at IS NULL. Since
+    library matching started working, an import creates a submission for every
+    wine including the ones that auto-linked to a fully-populated canonical
+    row, so that query would spend the daily budget re-deriving facts already
+    in the library. Selection lives in
+    public.research_eligible_submissions() instead, which returns only wines
+    still carrying no real data, emptiest first.
+
+    Safety
+    ------
+    - Skips entirely while another research run is in flight, matching the
+      endpoint's T-12-11 guard. Two concurrent runs would race the budget.
+    - Per-record cost ceilings and the daily cap stay where they were, in
+      research_agent_task's own pre-flight — this only decides *which* records
+      are worth offering, never how much may be spent on them.
+    - A broker outage returns a count rather than raising: the next tick
+      re-queries eligibility, so nothing is lost by failing quietly here.
+    """
+    settings = get_settings()
+    if not settings.research_dispatch_enabled:
+        logger.info("research.dispatch_batch: disabled by settings — skipping")
+        return {"queued": 0, "skipped": "disabled"}
+
+    if not settings.supabase_url or not settings.supabase_key:
+        logger.warning("research.dispatch_batch: Supabase not configured — skipping")
+        return {"queued": 0, "skipped": "no_db"}
+    supabase = create_client(settings.supabase_url, settings.supabase_key)
+
+    # Same one-run-at-a-time guard the HTTP trigger enforces (T-12-11).
+    try:
+        running = (
+            supabase.table("research_runs")
+            .select("id", count="exact")
+            .eq("status", "running")
+            .execute()
+        )
+        if (running.count or 0) > 0:
+            logger.info("research.dispatch_batch: a run is already in progress — skipping")
+            return {"queued": 0, "skipped": "run_in_progress"}
+    except Exception as exc:
+        logger.warning(
+            "research.dispatch_batch: could not check running status (non-fatal): %s", exc
+        )
+
+    limit = batch_size or settings.research_dispatch_batch_size
+    try:
+        resp = supabase.rpc(
+            "research_eligible_submissions",
+            {
+                "p_limit": limit,
+                "p_cooldown_days": settings.research_eligibility_cooldown_days,
+            },
+        ).execute()
+        eligible = resp.data or []
+    except Exception as exc:
+        logger.error("research.dispatch_batch: eligibility query failed: %s", exc)
+        return {"queued": 0, "error": str(exc)}
+
+    if not eligible:
+        logger.info("research.dispatch_batch: nothing eligible")
+        return {"queued": 0}
+
+    queued, errors = 0, []
+    for row in eligible:
+        try:
+            research_agent_task.delay(row["submission_id"])
+            queued += 1
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if errors:
+        logger.error(
+            "research.dispatch_batch: %d/%d dispatch(es) failed — first: %s",
+            len(errors), len(eligible), errors[0],
+        )
+    logger.info(
+        "research.dispatch_batch: queued %d of %d eligible record(s)", queued, len(eligible)
+    )
+    return {"queued": queued, "eligible": len(eligible), "errors": len(errors)}
+
+
 @celery_app.task(name="research.daily_budget_check")
 def research_daily_budget_check_task() -> None:
     """

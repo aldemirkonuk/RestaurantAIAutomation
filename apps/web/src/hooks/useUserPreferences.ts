@@ -54,6 +54,13 @@ export interface UserPreferences {
       description?: string
     }>
   }
+  /**
+   * Settings → Map — how wide the Find-distributors map frames the restaurant
+   * on load. Stored here rather than in localStorage so the choice follows the
+   * user to another browser and to the mobile app, which is what a preference
+   * surfaced in Settings implies.
+   */
+  mapDefaultScope?: 'continent' | 'country' | 'state' | 'city'
   /** Settings → POS — active provider selection */
   posConfig?: {
     activeProvider?: string

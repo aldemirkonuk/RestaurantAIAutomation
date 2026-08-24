@@ -98,6 +98,7 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
     const query = searchQuery.toLowerCase()
     return uiWines.filter(wine =>
       wine.name.toLowerCase().includes(query) ||
+      (wine.displayName || '').toLowerCase().includes(query) ||
       wine.producer.toLowerCase().includes(query) ||
       wine.grape.toLowerCase().includes(query) ||
       wine.region.toLowerCase().includes(query) ||
@@ -311,7 +312,7 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
                                     <h3 className={`font-semibold text-sm truncate ${
                                       isSelected ? 'text-wine-900' : 'text-gray-900'
                                     }`}>
-                                      {wine.name}
+                                      {wine.displayName || wine.name}
                                     </h3>
                                     {isSelected && (
                                       <Check className="w-5 h-5 text-wine-600 flex-shrink-0" />

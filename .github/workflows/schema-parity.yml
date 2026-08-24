@@ -72,3 +72,83 @@ jobs:
           echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
           echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
           echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
+
+  # Premortem audit finding (2026-08-18, decision #1): beverage_identity_key
+  # (SQL, runs in production) and residual_key (Python, what
+  # eval_merge_policies.py's 0-false-merge measurement actually validates)
+  # are two independent implementations of one algorithm, kept in lockstep
+  # by discipline and a comment, not by anything automated — ci.yml's
+  # merge-identity gate only ever tested the Python side. This job is that
+  # missing enforcement, reusing the one secret in this repo that already
+  # grants CI read-only remote DB access, same posture schema-parity itself
+  # needs — no new secret, no new trust boundary.
+  beverage-identity-parity:
+    name: Beverage identity key — SQL matches Python
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: Compare SQL beverage_identity_key() against the validated Python reference
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DIRECT_CONNECTION_STRING secret is not set."
+            echo "::error::Without it this check cannot compare anything and would pass for the wrong reason."
+            exit 1
+          fi
+          python3 scripts/check_beverage_identity_parity.py
+
+  # Register A14. Guests are the one entity where a false merge is a
+  # DISCLOSURE rather than a data-quality error, so the pass condition is zero
+  # and there is no threshold policy at all. The negative labels are free, the
+  # same way §3.1's 732,874 same-menu pairs are: two guests linked to one
+  # check are different people.
+  #
+  # This reports 0 pairs until guest capture starts, and that is the point.
+  # Register A6 records a merge policy self-graded against probes its own
+  # author imagined; a gate written after the data is a gate written by
+  # someone who already knows what the data looks like.
+  guest-merge-gate:
+    name: Guest merge policy — zero false merges
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: No known-different guests may be merged
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DIRECT_CONNECTION_STRING secret is not set."
+            echo "::error::Without it this check cannot compare anything and would pass for the wrong reason."
+            exit 1
+          fi
+          python3 scripts/eval_guest_merge_policies.py
+
+      - name: Guest identity guards
+        run: |
+          ./scripts/check_no_guest_name_matching.sh
+          ./scripts/check_no_raw_guest_channels.sh

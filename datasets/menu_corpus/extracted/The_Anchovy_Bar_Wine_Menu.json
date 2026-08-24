@@ -1,0 +1,307 @@
+{
+ "menu": "The_Anchovy_Bar_Wine_Menu.pdf",
+ "pages": 2,
+ "wine_count": 33,
+ "seconds": 26.8,
+ "wines": [
+  {
+   "name": "Funambul Brut Nature Rosé",
+   "producer": "Entre Vinyes",
+   "category": "sparkling",
+   "vintage": "2021",
+   "region": "Cava, Spain",
+   "grape_variety": "Garnatxa/Trepat",
+   "by_glass_price": 16,
+   "bottle_price": 80
+  },
+  {
+   "name": "Blanc de Noirs Extra-Brut",
+   "producer": "Fredéric Magnien",
+   "category": "sparkling",
+   "region": "Crémant de Bourgogne, France",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 80
+  },
+  {
+   "name": "Extra Brut Les Vignes de Gueux",
+   "producer": "Lelarge-Pugeot",
+   "category": "sparkling",
+   "region": "Champagne, France",
+   "grape_variety": "Pinot Meunier/Pinot Noir",
+   "bottle_price": 160
+  },
+  {
+   "name": "Trocken",
+   "producer": "Joh. Bapt. Schäfer x Atomic Workshop",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Nahe, Germany",
+   "grape_variety": "Riesling",
+   "by_glass_price": 18,
+   "bottle_price": 90
+  },
+  {
+   "name": "Soave",
+   "producer": "Domìni Venete",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Veneto, Italy",
+   "grape_variety": "Garganega",
+   "bottle_price": 60
+  },
+  {
+   "name": "Gran Tifeo",
+   "producer": "Cenatiempo",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Campania, Italy",
+   "grape_variety": "Falanghina",
+   "bottle_price": 70
+  },
+  {
+   "name": "Kabinett",
+   "producer": "Clemens Busch",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Mosel, Germany",
+   "grape_variety": "Riesling",
+   "bottle_price": 80
+  },
+  {
+   "name": "Estate",
+   "producer": "Peay Vineyards",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Sonoma Coast, California",
+   "grape_variety": "Viognier",
+   "bottle_price": 130
+  },
+  {
+   "name": "Amber",
+   "producer": "Andria Gvino",
+   "category": "textured, round & aromatic",
+   "vintage": "2023",
+   "region": "Khashmi, Georgia",
+   "grape_variety": "Kisi",
+   "by_glass_price": 17,
+   "bottle_price": 85
+  },
+  {
+   "name": "Baba Manda",
+   "producer": "Vina Cota",
+   "category": "textured, round & aromatic",
+   "vintage": "2022",
+   "region": "Promina, Croatia",
+   "grape_variety": "Debit/Maraštin",
+   "bottle_price": 70
+  },
+  {
+   "name": "Ograde",
+   "producer": "Skerk",
+   "category": "textured, round & aromatic",
+   "vintage": "2020",
+   "region": "Venezia Giulia, Italy",
+   "grape_variety": "Vitovska/Malvasia/Sauvignon/Pinot Grigio",
+   "bottle_price": 126
+  },
+  {
+   "name": "Folk Machine",
+   "producer": "Folk Machine",
+   "category": "rosé",
+   "vintage": "2025",
+   "region": "Arroyo Seco, California",
+   "grape_variety": "Gamay",
+   "by_glass_price": 15,
+   "bottle_price": 75
+  },
+  {
+   "name": "Cerasuolo d'Abruzzo",
+   "producer": "Tiberio",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Italy",
+   "grape_variety": "Montepulciano",
+   "bottle_price": 66
+  },
+  {
+   "name": "Nouveau",
+   "producer": "Scribe",
+   "category": "red",
+   "vintage": "2025",
+   "region": "Carneros, California",
+   "grape_variety": "Pinot Noir",
+   "by_glass_price": 16,
+   "bottle_price": 80
+  },
+  {
+   "name": "Les Rampaux",
+   "producer": "Domaine Passot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Fleurie, Beaujolais, France",
+   "grape_variety": "Gamay",
+   "by_glass_price": 16,
+   "bottle_price": 80
+  },
+  {
+   "name": "Biga Crianza",
+   "producer": "Luberri",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Rioja, Spain",
+   "grape_variety": "Tempranillo",
+   "by_glass_price": 17,
+   "bottle_price": 85
+  },
+  {
+   "name": "Ca'n Verdura",
+   "producer": "Ca'n Verdura",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Mallorca, Spain",
+   "grape_variety": "Mantonegro/Merlot",
+   "bottle_price": 68
+  },
+  {
+   "name": "Fteri",
+   "producer": "Troupis",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Peloponnese, Greece",
+   "grape_variety": "Agiorgitiko",
+   "bottle_price": 58
+  },
+  {
+   "name": "Outis",
+   "producer": "Ciro Biondi",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Etna, Sicily, Italy",
+   "grape_variety": "Nerello Mascalese",
+   "bottle_price": 110
+  },
+  {
+   "name": "Blanc de Noirs Extra-Brut",
+   "producer": "Raptor Ridge",
+   "category": "sparkling",
+   "vintage": "2021",
+   "region": "Chehalem Mountains, Willamette Valley, Oregon",
+   "grape_variety": "Pinot Noir",
+   "by_glass_price": 22,
+   "bottle_price": 110
+  },
+  {
+   "name": "Edelzwicker White Blend",
+   "producer": "Aitia",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Columbia River Gorge, Washington",
+   "by_glass_price": 18,
+   "bottle_price": 90
+  },
+  {
+   "name": "Pinot Blanc",
+   "producer": "Bethel Heights Estate",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Willamette Valley, Oregon",
+   "by_glass_price": 17,
+   "bottle_price": 85
+  },
+  {
+   "name": "Two Blondes",
+   "producer": "Andrew Will",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Yakima Valley, Washington",
+   "grape_variety": "Sauvignon Blanc/Semillon",
+   "by_glass_price": 16,
+   "bottle_price": 80
+  },
+  {
+   "name": "Avni",
+   "producer": "Lingua Franca",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Willamette Valley, Oregon",
+   "grape_variety": "Chardonnay",
+   "by_glass_price": 22,
+   "bottle_price": 110
+  },
+  {
+   "name": "Noburg on Wine Hill",
+   "producer": "Golden Cluster",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Willamette Valley, Oregon",
+   "grape_variety": "Pinot Noir",
+   "by_glass_price": 18,
+   "bottle_price": 90
+  },
+  {
+   "name": "McKinley Springs Vineyard",
+   "producer": "Echolands",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Horse Heaven Hills, Washington",
+   "grape_variety": "Cinsault",
+   "by_glass_price": 19,
+   "bottle_price": 95
+  },
+  {
+   "name": "Fino",
+   "producer": "El Maestro Sierra",
+   "category": "aperitifs",
+   "region": "Jerez, Spain",
+   "bottle_price": 14
+  },
+  {
+   "name": "Bual 10 year",
+   "producer": "Cossart Gordon",
+   "category": "dessert wine",
+   "region": "Madeira, Portugal",
+   "bottle_price": 20
+  },
+  {
+   "name": "5 Puttonyos",
+   "producer": "Royal Tokaji",
+   "category": "dessert wine",
+   "vintage": "2018",
+   "region": "Tokaji, Hungary",
+   "grape_variety": "Furmint/Hárslevelű",
+   "bottle_price": 24
+  },
+  {
+   "name": "dry cider",
+   "producer": "Trabanco",
+   "category": "non-alcoholic",
+   "region": "Asturios, Spain",
+   "by_glass_price": 8,
+   "bottle_price": 36
+  },
+  {
+   "name": "off dry sparkling apple cider",
+   "producer": "Duché de Longueville",
+   "category": "non-alcoholic",
+   "region": "Normandy, France",
+   "by_glass_price": 8,
+   "bottle_price": 36
+  },
+  {
+   "name": "sparkling rosé",
+   "producer": "Muri Yamile",
+   "category": "non-alcoholic",
+   "region": "Copenhagen, Denmark",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "still red",
+   "producer": "Muri x The Four Horseman",
+   "category": "non-alcoholic",
+   "region": "Copenhagen, Denmark",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  }
+ ]
+}

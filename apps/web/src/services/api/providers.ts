@@ -405,6 +405,53 @@ export interface ProviderLocation {
   createdAt?: string
 }
 
+/**
+ * A provider already in this restaurant's list that looks like a duplicate of
+ * the name/address being typed. The local counterpart to
+ * VendorMatchCandidate (which covers the shared curated catalogue).
+ */
+export interface ProviderMatchCandidate {
+  id: string
+  name: string
+  address: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  catalogue_vendor_id: string | null
+  is_custom: boolean
+  name_similarity: number
+  address_similarity: number | null
+}
+
+/**
+ * Duplicate candidates within the restaurant's own providers.
+ *
+ * `excludeId` is required for the edit screen: without it the provider being
+ * renamed matches itself at 1.0 and every edit reports a duplicate.
+ *
+ * Resolves to [] on failure — this is advisory UI attached to a working form
+ * and must never be what stops someone saving.
+ */
+export async function matchRestaurantProviders(
+  name: string,
+  address?: string,
+  excludeId?: string,
+): Promise<ProviderMatchCandidate[]> {
+  const params = new URLSearchParams()
+  if (name) params.append('name', name)
+  if (address) params.append('address', address)
+  if (excludeId) params.append('excludeId', excludeId)
+
+  try {
+    const response = await apiClient.get<ProviderMatchCandidate[]>(
+      `/providers/match?${params.toString()}`,
+    )
+    return response.data
+  } catch {
+    return []
+  }
+}
+
 export async function getProviderLocations(providerId: string): Promise<ProviderLocation[]> {
   const response = await apiClient.get<ProviderLocation[]>(`/providers/${providerId}/locations`)
   return response.data
