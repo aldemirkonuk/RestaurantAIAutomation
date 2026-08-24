@@ -91,7 +91,7 @@ jobs:
 
       # -----------------------------------------------------------------------
       - name: Set up pnpm + Node.js (Wave F — Playwright)
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v6
         with:
           version: '8'
 
