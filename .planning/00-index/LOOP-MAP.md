@@ -18,14 +18,14 @@ machine-readable, which broke the promise in ORG_STRUCTURE §5.
 
 | Status | Loops |
 |---|---|
-| `proposed` | 435 |
+| `proposed` | 436 |
 | `blocked` | 30 |
 | `dormant` | 9 |
 | `active` | 3 |
-| `running` | 3 |
 | `gated` | 2 |
+| `running` | 2 |
 
-> Only the `active`/`running` rows describe something that actually runs today — **6 of 482**. The other statuses are written down, not cycling.
+> Only the `active`/`running` rows describe something that actually runs today — **5 of 482**, each citing the mechanism that closes it. The other statuses are written down, not cycling.
 
 ## Close-time distribution
 
@@ -41,7 +41,7 @@ machine-readable, which broke the promise in ORG_STRUCTURE §5.
 | `one-shot` | 3 |
 | `hourly` | 2 |
 
-**9 of the 9 permitted `close_time` values are in use.** Both `close_time` and `status` are closed vocabularies, locked by OD-47 in ORG_STRUCTURE §5.1 and enforced by this script — a value outside either set fails the build rather than landing here.
+**9 of the 9 permitted `close_time` values are in use.** Both `close_time` and `status` are closed vocabularies, locked by OD-47 in ORG_STRUCTURE §5.1 and read straight from that table by this script — a value outside either set fails CI rather than landing here.
 
 ## By division
 

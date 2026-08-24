@@ -19,6 +19,32 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
+  # The loop corpus is a contract, not prose. ORG_STRUCTURE §5.1 (OD-47) closes
+  # `close_time` and `status` to fixed sets, and `active`/`running` must cite the
+  # mechanism that closes them. Left unenforced, that rule drifted to 102 distinct
+  # close_time values across 482 loops, and to a live-loop count nobody had checked
+  # against the rule it claimed to follow.
+  #
+  # Unlike loop-watcher.yml, which reports and never blocks, this one fails: §5.1
+  # calls a value outside the sets "a defect, not a variant". Stdlib only, so there
+  # is no install step and a violation surfaces in seconds.
+  loop-contract:
+    name: Loop vocabulary contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Guard against loop vocabulary drift and a stale loop index
+        run: python3 scripts/build_loop_index.py --check
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Either a loop block breaks ORG_STRUCTURE §5.1, or the generated index is stale."
+          echo "::notice::The permitted values are read from §5.1's own table — fix the block, or amend the table if the contract itself is wrong."
+          echo "::notice::If the index is merely stale: run 'python3 scripts/build_loop_index.py' and commit the result."
+
   # Lint and type-check TypeScript/React code
   lint-typescript:
     name: Lint TypeScript

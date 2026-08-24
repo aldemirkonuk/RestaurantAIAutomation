@@ -4,6 +4,7 @@
   "owner": "ai-orchestration",
   "close_time": "per-pr",
   "status": "active",
+  "evidence": ".github/workflows/ci.yml:226-230 rebuilds the labelled set then runs scripts/eval_merge_policies.py; exits 1 iff the proposed policy has any false merge (eval_merge_policies.py:9-16). schema-parity.yml:149 runs the guest variant.",
   "measures": [
    "identity.false_merge_count"
   ],
@@ -29,6 +30,7 @@
   "owner": "ai-orchestration",
   "close_time": "daily",
   "status": "proposed",
+  "evidence": "core/base_agent.py:543 _process_with_retry, :791 DLQ; core/message_bus.py:188 CircuitBreaker, :524 DLQ declaration.",
   "measures": [
    "nf_a.retries",
    "nf_a.dlq_depth",
@@ -138,6 +140,7 @@
   "owner": "ai-orchestration",
   "close_time": "daily",
   "status": "proposed",
+  "evidence": "one-tap-actions.service.ts:230 executeAction, :245-246 executed_at/executed_by, :267 action_executed event \u2014 the timestamps needed for time-to-confirm already exist.",
   "measures": [
    "safety.unconfirmed_mutation_count",
    "safety.median_time_to_confirm",
@@ -355,6 +358,7 @@
   "owner": "ai-orchestration",
   "close_time": "per-pr",
   "status": "active",
+  "evidence": ".github/workflows/ci.yml:226-230 rebuilds the labelled set (scripts/build_merge_eval_set.py) then runs scripts/eval_merge_policies.py. schema-parity.yml:149 runs the guest variant.",
   "measures": [
    "identity.false_merge_count"
   ],
@@ -536,6 +540,7 @@
   "owner": "ai-orchestration",
   "close_time": "per-pr",
   "status": "proposed",
+  "evidence": "core/orchestrator.py:198-206 \u2014 EmailIntelAgent subscribed to email.inbound.raw, which had zero publishers. 'Three defects, each of which alone would have made the pipeline dead, and the missing registration hid the other two.",
   "measures": [
    "fleet.subscription_coverage",
    "fleet.topics_without_publisher",
@@ -641,6 +646,7 @@
   "owner": "ai-orchestration",
   "close_time": "daily",
   "status": "proposed",
+  "evidence": "core/base_agent.py:543 _process_with_retry, :791 DLQ; core/message_bus.py:188 CircuitBreaker.",
   "measures": [
    "nf_a.retries",
    "nf_a.dlq_depth"
@@ -3421,6 +3427,7 @@
   "owner": "compliance-privacy",
   "close_time": "per-pr",
   "status": "running",
+  "evidence": ".github/workflows/schema-parity.yml:19-27 (push to main/develop, pull_request, daily cron) runs scripts/check_no_guest_name_matching.sh and scripts/check_no_raw_guest_channels.sh at :152-154, alongside scripts/eval_guest_merge_policies.py at :149.",
   "measures": [
    "privacy.guard_pass_rate",
    "privacy.guard_allowlist_size"
@@ -3566,6 +3573,7 @@
   "owner": "privacy-engineering",
   "close_time": "per-pr",
   "status": "running",
+  "evidence": ".github/workflows/schema-parity.yml:19-27 (push, pull_request, daily cron) runs scripts/check_no_guest_name_matching.sh and scripts/check_no_raw_guest_channels.sh at :152-154, alongside scripts/eval_guest_merge_policies.py at :149 \u2014 which refuses to run without its DB secret rather than passing vacuously (:143-147).",
   "measures": [
    "privacy.guard_pass_rate",
    "privacy.guard_allowlist_size",
@@ -12621,6 +12629,7 @@
   "owner": "research-math/evaluation-doneability",
   "close_time": "per-pr",
   "status": "active",
+  "evidence": ".github/workflows/ci.yml:226-230 rebuilds the labelled set (scripts/build_merge_eval_set.py) then scores it, failing if any false merge exists; the pass/fail rule is scripts/eval_merge_policies.py:5-13 and the guest asymmetry scripts/eval_guest_merge_policies.py:28-32.",
   "measures": [
    "identity.false_merge_count",
    "guest.false_merge_count"
@@ -13209,7 +13218,7 @@
   "id": "decision-register-health",
   "owner": "decision-office",
   "close_time": "weekly",
-  "status": "running",
+  "status": "proposed",
   "measures": [
    "decisions.open_count",
    "decisions.intake_rate",
