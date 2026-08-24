@@ -134,3 +134,40 @@ class TestOrderCreatedHasExactlyOneOwner:
         # itself even with the other agent removed entirely.
         procurement_keys = {key for _, key in keys if key.startswith("procurement.")}
         assert procurement_keys == {"procurement.conversation_request"}
+
+
+class TestEveryAgentCanActuallyBeBuilt:
+    """A declared subscription is a lie if the agent cannot be constructed.
+
+    AgentOrchestrator._create_lazy_proxies builds every agent through one factory
+    signature — (agent_name, message_bus, database, config). Three agents did not
+    accept it and raised TypeError on first message: ProviderCommunicationAgent,
+    EmailIntelAgent, and EmailParsingAgent (which also forwarded `db=` to a
+    BaseAgent that takes `database=`, so no call site could have built it).
+
+    Nothing caught this because instantiation is lazy — the TypeError waits until
+    a message arrives for an agent that, being absent from DEFAULT_AGENT_SPECS,
+    no message ever reaches. Every one of the three was believed to be running.
+    The rest of the file pins which keys go where; this pins that something is
+    there to receive them.
+    """
+
+    FACTORY_KWARGS = {
+        "agent_name": "test_agent",
+        "message_bus": None,
+        "database": None,
+        "config": {},
+    }
+
+    def test_all_agent_classes_accept_the_orchestrator_factory_signature(self):
+        broken = {}
+        for cls in _all_agent_classes():
+            try:
+                cls(**self.FACTORY_KWARGS)
+            except TypeError as exc:
+                broken[cls.__name__] = str(exc)
+
+        assert not broken, (
+            "AgentOrchestrator._create_lazy_proxies builds every agent with "
+            f"{sorted(self.FACTORY_KWARGS)}; these cannot be built: {broken}"
+        )

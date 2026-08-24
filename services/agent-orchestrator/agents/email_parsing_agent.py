@@ -40,11 +40,22 @@ class EmailParsingAgent(BaseAgent):
     Processes inbound vendor emails with header-based and LLM-based matching.
     """
 
-    def __init__(self, message_bus, db: DatabaseClient, config: dict = None):
+    def __init__(
+        self,
+        message_bus,
+        database: DatabaseClient = None,
+        config: dict = None,
+        agent_name: str = "email_parsing_agent",
+        db: DatabaseClient = None,
+    ):
+        # Was (message_bus, db, config) forwarding `db=db` to BaseAgent, which takes
+        # `database` — so this raised TypeError however it was called, and the
+        # orchestrator's (agent_name, message_bus, database, config) factory could
+        # not construct it either. `db` is kept as an alias for existing callers.
         super().__init__(
-            agent_name="email_parsing_agent",
+            agent_name=agent_name,
             message_bus=message_bus,
-            db=db,
+            database=database if database is not None else db,
             config=config or {},
         )
         self.gemini_model = None

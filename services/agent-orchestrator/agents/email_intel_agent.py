@@ -47,17 +47,34 @@ class EmailIntelAgent(BaseAgent):
     as OPERATIONAL, PROMO, or NOISE using Gemini Flash, then routes accordingly.
     """
 
-    def __init__(self, message_bus, database, redis_client=None):
+    def __init__(
+        self,
+        message_bus,
+        database,
+        config: Optional[Dict[str, Any]] = None,
+        redis_client=None,
+        agent_name: str = "email_intel_agent",
+    ):
+        # agent_name and config exist to satisfy the orchestrator's factory, which
+        # builds EVERY agent as (agent_name, message_bus, database, config) — see
+        # AgentOrchestrator._create_lazy_proxies. Registering this agent was the
+        # documented fix for the dead inbound pipeline, but instantiation still
+        # raised TypeError, so it never subscribed.
         super().__init__(
-            agent_name="email_intel_agent",
+            agent_name=agent_name,
             message_bus=message_bus,
             database=database,
-            config={},
+            config=config or {},
         )
-        self.redis = redis_client
+        self._redis_client = redis_client
         # Created in initialize() — MUST be inside a running event loop
         self.haiku_semaphore: Optional[Any] = None
         self._settings: Optional[Settings] = None
+
+    @property
+    def redis(self):
+        """Explicit client if injected (tests), else the one DatabaseClient owns."""
+        return self._redis_client or getattr(self.database, "redis", None)
 
     @property
     def settings(self) -> Settings:
