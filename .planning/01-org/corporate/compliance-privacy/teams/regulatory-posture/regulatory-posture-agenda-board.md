@@ -47,7 +47,7 @@ SORT updated ASC
 ## The verified zero
 
 - `grep -riE "gdpr|ccpa|data subject|right to erasure"` over `apps/`, `services/`, `supabase/`, `scripts/` → **zero hits**
-- The one repo-wide match outside planning prose is **"CCPAE"** in `.planning/stage1_producer_research_raw.json` — the Catalan organic-agriculture council. A substring collision, not a statute. Recorded so a future grep reporting "1 hit" is not believed.
+- The one repo-wide match outside planning prose is **"CCPAE"** in `datasets/planning-exports/stage1_producer_research_raw.json` — the Catalan organic-agriculture council. A substring collision, not a statute. Recorded so a future grep reporting "1 hit" is not believed.
 
 ## Head starts (raw material that already exists)
 

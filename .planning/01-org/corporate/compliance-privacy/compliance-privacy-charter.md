@@ -195,7 +195,7 @@ Four guards is not defence in depth; it is three definitions and a copy.
 Verified this session, not transcribed: `grep -riE "gdpr|ccpa|data subject|right to
 erasure"` across `apps/`, `services/`, `supabase/`, `scripts/` returns **zero
 hits**. The single repo-wide match outside planning prose is
-`.planning/stage1_producer_research_raw.json`, where **"CCPAE"** is the *Consell
+`datasets/planning-exports/stage1_producer_research_raw.json`, where **"CCPAE"** is the *Consell
 Català de la Producció Agrària Ecològica* — the Catalan organic-agriculture council,
 a substring collision, not a privacy statute. Obligation coverage is genuinely 0%.
 

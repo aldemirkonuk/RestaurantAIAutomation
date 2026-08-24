@@ -116,7 +116,7 @@ above it does not call it for that number.
 `.planning/ANALYTICS_FEATURE_CATALOG.md` (the 360 features)"*. That file says **460**
 (`:5`). Its own priority-tier table (`:931-936`) sums 92 + 170 + 98 = **360**, because
 Batch 6 (361–460, one hundred seating-density features) was appended without tiers. Its
-machine-readable export, `.planning/analytics-feature-catalog.json`, carries 460 features
+machine-readable export, `datasets/planning-exports/analytics-feature-catalog.json`, carries 460 features
 under `"status": "planned"` while the markdown header says PARTLY BUILT.
 
 So the same document is 360 features to the code, 460 to itself, planned to its export, and

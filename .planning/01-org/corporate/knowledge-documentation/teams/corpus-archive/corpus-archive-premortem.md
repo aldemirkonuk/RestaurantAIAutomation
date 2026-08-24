@@ -115,9 +115,18 @@ what `md_files/` already is: a partial copy of the live corpus that nobody can t
 stale. Searching the repo returned two answers to every question, and the archive's answer
 was often the more confidently written one.
 
+**Confirmed, then cleared (2026-08-24).** The 2026-08-24 vault audit measured it: 522 files
+in `.planning/archive/`, 24 of 35 phase directories byte-identical to their live twin, and
+only 31 files that existed nowhere else. The archive step had copied rather than moved. Both
+trees are now deleted; this section stays as the description of a failure mode that has
+already occurred once here.
+
 **Earliest observable signal.** A grep for any spine-document claim returns hits in both
-`.planning/` and `.planning/archive/` with no marker distinguishing them. `.planning/archive/`
-already exists and already holds v2.0 phase documents — this is not hypothetical.
+`.planning/` and an archive tree with no marker distinguishing them. This was not
+hypothetical: `.planning/archive/` existed and held v2.0 phase documents, **94% of them
+byte-identical copies of `.planning/phases/`** — M5 had already happened. Both trees were
+deleted on 2026-08-24 ([[VAULT_CLEANUP_AUDIT]]), so this failure mode is currently at zero
+and the marker requirement exists to keep it there.
 
 **What would have prevented it.** Archived documents carrying `status: archived` in
 frontmatter and a superseded-by link, so [[graph-retrieval-charter]]'s queries can exclude

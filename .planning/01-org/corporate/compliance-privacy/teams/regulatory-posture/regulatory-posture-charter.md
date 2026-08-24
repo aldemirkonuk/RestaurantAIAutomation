@@ -106,7 +106,7 @@ but the second one is useful and the first is a lie.
 
 `grep -riE "gdpr|ccpa|data subject|right to erasure"` across `apps/`, `services/`,
 `supabase/`, `scripts/` returns **zero hits**. The only repo-wide match outside
-planning prose is `.planning/stage1_producer_research_raw.json`, where **"CCPAE"** is
+planning prose is `datasets/planning-exports/stage1_producer_research_raw.json`, where **"CCPAE"** is
 the *Consell Català de la Producció Agrària Ecològica* — the Catalan
 organic-agriculture council. A substring collision, not a statute. Worth recording
 because it is exactly the kind of false positive that would otherwise let a future

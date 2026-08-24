@@ -145,7 +145,7 @@ A second, independent divergence: `metric-registry.ts:8` calls the catalogue *"t
 features"*, while `ANALYTICS_FEATURE_CATALOG.md:5` says **460** — and that file's own
 tier table (`:931-936`, 92 / 170 / 98) still sums to **360**, because Batch 6 (361–460)
 was never tiered. Its machine-readable export
-(`.planning/analytics-feature-catalog.json`) carries 460 features under
+(`datasets/planning-exports/analytics-feature-catalog.json`) carries 460 features under
 `"status": "planned"` while the markdown header says PARTLY BUILT.
 
 ### The precedent this department was founded on (EXISTS)

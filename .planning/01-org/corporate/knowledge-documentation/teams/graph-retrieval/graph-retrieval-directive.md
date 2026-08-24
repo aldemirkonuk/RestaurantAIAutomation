@@ -93,7 +93,7 @@ most, which is [[graph-retrieval-premortem]] M4.
 | 45 spine docs (`.planning/*.md`, `foundation/`, `decisions/`) | `type`, `division` where applicable, `updated`, `links` | CI error after backfill |
 | All `01-org/` + `02-advisory/` unit docs | Full contract per [[ORG_STRUCTURE]] §5 | CI error immediately |
 | `loops.md` specifically | Plus `measures`, `changes`, `inputs_from`, `outputs_to`, **`close_time`** | CI error — OD-12's "executable later" depends on it |
-| `.planning/archive/` | `status: archived` + `superseded_by` only | Owned by [[corpus-archive-charter]] |
+| A future archive tree (`.planning/archive/` deleted 2026-08-24, [[VAULT_CLEANUP_AUDIT]]) | `status: archived` + `superseded_by` only | Owned by [[corpus-archive-charter]] |
 | `.planning/sketches/`, legacy `md/`, `md_files/` | Out of scope | None |
 
 ## Escalation trigger
