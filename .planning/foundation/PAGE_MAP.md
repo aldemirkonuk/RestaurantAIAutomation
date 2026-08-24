@@ -98,7 +98,7 @@ graph LR
   n_settings --> n_profile
   n_verify_email --> n_login
   classDef pub fill:#fde68a,stroke:#b45309,color:#111;
-  class n_privacy,n_forgot_password,n_register,n_login,n_invite__code,n_no_access,n_verify_email,n_reset_password pub;
+  class n_login,n_verify_email,n_privacy,n_invite__code,n_register,n_no_access,n_reset_password,n_forgot_password pub;
 ```
 
 ## Entry points (no inbound in-app link)

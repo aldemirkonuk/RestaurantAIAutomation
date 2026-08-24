@@ -5,7 +5,7 @@
 
 **448 endpoints** across **44 modules** · 311 guarded by `JwtAuthGuard` · 137 unguarded.
 
-`Auth` column: ✅ = `JwtAuthGuard` present (class or method). ⚠️ = no guard found — note `TenantGuard` returns `true` for unauthenticated requests (`common/tenant/tenant.guard.ts:38-46`), so ⚠️ means reachable unauthenticated.
+`Auth` column: ✅ = `JwtAuthGuard` present. 🌐 = explicit `@Public()` (intentionally public). ⚠️ = no guard found — note `TenantGuard` returns `true` for unauthenticated requests (`common/tenant/tenant.guard.ts:38-46`), so ⚠️ means reachable unauthenticated.
 
 ### `analytics/analytics` (39) — ⚠️ **39 unguarded** — **classify these**
 
@@ -121,7 +121,7 @@
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `POST` | `/webhooks/inbound-email` |
+| 🌐 | `POST` | `/webhooks/inbound-email` |
 
 ### `common/orchestrator/prospects` (6)
 
@@ -150,18 +150,18 @@
 | ⚠️ | `POST` | `/communications/email` |
 | ⚠️ | `POST` | `/communications/sms` |
 | ⚠️ | `GET` | `/communications/status` |
-| ⚠️ | `POST` | `/communications/test/e2e/step1-trigger-threshold` |
-| ⚠️ | `POST` | `/communications/test/e2e/step2-approve-reorder` |
-| ⚠️ | `POST` | `/communications/test/e2e/step3-send-vendor-email` |
-| ⚠️ | `GET` | `/communications/test/e2e/step4-check-inbound` |
-| ⚠️ | `POST` | `/communications/test/e2e/step5-approve-confirmation` |
-| ⚠️ | `GET` | `/communications/test/e2e/step6-check-status` |
+| 🌐 | `POST` | `/communications/test/e2e/step1-trigger-threshold` |
+| 🌐 | `POST` | `/communications/test/e2e/step2-approve-reorder` |
+| 🌐 | `POST` | `/communications/test/e2e/step3-send-vendor-email` |
+| 🌐 | `GET` | `/communications/test/e2e/step4-check-inbound` |
+| 🌐 | `POST` | `/communications/test/e2e/step5-approve-confirmation` |
+| 🌐 | `GET` | `/communications/test/e2e/step6-check-status` |
 | ⚠️ | `POST` | `/communications/test/email` |
 | ⚠️ | `POST` | `/communications/test/low-stock-alert` |
 | ⚠️ | `POST` | `/communications/test/scenario` |
-| ⚠️ | `POST` | `/communications/test/send-template` |
-| ⚠️ | `POST` | `/communications/webhooks/gmail` |
-| ⚠️ | `POST` | `/communications/webhooks/gmail/force-fetch` |
+| 🌐 | `POST` | `/communications/test/send-template` |
+| 🌐 | `POST` | `/communications/webhooks/gmail` |
+| 🌐 | `POST` | `/communications/webhooks/gmail/force-fetch` |
 | ⚠️ | `GET` | `/communications/webhooks/gmail/status` |
 
 ### `contacts/contacts` (8) — ⚠️ **8 unguarded** — **classify these**
@@ -653,12 +653,12 @@
 | ✅ | `POST` | `/vendor-intel/scrape` |
 | ✅ | `POST` | `/vendor-intel/sweep` |
 
-### `vendor-portal/vendor-portal` (2) — ⚠️ **2 unguarded** (webhook module — expected public, must verify signatures instead)
+### `vendor-portal/vendor-portal` (2) — ⚠️ **2 unguarded** (all carry explicit `@Public()` — intentionally public, not a gap)
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `GET` | `/vendor-portal/:slug` |
-| ⚠️ | `GET` | `/vendor-portal/:slug/jsonld` |
+| 🌐 | `GET` | `/vendor-portal/:slug` |
+| 🌐 | `GET` | `/vendor-portal/:slug/jsonld` |
 
 ### `wines/wines` (10)
 

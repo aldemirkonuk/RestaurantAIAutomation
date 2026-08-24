@@ -31,7 +31,11 @@ for f in files(API, ".controller.ts"):
     module = str(f.relative_to(API)).replace(".controller.ts", "")
     for mm in re.finditer(r'@(%s)\(\s*(?:["\']([^"\']*)["\'])?\s*\)' % "|".join(METHODS), src):
         verb, sub = mm.group(1).upper(), (mm.group(2) or "").strip("/")
-        seg = src[max(0, mm.start() - 400):mm.start()]
+        # decorators may sit before OR after the HTTP verb decorator
+        before = src[max(0, mm.start() - 400):mm.start()]
+        after = src[mm.end():mm.end() + 300]
+        after = after.split(")", 1)[0] if "async " not in after[:200] else after[:after.find("async ")]
+        seg = before + after
         endpoints.append({
             "method": verb,
             "path": "/" + "/".join(x for x in (base, sub) if x),

@@ -30,11 +30,24 @@ rather than hand-edited (CLAUDE.md §2):
 
 1. **137 of 448 endpoints have no `JwtAuthGuard`.** Combined with `TenantGuard`
    passing unauthenticated requests through, unguarded = internet-reachable.
-   Webhook modules (`toast`, `simpos`, `inbound-email`, `vendor-portal`, `pos-hub`,
-   ≈51 routes) are legitimately public but need **signature verification** instead.
-   That leaves ~86 in `analytics` (39), `notifications` (24), `communications` (18),
-   `contacts` (8), `dashboard` (8), `procurement` (6) requiring classification.
-   → **Security**, expanded from §2.3.
+   Of those: **32** are in webhook modules (`toast`, `simpos`, `pos-hub`,
+   `inbound-email`) which are legitimately public but need **signature
+   verification** instead; **11** carry an explicit `@Public()` decorator and are
+   intentionally public (e.g. `vendor-portal`, a deliberately crawlable vendor
+   catalogue). That leaves **94 unguarded by omission** — `analytics` (39),
+   `notifications` (24), `communications` (18), `contacts` (8), `dashboard` (8),
+   `procurement` (6) — requiring classification. → **Security** (§2.3).
+
+   🔴 **One is live and financially exploitable.**
+   `apps/api-gateway/src/analytics/analytics.controller.ts` carries zero
+   `@UseGuards` and zero `@Public` — unguarded by omission. Anonymous callers can
+   `PUT /analytics/consultants/:restaurantId/toggle` to enable the paid consultant
+   layer, then `POST /analytics/consult/:restaurantId`, which reaches
+   `consultants.service.ts:159` calling `api.anthropic.com/v1/messages` with
+   `claude-opus-4-8` at `max_tokens: 4096`. The only brake is an in-memory,
+   per-instance rate limiter. **Unauthorized spend on the founder's key,
+   reachable now.**
+
 2. **Square and Lightspeed already appear in source** (`developer.squareup.com`,
    `developers.lightspeedhq.com`), alongside Yelp and Apify. The POS-bridge
    ambition (vision §6) has more groundwork than the docs admit — worth auditing

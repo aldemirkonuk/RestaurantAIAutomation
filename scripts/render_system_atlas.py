@@ -7,7 +7,8 @@ OUT = ROOT / ".planning/foundation"
 d = json.load(open(S / "atlas.json"))
 
 eps, routes, edges = d["endpoints"], d["routes"], d["edges"]
-WEBHOOKS = ("toast", "simpos", "inbound-email", "vendor-portal", "pos-hub")
+WEBHOOKS = ("toast", "simpos", "inbound-email", "pos-hub")  # vendor-portal is NOT a webhook: it is
+# intentionally public catalogue GETs carrying explicit @Public() decorators.
 
 # ============ ENDPOINTS.md ============
 by_mod = collections.defaultdict(list)
@@ -19,21 +20,27 @@ L = ["# API Endpoint Reference — Mudavym", "",
      f"**{len(eps)} endpoints** across **{len(by_mod)} modules** · "
      f"{sum(1 for e in eps if e['auth'])} guarded by `JwtAuthGuard` · "
      f"{sum(1 for e in eps if not e['auth'])} unguarded.", "",
-     "`Auth` column: ✅ = `JwtAuthGuard` present (class or method). "
+     "`Auth` column: ✅ = `JwtAuthGuard` present. 🌐 = explicit `@Public()` (intentionally public). "
      "⚠️ = no guard found — note `TenantGuard` returns `true` for unauthenticated "
      "requests (`common/tenant/tenant.guard.ts:38-46`), so ⚠️ means reachable unauthenticated.", ""]
 
 for mod in sorted(by_mod):
     items = sorted(by_mod[mod], key=lambda e: (e["path"], e["method"]))
     n_un = sum(1 for e in items if not e["auth"])
+    n_pub = sum(1 for e in items if e.get("public"))
     flag = ""
     if n_un:
-        flag = (" — ⚠️ **%d unguarded**%s" % (n_un,
-                " (webhook module — expected public, must verify signatures instead)"
-                if any(w in mod for w in WEBHOOKS) else " — **classify these**"))
+        if any(w in mod for w in WEBHOOKS):
+            note = " (webhook module — expected public, must verify signatures instead)"
+        elif n_pub >= n_un:
+            note = " (all carry explicit `@Public()` — intentionally public, not a gap)"
+        else:
+            note = " — **classify these**"
+        flag = " — ⚠️ **%d unguarded**%s" % (n_un, note)
     L += [f"### `{mod}` ({len(items)}){flag}", "", "| Auth | Method | Path |", "|---|---|---|"]
     for e in items:
-        L.append(f"| {'✅' if e['auth'] else '⚠️'} | `{e['method']}` | `{e['path']}` |")
+        mark = "✅" if e["auth"] else ("🌐" if e.get("public") else "⚠️")
+        L.append(f"| {mark} | `{e['method']}` | `{e['path']}` |")
     L.append("")
 (OUT / "ENDPOINTS.md").write_text("\n".join(L))
 

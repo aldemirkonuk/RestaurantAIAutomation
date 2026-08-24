@@ -31,7 +31,7 @@ These were set on 2026-08-24 and override convenience every time.
 
 | Path | What lives there |
 |---|---|
-| `apps/web`, `apps/mobile`, `apps/api-gateway` | Product surfaces (Next.js, RN, NestJS) |
+| `apps/web`, `apps/mobile`, `apps/api-gateway` | Product surfaces — Vite SPA + react-router-dom (**not** Next.js), React Native, NestJS |
 | `services/agent-orchestrator` | Python agents + `core/base_agent.py` |
 | `services/self-evolution`, `services/database` | Supporting services |
 | `packages/database`, `packages/ui` | Shared workspace packages |

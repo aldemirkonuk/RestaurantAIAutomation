@@ -20,7 +20,8 @@
 | OD-11 | **Neural-footprint production schema detail** — exact columns, partial-index strategy per `subject_type`, retention/rollup policy for the research log. | The split is locked (see Resolved); the column-level contract is not, and it gates any NF implementation. | Dedicated schema session with Postgres best-practices loaded. |
 | OD-14 | **Root `SKILLS.md`** — retire, or rewrite? It is a prose reasoning protocol (not a skill) and still says "WineOps AI". | Stale brand + misleading filename; agents and contributors will mistake it for the skill registry. | Founder call; low stakes, next docs pass. |
 | OD-18 | **Division count** — 5, or split Technology into Platform + Applied AI? | Five departments under Technology is the widest span in the org. | **Deferred by founder pending team-layer evidence** from the division analysis agents. |
-| OD-19 | **Security classification** — of the ~86 non-webhook endpoints lacking `JwtAuthGuard`, which are real gaps vs intentional? | Unguarded + `TenantGuard` passthrough = internet-reachable ([ENDPOINTS.md](../foundation/ENDPOINTS.md)). | Security department's first assignment, once it exists. |
+| OD-19 | **Security classification** — of the **94** endpoints unguarded by omission (137 total − 32 webhook-module − 11 explicit `@Public()`), which are real gaps? | Unguarded + `TenantGuard` passthrough = internet-reachable ([ENDPOINTS.md](../foundation/ENDPOINTS.md)). | Security department's first assignment. |
+| OD-20 | 🔴 **Analytics consultant endpoints are unauthenticated and cost money** — anonymous callers can self-enable and drive `claude-opus-4-8`. Fix now on a hotfix branch, or fold into OD-19's sweep? | Live unauthorized spend on the founder's API key. Severity is not a documentation question. | **Founder call — urgent.** |
 
 ## Resolved
 
