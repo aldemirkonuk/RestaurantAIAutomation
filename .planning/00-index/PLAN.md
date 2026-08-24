@@ -41,7 +41,7 @@ Everything downstream is gated on one thing: **the system does not measure itsel
      ┌──────────────────┼──────────────────┬───────────────────┐
      ▼                  ▼                  ▼                   ▼
  loops go active   agent review     cost-per-task      scenario §11
- (4 → many)        possible         routing (OD-03/04)  feedback real
+ (6 → many)        possible         routing (OD-03/04)  feedback real
 ```
 
 ### P1 — Instrument NF-A *(unblocks the most)*
@@ -90,4 +90,5 @@ From here, a change that cannot be observed should not ship.
 | Wave 0 | Lock contracts (unit anatomy, skill anatomy, NF schema) | ✅ ADRs 0006, 0007 |
 | Wave 1 | Generate the org in parallel | ✅ 792 docs; review agents caught 12+ errors in Claude's own work |
 | Wave 1b | Scenario ritual layer | ✅ 17 scenarios |
+| Wave 1c | Vault integration + watcher loop | ✅ Obsidian config on `.planning/`, graph clustered by division, `watch_loops.py` scheduled weekly — **6th running loop** |
 | **Wave 2** | **Instrumentation** | ⬅ next, gated on P1 |
