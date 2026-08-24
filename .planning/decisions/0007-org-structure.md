@@ -26,11 +26,12 @@ optimize for **quality and ambition, not for one person's capacity** — and
 
 **Option 3.**
 
-**5 divisions · 20 departments · 2 sub-layers:**
+**6 divisions · 19 departments · 2 sub-layers · 75 teams:**
 
 | Division | Departments |
 |---|---|
-| Technology | Engineering · AI Orchestration · Skills · Data · Reliability/SRE |
+| Platform | Engineering · Data · Reliability/SRE |
+| Applied AI | AI Orchestration · Skills |
 | Intelligence | Research & Math · Security · Analytics & BI |
 | Product | Product & Vision *(⊃ Guest Experience)* · Design · Partnerships & Integrations |
 | Commercial | Growth *(⊃ Finance & Pricing)* · Sales · Media & Brand |
@@ -56,12 +57,17 @@ cannot articulate its own failure mode before starting has not been thought thro
 **Agendas carry an explicit "provisional — no work done yet" banner** so forecast is
 never mistaken for fact.
 
-**Division count (5 vs splitting Technology) deferred** pending team-layer evidence
-from the division analysis agents — decided with data rather than ahead of it.
+**Division count resolved 2026-08-24:** Technology returned **25 teams** under 5
+departments — by far the widest span — so it was split into **Platform** and
+**Applied AI**, taking the org to 6 divisions. Decided on the evidence, as intended.
+
+**Count correction:** earlier drafts of this ADR said "20 departments". The roster
+was always 19 (5+3+3+3+5); only the arithmetic was wrong.
 
 ## Consequences
 
-- ~24 units × 7 artifacts ≈ **168 documents**. Real upkeep; the anti-sprawl rules
+- **99 units × 7 artifacts = 693 documents.** Founder confirmed full depth for teams
+  after being shown the volume. Real upkeep; the anti-sprawl rules
   (foundation §3.3, §6) apply — an agenda unchanged in 60 days is finished or fiction.
 - Advisory independence is structural: an advisor reporting inside the line it
   reviews is not independent, which is why these sit outside the divisions.

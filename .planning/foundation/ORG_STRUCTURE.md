@@ -25,13 +25,19 @@ one point, and so the loop graph (§4) has readable clusters instead of a dense 
 
 | Division | Departments | Sub-layers |
 |---|---|---|
-| **Technology** | Engineering · AI Orchestration · Skills · Data · Reliability/SRE | — |
+| **Platform** | Engineering · Data · Reliability/SRE | — |
+| **Applied AI** | AI Orchestration · Skills | — |
 | **Intelligence** | Research & Math · Security · Analytics & BI | — |
 | **Product** | Product & Vision · Design · Partnerships & Integrations | Guest Experience *(under Product & Vision)* |
 | **Commercial** | Growth · Sales · Media & Brand | Finance & Pricing *(under Growth)* |
 | **Corporate** | Legal · Knowledge & Documentation · Compliance & Privacy · People & Agent Ops · Strategy & Fundraising | — |
 
-**5 divisions · 20 departments · 2 sub-layers.**
+**6 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams.**
+
+> Correction 2026-08-24: earlier drafts said "20 departments". The list has always
+> been 19 (5+3+3+3+5); the count was wrong, not the roster. Technology was split into
+> **Platform** (Engineering, Data, Reliability/SRE) and **Applied AI** (AI Orchestration,
+> Skills) on the evidence of its 25-team span, taking divisions from 5 to 6.
 
 Rationale for the four newest (locked this round): **Analytics & BI** owns the metrics
 narrative that sells the product, which is a different job from Data's substrate;
@@ -80,7 +86,8 @@ in one session is the same shape as one built in another.
 **Premortem is artifact #2 deliberately.** A unit that cannot articulate its own
 failure mode before it starts has not been thought through.
 
-**Volume, honestly:** 24 units × 7 artifacts ≈ **168 documents**. That is the cost of
+**Volume, honestly:** 99 units (19 departments + 2 sub-layers + 3 advisory + 75 teams)
+× 7 artifacts = **693 documents**. That is the cost of
 "full hierarchy." It is achievable in parallel, but it is real upkeep — the anti-sprawl
 rules in foundation §3.3 and §6 apply here too: an agenda that has not changed in 60
 days is either finished or fiction.
