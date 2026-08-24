@@ -199,8 +199,17 @@ export class ToastService {
             HttpStatus.UNAUTHORIZED,
           );
         }
+      } else if (!this.webhookSecret && !this.mockMode) {
+        // Secret not configured outside mock mode: previously this fell through and
+        // accepted an unsigned webhook silently. Refuse instead — a POS ingress route
+        // that mutates stock must never accept unverifiable input.
+        this.webhookMetrics.errors++;
+        throw new HttpException(
+          "Toast webhook rejected: TOAST_WEBHOOK_SECRET is not configured",
+          HttpStatus.UNAUTHORIZED,
+        );
       } else if (this.webhookSecret && !this.mockMode) {
-        // In production with secret configured, require signature
+        // Secret configured but caller sent no signature — already fail-closed.
         this.webhookMetrics.errors++;
         throw new HttpException(
           "Missing webhook signature",
