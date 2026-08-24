@@ -26,7 +26,7 @@
 | [0004](0004-obsidian-as-backlink-layer.md) | Obsidian adopted as the doc backlink layer | 2026-08-24 |
 | [0005](0005-v3-to-v0-version-reset.md) | v3 internal build → deliberate v0 production reset | 2026-08-24 |
 | [0006](0006-neural-footprint-architecture.md) | Neural Footprint — split narrow production store from wide append-only research log; NF-C gated | 2026-08-24 |
-| [0007](0007-org-structure.md) | Org — 5 divisions, 20 departments, 3 findings-only advisory functions, 7-artifact unit anatomy | 2026-08-24 |
+| [0007](0007-org-structure.md) | Org — 7 divisions, 19 departments, 3 findings-only advisory functions, 7-artifact unit anatomy | 2026-08-24 |
 
 ## Locked — recorded elsewhere (pre-log)
 
@@ -42,6 +42,6 @@
 
 ## Open
 
-See [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Currently 8 items, including the
-`.planning/` restructure itself (OD-01) — which is why this directory is the only
-structural addition made so far.
+See [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md) — that file is canonical and this line
+is a pointer, not a count. It has grown well past its original 8 items; four are
+marked 🔴 and several were raised by review agents against Claude's own work.

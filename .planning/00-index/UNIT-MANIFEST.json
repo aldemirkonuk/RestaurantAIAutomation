@@ -1,6 +1,13 @@
 {
  "divisions": [
   {
+   "slug": "research-math",
+   "title": "Research & Math",
+   "departments": [
+    "research-math"
+   ]
+  },
+  {
    "slug": "platform",
    "title": "Platform",
    "departments": [
@@ -21,7 +28,6 @@
    "slug": "intelligence",
    "title": "Intelligence",
    "departments": [
-    "research-math",
     "security",
     "analytics-bi"
    ]
@@ -618,16 +624,16 @@
    "kind": "department",
    "slug": "research-math",
    "title": "Research & Math",
-   "division": "intelligence",
-   "dir": "01-org/intelligence/research-math",
+   "division": "research-math",
+   "dir": "01-org/research-math",
    "files": {
-    "charter": "01-org/intelligence/research-math/research-math-charter.md",
-    "premortem": "01-org/intelligence/research-math/research-math-premortem.md",
-    "agenda-full": "01-org/intelligence/research-math/research-math-agenda-full.md",
-    "agenda-board": "01-org/intelligence/research-math/research-math-agenda-board.md",
-    "directive": "01-org/intelligence/research-math/research-math-directive.md",
-    "loops": "01-org/intelligence/research-math/research-math-loops.md",
-    "schedule": "01-org/intelligence/research-math/research-math-schedule.md"
+    "charter": "01-org/research-math/research-math-charter.md",
+    "premortem": "01-org/research-math/research-math-premortem.md",
+    "agenda-full": "01-org/research-math/research-math-agenda-full.md",
+    "agenda-board": "01-org/research-math/research-math-agenda-board.md",
+    "directive": "01-org/research-math/research-math-directive.md",
+    "loops": "01-org/research-math/research-math-loops.md",
+    "schedule": "01-org/research-math/research-math-schedule.md"
    }
   },
   {
@@ -635,18 +641,18 @@
    "slug": "harness-model-routing",
    "title": "Harness & Model Routing",
    "id": "RM-1",
-   "division": "intelligence",
+   "division": "research-math",
    "department": "research-math",
    "gated": false,
-   "dir": "01-org/intelligence/research-math/teams/harness-model-routing",
+   "dir": "01-org/research-math/teams/harness-model-routing",
    "files": {
-    "charter": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-charter.md",
-    "premortem": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-premortem.md",
-    "agenda-full": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-agenda-full.md",
-    "agenda-board": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-agenda-board.md",
-    "directive": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-directive.md",
-    "loops": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-loops.md",
-    "schedule": "01-org/intelligence/research-math/teams/harness-model-routing/harness-model-routing-schedule.md"
+    "charter": "01-org/research-math/teams/harness-model-routing/harness-model-routing-charter.md",
+    "premortem": "01-org/research-math/teams/harness-model-routing/harness-model-routing-premortem.md",
+    "agenda-full": "01-org/research-math/teams/harness-model-routing/harness-model-routing-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/harness-model-routing/harness-model-routing-agenda-board.md",
+    "directive": "01-org/research-math/teams/harness-model-routing/harness-model-routing-directive.md",
+    "loops": "01-org/research-math/teams/harness-model-routing/harness-model-routing-loops.md",
+    "schedule": "01-org/research-math/teams/harness-model-routing/harness-model-routing-schedule.md"
    }
   },
   {
@@ -654,18 +660,18 @@
    "slug": "evaluation-doneability",
    "title": "Evaluation & Doneability",
    "id": "RM-2",
-   "division": "intelligence",
+   "division": "research-math",
    "department": "research-math",
    "gated": false,
-   "dir": "01-org/intelligence/research-math/teams/evaluation-doneability",
+   "dir": "01-org/research-math/teams/evaluation-doneability",
    "files": {
-    "charter": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-charter.md",
-    "premortem": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-premortem.md",
-    "agenda-full": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-agenda-full.md",
-    "agenda-board": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-agenda-board.md",
-    "directive": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-directive.md",
-    "loops": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-loops.md",
-    "schedule": "01-org/intelligence/research-math/teams/evaluation-doneability/evaluation-doneability-schedule.md"
+    "charter": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-charter.md",
+    "premortem": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-premortem.md",
+    "agenda-full": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-agenda-board.md",
+    "directive": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-directive.md",
+    "loops": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-loops.md",
+    "schedule": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-schedule.md"
    }
   },
   {
@@ -673,18 +679,18 @@
    "slug": "neural-footprint-instrumentation",
    "title": "Neural Footprint Instrumentation",
    "id": "RM-3",
-   "division": "intelligence",
+   "division": "research-math",
    "department": "research-math",
    "gated": false,
-   "dir": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation",
+   "dir": "01-org/research-math/teams/neural-footprint-instrumentation",
    "files": {
-    "charter": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-charter.md",
-    "premortem": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-premortem.md",
-    "agenda-full": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agenda-full.md",
-    "agenda-board": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agenda-board.md",
-    "directive": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-directive.md",
-    "loops": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-loops.md",
-    "schedule": "01-org/intelligence/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-schedule.md"
+    "charter": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-charter.md",
+    "premortem": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-premortem.md",
+    "agenda-full": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agenda-board.md",
+    "directive": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-directive.md",
+    "loops": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-loops.md",
+    "schedule": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-schedule.md"
    }
   },
   {
