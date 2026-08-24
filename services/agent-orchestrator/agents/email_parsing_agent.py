@@ -58,12 +58,17 @@ class EmailParsingAgent(BaseAgent):
             database=database if database is not None else db,
             config=config or {},
         )
+        # BaseAgent turns the dict into an AgentConfig pydantic model, which has no
+        # .get() and drops unknown keys — so reading self.config.get("google_api_key")
+        # raised AttributeError out of initialize() and killed start(). This agent is
+        # CORE, so that was one of the roster silently failing to boot. Keep the dict.
+        self.raw_config = config or {}
         self.gemini_model = None
 
     async def initialize(self) -> None:
         """Set up Gemini model for context matching and summarization"""
         if GEMINI_AVAILABLE:
-            api_key = self.config.get("google_api_key") or ""
+            api_key = self.raw_config.get("google_api_key") or ""
             if api_key:
                 genai.configure(api_key=api_key)
                 self.gemini_model = genai.GenerativeModel("gemini-pro")
@@ -656,7 +661,7 @@ Respond with ONLY valid JSON:
             except Exception:
                 pass
         # Fallback to config
-        return self.config.get("default_restaurant_id")
+        return self.raw_config.get("default_restaurant_id")
 
     async def _detect_intent(self, subject: str, body: str) -> str:
         """Intent detection with scarcity/urgency awareness"""
