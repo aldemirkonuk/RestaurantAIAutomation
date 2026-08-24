@@ -22,6 +22,7 @@ Nothing below can move without a decision or an action only Aldemir can take.
 | OD-23 | Revenue target + pricing | Price is unrecorded in any ADR; the source doc is not in this repo; `PROJECT.md:135` contradicts a revenue sprint | All of Commercial stays provisional |
 | OD-05 | Voice-agent audience (guest / staff / owner) | One sentence unblocks scoping | Cannot be scoped at all |
 | OD-07 | Beli — build independently or partner | Strategic | Guest-app work cannot be classified |
+| **OD-11** | **Pick a path in [P1 spec §4](../04-specs/P1-NF-A-INSTRUMENTATION.md)** — A (recommended), B, or C | The column contract is a schema decision, and P1 cannot start without it | **P1 is the bottleneck for 476 of 482 loops** |
 | OD-01 | `.planning/` clean-slate restructure | Target shape is yours; end goal already agreed | Navigation tax every session |
 
 ## 🟡 In flight
@@ -34,8 +35,7 @@ Nothing below can move without a decision or an action only Aldemir can take.
 
 ## 🟢 Next actions (no approval needed)
 
-1. **P1 instrumentation** ([[PLAN]] §1) — add `agent`/`task_type` to `SpendLogger`, join
-   `api_spend` ↔ `decision_log`, emit from the 7 gateway call sites. Unblocks the most.
+1. ~~P1 instrumentation~~ — **spec written** ([[P1-NF-A-INSTRUMENTATION]]). Now blocked on OD-11 above.
 2. **OD-30/OD-42** — reconcile fork numbering. 7 namespaces; 30% of docs cite an
    ambiguous ID. Decision Office's first assignment, mechanical.
 3. **OD-32** — 171 documents write an unresolvable `[[README]]` across 45 same-named files.

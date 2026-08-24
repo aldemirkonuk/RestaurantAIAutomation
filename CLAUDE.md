@@ -170,8 +170,11 @@ Project memory: `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-a
 
 The founder does not want long chat replies. Detail belongs in documents.
 
-- **Default reply: 2–3 sentences.** What changed, where, and the one thing needing
-  a decision. Nothing else.
+- **Hard cap: 2 sentences.** What changed and where. Nothing else. This is a rule for
+  the whole repo, not a preference.
+- **The only exception is a question or a decision.** Then give the full argument: what
+  the fork is, the paths available, what each costs, and a recommendation. Brevity must
+  never quietly drop a fork (§0.4).
 - **No preamble, no recap, no summary of what you are about to do.** Do it, then
   report the delta.
 - **Findings go to files, chat gets the pointer.** Never paste an analysis into the
