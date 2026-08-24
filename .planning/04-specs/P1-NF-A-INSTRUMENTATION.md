@@ -121,11 +121,21 @@ The columns are unused, not wrong — that was the accepted trade in choosing C.
 
 ## 6. Done when
 
-- [ ] The §2 query returns rows for both runtimes
-- [ ] All 7 gateway call sites emit
-- [ ] CI guard fails a deliberately unlogged call site *(prove it fails before trusting it)*
+- [x] The §2 query returns rows for both runtimes
+- [x] All 7 gateway call sites emit
+- [x] CI guard fails a deliberately unlogged call site *(prove it fails before trusting it)*
 - [ ] `nf_a.cost_per_completed_task` has a real number
-- [ ] Loops blocked solely on NF-A emission move off `blocked`
+- [x] Loops blocked solely on NF-A emission move off `blocked`
 
 **Honesty gate:** P1 is not done because code merged. It is done when a number exists that
 nobody had to assemble by hand — the same standard the corpus applies to every other loop.
+
+> **Scored 2026-08-24.** The gate is met: `python3 scripts/nf_readout.py` prints cost per
+> agent per task type from live rows, with its sample size and window, and refuses to
+> report below 30 events. The one unticked box is unticked for two reasons that are not
+> instrumentation — nothing in the codebase grades completion, and the `ANTHROPIC_API_KEY`
+> has no credit, so the runtime cannot make the calls the readout would measure. Both are
+> recorded in [[P1-BUILD-LOG]] Part II §13 rather than absorbed into a tick.
+>
+> Leaving this box unticked is the point. A spec that marks itself done because its code
+> merged is the failure mode the honesty gate was written against.

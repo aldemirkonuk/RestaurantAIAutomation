@@ -45,7 +45,7 @@ class ProcurementAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        self.llm_model = config.get("llm_model", "gemini-2.5-flash")
         self.llm_temperature = config.get("llm_temperature", 0.7)
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)

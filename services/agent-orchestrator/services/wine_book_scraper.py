@@ -284,7 +284,7 @@ class WineBookScraper:
             image_b64 = base64.b64encode(image_bytes).decode()
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=[
                     types.Content(
                         parts=[
@@ -317,10 +317,10 @@ class WineBookScraper:
                 _out = getattr(_usage, "candidates_token_count", 0) or 0
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash",
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.0-flash", _in, _out),
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
                     agent_fallback="wine_book_scraper",
                     task_type="book_vision_extraction",
                     outcome="success",  # call-level: response returned
@@ -410,7 +410,7 @@ Text to process:
 Return ONLY a valid JSON array. If no wines found, return []."""
 
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash",
                     contents=prompt,
                     config=config,
                 )
@@ -427,10 +427,10 @@ Return ONLY a valid JSON array. If no wines found, return []."""
                     _out = getattr(_usage, "candidates_token_count", 0) or 0
                     get_spend_logger().log(
                         provider="google",
-                        model="gemini-2.0-flash",
+                        model="gemini-2.5-flash",
                         input_tokens=_in,
                         output_tokens=_out,
-                        cost_usd=estimate_llm_cost("gemini-2.0-flash", _in, _out),
+                        cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
                         agent_fallback="wine_book_scraper",
                         task_type="book_text_extraction",
                         outcome="success",  # call-level: response returned

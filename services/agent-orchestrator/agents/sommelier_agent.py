@@ -39,7 +39,7 @@ class SommelierAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        self.llm_model = config.get("llm_model", "gemini-2.5-flash")
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)
 
@@ -626,12 +626,12 @@ Respond with valid JSON only."""
                     temperature=0.1,
                 )
                 response = self.genai_client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash",
                     contents=prompt,
                     config=config,
                 )
                 self._log_llm_spend(  # P1
-                    response, "gemini-2.0-flash", "wine_enrichment_grounded"
+                    response, "gemini-2.5-flash", "wine_enrichment_grounded"
                 )
                 result_text = response.text.strip()
                 if "```json" in result_text:

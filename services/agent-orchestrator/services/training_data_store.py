@@ -42,7 +42,7 @@ class TrainingDataStore:
         dataset_type: str,
         input_data: Dict[str, Any],
         output_data: Dict[str, Any],
-        model_version: str = "gemini-2.0-flash",
+        model_version: str = "gemini-2.5-flash",
         confidence: float = 0.0,
         human_verified: bool = False,
         restaurant_id: Optional[str] = None,
@@ -99,7 +99,7 @@ class TrainingDataStore:
         image_base64: str,
         detected_wines: List[Dict[str, Any]],
         user_corrections: Optional[List[Dict[str, Any]]] = None,
-        model_version: str = "gemini-2.0-flash",
+        model_version: str = "gemini-2.5-flash",
         restaurant_id: Optional[str] = None,
     ) -> Optional[str]:
         """
@@ -144,7 +144,7 @@ class TrainingDataStore:
         wine_name: str,
         enrichment_input: Dict[str, Any],
         enrichment_output: Dict[str, Any],
-        model_version: str = "gemini-2.0-flash",
+        model_version: str = "gemini-2.5-flash",
         human_corrections: Optional[Dict[str, Any]] = None,
         restaurant_id: Optional[str] = None,
     ) -> Optional[str]:

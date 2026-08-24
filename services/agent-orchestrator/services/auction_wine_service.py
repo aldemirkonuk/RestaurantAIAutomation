@@ -53,7 +53,7 @@ class AuctionWineService:
         if self.gemini_api_key and GEMINI_AVAILABLE:
             try:
                 genai.configure(api_key=self.gemini_api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-pro")
+                self.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
                 self.gemini_available = True
                 logger.info("Gemini API initialized successfully")
             except Exception as e:
@@ -131,10 +131,10 @@ class AuctionWineService:
                 _out = getattr(_usage, "candidates_token_count", 0) or 0
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-pro",
+                    model="gemini-2.5-flash",
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
                     outcome="success",  # call-level: response returned
@@ -158,7 +158,7 @@ class AuctionWineService:
         try:
             response = await asyncio.to_thread(
                 self.openai_client.chat.completions.create,
-                model="gpt-4-turbo-preview",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -178,10 +178,10 @@ class AuctionWineService:
                 _out = getattr(_usage, "completion_tokens", 0) or 0
                 get_spend_logger().log(
                     provider="openai",
-                    model="gpt-4-turbo-preview",
+                    model="gpt-4o",
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gpt-4-turbo-preview", _in, _out),
+                    cost_usd=estimate_llm_cost("gpt-4o", _in, _out),
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
                     outcome="success",  # call-level: response returned

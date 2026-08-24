@@ -356,7 +356,7 @@ class MenuAnalyzerAgent(BaseAgent):
                     import google.generativeai as genai
 
                     genai.configure(api_key=self.google_api_key)
-                    self.llm_client = genai.GenerativeModel("gemini-pro")
+                    self.llm_client = genai.GenerativeModel("gemini-2.5-flash")
                     self.logger.info("Gemini Pro client initialized")
                 except Exception as e:
                     self.logger.error(f"Failed to initialize LLM client: {e}")

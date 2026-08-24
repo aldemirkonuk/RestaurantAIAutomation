@@ -71,7 +71,7 @@ class EmailParsingAgent(BaseAgent):
             api_key = self.raw_config.get("google_api_key") or ""
             if api_key:
                 genai.configure(api_key=api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-pro")
+                self.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
                 self.logger.info("Gemini Pro initialized for email parsing")
             else:
                 self.logger.warning("GEMINI_API_KEY not set — LLM features disabled")
@@ -367,10 +367,10 @@ class EmailParsingAgent(BaseAgent):
             _out = getattr(_usage, "candidates_token_count", 0) or 0
             get_spend_logger().log(
                 provider="google",
-                model="gemini-pro",
+                model="gemini-2.5-flash",
                 input_tokens=_in,
                 output_tokens=_out,
-                cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
                 agent=self.agent_name,
                 task_type=task_type,
                 outcome="success",  # call-level: response returned

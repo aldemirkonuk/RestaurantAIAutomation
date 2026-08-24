@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -171,7 +172,9 @@ class EmailIntelAgent(BaseAgent):
             if is_unknown:
                 await self._notify_unknown_sender(restaurant_id, sender_email, payload)
 
-        classification = await self._classify_email(email_subject, email_body)
+        classification = await self._classify_email(
+            email_subject, email_body, restaurant_id or None
+        )
 
         await self.log_decision(
             decision_type="email_classification",
@@ -238,7 +241,9 @@ class EmailIntelAgent(BaseAgent):
     # GEMINI FLASH CLASSIFICATION
     # =========================================================================
 
-    async def _classify_email(self, subject: str, body: str) -> EmailClassification:
+    async def _classify_email(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> EmailClassification:
         from google.genai import types as genai_types
 
         gemini = get_gemini_client()
@@ -252,6 +257,7 @@ class EmailIntelAgent(BaseAgent):
             'Respond ONLY with valid JSON: {"category": "...", "confidence": 0.0-1.0, '
             '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}'
         )
+        _t0 = time.perf_counter()
         response = gemini.models.generate_content(  # spend logged below (P1)
             model=self.settings.gemini_model,
             contents=prompt,
@@ -277,6 +283,7 @@ class EmailIntelAgent(BaseAgent):
                 ],
             ),
         )
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
         # P1: previously an unlogged model call (dark site)
         try:
             from services.spend_logger import estimate_llm_cost, get_spend_logger
@@ -293,6 +300,12 @@ class EmailIntelAgent(BaseAgent):
                 agent=self.agent_name,
                 task_type="email_classification",
                 outcome="success",  # call-level: response returned
+                # duration_ms and restaurant_id were NULL on every NF row before
+                # this: no call site measured the call, and this one dropped the
+                # tenant it already had in scope. See the P1 readout for the
+                # remaining sites that still need the same two lines.
+                duration_ms=_elapsed_ms,
+                restaurant_id=restaurant_id or None,
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
