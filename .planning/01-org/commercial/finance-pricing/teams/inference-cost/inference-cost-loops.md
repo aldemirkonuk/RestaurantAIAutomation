@@ -10,7 +10,7 @@ links: ["[[inference-cost-charter]]", "[[inference-cost-premortem]]", "[[inferen
 loop_count: 5
 loop_ids: ["ic-ledger-invoice-reconciliation", "ic-meter-liveness", "ic-callsite-coverage", "ic-cost-efficiency-review", "ic-cap-adequacy"]
 loop_close_times: ["monthly", "daily", "quarterly", "weekly", "monthly"]
-loop_statuses: ["proposed", "proposed", "proposed", "blocked", "proposed"]
+loop_statuses: ["proposed", "proposed", "proposed", "gated", "proposed"]
 ---
 
 # Inference Cost — Loops
@@ -18,10 +18,11 @@ loop_statuses: ["proposed", "proposed", "proposed", "blocked", "proposed"]
 Every loop names its close-time. A loop that cannot state how fast it closes is a
 diagram, not a loop.
 
-Five loops, each countering one premortem mechanism. Two of them **cannot close today**
-and carry `status: blocked` with the blocker named. Writing a blocked loop as though it
-runs is how a metric becomes rhetoric; writing it as blocked makes unblocking a dated,
-visible event.
+Five loops, each countering one premortem mechanism. None of them closes today. Writing a
+loop as though it runs is how a metric becomes rhetoric; naming what holds it makes
+unblocking a dated, visible event — L-IC-4 moved `blocked` → `gated` on 2026-08-24 when
+P1 landed the cost/agent bridge, and the distinction between "no mechanism" and "not
+enough traffic yet" is the whole reason the vocabulary has both words.
 
 ---
 
@@ -120,8 +121,9 @@ changes: [harness.routing_policy, decisions.open_queue, inference-cost.agenda_fu
 inputs_from: [neural-footprint-instrumentation, agent-evaluation-gates, harness-model-routing]
 outputs_to: [harness-model-routing, research-and-math, decision-office]
 close_time: weekly
-status: blocked
-blocked_on: "no agent or task_type column in api_spend; doneability verdict not joinable — see inference-cost-agenda-full"
+status: gated
+gate: "production volume — the readout refuses to report a number below 30 agent events"
+evidence: "P1 shipped the bridge. neural_footprint_event carries subject_id + context.task_type; `python3 scripts/nf_readout.py` returns cost per agent per task type with no hand-written SQL. The doneability half of the old blocker is unresolved and is why this is gated, not active."
 ```
 
 Where the founder's cost-efficiency mandate closes. F1 supplies the economics;
@@ -129,14 +131,21 @@ Where the founder's cost-efficiency mandate closes. F1 supplies the economics;
 **OD-04** ([[OPEN-DECISIONS]]:15), which explicitly requires *a cost/quality eval per task
 type*.
 
-**Blocked, and honestly so.** Cost per task per agent is not derivable from what is logged
-(`spend_logger.py:41-48`). Two things must land first: the `agent` / `task_type` bridge,
-and a joinable doneability verdict from [[agent-evaluation-gates-charter]] via RM-3's
-spine.
+**Was blocked on two things; P1 landed one.** The `agent` / `task_type` bridge exists:
+`neural_footprint_event` carries `subject_id` and `context.task_type`, both non-null on
+every row emitted by either runtime. The second — a joinable doneability verdict from
+[[agent-evaluation-gates-charter]] via RM-3's spine — does **not** exist, and that is the
+whole reason this reads `gated` rather than `active`.
 
-**Both numbers or neither** ([[inference-cost-premortem]] M4). `cost_per_api_call` never
-ships without `cost_per_completed_task`; a cheaper model that retries more moves the two
-in opposite directions.
+**Both numbers or neither** is the rule below, and it is what stops the half that shipped
+from being reported as if it were the whole. `cost_per_api_call` is readable today.
+`cost_per_completed_task` is not, because nothing grades completion — so the readout
+prints `outcome_unknown` next to the cost rather than letting an ungraded call pass as a
+completed task.
+
+That rule is [[inference-cost-premortem]] M4, and it earns its keep here: a cheaper model
+that retries more moves the two numbers in opposite directions, so shipping the readable
+one alone would argue for exactly the wrong routing change.
 
 ---
 

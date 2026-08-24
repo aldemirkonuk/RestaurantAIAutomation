@@ -73,15 +73,37 @@ _RATES_PER_M: Dict[str, tuple] = {
 }
 
 
-def estimate_llm_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Best-effort USD cost estimate from token counts. 0.0 when model unknown."""
+def _lookup_rates(model: str) -> Optional[tuple]:
+    """Return (rate_in, rate_out) per 1M tokens for `model`, or None if unpriced."""
     m = (model or "").lower()
-    for prefix, (rate_in, rate_out) in _RATES_PER_M.items():
+    for prefix, rates in _RATES_PER_M.items():
         if m.startswith(prefix) or prefix in m:
-            return (input_tokens * rate_in / 1_000_000) + (
-                output_tokens * rate_out / 1_000_000
-            )
-    return 0.0
+            return rates
+    return None
+
+
+def is_priced_model(model: str) -> bool:
+    """True when `_RATES_PER_M` has a rate for this model.
+
+    A model absent from the table produces cost 0.0 from estimate_llm_cost(),
+    which is indistinguishable from a genuinely free call. Callers that need to
+    know the difference (SpendLogger, so NF does not book a false zero) use this.
+    """
+    return _lookup_rates(model) is not None
+
+
+def estimate_llm_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Best-effort USD cost estimate from token counts. 0.0 when model unknown.
+
+    0.0-on-unknown is kept for backward compatibility AND because api_spend.cost_usd
+    is NOT NULL — returning None here would drop the primary-ledger row. Use
+    is_priced_model() to tell "free" apart from "unpriced".
+    """
+    rates = _lookup_rates(model)
+    if rates is None:
+        return 0.0
+    rate_in, rate_out = rates
+    return (input_tokens * rate_in / 1_000_000) + (output_tokens * rate_out / 1_000_000)
 
 
 class SpendLogger:
@@ -185,12 +207,26 @@ class SpendLogger:
                 if context:
                     nf_context.update(context)
 
+                # A zero cost on a token-consuming call to a model that has no
+                # rate in _RATES_PER_M is not "free", it is "unknown" — and the
+                # §2 headline query sums cost_usd, so booking a false 0.0 makes
+                # the readout silently under-report. NF writes NULL and says why.
+                # api_spend still gets the 0.0 (its cost_usd is NOT NULL).
+                nf_cost = cost_usd
+                if (
+                    (input_tokens or output_tokens)
+                    and not cost_usd
+                    and not is_priced_model(model)
+                ):
+                    nf_context["cost_basis"] = "unpriced_model"
+                    nf_cost = None
+
                 row = build_agent_event(
                     subject_id=subject_id,
                     stimulus=stimulus or task_type or f"{provider}:{model}",
                     choice=choice or "completion",
                     outcome=outcome,
-                    cost_usd=cost_usd,
+                    cost_usd=nf_cost,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     duration_ms=duration_ms,

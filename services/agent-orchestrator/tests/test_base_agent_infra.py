@@ -232,6 +232,30 @@ class TestLogDecision:
         assert insert_args["correlation_id"] == "corr-123"
         assert insert_args["restaurant_id"] == "rest-uuid"
 
+    def test_does_not_chain_select_onto_the_insert_builder(self):
+        """Regression (P1 readout): supabase-py >= 2 returns a builder with no
+        .select() from .insert(). The old `.insert(...).select("id").execute()`
+        raised AttributeError, which this method's except-block swallowed — so
+        decision_log took ZERO writes and every neural_footprint_event
+        correlation_id joined to nothing. A permissive MagicMock hid it; this
+        spec'd mock has the real shape.
+        """
+        agent, supabase = make_agent()
+        agent._current_correlation_id = "corr-select-regression"
+
+        insert_builder = MagicMock(spec=["execute"])
+        insert_builder.execute.return_value = _make_supabase_result([{"id": "d-1"}])
+        table = MagicMock(spec=["insert"])
+        table.insert.return_value = insert_builder
+        supabase.table.return_value = table
+
+        row_id = asyncio.get_event_loop().run_until_complete(
+            agent.log_decision("match", {}, {}, "reason")
+        )
+
+        assert row_id == "d-1", "log_decision swallowed the insert failure"
+        insert_builder.execute.assert_called_once()
+
     def test_swallows_db_error(self):
         agent, supabase = make_agent()
         supabase.table.return_value.insert.return_value.execute.side_effect = Exception(
