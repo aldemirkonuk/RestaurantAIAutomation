@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { allowanceForTier, windowStartIso } from "./spend-tiers";
 import { DatabaseService } from "../../database/database.service";
 import { getCorrelationId } from "./correlation";
 
@@ -30,19 +31,18 @@ const MODEL_PRICING_USD_PER_MTOK: Record<
 };
 
 /**
- * Per-restaurant DAILY spend ceiling (USD) gating RETRIES only.
+ * Spend allowances now live in ./spend-tiers.ts, keyed by restaurants.subscription_tier:
+ * core = a $5 CREDIT that depletes (menu upload + trial), plus = $5/day, pro = $10/day.
+ * All PLACEHOLDERS — pricing is founder-deferred (OD-23) and no ADR records a price.
  *
- * Mirrors the constant-threshold cap pattern of MONTHLY_CAP_THRESHOLDS in
- * services/agent-orchestrator/jobs/spend_tasks.py:24-27, scoped per restaurant
- * and per UTC day because the gateway attributes spend per tenant. The ceiling
- * suppresses RETRY attempts, never first attempts: gating the first call on a
- * ledger read would add a new failure mode to seven production paths, which
- * the migration contract ("preserve everything except retry/timeout/emission")
- * forbids. A retry storm is exactly the mechanism by which transport flakiness
- * turns into surprise spend, so that is where the cap bites.
+ * The ceiling suppresses RETRY attempts, never first attempts: gating a first call on a
+ * ledger read would add a new failure mode to seven production paths, which the migration
+ * contract ("preserve everything except retry/timeout/emission") forbids. A retry storm is
+ * exactly how transport flakiness turns into surprise spend, so that is where the cap bites.
+ * MODEL_DAILY_SPEND_CEILING_USD still overrides the NUMBER for incident response.
  */
-const DAILY_SPEND_CEILING_USD_DEFAULT = 5.0;
 const SPEND_CACHE_TTL_MS = 60_000;
+const TIER_CACHE_TTL_MS = 300_000;
 
 /**
  * Thrown for transport/HTTP failures of the model call itself. `message` for
@@ -128,6 +128,12 @@ export class ModelClientService {
   private nfDropCount = 0;
 
   /** Per-restaurant-day spend cache so retries do not query per attempt. */
+  /** Tier lookups are cached: the allowance rule is per-restaurant, not per-call. */
+  private readonly tierCache = new Map<
+    string,
+    { at: number; tier: string | null }
+  >();
+
   private readonly spendCache = new Map<
     string,
     { at: number; spendUsd: number }
@@ -437,22 +443,29 @@ export class ModelClientService {
   private async retryAllowedBySpendCeiling(
     restaurantId?: string | null,
   ): Promise<boolean> {
-    const ceiling = this.dailyCeilingUsd();
-    if (ceiling <= 0) return true; // 0 or negative disables the gate
     const key = restaurantId ?? "__unattributed__";
     try {
+      const allowance = allowanceForTier(await this.tierFor(restaurantId));
+      // An explicit env override still wins, so an incident can widen or close the
+      // gate without a deploy. It only changes the NUMBER, never the mode.
+      const override = Number(
+        this.configService.get<string>("MODEL_DAILY_SPEND_CEILING_USD"),
+      );
+      const limit = Number.isFinite(override) ? override : allowance.limitUsd;
+      if (limit <= 0) return true; // 0 or negative disables the gate
+
       const cached = this.spendCache.get(key);
       let spendUsd: number;
       if (cached && Date.now() - cached.at < SPEND_CACHE_TTL_MS) {
         spendUsd = cached.spendUsd;
       } else {
-        const dayStart = new Date();
-        dayStart.setUTCHours(0, 0, 0, 0);
         let query = this.databaseService.supabase
           .from("neural_footprint_event")
           .select("cost_usd")
-          .eq("subject_type", "agent")
-          .gte("occurred_at", dayStart.toISOString());
+          .eq("subject_type", "agent");
+        // credit = lifetime sum (it depletes); daily = today only (it resets).
+        const since = windowStartIso(allowance.mode);
+        if (since) query = query.gte("occurred_at", since);
         query = restaurantId
           ? query.eq("restaurant_id", restaurantId)
           : query.is("restaurant_id", null);
@@ -464,10 +477,11 @@ export class ModelClientService {
         );
         this.spendCache.set(key, { at: Date.now(), spendUsd });
       }
-      if (spendUsd >= ceiling) {
+
+      if (spendUsd >= limit) {
         this.logger.warn(
-          `Daily spend ceiling reached for ${key} ` +
-            `($${spendUsd.toFixed(4)} >= $${ceiling.toFixed(2)}) — transport retry suppressed`,
+          `Spend allowance reached for ${key} [${allowance.label}] ` +
+            `($${spendUsd.toFixed(4)} >= $${limit.toFixed(2)}) — transport retry suppressed`,
         );
         return false;
       }
@@ -477,12 +491,23 @@ export class ModelClientService {
     }
   }
 
-  private dailyCeilingUsd(): number {
-    const raw = this.configService.get<string>("MODEL_DAILY_SPEND_CEILING_USD");
-    const parsed = Number(raw);
-    return raw != null && Number.isFinite(parsed)
-      ? parsed
-      : DAILY_SPEND_CEILING_USD_DEFAULT;
+  /** Reads restaurants.subscription_tier. Unknown/unreadable resolves to core. */
+  private async tierFor(restaurantId?: string | null): Promise<string | null> {
+    if (!restaurantId) return null;
+    const cached = this.tierCache.get(restaurantId);
+    if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS) return cached.tier;
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("restaurants")
+        .select("subscription_tier")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      const tier = error ? null : ((data as any)?.subscription_tier ?? null);
+      this.tierCache.set(restaurantId, { at: Date.now(), tier });
+      return tier;
+    } catch {
+      return null;
+    }
   }
 }
 
