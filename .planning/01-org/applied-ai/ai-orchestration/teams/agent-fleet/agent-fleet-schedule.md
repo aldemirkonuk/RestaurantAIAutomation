@@ -67,4 +67,3 @@ itself rather than argued each time.
 | `[[sre-state-integrity]]` | Weekly | Guardian canary results; guardian code changes |
 | [[ai-orchestration-schedule]] | Weekly | `fleet.live_agent_ratio` and the four counts for the department board |
 | Product | On event | Any external artifact quoting an agent count without the live/stub split |
-</content>

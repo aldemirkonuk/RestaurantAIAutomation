@@ -85,4 +85,3 @@ SORT file.name ASC
 - [ ] **OD-04** — external model roster; explicitly downstream of OD-03
 - [ ] Is a dated model pin (`ux-optimizer.service.ts:250`) deliberate, or drift?
 - [ ] What share of $20–50/mo pricing may be inference?
-</content>

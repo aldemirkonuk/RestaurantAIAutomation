@@ -103,4 +103,3 @@ escalation: "The date passing without the bake-off running is an escalation to d
 | `[[sre-resilience]]` | DLQ entries classified *infrastructure* | They operate; we author |
 | [[ai-orchestration-loops]] | `nf_a.retries`, `nf_a.dlq_depth` | The department's harness-health metric pair |
 | [[decision-office-charter]] | `od03.days_open` | A fork's age is the thing the Decision Office exists to watch |
-</content>

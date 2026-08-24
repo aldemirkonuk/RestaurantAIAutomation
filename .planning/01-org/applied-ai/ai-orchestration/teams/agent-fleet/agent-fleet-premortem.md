@@ -137,4 +137,3 @@ violation injected on a cadence that must be caught. Then zero findings means
 something. Ownership of the canary is the concrete test of whether OD-24's split
 works: if neither team will own it, the split has failed and the answer is to give
 guardians to one team end to end.
-</content>

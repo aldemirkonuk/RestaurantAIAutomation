@@ -84,4 +84,3 @@ SORT close_time ASC
 - [ ] Median time-to-confirm collapsing, or confirmation rate approaching 100%
 - [ ] A model ID changed in a commit citing cost and not citing an eval run
 - [ ] `doneability_verdict_coverage` reported as one number instead of per task family
-</content>

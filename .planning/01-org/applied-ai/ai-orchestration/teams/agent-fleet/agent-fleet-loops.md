@@ -119,4 +119,3 @@ note: "Whether either team will own this canary is the concrete test of whether 
 | [[harness-runtime-loops]] | Sustained elevated per-agent retry | A retry that succeeds is still a defect signal |
 | [[agent-evaluation-gates-charter]] | Doneability verdict per task family | Gate prompt changes; drive `loop-agent-doneability` |
 | `[[sre-state-integrity]]` | Guardian finding quality and false-positive rate | Change detection logic — the code is ours |
-</content>

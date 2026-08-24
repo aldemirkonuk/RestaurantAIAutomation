@@ -125,4 +125,3 @@ Step 1 is a day of work and closes the largest blind spot in the department.
 4. **`ux-optimizer.service.ts:250` pins a dated model snapshot** while six siblings pin
    floating aliases. Deliberate — pinned for reproducibility — or drift? The answer
    changes whether the routing policy should support pinning at all.
-</content>

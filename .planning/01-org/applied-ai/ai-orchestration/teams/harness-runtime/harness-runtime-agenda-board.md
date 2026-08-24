@@ -73,4 +73,3 @@ SORT file.name ASC
 - [ ] `recurring_order_agent`: adopt · delete · document the exemption
 - [ ] Does `database.py` (2,046 lines) belong in the harness contract?
 - [ ] Who consumes the DLQ — this team, [[agent-fleet-charter]], or `[[sre-resilience]]`?
-</content>

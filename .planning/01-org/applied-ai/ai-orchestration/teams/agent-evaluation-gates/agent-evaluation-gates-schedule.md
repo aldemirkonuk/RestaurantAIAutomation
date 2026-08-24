@@ -63,4 +63,3 @@ expectation rather than argued at each review.
 | [[agent-fleet-charter]] | Weekly | Regressed families; families with no coverage to gate a prompt change |
 | [[research-and-math-charter]] | Weekly | **Every place operations needed a definition that did not exist.** This handoff is the seam's early-warning system — two of these on the same topic means the line has failed |
 | [[ai-orchestration-schedule]] | Weekly | Coverage per family for the department board |
-</content>

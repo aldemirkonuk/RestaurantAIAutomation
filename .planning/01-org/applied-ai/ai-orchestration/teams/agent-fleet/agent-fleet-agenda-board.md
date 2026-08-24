@@ -81,4 +81,3 @@ SORT file.name ASC
 - [ ] **OD-24** — guardian co-ownership: Fleet owns code, SRE owns findings. Workable?
 - [ ] The three orphans: adopt · delete · document the exemption
 - [ ] The five stubs: keep with a `stub: true` flag, or delete the ones with no near-term plan
-</content>

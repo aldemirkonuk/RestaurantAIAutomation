@@ -160,4 +160,3 @@ That is why every loop in [[ai-orchestration-loops]] names a close-time, and why
 **For [[red-team-charter]]:** the highest-value attack on this department is not a
 prompt injection. It is to find the metric that is green because nothing is watching,
 and #3 (time-to-confirm) is where we think you should start.
-</content>

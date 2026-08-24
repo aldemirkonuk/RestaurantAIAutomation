@@ -106,4 +106,3 @@ Escalate to `OPEN-DECISIONS.md` — via [[decision-office-charter]] — when any
 Findings from [[red-team-charter]] land in this department's agenda and, if they imply
 a decision, in `OPEN-DECISIONS.md` — findings-only, no approve/block
 ([[ORG_STRUCTURE]] §3).
-</content>

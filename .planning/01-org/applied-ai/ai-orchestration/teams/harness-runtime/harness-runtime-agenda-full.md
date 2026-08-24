@@ -114,4 +114,3 @@ Steps 1–3 have no blockers and no dependency on the fork's outcome.
    of `core/` and the piece a harness migration would most painfully have to port.
 4. **NF-A schema shape** — table-per-track or one polymorphic table
    ([[README]] §4.4). A provisional answer is enough to unblock; ambiguity is not.
-</content>

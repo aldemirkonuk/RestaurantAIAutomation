@@ -88,4 +88,3 @@ Escalate to [[ai-orchestration-directive]], and onward to
    The escalation is not about the prompt — it is that
    [[agent-evaluation-gates-charter]] has no coverage for a family we are shipping
    changes into.
-</content>

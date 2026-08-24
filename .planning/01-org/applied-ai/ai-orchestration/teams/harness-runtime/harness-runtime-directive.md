@@ -91,4 +91,3 @@ Escalate to [[ai-orchestration-directive]], and onward to
 5. **A `core/` abstraction reaches its second caller after being deferred under the
    two-caller rule.** Not a failure — a signal the rule worked, and a prompt to
    promote it deliberately rather than by accident.
-</content>

@@ -133,4 +133,3 @@ to roll up.
 a standing rule that a **sustained** retry rate is an [[agent-fleet-charter]] ticket
 rather than harness tuning. The harness's job is to make failure survivable, not to
 make it quiet. Where those two conflict, this team owns saying so out loud.
-</content>

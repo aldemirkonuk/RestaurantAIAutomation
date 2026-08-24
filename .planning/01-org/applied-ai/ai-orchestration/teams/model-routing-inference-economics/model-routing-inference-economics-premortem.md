@@ -130,4 +130,3 @@ there is an endpoint that answers *"which model would run this task right now, a
 why"* — built with the policy, not after it. A routing decision that cannot explain
 itself is a `cost_per_task` number nobody can act on, and this team's entire output is
 that number.
-</content>

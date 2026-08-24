@@ -121,4 +121,3 @@ Steps 1–3 are unblocked and are roughly a week of work between them.
 4. **Where is the fleet count published externally?** We would like to know every place
    an agent count appears outside `services/agent-orchestrator/`, because that list is
    the actual attack surface for [[agent-fleet-premortem]] #1.
-</content>

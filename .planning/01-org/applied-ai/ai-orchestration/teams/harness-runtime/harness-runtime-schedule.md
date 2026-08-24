@@ -57,4 +57,3 @@ closes.
 | `[[sre-resilience]]` | Daily | DLQ entries classified *infrastructure* |
 | [[ai-orchestration-schedule]] | Weekly | `nf_a.retries`, `nf_a.dlq_depth` for the department board |
 | [[decision-office-charter]] | Monthly, and on the bake-off date | `od03.days_open`; the closed decision, or why it did not close |
-</content>

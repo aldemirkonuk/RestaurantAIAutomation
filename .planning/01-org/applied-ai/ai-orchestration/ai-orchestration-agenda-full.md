@@ -137,4 +137,3 @@ first month, it should produce those three.
 6. **Does one of these five teams not need to exist?** Our honest answer is no — the
    five questions are genuinely different — but the count is the founder's to
    challenge, and OD-19 is open on exactly that.
-</content>

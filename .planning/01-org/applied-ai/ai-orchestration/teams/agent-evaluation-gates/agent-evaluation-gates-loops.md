@@ -142,4 +142,3 @@ blocker: "⚠️ The fork has no usable ID. technology.md:845 numbers it OD-21; 
 | [[research-and-math-charter]] | Every place operations needed a definition that did not exist | weekly |
 | [[ai-orchestration-loops]] | `doneability_verdict_coverage`, per family | weekly |
 | [[decision-office-charter]] | Seam occurrence count | on event |
-</content>

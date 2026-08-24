@@ -138,4 +138,3 @@ That imbalance is this team's founding problem and its premortem.
 ## Status
 
 `partial` — one real gate, running per-commit, on one task family.
-</content>

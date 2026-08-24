@@ -89,4 +89,3 @@ Escalate to [[ai-orchestration-directive]], and onward to
    It needs a decision, not a merge.
 6. **Anyone proposes evaluating a non-Anthropic model before OD-03 closes.**
    `OPEN-DECISIONS.md:15` puts OD-04 downstream of the harness choice.
-</content>

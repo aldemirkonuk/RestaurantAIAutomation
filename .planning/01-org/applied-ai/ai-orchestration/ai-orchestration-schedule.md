@@ -81,4 +81,3 @@ closes, and should then be deleted rather than left as decoration.
 | `[[fin-inference-cost]]` | Weekly | `nf_a.cost_per_task` by task type |
 | [[reliability-charter]] | Daily | DLQ depth and guardian-agent findings (OD-24 splits code from findings) |
 | [[decision-office-charter]] | On the bake-off date | OD-03, closed — or an explicit statement of why it did not close |
-</content>

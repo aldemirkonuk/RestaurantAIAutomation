@@ -130,4 +130,3 @@ already been burned by the gap between the last two.
 
 `partial` — 26 modules, ≈18 that can receive a message, 5 stubs, 3 orphans, and no
 `nf_a.task_success_rate` emitted for any of them.
-</content>

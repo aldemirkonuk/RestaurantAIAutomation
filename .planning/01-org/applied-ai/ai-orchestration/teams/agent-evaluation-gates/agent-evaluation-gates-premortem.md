@@ -146,4 +146,3 @@ it has a calibration curve from paired confidence/outcome data. Until then it is
 sort key, not a threshold. This is the same *two-key* discipline
 [[model-routing-inference-economics-charter]] applies to cost: a number that has not
 been validated against outcomes may inform a decision, but it may not make one.
-</content>

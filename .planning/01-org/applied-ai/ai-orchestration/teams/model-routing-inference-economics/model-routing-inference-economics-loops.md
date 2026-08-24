@@ -123,4 +123,3 @@ escalation: "A threshold crossing goes to security the same day, not to a weekly
 | [[security-charter]] | Spend anomalies attributable to unauthenticated paths | daily, on trigger |
 | [[agent-evaluation-gates-loops]] | Task families where a cheaper model is wanted but no verdict exists | weekly — this is a coverage request, not a complaint |
 | [[ai-orchestration-loops]] | `routed_client_share`, both weightings | weekly |
-</content>

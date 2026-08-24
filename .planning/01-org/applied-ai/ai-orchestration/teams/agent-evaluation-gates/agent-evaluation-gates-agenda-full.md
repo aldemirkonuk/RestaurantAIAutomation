@@ -127,4 +127,3 @@ possible in a month or in six.
 4. **Are the `governance.py` confidence tiers currently gating anything a human would
    otherwise see?** If yes, [[agent-evaluation-gates-premortem]] #5 is not a forecast —
    it is a description, and the calibration work moves up the list.
-</content>

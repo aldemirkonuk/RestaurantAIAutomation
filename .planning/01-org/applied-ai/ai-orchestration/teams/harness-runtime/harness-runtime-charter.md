@@ -111,4 +111,3 @@ team picks by accident is by making one option progressively more expensive to
 abandon. So while OD-03 is open, this team is on a stated diet — bug fixes,
 instrumentation, and interface *narrowing* only ([[harness-runtime-directive]]).
 Running the bake-off is this team's job; **choosing before it runs is not.**
-</content>

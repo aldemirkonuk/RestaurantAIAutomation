@@ -110,4 +110,3 @@ thing to write into a charter and it is the most important sentence in this dire
 For [[red-team-charter]]: the attack surface here is a green coverage number over a
 corpus that only contains the easy half. Start by asking which task family the number
 excludes.
-</content>

@@ -155,4 +155,3 @@ note: "A decision is not a feedback loop, and this entry is deliberately the odd
 **The dependency stated plainly:** four of these six proposed loops close on numbers
 this department must first cause to exist. Step 0 of [[ai-orchestration-agenda-full]]
 is not one item among six — it is the precondition for four of them.
-</content>

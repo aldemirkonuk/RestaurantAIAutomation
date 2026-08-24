@@ -89,4 +89,3 @@ SORT file.name ASC
 - [ ] ⚠️ **ID collision** — `technology.md:845` says OD-21; `OPEN-DECISIONS.md:25` already uses it. → [[decision-office-charter]]
 - [ ] Which judgment task matters most commercially — vendor reply, negotiation, or recommendation?
 - [ ] Are `governance.py:20` confidence tiers already gating what a human sees?
-</content>

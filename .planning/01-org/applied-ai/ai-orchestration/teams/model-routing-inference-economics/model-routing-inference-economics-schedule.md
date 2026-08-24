@@ -60,4 +60,3 @@ review time.
 | [[security-charter]] | On trigger, same day | Spend anomalies attributable to unauthenticated paths — [[README]] §0 finding 1 |
 | [[agent-evaluation-gates-charter]] | Weekly | Task families where a cheaper model is wanted and **no verdict exists** — a coverage request, not a complaint |
 | [[ai-orchestration-schedule]] | Weekly | Both routed-client-share weightings for the department board |
-</content>
