@@ -12538,6 +12538,79 @@
   "file": "01-org/research-math/research-math-loops.md"
  },
  {
+  "id": "outcome-regrade",
+  "owner": "backtests",
+  "close_time": "monthly",
+  "status": "blocked",
+  "measures": [
+   "bt.outcome_regrade_delta"
+  ],
+  "changes": [
+   "doneability.definition",
+   "nf.outcome_basis"
+  ],
+  "inputs_from": [
+   "neural-footprint-instrumentation",
+   "performance-doneability"
+  ],
+  "outputs_to": [
+   "performance-doneability",
+   "research-math"
+  ],
+  "unit": "backtests",
+  "division": "research-math",
+  "department": "research-math",
+  "file": "01-org/research-math/teams/backtests/backtests-loops.md"
+ },
+ {
+  "id": "claim-falsification",
+  "owner": "backtests",
+  "close_time": "fortnightly",
+  "status": "proposed",
+  "measures": [
+   "bt.claim_falsification_rate"
+  ],
+  "changes": [
+   "published.claims"
+  ],
+  "inputs_from": [
+   "analytics-bi",
+   "strategy-fundraising",
+   "growth"
+  ],
+  "outputs_to": [
+   "metric-contract-truth-assurance",
+   "editorial-gate"
+  ],
+  "unit": "backtests",
+  "division": "research-math",
+  "department": "research-math",
+  "file": "01-org/research-math/teams/backtests/backtests-loops.md"
+ },
+ {
+  "id": "scenario-coverage",
+  "owner": "backtests",
+  "close_time": "monthly",
+  "status": "proposed",
+  "measures": [
+   "bt.scenario_coverage_pct"
+  ],
+  "changes": [
+   "backtest.harness"
+  ],
+  "inputs_from": [
+   "synthetic-generation-simulation",
+   "product-vision"
+  ],
+  "outputs_to": [
+   "release-engineering"
+  ],
+  "unit": "backtests",
+  "division": "research-math",
+  "department": "research-math",
+  "file": "01-org/research-math/teams/backtests/backtests-loops.md"
+ },
+ {
   "id": "verified-vs-self-reported-gap",
   "owner": "research-math/evaluation-doneability",
   "close_time": "weekly",

@@ -1972,6 +1972,25 @@
     "schedule": "02-advisory/decision-office/decision-office-schedule.md",
     "questions": "02-advisory/decision-office/decision-office-questions.md"
    }
+  },
+  {
+   "kind": "team",
+   "slug": "backtests",
+   "title": "Backtests",
+   "id": "RM-4",
+   "division": "research-math",
+   "department": "research-math",
+   "gated": false,
+   "dir": "01-org/research-math/teams/backtests",
+   "files": {
+    "charter": "01-org/research-math/teams/backtests/backtests-charter.md",
+    "premortem": "01-org/research-math/teams/backtests/backtests-premortem.md",
+    "agenda-full": "01-org/research-math/teams/backtests/backtests-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/backtests/backtests-agenda-board.md",
+    "directive": "01-org/research-math/teams/backtests/backtests-directive.md",
+    "loops": "01-org/research-math/teams/backtests/backtests-loops.md",
+    "schedule": "01-org/research-math/teams/backtests/backtests-schedule.md"
+   }
   }
  ]
 }
