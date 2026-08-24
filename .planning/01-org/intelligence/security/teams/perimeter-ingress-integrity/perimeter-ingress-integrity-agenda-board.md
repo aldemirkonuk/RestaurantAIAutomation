@@ -84,7 +84,7 @@ WHERE type = "loops" AND !contains(file.content, "close_time")
 | # | Item | Why it is ranked here | State |
 |---|---|---|---|
 | 1 | `simpos` — 11 unguarded routes; our own server signs a stock movement for an anonymous caller | Confused deputy: the control is green and answers the wrong question | **open** |
-| 2 | Three `\|\| "your-secret-key-change-in-production"` JWT fallbacks | An environment missing `JWT_SECRET` accepts tokens anyone can mint | **open** |
+| 2 | Three `|| "your-secret-key-change-in-production"` JWT fallbacks | An environment missing `JWT_SECRET` accepts tokens anyone can mint | **open** |
 | 3 | 9 × `communications/test/e2e/*` — public, send real vendor email | `@Public()` reads as a vouched decision | **open** |
 | 4 | `?secret=` query credential on `inbound-email` | Lands in access logs, proxies, `Referer`; rotation cannot reach history | **open** (fails closed, which is right) |
 | 5 | In-memory rate-limit store | Was the *only* brake on the analytics denial-of-wallet hole | **open** |

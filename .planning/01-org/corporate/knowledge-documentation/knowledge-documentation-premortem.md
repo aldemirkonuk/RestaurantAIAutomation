@@ -142,7 +142,7 @@ L-GR-2, weekly.
 |---|---|---|---|---|
 | M1 | Department becomes the sprawl | `kd.docs_added_vs_retired_ratio` > 1 for 2 months | [[knowledge-documentation-agenda-board]] | Retire-to-write rule (L-KD-1) |
 | M2 | Dataview never installed | **already lit** — no `.obsidian/` | `ls -d .obsidian` | Commit `.obsidian/` first; script fallback |
-| M3 | Restructure drifts back | first post-restructure top-level doc | `ls .planning/*.md \| wc -l` | Placement rule as CI check (L-CA-2) |
+| M3 | Restructure drifts back | first post-restructure top-level doc | `ls .planning/*.md | wc -l` | Placement rule as CI check (L-CA-2) |
 | M4 | Standards = unrun style guide | no value for `standards.stale_claim_rate` at 60d | [[standards-verification-loops]] | Claim-pinning before guidance (L-SV-1) |
 | M5 | Filename convention pre-violated | any ambiguous `[[link]]` | `engineering-charter.md:106` | Link-lint + ambiguity count (L-GR-2) |
 

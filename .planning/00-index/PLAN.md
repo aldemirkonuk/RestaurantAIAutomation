@@ -91,4 +91,5 @@ From here, a change that cannot be observed should not ship.
 | Wave 1 | Generate the org in parallel | ✅ 792 docs; review agents caught 12+ errors in Claude's own work |
 | Wave 1b | Scenario ritual layer | ✅ 17 scenarios |
 | Wave 1c | Vault integration + watcher loop | ✅ Obsidian config on `.planning/`, graph clustered by division, `watch_loops.py` scheduled weekly — **6th running loop** |
-| **Wave 2** | **Instrumentation** | ⬅ next, gated on P1 |
+| Wave 1d | Ecosystem docs: scenarios tiered, 50 pages, library, index layer, fork registry, advisory routing | ✅ **Documentation complete** — 931 files in the new structure, 0 broken links, all 99 units at 8/8 artifacts |
+| **Wave 2** | **Instrumentation (P1, Path C)** | ⬅ next — the docs now argue for it themselves: 325 metrics, zero instruments |

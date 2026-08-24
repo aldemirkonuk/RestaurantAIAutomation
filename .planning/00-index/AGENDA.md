@@ -35,7 +35,8 @@ Nothing below can move without a decision or an action only Aldemir can take.
 
 ## 🟢 Next actions (no approval needed)
 
-0. **Rebrand planning** — assigned to Media & Brand `brand-identity` (founder 2026-08-24):
+0. **P1 build** — spec ready, Path C locked (ADR 0008 + operator). The docs phase is complete; this is the first code move.
+0b. **Rebrand planning** — assigned to Media & Brand `brand-identity` (founder 2026-08-24):
    write the full plan (name map, mobile-slug install hazard, email/OAuth/domain sequencing)
    against the measured 336-line / 178-file surface. **Execution holds** until brand direction exists.
 

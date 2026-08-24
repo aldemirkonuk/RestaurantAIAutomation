@@ -58,7 +58,7 @@ past instance foundation §3.3 requires. **No speculative skills.**
 |---|---|---|---|
 | `endpoint-guard-census` | Per-PR + weekly new-route audit | The `/analytics/consult` hole survived 39 routes' worth of review because nobody generated this list until `ENDPOINTS.md` was written | [[access-control-tenant-isolation-charter]] |
 | `route-classification-pass` | Weekly, per unclassified route | `simpos` is labelled a webhook module and is not one; `vendor-portal` was labelled one and is not one | [[access-control-tenant-isolation-charter]] |
-| `fail-open-audit` | Monthly secret-surface review | Three independent `\|\| "your-secret-key-change-in-production"` fallbacks, each shipped separately by someone who did not know about the other two | [[perimeter-ingress-integrity-charter]] |
+| `fail-open-audit` | Monthly secret-surface review | Three independent `|| "your-secret-key-change-in-production"` fallbacks, each shipped separately by someone who did not know about the other two | [[perimeter-ingress-integrity-charter]] |
 | `webhook-signature-audit` | Weekly, on ingress modules | `toast` and `pos-hub` verify correctly; nobody has ever checked whether the other three do | [[perimeter-ingress-integrity-charter]] |
 | `injection-corpus-run` | Monthly, and per change to any prompt taking untrusted input | `injection_suspected` has shipped, been tested for plumbing only, and never been fired at a real payload | [[ai-surface-security-charter]] |
 | `security-checklist-12c` | Weekly | The checklist has fifteen items and has never been read end-to-end before this department; seven still have no reading | department |

@@ -125,7 +125,7 @@ Verified in this session against the working tree (branch
 | Count | Source |
 |---|---|
 | **27** `.py` files in `services/agent-orchestrator/agents/` | `ls -1 *.py` |
-| **26** agent modules — the 27th is `__init__.py` | `ls -1 *.py \| grep -v __init__` |
+| **26** agent modules — the 27th is `__init__.py` | `ls -1 *.py | grep -v __init__` |
 | **25** extend `BaseAgent` | `grep -l "BaseAgent)" agents/*.py` |
 | **1** does not: `services/agent-orchestrator/agents/recurring_order_agent.py:14` — `class RecurringOrderAgent:` | plain class |
 | **5** declare `IS_STUB = True` | `auto_pilot`, `compliance`, `ghost_inventory`, `negotiation_playbook`, `shrinkage_detective` |

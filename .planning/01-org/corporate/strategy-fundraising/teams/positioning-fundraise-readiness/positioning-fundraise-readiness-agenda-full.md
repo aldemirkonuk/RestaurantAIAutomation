@@ -28,7 +28,7 @@ and a claim not in the register does not get sent — however true it is.
 | Column | Contents | Rejected values |
 |---|---|---|
 | `claim` | The sentence as it will appear, verbatim | Paraphrases. The verb is the thing being checked, so the verb must be the one that ships |
-| `audience` | `investor` · `customer` · `press` · `partner`, and `channel: written \| spoken` | Blank. A claim with no audience has not been thought about |
+| `audience` | `investor` · `customer` · `press` · `partner`, and `channel: written | spoken` | Blank. A claim with no audience has not been thought about |
 | `evidence` | A **query id**, a **`path:line` + symbol**, or a **recorded demo path** | Prose. A roadmap item. Anything in the future tense |
 | `verified` | Date **plus result**: `holds` · `drifted to :N` · `inverted` · `gone` | A bare date. [[positioning-fundraise-readiness-premortem]] P2 is a timestamp with no result behind it |
 

@@ -630,8 +630,8 @@ aspiration — they are in source, alongside Toast:
 | Square status is **`scaffolded`**, not planned — *"Orders API normalizer implemented; needs merchant OAuth token"* | `pos-provider.registry.ts:68-78` |
 | Clover likewise `scaffolded` — *"Orders v3 normalizer implemented"* | `pos-provider.registry.ts:79-90` |
 | Toast status `partial` | `pos-provider.registry.ts:54-66` |
-| Onboarding already asks which POS: `'square' \| 'toast' \| 'clover' \| 'lightspeed' \| 'other' \| 'none'` | `apps/web/src/contexts/OnboardingContext.tsx:95` |
-| Analytics substrate already multi-POS: `-- toast \| square \| lightspeed \| clover \| manual` | `supabase/migrations_archive/20260717120000_analytics_insight_infra.sql:65` |
+| Onboarding already asks which POS: `'square' | 'toast' | 'clover' | 'lightspeed' | 'other' | 'none'` | `apps/web/src/contexts/OnboardingContext.tsx:95` |
+| Analytics substrate already multi-POS: `-- toast | square | lightspeed | clover | manual` | `supabase/migrations_archive/20260717120000_analytics_insight_infra.sql:65` |
 
 **The registry is a 30-provider strategy document**, sequenced in its own header comment
 (`pos-provider.registry.ts:3-16`): foundation → Square/Clover/SpotOn (~60% of detected SMB

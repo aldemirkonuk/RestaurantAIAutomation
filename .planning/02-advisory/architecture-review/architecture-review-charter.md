@@ -237,7 +237,7 @@ callsites, so L4 has no single place to attach to. AR-4 is the direct consequenc
 [[README]] §1 grades L4 *"emits nothing yet."* Verified two ways, and the second is worse
 than the first:
 
-1. **NestJS side: zero.** `grep -rn "api_spend\|cost_usd\|input_tokens" apps/api-gateway/src`
+1. **NestJS side: zero.** `grep -rn "api_spend|cost_usd|input_tokens" apps/api-gateway/src`
    returns **0 hits**. All seven callsites in AR-3 spend money and record none of it.
 2. **Python side: the two halves cannot be joined.** Both tables exist and both are
    written, but they were designed for different questions and share no key:

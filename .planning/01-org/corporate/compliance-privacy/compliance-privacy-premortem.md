@@ -35,7 +35,7 @@ requires nobody to do anything wrong.
 **Earliest observable signal.** `privacy.consent_call_sites` is still **0** at the
 end of the first quarter in which any guest-facing feature ships. Concretely:
 `git log --since` shows a guest feature merged, and
-`grep -rn "guest_link_identifier\|consent_purpose" apps/ services/` still returns
+`grep -rn "guest_link_identifier|consent_purpose" apps/ services/` still returns
 nothing. Today the count is 0 with no guest feature, which is consistent; the day
 those diverge is the signal.
 

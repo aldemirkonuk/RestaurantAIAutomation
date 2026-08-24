@@ -139,6 +139,6 @@ that partially.
 | Ref | Fork |
 |---|---|
 | **OD-11** | Exact production columns, partial-index strategy per `subject_type`, retention/rollup for the research log. **Gates every NF implementation** |
-| **INTEL-F3** (`intelligence.md:519`) | **NF has no `subject_type` for the restaurant operator.** [[README]] §4.4 allows `agent \| guest \| bio`, but the strongest human-preference signal the product already collects — recommendation act/dismiss/snooze/done/pin, via `recommendation_actions` — is **neither an agent nor a guest**. Add `operator`, or route it outside NF? Adding a fourth value is free before launch and a migration afterward, so this decides **inside** the OD-11 session, not after it |
+| **INTEL-F3** (`intelligence.md:519`) | **NF has no `subject_type` for the restaurant operator.** [[README]] §4.4 allows `agent | guest | bio`, but the strongest human-preference signal the product already collects — recommendation act/dismiss/snooze/done/pin, via `recommendation_actions` — is **neither an agent nor a guest**. Add `operator`, or route it outside NF? Adding a fourth value is free before launch and a migration afterward, so this decides **inside** the OD-11 session, not after it |
 | *(this charter)* | Who owns the DDL — OD-11 must name both this team and [[data-charter]], or the schema ships twice |
 | **NF-C** | Gated. Entry trigger to be confirmed in the founder's own words so the declaration is not ours to invent later |

@@ -132,7 +132,7 @@ The vision treats multi-POS as future work. The code disagrees.
 | Square is `status: "scaffolded"` — *"Orders API normalizer implemented; needs merchant OAuth token"* | **EXISTS** | `pos-provider.registry.ts:71`, `:76` |
 | Clover is `status: "scaffolded"` — *"Orders v3 normalizer implemented; needs merchant API token"* | **EXISTS** | `pos-provider.registry.ts:83` |
 | Toast is `status: "partial"` | **EXISTS** | `pos-provider.registry.ts:58` |
-| Onboarding already asks which POS: `'square' \| 'toast' \| 'clover' \| 'lightspeed' \| 'other' \| 'none'` | **EXISTS** | `apps/web/src/contexts/OnboardingContext.tsx:95` |
+| Onboarding already asks which POS: `'square' | 'toast' | 'clover' | 'lightspeed' | 'other' | 'none'` | **EXISTS** | `apps/web/src/contexts/OnboardingContext.tsx:95` |
 | The registry is a sequenced strategy document, not a list | **EXISTS** | `pos-provider.registry.ts:3-16` |
 | Two providers are `available` today — *"any POS or middleware can push the canonical shape and the whole analytics stack lights up"* | **EXISTS** | `pos-provider.registry.ts:13-15`, entries at `:29-51` |
 | Nine providers are blocked on a signature, not on code | **EXISTS** | `authModel: "partner_agreement"` × 9 — `:119, :171, :192, :222, :232, :242, :254, :264, :298` |

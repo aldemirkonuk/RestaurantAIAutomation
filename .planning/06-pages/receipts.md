@@ -46,7 +46,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):378 (`procurement/documents`
 
 | Method | Path | Call site |
 |---|---|---|
-| GET | `/procurement/documents?status=needs_review\|verified` | `ReceiptsPage.tsx:71` → `services/api/documents.ts:83` |
+| GET | `/procurement/documents?status=needs_review|verified` | `ReceiptsPage.tsx:71` → `services/api/documents.ts:83` |
 | GET | `/procurement/documents/:id` | `ReceiptsPage.tsx:77` → `documents.ts:98` |
 | POST | `/procurement/documents/:id/verify` | `ReceiptsPage.tsx:103` → `documents.ts:104` |
 | GET | `/procurement/credits` (+ `/stats`) | `ReceiptsPage.tsx:83,89` → `services/api/credits.ts:51,58` |

@@ -192,7 +192,7 @@ Not negotiable and not sequenced behind anything. Re-confirmed today:
 | # | Defect | Fix |
 |---|---|---|
 | A1 | `ux-optimizer.controller.ts` has **0** `@UseGuards`; global `TenantGuard` returns `true` for unauthenticated requests by design. Every `/ux/*` route is internet-reachable, including `POST /ux/proposals/:id/review`. | Delete the module, or add `@UseGuards(JwtAuthGuard)` at class level and take `reviewedBy` from `@CurrentUser()`, never the body. |
-| A2 | `ux-optimizer.service.ts:501` — `o.restaurant_id == null \|\| !restaurantId \|\|` leaks every tenant's overrides when the param is absent. | Require `restaurantId`; drop the `!restaurantId` clause. |
+| A2 | `ux-optimizer.service.ts:501` — `o.restaurant_id == null || !restaurantId ||` leaks every tenant's overrides when the param is absent. | Require `restaurantId`; drop the `!restaurantId` clause. |
 | A3 | `POST /ux/signals` — public, unvalidated `jsonb` insert, no retention. | DTO + validation pipe, or delete with the module. |
 | A4 | `AUTO_APPLY` appears twice in the file: its own declaration and a doc comment. It gates nothing. | Delete it (misleading), or wire it to the actual apply path. |
 | A5 | `evaluateOverride` (`:580`) has no caller anywhere. Auto-revert-on-regression has never run. | Delete with the module. |

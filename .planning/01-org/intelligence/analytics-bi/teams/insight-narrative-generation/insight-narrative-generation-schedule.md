@@ -15,7 +15,7 @@ links: ["[[insight-narrative-generation-charter]]", "[[insight-narrative-generat
 
 | Cadence | Job | Emits |
 |---|---|---|
-| Hourly *(already running in code)* | **Insight refresh sweep** — `insight-scheduler.service.ts:8-17`, per restaurant × category, `hourly \| daily \| weekly \| manual`, defaulting to daily @ 06:00, failures isolated per restaurant | `analytics_insights` rows |
+| Hourly *(already running in code)* | **Insight refresh sweep** — `insight-scheduler.service.ts:8-17`, per restaurant × category, `hourly | daily | weekly | manual`, defaulting to daily @ 06:00, failures isolated per restaurant | `analytics_insights` rows |
 | Weekly | **Consultant enablement list** — every `analytics_insight_prefs` row with `category='consultants'`, `enabled=true`: age, named owner. Unowned rows revert to OFF | `analytics.consultant_enabled_restaurants`, `analytics.consultant_enablement_age_days` |
 | Weekly | **OD-20 restatement** — the consultant toggle (`analytics.controller.ts:516`) and Opus call (`:531`) remain unguarded; restated to [[security-charter]] with the demo-refusal attached | escalation record |
 | Biweekly | **Acceptance + distribution report** — acceptance rate, feedback coverage, top-rank ignore rate, served-rule concentration, all in one table with the denominator stated | `analytics.insight_acceptance_rate`, `analytics.top_rank_ignore_rate`, `analytics.served_rule_concentration` |

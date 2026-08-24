@@ -120,8 +120,8 @@ SambaPOS). And it states the bridge thesis in code:
 | Clover `status: "scaffolded"`, *"Orders v3 normalizer implemented; needs merchant API token"* | `pos-provider.registry.ts:83`, `:88` |
 | Toast `status: "partial"` | `pos-provider.registry.ts:58` |
 | `developers.lightspeedhq.com` in source (Lightspeed itself is `planned`) | `pos-provider.registry.ts:109` |
-| Onboarding already asks which POS: `'square' \| 'toast' \| 'clover' \| 'lightspeed' \| 'other' \| 'none'` | `apps/web/src/contexts/OnboardingContext.tsx:95` |
-| Analytics substrate is already multi-POS: `-- toast \| square \| lightspeed \| clover \| manual` | `supabase/migrations_archive/20260717120000_analytics_insight_infra.sql:65` |
+| Onboarding already asks which POS: `'square' | 'toast' | 'clover' | 'lightspeed' | 'other' | 'none'` | `apps/web/src/contexts/OnboardingContext.tsx:95` |
+| Analytics substrate is already multi-POS: `-- toast | square | lightspeed | clover | manual` | `supabase/migrations_archive/20260717120000_analytics_insight_infra.sql:65` |
 
 **Two normalizers are written and waiting on a merchant token, not on engineering.** That is
 the single most important fact about this team's starting position, and it reframes the first
