@@ -65,7 +65,7 @@ advisory function that reports inside the line it reviews is not independent.
 
 | Advisory | Reviews | Why it must sit outside the line |
 |---|---|---|
-| **Architecture Review** | All of Technology + Product | Owns the L0–L6 layer-dependency rule (foundation §1). A layer violation is invisible to the department committing it. |
+| **Architecture Review** | **All divisions** | Owns the L0–L6 layer-dependency rule (foundation §1). A layer violation is invisible to the department committing it. *Scope corrected 2026-08-24: this said "Technology + Product", written before Technology split and before Research & Math was promoted — which left **L4's owner outside the review mandate**.* |
 | **Red Team** | Decisions, everywhere | **Scoped by founder:** detects and attacks *decisions*, and does premortem thinking — not general security testing (Security builds defenses in the line). Output must make "what's next" easy to navigate. |
 | **Decision Office** | Everything | Owns the ADR log, the open-decision queue, and loop close-times. Ensures decisions actually close rather than drifting — the failure mode this whole chapter exists to prevent. |
 | ~~Ethics & Responsible AI~~ | — | **Considered, not adopted** (2026-08-24). Agent-autonomy limits and guest-data use fall to Compliance & Privacy in the line. |

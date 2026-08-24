@@ -20,6 +20,16 @@ Architecture Review owns **one rule**: the L0–L6 layer stack in [[README]] §1
 **Applied AI**, and **Product** against that rule and writes findings. It builds
 nothing, fixes nothing, and blocks nothing.
 
+> ⚠️ **The mandate's wording is stale, and the gap is not cosmetic.**
+> [[ORG_STRUCTURE]] §3 still reads *"All of Technology + Product"* — but Technology was
+> split into **Platform** and **Applied AI** (§2), and **Research & Math** was promoted
+> to a division of its own on 2026-08-24. Read literally, the scope now excludes
+> Research & Math and Intelligence. **AR-4 — the finding that L4 cannot be joined — is
+> addressed to [[neural-footprint-instrumentation-charter]], which sits in Research &
+> Math and is therefore outside the mandate as written.** L4 is a *layer*; a layer stack
+> reviewed everywhere except at its metric spine is not reviewed. Raised as a scope
+> question, not resolved here → [[architecture-review-agenda-full]] §Questions #7.
+
 It sits outside the line for a reason that is worth stating precisely, because it is
 the entire justification for the function's existence:
 
@@ -309,7 +319,7 @@ rebuild from the source of truth, diff against reality, exit non-zero.
   → [[decision-office-charter]].
 - **The evaluation seam** — [[agent-evaluation-gates-charter]] (AI Orchestration,
   operations) vs [[evaluation-doneability-charter]] / [[research-math-charter]]
-  (Intelligence, methodology). Numbered **OD-21** at `teams/technology.md:845`, which
+  (Research & Math, methodology). Numbered **OD-21** at `teams/technology.md:845`, which
   **collides** with the real OD-21 (Obsidian structural workflow,
   `OPEN-DECISIONS.md:25`, already locked). This function's position: the seam is a
   **layer-ownership question about L4**, it is exactly the kind of overlap that resolves

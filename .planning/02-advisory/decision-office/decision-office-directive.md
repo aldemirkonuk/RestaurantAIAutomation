@@ -105,7 +105,7 @@ in `.planning/decisions/`. That rule binds this office first.
 | Escalation | Why it is not ours |
 |---|---|
 | **Reassigning any cited identifier** | See the bright line below. |
-| **The authoritative fork-numbering scheme itself** | The office proposes one; adopting it changes what 83 OD-23 citations and 45 OD-24 citations mean. Founder ratification, filed as a new register row. |
+| **The authoritative fork-numbering scheme itself** | The office proposes one; adopting it changes what 51 documents citing OD-23 and 25 citing OD-24 mean. Founder ratification, filed as a new register row. |
 | Which of two contradicting numbers is right — 375 vs 573 insight types | [[analytics-bi-charter]] owns the answer. We own the fact that both are published. |
 | **OD-25** — Research & Math or Skills runs the weekly skill-health job | Two documents, two owners. Breaking the tie is deciding, however obvious it looks. |
 | **OD-26** — should every unit carry a merge trigger symmetric with its split trigger | Named in the register as *"likely a Decision Office standing rule."* **A standing rule this office writes for itself is a rule with no author but the enforcer.** Founder call; we supply the 11-vs-3 count. |
@@ -127,8 +127,9 @@ that.
 
 This is why the first assignment ships as a **proposal**. OD-30 describes the
 collision as *"mechanical to fix"* and, at the level of text editing, it is. It is
-not mechanical at the level of authority: OD-23 alone is cited **83 times** across
-five divisions, in three different meanings.
+not mechanical at the level of authority: OD-23 alone is cited by **51 documents**
+across five divisions, in three different meanings, and **177 of 581 documents —
+30% of the generated corpus — cite at least one of the six colliding IDs.**
 
 ## Escalation trigger
 

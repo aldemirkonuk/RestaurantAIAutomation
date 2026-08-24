@@ -39,7 +39,7 @@ WHERE (type = "agenda-full" OR type = "agenda-board")
 SORT updated ASC
 ```
 
-⚠️ **Returns 0 rows today and will return ~166 on 2026-10-23.** Every unit document
+⚠️ **Returns 0 rows today and will return 194 on 2026-10-23.** Every unit document
 carries `updated: 2026-08-24`, so the whole corpus's 60-day clock starts and expires
 together. Empty is not healthy here; it is *pre-cliff*.
 
@@ -79,7 +79,7 @@ fixed here — moving 396 blocks is corpus-wide.
 - **`close_rate_per_week` — unmeasured.** All 12 resolved rows share one date: a burst, not a rate
 - **`decided_here_count` — 0.** Target **0**, permanently ([[decision-office-premortem]] M3)
 - **`intake_returned_count` — 0.** Target **0**, not "low" (M1)
-- ⚠️ **Register mutated mid-session** — OD-28…OD-31 appended by parallel agents; **OD-23 rewritten in place** while **83 documents cite it**
+- ⚠️ **Register mutated mid-session** — OD-28…OD-31 appended by parallel agents; **OD-23 rewritten in place** while **51 documents cite it**
 
 ## Inbox this function was handed before it existed
 
@@ -98,11 +98,12 @@ fixed here — moving 396 blocks is corpus-wide.
 - [ ] **`OD-C6…C8`** — minted in-session, **unfiled**
 - [ ] **`CM-F1…F6`** — `commercial.md:629-634` ✅ namespaced, worked
 - [ ] **`F-1…F-5`** — `intelligence.md:515-521` ⚠️ ambiguous against `CM-Fn`
-- [ ] **`DEP-06`** — unit-local, **64 references**, defined `PROJECT.md:101`
+- [ ] **`DEP-06`** — unit-local, **34 documents**, defined `PROJECT.md:101`
 
 **Collision damage:** OD-20/21/22/23/24 carry **3 meanings each**; OD-19 carries 2.
-Citations per ID: OD-23 **83** · OD-21 **79** · OD-20 **81** · OD-24 **45** ·
-OD-22 **40** · OD-19 **45**.
+Documents in `01-org/` citing each: OD-20 **59** · OD-23 **51** · OD-21 **38** ·
+OD-22 **31** · OD-19 **28** · OD-24 **25**.
+**177 of 581 documents — 30% of the generated corpus — cite at least one of the six.**
 
 **Self-corrected in place by three generators** — `product-vision-charter.md:133`,
 `design-agenda-board.md:104`, `supplier-distributor-network-charter.md:73`.
@@ -118,7 +119,7 @@ Good culture, missing registrar.
 - [ ] **second quarterly review** — [[legal-charter]]: merge trigger, the written counter to OD-26
 
 **Two org-wide cliffs, one month apart:** ~2026-10-23 (60-day agenda staleness,
-~166 documents) then 2026-11-24 (four retirement triggers). Both currently unwatched.
+**194** agenda documents) then 2026-11-24 (four retirement triggers). Both unwatched.
 
 ## Loop health — 396 blocks, 82 files
 
@@ -149,11 +150,11 @@ Good culture, missing registrar.
 
 ## Escalations standing open
 
-- [ ] **Fork scheme** — proposal only; applying it is a founder call (83 OD-23 citations)
+- [ ] **Fork scheme** — proposal only; applying it is a founder call (51 documents cite OD-23)
 - [ ] **≥19 staged forks unfiled** — OD-C1…C8, CM-F1…F6, F-1…F-5
 - [ ] **OD-26** — merge triggers org-wide? **This office declines to author its own standing rule**
 - [ ] **OD-25** and the `README.md:269` daily-digest owner — two foundation documents, two owners, same shape
 - [ ] **OD-C6** — [[standards-verification-charter]] reparenting: **declined in writing**
 - [ ] **Loop blocks → frontmatter?** 396 blocks; [[architecture-review-charter]] should see it
-- [ ] **OD-03 (146 refs) and OD-11 (142 refs)** — the two most-cited open items, both blocked on *a session being scheduled*
+- [ ] **OD-11 (65 documents) and OD-03 (39)** — the two most-cited *non-colliding* open items, both blocked on *a session being scheduled*
 - [ ] **L6 authority audit must be owned by [[red-team-charter]]**, not by this office

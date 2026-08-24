@@ -136,15 +136,16 @@ status: proposed
 ```
 
 **Per-intake, because a collision is only cheap before it is cited.** OD-24 cost
-nothing on the day it was minted twice; it now has **45 references** across three
-divisions carrying two meanings.
+nothing on the day it was minted twice; it is now cited by **25 documents** across
+three divisions carrying two meanings — and **177 of 581 documents cite at least one
+of the six colliding IDs.**
 
 **Today: 7 namespaces.** Canonical `OD-nn`; `OD-19…24` local to
 `technology.md:842-848`; `OD-20…24` local to `product.md:858-862`; `OD-C1…C5`
 (`corporate.md:494-498`, correctly namespaced) extended in-session to `OD-C6…C8`
 and unfiled; `CM-F1…F6` (`commercial.md:629-634`, correctly namespaced);
 `F-1…F-5` (`intelligence.md:515-521`, ambiguous against `CM-Fn`); and `DEP-06`,
-unit-local with **64 references**.
+unit-local, cited by **34 documents**.
 
 **The monthly sweep** greps `01-org/` and `02-advisory/` for identifier-shaped
 tokens absent from the register — that is how `OD-C6/C7/C8` would have surfaced the

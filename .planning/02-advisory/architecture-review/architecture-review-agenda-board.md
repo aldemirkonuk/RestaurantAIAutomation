@@ -44,11 +44,18 @@ WHERE type = "charter"
 SORT division ASC, file.name ASC
 ```
 
-> The size of that table is the honest scale problem
-> ([[architecture-review-agenda-full]] §Questions #7): three divisions, ten departments,
-> ~40 teams, one function with no build capacity. The rotation in
+> The size of that table is half the scale problem
+> ([[architecture-review-agenda-full]] §Questions #7): three divisions, nine units, ~40
+> teams, one function with no build capacity. The rotation in
 > [[architecture-review-schedule]] is the mitigation; narrowing the mandate is the
 > alternative.
+>
+> ⚠️ **The other half is what the query deliberately does not select.**
+> [[ORG_STRUCTURE]] §3's mandate wording predates the Technology split and the
+> 2026-08-24 promotion of **Research & Math** to its own division. So **L4's owner is
+> outside the reviewed set** — AR-4 is addressed to
+> [[neural-footprint-instrumentation-charter]], which this query does not return. A
+> layer stack reviewed everywhere except at its metric spine is not reviewed.
 
 ## Loops owned, by close-time
 
@@ -118,7 +125,10 @@ land.
 - [ ] **The evaluation seam** — ⚠️ numbered **OD-21** at `technology.md:845`, which collides
       with the real OD-21 (`OPEN-DECISIONS.md:25`, locked). Needs a free ID. Read here as an
       **L4 ownership question**; instruction on record stands: **merge, never duplicate**
-- [ ] **Scope** — three divisions, ~40 teams, no build capacity. Rotate, or narrow?
+- [ ] **Scope, both directions** — too wide (three divisions, ~40 teams, no build
+      capacity: rotate or narrow?) **and too narrow** ([[ORG_STRUCTURE]] §3 still says
+      *"Technology + Product"*, so **Research & Math — L4's owner — is outside the
+      mandate**, and AR-4 has no chartered recipient)
 
 ## Watch signals — from [[architecture-review-premortem]]
 

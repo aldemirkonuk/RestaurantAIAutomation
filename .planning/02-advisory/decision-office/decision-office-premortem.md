@@ -157,7 +157,7 @@ on purpose.
 > never reassign an identifier already cited elsewhere in the corpus.**
 
 Minting `OD-32` for an unfiled fork changes nothing about what any document means —
-that is bookkeeping. Re-pointing `OD-23` changes what **83 existing citations
+that is bookkeeping. Re-pointing `OD-23` changes what **51 existing documents
 mean** — that is a decision about other units' documents, made without them. The
 line is not a matter of degree; it is a yes/no test on "does any existing document
 cite this ID," and it is why the fork reconciliation ships as a **proposal to the
@@ -179,8 +179,8 @@ references, then a linter. Twelve months of genuine, well-executed metadata work
 
 Meanwhile `decisions.close_rate_per_week` never moved, because **numbering was
 never the reason decisions were not closing**. OD-03 (orchestration base) is
-referenced 146 times and blocked on a bake-off nobody scheduled. OD-11 is
-referenced 142 times and blocked on a schema session nobody booked. Neither is
+cited by 39 documents and blocked on a bake-off nobody scheduled. OD-11 is
+cited by 65 and blocked on a schema session nobody booked. Neither is
 waiting on an identifier. The office picked the tractable problem over the real
 one, and the tractable problem happened to be infinitely divisible.
 
@@ -188,7 +188,8 @@ one, and the tractable problem happened to be infinitely divisible.
 rows closed**. Specifically, the first month in which the office ships a metadata
 improvement and closes zero rows. And the sharper version — **OD-03 and OD-11
 ageing past 90 days while the fork registry is described as "in progress."** Both
-are already the most-cited open items in the corpus (146 and 142 references) and
+are already the most-cited non-colliding open items in the corpus (65 and 39
+documents) and
 both are blocked on a *session being scheduled*, which is the cheapest possible
 unblock.
 

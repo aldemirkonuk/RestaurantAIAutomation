@@ -62,11 +62,14 @@ office runs the *detection*; the owning unit does the deleting.
 | **Scheduled job with no action in 3 runs = downgrade or delete** | [[foundation-README]] §6 | Any row in any `schedule.md` producing no output for 3 consecutive runs | Reports it, **including rows in this table** | Downgrade another unit's job |
 
 **First sweep will be large, and that is the point.** 581 unit documents were
-written in two sessions and all carry `updated: 2026-08-24`. The 60-day clock
-therefore starts together and **expires together, around 2026-10-23** — roughly one
-month before the four dated triggers land on 2026-11-24. Two org-wide staleness
-events one month apart, both currently unwatched. Naming the dates now is cheaper
-than discovering them in October.
+written in two sessions and all carry `updated: 2026-08-24` — among them **194
+agenda documents** (`agenda-full` + `agenda-board`, this unit's two included). The
+60-day clock therefore starts together and **expires together, around 2026-10-23**,
+putting all 194 into the sweep on one day — roughly one month before the four dated
+triggers land on 2026-11-24. Two org-wide staleness events one month apart, both
+currently unwatched. Naming the dates now is cheaper than discovering them in
+October, and a sweep that flags 194 documents at once will be ignored unless it is
+expected.
 
 **The rule applies to this page.** Twelve proposed jobs for a function with zero
 artifacts is already at the edge of §6. The rows that earn their slot are the first

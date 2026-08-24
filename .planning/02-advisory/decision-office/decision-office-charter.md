@@ -159,8 +159,8 @@ already has 23 items, already collided its own identifiers, and is already cited
 - **The register mutates in place.** `OD-23` was filed as *"$20k MRR in 30 days"*
   and has since been **rewritten** to *"Revenue target and pricing, both
   unverified"* with three corrections folded in. The rewrite is better than the
-  original. It is also invisible: **83 references to OD-23** exist across `01-org/`,
-  written against text that no longer says what they cite. An open-decision row is
+  original. It is also invisible: **51 documents in `01-org/` cite OD-23**, written
+  against text that no longer says what they cite. An open-decision row is
   a shared identifier; editing its meaning silently is the register's own version
   of a stale citation.
 - **The register is a concurrent write target.** Rows **OD-28 through OD-31 were
@@ -206,7 +206,7 @@ Two more namespaces were created *specifically to avoid this*, and worked:
 `OD-C1`…`OD-C5` (`corporate.md:494-498`) and `CM-F1`…`CM-F6`
 (`commercial.md:629-634`). A sixth, `F-1`…`F-5` (`intelligence.md:515-521`), is
 ambiguous against `CM-Fn` to a fast reader. A seventh is unit-local: `DEP-06`,
-**64 references**, defined in `PROJECT.md:101` and used by [[sales-charter]] as a
+**34 documents**, defined in `PROJECT.md:101` and used by [[sales-charter]] as a
 gating condition.
 
 The `OD-C` namespace has also **grown without registration**: the Knowledge &
@@ -215,16 +215,17 @@ correctly namespaced and entirely unfiled.
 
 Scale of the misreading risk, by division, for the six colliding IDs:
 
-| ID | applied-ai | commercial | corporate | intelligence | platform | product |
-|---|---|---|---|---|---|---|
-| OD-19 | 2 | 1 | — | 7 | 8 | 7 |
-| OD-20 | — | 3 | 2 | 32 | 10 | 8 |
-| OD-21 | 9 | — | 10 | 4 | — | 15 |
-| OD-22 | 11 | — | 11 | — | — | 5 |
-| OD-23 | 3 | 12 | 5 | — | 9 | 11 |
-| OD-24 | 12 | — | — | — | 8 | 5 |
+| ID | applied-ai | commercial | corporate | intelligence | platform | product | **total** |
+|---|---|---|---|---|---|---|---|
+| OD-19 | 2 | 1 | — | 7 | 8 | 10 | **28** |
+| OD-20 | — | 3 | 4 | 24 | 10 | 8 | **59** |
+| OD-21 | 9 | — | 10 | — | — | 15 | **38** |
+| OD-22 | 11 | — | 11 | — | — | 9 | **31** |
+| OD-23 | 3 | 12 | 12 | — | 9 | 15 | **51** |
+| OD-24 | 12 | — | — | — | 8 | 5 | **25** |
 
-*(files citing the ID, per division)*
+*(documents in `01-org/` citing the ID, per division. **177 of 581 documents — 30% of
+the generated corpus — cite at least one of the six colliding IDs.**)*
 
 Three generators caught it themselves and said so in place —
 `product-vision-charter.md:133-143`, `design-agenda-board.md:104`,

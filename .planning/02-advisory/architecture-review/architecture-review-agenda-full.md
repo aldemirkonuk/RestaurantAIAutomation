@@ -179,9 +179,16 @@ not a task.
    It needs a free ID before it can enter the log. Structurally this function reads the
    seam as an **L4 ownership question**, and endorses the instruction already on record:
    if the methodology/operations line fails, **merge — never duplicate.**
-7. **Does this function have too much scope?** Honest answer: probably yes as written.
-   *"All of Platform, Applied AI, and Product"* is 10 departments and ~40 teams reviewed by
-   a function with no build capacity. [[architecture-review-premortem]] #5 is that Product
-   silently drops off the list. The rotation in [[architecture-review-schedule]] is the
-   proposed mitigation; narrowing the mandate to Platform + Applied AI for the first
-   quarter is the honest alternative, and it is the founder's call which.
+7. **Scope — too wide in one direction and too narrow in another, simultaneously.**
+   - **Too wide:** *"All of Platform, Applied AI, and Product"* is nine units and ~40
+     teams reviewed by a function with no build capacity.
+     [[architecture-review-premortem]] #5 is Product silently dropping off the list. The
+     rotation in [[architecture-review-schedule]] is the proposed mitigation; narrowing
+     to Platform + Applied AI for the first quarter is the honest alternative.
+   - **Too narrow, and this is the sharper half:** [[ORG_STRUCTURE]] §3 still words the
+     mandate as *"All of Technology + Product"*, written before Technology was split and
+     before **Research & Math was promoted to its own division** on 2026-08-24. Read
+     literally, **L4's owner is outside the review scope** — AR-4 is addressed to
+     [[neural-footprint-instrumentation-charter]], which now sits in Research & Math.
+     A layer stack reviewed everywhere except at its metric spine is not reviewed. Either
+     §3's wording is refreshed to name the divisions that exist, or AR-4 has no recipient.

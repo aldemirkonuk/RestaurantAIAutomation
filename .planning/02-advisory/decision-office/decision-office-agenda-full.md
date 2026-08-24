@@ -41,9 +41,9 @@ failure:
   a 23-row register whose items unblock on scheduled sessions cannot change daily.
   A digest identical five days running gets deleted by §6's own three-runs rule.
 - *Oldest item first*, not most tractable — otherwise metadata work occupies the
-  top line forever ([[decision-office-premortem]] M4). OD-03 (146 references) and
-  OD-11 (142) are the two most-cited open items in the corpus and both are blocked
-  on a session nobody has booked. That is the top line, not the fork numbering.
+  top line forever ([[decision-office-premortem]] M4). OD-11 (**65 documents**) and
+  OD-03 (**39**) are the two most-cited non-colliding open items in the corpus, and
+  both are blocked on a session nobody has booked. That is the top line, not the fork numbering.
 - *Whether or not anything moved* — a number that appears only when it changes
   cannot embarrass anyone (M2).
 
@@ -71,7 +71,7 @@ Because the inbox already exists and the function does not.
   Office's first assignment; mechanical to fix."*
 - **The register mutated under this session.** Rows OD-28 → OD-31 appeared
   mid-audit, and OD-23's text was rewritten in place from *"$20k MRR in 30 days"*
-  to *"Revenue target and pricing, both unverified"* — while **83 documents cite
+  to *"Revenue target and pricing, both unverified"* — while **51 documents cite
   OD-23** against the older text.
 - **Two org-wide staleness events are already dated and unwatched.** All 581 unit
   documents carry `updated: 2026-08-24`, so [[ORG_STRUCTURE]] §4's 60-day agenda
@@ -90,7 +90,7 @@ Ordered by what buys the most closure per unit of effort, **not** by tractabilit
 | 1 | **Retrofit owner + filed-date + severity onto all 23 open rows.** Bookkeeping — changes no row's meaning ([[decision-office-directive]] §Decision rights) | L1 | `unowned_count` = 0; `median_age_days` computable for the first time |
 | 2 | **Ship digest #1** — oldest item first, with `open_count` and `intake_rate` on the same line | L1 | Founder has one page; a baseline exists to measure drain against |
 | 3 | **Stand up the dated-trigger calendar.** Six triggers, `days_until` reported from this week | L2 | `dated_unwatched_count` 6 → 0 |
-| 4 | **Fork-registry reconciliation, as a proposal.** Collision table + alias table + a namespace scheme. **Time-boxed to two close-times**, then abandoned rather than extended | L3 | In front of the founder as a new register row. **Not applied** — 83 OD-23 citations make application a decision |
+| 4 | **Fork-registry reconciliation, as a proposal.** Collision table + alias table + a namespace scheme. **Time-boxed to two close-times**, then abandoned rather than extended | L3 | In front of the founder as a new register row. **Not applied** — 51 documents cite OD-23; application is a decision |
 | 5 | **File the unfiled.** OD-C1…C8, CM-F1…F6, F-1…F-5 — **≥19 forks** staged in documents and never entered in the register | L3 | Every staged fork has a row, or an explicit "not a decision" note |
 | 6 | **File the four contradictions** (C1–C4) with a named owner each. **Including C3, where one side is provably right** — routing rather than ruling is the point | L5 | Each has an owner and an age |
 | 7 | **First loop close-time audit.** 396 blocks; report the `exists`-ratio of **6 in 396** | L4 | Undefined close-times and status drift listed and routed |
@@ -109,7 +109,8 @@ Each is a fork this office **cannot** answer, by [[decision-office-directive]]
 1. **The fork-numbering scheme — do you ratify it?** Six IDs (`OD-19`…`OD-24`)
    carry two or three distinct meanings each across five divisions. The office can
    produce one authoritative scheme and an alias table; it **cannot apply it**,
-   because reassigning `OD-23` rewrites what 83 existing citations mean. Related:
+   because reassigning `OD-23` rewrites what **51 existing documents** mean, and 177
+   documents cite at least one of the six colliding IDs. Related:
    **OD-30**, already registered.
 2. **Do staged forks get real IDs?** `OD-C1…C8` (Corporate), `CM-F1…F6`
    (Commercial), `F-1…F-5` (Intelligence) — **≥19 items** that are decisions in
@@ -145,8 +146,8 @@ Each is a fork this office **cannot** answer, by [[decision-office-directive]]
    Declining is ours; accepting is not. If the independence argument holds, the
    answer is a fourth advisory function or a different parent — not this one
    growing an org chart.
-8. **Will you set dates for OD-03 and OD-11?** The two most-cited open items in the
-   corpus — **146 and 142 references** — are each blocked on nothing but *a session
+8. **Will you set dates for OD-11 and OD-03?** The two most-cited open items in the
+   corpus — **65 and 39 documents** — are each blocked on nothing but *a session
    being scheduled*. They are the cheapest closes available and, on current
    evidence, the ones this office will otherwise report as ageing every week
    forever.
