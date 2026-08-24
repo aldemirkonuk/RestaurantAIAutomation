@@ -211,7 +211,18 @@ fi
 gateway_hits=()
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  grep -Eq "$GATEWAY_PROVIDER_RE" "$f" 2>/dev/null && gateway_hits+=("$f")
+  # Match the provider URL only in CODE, never in a comment. Without this a file
+  # that merely *documents* a provider — e.g. analytics.controller.ts explaining the
+  # PR #31 auth fix — is flagged as an unrouted call site. Strips //, * and # lines
+  # before matching. A false positive here trains people to ignore the guard, which
+  # is the one failure a guard cannot survive.
+  # Drop whole COMMENT LINES only. An earlier attempt stripped from '//' anywhere,
+  # which also ate the '//' in 'https://' and made every real call site invisible —
+  # the NEVER VACUOUS rule caught it, which is what that rule is for.
+  if grep -vE '^[[:space:]]*(//|\*|#)' "$f" 2>/dev/null \
+     | grep -Eq "$GATEWAY_PROVIDER_RE"; then
+    gateway_hits+=("$f")
+  fi
 done < <(find "$GATEWAY_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
            ! -name '*.spec.ts' ! -name '*.test.ts' | sort)
 

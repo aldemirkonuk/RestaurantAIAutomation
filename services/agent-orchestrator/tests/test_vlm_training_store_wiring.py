@@ -27,9 +27,21 @@ from services.vlm_extraction_service import VLMExtractionService
 
 @pytest.fixture(autouse=True)
 def reset_store_singleton():
-    """The store is a module-level singleton; isolate each test from it."""
+    """The store is a module-level singleton; isolate each test from it.
+
+    Also pins `core.database.get_supabase_client` to None for the duration.
+    These tests assert the IN-MEMORY BUFFER path, which `save_scan_pair` takes
+    only when `mock_mode or not self.supabase` (training_data_store.py:76). That
+    made them silently dependent on no Supabase client existing in the session —
+    fine until P1 had SpendLogger resolve a shared client through
+    Settings.supabase_client, after which any earlier test that touched the
+    logger left a live client behind and these wrote through to the database
+    instead of buffering. Passing alone, failing in company. Pinning the
+    dependency makes the test assert what it claims to.
+    """
     tds_module._store_instance = None
-    yield
+    with patch("core.database.get_supabase_client", return_value=None):
+        yield
     tds_module._store_instance = None
 
 

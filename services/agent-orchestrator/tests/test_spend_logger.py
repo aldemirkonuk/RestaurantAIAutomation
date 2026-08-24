@@ -316,16 +316,25 @@ def test_new_params_are_keyword_only():
 
 
 def test_get_spend_logger_returns_singleton():
-    """get_spend_logger() returns the same instance on repeated calls."""
+    """get_spend_logger() returns the same instance on repeated calls.
+
+    Restores the module global afterwards. Without this the instance built here
+    leaks into every later test in the session — it made
+    test_vlm_training_store_wiring fail in the full suite while passing alone,
+    which is the worst shape a test failure can take.
+    """
     import services.spend_logger as mod
 
-    mod._spend_logger = None
+    original = mod._spend_logger
+    try:
+        mod._spend_logger = None
+        from services.spend_logger import get_spend_logger
 
-    from services.spend_logger import get_spend_logger
-
-    a = get_spend_logger()
-    b = get_spend_logger()
-    assert a is b
+        a = get_spend_logger()
+        b = get_spend_logger()
+        assert a is b
+    finally:
+        mod._spend_logger = original
 
 
 def test_estimate_llm_cost_known_and_unknown_models():
