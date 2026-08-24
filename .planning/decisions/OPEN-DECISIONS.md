@@ -62,7 +62,7 @@
 | — | **Rebrand posture:** planning starts now in Media & Brand (`brand-identity`); **no execution until the brand direction exists**. The 336-line sweep is one dedicated branch later | 2026-08-24 |
 | OD-48 | **Tiers assigned across all 17 scenarios** — 16 `core`, 1 `plus`, 0 `pro`; [TIER-MAP](../03-scenarios/TIER-MAP.md) records what is buildable today vs gated | 2026-08-24 |
 | OD-14 | **Root `SKILLS.md` retired** — replaced with a tombstone (path kept: `.github/copilot-instructions.md` referenced it). It was not a skill, and it competed with `CLAUDE.md` | 2026-08-24 |
-| OD-47 | **Loop vocabulary normalised** — `close_time` 102→9 values, `status` 11→6, 112 `close_time_note` lines added so no nuance was lost. `active`+`running` unchanged at 6 | 2026-08-24 |
+| OD-47 | **Loop vocabulary normalised and now enforced** ([0009](0009-loop-vocabulary-contract.md)) — `close_time` 102→9 values, `status` 11→6, 112 `close_time_note` lines added so no nuance was lost. §5.1's table is read by `build_loop_index.py --check` as a hard CI gate; `active`/`running` must cite evidence, which took the live count 6→**5** (only 2 of the 6 had ever carried a citation) | 2026-08-24 |
 | OD-11 | **Path C — full ADR 0006 production shape now** ([0008](0008-nf-column-contract.md)). Claude recommended A; founder overruled. P1 unblocked | 2026-08-24 |
 | OD-32 | **519 broken `[[links]]` repaired** → 33 remain, all prose examples inside contract docs | 2026-08-24 |
 | OD-48 | **Tiers = Core / Plus / Pro**, cutting through each scenario's §10 (Core operate · Plus understand · Pro optimize). Price points remain open (OD-23) | 2026-08-24 |

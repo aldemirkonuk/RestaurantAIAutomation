@@ -9,7 +9,7 @@ links: ["[[decision-office-charter]]", "[[decision-office-premortem]]", "[[decis
 loop_count: 6
 loop_ids: ["decision-register-health", "dated-trigger-watch", "fork-namespace-integrity", "loop-close-time-audit", "contradiction-register", "decision-office-authority-audit"]
 loop_close_times: ["weekly", "weekly", "per-event", "monthly", "monthly", "quarterly"]
-loop_statuses: ["running", "proposed", "proposed", "proposed", "proposed", "proposed"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Decision Office — Loops
@@ -48,7 +48,7 @@ changes: [decisions.register_triage, decisions.owner_assignment, decisions.diges
 inputs_from: [all-units, founder]
 outputs_to: [founder, red-team, architecture-review]
 close_time: weekly
-status: running
+status: proposed
 ```
 
 **Close-time is weekly and unconditional** — the digest ships in weeks where

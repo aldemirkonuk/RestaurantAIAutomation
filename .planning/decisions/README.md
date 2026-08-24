@@ -28,6 +28,7 @@
 | [0006](0006-neural-footprint-architecture.md) | Neural Footprint — split narrow production store from wide append-only research log; NF-C gated | 2026-08-24 |
 | [0008](0008-nf-column-contract.md) | NF column contract — full ADR 0006 shape now (Path C); Claude's Path A recommendation overruled | 2026-08-24 |
 | [0007](0007-org-structure.md) | Org — 7 divisions, 19 departments, 3 findings-only advisory functions, 7-artifact unit anatomy | 2026-08-24 |
+| [0009](0009-loop-vocabulary-contract.md) | Loop vocabulary read from ORG_STRUCTURE §5.1's own table and enforced as a hard CI gate; `active`/`running` must cite evidence — live loops 6 → 5 | 2026-08-24 |
 
 ## Locked — recorded elsewhere (pre-log)
 

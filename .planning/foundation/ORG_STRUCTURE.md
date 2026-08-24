@@ -179,14 +179,23 @@ missing, not the vocabulary.
 | `active` | The mechanism executes today, with cited evidence, but a full measure→change cycle has not been observed. |
 | `running` | The full cycle closes on its stated cadence today, with a named owner and live measurement. |
 
-`active` and `running` require **evidence in the block** (a `file:line`, a workflow
-path, a query). A loop with no owner or no measurement is `proposed` regardless of
-whether some code path underneath it happens to execute — the code running is not the
-loop closing. As of 2026-08-24 exactly **6 of 482** loops qualify; that number moves by
-building the loop, never by relabelling it.
+`active` and `running` require **evidence in the block** — an `evidence:` field naming a
+`file:line`, a workflow path, or a query. A loop with no owner or no measurement is
+`proposed` regardless of whether some code path underneath it happens to execute — the
+code running is not the loop closing. As of 2026-08-24 exactly **5 of 482** loops
+qualify; that number moves by building the loop, never by relabelling it.
+
+> **Correction 2026-08-24 (OD-47 follow-through).** This said **6**, and the count was
+> never checked against the rule. When enforcement landed, only two of the six carried an
+> `evidence:` field: three more cited a workflow or a `file:line` in adjacent prose or in
+> `pass_condition`/`rationale` and were migrated into the field, and `decision-register-health`
+> cited nothing anywhere and was demoted to `proposed` — a weekly digest that no mechanism
+> emits. The rule was sound; its bookkeeping was not. Six was the number nobody had
+> verified, which is precisely what an unenforced rule produces.
 
 `scripts/build_loop_index.py` regenerates the frontmatter arrays and
-`00-index/LOOP-MAP.md` from these blocks. Rerun it after editing loops.
+`00-index/LOOP-MAP.md` from these blocks. Rerun it after editing loops — or run it with
+`--check`, which writes nothing and is the CI gate (`.github/workflows/ci.yml`).
 
 ---
 

@@ -163,6 +163,7 @@ outputs_to: [privacy-engineering, security, regulatory-posture]
 close_time: per-pr
 close_time_note: "per push and per PR, plus daily cron"
 status: running
+evidence: ".github/workflows/schema-parity.yml:19-27 (push, pull_request, daily cron) runs scripts/check_no_guest_name_matching.sh and scripts/check_no_raw_guest_channels.sh at :152-154, alongside scripts/eval_guest_merge_policies.py at :149 — which refuses to run without its DB secret rather than passing vacuously (:143-147)."
 ```
 
 **Running, verified:** `.github/workflows/schema-parity.yml:19-27` (push to

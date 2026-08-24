@@ -112,6 +112,7 @@ outputs_to: [engineering, security, compliance-and-privacy]
 close_time: per-pr
 close_time_note: "per PR (CI), reviewed weekly"
 status: active
+evidence: ".github/workflows/ci.yml:226-230 rebuilds the labelled set (scripts/build_merge_eval_set.py) then scores it, failing if any false merge exists; the pass/fail rule is scripts/eval_merge_policies.py:5-13 and the guest asymmetry scripts/eval_guest_merge_policies.py:28-32."
 pass_condition: "exactly zero — never a threshold, never summed with false splits (eval_merge_policies.py:5-13)"
 rationale: "a false bottle merge is a bounded data-quality error; a false guest merge is a DISCLOSURE and no un-merge reverses it (eval_guest_merge_policies.py:28-32)"
 note: "the guest gate reports 0 pairs today because guest capture has not started — that is the gate working, not idle"

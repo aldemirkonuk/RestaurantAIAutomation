@@ -26,6 +26,7 @@ Eight ADRs, all dated 2026-08-24 — the restructuring chapter produced the enti
 | [0006](../decisions/0006-neural-footprint-architecture.md) | **Neural Footprint architecture** — narrow production store + wide append-only research log; NF-C gated | L4, the metric spine | **Locked** — header still reads *"column-level schema open under OD-11"*; ADR 0008 closed it. ⚠️ stale |
 | [0007](../decisions/0007-org-structure.md) | **Org** — 7 divisions, 19 departments, 2 sub-layers, 3 findings-only advisory functions, unit anatomy | Every unit in `01-org/` and `02-advisory/` | **Locked** |
 | [0008](../decisions/0008-nf-column-contract.md) | **NF column contract** — full ADR 0006 shape now (Path C). Claude recommended A; the founder overruled | The P1 schema, `subject_type` | **Locked** — supersedes the open half of OD-11 |
+| [0009](../decisions/0009-loop-vocabulary-contract.md) | **Loop vocabulary contract** — §5.1's table is the source of truth and a hard CI gate; `active`/`running` must cite evidence | All 482 loops, [[LOOP-MAP]], `ci.yml` | **Locked** — closes OD-47; live loops 6 → 5 |
 
 **Two ADR headers are stale** (0004, 0006): both still advertise an open fork that has since
 been resolved. A reader who trusts the header will believe a settled question is open. Fixing
